@@ -1,9 +1,9 @@
 services:
-  telegramagent-typescript:
+  sumire:
     build:
       context: .
       dockerfile: Dockerfile
-    image: telegramagent-typescript:local
+    image: sumire:local
     env_file:
       - .env
     init: true

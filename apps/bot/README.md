@@ -1,6 +1,6 @@
-# telegramagent TypeScript
+# Sumire
 
-Primary `telegramagent` service used by CI/CD, isolated under `./apps/bot`; the Python implementation remains available for local development and reference.
+Primary Sumire service used by CI/CD, isolated under `./apps/bot`; the Python implementation remains available for local development and reference.
 
 ## Runtime stack
 
@@ -104,7 +104,7 @@ Pi owns the agent session lifecycle and transcript format. The TypeScript servic
 
 ## Logging
 
-Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `telegramagent` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
+Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `sumire` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
 
 ## URL content loading
 
@@ -117,9 +117,9 @@ The built-in loader uses a 15-second timeout and 12,000-character output limit; 
 Build and run from the repository root so the Dockerfile can copy `apps/bot/` and `SOUL.md`:
 
 ```bash
-docker build -t telegramagent-typescript:local .
+docker build -t sumire:local .
 docker compose up -d --build
-docker compose logs -f telegramagent-typescript
+docker compose logs -f sumire
 docker compose down
 ```
 
