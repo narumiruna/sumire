@@ -3,7 +3,16 @@ import path from "node:path"
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
-import type { AgentSession } from "@earendil-works/pi-coding-agent"
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  AgentSessionEventListener,
+} from "@earendil-works/pi-coding-agent"
+import {
+  parseProgressDetails,
+  type ProgressStep,
+  PROGRESS_TOOL_NAME,
+} from "@narumitw/sumire-progress"
 
 import type { Logger } from "../logging.js"
 
@@ -17,6 +26,7 @@ export type SubmissionIntent = "steer" | "followUp"
 export interface SessionHandle {
   readonly isStreaming: boolean
   readonly messages: AgentMessage[]
+  subscribe(listener: AgentSessionEventListener): () => void
   prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>
   steer(text: string, images?: ImageContent[]): Promise<void>
   followUp(text: string, images?: ImageContent[]): Promise<void>
@@ -45,7 +55,12 @@ export class ChatSessionRegistry {
   async submit(
     chatId: number,
     prompt: string,
-    options: { images?: ImageContent[]; intent?: SubmissionIntent; onAccepted?: () => void } = {},
+    options: {
+      images?: ImageContent[]
+      intent?: SubmissionIntent
+      onAccepted?: () => void
+      onProgress?: (steps: readonly ProgressStep[]) => void
+    } = {},
   ): Promise<SubmissionResult> {
     const generation = this.#generations.get(chatId) ?? 0
     const session = await this.#getOrCreate(chatId)
@@ -65,14 +80,21 @@ export class ChatSessionRegistry {
     }
 
     const previousMessageCount = session.messages.length
-    const submission = session.prompt(prompt, images.length > 0 ? { images } : undefined)
-    options.onAccepted?.()
-    await submission
-    return {
-      kind: "completed",
-      text:
-        lastAssistantText(session.messages.slice(previousMessageCount)) ||
-        "模型沒有回覆內容，請稍後再試。",
+    const unsubscribe = options.onProgress
+      ? session.subscribe(progressListener(options.onProgress, this.logger))
+      : undefined
+    try {
+      const submission = session.prompt(prompt, images.length > 0 ? { images } : undefined)
+      options.onAccepted?.()
+      await submission
+      return {
+        kind: "completed",
+        text:
+          lastAssistantText(session.messages.slice(previousMessageCount)) ||
+          "模型沒有回覆內容，請稍後再試。",
+      }
+    } finally {
+      unsubscribe?.()
     }
   }
 
@@ -163,6 +185,34 @@ export function asSessionCreator(factory: {
   create(chatId: number): Promise<AgentSession>
 }): SessionCreator {
   return (chatId) => factory.create(chatId)
+}
+
+function progressListener(
+  onProgress: (steps: readonly ProgressStep[]) => void,
+  logger: Logger,
+): AgentSessionEventListener {
+  return (event: AgentSessionEvent) => {
+    if (
+      event.type !== "tool_execution_end" ||
+      event.toolName !== PROGRESS_TOOL_NAME ||
+      event.isError
+    ) {
+      return
+    }
+    const details = parseProgressDetails(toolResultDetails(event.result))
+    if (!details) return
+    try {
+      onProgress(details.steps)
+    } catch (error) {
+      logger.warn("Progress listener failed", error)
+    }
+  }
+}
+
+function toolResultDetails(result: unknown): unknown {
+  return result && typeof result === "object" && "details" in result
+    ? (result as { details: unknown }).details
+    : undefined
 }
 
 function lastAssistantText(messages: AgentMessage[]): string {

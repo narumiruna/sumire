@@ -1,3 +1,4 @@
+import type { ProgressStep } from "@narumitw/sumire-progress"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
@@ -32,7 +33,14 @@ const logger: Logger = {
 function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessionRegistry {
   return {
     submit: vi.fn(
-      async (_chatId: number, _prompt: string, options: { onAccepted?: () => void } = {}) => {
+      async (
+        _chatId: number,
+        _prompt: string,
+        options: {
+          onAccepted?: () => void
+          onProgress?: (steps: readonly ProgressStep[]) => void
+        } = {},
+      ) => {
         options.onAccepted?.()
         return { kind: "completed" as const, text: "AI 回覆" }
       },
@@ -114,9 +122,79 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).toHaveBeenCalledWith(7, "你好", {
       images: [],
       onAccepted: expect.any(Function),
+      onProgress: expect.any(Function),
     })
     expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
     expect(calls[1]?.payload.text).toBe("AI 回覆")
+  })
+
+  it("edits the pending reply with progress before publishing the final answer", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([
+          { text: "分析需求", status: "completed" },
+          { text: "撰寫回覆", status: "in_progress" },
+        ])
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[1]?.payload.text).toContain("處理中… 1/2")
+    expect(calls[1]?.payload.text).toContain("🔄 撰寫回覆")
+    expect(calls[2]?.payload.text).toBe("完成")
+  })
+
+  it("waits for an active progress edit before publishing the final answer", async () => {
+    let finishProgressEdit: (() => void) | undefined
+    const pendingProgressEdit = new Promise<void>((resolve) => {
+      finishProgressEdit = resolve
+    })
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "執行中", status: "in_progress" }])
+        return { kind: "completed" as const, text: "最終答案" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    let editCount = 0
+    const calls = installApiMock(telegram.bot, async (method) => {
+      if (method === "editMessageText" && ++editCount === 1) await pendingProgressEdit
+    })
+
+    const handling = telegram.bot.handleUpdate(privateMessage(3, "長任務"))
+    await vi.waitFor(() =>
+      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"]),
+    )
+
+    finishProgressEdit?.()
+    await handling
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[2]?.payload.text).toBe("最終答案")
   })
 
   it("enforces the allowlist before invoking session or Telegram APIs", async () => {

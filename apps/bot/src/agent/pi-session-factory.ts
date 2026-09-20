@@ -9,6 +9,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
+import progressExtension from "@narumitw/sumire-progress"
 
 import { buildUrlTools } from "../actions/url-tool.js"
 import type { Settings } from "../config/settings.js"
@@ -19,7 +20,6 @@ const providerId = "telegramagent-openai"
 
 export interface PiSessionFactory {
   create(chatId: number): Promise<AgentSession>
-  reloadResources(): Promise<void>
 }
 
 export async function createPiSessionFactory(
@@ -65,28 +65,7 @@ export async function createPiSessionFactory(
   if (!model)
     throw new Error(`Pi model registration failed for ${providerId}/${settings.openaiModel}`)
 
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: settings.projectRoot,
-    agentDir,
-    additionalSkillPaths: [settings.botSkillsDir],
-    noExtensions: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPrompt: await buildSystemPrompt(settings),
-    skillsOverride: (current) => ({
-      diagnostics: current.diagnostics,
-      skills:
-        settings.botEnabledSkills.size === 0
-          ? current.skills
-          : current.skills.filter((skill) => settings.botEnabledSkills.has(skill.name)),
-    }),
-  })
-  await resourceLoader.reload()
-  for (const diagnostic of resourceLoader.getSkills().diagnostics) {
-    logger.warn(`Pi skill diagnostic: ${diagnostic.message}`)
-  }
-
+  const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
     compaction: {
       enabled: true,
@@ -114,6 +93,32 @@ export async function createPiSessionFactory(
 
   return {
     async create(chatId: number) {
+      const resourceLoader = new DefaultResourceLoader({
+        cwd: settings.projectRoot,
+        agentDir,
+        additionalSkillPaths: [settings.botSkillsDir],
+        extensionFactories: [{ name: "sumire-progress", factory: progressExtension }],
+        noExtensions: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+        systemPrompt,
+        skillsOverride: (current) => ({
+          diagnostics: current.diagnostics,
+          skills:
+            settings.botEnabledSkills.size === 0
+              ? current.skills
+              : current.skills.filter((skill) => settings.botEnabledSkills.has(skill.name)),
+        }),
+      })
+      await resourceLoader.reload()
+      for (const diagnostic of resourceLoader.getSkills().diagnostics) {
+        logger.warn(`Pi skill diagnostic for chat_id=${chatId}: ${diagnostic.message}`)
+      }
+      for (const error of resourceLoader.getExtensions().errors) {
+        logger.warn(`Pi extension diagnostic for chat_id=${chatId}: ${error.path}: ${error.error}`)
+      }
+
       const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
       const { session, modelFallbackMessage } = await createAgentSession({
         cwd: settings.projectRoot,
@@ -130,9 +135,6 @@ export async function createPiSessionFactory(
       if (modelFallbackMessage)
         logger.warn(`Pi session model fallback for chat_id=${chatId}: ${modelFallbackMessage}`)
       return session
-    },
-    async reloadResources() {
-      await resourceLoader.reload()
     },
   }
 }
