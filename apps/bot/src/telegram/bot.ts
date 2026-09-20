@@ -127,13 +127,12 @@ export function createTelegramAgentBot(
       return
     }
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      answer(
+      submitInput(
         context,
+        context.message as unknown as TelegramMessageLike,
         prompt,
-        [],
         release,
         isCurrent,
-        repliedBotMessageId(context.message as unknown as TelegramMessageLike, context.me.id),
       ),
     )
   })
@@ -188,107 +187,122 @@ export function createTelegramAgentBot(
 
     if (fromBot)
       botReplyStreaks.set(context.chat.id, (botReplyStreaks.get(context.chat.id) ?? 0) + 1)
-    await inSubmissionOrder(context.chat.id, async (release, isCurrent) => {
-      const strippedText = privateChat
-        ? messageText(message).trim()
-        : stripBotMention(messageText(message), context.me.username)
-      const imageRefs = imageReferences(message)
-      const documentRefs = documentReferences(message)
-      if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
-        await context.reply("目前未啟用圖片輸入。", replyOptions(context))
-        return
-      }
-      if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
-        await context.reply("目前未啟用文件輸入。", replyOptions(context))
-        return
-      }
-      if (documentRefs.length > 0 && !dependencies.documentConverter) {
-        await context.reply("文件轉換服務目前無法使用。", replyOptions(context))
-        return
-      }
+    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
+      submitInput(
+        context,
+        message,
+        privateChat
+          ? messageText(message).trim()
+          : stripBotMention(messageText(message), context.me.username),
+        release,
+        isCurrent,
+      ),
+    )
+  })
 
-      let images: Array<{ type: "image"; data: string; mimeType: string }>
-      try {
-        images = await Promise.all(
-          imageRefs.map((reference) =>
-            downloadTelegramImage(
+  async function submitInput(
+    context: Context,
+    message: TelegramMessageLike,
+    strippedText: string,
+    release: () => void,
+    isCurrent: () => boolean,
+  ): Promise<void> {
+    const imageRefs = imageReferences(message)
+    const documentRefs = documentReferences(message)
+    if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
+      await context.reply("目前未啟用圖片輸入。", replyOptions(context))
+      return
+    }
+    if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
+      await context.reply("目前未啟用文件輸入。", replyOptions(context))
+      return
+    }
+    if (documentRefs.length > 0 && !dependencies.documentConverter) {
+      await context.reply("文件轉換服務目前無法使用。", replyOptions(context))
+      return
+    }
+
+    let images: Array<{ type: "image"; data: string; mimeType: string }>
+    try {
+      images = await Promise.all(
+        imageRefs.map((reference) =>
+          downloadTelegramImage(
+            context.api,
+            settings.botToken,
+            reference,
+            settings.botImageMaxBytes,
+            dependencies.imageFetchImplementation,
+          ),
+        ),
+      )
+    } catch (error) {
+      if (!isCurrent()) return
+      const response =
+        error instanceof TelegramDownloadTooLargeError
+          ? "圖片超過允許的大小，無法處理。"
+          : "無法下載 Telegram 圖片，請稍後再試。"
+      logger.warn(`Telegram image input failed for chat_id=${context.chat?.id}`, error)
+      await context.reply(response, replyOptions(context))
+      return
+    }
+
+    if (!isCurrent()) return
+    let documentInputs: Array<{
+      reference: (typeof documentRefs)[number]
+      converted: Awaited<ReturnType<DocumentConverter["convert"]>>
+    }> = []
+    try {
+      documentInputs = await Promise.all(
+        documentRefs.map(async (reference) => {
+          const converted = await dependencies.documentConverter?.convert(async () => {
+            if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+            const bytes = await downloadTelegramFile(
               context.api,
               settings.botToken,
               reference,
-              settings.botImageMaxBytes,
+              settings.botDocumentMaxBytes,
               dependencies.imageFetchImplementation,
-            ),
-          ),
-        )
-      } catch (error) {
-        if (!isCurrent()) return
-        const response =
-          error instanceof TelegramDownloadTooLargeError
-            ? "圖片超過允許的大小，無法處理。"
-            : "無法下載 Telegram 圖片，請稍後再試。"
-        logger.warn(`Telegram image input failed for chat_id=${context.chat.id}`, error)
-        await context.reply(response, replyOptions(context))
-        return
-      }
-
-      if (!isCurrent()) return
-      let documentInputs: Array<{
-        reference: (typeof documentRefs)[number]
-        converted: Awaited<ReturnType<DocumentConverter["convert"]>>
-      }> = []
-      try {
-        documentInputs = await Promise.all(
-          documentRefs.map(async (reference) => {
-            const converted = await dependencies.documentConverter?.convert(async () => {
-              if (!isCurrent()) throw new Error("Telegram document input was invalidated")
-              const bytes = await downloadTelegramFile(
-                context.api,
-                settings.botToken,
-                reference,
-                settings.botDocumentMaxBytes,
-                dependencies.imageFetchImplementation,
-              )
-              if (!isCurrent()) throw new Error("Telegram document input was invalidated")
-              return bytes
-            }, reference.filename)
-            if (!converted) throw new Error("Document converter is unavailable")
-            return { reference, converted }
-          }),
-        )
-      } catch (error) {
-        if (!isCurrent()) return
-        const response = documentFailureMessage(error)
-        logger.warn(`Telegram document input failed for chat_id=${context.chat.id}`, error)
-        await context.reply(response, replyOptions(context))
-        return
-      }
-
-      if (!isCurrent()) return
-      let prompt: string
-      if (documentInputs.length > 0) {
-        prompt = promptWithReplyContext(
-          message,
-          promptWithDocumentContext(
-            strippedText,
-            documentInputs,
-            settings.botDocumentMaxMarkdownChars,
-          ),
-        )
-      } else {
-        const basePrompt =
-          strippedText || (images.length > 0 ? defaultImagePrompt : "請回應這則訊息。")
-        prompt = promptWithReplyContext(message, basePrompt)
-      }
-      await answer(
-        context,
-        prompt,
-        images,
-        release,
-        isCurrent,
-        repliedBotMessageId(message, context.me.id),
+            )
+            if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+            return bytes
+          }, reference.filename)
+          if (!converted) throw new Error("Document converter is unavailable")
+          return { reference, converted }
+        }),
       )
-    })
-  })
+    } catch (error) {
+      if (!isCurrent()) return
+      const response = documentFailureMessage(error)
+      logger.warn(`Telegram document input failed for chat_id=${context.chat?.id}`, error)
+      await context.reply(response, replyOptions(context))
+      return
+    }
+
+    if (!isCurrent()) return
+    let prompt: string
+    if (documentInputs.length > 0) {
+      prompt = promptWithReplyContext(
+        message,
+        promptWithDocumentContext(
+          strippedText,
+          documentInputs,
+          settings.botDocumentMaxMarkdownChars,
+        ),
+      )
+    } else {
+      const basePrompt =
+        strippedText || (images.length > 0 ? defaultImagePrompt : "請回應這則訊息。")
+      prompt = promptWithReplyContext(message, basePrompt)
+    }
+    await answer(
+      context,
+      prompt,
+      images,
+      release,
+      isCurrent,
+      repliedBotMessageId(message, context.me.id),
+    )
+  }
 
   bot.catch((error) => {
     const context = error.ctx

@@ -77,6 +77,27 @@ function commandMessage(updateId: number, text: string, userId = 7): Update {
   return update
 }
 
+function repliedDocumentCommand(updateId: number, text = "/ask 請摘要"): Update {
+  const update = commandMessage(updateId, text)
+  if (update.message) {
+    update.message.reply_to_message = {
+      message_id: 50,
+      date: 1_700_000_000,
+      chat: update.message.chat,
+      from: { id: 8, is_bot: false, first_name: "Bob" },
+      document: {
+        file_id: "replied-document",
+        file_unique_id: "replied-document",
+        file_name: "report.csv",
+        mime_type: "text/csv",
+        file_size: 5,
+      },
+      reply_to_message: undefined,
+    }
+  }
+  return update
+}
+
 function installApiMock(
   bot: ReturnType<typeof createTelegramAgentBot>["bot"],
   beforeResponse: (
@@ -806,6 +827,112 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toContain("https://morsel.example/s/share")
   })
 
+  it.each(["private", "group", "bot-reply"])(
+    "converts replied documents for /ask in %s context",
+    async (kind) => {
+      const sessions = createSessions()
+      const run = vi.fn(async () => ({
+        ok: true as const,
+        markdown: "# Converted document",
+        format: "csv",
+        originalChars: 20,
+        truncated: false,
+      }))
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          documentConverter: AnyDocConverter.forTesting({
+            maxConcurrency: 1,
+            maxMarkdownChars: 100,
+            timeoutMs: 1_000,
+            run,
+          }),
+          imageFetchImplementation: vi.fn(async () => new Response("bytes")),
+        },
+      )
+      installApiMock(telegram.bot)
+      const update = repliedDocumentCommand(400, "/ask@test_bot 請摘要")
+      const message = update.message
+      if (message?.reply_to_message) {
+        if (kind === "group") {
+          message.chat = { id: -100, type: "supergroup", title: "Group" }
+          message.reply_to_message.chat = message.chat
+        }
+        if (kind === "bot-reply") message.reply_to_message.from = botInfo
+      }
+      await telegram.bot.handleUpdate(update)
+
+      expect(run).toHaveBeenCalledExactlyOnceWith(Buffer.from("bytes"), "report.csv", 100, 1_000)
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      const [chatId, prompt, options] = vi.mocked(sessions.submit).mock.calls[0] ?? []
+      expect(chatId).toBe(kind === "group" ? -100 : 7)
+      expect(prompt).toContain("請摘要")
+      expect(prompt).toContain("# Converted document")
+      expect(prompt).toContain('trust="untrusted"')
+      expect(prompt).not.toContain("/ask")
+      expect(options?.images).toEqual([])
+      expect(options?.replyToBotMessageId).toBe(kind === "bot-reply" ? 50 : undefined)
+    },
+  )
+
+  it.each([
+    ["disabled", "目前未啟用文件輸入。"],
+    ["unavailable", "文件轉換服務目前無法使用。"],
+    ["oversized", "文件超過允許的大小，無法處理。"],
+    ["conversion", "這份 PDF 需要 OCR，目前只支援含可擷取文字的 PDF。"],
+  ])("reports /ask document %s failures without invoking Pi", async (failure, expected) => {
+    const sessions = createSessions()
+    const fetchDocument = vi.fn(async () => new Response("bytes"))
+    const run = vi.fn(async () => ({ ok: false as const, code: "needsOcr", message: "OCR needed" }))
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        BOT_DOCUMENT_INPUT_ENABLED: failure === "disabled" ? "false" : "true",
+        BOT_DOCUMENT_MAX_BYTES: failure === "oversized" ? "4" : "100",
+      }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        imageFetchImplementation: fetchDocument,
+        documentConverter:
+          failure === "unavailable"
+            ? undefined
+            : AnyDocConverter.forTesting({
+                maxConcurrency: 1,
+                maxMarkdownChars: 100,
+                timeoutMs: 1_000,
+                run,
+              }),
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(repliedDocumentCommand(401))
+
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(calls.at(-1)?.payload.text).toBe(expected)
+    expect(run).toHaveBeenCalledTimes(failure === "conversion" ? 1 : 0)
+    expect(fetchDocument).toHaveBeenCalledTimes(failure === "conversion" ? 1 : 0)
+  })
+
+  it("preserves /ask usage when no question is provided", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(repliedDocumentCommand(402, "/ask"))
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.payload.text).toBe("請使用 /ask <問題>。")
+  })
+
   it("converts current and replied documents with captions and a captionless default", async () => {
     const sessions = createSessions()
     const documentConverter = {
@@ -1126,95 +1253,104 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it.each([
-    ["queued", false],
-    ["download", false],
-    ["conversion", false],
-    ["download", true],
-    ["conversion", true],
-  ] as const)("cancels pre-submit document work during %s (failure=%s)", async (stage, failure) => {
-    let releaseWork = () => {}
-    const pendingWork = new Promise<void>((resolve) => {
-      releaseWork = resolve
-    })
-    const fetchDocument = vi.fn(async () => {
-      if (stage === "download") {
-        await pendingWork
-        if (failure) throw new Error("late download failure")
-      }
-      return new Response("bytes")
-    })
-    const run = vi.fn(async () => {
-      if (stage !== "download") {
-        await pendingWork
-        if (failure) throw new Error("late conversion failure")
-      }
-      return {
-        ok: true as const,
-        markdown: "document",
-        format: "csv",
-        originalChars: 8,
-        truncated: false,
-      }
-    })
-    const converter = AnyDocConverter.forTesting({
-      maxConcurrency: 1,
-      maxMarkdownChars: 100,
-      timeoutMs: 1_000,
-      run,
-    })
-    const convert = vi.spyOn(converter, "convert")
-    const occupying =
-      stage === "queued"
-        ? converter.convert(async () => Buffer.from("busy"), "busy.csv")
-        : undefined
-    if (occupying) await vi.waitFor(() => expect(run).toHaveBeenCalledOnce())
-    const sessions = createSessions()
-    const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
-      sessions,
-      logger,
-      { botInfo, documentConverter: converter, imageFetchImplementation: fetchDocument },
-    )
-    const calls = installApiMock(telegram.bot)
-    const document = privateMessage(300, "")
-    if (document.message) {
-      delete document.message.text
-      document.message.document = {
-        file_id: "document",
-        file_unique_id: "document",
-        file_name: "report.csv",
-        file_size: 5,
-      }
-    }
-    const handling = telegram.bot.handleUpdate(document)
-    let fresh: Promise<void> | undefined
-    let acceptedWhileDraining = 0
-    try {
-      await vi.waitFor(() => {
-        if (stage === "queued") expect(convert).toHaveBeenCalledTimes(2)
-        else if (stage === "download") expect(fetchDocument).toHaveBeenCalledOnce()
-        else expect(run).toHaveBeenCalledOnce()
+  it.each(
+    (["message", "ask"] as const).flatMap((input) =>
+      (
+        [
+          ["queued", false],
+          ["download", false],
+          ["conversion", false],
+          ["download", true],
+          ["conversion", true],
+        ] as const
+      ).map(([stage, failure]) => ({ input, stage, failure })),
+    ),
+  )(
+    "cancels $input document work during $stage (failure=$failure)",
+    async ({ input, stage, failure }) => {
+      let releaseWork = () => {}
+      const pendingWork = new Promise<void>((resolve) => {
+        releaseWork = resolve
       })
-      await telegram.bot.handleUpdate(commandMessage(301, "/cancel"))
-      fresh = telegram.bot.handleUpdate(privateMessage(302, "fresh"))
-      await new Promise<void>((resolve) => setImmediate(resolve))
-      acceptedWhileDraining = vi.mocked(sessions.submit).mock.calls.length
-    } finally {
-      releaseWork()
-      await Promise.all([handling, occupying, fresh])
-    }
+      const fetchDocument = vi.fn(async () => {
+        if (stage === "download") {
+          await pendingWork
+          if (failure) throw new Error("late download failure")
+        }
+        return new Response("bytes")
+      })
+      const run = vi.fn(async () => {
+        if (stage !== "download") {
+          await pendingWork
+          if (failure) throw new Error("late conversion failure")
+        }
+        return {
+          ok: true as const,
+          markdown: "document",
+          format: "csv",
+          originalChars: 8,
+          truncated: false,
+        }
+      })
+      const converter = AnyDocConverter.forTesting({
+        maxConcurrency: 1,
+        maxMarkdownChars: 100,
+        timeoutMs: 1_000,
+        run,
+      })
+      const convert = vi.spyOn(converter, "convert")
+      const occupying =
+        stage === "queued"
+          ? converter.convert(async () => Buffer.from("busy"), "busy.csv")
+          : undefined
+      if (occupying) await vi.waitFor(() => expect(run).toHaveBeenCalledOnce())
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        { botInfo, documentConverter: converter, imageFetchImplementation: fetchDocument },
+      )
+      const calls = installApiMock(telegram.bot)
+      const document = input === "ask" ? repliedDocumentCommand(300) : privateMessage(300, "")
+      if (input === "message" && document.message) {
+        delete document.message.text
+        document.message.document = {
+          file_id: "document",
+          file_unique_id: "document",
+          file_name: "report.csv",
+          file_size: 5,
+        }
+      }
+      const handling = telegram.bot.handleUpdate(document)
+      let fresh: Promise<void> | undefined
+      let acceptedWhileDraining = 0
+      try {
+        await vi.waitFor(() => {
+          if (stage === "queued") expect(convert).toHaveBeenCalledTimes(2)
+          else if (stage === "download") expect(fetchDocument).toHaveBeenCalledOnce()
+          else expect(run).toHaveBeenCalledOnce()
+        })
+        await telegram.bot.handleUpdate(commandMessage(301, "/cancel"))
+        fresh = telegram.bot.handleUpdate(privateMessage(302, "fresh"))
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        acceptedWhileDraining = vi.mocked(sessions.submit).mock.calls.length
+      } finally {
+        releaseWork()
+        await Promise.all([handling, occupying, fresh])
+      }
 
-    expect(sessions.cancel).toHaveBeenCalledWith(7)
-    expect(sessions.reset).not.toHaveBeenCalled()
-    expect(acceptedWhileDraining).toBe(1)
-    expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, "fresh", expect.any(Object))
-    expect(
-      calls.filter((call) => call.method === "sendMessage").map((call) => call.payload.text),
-    ).toEqual(["已取消目前任務。", "處理中…"])
-    expect(fetchDocument).toHaveBeenCalledTimes(stage === "queued" ? 0 : 1)
-    expect(run).toHaveBeenCalledTimes(stage === "download" ? 0 : 1)
-  })
+      expect(sessions.cancel).toHaveBeenCalledWith(7)
+      expect(sessions.reset).not.toHaveBeenCalled()
+      expect(acceptedWhileDraining).toBe(1)
+      expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, "fresh", expect.any(Object))
+      expect(
+        calls.filter((call) => call.method === "sendMessage").map((call) => call.payload.text),
+      ).toEqual(["已取消目前任務。", "處理中…"])
+      expect(fetchDocument).toHaveBeenCalledTimes(stage === "queued" ? 0 : 1)
+      expect(run).toHaveBeenCalledTimes(stage === "download" ? 0 : 1)
+    },
+  )
 
   it("cancels before agent acceptance without labelling it as a reset", async () => {
     let releaseStatus = () => {}
