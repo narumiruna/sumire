@@ -2,7 +2,16 @@
   "name": "@narumitw/sumire-url-content",
   "version": "0.19.6",
   "description": "Source-aware URL content extraction for TypeScript and Node.js",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/narumiruna/sumire.git",
+    "directory": "packages/url-content"
+  },
+  "homepage": "https://github.com/narumiruna/sumire/tree/main/packages/url-content#readme",
+  "bugs": {
+    "url": "https://github.com/narumiruna/sumire/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.19.0"
@@ -25,12 +34,17 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "biome check .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

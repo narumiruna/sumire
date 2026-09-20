@@ -10,6 +10,12 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 - Reusable fetch, `impers`, and Playwright resources with concurrency limits and total deadlines
 - ESM library API, TypeScript declarations, and a `sumire-url-content` CLI
 
+## Installation
+
+```bash
+npm install @narumitw/sumire-url-content
+```
+
 ## Workspace usage
 
 From this repository root:

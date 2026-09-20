@@ -12,18 +12,22 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "changeset": "changeset",
     "check": "npm run check --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
     "format:check": "npm run format:check --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "prepare": "if command -v husky >/dev/null 2>&1; then husky; fi",
     "precommit": "sh scripts/pre-commit.sh",
+    "release": "changeset publish",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
     "update": "npx npm-check-updates -u -w --root"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@changesets/cli": "3.0.3",
     "husky": "9.1.7"
   }
 }
