@@ -17,6 +17,7 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
+import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
 import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
 
 export interface TelegramAgentBot {
@@ -199,7 +200,17 @@ export function createTelegramAgentBot(
       "處理中…",
       sourceMessageId ? { reply_parameters: { message_id: sourceMessageId } } : {},
     )
+    const progressStatus = createProgressStatusEditor(
+      async (text) => {
+        if (!isCurrent()) return
+        await editStatusWithChunks(context, status.chat.id, status.message_id, text, isCurrent)
+      },
+      (error) =>
+        logger.warn(`Telegram progress update failed for chat_id=${status.chat.id}`, error),
+      "處理中…",
+    )
     const cancelStatus = async () => {
+      await progressStatus.close()
       await editStatusWithChunks(
         context,
         status.chat.id,
@@ -215,6 +226,7 @@ export function createTelegramAgentBot(
       const result = await sessions.submit(context.chat?.id ?? status.chat.id, prompt, {
         images,
         onAccepted: releaseSubmissionTurn,
+        onProgress: (steps) => progressStatus.publish(renderProgressStatus(steps)),
       })
       if (!isCurrent()) {
         await cancelStatus()
@@ -241,6 +253,7 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
+      await progressStatus.close()
       if (
         !(await editStatusWithChunks(
           context,
@@ -258,6 +271,7 @@ export function createTelegramAgentBot(
         return
       }
       logger.error(`Pi agent request failed for chat_id=${status.chat.id}`, error)
+      await progressStatus.close()
       if (
         !(await editStatusWithChunks(
           context,

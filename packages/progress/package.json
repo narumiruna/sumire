@@ -1,0 +1,68 @@
+{
+  "name": "@narumitw/sumire-progress",
+  "version": "0.0.0",
+  "description": "Branch-aware Pi progress state for Sumire host interfaces",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/narumiruna/sumire.git",
+    "directory": "packages/progress"
+  },
+  "homepage": "https://github.com/narumiruna/sumire/tree/main/packages/progress#readme",
+  "bugs": {
+    "url": "https://github.com/narumiruna/sumire/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "progress",
+    "telegram"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@types/node": "26.6.2",
+    "typebox": "1.3.27",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

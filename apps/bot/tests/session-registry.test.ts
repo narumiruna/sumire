@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
+import type { AgentSessionEvent, AgentSessionEventListener } from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
 
 import { ChatSessionRegistry, type SessionHandle } from "../src/agent/session-registry.js"
@@ -22,8 +23,18 @@ class FakeSession implements SessionHandle {
   readonly steering: string[] = []
   readonly followUps: string[] = []
   readonly contexts: string[] = []
+  readonly listeners = new Set<AgentSessionEventListener>()
   aborted = false
   disposed = false
+
+  subscribe(listener: AgentSessionEventListener): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  emit(event: AgentSessionEvent): void {
+    for (const listener of this.listeners) listener(event)
+  }
 
   async prompt(text: string): Promise<void> {
     this.prompts.push(text)
@@ -129,6 +140,55 @@ describe("ChatSessionRegistry", () => {
 
     await staleOutcome
     expect(session.prompts).toEqual(["initial"])
+  })
+
+  it("forwards only successful, valid progress results while a prompt is active", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const updates: unknown[] = []
+    session.prompt = vi.fn(async (text: string) => {
+      session.emit({
+        type: "tool_execution_end",
+        toolCallId: "progress",
+        toolName: "update_progress",
+        result: {
+          content: [],
+          details: {
+            version: 1,
+            steps: [{ text: "檢查資料", status: "in_progress" }],
+          },
+        },
+        isError: false,
+      })
+      session.emit({
+        type: "tool_execution_end",
+        toolCallId: "invalid",
+        toolName: "update_progress",
+        result: { content: [], details: { version: 1, steps: "invalid" } },
+        isError: false,
+      })
+      session.emit({
+        type: "tool_execution_end",
+        toolCallId: "failed",
+        toolName: "update_progress",
+        result: { content: [], details: { version: 1, steps: [] } },
+        isError: true,
+      })
+      session.messages.push(assistant(`AI: ${text}`))
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+
+    await registry.submit(1, "開始", { onProgress: (steps) => updates.push(steps) })
+    session.emit({
+      type: "tool_execution_end",
+      toolCallId: "late",
+      toolName: "update_progress",
+      result: { content: [], details: { version: 1, steps: [] } },
+      isError: false,
+    })
+
+    expect(updates).toEqual([[{ text: "檢查資料", status: "in_progress" }]])
+    expect(session.listeners.size).toBe(0)
   })
 
   it("delegates steering, follow-up, passive context, cancellation, and reset to Pi sessions", async () => {

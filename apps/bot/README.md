@@ -7,6 +7,7 @@ Primary Sumire service used by CI/CD, isolated under `./apps/bot`; the Python im
 - `@earendil-works/pi-coding-agent`: complete per-chat `AgentSession` lifecycle, persistence, retry, compaction, steering, follow-up, tool loop, and Agent Skills.
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
+- `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
 - Vitest: tests.
@@ -26,6 +27,7 @@ Available now:
 - bounded Telegram image input
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
 - Morsel rich-rendering tool and smart long-reply routing
+- live multi-step progress in the pending Telegram reply
 - Telegram HTML rendering and 4096-character chunking
 - secret-redacted logs
 
@@ -100,7 +102,7 @@ Pi owns the agent session lifecycle and transcript format. The TypeScript servic
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader is always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader and structured progress tool are always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
 
 ## Logging
 
