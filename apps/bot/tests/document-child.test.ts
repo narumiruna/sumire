@@ -8,7 +8,10 @@ import { AnyDocConverter } from "../src/documents/converter.js"
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }))
 
-afterEach(() => vi.resetAllMocks())
+afterEach(() => {
+  vi.resetAllMocks()
+  vi.useRealTimers()
+})
 
 function fakeChild() {
   return Object.assign(new EventEmitter(), {
@@ -20,9 +23,10 @@ function fakeChild() {
 }
 
 describe("document child lifecycle", () => {
-  it.each(["child", "stdin"])(
+  it.each(["child", "stdin", "timeout"])(
     "retains conversion capacity until close after a %s error",
     async (source) => {
+      if (source === "timeout") vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
       const first = fakeChild()
       const second = fakeChild()
       vi.mocked(spawn)
@@ -34,20 +38,25 @@ describe("document child lifecycle", () => {
         maxConcurrency: 1,
       })
       let settled = false
-      const failed = converter.convert(Buffer.from("one"), "one.csv").catch((error: unknown) => {
-        settled = true
-        return error
-      })
-      const queued = converter.convert(Buffer.from("two"), "two.csv")
+      const failed = converter
+        .convert(async () => Buffer.from("one"), "one.csv")
+        .catch((error: unknown) => {
+          settled = true
+          return error
+        })
+      const loadQueued = vi.fn(async () => Buffer.from("two"))
+      const queued = converter.convert(loadQueued, "two.csv")
       await new Promise<void>((resolve) => setImmediate(resolve))
       expect(spawn).toHaveBeenCalledOnce()
 
       const error = new Error(`${source} failed`)
       if (source === "child") first.emit("error", error)
-      else first.stdin.emit("error", error)
+      else if (source === "stdin") first.stdin.emit("error", error)
+      else await vi.advanceTimersByTimeAsync(30_000)
       await new Promise<void>((resolve) => setImmediate(resolve))
       const settledBeforeClose = settled
       const spawnedBeforeClose = vi.mocked(spawn).mock.calls.length
+      const loadedBeforeClose = loadQueued.mock.calls.length
 
       first.emit("close", null, "SIGKILL")
       await new Promise<void>((resolve) => setImmediate(resolve))
@@ -65,11 +74,14 @@ describe("document child lifecycle", () => {
       )
       second.emit("close", 0, null)
 
-      expect(await failed).toBe(error)
+      if (source === "timeout") expect(await failed).toMatchObject({ kind: "timeout" })
+      else expect(await failed).toBe(error)
       await expect(queued).resolves.toMatchObject({ markdown: "converted" })
       expect(first.kill).toHaveBeenCalledWith("SIGKILL")
       expect(settledBeforeClose).toBe(false)
       expect(spawnedBeforeClose).toBe(1)
+      expect(loadedBeforeClose).toBe(0)
+      expect(loadQueued).toHaveBeenCalledOnce()
       expect(spawn).toHaveBeenCalledTimes(2)
     },
   )

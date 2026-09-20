@@ -197,15 +197,15 @@ export function createTelegramAgentBot(
       try {
         documentInputs = await Promise.all(
           documentRefs.map(async (reference) => {
-            const bytes = await downloadTelegramFile(
-              context.api,
-              settings.botToken,
-              reference,
-              settings.botDocumentMaxBytes,
-              dependencies.imageFetchImplementation,
-            )
             const converted = await dependencies.documentConverter?.convert(
-              bytes,
+              () =>
+                downloadTelegramFile(
+                  context.api,
+                  settings.botToken,
+                  reference,
+                  settings.botDocumentMaxBytes,
+                  dependencies.imageFetchImplementation,
+                ),
               reference.filename,
             )
             if (!converted) throw new Error("Document converter is unavailable")

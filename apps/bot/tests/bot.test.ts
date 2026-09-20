@@ -4,7 +4,7 @@ import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
-import { DocumentConversionError } from "../src/documents/converter.js"
+import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
 import type { Logger } from "../src/logging.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 
@@ -709,12 +709,15 @@ describe("Telegram bot update routing", () => {
   it("converts current and replied documents with captions and a captionless default", async () => {
     const sessions = createSessions()
     const documentConverter = {
-      convert: vi.fn(async () => ({
-        markdown: "# Converted document",
-        format: "docx",
-        originalChars: 20,
-        truncated: false,
-      })),
+      convert: vi.fn(async (loadBytes: () => Promise<Uint8Array>) => {
+        expect(await loadBytes()).toEqual(Buffer.from("document bytes"))
+        return {
+          markdown: "# Converted document",
+          format: "docx",
+          originalChars: 20,
+          truncated: false,
+        }
+      }),
     }
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -763,14 +766,10 @@ describe("Telegram bot update routing", () => {
 
     expect(documentConverter.convert).toHaveBeenNthCalledWith(
       1,
-      Buffer.from("document bytes"),
+      expect.any(Function),
       "report.docx",
     )
-    expect(documentConverter.convert).toHaveBeenNthCalledWith(
-      2,
-      Buffer.from("document bytes"),
-      "data.csv",
-    )
+    expect(documentConverter.convert).toHaveBeenNthCalledWith(2, expect.any(Function), "data.csv")
     expect(sessions.submit).toHaveBeenNthCalledWith(
       1,
       7,
@@ -785,15 +784,111 @@ describe("Telegram bot update routing", () => {
     )
   })
 
+  it.each([1, 2])(
+    "admits at most %s document downloads/conversions across chats and reply attachments",
+    async (maxConcurrency) => {
+      let finishDownloads = () => {}
+      const downloads = new Promise<void>((resolve) => {
+        finishDownloads = resolve
+      })
+      let finishConversions = () => {}
+      const conversions = new Promise<void>((resolve) => {
+        finishConversions = resolve
+      })
+      const fetchDocument = vi.fn(async () => {
+        await downloads
+        return new Response("bytes")
+      })
+      const run = vi.fn(async () => {
+        await conversions
+        return {
+          ok: true as const,
+          markdown: "document",
+          format: "csv",
+          originalChars: 8,
+          truncated: false,
+        }
+      })
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          documentConverter: AnyDocConverter.forTesting({
+            maxConcurrency,
+            maxMarkdownChars: 100,
+            timeoutMs: 1_000,
+            run,
+          }),
+          imageFetchImplementation: fetchDocument,
+        },
+      )
+      const calls = installApiMock(telegram.bot)
+      const updates = Array.from({ length: 16 }, (_, index) => {
+        const update = privateMessage(100 + index, "比較附件", 100 + index)
+        if (update.message) {
+          const document = {
+            file_id: `current-${index}`,
+            file_unique_id: `current-${index}`,
+            file_name: "current.csv",
+            file_size: 5,
+          }
+          update.message.document = document
+          update.message.reply_to_message = {
+            message_id: 1,
+            date: 1_700_000_000,
+            chat: update.message.chat,
+            document: { ...document, file_id: `replied-${index}`, file_name: "replied.csv" },
+            reply_to_message: undefined,
+          }
+        }
+        return telegram.bot.handleUpdate(update)
+      })
+      let downloading = 0
+      let converting = 0
+      let getFileWhileConverting = 0
+      try {
+        await vi.waitFor(() => expect(fetchDocument).toHaveBeenCalled())
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        downloading = fetchDocument.mock.calls.length
+        expect(run).not.toHaveBeenCalled()
+        // Waiting document jobs must not block an unrelated text-only request.
+        await telegram.bot.handleUpdate(privateMessage(200, "文字請求", 200))
+        expect(sessions.submit).toHaveBeenCalledOnce()
+        finishDownloads()
+        await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(maxConcurrency))
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        converting = fetchDocument.mock.calls.length
+        getFileWhileConverting = calls.filter((call) => call.method === "getFile").length
+      } finally {
+        finishDownloads()
+        finishConversions()
+        await Promise.all(updates)
+      }
+
+      expect(downloading).toBe(maxConcurrency)
+      expect(converting).toBe(maxConcurrency)
+      expect(getFileWhileConverting).toBe(maxConcurrency)
+      expect(fetchDocument).toHaveBeenCalledTimes(32)
+      expect(run).toHaveBeenCalledTimes(32)
+      expect(sessions.submit).toHaveBeenCalledTimes(17)
+    },
+  )
+
   it("handles image and document input together and reports bounded document failures", async () => {
     const sessions = createSessions()
     const documentConverter = {
-      convert: vi.fn(async () => ({
-        markdown: "document",
-        format: "pdf",
-        originalChars: 8,
-        truncated: false,
-      })),
+      convert: vi.fn(async (loadBytes: () => Promise<Uint8Array>) => {
+        await loadBytes()
+        return {
+          markdown: "document",
+          format: "pdf",
+          originalChars: 8,
+          truncated: false,
+        }
+      }),
     }
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -889,9 +984,15 @@ describe("Telegram bot update routing", () => {
     expect(calls.find((call) => call.method === "sendMessage")?.payload.text).toBe(expected)
   })
 
-  it("rejects disabled and oversized documents before conversion", async () => {
+  it("rejects disabled and oversized documents before native conversion", async () => {
     const sessions = createSessions()
-    const documentConverter = { convert: vi.fn() }
+    const run = vi.fn()
+    const documentConverter = AnyDocConverter.forTesting({
+      maxConcurrency: 1,
+      maxMarkdownChars: 100,
+      timeoutMs: 1_000,
+      run,
+    })
     const disabled = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token", BOT_DOCUMENT_INPUT_ENABLED: "false" }),
       sessions,
@@ -921,7 +1022,8 @@ describe("Telegram bot update routing", () => {
     const oversizedCalls = installApiMock(oversized.bot)
     await oversized.bot.handleUpdate(update)
     expect(oversizedCalls[0]?.payload.text).toBe("文件超過允許的大小，無法處理。")
-    expect(documentConverter.convert).not.toHaveBeenCalled()
+    expect(run).not.toHaveBeenCalled()
+    expect(sessions.submit).not.toHaveBeenCalled()
   })
 
   it("does not submit a document conversion that finishes after reset", async () => {

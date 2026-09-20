@@ -55,7 +55,8 @@ export interface ConvertedDocument {
 }
 
 export interface DocumentConverter {
-  convert(bytes: Uint8Array, filename: string): Promise<ConvertedDocument>
+  // Load bytes only after admission so queued jobs do not retain downloaded input.
+  convert(loadBytes: () => Promise<Uint8Array>, filename: string): Promise<ConvertedDocument>
 }
 
 interface AnyDocConverterOptions {
@@ -102,12 +103,16 @@ export class AnyDocConverter implements DocumentConverter {
     return new AnyDocConverter(options)
   }
 
-  async convert(bytes: Uint8Array, filename: string): Promise<ConvertedDocument> {
-    if (bytes.byteLength === 0) {
-      throw new DocumentConversionError("empty", "The document is empty")
-    }
+  async convert(
+    loadBytes: () => Promise<Uint8Array>,
+    filename: string,
+  ): Promise<ConvertedDocument> {
     const release = await this.#semaphore.acquire()
     try {
+      const bytes = await loadBytes()
+      if (bytes.byteLength === 0) {
+        throw new DocumentConversionError("empty", "The document is empty")
+      }
       const result = await this.#run(
         bytes,
         filename,
@@ -245,14 +250,16 @@ class Semaphore {
   async acquire(): Promise<() => void> {
     if (this.#active >= this.limit) {
       await new Promise<void>((resolve) => this.#waiters.push(resolve))
+    } else {
+      this.#active += 1
     }
-    this.#active += 1
     let released = false
     return () => {
       if (released) return
       released = true
-      this.#active -= 1
-      this.#waiters.shift()?.()
+      const next = this.#waiters.shift()
+      if (next) next()
+      else this.#active -= 1
     }
   }
 }

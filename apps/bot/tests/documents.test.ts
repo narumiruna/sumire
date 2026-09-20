@@ -68,7 +68,7 @@ describe("AnyDocConverter", () => {
     })
 
     const conversions = [1, 2, 3].map((value) =>
-      converter.convert(Buffer.from(String(value)), `${value}.docx`),
+      converter.convert(async () => Buffer.from(String(value)), `${value}.docx`),
     )
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
     completions.shift()?.(success("one"))
@@ -79,6 +79,83 @@ describe("AnyDocConverter", () => {
     await expect(Promise.all(conversions)).resolves.toHaveLength(3)
     expect(maximumActive).toBe(2)
   })
+
+  it("transfers a released slot to its waiter before admitting a new arrival", async () => {
+    let finishFirst = (_result: ReturnType<typeof success>) => {}
+    const firstRun = new Promise<ReturnType<typeof success>>((resolve) => {
+      finishFirst = resolve
+    })
+    let finishRest = (_result: ReturnType<typeof success>) => {}
+    const restRun = new Promise<ReturnType<typeof success>>((resolve) => {
+      finishRest = resolve
+    })
+    const started: string[] = []
+    const converter = AnyDocConverter.forTesting({
+      timeoutMs: 1_000,
+      maxMarkdownChars: 100,
+      maxConcurrency: 1,
+      run: (_bytes, filename) => {
+        started.push(filename)
+        return started.length === 1 ? firstRun : restRun
+      },
+    })
+    const first = converter.convert(async () => Buffer.from("one"), "first.csv")
+    await vi.waitFor(() => expect(started).toEqual(["first.csv"]))
+    const queued = converter.convert(async () => Buffer.from("two"), "queued.csv")
+    let arriving: ReturnType<AnyDocConverter["convert"]> | undefined
+    finishFirst(success())
+    // Already-scheduled work can run between release and the waiter's continuation.
+    queueMicrotask(() => {
+      arriving = converter.convert(async () => Buffer.from("three"), "arriving.csv")
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const beforeNextCompletion = [...started]
+    finishRest(success())
+    await Promise.all([first, queued, arriving])
+
+    expect(beforeNextCompletion).toEqual(["first.csv", "queued.csv"])
+    expect(started).toEqual(["first.csv", "queued.csv", "arriving.csv"])
+  })
+
+  it.each(["download", "empty", "conversion"])(
+    "releases admission after a %s failure without preloading queued input",
+    async (failure) => {
+      let finishLoading = () => {}
+      const loading = new Promise<void>((resolve) => {
+        finishLoading = resolve
+      })
+      const error = new Error("failed")
+      const firstLoad = vi.fn(async () => {
+        await loading
+        if (failure === "download") throw error
+        return failure === "empty" ? new Uint8Array() : Buffer.from("bytes")
+      })
+      const nextLoad = vi.fn(async () => Buffer.from("next"))
+      const run = vi.fn(async (_bytes: Uint8Array, filename: string) => {
+        if (filename === "first.csv") throw error
+        return success()
+      })
+      const converter = AnyDocConverter.forTesting({
+        timeoutMs: 1_000,
+        maxMarkdownChars: 100,
+        maxConcurrency: 1,
+        run,
+      })
+      const failed = converter.convert(firstLoad, "first.csv").catch((error: unknown) => error)
+      const next = converter.convert(nextLoad, "next.csv")
+      await vi.waitFor(() => expect(firstLoad).toHaveBeenCalledOnce())
+      const queuedLoadCalls = nextLoad.mock.calls.length
+      finishLoading()
+      const result = await failed
+      await expect(next).resolves.toMatchObject({ markdown: "converted" })
+
+      expect(queuedLoadCalls).toBe(0)
+      expect(nextLoad).toHaveBeenCalledOnce()
+      expect(run).toHaveBeenCalledTimes(failure === "conversion" ? 2 : 1)
+      if (failure === "empty") expect(result).toMatchObject({ kind: "empty" })
+      else expect(result).toBe(error)
+    },
+  )
 
   it.each([
     "unsupported",
@@ -95,7 +172,7 @@ describe("AnyDocConverter", () => {
       run: async () => ({ ok: false, code, message: "unsafe detail" }),
     })
 
-    await expect(converter.convert(Buffer.from("x"), "file.docx")).rejects.toEqual(
+    await expect(converter.convert(async () => Buffer.from("x"), "file.docx")).rejects.toEqual(
       expect.objectContaining({ kind: code }),
     )
   })
@@ -108,10 +185,14 @@ describe("AnyDocConverter", () => {
       run: async () => success("   "),
     })
 
-    await expect(converter.convert(new Uint8Array(), "empty.docx")).rejects.toMatchObject({
+    await expect(
+      converter.convert(async () => new Uint8Array(), "empty.docx"),
+    ).rejects.toMatchObject({
       kind: "empty",
     })
-    await expect(converter.convert(Buffer.from("x"), "empty.docx")).rejects.toMatchObject({
+    await expect(
+      converter.convert(async () => Buffer.from("x"), "empty.docx"),
+    ).rejects.toMatchObject({
       kind: "empty",
     })
   })

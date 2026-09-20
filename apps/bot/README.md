@@ -115,6 +115,8 @@ Logs are always written to stderr with Telegram tokens, API keys, authorization 
 
 When `BOT_DOCUMENT_INPUT_ENABLED=true`, current and replied Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, and text-based PDF attachments are downloaded with byte and time bounds, then converted in a killable child process. Raw bytes remain in memory and are not persisted. Converted Markdown is truncated to one aggregate prompt budget and delimited as untrusted reference material. Scanned PDFs that require OCR, encrypted or malformed documents, timeouts, and resource-limit failures return direct Traditional Chinese errors without invoking Pi.
 
+`BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS` limits the entire download-and-convert operation across all chats and both current/replied attachments. A shared slot is acquired before Telegram `getFile` or download starts and retained until conversion settles, including child-process close after errors or timeouts. Waiting jobs retain only attachment metadata and a lazy loader, not downloaded bytes. With the defaults, at most two 20,000,000-byte document inputs are admitted (40,000,000 input bytes); download/IPC copies, native conversion memory, images, and runtime overhead are additional, so this is not a total process-memory cap. Download and conversion failures release their slot for queued work.
+
 The production image currently qualifies the AnyDoc native adapter on Linux x86_64 glibc. Other architectures are not release-qualified even if upstream optional packages exist. Disable `BOT_DOCUMENT_INPUT_ENABLED` if the native adapter is unavailable.
 
 ## URL content loading
