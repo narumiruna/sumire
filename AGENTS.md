@@ -21,3 +21,7 @@
 
 - Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data.
 - Keep `MEMORY.md` maintainer-facing and `SOUL.md` runtime-facing; neither file may contain secrets.
+
+## Git and commits
+
+- Add a changeset when a pull request changes published behavior.
