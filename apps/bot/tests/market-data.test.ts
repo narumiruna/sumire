@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { createCachedExchangeRateFetcher } from "../src/market-data/exchange-rates.js"
-import type { MarketFetch } from "../src/market-data/http.js"
+import { type MarketFetch, requestJson } from "../src/market-data/http.js"
 import {
   classifyMarketTerm,
   MarketDataInputError,
@@ -179,6 +179,32 @@ describe("market-data query", () => {
     now += 101
     await cached()
     expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it("cancels a streamed response when its actual size exceeds the declared size", async () => {
+    const cancel = vi.fn()
+    const chunks = [new Uint8Array(2 * 1024 * 1024), new Uint8Array([1])]
+    let index = 0
+    const response = new Response(
+      new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            const chunk = chunks[index]
+            index += 1
+            if (chunk) controller.enqueue(chunk)
+            else controller.close()
+          },
+          cancel,
+        },
+        { highWaterMark: 0 },
+      ),
+      { headers: { "content-length": "1" } },
+    )
+
+    await expect(requestJson("https://example.com", async () => response)).rejects.toThrow(
+      "Market-data response is too large",
+    )
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it("does not render malformed Yahoo values as zero", async () => {

@@ -12,14 +12,31 @@ export async function requestJson(
     signal: AbortSignal.timeout(requestTimeoutMs),
   })
   if (!response.ok) throw new Error(`Market-data request failed (${response.status})`)
+  return JSON.parse(await readResponseText(response)) as unknown
+}
+
+async function readResponseText(response: Response): Promise<string> {
   const contentLength = Number(response.headers.get("content-length"))
   if (Number.isFinite(contentLength) && contentLength > maxResponseBytes) {
+    await response.body?.cancel()
     throw new Error("Market-data response is too large")
   }
-  const body = await response.text()
-  if (Buffer.byteLength(body) > maxResponseBytes)
-    throw new Error("Market-data response is too large")
-  return JSON.parse(body) as unknown
+  if (!response.body) return ""
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > maxResponseBytes) {
+      await reader.cancel()
+      throw new Error("Market-data response is too large")
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))))
 }
 
 export function record(value: unknown): Record<string, unknown> | undefined {
