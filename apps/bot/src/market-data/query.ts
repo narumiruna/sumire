@@ -125,7 +125,7 @@ export function classifyMarketTerm(term: string): {
 } {
   const currency = currencyFromTerm(term)
   if (currency) return { provider: "currency", symbol: currency }
-  if (/^\d{4,6}$/u.test(term)) return { provider: "twse", symbol: term }
+  if (/^(?:\d{4,6}|\d{4,5}[A-Z])$/u.test(term)) return { provider: "twse", symbol: term }
   // The suffix only identifies a candidate; unresolved MAX pairs fall back to Yahoo.
   const maxMarket = normalizeMaxMarket(term)
   if (

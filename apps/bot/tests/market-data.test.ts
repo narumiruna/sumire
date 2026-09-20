@@ -17,6 +17,16 @@ describe("market-data query", () => {
     ["AAPL", "yahoo", "AAPL"],
     ["BTC-USD", "yahoo", "BTC-USD"],
     ["2330", "twse", "2330"],
+    ["00500", "twse", "00500"],
+    ["020000", "twse", "020000"],
+    ["00980A", "twse", "00980A"],
+    ["2881A", "twse", "2881A"],
+    ["00679B", "twse", "00679B"],
+    ["00631L", "twse", "00631L"],
+    ["00980A.TW", "yahoo", "00980A.TW"],
+    ["123A", "yahoo", "123A"],
+    ["123456A", "yahoo", "123456A"],
+    ["1234AB", "yahoo", "1234AB"],
     ["BTCUSDT", "max", "BTCUSDT"],
     ["ETH/TWD", "max", "ETH/TWD"],
     ["USD", "currency", "USD"],
@@ -33,6 +43,29 @@ describe("market-data query", () => {
     expect(() => parseMarketTerms("S".repeat(maxMarketTermLength + 1))).toThrow(
       MarketDataInputError,
     )
+  })
+
+  it("routes normalized letter-suffixed codes to TWSE and TPEX without querying Yahoo", async () => {
+    const fetchImplementation: MarketFetch = vi.fn(async (input) => {
+      const url = new URL(String(input))
+      expect(url.hostname).toBe("mis.twse.com.tw")
+      expect(url.searchParams.get("ex_ch")).toBe(
+        "tse_00980A.tw|otc_00980A.tw|tse_2881A.tw|otc_2881A.tw",
+      )
+      return Response.json({
+        msgArray: [
+          { c: "00980A", n: "主動野村臺灣優選", z: "24.8" },
+          { c: "2881A", n: "富邦特", z: "61.65" },
+        ],
+      })
+    })
+
+    const result = await queryMarketData("00980a, 2881a 00980A", { fetchImplementation })
+
+    expect(result).toContain("主動野村臺灣優選 (00980A)")
+    expect(result).toContain("富邦特 (2881A)")
+    expect(result).toContain("資料來源: TWSE")
+    expect(fetchImplementation).toHaveBeenCalledOnce()
   })
 
   it("combines stock, Taiwan stock, crypto, and currency results", async () => {

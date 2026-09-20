@@ -81,6 +81,8 @@ Use `/t` with one or more whitespace- or comma-separated symbols:
 ```text
 /t AAPL          # Yahoo Finance stock
 /t 2330          # TWSE/TPEX stock
+/t 00980A        # TWSE active ETF
+/t 2881A         # TWSE preferred share
 /t BTC-USD       # Yahoo Finance cryptocurrency pair
 /t BTCUSDT       # MAX Exchange cryptocurrency pair
 /t USD           # Bank of Taiwan USD/TWD rate
