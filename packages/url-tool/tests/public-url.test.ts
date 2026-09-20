@@ -17,10 +17,15 @@ const options = {
 }
 
 describe("public URL loading", () => {
-  it("loads only when the agent executes the tool and forwards cancellation", async () => {
+  it.each([
+    "https://example.com",
+    "https://en.wikipedia.org/wiki/Function_(mathematics)",
+    "https://example.com/items[1]",
+    "https://example.com/items{1}",
+  ])("loads the exact URL only on agent execution and forwards cancellation: %s", async (url) => {
     const load = vi.fn(async () => ({
-      url: "https://example.com",
-      finalUrl: "https://example.com",
+      url,
+      finalUrl: url,
       source: "built-in" as const,
       contentType: "text/plain",
       text: "content",
@@ -29,14 +34,8 @@ describe("public URL loading", () => {
     const tool = createUrlTool({ load })
     expect(load).not.toHaveBeenCalled()
     const signal = new AbortController().signal
-    const result = await tool.execute(
-      "call",
-      { url: "https://example.com" },
-      signal,
-      undefined,
-      undefined as never,
-    )
-    expect(load).toHaveBeenCalledWith("https://example.com", signal)
+    const result = await tool.execute("call", { url }, signal, undefined, undefined as never)
+    expect(load).toHaveBeenCalledWith(url, signal)
     expect(result).toMatchObject({ details: { text: "content" } })
   })
 

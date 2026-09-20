@@ -1023,6 +1023,9 @@ describe("Telegram bot update routing", () => {
 
   it.each([
     "https://youtu.be/example",
+    "https://en.wikipedia.org/wiki/Function_(mathematics)",
+    "https://example.com/items[1]",
+    "https://example.com/items{1}",
     "請摘要 https://example.com/article",
     "https://127.0.0.1/private",
     "go",

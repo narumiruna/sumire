@@ -33,6 +33,7 @@ export class TelegramReplyIndex {
   ) {}
 
   async resolve(chatId: number, telegramMessageId: number): Promise<PiReplyCheckpoint | undefined> {
+    await this.#writeTails.get(chatId)?.catch(() => undefined)
     const records = await this.#load(chatId)
     for (let index = records.length - 1; index >= 0; index -= 1) {
       const record = records[index]

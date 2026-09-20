@@ -104,6 +104,7 @@ export class ChatSessionRegistry {
       options.replyToBotMessageId,
       generation,
     )
+    this.#assertCurrentGeneration(chatId, generation)
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt

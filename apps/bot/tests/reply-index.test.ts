@@ -86,6 +86,37 @@ describe("TelegramReplyIndex", () => {
     expect(logger.warn).toHaveBeenCalled()
   })
 
+  it.each([false, true])(
+    "resolves behind all pending writes with a warm cache=%s",
+    async (warmCache) => {
+      const index = new TelegramReplyIndex(root, 10, 10_000, logger)
+      if (warmCache) await index.resolve(1, 1)
+      const writes = Promise.all([
+        index.record(1, [1], { sessionId: "s", entryId: "one" }, 1),
+        index.record(1, [2], { sessionId: "s", entryId: "two" }, 2),
+      ])
+      const lookup = expect(index.resolve(1, 2)).resolves.toEqual({
+        sessionId: "s",
+        entryId: "two",
+      })
+      await Promise.all([writes, lookup])
+      await expect(index.resolve(1, 1)).resolves.toMatchObject({ entryId: "one" })
+    },
+  )
+
+  it("keeps lookups usable after a pending write fails", async () => {
+    const index = new TelegramReplyIndex(root, 10, 200, logger)
+    await index.record(1, [1], { sessionId: "s", entryId: "one" })
+    const failedWrite = expect(
+      index.record(1, [2], { sessionId: "s".repeat(500), entryId: "oversized" }),
+    ).rejects.toThrow("byte limit")
+    await expect(index.resolve(1, 1)).resolves.toEqual({ sessionId: "s", entryId: "one" })
+    await failedWrite
+    await expect(index.resolve(1, 2)).resolves.toBeUndefined()
+    await index.record(1, [3], { sessionId: "s", entryId: "three" })
+    await expect(index.resolve(1, 3)).resolves.toMatchObject({ entryId: "three" })
+  })
+
   it("serializes concurrent writes without losing records and clears state", async () => {
     const index = new TelegramReplyIndex(root, 10, 10_000, logger)
     await Promise.all([
