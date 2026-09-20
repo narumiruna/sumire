@@ -13,28 +13,35 @@ export async function startApplication(): Promise<void> {
   if (!settings.botToken) throw new Error("BOT_TOKEN is required")
   if (!settings.openaiApiKey) throw new Error("OPENAI_API_KEY is required")
 
-  const logger = createLogger(process.argv.includes("--verbose") || process.argv.includes("-v"))
-  const piFactory = await createPiSessionFactory(settings, logger)
-  const sessions = new ChatSessionRegistry(
-    asSessionCreator(piFactory),
-    settings.botSessionLogDir,
-    logger,
+  const logger = createLogger(
+    process.argv.includes("--verbose") || process.argv.includes("-v"),
+    settings.logfireToken,
   )
-  const telegram = createTelegramAgentBot(settings, sessions, logger)
-
-  let stopping = false
-  const stop = async (signal: string) => {
-    if (stopping) return
-    stopping = true
-    logger.info(`Received ${signal}; stopping Telegram bot`)
-    await telegram.stop()
-  }
-  process.once("SIGINT", () => void stop("SIGINT"))
-  process.once("SIGTERM", () => void stop("SIGTERM"))
-
   try {
-    await telegram.start()
+    const piFactory = await createPiSessionFactory(settings, logger)
+    const sessions = new ChatSessionRegistry(
+      asSessionCreator(piFactory),
+      settings.botSessionLogDir,
+      logger,
+    )
+    const telegram = createTelegramAgentBot(settings, sessions, logger)
+
+    let stopping = false
+    const stop = async (signal: string) => {
+      if (stopping) return
+      stopping = true
+      logger.info(`Received ${signal}; stopping Telegram bot`)
+      await telegram.stop()
+    }
+    process.once("SIGINT", () => void stop("SIGINT"))
+    process.once("SIGTERM", () => void stop("SIGTERM"))
+
+    try {
+      await telegram.start()
+    } finally {
+      await sessions.dispose()
+    }
   } finally {
-    await sessions.dispose()
+    await logger.shutdown?.()
   }
 }

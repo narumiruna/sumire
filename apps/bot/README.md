@@ -102,6 +102,10 @@ Pi owns the agent session lifecycle and transcript format. The TypeScript servic
 
 `.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader is always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured.
 
+## Logging
+
+Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `telegramagent` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
+
 ## URL loading and kabigon
 
 `load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@telegram-agent/kabigon` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. Kabigon handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.

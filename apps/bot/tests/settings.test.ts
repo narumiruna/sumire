@@ -22,11 +22,13 @@ describe("loadSettings", () => {
   it("parses the supported environment configuration", () => {
     const settings = loadSettings({
       BOT_WHITELIST: "123, -456,123",
+      LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
       OPENAI_BASE_URL: "https://example.test/v1/",
     })
 
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
+    expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
     expect(settings.openaiBaseUrl).toBe("https://example.test/v1")
   })

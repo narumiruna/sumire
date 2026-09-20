@@ -32,6 +32,7 @@ const csvIntegers = z
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
   BOT_WHITELIST: csvIntegers,
+  LOGFIRE_TOKEN: optionalString,
   MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
   MORSEL_API_KEY: optionalString,
   OPENAI_BASE_URL: z.url().default("https://api.openai.com/v1"),
@@ -62,6 +63,7 @@ export interface Settings {
   botAgentCompactionTriggerRatio: number
   botImageInputEnabled: boolean
   botImageMaxBytes: number
+  logfireToken?: string
   morselUrl: string
   morselApiKey?: string
   morselMode: "disabled" | "rich_only" | "smart"
@@ -103,6 +105,7 @@ export function loadSettings(
     botAgentCompactionTriggerRatio: 0.8,
     botImageInputEnabled: true,
     botImageMaxBytes: 8_000_000,
+    ...(parsed.LOGFIRE_TOKEN ? { logfireToken: parsed.LOGFIRE_TOKEN } : {}),
     morselUrl: parsed.MORSEL_URL,
     ...(parsed.MORSEL_API_KEY ? { morselApiKey: parsed.MORSEL_API_KEY } : {}),
     morselMode: "smart",
