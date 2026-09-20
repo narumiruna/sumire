@@ -74,6 +74,67 @@ describe.each([
   })
 })
 
+describe("MAX catalogue outages", () => {
+  it("falls back to Yahoo when the catalogue returns an HTTP error", async () => {
+    const fetchImplementation = createProviderFetch().mockResolvedValueOnce(
+      new Response(null, { status: 503 }),
+    )
+
+    const result = await queryMarketData("GBTC", { fetchImplementation })
+
+    expect(result).toContain("GBTC")
+    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(
+      fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
+    ).toEqual(["/api/v3/markets", "/v8/finance/chart/GBTC"])
+  })
+
+  it("retains fallback data alongside empty and rejected fallbacks", async () => {
+    const fetchImplementation = createProviderFetch().mockRejectedValueOnce(
+      new Error("MAX catalogue unavailable"),
+    )
+
+    const result = await queryMarketData("EMPTYUSDT GBTC FAILEDUSDT", { fetchImplementation })
+
+    expect(result).toContain("GBTC")
+    expect(result.match(/資料來源: Yahoo Finance/gu)).toHaveLength(1)
+    expect(result).not.toContain("MAX Exchange")
+    expect(fetchImplementation).toHaveBeenCalledTimes(4)
+  })
+
+  it.each(["EMPTYUSDT", "FAILEDUSDT", "EMPTYUSDT FAILEDUSDT"])(
+    "preserves the original MAX error when %s yields no fallback data",
+    async (input) => {
+      const error = new Error("MAX catalogue unavailable")
+      const fetchImplementation = createProviderFetch().mockRejectedValueOnce(error)
+      const onError = vi.fn()
+
+      await expect(queryMarketData(input, { fetchImplementation, onError })).rejects.toBe(error)
+      expect(onError).toHaveBeenCalledWith("MAX Exchange", error)
+      expect(fetchImplementation).toHaveBeenCalledTimes(input.split(" ").length + 1)
+    },
+  )
+
+  it("preserves the catalogue error when no fallback is supplied", async () => {
+    const error = new Error("MAX catalogue unavailable")
+    const fetchImplementation = createProviderFetch().mockRejectedValueOnce(error)
+
+    await expect(queryMaxExchange(["BTCUSDT"], fetchImplementation)).rejects.toBe(error)
+    expect(fetchImplementation).toHaveBeenCalledOnce()
+  })
+
+  it("preserves the catalogue error when the fallback throws synchronously", async () => {
+    const error = new Error("MAX catalogue unavailable")
+    const fetchImplementation = createProviderFetch().mockRejectedValueOnce(error)
+    const fallback = vi.fn(() => {
+      throw new Error("Fallback unavailable")
+    })
+
+    await expect(queryMaxExchange(["GBTC"], fetchImplementation, fallback)).rejects.toBe(error)
+    expect(fallback).toHaveBeenCalledWith("GBTC")
+  })
+})
+
 describe("MAX candidate routing", () => {
   it("falls back to Yahoo for a ticker with an unresolved MAX suffix", async () => {
     const fetchImplementation = createProviderFetch()

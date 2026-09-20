@@ -9,7 +9,21 @@ export async function queryMaxExchange(
   queryUnmatchedSymbol?: (symbol: string) => Promise<string | undefined>,
 ): Promise<string[]> {
   if (symbols.length === 0) return []
-  const payload = await requestJson(`${maxEndpoint}/api/v3/markets`, fetchImplementation)
+  let payload: unknown
+  try {
+    payload = await requestJson(`${maxEndpoint}/api/v3/markets`, fetchImplementation)
+  } catch (error) {
+    if (!queryUnmatchedSymbol) throw error
+    const results = await Promise.allSettled(
+      symbols.map(async (symbol) => queryUnmatchedSymbol(symbol)),
+    )
+    const formatted = results.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : [],
+    )
+    // An unavailable catalogue must not become a misleading no-match result.
+    if (formatted.length === 0) throw error
+    return formatted
+  }
   if (!Array.isArray(payload)) return []
 
   const markets = payload.flatMap((value) => {
