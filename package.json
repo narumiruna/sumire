@@ -1,0 +1,29 @@
+{
+  "name": "telegram-agent-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present",
+    "format": "npm run format --workspaces --if-present",
+    "format:check": "npm run format:check --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "prepare": "if command -v husky >/dev/null 2>&1; then husky; fi",
+    "precommit": "sh scripts/pre-commit.sh",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "update": "npx npm-check-updates -u -w --root"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "husky": "9.1.7"
+  }
+}
