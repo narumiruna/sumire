@@ -43,7 +43,7 @@ describe("createLogger", () => {
 
     expect(client.configure).toHaveBeenCalledWith({
       token: "write-token",
-      serviceName: "telegramagent",
+      serviceName: "sumire",
       console: false,
     })
     expect(client.debug).toHaveBeenCalledWith("debug token=[redacted]")
