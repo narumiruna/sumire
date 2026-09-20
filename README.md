@@ -1,4 +1,4 @@
-# telegram-agent
+# Sumire
 
 Monorepo for Telegram AI bot implementations and shared URL-loading packages.
 
@@ -24,7 +24,7 @@ Run the primary TypeScript bot with Docker Compose from the repository root:
 ```bash
 cp .env.example .env
 docker compose up -d --build
-docker compose logs -f telegramagent-typescript
+docker compose logs -f sumire
 docker compose down
 ```
 

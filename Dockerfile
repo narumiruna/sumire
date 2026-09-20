@@ -7,17 +7,17 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY packages/url-content/package.json packages/url-content/package.json
-RUN --mount=type=cache,target=/root/.npm npm ci --workspace telegramagent-typescript --include-workspace-root=false
+RUN --mount=type=cache,target=/root/.npm npm ci --workspace @narumitw/sumire --include-workspace-root=false
 
 FROM dependencies AS build
 
 COPY packages/url-content/ packages/url-content/
 COPY apps/bot/ apps/bot/
-RUN npm run build --workspace telegramagent-typescript
+RUN npm run build --workspace @narumitw/sumire
 
 FROM dependencies AS production-dependencies
 
-RUN npm prune --omit=dev --workspace telegramagent-typescript --include-workspace-root=false
+RUN npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false
 
 FROM node:24-bookworm-slim AS runtime
 

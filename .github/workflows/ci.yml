@@ -43,4 +43,4 @@ jobs:
       - name: Test
         run: npm test
       - name: Build
-        run: npm run build --workspace telegramagent-typescript
+        run: npm run build --workspace @narumitw/sumire

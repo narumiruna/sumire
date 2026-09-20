@@ -56,7 +56,7 @@ export function createLogger(
     try {
       logfireClient.configure({
         token: logfireToken,
-        serviceName: "telegramagent",
+        serviceName: "sumire",
         console: false,
       })
       logfireEnabled = true
