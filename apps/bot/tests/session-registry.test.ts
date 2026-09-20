@@ -18,6 +18,14 @@ const logger: Logger = {
 
 class FakeSession implements SessionHandle {
   isStreaming = false
+  readonly sessionId: string
+  leafId: string | null = null
+  readonly entries = new Set<string>()
+  readonly navigated: string[] = []
+  readonly sessionManager = {
+    getLeafId: () => this.leafId,
+    getEntry: (id: string) => (this.entries.has(id) ? { id } : undefined),
+  }
   messages: AgentMessage[] = []
   readonly prompts: string[] = []
   readonly steering: string[] = []
@@ -26,6 +34,15 @@ class FakeSession implements SessionHandle {
   readonly listeners = new Set<AgentSessionEventListener>()
   aborted = false
   disposed = false
+  waitForIdleCalls = 0
+
+  constructor(sessionId = "fake-session") {
+    this.sessionId = sessionId
+  }
+
+  get isIdle(): boolean {
+    return !this.isStreaming
+  }
 
   subscribe(listener: AgentSessionEventListener): () => void {
     this.listeners.add(listener)
@@ -40,6 +57,8 @@ class FakeSession implements SessionHandle {
     this.prompts.push(text)
     this.messages.push({ role: "user", content: text, timestamp: Date.now() })
     this.messages.push(assistant(`AI: ${text}`))
+    this.leafId = `entry-${this.prompts.length}`
+    this.entries.add(this.leafId)
   }
 
   async steer(text: string): Promise<void> {
@@ -59,6 +78,17 @@ class FakeSession implements SessionHandle {
 
   async sendCustomMessage(message: { content: string }): Promise<void> {
     this.contexts.push(message.content)
+  }
+
+  async navigateTree(targetId: string): Promise<{ cancelled: boolean }> {
+    this.navigated.push(targetId)
+    this.leafId = targetId
+    return { cancelled: false }
+  }
+
+  async waitForIdle(): Promise<void> {
+    this.waitForIdleCalls += 1
+    this.isStreaming = false
   }
 
   async abort(): Promise<void> {
@@ -85,9 +115,17 @@ describe("ChatSessionRegistry", () => {
       logger,
     )
 
-    await expect(registry.submit(1, "one")).resolves.toEqual({ kind: "completed", text: "AI: one" })
-    await expect(registry.submit(1, "two")).resolves.toEqual({ kind: "completed", text: "AI: two" })
-    await expect(registry.submit(2, "other")).resolves.toEqual({
+    await expect(registry.submit(1, "one")).resolves.toMatchObject({
+      kind: "completed",
+      text: "AI: one",
+      checkpoint: { sessionId: "fake-session", entryId: "entry-1" },
+    })
+    await expect(registry.submit(1, "two")).resolves.toMatchObject({
+      kind: "completed",
+      text: "AI: two",
+      checkpoint: { sessionId: "fake-session", entryId: "entry-2" },
+    })
+    await expect(registry.submit(2, "other")).resolves.toMatchObject({
       kind: "completed",
       text: "AI: other",
     })
@@ -122,7 +160,10 @@ describe("ChatSessionRegistry", () => {
     finishCreation?.(staleSession)
 
     await Promise.all([staleOutcome, concurrentStaleOutcome])
-    await expect(replacementSubmission).resolves.toEqual({ kind: "completed", text: "AI: fresh" })
+    await expect(replacementSubmission).resolves.toMatchObject({
+      kind: "completed",
+      text: "AI: fresh",
+    })
     expect(staleSession.disposed).toBe(true)
     expect(staleSession.prompts).toEqual([])
     expect(replacementSession.prompts).toEqual(["fresh"])
@@ -208,6 +249,127 @@ describe("ChatSessionRegistry", () => {
     expect(session.contexts).toEqual(["旁聽內容"])
     expect(session.aborted).toBe(true)
     expect(session.disposed).toBe(true)
+  })
+
+  it("restores a mapped older reply as a Pi branch and indexes every delivery alias", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+      replyTreeMaxRecordsPerChat: 10,
+      replyTreeMaxIndexBytes: 10_000,
+    })
+
+    const first = await registry.submit(1, "first")
+    expect(first.kind).toBe("completed")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100, 101],
+    )
+    await registry.submit(1, "latest")
+    await registry.submit(1, "branch one", {
+      replyToBotMessageId: 101,
+      unresolvedReplyPrompt: "quoted branch one",
+    })
+    await registry.submit(1, "branch two", {
+      replyToBotMessageId: 100,
+      unresolvedReplyPrompt: "quoted branch two",
+    })
+
+    expect(session.navigated).toEqual(["entry-1", "entry-1"])
+    expect(session.prompts).toEqual(["first", "latest", "branch one", "branch two"])
+  })
+
+  it("waits for an active run before restoring a mapped branch but keeps unmapped steering", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+
+    session.isStreaming = true
+    await registry.submit(1, "mapped", { replyToBotMessageId: 100 })
+    expect(session.waitForIdleCalls).toBe(1)
+    expect(session.navigated).toEqual([])
+    expect(session.prompts).toContain("mapped")
+
+    session.isStreaming = true
+    await expect(
+      registry.submit(1, "unmapped", {
+        replyToBotMessageId: 999,
+        unresolvedReplyPrompt: "unmapped with quoted bot context",
+      }),
+    ).resolves.toMatchObject({ kind: "steered" })
+    expect(session.steering).toEqual(["unmapped with quoted bot context"])
+  })
+
+  it("keeps successful delivery when reply-index persistence fails", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const localLogger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    }
+    const registry = new ChatSessionRegistry(async () => session, root, localLogger, {
+      replyTreeEnabled: true,
+      replyTreeMaxIndexBytes: 1,
+    })
+    const result = await registry.submit(1, "delivered")
+
+    await expect(
+      registry.recordDelivery(
+        1,
+        result.kind === "completed" ? result.checkpoint : undefined,
+        [100],
+      ),
+    ).resolves.toBeUndefined()
+    expect(localLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not persist Telegram reply mapping"),
+      expect.any(Error),
+    )
+  })
+
+  it("ignores stale session IDs, missing entries, undefined checkpoints, and reset mappings", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const firstSession = new FakeSession("first-session")
+    const firstRegistry = new ChatSessionRegistry(async () => firstSession, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await firstRegistry.submit(1, "first")
+    await firstRegistry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    await firstRegistry.recordDelivery(1, undefined, [200])
+    firstSession.entries.clear()
+    await firstRegistry.submit(1, "missing", { replyToBotMessageId: 100 })
+    expect(firstSession.navigated).toEqual([])
+
+    await firstRegistry.dispose()
+    const replacement = new FakeSession("replacement-session")
+    const replacementRegistry = new ChatSessionRegistry(async () => replacement, root, logger, {
+      replyTreeEnabled: true,
+    })
+    await replacementRegistry.submit(1, "stale", { replyToBotMessageId: 100 })
+    expect(replacement.navigated).toEqual([])
+    await replacementRegistry.reset(1)
+
+    const afterReset = new FakeSession("replacement-session")
+    const afterResetRegistry = new ChatSessionRegistry(async () => afterReset, root, logger, {
+      replyTreeEnabled: true,
+    })
+    await afterResetRegistry.submit(1, "after reset", { replyToBotMessageId: 100 })
+    expect(afterReset.navigated).toEqual([])
   })
 })
 

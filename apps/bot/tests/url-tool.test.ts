@@ -1,14 +1,14 @@
 import type { lookup } from "node:dns/promises"
 
 import { describe, expect, it, vi } from "vitest"
-
 import {
   assertPublicUrl,
   createPinnedLookup,
   fetchPublicUrl,
   isPublicIp,
   loadPublicUrl,
-} from "../src/actions/url-tool.js"
+} from "../src/actions/public-url.js"
+import { buildUrlTools } from "../src/actions/url-tool.js"
 
 const options = {
   allowedSchemes: new Set(["http", "https"]),
@@ -17,6 +17,28 @@ const options = {
 }
 
 describe("public URL loading", () => {
+  it("keeps the Pi tool as a thin adapter over the shared loader", async () => {
+    const load = vi.fn(async () => ({
+      url: "https://example.com",
+      finalUrl: "https://example.com",
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "content",
+      truncated: false,
+    }))
+    const [tool] = buildUrlTools({ load })
+    expect(tool).toBeDefined()
+    const result = await tool?.execute(
+      "call",
+      { url: "https://example.com" },
+      undefined,
+      undefined as never,
+      undefined as never,
+    )
+    expect(load).toHaveBeenCalledWith("https://example.com", undefined)
+    expect(result).toMatchObject({ details: { text: "content" } })
+  })
+
   it("classifies private, local, and public IP addresses", () => {
     expect(isPublicIp("127.0.0.1")).toBe(false)
     expect(isPublicIp("10.0.0.1")).toBe(false)

@@ -23,6 +23,7 @@ describe("createPiSessionFactory", () => {
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
+        BOT_PROACTIVE_ENABLED: "false",
       },
       root,
     )
@@ -39,6 +40,7 @@ describe("createPiSessionFactory", () => {
       })
       expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
       expect(session.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
+      expect(settings.botProactiveEnabled).toBe(false)
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
       expect(otherSession.sessionFile).toContain(
         path.join(".telegramagent", "sessions", "456", "pi"),

@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent"
 import progressExtension from "@narumitw/sumire-progress"
 
+import { createPublicUrlLoader, type PublicUrlLoader } from "../actions/public-url.js"
 import { buildUrlTools } from "../actions/url-tool.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
@@ -25,6 +26,7 @@ export interface PiSessionFactory {
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
+  publicUrlLoader: PublicUrlLoader = createPublicUrlLoader(settings),
 ): Promise<PiSessionFactory> {
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
   const modelRuntime = await ModelRuntime.create({
@@ -87,7 +89,7 @@ export async function createPiSessionFactory(
 
   const morselPublisher = createMorselPublisher(settings)
   const customTools = [
-    ...buildUrlTools(settings),
+    ...buildUrlTools(publicUrlLoader),
     ...buildMorselTools(morselPublisher, settings.morselMode, logger),
   ]
 
