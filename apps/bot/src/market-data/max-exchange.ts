@@ -6,6 +6,7 @@ const maxEndpoint = "https://max-api.maicoin.com"
 export async function queryMaxExchange(
   symbols: readonly string[],
   fetchImplementation?: MarketFetch,
+  queryUnmatchedSymbol?: (symbol: string) => Promise<string | undefined>,
 ): Promise<string[]> {
   if (symbols.length === 0) return []
   const payload = await requestJson(`${maxEndpoint}/api/v3/currencies`, fetchImplementation)
@@ -20,7 +21,7 @@ export async function queryMaxExchange(
   const results = await Promise.allSettled(
     symbols.map(async (symbol) => {
       const pair = splitMarket(symbol, currencies)
-      if (!pair) return undefined
+      if (!pair) return queryUnmatchedSymbol?.(symbol)
       const [base, quote] = pair
       const url = new URL(`${maxEndpoint}/api/v3/ticker`)
       url.searchParams.set("market", `${base}${quote}`)
@@ -50,9 +51,8 @@ export async function queryMaxExchange(
   const formatted = results.flatMap((result) =>
     result.status === "fulfilled" && result.value ? [result.value] : [],
   )
-  if (formatted.length === 0 && results.every((result) => result.status === "rejected")) {
-    throw results[0]?.reason
-  }
+  const failure = results.find((result) => result.status === "rejected")
+  if (formatted.length === 0 && failure) throw failure.reason
   return formatted
 }
 

@@ -11,9 +11,8 @@ export async function queryYahooFinance(
   const formatted = results.flatMap((result) =>
     result.status === "fulfilled" && result.value ? [result.value] : [],
   )
-  if (formatted.length === 0 && results.every((result) => result.status === "rejected")) {
-    throw results[0]?.reason
-  }
+  const failure = results.find((result) => result.status === "rejected")
+  if (formatted.length === 0 && failure) throw failure.reason
   return formatted
 }
 

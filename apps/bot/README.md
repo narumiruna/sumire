@@ -87,7 +87,7 @@ Use `/t` with one or more whitespace- or comma-separated symbols:
 /t JPY/TWD       # Bank of Taiwan JPY/TWD rate
 ```
 
-A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries; other symbols use Yahoo Finance.
+A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries. MAX-like suffixes are checked against MAX currencies; symbols that cannot be split into a MAX pair (such as `GBTC`) fall back to Yahoo Finance. Known MAX request failures are not retried through Yahoo.
 
 ## Quality gates
 

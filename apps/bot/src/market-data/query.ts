@@ -72,7 +72,11 @@ export async function queryMarketData(
   if (groups.max.length > 0) {
     jobs.push({
       name: "MAX Exchange",
-      query: () => queryMaxExchange(groups.max, dependencies.fetchImplementation),
+      query: () =>
+        queryMaxExchange(groups.max, dependencies.fetchImplementation, async (symbol) => {
+          const results = await queryYahooFinance([symbol], dependencies.fetchImplementation)
+          return results[0]
+        }),
     })
   }
   if (groups.currency.length > 0) {
@@ -122,6 +126,7 @@ export function classifyMarketTerm(term: string): {
   const currency = currencyFromTerm(term)
   if (currency) return { provider: "currency", symbol: currency }
   if (/^\d{4,6}$/u.test(term)) return { provider: "twse", symbol: term }
+  // The suffix only identifies a candidate; unresolved MAX pairs fall back to Yahoo.
   const maxMarket = normalizeMaxMarket(term)
   if (
     maxQuoteCurrencies.some((quote) => maxMarket.length > quote.length && maxMarket.endsWith(quote))
