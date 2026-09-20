@@ -1,6 +1,6 @@
 # telegramagent TypeScript
 
-Primary `telegramagent` service used by CI/CD, isolated under `./apps/telegram-agent-typescript`; the Python implementation remains available for local development and reference.
+Primary `telegramagent` service used by CI/CD, isolated under `./apps/bot`; the Python implementation remains available for local development and reference.
 
 ## Runtime stack
 
@@ -53,7 +53,7 @@ From the repository root:
 
 ```bash
 cp .env.example .env
-cd apps/telegram-agent-typescript
+cd apps/bot
 npm install
 npx playwright install chromium
 npm run build
@@ -65,7 +65,7 @@ The scripts load `../../.env` first and then `./.env` as an optional override. P
 For development:
 
 ```bash
-cd apps/telegram-agent-typescript
+cd apps/bot
 npm run dev -- --verbose
 ```
 
@@ -74,7 +74,7 @@ Do not run the Python and TypeScript bots with the same `BOT_TOKEN` simultaneous
 ## Quality gates
 
 ```bash
-cd apps/telegram-agent-typescript
+cd apps/bot
 npm run format:check
 npm run lint
 npm run typecheck
@@ -127,7 +127,7 @@ Both paths enforce deadlines and bounded output. Unsafe local, private, link-loc
 
 ## Docker
 
-Build and run from the repository root so the Dockerfile can copy `apps/telegram-agent-typescript/` and `SOUL.md`:
+Build and run from the repository root so the Dockerfile can copy `apps/bot/` and `SOUL.md`:
 
 ```bash
 docker build -t telegramagent-typescript:local .

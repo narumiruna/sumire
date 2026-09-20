@@ -7,7 +7,7 @@ Monorepo for Telegram AI bot implementations and shared URL-loading packages.
 | Path | Purpose |
 | --- | --- |
 | [`apps/telegram-agent-python`](apps/telegram-agent-python/README.md) | Retained Python 3.14 implementation built with Pydantic AI. |
-| [`apps/telegram-agent-typescript`](apps/telegram-agent-typescript/README.md) | Primary TypeScript bot built on Pi and used by CI/CD. |
+| [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi and used by CI/CD. |
 | [`packages/kabigon`](packages/kabigon/README.md) | Shared TypeScript URL-content extraction package. |
 
 Shared runtime resources stay at the repository root:
@@ -28,7 +28,7 @@ docker compose logs -f telegramagent-typescript
 docker compose down
 ```
 
-See the [TypeScript app README](apps/telegram-agent-typescript/README.md) for local development, configuration, and behavior.
+See the [TypeScript app README](apps/bot/README.md) for local development, configuration, and behavior.
 
 ## Python bot
 
@@ -52,7 +52,7 @@ See the [Python app README](apps/telegram-agent-python/README.md) for configurat
 
 ## Node workspaces
 
-The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/telegram-agent-typescript`; Python-only changes do not trigger CI or deployment, and the retained Python app is checked locally with its own toolchain.
+The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/bot`; Python-only changes do not trigger CI or deployment, and the retained Python app is checked locally with its own toolchain.
 
 The root `biome.json` defines formatting and lint rules for all TypeScript workspaces. `npm ci` installs the root tools and configures Husky. The pre-commit hook runs the repository-local Biome on staged files, applies safe fixes, and updates those staged files.
 

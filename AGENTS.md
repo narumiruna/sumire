@@ -4,7 +4,7 @@
 
 - Work from the repository root unless a project command explicitly requires another directory.
 - Python bot code, tests, packaging, Compose, and detailed docs live in `apps/telegram-agent-python/`.
-- TypeScript bot code and docs live in `apps/telegram-agent-typescript/`; shared TypeScript packages live in `packages/`.
+- TypeScript bot code and docs live in `apps/bot/`; shared TypeScript packages live in `packages/`.
 - The root `package.json` and `package-lock.json` own npm workspaces; do not move them into an app.
 - Shared runtime resources remain at the root: `SOUL.md`, `.agents/`, `.events/`, `.telegramagent/`, and `.env`.
 - Treat `.venv/`, `node_modules/`, `dist/`, coverage files, caches, `.events/`, and `.telegramagent/` as generated state.
