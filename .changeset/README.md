@@ -8,7 +8,7 @@ Create a package changeset with:
 npm run changeset
 ```
 
-Select each affected package, choose the SemVer bump, and describe the user-visible change. If no package version should change, add an empty changeset instead:
+Select every affected package, including private packages that will not be published, choose the appropriate SemVer bump, and describe the change. Publishing status does not decide whether a package should be versioned. If no package version should change, add an empty changeset instead:
 
 ```bash
 npm run changeset -- --empty
