@@ -24,4 +24,4 @@
 
 ## Git and commits
 
-- Add a changeset when a pull request changes published behavior.
+- Add a changeset to every pull request; use an empty changeset when no package version should change.
