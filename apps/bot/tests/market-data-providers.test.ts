@@ -7,11 +7,11 @@ import { queryYahooFinance } from "../src/market-data/yahoo-finance.js"
 function createProviderFetch() {
   return vi.fn<MarketFetch>(async (input) => {
     const url = new URL(String(input))
-    if (url.pathname === "/api/v3/currencies") {
+    if (url.pathname === "/api/v3/markets") {
       return Response.json([
-        { currency: "btc", type: "crypto" },
-        { currency: "eth", type: "crypto" },
-        { currency: "usdt", type: "crypto" },
+        { id: "btcusdt", base_unit: "btc", quote_unit: "usdt" },
+        { id: "ethusdt", base_unit: "eth", quote_unit: "usdt" },
+        { id: "ltcusdt", base_unit: "ltc", quote_unit: "usdt" },
       ])
     }
     if (url.pathname === "/api/v3/ticker") {
@@ -84,6 +84,17 @@ describe("MAX candidate routing", () => {
     expect(fetchImplementation).toHaveBeenCalledTimes(2)
   })
 
+  it("falls back for an unlisted pair even when both currencies are known", async () => {
+    const fetchImplementation = createProviderFetch()
+    const result = await queryMarketData("LTC-BTC", { fetchImplementation })
+
+    expect(result).toContain("LTC-BTC")
+    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(
+      fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
+    ).toEqual(["/api/v3/markets", "/v8/finance/chart/LTC-BTC"])
+  })
+
   it("keeps both MAX and Yahoo quotes in a mixed candidate batch", async () => {
     const fetchImplementation = createProviderFetch()
     const result = await queryMarketData("GBTC BTCUSDT", { fetchImplementation })
@@ -94,16 +105,19 @@ describe("MAX candidate routing", () => {
     expect(fetchImplementation).toHaveBeenCalledTimes(3)
   })
 
-  it("does not query Yahoo for a resolved MAX pair", async () => {
-    const fetchImplementation = createProviderFetch()
-    const result = await queryMarketData("BTCUSDT", { fetchImplementation })
+  it.each(["BTCUSDT", "BTC-USDT", "BTC/USDT", "BTC_USDT"])(
+    "matches listed MAX market %s without querying Yahoo",
+    async (symbol) => {
+      const fetchImplementation = createProviderFetch()
+      const result = await queryMarketData(symbol, { fetchImplementation })
 
-    expect(result).toContain("MAX Exchange BTC/USDT")
-    expect(fetchImplementation).toHaveBeenCalledTimes(2)
-    for (const [input] of fetchImplementation.mock.calls) {
-      expect(new URL(String(input)).hostname).toBe("max-api.maicoin.com")
-    }
-  })
+      expect(result).toContain("MAX Exchange BTC/USDT")
+      expect(fetchImplementation).toHaveBeenCalledTimes(2)
+      for (const [input] of fetchImplementation.mock.calls) {
+        expect(new URL(String(input)).hostname).toBe("max-api.maicoin.com")
+      }
+    },
+  )
 
   it("does not fall back after a resolved MAX pair fails", async () => {
     const fetchImplementation = createProviderFetch()

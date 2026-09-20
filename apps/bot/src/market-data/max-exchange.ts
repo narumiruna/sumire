@@ -9,22 +9,23 @@ export async function queryMaxExchange(
   queryUnmatchedSymbol?: (symbol: string) => Promise<string | undefined>,
 ): Promise<string[]> {
   if (symbols.length === 0) return []
-  const payload = await requestJson(`${maxEndpoint}/api/v3/currencies`, fetchImplementation)
+  const payload = await requestJson(`${maxEndpoint}/api/v3/markets`, fetchImplementation)
   if (!Array.isArray(payload)) return []
 
-  const currencies = payload.flatMap((value) => {
-    const currency = record(value)
-    const code = text(currency?.currency)?.toLowerCase()
-    const type = text(currency?.type)
-    return code && type ? [{ code, type }] : []
+  const markets = payload.flatMap((value) => {
+    const market = record(value)
+    const id = text(market?.id)?.toLowerCase()
+    const base = text(market?.base_unit)?.toLowerCase()
+    const quote = text(market?.quote_unit)?.toLowerCase()
+    return id && base && quote ? [{ id, base, quote }] : []
   })
   const results = await Promise.allSettled(
     symbols.map(async (symbol) => {
-      const pair = splitMarket(symbol, currencies)
-      if (!pair) return queryUnmatchedSymbol?.(symbol)
-      const [base, quote] = pair
+      const market = markets.find((entry) => entry.id === normalizeMaxMarket(symbol))
+      if (!market) return queryUnmatchedSymbol?.(symbol)
+      const { id, base, quote } = market
       const url = new URL(`${maxEndpoint}/api/v3/ticker`)
-      url.searchParams.set("market", `${base}${quote}`)
+      url.searchParams.set("market", id)
       const ticker = record(await requestJson(url, fetchImplementation))
       const last = finiteNumber(ticker?.last)
       if (!ticker || last === undefined) return undefined
@@ -54,24 +55,6 @@ export async function queryMaxExchange(
   const failure = results.find((result) => result.status === "rejected")
   if (formatted.length === 0 && failure) throw failure.reason
   return formatted
-}
-
-function splitMarket(
-  symbol: string,
-  currencies: readonly { code: string; type: string }[],
-): [string, string] | undefined {
-  const market = normalizeMaxMarket(symbol)
-  const codes = new Set(currencies.map((currency) => currency.code))
-  const bases = currencies
-    .filter((currency) => currency.type === "crypto")
-    .map((currency) => currency.code)
-    .sort((left, right) => right.length - left.length)
-  for (const base of bases) {
-    if (!market.startsWith(base)) continue
-    const quote = market.slice(base.length)
-    if (codes.has(quote)) return [base, quote]
-  }
-  return undefined
 }
 
 export function normalizeMaxMarket(symbol: string): string {

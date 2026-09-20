@@ -86,11 +86,8 @@ describe("market-data query", () => {
           ],
         })
       }
-      if (url.pathname === "/api/v3/currencies") {
-        return Response.json([
-          { currency: "btc", type: "crypto" },
-          { currency: "usdt", type: "crypto" },
-        ])
+      if (url.pathname === "/api/v3/markets") {
+        return Response.json([{ id: "btcusdt", base_unit: "btc", quote_unit: "usdt" }])
       }
       if (url.pathname === "/api/v3/ticker") {
         expect(url.searchParams.get("market")).toBe("btcusdt")

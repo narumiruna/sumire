@@ -33,7 +33,16 @@ async function queryYahooSymbol(
 
   const indicators = record(result?.indicators)
   const quote = Array.isArray(indicators?.quote) ? record(indicators.quote[0]) : undefined
-  const last = finiteNumber(meta.regularMarketPrice) ?? lastNumber(quote?.close)
+  const candleCount = Array.isArray(result?.timestamp)
+    ? result.timestamp.length
+    : Math.max(
+        ...[quote?.close, quote?.high, quote?.low, quote?.open, quote?.volume].map((values) =>
+          Array.isArray(values) ? values.length : 0,
+        ),
+      )
+  // Keep every field on the same candle, including missing or short arrays.
+  const latestIndex = candleCount - 1
+  const last = finiteNumber(meta.regularMarketPrice) ?? numberAt(quote?.close, latestIndex)
   if (last === undefined) return undefined
 
   const resolvedSymbol = text(meta.symbol) ?? symbol
@@ -41,38 +50,25 @@ async function queryYahooSymbol(
   const currency = text(meta.currency)
   const lines = priceLines({
     changeFrom:
-      previousNumber(quote?.close) ??
+      numberAt(quote?.close, latestIndex - 1) ??
       finiteNumber(meta.previousClose) ??
       finiteNumber(meta.chartPreviousClose),
     currency,
-    high: lastNumber(quote?.high),
+    high: numberAt(quote?.high, latestIndex),
     last,
-    low: lastNumber(quote?.low),
+    low: numberAt(quote?.low, latestIndex),
     maximumFractionDigits: pricePrecision(meta.priceHint),
-    open: lastNumber(quote?.open),
-    volume: lastNumber(quote?.volume),
+    open: numberAt(quote?.open, latestIndex),
+    volume: numberAt(quote?.volume, latestIndex),
   })
   return [`📊 ${name} (${resolvedSymbol})`, ...lines, "資料來源: Yahoo Finance"].join("\n")
 }
 
-function lastNumber(value: unknown): number | undefined {
-  return numbers(value).at(-1)
-}
-
-function previousNumber(value: unknown): number | undefined {
-  return numbers(value).at(-2)
+function numberAt(value: unknown, index: number): number | undefined {
+  return Array.isArray(value) ? finiteNumber(value[index]) : undefined
 }
 
 function pricePrecision(value: unknown): number {
   const precision = finiteNumber(value)
   return precision === undefined ? 2 : Math.max(0, Math.min(8, Math.trunc(precision)))
-}
-
-function numbers(value: unknown): number[] {
-  return Array.isArray(value)
-    ? value.flatMap((entry) => {
-        const number = finiteNumber(entry)
-        return number === undefined ? [] : [number]
-      })
-    : []
 }
