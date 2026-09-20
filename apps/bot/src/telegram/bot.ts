@@ -57,7 +57,10 @@ export function createTelegramAgentBot(
   )
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
-  const submissionGenerations = new Map<number, number>()
+  const submissionGenerations = new Map<
+    number,
+    { generation: number; reason: "reset" | "cancel" }
+  >()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
   const marketDataQuery =
@@ -81,7 +84,7 @@ export function createTelegramAgentBot(
         "/ask <問題> — 詢問 AI 助理",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、USD）",
         "/reset — 清除目前 chat 的 Pi session",
-        "/cancel — 取消目前執行並清除 steering/follow-up queue",
+        "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
@@ -104,9 +107,16 @@ export function createTelegramAgentBot(
     await context.reply("已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
-    const cancelled = await sessions.cancel(context.chat.id)
+    const pending = submissionTails.has(context.chat.id)
+    const finishCancel = pending ? invalidateSubmissionOrder(context.chat.id, "cancel") : undefined
+    let cancelled: boolean
+    try {
+      cancelled = await sessions.cancel(context.chat.id)
+    } finally {
+      finishCancel?.()
+    }
     await context.reply(
-      cancelled ? "已取消目前任務。" : "目前沒有執行中的任務。",
+      cancelled || pending ? "已取消目前任務。" : "目前沒有執行中的任務。",
       replyOptions(context),
     )
   })
@@ -211,6 +221,7 @@ export function createTelegramAgentBot(
           ),
         )
       } catch (error) {
+        if (!isCurrent()) return
         const response =
           error instanceof TelegramDownloadTooLargeError
             ? "圖片超過允許的大小，無法處理。"
@@ -220,6 +231,7 @@ export function createTelegramAgentBot(
         return
       }
 
+      if (!isCurrent()) return
       let documentInputs: Array<{
         reference: (typeof documentRefs)[number]
         converted: Awaited<ReturnType<DocumentConverter["convert"]>>
@@ -227,22 +239,24 @@ export function createTelegramAgentBot(
       try {
         documentInputs = await Promise.all(
           documentRefs.map(async (reference) => {
-            const converted = await dependencies.documentConverter?.convert(
-              () =>
-                downloadTelegramFile(
-                  context.api,
-                  settings.botToken,
-                  reference,
-                  settings.botDocumentMaxBytes,
-                  dependencies.imageFetchImplementation,
-                ),
-              reference.filename,
-            )
+            const converted = await dependencies.documentConverter?.convert(async () => {
+              if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+              const bytes = await downloadTelegramFile(
+                context.api,
+                settings.botToken,
+                reference,
+                settings.botDocumentMaxBytes,
+                dependencies.imageFetchImplementation,
+              )
+              if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+              return bytes
+            }, reference.filename)
             if (!converted) throw new Error("Document converter is unavailable")
             return { reference, converted }
           }),
         )
       } catch (error) {
+        if (!isCurrent()) return
         const response = documentFailureMessage(error)
         logger.warn(`Telegram document input failed for chat_id=${context.chat.id}`, error)
         await context.reply(response, replyOptions(context))
@@ -325,7 +339,9 @@ export function createTelegramAgentBot(
         context,
         status.chat.id,
         status.message_id,
-        "此請求已因重設對話而取消。",
+        submissionGenerations.get(status.chat.id)?.reason === "cancel"
+          ? "此請求已取消。"
+          : "此請求已因重設對話而取消。",
       )
     }
     if (!isCurrent()) {
@@ -411,7 +427,7 @@ export function createTelegramAgentBot(
     chatId: number,
     task: (release: () => void, isCurrent: () => boolean) => Promise<void>,
   ): Promise<void> {
-    const generation = submissionGenerations.get(chatId) ?? 0
+    const generation = submissionGenerations.get(chatId)?.generation ?? 0
     const previous = submissionTails.get(chatId) ?? Promise.resolve()
     const { gate, release } = submissionGate(chatId, previous)
     submissionTails.set(chatId, gate)
@@ -424,12 +440,18 @@ export function createTelegramAgentBot(
     }
 
     function isCurrent(): boolean {
-      return (submissionGenerations.get(chatId) ?? 0) === generation
+      return (submissionGenerations.get(chatId)?.generation ?? 0) === generation
     }
   }
 
-  function invalidateSubmissionOrder(chatId: number): () => void {
-    submissionGenerations.set(chatId, (submissionGenerations.get(chatId) ?? 0) + 1)
+  function invalidateSubmissionOrder(
+    chatId: number,
+    reason: "reset" | "cancel" = "reset",
+  ): () => void {
+    submissionGenerations.set(chatId, {
+      generation: (submissionGenerations.get(chatId)?.generation ?? 0) + 1,
+      reason,
+    })
     const { gate, release } = submissionGate(chatId, Promise.resolve())
     submissionTails.set(chatId, gate)
     return release

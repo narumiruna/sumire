@@ -1126,6 +1126,136 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ["queued", false],
+    ["download", false],
+    ["conversion", false],
+    ["download", true],
+    ["conversion", true],
+  ] as const)("cancels pre-submit document work during %s (failure=%s)", async (stage, failure) => {
+    let releaseWork = () => {}
+    const pendingWork = new Promise<void>((resolve) => {
+      releaseWork = resolve
+    })
+    const fetchDocument = vi.fn(async () => {
+      if (stage === "download") {
+        await pendingWork
+        if (failure) throw new Error("late download failure")
+      }
+      return new Response("bytes")
+    })
+    const run = vi.fn(async () => {
+      if (stage !== "download") {
+        await pendingWork
+        if (failure) throw new Error("late conversion failure")
+      }
+      return {
+        ok: true as const,
+        markdown: "document",
+        format: "csv",
+        originalChars: 8,
+        truncated: false,
+      }
+    })
+    const converter = AnyDocConverter.forTesting({
+      maxConcurrency: 1,
+      maxMarkdownChars: 100,
+      timeoutMs: 1_000,
+      run,
+    })
+    const convert = vi.spyOn(converter, "convert")
+    const occupying =
+      stage === "queued"
+        ? converter.convert(async () => Buffer.from("busy"), "busy.csv")
+        : undefined
+    if (occupying) await vi.waitFor(() => expect(run).toHaveBeenCalledOnce())
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, documentConverter: converter, imageFetchImplementation: fetchDocument },
+    )
+    const calls = installApiMock(telegram.bot)
+    const document = privateMessage(300, "")
+    if (document.message) {
+      delete document.message.text
+      document.message.document = {
+        file_id: "document",
+        file_unique_id: "document",
+        file_name: "report.csv",
+        file_size: 5,
+      }
+    }
+    const handling = telegram.bot.handleUpdate(document)
+    let fresh: Promise<void> | undefined
+    let acceptedWhileDraining = 0
+    try {
+      await vi.waitFor(() => {
+        if (stage === "queued") expect(convert).toHaveBeenCalledTimes(2)
+        else if (stage === "download") expect(fetchDocument).toHaveBeenCalledOnce()
+        else expect(run).toHaveBeenCalledOnce()
+      })
+      await telegram.bot.handleUpdate(commandMessage(301, "/cancel"))
+      fresh = telegram.bot.handleUpdate(privateMessage(302, "fresh"))
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      acceptedWhileDraining = vi.mocked(sessions.submit).mock.calls.length
+    } finally {
+      releaseWork()
+      await Promise.all([handling, occupying, fresh])
+    }
+
+    expect(sessions.cancel).toHaveBeenCalledWith(7)
+    expect(sessions.reset).not.toHaveBeenCalled()
+    expect(acceptedWhileDraining).toBe(1)
+    expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, "fresh", expect.any(Object))
+    expect(
+      calls.filter((call) => call.method === "sendMessage").map((call) => call.payload.text),
+    ).toEqual(["已取消目前任務。", "處理中…"])
+    expect(fetchDocument).toHaveBeenCalledTimes(stage === "queued" ? 0 : 1)
+    expect(run).toHaveBeenCalledTimes(stage === "download" ? 0 : 1)
+  })
+
+  it("cancels before agent acceptance without labelling it as a reset", async () => {
+    let releaseStatus = () => {}
+    const pendingStatus = new Promise<void>((resolve) => {
+      releaseStatus = resolve
+    })
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot, async (method, payload) => {
+      if (method === "sendMessage" && payload.text === "處理中…") await pendingStatus
+    })
+    const handling = telegram.bot.handleUpdate(privateMessage(304, "request"))
+    try {
+      await vi.waitFor(() => expect(calls).toHaveLength(1))
+      await telegram.bot.handleUpdate(commandMessage(305, "/cancel"))
+    } finally {
+      releaseStatus()
+      await handling
+    }
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(calls.at(-1)?.payload.text).toBe("此請求已取消。")
+  })
+
+  it("reports no task when cancelling an idle chat", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(commandMessage(303, "/cancel"))
+    expect(calls[0]?.payload.text).toBe("目前沒有執行中的任務。")
+  })
+
   it("does not submit a document conversion that finishes after reset", async () => {
     let finishConversion:
       | ((value: {
