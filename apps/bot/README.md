@@ -21,6 +21,7 @@ Available now:
 - private chat and group mention/reply routing
 - allowlist and bot-loop limits
 - `/start`, `/help`, `/id`, `/ask`, `/cancel`, and `/reset`
+- `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - `SOUL.md` and filtered Agent Skills
@@ -72,6 +73,21 @@ npm run dev -- --verbose
 ```
 
 Do not run the Python and TypeScript bots with the same `BOT_TOKEN` simultaneously. Both would consume the same long-polling update stream.
+
+## Market-data command
+
+Use `/t` with one or more whitespace- or comma-separated symbols:
+
+```text
+/t AAPL          # Yahoo Finance stock
+/t 2330          # TWSE/TPEX stock
+/t BTC-USD       # Yahoo Finance cryptocurrency pair
+/t BTCUSDT       # MAX Exchange cryptocurrency pair
+/t USD           # Bank of Taiwan USD/TWD rate
+/t JPY/TWD       # Bank of Taiwan JPY/TWD rate
+```
+
+A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries; other symbols use Yahoo Finance.
 
 ## Quality gates
 

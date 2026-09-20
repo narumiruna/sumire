@@ -5,6 +5,7 @@ import type { UserFromGetMe } from "grammy/types"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
+import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, type MorselPublisher } from "../morsel.js"
 import { downloadTelegramImage, TelegramDownloadTooLargeError } from "./files.js"
 import {
@@ -29,6 +30,7 @@ export interface TelegramAgentBot {
 interface TelegramBotDependencies {
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
+  marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
 }
 
@@ -49,6 +51,12 @@ export function createTelegramAgentBot(
   const submissionGenerations = new Map<number, number>()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
+  const marketDataQuery =
+    dependencies.marketDataQuery ??
+    ((input: string) =>
+      queryMarketData(input, {
+        onError: (provider, error) => logger.warn(`${provider} market-data query failed`, error),
+      }))
 
   bot.use(async (context, next) => {
     if (!isAllowed(context, settings.botWhitelist)) return
@@ -62,6 +70,7 @@ export function createTelegramAgentBot(
     await context.reply(
       [
         "/ask <問題> — 詢問 AI 助理",
+        "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、USD）",
         "/reset — 清除目前 chat 的 Pi session",
         "/cancel — 取消目前執行並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
@@ -96,6 +105,27 @@ export function createTelegramAgentBot(
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
       answer(context, prompt, [], release, isCurrent),
     )
+  })
+  bot.command("t", async (context) => {
+    const query = context.match.trim()
+    if (!query) {
+      await context.reply(
+        "請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t USD。",
+        replyOptions(context),
+      )
+      return
+    }
+    try {
+      const result = await marketDataQuery(query)
+      await replyInChunks(context, result || `查不到 ${query} 的市場資料，請確認代碼或稍後再試。`)
+    } catch (error) {
+      if (error instanceof MarketDataInputError) {
+        await context.reply(error.message, replyOptions(context))
+        return
+      }
+      logger.warn(`Market-data command failed for chat_id=${context.chat.id}`, error)
+      await context.reply("市場資料服務暫時無法使用，請稍後再試。", replyOptions(context))
+    }
   })
 
   bot.on("message", async (context) => {
@@ -390,6 +420,17 @@ function isAllowed(context: Context, whitelist: ReadonlySet<number>): boolean {
     whitelist.has(context.chat?.id ?? Number.NaN) ||
     whitelist.has(context.from?.id ?? Number.NaN)
   )
+}
+
+async function replyInChunks(context: Context, text: string): Promise<void> {
+  let replyTo = context.message?.message_id
+  for (const chunk of telegramHtmlChunks(text)) {
+    const sent = await context.reply(chunk, {
+      parse_mode: "HTML",
+      ...(replyTo ? { reply_parameters: { message_id: replyTo } } : {}),
+    })
+    replyTo = sent.message_id
+  }
 }
 
 function replyOptions(
