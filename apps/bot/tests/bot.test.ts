@@ -6,6 +6,7 @@ import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
 import type { Logger } from "../src/logging.js"
+import { queryMarketData } from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 
 const botInfo: UserFromGetMe = {
@@ -67,6 +68,15 @@ function privateMessage(updateId: number, text: string, userId = 7): Update {
   }
 }
 
+function commandMessage(updateId: number, text: string, userId = 7): Update {
+  const update = privateMessage(updateId, text, userId)
+  const command = text.split(/\s/u, 1)[0] ?? text
+  if (update.message) {
+    update.message.entities = [{ offset: 0, length: command.length, type: "bot_command" }]
+  }
+  return update
+}
+
 function installApiMock(
   bot: ReturnType<typeof createTelegramAgentBot>["bot"],
   beforeResponse: (
@@ -109,6 +119,96 @@ function installApiMock(
 }
 
 describe("Telegram bot update routing", () => {
+  it("documents the market-data command in help", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(1, "/help"))
+
+    expect(calls[0]?.payload.text).toContain("/t <代碼>")
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("shows /t usage without querying market data", async () => {
+    const sessions = createSessions()
+    const marketDataQuery = vi.fn(async () => "result")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, marketDataQuery },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(2, "/t"))
+
+    expect(marketDataQuery).not.toHaveBeenCalled()
+    expect(calls[0]?.payload.text).toContain("/t <代碼>")
+  })
+
+  it("answers /t directly without invoking Pi", async () => {
+    const sessions = createSessions()
+    const marketDataQuery = vi.fn(async () => "📊 Apple Inc. (AAPL)\n現價: 195.25 USD")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, marketDataQuery },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(3, "/t aapl"))
+
+    expect(marketDataQuery).toHaveBeenCalledWith("aapl")
+    expect(calls[0]?.payload.text).toContain("Apple Inc.")
+    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("reports when /t has no matching market data", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, marketDataQuery: async () => "" },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(4, "/t UNKNOWN"))
+
+    expect(calls[0]?.payload.text).toContain("查不到 UNKNOWN")
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("reports temporary /t provider failures through the real market-data query", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        marketDataQuery: (input) =>
+          queryMarketData(input, {
+            fetchImplementation: async () => new Response(null, { status: 503 }),
+          }),
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(5, "/t AAPL"))
+
+    expect(calls[0]?.payload.text).toBe("市場資料服務暫時無法使用，請稍後再試。")
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
   it("routes private messages through the Pi session and edits the status reply", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
