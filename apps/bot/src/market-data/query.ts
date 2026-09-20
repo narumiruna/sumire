@@ -92,6 +92,8 @@ export async function queryMarketData(
       if (job) dependencies.onError?.(job.name, result.reason)
     }
   }
+  const failure = settled.find((result) => result.status === "rejected")
+  if (results.length === 0 && failure) throw failure.reason
   return results.join("\n\n")
 }
 

@@ -157,6 +157,51 @@ describe("market-data query", () => {
     expect(onError).toHaveBeenCalledWith("Bank of Taiwan", expect.any(Error))
   })
 
+  it.each([
+    ["AAPL", "Yahoo Finance"],
+    ["2330", "TWSE"],
+    ["BTCUSDT", "MAX Exchange"],
+  ])("propagates an HTTP failure for %s", async (input, provider) => {
+    const onError = vi.fn()
+
+    await expect(
+      queryMarketData(input, {
+        fetchImplementation: async () => new Response(null, { status: 503 }),
+        onError,
+      }),
+    ).rejects.toThrow("Market-data request failed (503)")
+    expect(onError).toHaveBeenCalledWith(provider, expect.any(Error))
+  })
+
+  it("propagates a rate failure even when another provider succeeds without data", async () => {
+    const error = new Error("rate service unavailable")
+    const onError = vi.fn()
+
+    await expect(
+      queryMarketData("2330 USD", {
+        fetchImplementation: async () => Response.json({ msgArray: [] }),
+        onError,
+        rateFetcher: async () => {
+          throw error
+        },
+      }),
+    ).rejects.toBe(error)
+    expect(onError).toHaveBeenCalledWith("Bank of Taiwan", error)
+  })
+
+  it("returns no data when providers succeed without matches", async () => {
+    const onError = vi.fn()
+
+    await expect(
+      queryMarketData("2330 USD", {
+        fetchImplementation: async () => Response.json({ msgArray: [] }),
+        onError,
+        rateFetcher: async () => [],
+      }),
+    ).resolves.toBe("")
+    expect(onError).not.toHaveBeenCalled()
+  })
+
   it("coalesces and caches Bank of Taiwan rate requests", async () => {
     let now = 1_000
     const rates = [

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
+import { queryMarketData } from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 
 const botInfo: UserFromGetMe = {
@@ -184,7 +185,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("reports temporary /t provider failures", async () => {
+  it("reports temporary /t provider failures through the real market-data query", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -192,9 +193,10 @@ describe("Telegram bot update routing", () => {
       logger,
       {
         botInfo,
-        marketDataQuery: async () => {
-          throw new Error("provider unavailable")
-        },
+        marketDataQuery: (input) =>
+          queryMarketData(input, {
+            fetchImplementation: async () => new Response(null, { status: 503 }),
+          }),
       },
     )
     const calls = installApiMock(telegram.bot)
