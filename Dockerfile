@@ -6,12 +6,12 @@ WORKDIR /build
 
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
-COPY packages/kabigon/package.json packages/kabigon/package.json
+COPY packages/url-content/package.json packages/url-content/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --workspace telegramagent-typescript --include-workspace-root=false
 
 FROM dependencies AS build
 
-COPY packages/kabigon/ packages/kabigon/
+COPY packages/url-content/ packages/url-content/
 COPY apps/bot/ apps/bot/
 RUN npm run build --workspace telegramagent-typescript
 
@@ -35,7 +35,7 @@ WORKDIR /app
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/kabigon /app/.telegramagent /app/.events /app/skills \
+    && mkdir -p /app/apps/bot /app/packages/url-content /app/.telegramagent /app/.events /app/skills \
     && chown -R app:app /app /ms-playwright
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
@@ -44,8 +44,8 @@ ENV NODE_ENV=production
 
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=build --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json
-COPY --from=build --chown=app:app /build/packages/kabigon/dist /app/packages/kabigon/dist
-COPY --from=build --chown=app:app /build/packages/kabigon/package.json /app/packages/kabigon/package.json
+COPY --from=build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
+COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
 COPY --chown=app:app SOUL.md /app/SOUL.md
 
 USER app

@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest"
 import { main, parseArgs } from "../src/cli.js"
-import { KabigonClient } from "../src/client.js"
+import { UrlContentClient } from "../src/client.js"
 
-describe("KabigonClient", () => {
+describe("UrlContentClient", () => {
   it("validates options and requires explicit lifecycle start", async () => {
-    expect(() => new KabigonClient({ deadlineSeconds: 0 })).toThrow("positive")
-    expect(() => new KabigonClient({ workerLimit: 0 })).toThrow("limits")
-    const client = new KabigonClient()
+    expect(() => new UrlContentClient({ deadlineSeconds: 0 })).toThrow("positive")
+    expect(() => new UrlContentClient({ workerLimit: 0 })).toThrow("limits")
+    const client = new UrlContentClient()
     await expect(client.loadUrl("https://example.com")).rejects.toThrow("start")
   })
 
   it("rejects invalid and private targets before planning", async () => {
     const fetchImplementation = vi.fn()
-    const client = new KabigonClient({ fetchImplementation }).start()
+    const client = new UrlContentClient({ fetchImplementation }).start()
     await expect(client.loadUrl("not-a-valid-url")).rejects.toThrow("HTTP(S)")
     await expect(client.loadUrl("http://127.0.0.1/private")).rejects.toThrow("Private")
     expect(fetchImplementation).not.toHaveBeenCalled()
@@ -20,7 +20,7 @@ describe("KabigonClient", () => {
   })
 
   it("rejects targets whose hostname resolves to a private address", async () => {
-    const client = new KabigonClient({
+    const client = new UrlContentClient({
       resolve: async () => [{ address: "10.0.0.1", family: 4 }],
     }).start()
     await expect(client.loadUrl("https://public.example/private")).rejects.toThrow("private")

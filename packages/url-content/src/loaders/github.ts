@@ -69,7 +69,7 @@ export class GitHubLoader implements Loader {
 
     const response = await this.get(
       url,
-      { Accept: "text/html,application/xhtml+xml", "User-Agent": "kabigon-typescript" },
+      { Accept: "text/html,application/xhtml+xml", "User-Agent": "sumire-url-content" },
       signal,
     )
     const contentType = response.headers.get("content-type") ?? ""

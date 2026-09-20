@@ -14,7 +14,7 @@ interface CliOptions {
 }
 
 function usage(): string {
-  return "Usage: kabigon [--list] [--loader name[,name...]] URL"
+  return "Usage: sumire-url-content [--list] [--loader name[,name...]] URL"
 }
 
 export function parseArgs(args: readonly string[]): CliOptions {

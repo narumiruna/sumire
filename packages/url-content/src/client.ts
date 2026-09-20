@@ -14,7 +14,7 @@ import { resolveLoadChain } from "./load-chain.js"
 import { createLoader, getLoaderDef } from "./loader-registry.js"
 import { isPdfTarget } from "./sources/applicability.js"
 
-const CLIENT_CONTEXT_REQUIRED = "Call KabigonClient.start() before loading URLs"
+const CLIENT_CONTEXT_REQUIRED = "Call UrlContentClient.start() before loading URLs"
 const INVALID_TARGET = "Target must be an HTTP(S) URL or a local PDF path"
 
 class Semaphore {
@@ -74,7 +74,7 @@ class Semaphore {
   }
 }
 
-export interface KabigonClientOptions {
+export interface UrlContentClientOptions {
   deadlineSeconds?: number
   requestLimit?: number
   browserLimit?: number
@@ -83,7 +83,7 @@ export interface KabigonClientOptions {
   resolve?: PublicUrlResolver
 }
 
-export class KabigonClient implements ResourceProvider, AsyncDisposable {
+export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   readonly deadlineSeconds?: number
   private readonly requestSlots: Semaphore
   private readonly browserSlots: Semaphore
@@ -95,7 +95,7 @@ export class KabigonClient implements ResourceProvider, AsyncDisposable {
   private proxyPromise?: Promise<PublicProxy>
   private browserPromise?: Promise<Browser>
 
-  constructor(options: KabigonClientOptions = {}) {
+  constructor(options: UrlContentClientOptions = {}) {
     if (options.deadlineSeconds !== undefined && options.deadlineSeconds <= 0) {
       throw new RangeError("deadlineSeconds must be positive")
     }

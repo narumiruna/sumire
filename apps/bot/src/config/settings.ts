@@ -53,7 +53,7 @@ export interface Settings {
   botSoulMaxChars: number
   botProactiveEnabled: boolean
   botProactiveUrlTimeoutSeconds: number
-  botKabigonTimeoutSeconds: number
+  botUrlContentTimeoutSeconds: number
   botProactiveMaxExtractedChars: number
   botProactiveAllowedSchemes: ReadonlySet<string>
   botSessionLogDir: string
@@ -95,7 +95,7 @@ export function loadSettings(
     botSoulMaxChars: 8_000,
     botProactiveEnabled: true,
     botProactiveUrlTimeoutSeconds: 15,
-    botKabigonTimeoutSeconds: 180,
+    botUrlContentTimeoutSeconds: 180,
     botProactiveMaxExtractedChars: 12_000,
     botProactiveAllowedSchemes: new Set(["http", "https"]),
     botSessionLogDir: path.resolve(root, ".telegramagent/sessions"),

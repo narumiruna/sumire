@@ -1,4 +1,4 @@
-import { KabigonClient } from "./client.js"
+import { UrlContentClient } from "./client.js"
 import type { LoadResult } from "./core/results.js"
 import { explainLoadChain } from "./load-chain.js"
 import { listLoaderNames } from "./loader-registry.js"
@@ -7,7 +7,7 @@ export async function loadUrlDetailed(
   url: string,
   options: { deadlineSeconds?: number; signal?: AbortSignal } = {},
 ): Promise<LoadResult> {
-  const client = new KabigonClient({ deadlineSeconds: options.deadlineSeconds }).start()
+  const client = new UrlContentClient({ deadlineSeconds: options.deadlineSeconds }).start()
   try {
     return await client.loadUrlDetailed(url, options.signal)
   } finally {

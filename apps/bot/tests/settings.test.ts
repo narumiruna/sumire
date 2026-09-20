@@ -14,7 +14,7 @@ describe("loadSettings", () => {
       path.resolve("/workspace/project/.telegramagent/sessions"),
     )
     expect(settings.botSkillsDir).toBe(path.resolve("/workspace/project/skills"))
-    expect(settings.botKabigonTimeoutSeconds).toBe(180)
+    expect(settings.botUrlContentTimeoutSeconds).toBe(180)
     expect(settings.openaiBaseUrl).toBe("https://api.openai.com/v1")
     expect(settings.morselLongReplyThreshold).toBe(2_000)
   })

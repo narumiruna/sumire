@@ -2,13 +2,13 @@ export {
   ConfigurationError,
   FirecrawlApiKeyNotSetError,
   InvalidUrlError,
-  KabigonError,
   LoaderContentError,
   LoaderError,
   LoaderNotApplicableError,
   LoaderTimeoutError,
   MissingDependencyError,
   MissingRequirementError,
+  UrlContentError,
 } from "./errors.js"
 export {
   recordAttempt,

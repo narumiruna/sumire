@@ -7,9 +7,9 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import {
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
-  type LoadResult as KabigonLoadResult,
   loadUrlDetailed,
-} from "@telegram-agent/kabigon"
+  type LoadResult as UrlContentLoadResult,
+} from "@narumitw/sumire-url-content"
 import ipaddr from "ipaddr.js"
 import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
 
@@ -37,7 +37,7 @@ export function buildUrlTools(settings: Settings): ToolDefinition[] {
       name: "load_public_url",
       label: "Load public URL",
       description:
-        "Load readable text or Markdown from a public HTTP(S) URL. The bounded built-in loader is tried first, then kabigon handles source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
+        "Load readable text or Markdown from a public HTTP(S) URL. The bounded built-in loader is tried first, then the source-aware URL content loader handles source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
       parameters: Type.Object({
         url: Type.String({ description: "The absolute public HTTP(S) URL to load" }),
       }),
@@ -46,7 +46,7 @@ export function buildUrlTools(settings: Settings): ToolDefinition[] {
           allowedSchemes: settings.botProactiveAllowedSchemes,
           maxChars: settings.botProactiveMaxExtractedChars,
           timeoutMs: Math.round(settings.botProactiveUrlTimeoutSeconds * 1_000),
-          kabigonTimeoutSeconds: settings.botKabigonTimeoutSeconds,
+          urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
           signal,
         })
         return {
@@ -61,7 +61,7 @@ export function buildUrlTools(settings: Settings): ToolDefinition[] {
 export interface LoadedUrl {
   url: string
   finalUrl: string
-  source: "built-in" | "kabigon"
+  source: "built-in" | "url-content"
   contentType: string
   title?: string
   text: string
@@ -96,14 +96,14 @@ interface FetchPublicUrlOptions {
   resolve?: PublicUrlResolver
 }
 
-type KabigonLoadImplementation = (
+type UrlContentLoadImplementation = (
   url: string,
   options: { deadlineSeconds?: number; signal?: AbortSignal },
-) => Promise<KabigonLoadResult>
+) => Promise<UrlContentLoadResult>
 
 interface LoadPublicUrlOptions extends FetchPublicUrlOptions {
-  kabigonTimeoutSeconds: number
-  kabigonLoadImplementation?: KabigonLoadImplementation
+  urlContentTimeoutSeconds: number
+  urlContentLoadImplementation?: UrlContentLoadImplementation
 }
 
 interface ResolvedPublicUrl {
@@ -129,7 +129,7 @@ export async function loadPublicUrl(
   let builtInError: unknown
   try {
     const result = await fetchPublicUrl(urlValue, options)
-    if (!requiresKabigon(urlValue, result)) {
+    if (!requiresUrlContentLoader(urlValue, result)) {
       return {
         url: result.url,
         finalUrl: result.finalUrl,
@@ -147,18 +147,18 @@ export async function loadPublicUrl(
   }
 
   try {
-    const load = options.kabigonLoadImplementation ?? loadUrlDetailed
+    const load = options.urlContentLoadImplementation ?? loadUrlDetailed
     const result = await load(urlValue, {
-      deadlineSeconds: options.kabigonTimeoutSeconds,
+      deadlineSeconds: options.urlContentTimeoutSeconds,
       ...(options.signal ? { signal: options.signal } : {}),
     })
     const content = result.content.trim()
-    if (!content) throw new Error("kabigon returned no content")
+    if (!content) throw new Error("URL content loader returned no content")
     const truncated = content.length > options.maxChars
     return {
       url: urlValue,
       finalUrl: urlValue,
-      source: "kabigon",
+      source: "url-content",
       contentType: result.contentType,
       text: truncated
         ? `${content.slice(0, options.maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${options.maxChars} chars]`
@@ -166,10 +166,10 @@ export async function loadPublicUrl(
       truncated,
       loaderId: result.loaderId,
     }
-  } catch (kabigonError) {
+  } catch (urlContentError) {
     throw new AggregateError(
-      [builtInError, kabigonError],
-      "Built-in and kabigon URL loading both failed",
+      [builtInError, urlContentError],
+      "Built-in and source-aware URL loading both failed",
     )
   }
 }
@@ -239,7 +239,7 @@ export async function fetchPublicUrl(
   throw new Error("URL loader ended unexpectedly")
 }
 
-function requiresKabigon(urlValue: string, result: FetchedUrl): boolean {
+function requiresUrlContentLoader(urlValue: string, result: FetchedUrl): boolean {
   if (!result.title && !result.text.trim()) return true
   if (
     isYouTubeVideoUrl(urlValue) ||

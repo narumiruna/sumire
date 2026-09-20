@@ -1,5 +1,5 @@
 {
-  "name": "@telegram-agent/kabigon",
+  "name": "@narumitw/sumire-url-content",
   "version": "0.19.6",
   "description": "Source-aware URL content extraction for TypeScript and Node.js",
   "private": true,
@@ -8,7 +8,7 @@
     "node": ">=22.19.0"
   },
   "bin": {
-    "kabigon": "dist/cli.js"
+    "sumire-url-content": "dist/cli.js"
   },
   "exports": {
     ".": {

@@ -1,14 +1,14 @@
-# @telegram-agent/kabigon
+# @narumitw/sumire-url-content
 
-A TypeScript and Node.js port of [kabigon](https://github.com/narumiruna/kabigon). It extracts text or Markdown from URLs and chooses a source-safe loader automatically.
+A TypeScript and Node.js package that extracts text or Markdown from URLs and automatically chooses a source-safe loader.
 
 ## Features
 
 - Source-aware plans for YouTube, Twitter/X, Truth Social, Reddit, Instagram Reels, PTT, GitHub, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
 - Ordered fallback attempts with structured status, timing, and error details
-- Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers), the TypeScript counterpart of `curl_cffi`
+- Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
 - Reusable fetch, `impers`, and Playwright resources with concurrency limits and total deadlines
-- ESM library API, TypeScript declarations, and a `kabigon` CLI
+- ESM library API, TypeScript declarations, and a `sumire-url-content` CLI
 
 ## Workspace usage
 
@@ -16,15 +16,15 @@ From this repository root:
 
 ```bash
 npm install
-npm run build --workspace @telegram-agent/kabigon
-npm test --workspace @telegram-agent/kabigon
-npm exec --workspace @telegram-agent/kabigon -- kabigon --list
+npm run build --workspace @narumitw/sumire-url-content
+npm test --workspace @narumitw/sumire-url-content
+npm exec --workspace @narumitw/sumire-url-content -- sumire-url-content --list
 ```
 
 ## Library API
 
 ```ts
-import { explainPlan, loadUrl, loadUrlDetailed } from "@telegram-agent/kabigon";
+import { explainPlan, loadUrl, loadUrlDetailed } from "@narumitw/sumire-url-content";
 
 const plan = explainPlan("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 console.log(plan.execution_plan);
@@ -36,16 +36,16 @@ const result = await loadUrlDetailed("https://github.com/user/repo/blob/main/REA
 console.log(result.loaderId, result.contentType, result.attempts);
 ```
 
-JavaScript has no safe synchronous equivalent to Python's `load_url_sync`; the TypeScript API is async-only.
+The TypeScript API is async-only because JavaScript has no safe synchronous equivalent.
 
 ## Reusable client
 
 A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.
 
 ```ts
-import { KabigonClient } from "@telegram-agent/kabigon";
+import { UrlContentClient } from "@narumitw/sumire-url-content";
 
-await using client = new KabigonClient({
+await using client = new UrlContentClient({
   deadlineSeconds: 30,
   requestLimit: 8,
   browserLimit: 2,
@@ -63,9 +63,9 @@ A deadline includes time spent waiting for a concurrency slot. Cancellation is p
 ## CLI
 
 ```bash
-kabigon https://example.com
-kabigon --loader curl-cffi,playwright,httpx https://example.com
-kabigon --list
+sumire-url-content https://example.com
+sumire-url-content --loader curl-cffi,playwright,httpx https://example.com
+sumire-url-content --list
 ```
 
 Automatic planning is preferred. Explicit loaders are intended for debugging.
@@ -122,22 +122,20 @@ Strict source plans do not accept unrelated generic HTML:
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
 - Empty output and recognized challenge headings are rejected so the chain can continue.
 
-## Compatibility notes
+## Implementation notes
 
-The public behavior follows Python kabigon 0.19.6, but implementation details differ:
-
-- Names use TypeScript camelCase (`loadUrl`, `explainPlan`, `loaderId`). `toObject()` helpers expose the Python-style snake_case diagnostic shape.
+- Names use TypeScript camelCase (`loadUrl`, `explainPlan`, `loaderId`). `toObject()` helpers expose snake_case diagnostic objects.
 - HTML-to-Markdown conversion uses Turndown, so whitespace and Markdown punctuation may differ while preserving extracted content.
-- `impers` replaces `curl_cffi`.
+- Browser-like HTTP requests use `impers`.
 - Audio transcription invokes the Python-installed Whisper CLI instead of embedding a Whisper runtime in Node.js.
 - YouTube language preference is attempted in order through `youtube-transcript`.
 
 ## Development
 
 ```bash
-npm run format:check --workspace @telegram-agent/kabigon
-npm run lint --workspace @telegram-agent/kabigon
-npm run typecheck --workspace @telegram-agent/kabigon
-npm test --workspace @telegram-agent/kabigon
-npm run build --workspace @telegram-agent/kabigon
+npm run format:check --workspace @narumitw/sumire-url-content
+npm run lint --workspace @narumitw/sumire-url-content
+npm run typecheck --workspace @narumitw/sumire-url-content
+npm test --workspace @narumitw/sumire-url-content
+npm run build --workspace @narumitw/sumire-url-content
 ```

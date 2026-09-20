@@ -79,7 +79,7 @@ async function withBrowser(
   try {
     let routeError: unknown
     await context.routeWebSocket("**/*", async (route) =>
-      route.close({ code: 1008, reason: "Blocked by kabigon" }),
+      route.close({ code: 1008, reason: "Blocked by sumire-url-content" }),
     )
     await context.route("**/*", async (route) => {
       const request = route.request()

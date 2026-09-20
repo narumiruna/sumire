@@ -10,7 +10,7 @@ on:
       - "apps/bot/**"
       - "package.json"
       - "package-lock.json"
-      - "packages/kabigon/**"
+      - "packages/url-content/**"
   pull_request:
     branches:
       - main
@@ -19,7 +19,7 @@ on:
       - "apps/bot/**"
       - "package.json"
       - "package-lock.json"
-      - "packages/kabigon/**"
+      - "packages/url-content/**"
 
 jobs:
   typescript:

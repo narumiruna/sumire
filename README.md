@@ -8,7 +8,7 @@ Monorepo for Telegram AI bot implementations and shared URL-loading packages.
 | --- | --- |
 | [`apps/telegram-agent-python`](apps/telegram-agent-python/README.md) | Retained Python 3.14 implementation built with Pydantic AI. |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi and used by CI/CD. |
-| [`packages/kabigon`](packages/kabigon/README.md) | Shared TypeScript URL-content extraction package. |
+| [`packages/url-content`](packages/url-content/README.md) | Shared TypeScript URL-content extraction package. |
 
 Shared runtime resources stay at the repository root:
 
@@ -71,7 +71,7 @@ Run `npm run precommit` to check staged files manually.
 Run one workspace with `--workspace`, for example:
 
 ```bash
-npm test --workspace @telegram-agent/kabigon
+npm test --workspace @narumitw/sumire-url-content
 ```
 
 ## Security

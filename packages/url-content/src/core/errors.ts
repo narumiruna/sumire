@@ -1,13 +1,13 @@
 import type { AttemptRecord } from "./results.js"
 
-export class KabigonError extends Error {
+export class UrlContentError extends Error {
   constructor(message: string) {
     super(message)
     this.name = new.target.name
   }
 }
 
-export class LoaderError extends KabigonError {
+export class LoaderError extends UrlContentError {
   constructor(
     public readonly url: string,
     public readonly details: readonly string[] = [],
@@ -19,7 +19,7 @@ export class LoaderError extends KabigonError {
   }
 }
 
-export class InvalidUrlError extends KabigonError {
+export class InvalidUrlError extends UrlContentError {
   constructor(
     public readonly url: string,
     public readonly expected: string,
@@ -28,7 +28,7 @@ export class InvalidUrlError extends KabigonError {
   }
 }
 
-export class ConfigurationError extends KabigonError {}
+export class ConfigurationError extends UrlContentError {}
 
 export class MissingRequirementError extends ConfigurationError {
   constructor(public readonly requirements: readonly string[]) {
@@ -42,7 +42,7 @@ export class FirecrawlApiKeyNotSetError extends ConfigurationError {
   }
 }
 
-export class MissingDependencyError extends KabigonError {
+export class MissingDependencyError extends UrlContentError {
   constructor(
     public readonly loaderName: string,
     public readonly dependency: string,
@@ -52,7 +52,7 @@ export class MissingDependencyError extends KabigonError {
   }
 }
 
-export class LoaderNotApplicableError extends KabigonError {
+export class LoaderNotApplicableError extends UrlContentError {
   constructor(
     public readonly loaderName: string,
     public readonly url: string,
@@ -62,7 +62,7 @@ export class LoaderNotApplicableError extends KabigonError {
   }
 }
 
-export class LoaderTimeoutError extends KabigonError {
+export class LoaderTimeoutError extends UrlContentError {
   constructor(
     public readonly loaderName: string,
     public readonly url: string,
@@ -75,7 +75,7 @@ export class LoaderTimeoutError extends KabigonError {
   }
 }
 
-export class LoaderContentError extends KabigonError {
+export class LoaderContentError extends UrlContentError {
   constructor(
     public readonly loaderName: string,
     public readonly url: string,

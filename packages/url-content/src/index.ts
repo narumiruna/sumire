@@ -1,18 +1,18 @@
 export { availableLoaders, explainPlan, loadUrl, loadUrlDetailed } from "./api.js"
-export { KabigonClient, type KabigonClientOptions } from "./client.js"
+export { UrlContentClient, type UrlContentClientOptions } from "./client.js"
 export {
   ConfigurationError,
   FirecrawlApiKeyNotSetError,
   FirecrawlApiKeyNotSetError as FirecrawlAPIKeyNotSetError,
   InvalidUrlError,
   InvalidUrlError as InvalidURLError,
-  KabigonError,
   LoaderContentError,
   LoaderError,
   LoaderNotApplicableError,
   LoaderTimeoutError,
   MissingDependencyError,
   MissingRequirementError,
+  UrlContentError,
 } from "./core/errors.js"
 export type { Loader, LoaderFactory } from "./core/loader.js"
 export type { AttemptRecord, AttemptStatus, LoadResult } from "./core/results.js"

@@ -1,4 +1,4 @@
-import { InvalidUrlError, KabigonError, LoaderNotApplicableError } from "../core/errors.js"
+import { InvalidUrlError, LoaderNotApplicableError, UrlContentError } from "../core/errors.js"
 
 export const BBC_DOMAIN_SUFFIX = "bbc.com"
 export const CNN_DOMAIN_SUFFIX = "cnn.com"
@@ -48,25 +48,25 @@ const YOUTUBE_ALLOWED_HOSTS = new Set([
   "vid.plus",
 ])
 
-export class UnsupportedUrlSchemeError extends KabigonError {
+export class UnsupportedUrlSchemeError extends UrlContentError {
   constructor(public readonly scheme: string) {
     super(`unsupported URL scheme: ${scheme}`)
   }
 }
 
-export class UnsupportedUrlHostError extends KabigonError {
+export class UnsupportedUrlHostError extends UrlContentError {
   constructor(public readonly host: string) {
     super(`unsupported URL netloc: ${host}`)
   }
 }
 
-export class VideoIdError extends KabigonError {
+export class VideoIdError extends UrlContentError {
   constructor(public readonly videoId: string) {
     super(`invalid video ID: ${videoId}`)
   }
 }
 
-export class NoVideoIdFoundError extends KabigonError {
+export class NoVideoIdFoundError extends UrlContentError {
   constructor(public readonly url: string) {
     super(`no video found in URL: ${url}`)
   }

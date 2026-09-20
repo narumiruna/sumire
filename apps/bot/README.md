@@ -24,7 +24,7 @@ Available now:
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - `SOUL.md` and filtered Agent Skills
 - bounded Telegram image input
-- public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware kabigon fallback
+- public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
 - Morsel rich-rendering tool and smart long-reply routing
 - Telegram HTML rendering and 4096-character chunking
 - secret-redacted logs
@@ -45,7 +45,7 @@ Track these items in [`docs/plans/2026-04-12_typescript-migration-plan.md`](docs
 - Node.js 22.19 or newer
 - Telegram bot token
 - OpenAI-compatible Chat Completions endpoint and API key
-- Playwright Chromium for kabigon browser fallbacks
+- Playwright Chromium for source-aware browser fallbacks
 
 ## Install and run
 
@@ -106,11 +106,11 @@ Pi owns the agent session lifecycle and transcript format. The TypeScript servic
 
 Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `telegramagent` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
 
-## URL loading and kabigon
+## URL content loading
 
-`load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@telegram-agent/kabigon` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. Kabigon handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
+`load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@narumitw/sumire-url-content` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
 
-The built-in loader uses a 15-second timeout and 12,000-character output limit; kabigon uses a 180-second timeout. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before kabigon is invoked.
+The built-in loader uses a 15-second timeout and 12,000-character output limit; the source-aware loader uses a 180-second timeout. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before the source-aware loader is invoked.
 
 ## Docker
 
@@ -123,4 +123,4 @@ docker compose logs -f telegramagent-typescript
 docker compose down
 ```
 
-The image builds the local kabigon workspace package and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
+The image builds the local URL content workspace package and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.

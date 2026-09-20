@@ -106,34 +106,34 @@ describe("public URL loading", () => {
     ).rejects.toThrow("Private")
   })
 
-  it("returns a successful built-in result without invoking kabigon", async () => {
+  it("returns a successful built-in result without invoking the URL content loader", async () => {
     const fetchImplementation = vi.fn(async () => {
       return new Response("plain content", { headers: { "content-type": "text/plain" } })
     })
-    const kabigonLoadImplementation = vi.fn(async () => {
-      throw new Error("kabigon should not be called")
+    const urlContentLoadImplementation = vi.fn(async () => {
+      throw new Error("URL content loader should not be called")
     })
 
     await expect(
       loadPublicUrl("https://8.8.8.8/page", {
         ...options,
         fetchImplementation,
-        kabigonTimeoutSeconds: 12,
-        kabigonLoadImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
       }),
     ).resolves.toMatchObject({
       source: "built-in",
       text: "plain content",
       status: 200,
     })
-    expect(kabigonLoadImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).not.toHaveBeenCalled()
   })
 
-  it("falls back to bounded kabigon output with the configured deadline", async () => {
+  it("falls back to bounded URL content output with the configured deadline", async () => {
     const fetchImplementation = vi.fn(async () => {
       return new Response("%PDF", { headers: { "content-type": "application/pdf" } })
     })
-    const kabigonLoadImplementation = vi.fn(async () => ({
+    const urlContentLoadImplementation = vi.fn(async () => ({
       content: "abcdef",
       loaderId: "pdf",
       contentType: "markdown",
@@ -146,22 +146,22 @@ describe("public URL loading", () => {
         ...options,
         maxChars: 3,
         fetchImplementation,
-        kabigonTimeoutSeconds: 12,
-        kabigonLoadImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
       }),
     ).resolves.toMatchObject({
-      source: "kabigon",
+      source: "url-content",
       loaderId: "pdf",
       contentType: "markdown",
       text: "abc\n\n[truncated by telegramagent: 6 -> 3 chars]",
       truncated: true,
     })
-    expect(kabigonLoadImplementation).toHaveBeenCalledWith("https://8.8.8.8/file.pdf", {
+    expect(urlContentLoadImplementation).toHaveBeenCalledWith("https://8.8.8.8/file.pdf", {
       deadlineSeconds: 12,
     })
   })
 
-  it("uses kabigon for source-specific URLs even when generic HTML loads", async () => {
+  it("uses the URL content loader for source-specific URLs", async () => {
     const resolve = vi.fn(async () => [
       { address: "8.8.8.8", family: 4 as const },
     ]) as unknown as typeof lookup
@@ -170,7 +170,7 @@ describe("public URL loading", () => {
         headers: { "content-type": "text/html" },
       })
     })
-    const kabigonLoadImplementation = vi.fn(async () => ({
+    const urlContentLoadImplementation = vi.fn(async () => ({
       content: "video transcript",
       loaderId: "youtube-transcript",
       contentType: "transcript",
@@ -183,28 +183,28 @@ describe("public URL loading", () => {
         ...options,
         resolve,
         fetchImplementation,
-        kabigonTimeoutSeconds: 30,
-        kabigonLoadImplementation,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation,
       }),
     ).resolves.toMatchObject({
-      source: "kabigon",
+      source: "url-content",
       loaderId: "youtube-transcript",
       text: "video transcript",
     })
   })
 
-  it("rejects unsafe targets before invoking kabigon", async () => {
-    const kabigonLoadImplementation = vi.fn(async () => {
-      throw new Error("kabigon should not be called")
+  it("rejects unsafe targets before invoking the URL content loader", async () => {
+    const urlContentLoadImplementation = vi.fn(async () => {
+      throw new Error("URL content loader should not be called")
     })
 
     await expect(
       loadPublicUrl("http://127.0.0.1/private", {
         ...options,
-        kabigonTimeoutSeconds: 12,
-        kabigonLoadImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
       }),
     ).rejects.toThrow("Private")
-    expect(kabigonLoadImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).not.toHaveBeenCalled()
   })
 })

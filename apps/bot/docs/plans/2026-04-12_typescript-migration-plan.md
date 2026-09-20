@@ -49,7 +49,7 @@ Each Telegram chat receives an isolated Pi session directory beneath `.telegrama
 - [x] Implement validated environment settings and redacted logging; evidence: Vitest covers defaults, CSV parsing, invalid ranges, and secret redaction.
 - [x] Implement Pi model runtime, Telegram system prompt/resource loading, and isolated per-chat session registry; evidence: Pi session smoke test plus registry tests cover chat isolation, reuse, steering, follow-up, cancellation, reset, and passive context.
 - [x] Implement Telegram private/group routing, commands, reply context, image input, status editing, output chunking, and allowlists; evidence: update-level grammY tests cover private routing, allowlist rejection, passive groups, concurrent cancellation, image failures, and Morsel long replies.
-- [x] Port safe URL extraction and proactive handling; evidence: Pi tool rejects unsafe schemes/addresses/redirects, tests bounded built-in extraction, and falls back to the local TypeScript kabigon package for failures, blocker pages, and source-specific URLs.
+- [x] Port safe URL extraction and proactive handling; evidence: Pi tool rejects unsafe schemes/addresses/redirects, tests bounded built-in extraction, and falls back to the local TypeScript URL content package for failures, blocker pages, and source-specific URLs.
 - [ ] Port document conversion behind a bounded adapter; acceptance: supported-type, size, timeout, truncation, and failure tests pass.
 - [ ] Port image generation through `pi-ai` where supported and retain an OpenAI-compatible fallback only when required; acceptance: disabled/configuration/provider/error paths pass tests.
 - [x] Port Morsel publishing and long-reply routing; evidence: rich Pi tool and smart Telegram routing are implemented; tests cover publish payloads, capability URL validation, Instant View hash, and missing configuration.
@@ -75,7 +75,7 @@ The Python application remains untouched and deployable throughout migration. Ty
 - [x] `npm run format:check`
 - [x] `npm run lint`
 - [x] `npm run typecheck`
-- [x] `npm test` (46 bot tests and 97 kabigon tests)
+- [x] `npm test` (46 bot tests and 97 URL content tests)
 - [x] `npm run build`
 - [ ] TypeScript container build succeeds. Docker CLI is unavailable in the current WSL environment, so this requires external verification.
 - [ ] README documents local run, configuration, session-format difference, migration, and rollback.
