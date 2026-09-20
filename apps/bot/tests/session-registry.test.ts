@@ -310,6 +310,111 @@ describe("ChatSessionRegistry", () => {
     expect(session.steering).toEqual(["unmapped with quoted bot context"])
   })
 
+  it.each(["completed", "failed", "reset"])(
+    "waits for response capture after Pi becomes idle (%s)",
+    async (outcome) => {
+      const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+      const session = new FakeSession()
+      const registry = new ChatSessionRegistry(async () => session, root, logger, {
+        replyTreeEnabled: true,
+      })
+      const first = await registry.submit(1, "first")
+      const firstMessages = [...session.messages]
+      await registry.recordDelivery(
+        1,
+        first.kind === "completed" ? first.checkpoint : undefined,
+        [100],
+      )
+
+      const accepted = deferred()
+      const agentFinished = deferred()
+      const idle = deferred()
+      const promptReturned = deferred()
+      const promptNormally = session.prompt.bind(session)
+      session.prompt = vi.fn(async (text: string) => {
+        if (text !== "running") return promptNormally(text)
+        session.prompts.push(text)
+        session.messages.push({ role: "user", content: text, timestamp: Date.now() })
+        session.isStreaming = true
+        await agentFinished.promise
+        session.messages.push(assistant("AI: running"))
+        session.leafId = "entry-2"
+        session.entries.add("entry-2")
+        session.isStreaming = false
+        idle.resolve()
+        // Pi signals idle before prompt() and the registry's result capture unwind.
+        await promptReturned.promise
+        if (outcome === "failed") throw new Error("prompt failed")
+      })
+      session.waitForIdle = vi.fn(() => idle.promise)
+      session.navigateTree = vi.fn(async (targetId: string) => {
+        session.navigated.push(targetId)
+        session.leafId = targetId
+        session.messages = [...firstMessages]
+        return { cancelled: false }
+      })
+
+      const running = registry.submit(1, "running", { onAccepted: accepted.resolve })
+      const runningOutcome = running.catch((error: unknown) => error)
+      await accepted.promise
+      // Unmapped input still goes to Pi's queues while capture is pending.
+      await expect(registry.submit(1, "steer")).resolves.toMatchObject({ kind: "steered" })
+      await expect(registry.submit(1, "follow", { intent: "followUp" })).resolves.toMatchObject({
+        kind: "followed_up",
+      })
+      const branchAccepted = vi.fn()
+      const branch = registry.submit(1, "branch", {
+        replyToBotMessageId: 100,
+        onAccepted: branchAccepted,
+      })
+      const branchOutcome = branch.catch((error: unknown) => error)
+
+      // Let branch restoration reach its wait, then expose the idle-before-return window.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      agentFinished.resolve()
+      await idle.promise
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const navigatedWhileCapturing = [...session.navigated]
+      const acceptedWhileCapturing = branchAccepted.mock.calls.length
+      const promptsWhileCapturing = [...session.prompts]
+
+      if (outcome === "reset") await registry.reset(1)
+      promptReturned.resolve()
+      const [runningResult, branchResult] = await Promise.all([runningOutcome, branchOutcome])
+      expect(navigatedWhileCapturing).toEqual([])
+      expect(acceptedWhileCapturing).toBe(0)
+      expect(promptsWhileCapturing).toEqual(["first", "running"])
+      if (outcome === "failed") {
+        expect(runningResult).toEqual(new Error("prompt failed"))
+      } else {
+        expect(runningResult).toMatchObject({
+          kind: "completed",
+          text: "AI: running",
+          checkpoint: { entryId: "entry-2" },
+        })
+      }
+      if (outcome === "reset") {
+        expect(branchResult).toEqual(new Error("Pi session access was invalidated by reset"))
+      } else {
+        expect(branchResult).toMatchObject({ kind: "completed", text: "AI: branch" })
+      }
+      expect(session.navigated).toEqual(outcome === "reset" ? [] : ["entry-1"])
+      expect(session.listeners.size).toBe(0)
+
+      if (outcome === "completed") {
+        const result = await running
+        await registry.recordDelivery(
+          1,
+          result.kind === "completed" ? result.checkpoint : undefined,
+          [102],
+        )
+        await registry.submit(1, "reply to running", { replyToBotMessageId: 102 })
+        expect(session.navigated).toEqual(["entry-1", "entry-2"])
+      }
+      await registry.dispose()
+    },
+  )
+
   it("keeps successful delivery when reply-index persistence fails", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
@@ -372,6 +477,14 @@ describe("ChatSessionRegistry", () => {
     expect(afterReset.navigated).toEqual([])
   })
 })
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 
 function assistant(text: string): AgentMessage {
   return {

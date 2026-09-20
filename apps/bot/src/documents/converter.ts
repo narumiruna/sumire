@@ -149,6 +149,7 @@ export async function runAnyDocChild(
     let stderrBytes = 0
     let settled = false
     let timedOut = false
+    let processError: Error | undefined
 
     const timer = setTimeout(() => {
       timedOut = true
@@ -176,6 +177,10 @@ export async function runAnyDocChild(
       settled = true
       if (timedOut) {
         reject(new DocumentConversionError("timeout", "Document conversion timed out"))
+        return
+      }
+      if (processError) {
+        reject(processError)
         return
       }
       if (stdoutBytes > maxStdoutBytes) {
@@ -208,11 +213,10 @@ export async function runAnyDocChild(
     child.stdin.end(Buffer.from(bytes))
 
     function finishWithError(error: Error): void {
-      clearTimeout(timer)
-      if (settled) return
-      settled = true
+      if (settled || processError) return
+      processError = error
       child.kill("SIGKILL")
-      reject(error)
+      // Keep conversion capacity until close confirms that the child has stopped.
     }
   })
 }

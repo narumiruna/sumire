@@ -64,6 +64,7 @@ export class ChatSessionRegistry {
   readonly #sessions = new Map<number, SessionHandle>()
   readonly #creating = new Map<number, Promise<SessionHandle>>()
   readonly #generations = new Map<number, number>()
+  readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
 
@@ -123,6 +124,14 @@ export class ChatSessionRegistry {
     const unsubscribe = options.onProgress
       ? session.subscribe(progressListener(options.onProgress, this.logger))
       : undefined
+    let finishCapture = () => {}
+    const capture = {
+      generation,
+      done: new Promise<void>((resolve) => {
+        finishCapture = resolve
+      }),
+    }
+    this.#activePromptCaptures.set(chatId, capture)
     try {
       const submission = session.prompt(
         submissionPrompt,
@@ -140,6 +149,10 @@ export class ChatSessionRegistry {
       }
     } finally {
       unsubscribe?.()
+      if (this.#activePromptCaptures.get(chatId) === capture) {
+        this.#activePromptCaptures.delete(chatId)
+      }
+      finishCapture()
     }
   }
 
@@ -242,6 +255,13 @@ export class ChatSessionRegistry {
       !session.sessionManager.getEntry(target.entryId)
     ) {
       return false
+    }
+    // Pi can signal idle before prompt() unwinds. Preserve the finishing response
+    // and checkpoint before navigation replaces the shared messages and leaf.
+    const activeCapture = this.#activePromptCaptures.get(chatId)
+    if (activeCapture?.generation === generation) {
+      await activeCapture.done
+      this.#assertCurrentGeneration(chatId, generation)
     }
     if (!session.isIdle) await session.waitForIdle()
     this.#assertCurrentGeneration(chatId, generation)
