@@ -23,15 +23,13 @@ WORKDIR /app
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/kabigon /app/.telegramagent /app/.events /app/.agents \
+    && mkdir -p /app/apps/bot /app/packages/kabigon /app/.telegramagent /app/.events /app/skills \
     && chown -R app:app /app
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
 
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV TELEGRAMAGENT_PROJECT_ROOT=/app
-
 RUN ./node_modules/.bin/playwright install --with-deps chromium \
     && chown -R app:app /ms-playwright
 

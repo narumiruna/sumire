@@ -22,9 +22,6 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Prepare environment file
-        env:
-          MORSEL_API_KEY: ${{ secrets.MORSEL_API_KEY }}
-          TELEGRAM_INSTANT_VIEW_RHASH: ${{ vars.TELEGRAM_INSTANT_VIEW_RHASH }}
         run: |
           install -m 600 /dev/null .env
           {
@@ -33,11 +30,8 @@ jobs:
             echo "OPENAI_BASE_URL=${{vars.OPENAI_BASE_URL}}"
             echo "OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}"
             echo "OPENAI_MODEL=${{vars.OPENAI_MODEL}}"
-            echo "LOGFIRE_TOKEN=${{secrets.LOGFIRE_TOKEN}}"
-            echo "LOGFIRE_ENVIRONMENT=${{vars.LOGFIRE_ENVIRONMENT}}"
             echo "FIRECRAWL_API_KEY=${{secrets.FIRECRAWL_API_KEY}}"
             echo "MORSEL_API_KEY=${{secrets.MORSEL_API_KEY}}"
-            echo "TELEGRAM_INSTANT_VIEW_RHASH=${{vars.TELEGRAM_INSTANT_VIEW_RHASH}}"
           } >> .env
 
       - name: Deploy TypeScript bot with Docker Compose

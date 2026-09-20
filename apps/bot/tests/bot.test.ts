@@ -358,11 +358,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const publish = vi.fn(async () => pendingPublication)
-    const settings = loadSettings({
-      BOT_TOKEN: "test-token",
-      MORSEL_API_KEY: "secret",
-      MORSEL_LONG_REPLY_THRESHOLD: "5",
-    })
+    const settings = {
+      ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      morselLongReplyThreshold: 5,
+    }
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       botInfo,
       morselPublisher: { isConfigured: true, publish },
@@ -548,7 +547,10 @@ describe("Telegram bot update routing", () => {
 
   it("reports oversized image errors without invoking the agent", async () => {
     const sessions = createSessions()
-    const settings = loadSettings({ BOT_TOKEN: "test-token", BOT_IMAGE_MAX_BYTES: "10" })
+    const settings = {
+      ...loadSettings({ BOT_TOKEN: "test-token" }),
+      botImageMaxBytes: 10,
+    }
     const telegram = createTelegramAgentBot(settings, sessions, logger, { botInfo })
     const calls = installApiMock(telegram.bot)
     const update = privateMessage(6, "看圖")
@@ -570,11 +572,10 @@ describe("Telegram bot update routing", () => {
       submit: vi.fn(async () => ({ kind: "completed" as const, text: "這是一段很長的回覆內容" })),
     })
     const publish = vi.fn(async () => "https://morsel.example/s/share")
-    const settings = loadSettings({
-      BOT_TOKEN: "test-token",
-      MORSEL_API_KEY: "secret",
-      MORSEL_LONG_REPLY_THRESHOLD: "5",
-    })
+    const settings = {
+      ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      morselLongReplyThreshold: 5,
+    }
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       botInfo,
       morselPublisher: { isConfigured: true, publish },

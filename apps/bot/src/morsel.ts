@@ -5,7 +5,6 @@ import type { Settings } from "./config/settings.js"
 import type { Logger } from "./logging.js"
 
 const shareCapabilityPattern = /^[A-Za-z0-9_-]{43}$/u
-const telegramRhashPattern = /^[A-Za-z0-9_-]{1,128}$/u
 
 export class MorselPublishError extends Error {}
 
@@ -19,17 +18,10 @@ export class MorselPublisher {
       timeoutMs: number
       expiresInSeconds: number
       telegramInstantView: boolean
-      telegramInstantViewRhash?: string
       fetchImplementation?: typeof fetch
     },
   ) {
     this.#baseUrl = validateMorselOrigin(baseUrl)
-    if (
-      options.telegramInstantViewRhash &&
-      !telegramRhashPattern.test(options.telegramInstantViewRhash)
-    ) {
-      throw new Error("TELEGRAM_INSTANT_VIEW_RHASH must contain 1-128 URL-safe characters")
-    }
   }
 
   get isConfigured(): boolean {
@@ -72,11 +64,7 @@ export class MorselPublisher {
     }
     if (!isShareMetadata(metadata))
       throw new MorselPublishError("Morsel returned invalid share metadata")
-    const shareUrl = validateShareUrl(metadata.share_url, this.#baseUrl)
-    if (this.options.telegramInstantView && this.options.telegramInstantViewRhash) {
-      return `${shareUrl}?tg_rhash=${this.options.telegramInstantViewRhash}`
-    }
-    return shareUrl
+    return validateShareUrl(metadata.share_url, this.#baseUrl)
   }
 }
 
@@ -85,9 +73,6 @@ export function createMorselPublisher(settings: Settings): MorselPublisher {
     timeoutMs: Math.round(settings.morselTimeoutSeconds * 1_000),
     expiresInSeconds: settings.morselShareExpiresInSeconds,
     telegramInstantView: settings.morselTelegramInstantView,
-    ...(settings.morselTelegramInstantViewRhash
-      ? { telegramInstantViewRhash: settings.morselTelegramInstantViewRhash }
-      : {}),
   })
 }
 

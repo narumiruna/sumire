@@ -88,7 +88,6 @@ uvx kabigon --loader youtube,youtube-ytdlp https://www.youtube.com/watch?v=dQw4w
 ## Configuration notes
 
 - `FIRECRAWL_API_KEY` is required for the `firecrawl` loader.
-- `FFMPEG_PATH` can point to a custom FFmpeg binary for Whisper and yt-dlp transcription loaders.
 
 ## Troubleshooting
 

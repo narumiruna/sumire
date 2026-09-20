@@ -6,12 +6,10 @@ services:
     image: telegramagent-typescript:local
     env_file:
       - .env
-    environment:
-      TELEGRAMAGENT_PROJECT_ROOT: /app
     init: true
     restart: unless-stopped
     volumes:
-      - ./.agents:/app/.agents:ro
+      - ./skills:/app/skills:ro
       - events:/app/.events
       - state:/app/.telegramagent
       - ./SOUL.md:/app/SOUL.md:ro

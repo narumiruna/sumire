@@ -13,7 +13,7 @@ Monorepo for Telegram AI bot implementations and shared URL-loading packages.
 Shared runtime resources stay at the repository root:
 
 - `SOUL.md`: bot persona and runtime context.
-- `.agents/skills`: Agent Skills loaded by the bot.
+- `skills/`: Agent Skills loaded by the bot.
 - `.events` and `.telegramagent`: ignored runtime state.
 - `.env`: ignored deployment and local configuration; copy it from `.env.example` for the TypeScript bot.
 

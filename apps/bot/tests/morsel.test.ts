@@ -20,30 +20,11 @@ describe("MorselPublisher", () => {
       timeoutMs: 1_000,
       expiresInSeconds: 60,
       telegramInstantView: true,
-      telegramInstantViewRhash: "preview-hash",
       fetchImplementation,
     })
 
     await expect(publisher.publish("# 標題\n\n內容")).resolves.toBe(
-      `https://morsel.example/s/${capability}?tg_rhash=preview-hash`,
-    )
-  })
-
-  it("appends the Instant View hash inside fragment-form share routes", async () => {
-    const publisher = new MorselPublisher("https://morsel.example/", "secret", {
-      timeoutMs: 1_000,
-      expiresInSeconds: 60,
-      telegramInstantView: true,
-      telegramInstantViewRhash: "preview-hash",
-      fetchImplementation: async () =>
-        Response.json(
-          { id: "share", share_url: `https://morsel.example/#/s/${capability}` },
-          { status: 201 },
-        ),
-    })
-
-    await expect(publisher.publish("content")).resolves.toBe(
-      `https://morsel.example/#/s/${capability}?tg_rhash=preview-hash`,
+      `https://morsel.example/s/${capability}`,
     )
   })
 

@@ -60,7 +60,7 @@ npm run build
 npm start
 ```
 
-The scripts load `../../.env` first and then `./.env` as an optional override. Paths such as `SOUL.md`, `.agents`, and `.telegramagent` resolve against the repository root by default. Override that location with `TELEGRAMAGENT_PROJECT_ROOT`.
+The scripts load `../../.env` first and then `./.env` as an optional override. Paths such as `SOUL.md`, `skills`, and `.telegramagent` resolve against the repository root. Skills are always loaded from `./skills`.
 
 For development:
 
@@ -93,37 +93,20 @@ npm run check:write
 Each chat uses a Pi-native session directory:
 
 ```text
-BOT_SESSION_LOG_DIR/<chat-id>/pi/*.jsonl
+.telegramagent/sessions/<chat-id>/pi/*.jsonl
 ```
 
 Pi owns the agent session lifecycle and transcript format. The TypeScript service does not read or rewrite Python `session-v2.jsonl` files. `/reset` removes only that chat's TypeScript Pi directory.
 
 ## Model configuration
 
-The existing variables remain the primary configuration:
-
-```env
-BOT_TOKEN=...
-OPENAI_API_KEY=...
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5.6-luna
-```
-
-The runtime registers these as an explicit Pi OpenAI-compatible provider. Coding tools are disabled. Only approved custom tools are exposed; the public URL loader is enabled by `BOT_PROACTIVE_ENABLED`, and Morsel is enabled by its existing mode and API-key settings.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader is always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured.
 
 ## URL loading and kabigon
 
 `load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@telegram-agent/kabigon` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. Kabigon handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
 
-Relevant settings:
-
-```env
-BOT_PROACTIVE_URL_TIMEOUT_SECONDS=15
-BOT_KABIGON_TIMEOUT_SECONDS=180
-BOT_PROACTIVE_MAX_EXTRACTED_CHARS=12000
-```
-
-Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before kabigon is invoked.
+The built-in loader uses a 15-second timeout and 12,000-character output limit; kabigon uses a 180-second timeout. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before kabigon is invoked.
 
 ## Docker
 

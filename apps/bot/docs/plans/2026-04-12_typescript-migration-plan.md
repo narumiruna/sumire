@@ -32,7 +32,7 @@ flowchart LR
     ROUTER --> MEDIA[URL / image / document adapters]
 ```
 
-Each Telegram chat receives an isolated Pi session directory beneath `BOT_SESSION_LOG_DIR/<chat-id>/pi`. `SessionManager.continueRecent()` restores that chat only. The registry serializes session creation and delegates active-run messages to Pi's `steer` or `followUp` queues.
+Each Telegram chat receives an isolated Pi session directory beneath `.telegramagent/sessions/<chat-id>/pi`. `SessionManager.continueRecent()` restores that chat only. The registry serializes session creation and delegates active-run messages to Pi's `steer` or `followUp` queues.
 
 `DefaultResourceLoader` loads enabled Agent Skills but excludes maintainer-facing `AGENTS.md`. A Telegram-specific system prompt incorporates `SOUL.md` and capability information.
 

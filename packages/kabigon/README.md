@@ -106,9 +106,9 @@ PDF parsing uses `pdf-parse`. Remote targets must return `application/pdf`; loca
 
 YouTube captions use `youtube-transcript`. The `youtube-ytdlp`, `ytdlp`, and `reel` loaders need external commands:
 
-- `yt-dlp`, or `YTDLP_PATH`
-- OpenAI Whisper's `whisper` CLI, or `WHISPER_PATH`
-- FFmpeg, optionally located through `FFMPEG_PATH`
+- `yt-dlp`
+- OpenAI Whisper's `whisper` CLI
+- FFmpeg
 
 The transcription loader writes only to an isolated temporary directory and removes it after each attempt.
 

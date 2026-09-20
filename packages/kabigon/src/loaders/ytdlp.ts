@@ -92,7 +92,7 @@ export class YtdlpLoader implements Loader {
     const directory = await mkdtemp(join(tmpdir(), "kabigon-audio-"))
     const audioPath = join(directory, "audio.mp3")
     try {
-      const ytdlp = this.options.ytdlpPath ?? process.env.YTDLP_PATH ?? "yt-dlp"
+      const ytdlp = this.options.ytdlpPath ?? "yt-dlp"
       const maxMediaBytes = this.options.maxMediaBytes ?? DEFAULT_MAX_MEDIA_BYTES
       const maxDurationSeconds =
         this.options.maxDurationSeconds ?? DEFAULT_MAX_MEDIA_DURATION_SECONDS
@@ -112,7 +112,6 @@ export class YtdlpLoader implements Loader {
         "--output",
         join(directory, "audio.%(ext)s"),
       ]
-      if (process.env.FFMPEG_PATH) downloadArgs.push("--ffmpeg-location", process.env.FFMPEG_PATH)
       downloadArgs.push(url)
       const commandRunner = this.options.commandRunner ?? runCommand
       const downloadTimeoutMs = this.options.downloadTimeoutMs ?? DEFAULT_YTDLP_DOWNLOAD_TIMEOUT_MS
@@ -131,7 +130,7 @@ export class YtdlpLoader implements Loader {
           )
         }
         if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-          throw new MissingDependencyError("ytdlp", ytdlp, "Install yt-dlp or set YTDLP_PATH.")
+          throw new MissingDependencyError("ytdlp", ytdlp, "Install yt-dlp.")
         }
         throw error
       }
@@ -143,7 +142,7 @@ export class YtdlpLoader implements Loader {
         )
       }
 
-      const whisper = this.options.whisperPath ?? process.env.WHISPER_PATH ?? "whisper"
+      const whisper = this.options.whisperPath ?? "whisper"
       const transcriptionTimeoutMs =
         this.options.transcriptionTimeoutMs ?? DEFAULT_WHISPER_TIMEOUT_MS
       const transcriptionTimeout = AbortSignal.timeout(transcriptionTimeoutMs)
@@ -175,11 +174,7 @@ export class YtdlpLoader implements Loader {
           )
         }
         if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-          throw new MissingDependencyError(
-            "ytdlp",
-            whisper,
-            "Install openai-whisper or set WHISPER_PATH.",
-          )
+          throw new MissingDependencyError("ytdlp", whisper, "Install openai-whisper.")
         }
         throw error
       }

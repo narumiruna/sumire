@@ -20,9 +20,6 @@ describe("createPiSessionFactory", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     const settings = loadSettings(
       {
-        BOT_SESSION_LOG_DIR: ".sessions",
-        BOT_SKILLS_DIR: ".agents/skills",
-        BOT_AGENT_CONTEXT_TOKEN_BUDGET: "10",
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
@@ -36,10 +33,10 @@ describe("createPiSessionFactory", () => {
       expect(session.model).toMatchObject({
         provider: "telegramagent-openai",
         id: "test-model",
-        contextWindow: 10,
-        maxTokens: 2,
+        contextWindow: 100_000,
+        maxTokens: 20_000,
       })
-      expect(session.sessionFile).toContain(path.join(".sessions", "123", "pi"))
+      expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
       expect(session.getActiveToolNames()).toEqual(["load_public_url"])
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
     } finally {
