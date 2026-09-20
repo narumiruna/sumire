@@ -1,6 +1,5 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { createPublicUrlLoader } from "./actions/public-url.js"
 import { createPiSessionFactory } from "./agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "./agent/session-registry.js"
 import { loadSettings } from "./config/settings.js"
@@ -19,9 +18,8 @@ export async function startApplication(): Promise<void> {
     settings.logfireToken,
   )
   try {
-    const publicUrlLoader = createPublicUrlLoader(settings)
     const documentConverter = await createConfiguredDocumentConverter(settings)
-    const piFactory = await createPiSessionFactory(settings, logger, publicUrlLoader)
+    const piFactory = await createPiSessionFactory(settings, logger)
     const sessions = new ChatSessionRegistry(
       asSessionCreator(piFactory),
       settings.botSessionLogDir,
@@ -34,7 +32,6 @@ export async function startApplication(): Promise<void> {
     )
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       ...(documentConverter ? { documentConverter } : {}),
-      publicUrlLoader,
     })
 
     let stopping = false

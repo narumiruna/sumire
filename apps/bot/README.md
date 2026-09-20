@@ -8,6 +8,7 @@ Primary Sumire service used by CI/CD, isolated under `./apps/bot`; the Python im
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
 - `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
+- `@narumitw/sumire-url-tool`: repository-owned Pi package for agent-driven public URL loading.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
 - `@firecrawl/anydoc`: isolated local document-to-Markdown conversion without hosted OCR.
@@ -28,7 +29,6 @@ Available now:
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
-- conservative proactive URL-only/summary routing with short in-memory follow-ups
 - Morsel rich-rendering tool and smart long-reply routing
 - live multi-step progress in the pending Telegram reply
 - Telegram HTML rendering and 4096-character chunking
@@ -119,11 +119,11 @@ The production image currently qualifies the AnyDoc native adapter on Linux x86_
 
 ## URL content loading
 
-`load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@narumitw/sumire-url-content` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
+The [`@narumitw/sumire-url-tool`](../../packages/url-tool/README.md) Pi extension registers `load_public_url`. It validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@narumitw/sumire-url-content` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
 
-The built-in loader uses a configurable timeout and output limit; the source-aware loader has a separate configurable timeout. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before the source-aware loader is invoked.
+`BOT_URL_TIMEOUT_SECONDS` and `BOT_URL_MAX_EXTRACTED_CHARS` control the built-in loader's timeout and output limit; `BOT_URL_CONTENT_TIMEOUT_SECONDS` controls the source-aware timeout. `BOT_URL_ALLOWED_SCHEMES` can restrict loading to HTTP, HTTPS, or both. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before the source-aware loader is invoked.
 
-When `BOT_PROACTIVE_ENABLED=true`, a URL-only message or explicit read/summary request is loaded once by the same safe service before Pi runs. A small set of short follow-ups, including `go`, `繼續`, and `抓抓看`, can reuse the last URL until its bounded in-memory TTL expires. Pending URLs are not persisted and are cleared by restart or `/reset`. Slash commands, multiple URLs, and mixed arbitrary questions stay on the normal Pi path; `load_public_url` remains available to Pi even when proactive routing is disabled.
+Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `load_public_url`; the Telegram router does not prefetch URLs or retain pending URL state. Tool results and follow-up context use Pi's native session lifecycle.
 
 ## Docker
 
@@ -136,8 +136,8 @@ docker compose logs -f sumire
 docker compose down
 ```
 
-The image builds the local URL content workspace package, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
+The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
 
 ## Feature controls
 
-The root [`.env.example`](../../.env.example) lists all document, reply-tree, proactive URL, and image flags and bounds. Each feature can be disabled independently without disabling ordinary Pi chat. Reply indexes and pending URLs use bounded retention: reply indexes are durable per chat, while pending URLs are intentionally in-memory only.
+The root [`.env.example`](../../.env.example) lists document, reply-tree, and image flags plus URL tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.

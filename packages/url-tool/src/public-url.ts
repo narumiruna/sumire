@@ -11,8 +11,6 @@ import {
 import ipaddr from "ipaddr.js"
 import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
 
-import type { Settings } from "../config/settings.js"
-
 const redirectStatuses = new Set([301, 302, 303, 307, 308])
 const acceptedContentTypes = [
   "text/",
@@ -32,16 +30,23 @@ export interface PublicUrlLoader {
   load(url: string, signal?: AbortSignal): Promise<LoadedUrl>
 }
 
-export function createPublicUrlLoader(settings: Settings): PublicUrlLoader {
+export interface PublicUrlLoaderOptions {
+  allowedSchemes?: ReadonlySet<string>
+  maxChars?: number
+  timeoutMs?: number
+  urlContentTimeoutSeconds?: number
+}
+
+export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): PublicUrlLoader {
+  const config = {
+    allowedSchemes: options.allowedSchemes ?? new Set(["http", "https"]),
+    maxChars: options.maxChars ?? 12_000,
+    timeoutMs: options.timeoutMs ?? 15_000,
+    urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
+  }
   return {
     load(url, signal) {
-      return loadPublicUrl(url, {
-        allowedSchemes: settings.botProactiveAllowedSchemes,
-        maxChars: settings.botProactiveMaxExtractedChars,
-        timeoutMs: Math.round(settings.botProactiveUrlTimeoutSeconds * 1_000),
-        urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
-        ...(signal ? { signal } : {}),
-      })
+      return loadPublicUrl(url, { ...config, ...(signal ? { signal } : {}) })
     },
   }
 }

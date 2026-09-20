@@ -69,13 +69,10 @@ const environmentSchema = z.object({
   BOT_REPLY_TREE_ENABLED: envBoolean(true),
   BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: envInteger(1_000, 1, 100_000),
   BOT_REPLY_TREE_MAX_INDEX_BYTES: envInteger(1_000_000, 1_024, 100_000_000),
-  BOT_PROACTIVE_ENABLED: envBoolean(true),
-  BOT_PROACTIVE_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
+  BOT_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
   BOT_URL_CONTENT_TIMEOUT_SECONDS: envNumber(180, 0.1, 3_600),
-  BOT_PROACTIVE_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
-  BOT_PROACTIVE_PENDING_TTL_SECONDS: envNumber(900, 1, 86_400),
-  BOT_PROACTIVE_PENDING_MAX_CHATS: envInteger(1_000, 1, 100_000),
-  BOT_PROACTIVE_ALLOWED_SCHEMES: allowedSchemes,
+  BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
+  BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
   BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
   BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
   LOGFIRE_TOKEN: optionalString,
@@ -105,13 +102,10 @@ export interface Settings {
   botReplyTreeEnabled: boolean
   botReplyTreeMaxRecordsPerChat: number
   botReplyTreeMaxIndexBytes: number
-  botProactiveEnabled: boolean
-  botProactiveUrlTimeoutSeconds: number
+  botUrlTimeoutSeconds: number
   botUrlContentTimeoutSeconds: number
-  botProactiveMaxExtractedChars: number
-  botProactivePendingTtlSeconds: number
-  botProactivePendingMaxChats: number
-  botProactiveAllowedSchemes: ReadonlySet<string>
+  botUrlMaxExtractedChars: number
+  botUrlAllowedSchemes: ReadonlySet<string>
   botSessionLogDir: string
   botAgentMaxAttempts: number
   botAgentRetryBaseDelaySeconds: number
@@ -157,13 +151,10 @@ export function loadSettings(
     botReplyTreeEnabled: parsed.BOT_REPLY_TREE_ENABLED,
     botReplyTreeMaxRecordsPerChat: parsed.BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT,
     botReplyTreeMaxIndexBytes: parsed.BOT_REPLY_TREE_MAX_INDEX_BYTES,
-    botProactiveEnabled: parsed.BOT_PROACTIVE_ENABLED,
-    botProactiveUrlTimeoutSeconds: parsed.BOT_PROACTIVE_URL_TIMEOUT_SECONDS,
+    botUrlTimeoutSeconds: parsed.BOT_URL_TIMEOUT_SECONDS,
     botUrlContentTimeoutSeconds: parsed.BOT_URL_CONTENT_TIMEOUT_SECONDS,
-    botProactiveMaxExtractedChars: parsed.BOT_PROACTIVE_MAX_EXTRACTED_CHARS,
-    botProactivePendingTtlSeconds: parsed.BOT_PROACTIVE_PENDING_TTL_SECONDS,
-    botProactivePendingMaxChats: parsed.BOT_PROACTIVE_PENDING_MAX_CHATS,
-    botProactiveAllowedSchemes: parsed.BOT_PROACTIVE_ALLOWED_SCHEMES,
+    botUrlMaxExtractedChars: parsed.BOT_URL_MAX_EXTRACTED_CHARS,
+    botUrlAllowedSchemes: parsed.BOT_URL_ALLOWED_SCHEMES,
     botSessionLogDir: path.resolve(root, ".telegramagent/sessions"),
     botAgentMaxAttempts: 3,
     botAgentRetryBaseDelaySeconds: 1,

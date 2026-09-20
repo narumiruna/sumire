@@ -7,20 +7,11 @@ export interface TelegramActor {
   is_bot?: boolean
 }
 
-export interface TelegramMessageEntityLike {
-  type: string
-  offset: number
-  length: number
-  url?: string
-}
-
 export interface TelegramMessageLike {
   message_id: number
   date?: number
   text?: string
   caption?: string
-  entities?: TelegramMessageEntityLike[]
-  caption_entities?: TelegramMessageEntityLike[]
   from?: TelegramActor
   sender_chat?: TelegramActor
   photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>

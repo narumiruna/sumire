@@ -7,8 +7,8 @@ import {
   fetchPublicUrl,
   isPublicIp,
   loadPublicUrl,
-} from "../src/actions/public-url.js"
-import { buildUrlTools } from "../src/actions/url-tool.js"
+} from "../src/public-url.js"
+import { createUrlTool } from "../src/url-tool.js"
 
 const options = {
   allowedSchemes: new Set(["http", "https"]),
@@ -17,7 +17,7 @@ const options = {
 }
 
 describe("public URL loading", () => {
-  it("keeps the Pi tool as a thin adapter over the shared loader", async () => {
+  it("loads only when the agent executes the tool and forwards cancellation", async () => {
     const load = vi.fn(async () => ({
       url: "https://example.com",
       finalUrl: "https://example.com",
@@ -26,16 +26,17 @@ describe("public URL loading", () => {
       text: "content",
       truncated: false,
     }))
-    const [tool] = buildUrlTools({ load })
-    expect(tool).toBeDefined()
-    const result = await tool?.execute(
+    const tool = createUrlTool({ load })
+    expect(load).not.toHaveBeenCalled()
+    const signal = new AbortController().signal
+    const result = await tool.execute(
       "call",
       { url: "https://example.com" },
+      signal,
       undefined,
       undefined as never,
-      undefined as never,
     )
-    expect(load).toHaveBeenCalledWith("https://example.com", undefined)
+    expect(load).toHaveBeenCalledWith("https://example.com", signal)
     expect(result).toMatchObject({ details: { text: "content" } })
   })
 

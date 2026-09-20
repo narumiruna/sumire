@@ -1021,152 +1021,80 @@ describe("Telegram bot update routing", () => {
     )
   })
 
-  it("proactively loads URL-only messages and reuses pending URLs for short follow-ups", async () => {
+  it.each([
+    "https://youtu.be/example",
+    "請摘要 https://example.com/article",
+    "https://127.0.0.1/private",
+    "go",
+    "開始",
+    "繼續",
+    "抓抓看",
+    "幫我抓",
+    "摘要",
+  ])("passes URL requests and short follow-ups to the agent unchanged: %s", async (text) => {
     const sessions = createSessions()
-    const publicUrlLoader = {
-      load: vi.fn(async (url: string) => ({
-        url,
-        finalUrl: url,
-        source: "url-content" as const,
-        contentType: "transcript",
-        text: "video transcript",
-        truncated: false,
-        loaderId: "youtube-transcript",
-      })),
-    }
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, publicUrlLoader },
-    )
-    installApiMock(telegram.bot)
-    const url = "https://youtu.be/example"
-    const update = privateMessage(27, url)
-    if (update.message) update.message.entities = [{ offset: 0, length: url.length, type: "url" }]
-    await telegram.bot.handleUpdate(update)
-    await telegram.bot.handleUpdate(privateMessage(28, "繼續"))
-
-    expect(publicUrlLoader.load).toHaveBeenCalledTimes(2)
-    expect(publicUrlLoader.load).toHaveBeenNthCalledWith(1, url)
-    expect(sessions.submit).toHaveBeenNthCalledWith(
-      1,
-      7,
-      expect.stringContaining("video transcript"),
-      expect.any(Object),
-    )
-  })
-
-  it("proactively handles an addressed group URL and clears pending URLs on reset", async () => {
-    const sessions = createSessions()
-    const publicUrlLoader = {
-      load: vi.fn(async (url: string) => ({
-        url,
-        finalUrl: url,
-        source: "url-content" as const,
-        contentType: "article",
-        text: "group article",
-        truncated: false,
-        loaderId: "readability",
-      })),
-    }
-    const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
-      sessions,
-      logger,
-      { botInfo, publicUrlLoader },
+      { botInfo },
     )
     const calls = installApiMock(telegram.bot)
-    const url = "https://example.com/group"
-    const groupUpdate: Update = {
-      update_id: 32,
-      message: {
-        message_id: 32,
-        date: 1_700_000_000,
-        chat: { id: -100, type: "supergroup", title: "測試群組" },
-        from: { id: 7, is_bot: false, first_name: "Alice" },
-        text: `@test_bot ${url}`,
-        entities: [
-          { offset: 0, length: 9, type: "mention" },
-          { offset: 10, length: url.length, type: "url" },
-        ],
-      },
-    }
-    await telegram.bot.handleUpdate(groupUpdate)
+    await telegram.bot.handleUpdate(privateMessage(27, text))
 
-    const reset = privateMessage(33, "/reset")
-    if (reset.message) reset.message.entities = [{ offset: 0, length: 6, type: "bot_command" }]
-    await telegram.bot.handleUpdate(reset)
-    await telegram.bot.handleUpdate(privateMessage(34, "繼續"))
-
-    expect(publicUrlLoader.load).toHaveBeenCalledOnce()
-    expect(publicUrlLoader.load).toHaveBeenCalledWith(url)
-    expect(sessions.submit).toHaveBeenCalledTimes(1)
-    expect(calls.at(-1)?.payload.text).toBe("目前沒有可繼續處理的網址。")
+    expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, text, expect.any(Object))
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls.at(-1)?.payload.text).toBe("AI 回覆")
   })
 
-  it("does not submit a proactive load that finishes after reset", async () => {
-    let finishLoad:
-      | ((value: {
-          url: string
-          finalUrl: string
-          source: "built-in"
-          contentType: string
-          text: string
-          truncated: boolean
-        }) => void)
-      | undefined
-    const load = new Promise<{
-      url: string
-      finalUrl: string
-      source: "built-in"
-      contentType: string
-      text: string
-      truncated: boolean
-    }>((resolve) => {
-      finishLoad = resolve
-    })
+  it("routes addressed group URLs and follow-ups after reset through the agent", async () => {
     const sessions = createSessions()
-    const publicUrlLoader = { load: vi.fn(async () => load) }
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, publicUrlLoader },
+      { botInfo },
     )
     installApiMock(telegram.bot)
-    const urlUpdate = privateMessage(35, "https://example.com/slow")
-    const handling = telegram.bot.handleUpdate(urlUpdate)
-    await vi.waitFor(() => expect(publicUrlLoader.load).toHaveBeenCalledOnce())
-    const reset = privateMessage(36, "/reset")
-    if (reset.message) reset.message.entities = [{ offset: 0, length: 6, type: "bot_command" }]
-    await telegram.bot.handleUpdate(reset)
-    finishLoad?.({
-      url: "https://example.com/slow",
-      finalUrl: "https://example.com/slow",
-      source: "built-in",
-      contentType: "text/plain",
-      text: "late",
-      truncated: false,
+    const url = "https://example.com/group"
+    const message = {
+      message_id: 32,
+      date: 1_700_000_000,
+      chat: { id: -100, type: "supergroup" as const, title: "測試群組" },
+      from: { id: 7, is_bot: false, first_name: "Alice" },
+      text: `@test_bot ${url}`,
+    }
+    await telegram.bot.handleUpdate({ update_id: 32, message })
+    await telegram.bot.handleUpdate({
+      update_id: 33,
+      message: {
+        ...message,
+        message_id: 33,
+        text: "/reset",
+        entities: [{ offset: 0, length: 6, type: "bot_command" }],
+      },
     })
-    await handling
+    await telegram.bot.handleUpdate({
+      update_id: 34,
+      message: { ...message, message_id: 34, text: "@test_bot 繼續" },
+    })
 
-    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(sessions.reset).toHaveBeenCalledWith(-100)
+    expect(sessions.submit).toHaveBeenNthCalledWith(1, -100, url, expect.any(Object))
+    expect(sessions.submit).toHaveBeenNthCalledWith(2, -100, "繼續", expect.any(Object))
   })
 
   it("keeps mixed questions and quoted historical URLs on the normal agent path", async () => {
     const sessions = createSessions()
-    const publicUrlLoader = { load: vi.fn() }
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, publicUrlLoader },
+      { botInfo },
     )
     installApiMock(telegram.bot)
-    await telegram.bot.handleUpdate(
-      privateMessage(29, "這篇和昨天的有何不同 https://example.com/article"),
-    )
+    const text = "這篇和昨天的有何不同 https://example.com/article"
+    await telegram.bot.handleUpdate(privateMessage(29, text))
     const quoted = privateMessage(30, "你怎麼看？")
     if (quoted.message) {
       quoted.message.reply_to_message = {
@@ -1180,25 +1108,14 @@ describe("Telegram bot update routing", () => {
     }
     await telegram.bot.handleUpdate(quoted)
 
-    expect(publicUrlLoader.load).not.toHaveBeenCalled()
-    expect(sessions.submit).toHaveBeenCalledTimes(2)
-  })
-
-  it("reports proactive loader failures honestly without invoking Pi", async () => {
-    const sessions = createSessions()
-    const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
-      sessions,
-      logger,
-      {
-        botInfo,
-        publicUrlLoader: { load: vi.fn(async () => Promise.reject(new Error("blocked"))) },
-      },
+    expect(sessions.submit).toHaveBeenNthCalledWith(1, 7, text, expect.any(Object))
+    expect(sessions.submit).toHaveBeenNthCalledWith(
+      2,
+      7,
+      "你怎麼看？",
+      expect.objectContaining({
+        unresolvedReplyPrompt: expect.stringContaining("https://example.com/historical"),
+      }),
     )
-    const calls = installApiMock(telegram.bot)
-    await telegram.bot.handleUpdate(privateMessage(31, "https://127.0.0.1/private"))
-
-    expect(sessions.submit).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("不會假裝已讀取")
   })
 })

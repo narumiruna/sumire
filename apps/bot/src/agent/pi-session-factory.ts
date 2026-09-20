@@ -10,9 +10,8 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
 import progressExtension from "@narumitw/sumire-progress"
+import { createUrlExtension } from "@narumitw/sumire-url-tool"
 
-import { createPublicUrlLoader, type PublicUrlLoader } from "../actions/public-url.js"
-import { buildUrlTools } from "../actions/url-tool.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
@@ -26,7 +25,6 @@ export interface PiSessionFactory {
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
-  publicUrlLoader: PublicUrlLoader = createPublicUrlLoader(settings),
 ): Promise<PiSessionFactory> {
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
   const modelRuntime = await ModelRuntime.create({
@@ -88,10 +86,13 @@ export async function createPiSessionFactory(
   })
 
   const morselPublisher = createMorselPublisher(settings)
-  const customTools = [
-    ...buildUrlTools(publicUrlLoader),
-    ...buildMorselTools(morselPublisher, settings.morselMode, logger),
-  ]
+  const customTools = buildMorselTools(morselPublisher, settings.morselMode, logger)
+  const urlExtension = createUrlExtension({
+    allowedSchemes: settings.botUrlAllowedSchemes,
+    maxChars: settings.botUrlMaxExtractedChars,
+    timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
+    urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
+  })
 
   return {
     async create(chatId: number) {
@@ -99,7 +100,10 @@ export async function createPiSessionFactory(
         cwd: settings.projectRoot,
         agentDir,
         additionalSkillPaths: [settings.botSkillsDir],
-        extensionFactories: [{ name: "sumire-progress", factory: progressExtension }],
+        extensionFactories: [
+          { name: "sumire-progress", factory: progressExtension },
+          { name: "sumire-url-tool", factory: urlExtension },
+        ],
         noExtensions: true,
         noPromptTemplates: true,
         noThemes: true,

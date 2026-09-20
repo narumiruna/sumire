@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-content && npm run build --workspace @narumitw/sumire-progress",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-tool && npm run build --workspace @narumitw/sumire-progress",
     "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=.env --import tsx src/index.ts",
     "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
     "format": "biome format --write .",
@@ -33,11 +33,9 @@
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/sumire-progress": "0.0.0",
-    "@narumitw/sumire-url-content": "0.19.6",
+    "@narumitw/sumire-url-tool": "0.0.0",
     "@pydantic/logfire-node": "0.18.25",
     "grammy": "1.46.0",
-    "ipaddr.js": "2.5.0",
-    "undici": "8.10.2",
     "zod": "4.6.5"
   },
   "devDependencies": {

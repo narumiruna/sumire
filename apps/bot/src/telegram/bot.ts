@@ -2,13 +2,6 @@ import { type RunnerHandle, run } from "@grammyjs/runner"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
-import {
-  classifyProactiveUrl,
-  extractTelegramUrls,
-  PendingUrlStore,
-  promptWithUrlContext,
-} from "../actions/proactive-url.js"
-import { createPublicUrlLoader, type PublicUrlLoader } from "../actions/public-url.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
@@ -45,7 +38,6 @@ interface TelegramBotDependencies {
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
   documentConverter?: DocumentConverter
-  publicUrlLoader?: PublicUrlLoader
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
 }
 
@@ -66,11 +58,6 @@ export function createTelegramAgentBot(
   const submissionGenerations = new Map<number, number>()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
-  const publicUrlLoader = dependencies.publicUrlLoader ?? createPublicUrlLoader(settings)
-  const pendingUrls = new PendingUrlStore(
-    settings.botProactivePendingTtlSeconds * 1_000,
-    settings.botProactivePendingMaxChats,
-  )
 
   bot.use(async (context, next) => {
     if (!isAllowed(context, settings.botWhitelist)) return
@@ -91,7 +78,7 @@ export function createTelegramAgentBot(
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),
         ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
-        ...(settings.botProactiveEnabled ? ["直接貼上一個公開網址可讀取並摘要。"] : []),
+        "可請助理使用 load_public_url 工具讀取公開網址。",
       ].join("\n"),
     )
   })
@@ -101,7 +88,6 @@ export function createTelegramAgentBot(
   bot.command("reset", async (context) => {
     const finishReset = invalidateSubmissionOrder(context.chat.id)
     try {
-      pendingUrls.clear(context.chat.id)
       await sessions.reset(context.chat.id)
     } finally {
       finishReset()
@@ -235,37 +221,7 @@ export function createTelegramAgentBot(
 
       if (!isCurrent()) return
       let prompt: string
-      if (settings.botProactiveEnabled && imageRefs.length === 0 && documentRefs.length === 0) {
-        const decision = classifyProactiveUrl(strippedText, extractTelegramUrls(message))
-        let proactiveUrl: string | undefined
-        let instruction = ""
-        if (decision.kind === "load") {
-          proactiveUrl = decision.url
-          instruction = decision.instruction
-          pendingUrls.set(context.chat.id, proactiveUrl)
-        } else if (decision.kind === "follow_up") {
-          proactiveUrl = pendingUrls.get(context.chat.id)
-          if (!proactiveUrl) {
-            await context.reply("目前沒有可繼續處理的網址。", replyOptions(context))
-            return
-          }
-        }
-        if (proactiveUrl) {
-          try {
-            prompt = promptWithUrlContext(instruction, await publicUrlLoader.load(proactiveUrl))
-          } catch (error) {
-            logger.warn(`Proactive URL loading failed for chat_id=${context.chat.id}`, error)
-            await context.reply(
-              "無法安全讀取這個網址；我沒有將內容交給 AI，也不會假裝已讀取。",
-              replyOptions(context),
-            )
-            return
-          }
-        } else {
-          const basePrompt = strippedText || "請回應這則訊息。"
-          prompt = promptWithReplyContext(message, basePrompt)
-        }
-      } else if (documentInputs.length > 0) {
+      if (documentInputs.length > 0) {
         prompt = promptWithReplyContext(
           message,
           promptWithDocumentContext(

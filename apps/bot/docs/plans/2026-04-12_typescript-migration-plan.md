@@ -29,7 +29,8 @@ flowchart LR
     CORE --> AI[pi-ai provider runtime]
     SDK --> TOOLS[TypeBox custom tools]
     REGISTRY --> STORE[Per-chat Pi JSONL sessions]
-    ROUTER --> MEDIA[URL / image / document adapters]
+    ROUTER --> MEDIA[Image / document adapters]
+    TOOLS --> URL[Public URL Pi package]
 ```
 
 Each Telegram chat receives an isolated Pi session directory beneath `.telegramagent/sessions/<chat-id>/pi`. `SessionManager.continueRecent()` restores that chat only. The registry serializes session creation and delegates active-run messages to Pi's `steer` or `followUp` queues.
@@ -49,7 +50,7 @@ Each Telegram chat receives an isolated Pi session directory beneath `.telegrama
 - [x] Implement validated environment settings and redacted logging; evidence: Vitest covers defaults, CSV parsing, invalid ranges, and secret redaction.
 - [x] Implement Pi model runtime, Telegram system prompt/resource loading, and isolated per-chat session registry; evidence: Pi session smoke test plus registry tests cover chat isolation, reuse, steering, follow-up, cancellation, reset, and passive context.
 - [x] Implement Telegram private/group routing, commands, reply context, image input, status editing, output chunking, and allowlists; evidence: update-level grammY tests cover private routing, allowlist rejection, passive groups, concurrent cancellation, image failures, and Morsel long replies.
-- [x] Port safe URL extraction and proactive handling; evidence: Pi tool rejects unsafe schemes/addresses/redirects, tests bounded built-in extraction, and falls back to the local TypeScript URL content package for failures, blocker pages, and source-specific URLs.
+- [x] Port safe URL extraction as an agent-controlled Pi package under `packages/url-tool`; evidence: tool tests reject unsafe schemes/addresses/redirects, cover bounded built-in extraction, and verify fallback to the local URL content package. Telegram forwards URL requests and follow-ups without prefetching or pending URL state.
 - [ ] Port document conversion behind a bounded adapter; acceptance: supported-type, size, timeout, truncation, and failure tests pass.
 - [ ] Port image generation through `pi-ai` where supported and retain an OpenAI-compatible fallback only when required; acceptance: disabled/configuration/provider/error paths pass tests.
 - [x] Port Morsel publishing and long-reply routing; evidence: rich Pi tool and smart Telegram routing are implemented; tests cover publish payloads, capability URL validation, Instant View hash, and missing configuration.

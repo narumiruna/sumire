@@ -16,8 +16,10 @@ describe("loadSettings", () => {
     expect(settings.botSkillsDir).toBe(path.resolve("/workspace/project/skills"))
     expect(settings.botDocumentMaxBytes).toBe(20_000_000)
     expect(settings.botReplyTreeEnabled).toBe(true)
-    expect(settings.botProactivePendingTtlSeconds).toBe(900)
+    expect(settings.botUrlTimeoutSeconds).toBe(15)
     expect(settings.botUrlContentTimeoutSeconds).toBe(180)
+    expect(settings.botUrlMaxExtractedChars).toBe(12_000)
+    expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
     expect(settings.openaiBaseUrl).toBe("https://api.openai.com/v1")
     expect(settings.morselLongReplyThreshold).toBe(2_000)
   })
@@ -36,10 +38,10 @@ describe("loadSettings", () => {
       BOT_REPLY_TREE_ENABLED: "false",
       BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: "20",
       BOT_REPLY_TREE_MAX_INDEX_BYTES: "2048",
-      BOT_PROACTIVE_ENABLED: "false",
-      BOT_PROACTIVE_PENDING_TTL_SECONDS: "30",
-      BOT_PROACTIVE_PENDING_MAX_CHATS: "40",
-      BOT_PROACTIVE_ALLOWED_SCHEMES: "https",
+      BOT_URL_TIMEOUT_SECONDS: "2.5",
+      BOT_URL_CONTENT_TIMEOUT_SECONDS: "60",
+      BOT_URL_MAX_EXTRACTED_CHARS: "4000",
+      BOT_URL_ALLOWED_SCHEMES: "https",
     })
 
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
@@ -54,10 +56,10 @@ describe("loadSettings", () => {
     expect(settings.botReplyTreeEnabled).toBe(false)
     expect(settings.botReplyTreeMaxRecordsPerChat).toBe(20)
     expect(settings.botReplyTreeMaxIndexBytes).toBe(2048)
-    expect(settings.botProactiveEnabled).toBe(false)
-    expect(settings.botProactivePendingTtlSeconds).toBe(30)
-    expect(settings.botProactivePendingMaxChats).toBe(40)
-    expect(settings.botProactiveAllowedSchemes).toEqual(new Set(["https"]))
+    expect(settings.botUrlTimeoutSeconds).toBe(2.5)
+    expect(settings.botUrlContentTimeoutSeconds).toBe(60)
+    expect(settings.botUrlMaxExtractedChars).toBe(4000)
+    expect(settings.botUrlAllowedSchemes).toEqual(new Set(["https"]))
   })
 
   it("rejects invalid supported settings", () => {
@@ -67,7 +69,9 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "17" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_REPLY_TREE_MAX_INDEX_BYTES: "100" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_PROACTIVE_PENDING_TTL_SECONDS: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_PROACTIVE_ALLOWED_SCHEMES: "file" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_URL_TIMEOUT_SECONDS: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_URL_CONTENT_TIMEOUT_SECONDS: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_URL_MAX_EXTRACTED_CHARS: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_URL_ALLOWED_SCHEMES: "file" })).toThrow(ZodError)
   })
 })
