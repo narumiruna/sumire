@@ -30,9 +30,9 @@ Available now:
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
-- Morsel rich-rendering tool and smart long-reply routing
+- Morsel rich-rendering tool and mandatory routing for messages over 1000 characters
 - live multi-step progress in the pending Telegram reply
-- Telegram HTML rendering and 4096-character chunking
+- Telegram HTML rendering with a 1000-character inline message limit
 - secret-redacted logs
 
 Not yet at Python parity:
@@ -121,11 +121,17 @@ Each chat uses a Pi-native session directory plus a derived Telegram reply index
 .telegramagent/sessions/<chat-id>/telegram-reply-index.json
 ```
 
-Pi owns the agent session lifecycle, transcript, and branches. After a completed answer is delivered, the bounded index records only Telegram message IDs and the corresponding Pi session/entry IDs. Replying to any delivered chunk restores that native checkpoint with no abandoned-branch summary. Unknown, stale, evicted, or disabled mappings continue from the latest leaf and preserve ordinary quoted reply context. `/reset` removes both the chat's Pi data and reply index.
+Pi owns the agent session lifecycle, transcript, and branches. After a completed answer is delivered, the bounded index records only Telegram message IDs and the corresponding Pi session/entry IDs. Replying to a delivered message, including a Morsel link or a legacy continuation chunk, restores that native checkpoint with no abandoned-branch summary. Unknown, stale, evicted, or disabled mappings continue from the latest leaf and preserve ordinary quoted reply context. `/reset` removes both the chat's Pi data and reply index.
 
 ## Model configuration
 
 `.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader and structured progress tool are always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
+
+## Telegram message length and Morsel
+
+Every outgoing text message and edit uses the same delivery policy, including AI answers, commands such as `/t`, and progress updates. Messages over **1000 characters** must be published to Morsel in full; Telegram receives only a short notice and the share URL. Exactly 1000 characters can be sent directly. Length is counted as Unicode code points after control-character cleanup and newline normalization, before HTML escaping; whitespace and Markdown syntax count toward the limit.
+
+Set `MORSEL_API_KEY` to enable publication. If the key is missing, publishing fails, or the returned link cannot fit, Telegram receives only a short failure notice. The original long message is never sent inline, split into chunks, or recorded as successfully delivered. The policy applies regardless of the optional rich-tool mode, and legacy thresholds cannot raise the 1000-character cap. Successful Morsel links retain reply-tree checkpoint mapping; `/reset` invalidates pending delivery so stale links do not replace the cancelled status.
 
 ## Logging
 

@@ -21,7 +21,7 @@ describe("loadSettings", () => {
     expect(settings.botUrlMaxExtractedChars).toBe(12_000)
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
     expect(settings.openaiBaseUrl).toBe("https://api.openai.com/v1")
-    expect(settings.morselLongReplyThreshold).toBe(2_000)
+    expect(settings.morselLongReplyThreshold).toBe(1_000)
   })
 
   it("parses the supported environment configuration", () => {
