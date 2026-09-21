@@ -47,6 +47,7 @@ export {
 } from "./pipelines/catalog.js"
 export type {
   GitHubTarget,
+  GoogleDocsTarget,
   PiSessionTarget,
   TwitterTarget,
   YouTubeVideoTarget,
@@ -57,6 +58,7 @@ export {
   isBbcUrl,
   isCnnUrl,
   isGitHubUrl,
+  isGoogleDocsUrl,
   isLtnUrl,
   isOpenAiWebUrl,
   isPdfTarget,
@@ -78,6 +80,7 @@ export {
   parseCnnTarget,
   parseGitHubRawContentTarget,
   parseGitHubTarget,
+  parseGoogleDocsTarget,
   parseLtnTarget,
   parsePdfTarget,
   parsePiSessionTarget,

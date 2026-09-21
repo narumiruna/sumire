@@ -11,6 +11,7 @@ export const YOUTUBE_YTDLP = "youtube-ytdlp"
 export const PDF = "pdf"
 export const PI_SESSION = "pi-session"
 export const GITHUB = "github"
+export const GOOGLE_DOCS = "google-docs"
 export const BBC = "bbc"
 export const CNN = "cnn"
 export const LTN = "ltn"
@@ -68,6 +69,7 @@ export const LOADER_DEFS: readonly LoaderDef[] = [
   definition(PDF, "Extracts text from PDF files", "document_pdf", { resourceKind: "worker" }),
   definition(PI_SESSION, "Extracts pi.dev shared session transcripts", "ai_session"),
   definition(GITHUB, "Fetches GitHub pages and file content", "code_content"),
+  definition(GOOGLE_DOCS, "Exports public Google Docs as plain text", "document_text"),
   definition(BBC, "BBC article extraction with article-aware parsing", "news_article"),
   definition(CNN, "CNN article extraction with article-aware parsing", "news_article"),
   definition(LTN, "Liberty Times Net article extraction", "news_article"),
@@ -194,6 +196,10 @@ export async function createLoader(name: string, resources?: ResourceProvider): 
     case PI_SESSION: {
       const { PiSessionLoader } = await import("./loaders/pi-session.js")
       return new PiSessionLoader({ resources })
+    }
+    case GOOGLE_DOCS: {
+      const { GoogleDocsLoader } = await import("./loaders/google-docs.js")
+      return new GoogleDocsLoader({ resources })
     }
     case GITHUB: {
       const { GitHubLoader } = await import("./loaders/github.js")

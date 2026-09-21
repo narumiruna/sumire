@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
 import {
+  isGoogleDocsUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
   loadUrlDetailed,
@@ -119,6 +120,9 @@ export async function loadPublicUrl(
     validationSignal,
   )
 
+  // Editor HTML is not document content, even when it fits the built-in byte limit.
+  if (isGoogleDocsUrl(urlValue)) return loadSourceUrl(urlValue, options)
+
   let builtInError: unknown
   try {
     const result = await fetchPublicUrl(urlValue, options)
@@ -140,30 +144,34 @@ export async function loadPublicUrl(
   }
 
   try {
-    const load = options.urlContentLoadImplementation ?? loadUrlDetailed
-    const result = await load(urlValue, {
-      deadlineSeconds: options.urlContentTimeoutSeconds,
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-    const content = result.content.trim()
-    if (!content) throw new Error("URL content loader returned no content")
-    const truncated = content.length > options.maxChars
-    return {
-      url: urlValue,
-      finalUrl: urlValue,
-      source: "url-content",
-      contentType: result.contentType,
-      text: truncated
-        ? `${content.slice(0, options.maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${options.maxChars} chars]`
-        : content,
-      truncated,
-      loaderId: result.loaderId,
-    }
+    return await loadSourceUrl(urlValue, options)
   } catch (urlContentError) {
     throw new AggregateError(
       [builtInError, urlContentError],
       "Built-in and source-aware URL loading both failed",
     )
+  }
+}
+
+async function loadSourceUrl(urlValue: string, options: LoadPublicUrlOptions): Promise<LoadedUrl> {
+  const load = options.urlContentLoadImplementation ?? loadUrlDetailed
+  const result = await load(urlValue, {
+    deadlineSeconds: options.urlContentTimeoutSeconds,
+    ...(options.signal ? { signal: options.signal } : {}),
+  })
+  const content = result.content.trim()
+  if (!content) throw new Error("URL content loader returned no content")
+  const truncated = content.length > options.maxChars
+  return {
+    url: urlValue,
+    finalUrl: urlValue,
+    source: "url-content",
+    contentType: result.contentType,
+    text: truncated
+      ? `${content.slice(0, options.maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${options.maxChars} chars]`
+      : content,
+    truncated,
+    loaderId: result.loaderId,
   }
 }
 

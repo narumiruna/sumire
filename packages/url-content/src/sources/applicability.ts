@@ -77,6 +77,12 @@ export interface YouTubeVideoTarget {
   videoId: string
 }
 
+export interface GoogleDocsTarget {
+  url: string
+  documentId: string
+  exportUrl: string
+}
+
 export interface GitHubTarget {
   url: string
   rawUrl?: string
@@ -144,6 +150,42 @@ export function parseYouTubeVideoTarget(url: string): YouTubeVideoTarget {
 export function isYouTubeVideoUrl(url: string): boolean {
   try {
     parseYouTubeVideoTarget(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function parseGoogleDocsTarget(url: string): GoogleDocsTarget {
+  const parsed = parseHttpUrl(url)
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    parsed.hostname !== "docs.google.com" ||
+    parsed.port ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new InvalidUrlError(url, "public Google Docs document")
+  }
+  const match =
+    /^\/document\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]+)(?:\/(?:edit|view|preview|export))?\/?$/u.exec(
+      parsed.pathname,
+    )
+  const documentId = match?.[1]
+  if (!documentId) throw new InvalidUrlError(url, "Google Docs document")
+
+  const exportUrl = new URL(`https://docs.google.com/document/d/${documentId}/export`)
+  exportUrl.searchParams.set("format", "txt")
+  for (const name of ["tab", "resourcekey"]) {
+    const value = parsed.searchParams.get(name)
+    if (value) exportUrl.searchParams.set(name, value)
+  }
+  return { url, documentId, exportUrl: exportUrl.toString() }
+}
+
+export function isGoogleDocsUrl(url: string): boolean {
+  try {
+    parseGoogleDocsTarget(url)
     return true
   } catch {
     return false

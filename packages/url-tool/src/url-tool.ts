@@ -8,7 +8,7 @@ export function createUrlTool(loader: PublicUrlLoader) {
     name: "load_public_url",
     label: "Load public URL",
     description:
-      "Load readable text or Markdown from a public HTTP(S) URL. The bounded built-in loader is tried first, then the source-aware URL content loader handles source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
+      "Load readable text or Markdown from a public HTTP(S) URL. Google Docs links use a dedicated plain-text export loader. Other URLs try the bounded built-in loader first, then source-aware extraction for source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
     parameters: Type.Object({
       url: Type.String({ description: "The absolute public HTTP(S) URL to load" }),
     }),

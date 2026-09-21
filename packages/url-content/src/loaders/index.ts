@@ -34,6 +34,11 @@ export {
   toRawGitHubUrl,
 } from "./github.js"
 export {
+  DEFAULT_GOOGLE_DOCS_TIMEOUT_MS,
+  GoogleDocsLoader,
+  MAX_GOOGLE_DOCS_BYTES,
+} from "./google-docs.js"
+export {
   BbcLoader,
   CnnLoader,
   DEFAULT_NEWS_ARTICLE_HEADERS,

@@ -4,7 +4,7 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 
 ## Features
 
-- Source-aware plans for YouTube, Twitter/X, Truth Social, Reddit, Instagram Reels, PTT, GitHub, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
+- Source-aware plans for YouTube, Twitter/X, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
 - Reusable fetch, `impers`, and Playwright resources with concurrency limits and total deadlines
@@ -94,6 +94,12 @@ npx playwright install chromium
 
 The Twitter loader first requests the exact status from `api.fxtwitter.com` and verifies the returned status ID. It falls back to Playwright when that API is unavailable. This avoids returning X login or error pages when X blocks browser automation.
 
+### Google Docs
+
+The `google-docs` loader converts public document links (`/document/d/<id>`, `/edit`, `/view`, `/preview`, or `/export`, including `/document/u/<account>/d/<id>` variants) to an HTTPS `/export?format=txt` request. It preserves `tab` and `resourcekey` query parameters but drops editor-only parameters and fragments. No Google login, API key, browser, or OAuth token is needed.
+
+Documents must permit unauthenticated viewing and text export. HTTP failures, HTML login/editor pages, non-text responses, and empty exports are rejected rather than passed to generic HTML loaders. Requests and redirects use public-address validation; exports have a 20-second timeout and a 10 MiB response limit. Text is preserved without HTML conversion. Sheets, Slides, and published `/document/d/e/.../pub` links are not handled by this loader.
+
 ### Firecrawl
 
 Set `FIRECRAWL_API_KEY` for OpenAI web pages or explicit `firecrawl` loading:
@@ -123,7 +129,7 @@ The transcription loader writes only to an isolated temporary directory and remo
 Strict source plans do not accept unrelated generic HTML:
 
 - YouTube video URLs require transcript output.
-- Twitter status, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, and GitHub plans require their matching source loader.
+- Twitter status, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
 - Empty output and recognized challenge headings are rejected so the chain can continue.

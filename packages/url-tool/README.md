@@ -26,12 +26,15 @@ Pi packages execute with the current user's permissions. Review source before in
 
 Failures throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
 
+Google Docs document links bypass the built-in HTML loader after public-target validation and use the dedicated `google-docs` source loader. It requests a plain-text export instead of downloading the editor application. Export failures retain their source error details and do not fall back to editor HTML; the normal output character limit still applies.
+
 ```mermaid
 flowchart LR
     Agent[Pi agent] --> Tool[load_public_url]
     Tool --> Check[Public target validation]
-    Check --> BuiltIn[Bounded text / HTML loader]
-    BuiltIn -->|Failure or source-specific content| Fallback[sumire-url-content]
+    Check -->|Other URLs| BuiltIn[Bounded text / HTML loader]
+    Check -->|Google Docs| Fallback[sumire-url-content]
+    BuiltIn -->|Failure or source-specific content| Fallback
     BuiltIn --> Result[Pi tool result]
     Fallback --> Result
 ```

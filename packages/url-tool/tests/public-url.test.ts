@@ -215,6 +215,84 @@ describe("public URL loading", () => {
     })
   })
 
+  it("routes Google Docs directly to the dedicated loader with output bounds and cancellation", async () => {
+    const url = "https://docs.google.com/document/d/test-doc_123/edit?tab=t.0"
+    const signal = new AbortController().signal
+    const resolve = vi.fn(async () => [
+      { address: "8.8.8.8", family: 4 as const },
+    ]) as unknown as typeof lookup
+    const fetchImplementation = vi.fn(
+      async () =>
+        new Response("<html><body>Editor shell</body></html>", {
+          headers: { "content-type": "text/html" },
+        }),
+    )
+    const urlContentLoadImplementation = vi.fn(async () => ({
+      content: "document body",
+      loaderId: "google-docs",
+      contentType: "document_text",
+      downgraded: false,
+      attempts: [],
+    }))
+
+    await expect(
+      loadPublicUrl(url, {
+        ...options,
+        maxChars: 8,
+        resolve,
+        signal,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation,
+      }),
+    ).resolves.toMatchObject({
+      url,
+      finalUrl: url,
+      source: "url-content",
+      loaderId: "google-docs",
+      contentType: "document_text",
+      text: "document\n\n[truncated by telegramagent: 13 -> 8 chars]",
+      truncated: true,
+    })
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+      deadlineSeconds: 30,
+      signal,
+    })
+  })
+
+  it("preserves Google Docs errors rather than accepting editor HTML or hiding the cause", async () => {
+    const cause = new Error("Google Docs export returned HTTP 403")
+    const fetchImplementation = vi.fn()
+    const urlContentLoadImplementation = vi.fn(async () => {
+      throw cause
+    })
+    await expect(
+      loadPublicUrl("https://docs.google.com/document/d/test-doc_123/preview", {
+        ...options,
+        resolve: (async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation,
+      }),
+    ).rejects.toBe(cause)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).toHaveBeenCalledOnce()
+  })
+
+  it("validates Google Docs DNS before invoking the dedicated loader", async () => {
+    const urlContentLoadImplementation = vi.fn()
+    await expect(
+      loadPublicUrl("https://docs.google.com/document/d/test-doc_123/edit", {
+        ...options,
+        resolve: (async () => [{ address: "10.0.0.1", family: 4 }]) as unknown as typeof lookup,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation,
+      }),
+    ).rejects.toThrow("private")
+    expect(urlContentLoadImplementation).not.toHaveBeenCalled()
+  })
+
   it("rejects unsafe targets before invoking the URL content loader", async () => {
     const urlContentLoadImplementation = vi.fn(async () => {
       throw new Error("URL content loader should not be called")

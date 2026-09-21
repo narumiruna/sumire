@@ -42,6 +42,7 @@ describe("CLI", () => {
     await main(["--list"])
     const output = log.mock.calls.flat().join("\n")
     log.mockRestore()
+    expect(output).toContain("google-docs -")
     expect(output).toContain("pi-session -")
     expect(output).toContain("curl-cffi -")
     expect(output).not.toContain("playwright-networkidle -")
