@@ -9,6 +9,13 @@
 - Shared runtime resources remain at the root: `SOUL.md`, `skills/`, `.events/`, `.telegramagent/`, and `.env`.
 - Treat `.venv/`, `node_modules/`, `dist/`, coverage files, caches, `.events/`, and `.telegramagent/` as generated state.
 
+## Agent loop ownership
+
+- Pi's `AgentSession`, created through `@earendil-works/pi-coding-agent` and backed by `pi-agent-core`, owns the model-turn and tool-call loop; submit work through `prompt`, `steer`, or `followUp` instead of implementing a second agent loop in the bot.
+- The Telegram bot owns transport and orchestration around that loop, including command and addressing rules, input and context assembly, session lifecycle, cancellation, progress reporting, reply-tree restoration, and response delivery.
+- Extensions and custom tools own their capability implementations, while Pi owns deciding when to invoke them and continuing the model turn with their results.
+- Pass ordinary natural-language intent, including summary requests, to Pi without keyword or regex-based intent routing unless a feature explicitly requires deterministic routing.
+
 ## Commands
 
 - Install Node dependencies and configure Husky with `npm ci`; format with `npm run format`, then run workspace checks with `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm test`.
