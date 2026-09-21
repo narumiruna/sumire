@@ -166,7 +166,7 @@ export function loadSettings(
     morselUrl: parsed.MORSEL_URL,
     ...(parsed.MORSEL_API_KEY ? { morselApiKey: parsed.MORSEL_API_KEY } : {}),
     morselMode: "smart",
-    morselLongReplyThreshold: 2_000,
+    morselLongReplyThreshold: 1_000,
     morselShareExpiresInSeconds: 2_592_000,
     morselTelegramInstantView: true,
     morselTimeoutSeconds: 12,

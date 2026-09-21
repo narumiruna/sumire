@@ -555,14 +555,11 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
-        return { kind: "completed" as const, text: "這是一段很長的回覆內容" }
+        return { kind: "completed" as const, text: "長".repeat(1_001) }
       }),
     })
     const publish = vi.fn(async () => pendingPublication)
-    const settings = {
-      ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
-      morselLongReplyThreshold: 5,
-    }
+    const settings = loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" })
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       botInfo,
       morselPublisher: { isConfigured: true, publish },
@@ -621,98 +618,81 @@ describe("Telegram bot update routing", () => {
     expect(calls[2]?.payload.text).toBe("此請求已因重設對話而取消。")
   })
 
-  it("cleans up reply continuations when reset interrupts chunk delivery", async () => {
-    let finishChunkDelivery: (() => void) | undefined
-    const pendingChunkDelivery = new Promise<void>((resolve) => {
-      finishChunkDelivery = resolve
+  it("replaces a stale Morsel link when reset interrupts Telegram delivery", async () => {
+    let finishDelivery = () => {}
+    const pendingDelivery = new Promise<void>((resolve) => {
+      finishDelivery = resolve
     })
-    const completedChunk = "b".repeat(4_096)
-    const inFlightChunk = "c".repeat(4_096)
+    const shareUrl = "https://morsel.example/s/share"
+    const publish = vi.fn(async () => shareUrl)
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
-        return {
-          kind: "completed" as const,
-          text: `${"a".repeat(4_096)}${completedChunk}${inFlightChunk}d`,
-        }
+        return { kind: "completed" as const, text: "x".repeat(5_000) }
       }),
     })
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      {
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
-      if (method === "sendMessage" && payload.text === inFlightChunk) await pendingChunkDelivery
+      if (method === "editMessageText" && String(payload.text).includes(shareUrl))
+        await pendingDelivery
     })
-
     const runningUpdate = telegram.bot.handleUpdate(privateMessage(16, "長回覆"))
-    await vi.waitFor(() =>
-      expect(calls.some((call) => call.payload.text === inFlightChunk)).toBe(true),
-    )
-    const resetUpdate = privateMessage(17, "/reset")
-    if (resetUpdate.message) {
-      resetUpdate.message.entities = [{ offset: 0, length: 6, type: "bot_command" }]
+    try {
+      await vi.waitFor(() =>
+        expect(calls.some((call) => String(call.payload.text).includes(shareUrl))).toBe(true),
+      )
+      await telegram.bot.handleUpdate(commandMessage(17, "/reset"))
+    } finally {
+      finishDelivery()
+      await runningUpdate
     }
-    await telegram.bot.handleUpdate(resetUpdate)
-
-    finishChunkDelivery?.()
-    await runningUpdate
     expect(calls.map((call) => call.method)).toEqual([
       "sendMessage",
       "editMessageText",
       "sendMessage",
-      "sendMessage",
-      "sendMessage",
-      "deleteMessage",
-      "deleteMessage",
       "editMessageText",
     ])
-    expect(calls.some((call) => call.payload.text === "d")).toBe(false)
-    expect(
-      calls
-        .filter((call) => call.method === "deleteMessage")
-        .map((call) => call.payload.message_id),
-    ).toEqual([101, 103])
     expect(calls.at(-1)?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(sessions.recordDelivery).not.toHaveBeenCalled()
   })
 
-  it("cleans up delivered continuations when a later Telegram chunk fails", async () => {
-    const firstContinuation = "b".repeat(4_096)
-    const failingContinuation = "c".repeat(4_096)
-    const recordDelivery = vi.fn(async () => undefined)
+  it("does not record a Morsel answer when Telegram rejects its link", async () => {
+    const shareUrl = "https://morsel.example/s/share"
     const sessions = createSessions({
-      submit: vi.fn(async (_chatId, _prompt, options) => {
-        options.onAccepted?.()
-        return {
-          kind: "completed" as const,
-          text: `${"a".repeat(4_096)}${firstContinuation}${failingContinuation}`,
-          checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
-        }
-      }),
-      recordDelivery,
+      submit: vi.fn(async () => ({
+        kind: "completed" as const,
+        text: "x".repeat(5_000),
+        checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
+      })),
     })
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      {
+        botInfo,
+        morselPublisher: { isConfigured: true, publish: vi.fn(async () => shareUrl) },
+      },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
-      if (method === "sendMessage" && payload.text === failingContinuation) {
-        throw new Error("Telegram send failed")
-      }
+      if (method === "editMessageText" && String(payload.text).includes(shareUrl))
+        throw new Error("Telegram edit failed")
     })
-
     await telegram.bot.handleUpdate(privateMessage(18, "長回覆"))
-
-    expect(recordDelivery).not.toHaveBeenCalled()
-    expect(
-      calls
-        .filter((call) => call.method === "deleteMessage")
-        .map((call) => call.payload.message_id),
-    ).toEqual([101])
+    expect(sessions.recordDelivery).not.toHaveBeenCalled()
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
     expect(calls.at(-1)?.payload.text).toBe("AI 服務暫時無法使用，請稍後再試。")
   })
 
@@ -806,25 +786,120 @@ describe("Telegram bot update routing", () => {
     expect(calls[0]?.payload.text).toBe("圖片超過允許的大小，無法處理。")
   })
 
-  it("publishes long replies through the configured Morsel path", async () => {
-    const sessions = createSessions({
-      submit: vi.fn(async () => ({ kind: "completed" as const, text: "這是一段很長的回覆內容" })),
-    })
+  it.each(["disabled", "rich_only", "smart"] as const)(
+    "forces Morsel above 1000 characters in %s mode despite a higher legacy threshold",
+    async (mode) => {
+      const text = "長".repeat(1_001)
+      const sessions = createSessions({
+        submit: vi.fn(async () => ({ kind: "completed" as const, text })),
+      })
+      const publish = vi.fn(async () => "https://morsel.example/s/share")
+      const settings = {
+        ...loadSettings({ BOT_TOKEN: "test-token" }),
+        morselMode: mode,
+        morselLongReplyThreshold: 5_000,
+      }
+      const telegram = createTelegramAgentBot(settings, sessions, logger, {
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      })
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(privateMessage(7, "請回答"))
+      expect(publish).toHaveBeenCalledExactlyOnceWith(text)
+      expect(calls[1]?.payload.text).toContain("https://morsel.example/s/share")
+      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    },
+  )
+
+  it.each(["missing-key", "publish-failed"])(
+    "never sends long answers or records delivery when Morsel has %s",
+    async (failure) => {
+      const text = "長".repeat(10_000)
+      const sessions = createSessions({
+        submit: vi.fn(async () => ({
+          kind: "completed" as const,
+          text,
+          checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
+        })),
+      })
+      const publish = vi.fn(async () => {
+        throw new Error("Morsel unavailable")
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          morselPublisher: { isConfigured: failure !== "missing-key", publish },
+        },
+      )
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(privateMessage(80, "長答案"))
+      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+      expect(calls.at(-1)?.payload.text).toContain("Morsel 暫時無法使用")
+      expect(calls.some((call) => String(call.payload.text).includes("長長長"))).toBe(false)
+      expect(sessions.recordDelivery).not.toHaveBeenCalled()
+      expect(publish).toHaveBeenCalledTimes(failure === "missing-key" ? 0 : 1)
+    },
+  )
+
+  it("publishes long market-data replies once instead of chunking them into Telegram", async () => {
+    const text = "股".repeat(5_000)
+    const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/share")
-    const settings = {
-      ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
-      morselLongReplyThreshold: 5,
-    }
-    const telegram = createTelegramAgentBot(settings, sessions, logger, {
-      botInfo,
-      morselPublisher: { isConfigured: true, publish },
-    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        marketDataQuery: async () => text,
+        morselPublisher: { isConfigured: true, publish },
+      },
+    )
     const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(commandMessage(81, "/t AAPL"))
+    expect(publish).toHaveBeenCalledExactlyOnceWith(text)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.payload.text).toContain("https://morsel.example/s/share")
+    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 81 })
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
 
-    await telegram.bot.handleUpdate(privateMessage(7, "請回答"))
-
-    expect(publish).toHaveBeenCalledWith("這是一段很長的回覆內容")
-    expect(calls[1]?.payload.text).toContain("https://morsel.example/s/share")
+  it("applies the same Morsel policy to long progress edits", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.(
+          Array.from({ length: 6 }, (_, index) => ({
+            text: "工作".repeat(120),
+            status: index === 0 ? ("in_progress" as const) : ("pending" as const),
+          })),
+        )
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const publish = vi.fn(async () => "https://morsel.example/s/progress")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(privateMessage(82, "長任務"))
+    expect(publish).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("處理中… 0/6"))
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[1]?.payload.text).toContain("https://morsel.example/s/progress")
+    expect(calls[2]?.payload.text).toBe("完成")
   })
 
   it.each(["private", "group", "bot-reply"])(
@@ -1442,7 +1517,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("passes mapped bot replies to the session and records status plus continuation IDs", async () => {
+  it("passes mapped bot replies to the session and records the Morsel link message ID", async () => {
     const recordDelivery = vi.fn(async () => undefined)
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
@@ -1459,7 +1534,13 @@ describe("Telegram bot update routing", () => {
       ...loadSettings({ BOT_TOKEN: "test-token" }),
       morselMode: "disabled" as const,
     }
-    const telegram = createTelegramAgentBot(settings, sessions, logger, { botInfo })
+    const telegram = createTelegramAgentBot(settings, sessions, logger, {
+      botInfo,
+      morselPublisher: {
+        isConfigured: true,
+        publish: vi.fn(async () => "https://morsel.example/s/share"),
+      },
+    })
     installApiMock(telegram.bot)
     const update = privateMessage(26, "另一個方向")
     if (update.message) {
@@ -1485,7 +1566,7 @@ describe("Telegram bot update routing", () => {
     expect(recordDelivery).toHaveBeenCalledWith(
       7,
       { sessionId: "session", entryId: "entry", generation: 0 },
-      [100, 101],
+      [100],
     )
   })
 

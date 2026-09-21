@@ -9,6 +9,7 @@ import { promptWithDocumentContext } from "../documents/prompt.js"
 import type { Logger } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, type MorselPublisher } from "../morsel.js"
+import { createTelegramDelivery } from "./delivery.js"
 import {
   downloadTelegramFile,
   downloadTelegramImage,
@@ -28,7 +29,6 @@ import {
 } from "./messages.js"
 import { runTelegramPolling } from "./polling.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
-import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
 
 export interface TelegramAgentBot {
   bot: Bot
@@ -62,6 +62,11 @@ export function createTelegramAgentBot(
   >()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
+  const delivery = createTelegramDelivery(
+    morselPublisher,
+    logger,
+    settings.morselLongReplyThreshold,
+  )
   const marketDataQuery =
     dependencies.marketDataQuery ??
     ((input: string) =>
@@ -75,10 +80,14 @@ export function createTelegramAgentBot(
   })
 
   bot.command("start", async (context) => {
-    await context.reply("你好！我是由 Pi agent 驅動的 Telegram AI 助理。使用 /help 查看可用指令。")
+    await delivery.reply(
+      context,
+      "你好！我是由 Pi agent 驅動的 Telegram AI 助理。使用 /help 查看可用指令。",
+    )
   })
   bot.command("help", async (context) => {
-    await context.reply(
+    await delivery.reply(
+      context,
       [
         "/ask <問題> — 詢問 AI 助理",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、USD）",
@@ -94,7 +103,10 @@ export function createTelegramAgentBot(
     )
   })
   bot.command("id", async (context) => {
-    await context.reply(`chat_id=${context.chat.id}\nuser_id=${context.from?.id ?? "unknown"}`)
+    await delivery.reply(
+      context,
+      `chat_id=${context.chat.id}\nuser_id=${context.from?.id ?? "unknown"}`,
+    )
   })
   bot.command("reset", async (context) => {
     const finishReset = invalidateSubmissionOrder(context.chat.id)
@@ -103,7 +115,7 @@ export function createTelegramAgentBot(
     } finally {
       finishReset()
     }
-    await context.reply("已清除這個對話的 Pi session。", replyOptions(context))
+    await delivery.reply(context, "已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
     const pending = submissionTails.has(context.chat.id)
@@ -114,7 +126,8 @@ export function createTelegramAgentBot(
     } finally {
       finishCancel?.()
     }
-    await context.reply(
+    await delivery.reply(
+      context,
       cancelled || pending ? "已取消目前任務。" : "目前沒有執行中的任務。",
       replyOptions(context),
     )
@@ -122,7 +135,7 @@ export function createTelegramAgentBot(
   bot.command("ask", async (context) => {
     const prompt = context.match.trim()
     if (!prompt) {
-      await context.reply("請使用 /ask <問題>。", replyOptions(context))
+      await delivery.reply(context, "請使用 /ask <問題>。", replyOptions(context))
       return
     }
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
@@ -138,7 +151,8 @@ export function createTelegramAgentBot(
   bot.command("t", async (context) => {
     const query = context.match.trim()
     if (!query) {
-      await context.reply(
+      await delivery.reply(
+        context,
         "請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t USD。",
         replyOptions(context),
       )
@@ -146,14 +160,21 @@ export function createTelegramAgentBot(
     }
     try {
       const result = await marketDataQuery(query)
-      await replyInChunks(context, result || `查不到 ${query} 的市場資料，請確認代碼或稍後再試。`)
+      await delivery.reply(
+        context,
+        result || `查不到 ${query} 的市場資料，請確認代碼或稍後再試。`,
+        {
+          ...replyOptions(context),
+          parse_mode: "HTML",
+        },
+      )
     } catch (error) {
       if (error instanceof MarketDataInputError) {
-        await context.reply(error.message, replyOptions(context))
+        await delivery.reply(context, error.message, replyOptions(context))
         return
       }
       logger.warn(`Market-data command failed for chat_id=${context.chat.id}`, error)
-      await context.reply("市場資料服務暫時無法使用，請稍後再試。", replyOptions(context))
+      await delivery.reply(context, "市場資料服務暫時無法使用，請稍後再試。", replyOptions(context))
     }
   })
 
@@ -209,15 +230,15 @@ export function createTelegramAgentBot(
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
     if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
-      await context.reply("目前未啟用圖片輸入。", replyOptions(context))
+      await delivery.reply(context, "目前未啟用圖片輸入。", replyOptions(context))
       return
     }
     if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
-      await context.reply("目前未啟用文件輸入。", replyOptions(context))
+      await delivery.reply(context, "目前未啟用文件輸入。", replyOptions(context))
       return
     }
     if (documentRefs.length > 0 && !dependencies.documentConverter) {
-      await context.reply("文件轉換服務目前無法使用。", replyOptions(context))
+      await delivery.reply(context, "文件轉換服務目前無法使用。", replyOptions(context))
       return
     }
 
@@ -241,7 +262,7 @@ export function createTelegramAgentBot(
           ? "圖片超過允許的大小，無法處理。"
           : "無法下載 Telegram 圖片，請稍後再試。"
       logger.warn(`Telegram image input failed for chat_id=${context.chat?.id}`, error)
-      await context.reply(response, replyOptions(context))
+      await delivery.reply(context, response, replyOptions(context))
       return
     }
 
@@ -273,7 +294,7 @@ export function createTelegramAgentBot(
       if (!isCurrent()) return
       const response = documentFailureMessage(error)
       logger.warn(`Telegram document input failed for chat_id=${context.chat?.id}`, error)
-      await context.reply(response, replyOptions(context))
+      await delivery.reply(context, response, replyOptions(context))
       return
     }
 
@@ -333,14 +354,15 @@ export function createTelegramAgentBot(
   ): Promise<void> {
     if (!isCurrent()) return
     const sourceMessageId = context.message?.message_id
-    const status = await context.reply(
+    const status = await delivery.reply(
+      context,
       "處理中…",
       sourceMessageId ? { reply_parameters: { message_id: sourceMessageId } } : {},
     )
     const progressStatus = createProgressStatusEditor(
       async (text) => {
         if (!isCurrent()) return
-        await editStatusWithChunks(context, status.chat.id, status.message_id, text, isCurrent)
+        await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
       },
       (error) =>
         logger.warn(`Telegram progress update failed for chat_id=${status.chat.id}`, error),
@@ -348,7 +370,7 @@ export function createTelegramAgentBot(
     )
     const cancelStatus = async () => {
       await progressStatus.close()
-      await editStatusWithChunks(
+      await delivery.edit(
         context,
         status.chat.id,
         status.message_id,
@@ -377,44 +399,25 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
-      let outboundText = result.text
-      const sanitized = sanitizeTelegramText(outboundText)
-      if (
-        settings.morselMode === "smart" &&
-        morselPublisher.isConfigured &&
-        sanitized.length > settings.morselLongReplyThreshold
-      ) {
-        try {
-          const shareUrl = await morselPublisher.publish(sanitized)
-          outboundText = `完整回覆已發布至 Morsel（${sanitized.length.toLocaleString("zh-TW")} 字）：\n${shareUrl}`
-        } catch (error) {
-          logger.warn(
-            `Morsel long-reply publication failed for chat_id=${status.chat.id}; falling back`,
-            error,
-          )
-        }
-      }
-      if (!isCurrent()) {
-        await cancelStatus()
-        return
-      }
       await progressStatus.close()
-      const deliveredMessageIds = await editStatusWithChunks(
+      const deliveryResult = await delivery.edit(
         context,
         status.chat.id,
         status.message_id,
-        outboundText,
+        result.text,
         isCurrent,
       )
-      if (!deliveredMessageIds) {
+      if (deliveryResult === "stale") {
         await cancelStatus()
         return
       }
-      await sessions.recordDelivery(
-        status.chat.id,
-        result.kind === "completed" ? result.checkpoint : undefined,
-        deliveredMessageIds,
-      )
+      if (deliveryResult === "delivered") {
+        await sessions.recordDelivery(
+          status.chat.id,
+          result.kind === "completed" ? result.checkpoint : undefined,
+          [status.message_id],
+        )
+      }
     } catch (error) {
       if (!isCurrent()) {
         await cancelStatus()
@@ -423,13 +426,13 @@ export function createTelegramAgentBot(
       logger.error(`Pi agent request failed for chat_id=${status.chat.id}`, error)
       await progressStatus.close()
       if (
-        !(await editStatusWithChunks(
+        (await delivery.edit(
           context,
           status.chat.id,
           status.message_id,
           "AI 服務暫時無法使用，請稍後再試。",
           isCurrent,
-        ))
+        )) === "stale"
       ) {
         await cancelStatus()
       }
@@ -507,47 +510,6 @@ export function createTelegramAgentBot(
   }
 }
 
-async function editStatusWithChunks(
-  context: Context,
-  chatId: number,
-  messageId: number,
-  text: string,
-  isCurrent: () => boolean = () => true,
-): Promise<number[] | undefined> {
-  const [first = " ", ...rest] = telegramHtmlChunks(text)
-  const continuationMessageIds: number[] = []
-  if (!isCurrent()) return undefined
-  await context.api.editMessageText(chatId, messageId, first, { parse_mode: "HTML" })
-  let replyTo = messageId
-  try {
-    for (const chunk of rest) {
-      if (!isCurrent()) return undefined
-      const sent = await context.api.sendMessage(chatId, chunk, {
-        parse_mode: "HTML",
-        reply_parameters: { message_id: replyTo },
-      })
-      continuationMessageIds.push(sent.message_id)
-      if (!isCurrent()) {
-        await deleteContinuations()
-        return undefined
-      }
-      replyTo = sent.message_id
-    }
-    return isCurrent() ? [messageId, ...continuationMessageIds] : undefined
-  } catch (error) {
-    await deleteContinuations()
-    throw error
-  }
-
-  async function deleteContinuations(): Promise<void> {
-    await Promise.allSettled(
-      continuationMessageIds.map((continuationMessageId) =>
-        context.api.deleteMessage(chatId, continuationMessageId),
-      ),
-    )
-  }
-}
-
 function documentFailureMessage(error: unknown): string {
   if (error instanceof TelegramDownloadTooLargeError) return "文件超過允許的大小，無法處理。"
   if (!(error instanceof DocumentConversionError)) return "無法下載或轉換文件，請稍後再試。"
@@ -576,17 +538,6 @@ function isAllowed(context: Context, whitelist: ReadonlySet<number>): boolean {
     whitelist.has(context.chat?.id ?? Number.NaN) ||
     whitelist.has(context.from?.id ?? Number.NaN)
   )
-}
-
-async function replyInChunks(context: Context, text: string): Promise<void> {
-  let replyTo = context.message?.message_id
-  for (const chunk of telegramHtmlChunks(text)) {
-    const sent = await context.reply(chunk, {
-      parse_mode: "HTML",
-      ...(replyTo ? { reply_parameters: { message_id: replyTo } } : {}),
-    })
-    replyTo = sent.message_id
-  }
 }
 
 function replyOptions(
