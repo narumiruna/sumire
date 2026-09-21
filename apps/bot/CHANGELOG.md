@@ -1,5 +1,15 @@
 # @narumitw/sumire
 
+## 0.1.2
+
+### Patch Changes
+
+- 992a4e5: Require every Telegram text reply and edit over 1000 Unicode characters to publish its complete content to Morsel, including AI answers, commands, and progress updates. Enforce the limit regardless of rich-tool mode or higher legacy thresholds. Send only a short failure notice when publication is unavailable, without falling back to inline long text or recording a successful answer checkpoint.
+- Updated dependencies [6765dcf]
+  - @narumitw/sumire-progress@0.1.1
+  - @narumitw/sumire-url-content@0.20.1
+  - @narumitw/sumire-url-tool@0.2.1
+
 ## 0.1.1
 
 ### Patch Changes
