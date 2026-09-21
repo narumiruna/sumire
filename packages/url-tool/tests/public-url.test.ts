@@ -215,51 +215,60 @@ describe("public URL loading", () => {
     })
   })
 
-  it("routes Google Docs directly to the dedicated loader with output bounds and cancellation", async () => {
-    const url = "https://docs.google.com/document/d/test-doc_123/edit?tab=t.0"
-    const signal = new AbortController().signal
-    const resolve = vi.fn(async () => [
-      { address: "8.8.8.8", family: 4 as const },
-    ]) as unknown as typeof lookup
-    const fetchImplementation = vi.fn(
-      async () =>
-        new Response("<html><body>Editor shell</body></html>", {
-          headers: { "content-type": "text/html" },
-        }),
-    )
-    const urlContentLoadImplementation = vi.fn(async () => ({
-      content: "document body",
+  it.each([
+    {
+      url: "https://docs.google.com/document/d/test-doc_123/edit?tab=t.0",
       loaderId: "google-docs",
-      contentType: "document_text",
-      downgraded: false,
-      attempts: [],
-    }))
+    },
+    { url: "https://example.com/report.docx", loaderId: "anydoc" },
+    { url: "https://example.com/data.csv", loaderId: "anydoc" },
+  ])(
+    "routes $url directly to its document loader with output bounds and cancellation",
+    async ({ url, loaderId }) => {
+      const signal = new AbortController().signal
+      const resolve = vi.fn(async () => [
+        { address: "8.8.8.8", family: 4 as const },
+      ]) as unknown as typeof lookup
+      const fetchImplementation = vi.fn(
+        async () =>
+          new Response("<html><body>Editor shell</body></html>", {
+            headers: { "content-type": "text/html" },
+          }),
+      )
+      const urlContentLoadImplementation = vi.fn(async () => ({
+        content: "document body",
+        loaderId,
+        contentType: "document_text",
+        downgraded: false,
+        attempts: [],
+      }))
 
-    await expect(
-      loadPublicUrl(url, {
-        ...options,
-        maxChars: 8,
-        resolve,
+      await expect(
+        loadPublicUrl(url, {
+          ...options,
+          maxChars: 8,
+          resolve,
+          signal,
+          fetchImplementation,
+          urlContentTimeoutSeconds: 30,
+          urlContentLoadImplementation,
+        }),
+      ).resolves.toMatchObject({
+        url,
+        finalUrl: url,
+        source: "url-content",
+        loaderId,
+        contentType: "document_text",
+        text: "document\n\n[truncated by telegramagent: 13 -> 8 chars]",
+        truncated: true,
+      })
+      expect(fetchImplementation).not.toHaveBeenCalled()
+      expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+        deadlineSeconds: 30,
         signal,
-        fetchImplementation,
-        urlContentTimeoutSeconds: 30,
-        urlContentLoadImplementation,
-      }),
-    ).resolves.toMatchObject({
-      url,
-      finalUrl: url,
-      source: "url-content",
-      loaderId: "google-docs",
-      contentType: "document_text",
-      text: "document\n\n[truncated by telegramagent: 13 -> 8 chars]",
-      truncated: true,
-    })
-    expect(fetchImplementation).not.toHaveBeenCalled()
-    expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
-      deadlineSeconds: 30,
-      signal,
-    })
-  })
+      })
+    },
+  )
 
   it("preserves Google Docs errors rather than accepting editor HTML or hiding the cause", async () => {
     const cause = new Error("Google Docs export returned HTTP 403")

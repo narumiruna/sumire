@@ -5,6 +5,7 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 ## Features
 
 - Source-aware plans for YouTube, Twitter/X, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
+- Local AnyDoc conversion of public Office, OpenDocument, RTF, EPUB, and CSV document URLs in killable child processes
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
 - Reusable fetch, `impers`, and Playwright resources with concurrency limits and total deadlines
@@ -110,9 +111,25 @@ export FIRECRAWL_API_KEY=...
 
 The loader calls Firecrawl's v1 scrape endpoint and requests Markdown.
 
+### AnyDoc
+
+The `anydoc` worker loader uses [`@firecrawl/anydoc`](https://github.com/firecrawl/anydoc) locally to convert public document URLs to Markdown. Automatic matching uses the decoded URL filename, ignoring query parameters and fragments:
+
+- Word: `.doc`, `.docx`, `.docm`
+- PowerPoint: `.ppt`, `.pps`, `.pot`, `.pptx`, `.pptm`, `.ppsx`, `.ppsm`
+- Excel: `.xls`, `.xlsx`, `.xlsm`, `.xlsb`
+- OpenDocument: `.odt`, `.ods`, `.odp`
+- Other: `.rtf`, `.epub`, `.csv`
+
+Existing source-specific plans, including Google Docs, GitHub, and PDF, retain precedence. PDF URLs can also be converted explicitly with `sumire-url-content --loader anydoc https://example.com/report.pdf`. Extensionless download endpoints and local Office-file paths are not matched.
+
+Keep npm optional dependencies enabled so the AnyDoc native binding for your platform is installed. Conversion does not require `FIRECRAWL_API_KEY` and always uses `ocr: "reject"`: scanned PDFs requiring OCR fail with `needsOcr`, and documents are never sent to hosted OCR. Format detection uses the bytes first, then the filename for formats such as CSV.
+
+Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-content/anydoc` and is also used for Telegram attachments.
+
 ### PDF
 
-PDF parsing uses `pdf-parse`. Remote targets must return `application/pdf`; local `.pdf` paths are also supported.
+Automatic PDF parsing still uses `pdf-parse`. Remote targets must return `application/pdf`; local `.pdf` paths are also supported. Explicit `anydoc` loading supports remote PDF URLs only.
 
 ### yt-dlp and Whisper
 
@@ -132,6 +149,7 @@ Strict source plans do not accept unrelated generic HTML:
 - Twitter status, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
+- AnyDoc document plans require native document conversion and do not fall back to generic HTML.
 - Empty output and recognized challenge headings are rejected so the chain can continue.
 
 ## Implementation notes

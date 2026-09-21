@@ -1,6 +1,7 @@
 import type { Loader, LoaderFactory } from "./core/loader.js"
 import type { ResourceProvider } from "./core/resources.js"
 
+export const ANYDOC = "anydoc"
 export const PTT = "ptt"
 export const TWITTER = "twitter"
 export const TRUTHSOCIAL = "truthsocial"
@@ -51,6 +52,9 @@ function definition(
 }
 
 export const LOADER_DEFS: readonly LoaderDef[] = [
+  definition(ANYDOC, "Converts public documents to Markdown with AnyDoc", "document_text", {
+    resourceKind: "worker",
+  }),
   definition(PTT, "Taiwan PTT forum posts", "social_post"),
   definition(TWITTER, "Extracts Twitter/X post content", "social_post"),
   definition(TRUTHSOCIAL, "Extracts Truth Social posts", "social_post", {
@@ -137,6 +141,10 @@ export function listLoaderNames(options: { cliVisible?: boolean } = {}): string[
 
 export async function createLoader(name: string, resources?: ResourceProvider): Promise<Loader> {
   switch (name) {
+    case ANYDOC: {
+      const { AnyDocLoader } = await import("./loaders/anydoc.js")
+      return new AnyDocLoader({ resources })
+    }
     case HTTPX: {
       const { HttpLoader } = await import("./loaders/generic.js")
       return new HttpLoader({ resources })

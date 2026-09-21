@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
 import {
+  isAnyDocUrl,
   isGoogleDocsUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
@@ -120,8 +121,8 @@ export async function loadPublicUrl(
     validationSignal,
   )
 
-  // Editor HTML is not document content, even when it fits the built-in byte limit.
-  if (isGoogleDocsUrl(urlValue)) return loadSourceUrl(urlValue, options)
+  // Known document sources must not be mistaken for editor HTML or raw CSV text.
+  if (isGoogleDocsUrl(urlValue) || isAnyDocUrl(urlValue)) return loadSourceUrl(urlValue, options)
 
   let builtInError: unknown
   try {

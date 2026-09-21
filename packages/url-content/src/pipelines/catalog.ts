@@ -1,4 +1,5 @@
 import {
+  ANYDOC,
   BBC,
   CNN,
   CURL_CFFI,
@@ -20,6 +21,7 @@ import {
   YOUTUBE_YTDLP,
 } from "../loader-registry.js"
 import {
+  isAnyDocUrl,
   isBbcUrl,
   isCnnUrl,
   isGitHubUrl,
@@ -126,6 +128,7 @@ const PIPELINE_ENTRIES: readonly PipelineEntry[] = [
     isOpenAiWebUrl,
   ],
   [{ name: PDF, contentType: ContentType.DocumentPdf, targetedLoaders: [PDF] }, isPdfTarget],
+  [{ name: ANYDOC, contentType: ContentType.DocumentText, targetedLoaders: [ANYDOC] }, isAnyDocUrl],
 ]
 
 export function matchPipeline(url: string): Pipeline | undefined {

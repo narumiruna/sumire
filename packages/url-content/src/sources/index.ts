@@ -1,4 +1,5 @@
 export type {
+  AnyDocTarget,
   GitHubTarget,
   GoogleDocsTarget,
   PiSessionTarget,
@@ -6,8 +7,10 @@ export type {
   YouTubeVideoTarget,
 } from "./applicability.js"
 export {
+  ANYDOC_EXTENSIONS,
   BBC_DOMAIN_SUFFIX,
   CNN_DOMAIN_SUFFIX,
+  isAnyDocUrl,
   isBbcUrl,
   isCnnUrl,
   isGitHubUrl,
@@ -29,6 +32,7 @@ export {
   PI_SESSION_HOST,
   PI_SESSION_PATH,
   PTT_HOSTS,
+  parseAnyDocTarget,
   parseBbcTarget,
   parseCnnTarget,
   parseGitHubRawContentTarget,

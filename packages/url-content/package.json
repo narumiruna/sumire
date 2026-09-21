@@ -24,6 +24,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./anydoc": {
+      "types": "./dist/core/anydoc.d.ts",
+      "import": "./dist/core/anydoc.js"
+    },
     "./loaders": {
       "types": "./dist/loaders/index.d.ts",
       "import": "./dist/loaders/index.js"
@@ -49,6 +53,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@firecrawl/anydoc": "0.2.4",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.11.1",
     "impers": "0.1.2",

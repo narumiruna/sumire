@@ -1,3 +1,9 @@
+export {
+  AnyDocLoader,
+  DEFAULT_ANYDOC_TIMEOUT_MS,
+  MAX_ANYDOC_BYTES,
+  MAX_ANYDOC_MARKDOWN_CHARS,
+} from "./anydoc.js"
 export type {
   BrowserContentExtractor,
   BrowserPageHook,

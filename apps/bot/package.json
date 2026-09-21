@@ -33,6 +33,7 @@
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/sumire-progress": "0.1.0",
+    "@narumitw/sumire-url-content": "0.19.7",
     "@narumitw/sumire-url-tool": "0.1.0",
     "@pydantic/logfire-node": "0.18.25",
     "grammy": "1.46.0",

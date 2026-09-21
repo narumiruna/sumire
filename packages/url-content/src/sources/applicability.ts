@@ -1,5 +1,29 @@
 import { InvalidUrlError, LoaderNotApplicableError, UrlContentError } from "../core/errors.js"
 
+export const ANYDOC_EXTENSIONS = [
+  "doc",
+  "docx",
+  "docm",
+  "ppt",
+  "pps",
+  "pot",
+  "pptx",
+  "pptm",
+  "ppsx",
+  "ppsm",
+  "xls",
+  "xlsx",
+  "xlsm",
+  "xlsb",
+  "odt",
+  "ods",
+  "odp",
+  "rtf",
+  "epub",
+  "csv",
+  "pdf",
+] as const
+
 export const BBC_DOMAIN_SUFFIX = "bbc.com"
 export const CNN_DOMAIN_SUFFIX = "cnn.com"
 export const LTN_DOMAIN_SUFFIX = "ltn.com.tw"
@@ -77,6 +101,11 @@ export interface YouTubeVideoTarget {
   videoId: string
 }
 
+export interface AnyDocTarget {
+  url: string
+  filename: string
+}
+
 export interface GoogleDocsTarget {
   url: string
   documentId: string
@@ -150,6 +179,33 @@ export function parseYouTubeVideoTarget(url: string): YouTubeVideoTarget {
 export function isYouTubeVideoUrl(url: string): boolean {
   try {
     parseYouTubeVideoTarget(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function parseAnyDocTarget(url: string): AnyDocTarget {
+  const parsed = parseHttpUrl(url)
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new InvalidUrlError(url, "public document")
+  }
+  let filename: string
+  try {
+    filename = decodeURIComponent(parsed.pathname.split("/").at(-1) ?? "")
+  } catch {
+    throw new InvalidUrlError(url, "document filename")
+  }
+  const extension = filename.split(".").at(-1)?.toLowerCase()
+  if (!filename.includes(".") || !ANYDOC_EXTENSIONS.some((value) => value === extension)) {
+    throw new InvalidUrlError(url, "AnyDoc-supported document")
+  }
+  return { url, filename }
+}
+
+export function isAnyDocUrl(url: string): boolean {
+  try {
+    parseAnyDocTarget(url)
     return true
   } catch {
     return false
