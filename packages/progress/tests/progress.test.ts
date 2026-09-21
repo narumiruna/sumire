@@ -9,11 +9,11 @@ import { describe, expect, it } from "vitest"
 
 import progressExtension from "../src/progress-extension.js"
 import {
-  parseProgressDetails,
   PROGRESS_CONTEXT_MESSAGE_TYPE,
   PROGRESS_DETAILS_VERSION,
-  type ProgressStep,
   PROGRESS_TOOL_NAME,
+  type ProgressStep,
+  parseProgressDetails,
   reconcileProgressContext,
   reconstructProgress,
   validateProgressArguments,

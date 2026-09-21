@@ -3,10 +3,10 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import {
   cloneProgressSteps,
   PROGRESS_DETAILS_VERSION,
+  PROGRESS_TOOL_NAME,
   type ProgressDetails,
   ProgressParameters,
   type ProgressStep,
-  PROGRESS_TOOL_NAME,
   reconcileProgressContext,
   reconstructProgress,
   validateProgressArguments,
