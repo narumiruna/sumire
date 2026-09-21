@@ -1,5 +1,13 @@
 # @narumitw/sumire-url-tool
 
+## 0.2.1
+
+### Patch Changes
+
+- 6765dcf: Mark all shared workspace packages as private to prevent accidental npm publication.
+- Updated dependencies [6765dcf]
+  - @narumitw/sumire-url-content@0.20.1
+
 ## 0.2.0
 
 ### Minor Changes
