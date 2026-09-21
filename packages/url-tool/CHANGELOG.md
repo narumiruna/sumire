@@ -1,5 +1,18 @@
 # @narumitw/sumire-url-tool
 
+## 0.2.0
+
+### Minor Changes
+
+- bde8fbb: Add an AnyDoc worker loader for public Office, OpenDocument, RTF, EPUB, and CSV URLs, with explicit AnyDoc support for remote PDFs. Preserve existing source-specific plans and route known document URLs past the built-in HTML loader. Share isolated, abortable native conversion with Telegram attachments, enforce download/output limits, and keep hosted OCR disabled.
+
+### Patch Changes
+
+- c0abc91: Add a dedicated Google Docs loader that exports public documents as bounded plain text while preserving tab and resource-key parameters. Route Google Docs links directly to it instead of fetching editor HTML, reject login pages and unsafe redirects, and preserve source error details.
+- Updated dependencies [bde8fbb]
+- Updated dependencies [c0abc91]
+  - @narumitw/sumire-url-content@0.20.0
+
 ## 0.1.0
 
 ### Minor Changes

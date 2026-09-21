@@ -1,5 +1,17 @@
 # @narumitw/sumire
 
+## 0.1.1
+
+### Patch Changes
+
+- bde8fbb: Add an AnyDoc worker loader for public Office, OpenDocument, RTF, EPUB, and CSV URLs, with explicit AnyDoc support for remote PDFs. Preserve existing source-specific plans and route known document URLs past the built-in HTML loader. Share isolated, abortable native conversion with Telegram attachments, enforce download/output limits, and keep hosted OCR disabled.
+- c0abc91: Add a dedicated Google Docs loader that exports public documents as bounded plain text while preserving tab and resource-key parameters. Route Google Docs links directly to it instead of fetching editor HTML, reject login pages and unsafe redirects, and preserve source error details.
+- 07e0204: Retry Telegram polling failures at a fixed five-second interval instead of allowing exponential delays to stall recovery. Route rate-limited outage warnings, recovery messages, and fatal errors through secret-redacted logging without grammY's raw token-bearing console output.
+- Updated dependencies [bde8fbb]
+- Updated dependencies [c0abc91]
+  - @narumitw/sumire-url-content@0.20.0
+  - @narumitw/sumire-url-tool@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
