@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-url-tool",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Bounded public URL loading tool for Pi agents",
   "license": "MIT",
   "repository": {
@@ -56,7 +56,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@narumitw/sumire-url-content": "0.19.6",
+    "@narumitw/sumire-url-content": "0.19.7",
     "ipaddr.js": "2.5.0",
     "undici": "8.10.2"
   },

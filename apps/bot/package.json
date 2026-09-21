@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -32,8 +32,8 @@
     "@earendil-works/pi-coding-agent": "0.86.1",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
-    "@narumitw/sumire-progress": "0.0.0",
-    "@narumitw/sumire-url-tool": "0.0.0",
+    "@narumitw/sumire-progress": "0.1.0",
+    "@narumitw/sumire-url-tool": "0.1.0",
     "@pydantic/logfire-node": "0.18.25",
     "grammy": "1.46.0",
     "taiwan-exchange-rates": "0.0.0",
