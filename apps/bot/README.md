@@ -131,6 +131,10 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `sumire` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
 
+Telegram polling retries transient failures such as `ECONNRESET` every five seconds, also honoring Telegram's `retry_after` when rate-limited. Failures use the redacting logger rather than grammY's raw console output: one warning per minute during an outage, followed by a recovery message. Unauthorized-token (`401`) and competing-poller (`409`) errors stop the process immediately; other polling failures stop it after the runner's 15-hour retry window. Fatal errors are also redacted and exit with a nonzero status so Compose can restart the service.
+
+If polling warnings continue, check the container's outbound HTTPS connection to `api.telegram.org`, including any VPN, proxy, or firewall. Retries cannot fix a blocked network. If a token has appeared in old logs, revoke it via @BotFather, replace `BOT_TOKEN` in `.env`, and rebuild/recreate the service with `docker compose up -d --build sumire`.
+
 ## Document input
 
 When `BOT_DOCUMENT_INPUT_ENABLED=true`, current and replied Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, and text-based PDF attachments are downloaded with byte and time bounds, then converted in a killable child process. Raw bytes remain in memory and are not persisted. Converted Markdown is truncated to one aggregate prompt budget and delimited as untrusted reference material. Scanned PDFs that require OCR, encrypted or malformed documents, timeouts, and resource-limit failures return direct Traditional Chinese errors without invoking Pi.

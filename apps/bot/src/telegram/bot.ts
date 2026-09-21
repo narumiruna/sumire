@@ -1,4 +1,4 @@
-import { type RunnerHandle, run } from "@grammyjs/runner"
+import type { RunnerHandle } from "@grammyjs/runner"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
@@ -26,6 +26,7 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
+import { runTelegramPolling } from "./polling.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
 import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
 
@@ -42,8 +43,6 @@ interface TelegramBotDependencies {
   marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
 }
-
-const updateConcurrency = 16
 
 export function createTelegramAgentBot(
   settings: Settings,
@@ -497,10 +496,7 @@ export function createTelegramAgentBot(
     async start() {
       await bot.init()
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
-      runner = run(bot, {
-        runner: { fetch: { allowed_updates: ["message"] } },
-        sink: { concurrency: updateConcurrency },
-      })
+      runner = runTelegramPolling(bot, logger)
       await runner.task()
     },
     async stop() {
