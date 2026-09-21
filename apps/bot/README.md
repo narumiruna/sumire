@@ -8,8 +8,10 @@ Primary Sumire service used by CI/CD, isolated under `./apps/bot`; the Python im
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
 - `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
+- `@narumitw/sumire-url-tool`: repository-owned Pi package for agent-driven public URL loading.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
+- `@firecrawl/anydoc`: isolated local document-to-Markdown conversion without hosted OCR.
 - Vitest: tests.
 
 There is no custom agent loop and no Vercel AI SDK. Telegram code owns only update routing and the mapping from Telegram chat IDs to Pi sessions.
@@ -25,7 +27,8 @@ Available now:
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - `SOUL.md` and filtered Agent Skills
-- bounded Telegram image input
+- bounded Telegram image and document input
+- native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
 - Morsel rich-rendering tool and smart long-reply routing
 - live multi-step progress in the pending Telegram reply
@@ -34,10 +37,8 @@ Available now:
 
 Not yet at Python parity:
 
-- AnyDoc document conversion
 - image generation command
 - file-backed events and task management commands
-- Telegram reply-tree to Pi session-tree mapping
 - Yahoo Finance MCP, Firecrawl MCP, Gurume, and bounded container tools
 - Logfire integration
 
@@ -46,6 +47,7 @@ Track these items in [`docs/plans/2026-04-12_typescript-migration-plan.md`](docs
 ## Requirements
 
 - Node.js 22.19 or newer
+- Linux x86_64 with glibc for the production AnyDoc native adapter
 - Telegram bot token
 - OpenAI-compatible Chat Completions endpoint and API key
 - Playwright Chromium for source-aware browser fallbacks
@@ -112,13 +114,14 @@ npm run check:write
 
 ## Session storage
 
-Each chat uses a Pi-native session directory:
+Each chat uses a Pi-native session directory plus a derived Telegram reply index:
 
 ```text
 .telegramagent/sessions/<chat-id>/pi/*.jsonl
+.telegramagent/sessions/<chat-id>/telegram-reply-index.json
 ```
 
-Pi owns the agent session lifecycle and transcript format. The TypeScript service does not read or rewrite Python `session-v2.jsonl` files. `/reset` removes only that chat's TypeScript Pi directory.
+Pi owns the agent session lifecycle, transcript, and branches. After a completed answer is delivered, the bounded index records only Telegram message IDs and the corresponding Pi session/entry IDs. Replying to any delivered chunk restores that native checkpoint with no abandoned-branch summary. Unknown, stale, evicted, or disabled mappings continue from the latest leaf and preserve ordinary quoted reply context. `/reset` removes both the chat's Pi data and reply index.
 
 ## Model configuration
 
@@ -128,11 +131,25 @@ Pi owns the agent session lifecycle and transcript format. The TypeScript servic
 
 Logs are always written to stderr with Telegram tokens, API keys, authorization headers, cookies, passwords, and named secrets redacted. Set `LOGFIRE_TOKEN` to also send the same redacted `DEBUG`, `INFO`, `WARN`, and `ERROR` records to Pydantic Logfire under the `sumire` service. Logfire is optional; configuration, export, or shutdown failures fall back to stderr without stopping the bot.
 
+## Document input
+
+When `BOT_DOCUMENT_INPUT_ENABLED=true`, current and replied Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, and text-based PDF attachments are downloaded with byte and time bounds, then converted in a killable child process. Raw bytes remain in memory and are not persisted. Converted Markdown is truncated to one aggregate prompt budget and delimited as untrusted reference material. Scanned PDFs that require OCR, encrypted or malformed documents, timeouts, and resource-limit failures return direct Traditional Chinese errors without invoking Pi.
+
+`BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS` limits the entire download-and-convert operation across all chats and both current/replied attachments. A shared slot is acquired before Telegram `getFile` or download starts and retained until conversion settles, including child-process close after errors or timeouts. Waiting jobs retain only attachment metadata and a lazy loader, not downloaded bytes. With the defaults, at most two 20,000,000-byte document inputs are admitted (40,000,000 input bytes); download/IPC copies, native conversion memory, images, and runtime overhead are additional, so this is not a total process-memory cap. Download and conversion failures release their slot for queued work.
+
+`/cancel` invalidates pending input in that chat before invoking Pi's native cancellation. Queued document loaders are skipped, late results/errors do not reach Pi or produce stale replies, and new messages can proceed. Downloads or native conversions already in flight retain their slot and drain to completion or their existing timeout; cancellation does not claim to terminate these operations immediately.
+
+Replying to a document with `/ask <question>` uses the same bounded media-input pipeline as an addressed message, including feature flags, direct failures, cancellation, and reply-tree restoration. An empty `/ask` still returns usage without processing attachments.
+
+The production image currently qualifies the AnyDoc native adapter on Linux x86_64 glibc. Other architectures are not release-qualified even if upstream optional packages exist. Disable `BOT_DOCUMENT_INPUT_ENABLED` if the native adapter is unavailable.
+
 ## URL content loading
 
-`load_public_url` validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@narumitw/sumire-url-content` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
+The [`@narumitw/sumire-url-tool`](../../packages/url-tool/README.md) Pi extension registers `load_public_url`. It validates the original target as public HTTP(S), then tries the bounded built-in text/HTML loader. It falls back to the local `@narumitw/sumire-url-content` workspace package when built-in loading fails, returns a blocker page, or encounters source-specific YouTube/X content. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
 
-The built-in loader uses a 15-second timeout and 12,000-character output limit; the source-aware loader uses a 180-second timeout. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before the source-aware loader is invoked.
+`BOT_URL_TIMEOUT_SECONDS` and `BOT_URL_MAX_EXTRACTED_CHARS` control the built-in loader's timeout and output limit; `BOT_URL_CONTENT_TIMEOUT_SECONDS` controls the source-aware timeout. `BOT_URL_ALLOWED_SCHEMES` can restrict loading to HTTP, HTTPS, or both. Both paths enforce deadlines and bounded output. Unsafe local, private, link-local, and metadata targets are rejected before the source-aware loader is invoked.
+
+Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `load_public_url`; the Telegram router does not prefetch URLs or retain pending URL state. Tool results and follow-up context use Pi's native session lifecycle.
 
 ## Docker
 
@@ -145,4 +162,8 @@ docker compose logs -f sumire
 docker compose down
 ```
 
-The image builds the local URL content workspace package and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
+The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
+
+## Feature controls
+
+The root [`.env.example`](../../.env.example) lists document, reply-tree, and image flags plus URL tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.

@@ -54,9 +54,13 @@ export function passiveGroupContext(message: TelegramMessageLike): string {
     : ""
 }
 
-export function promptWithReplyContext(message: TelegramMessageLike, currentText: string): string {
+export function promptWithReplyContext(
+  message: TelegramMessageLike,
+  currentText: string,
+  includeBotReply = false,
+): string {
   const replied = message.reply_to_message
-  if (!replied || replied.from?.is_bot) return currentText
+  if (!replied || (replied.from?.is_bot && !includeBotReply)) return currentText
   const type = messageContentType(replied)
   const lines = [
     "Replied message context:",
@@ -83,6 +87,49 @@ export interface ImageReference {
   filename: string
   mediaType: string
   fileSize?: number
+}
+
+export interface DocumentReference {
+  fileId: string
+  filename: string
+  mediaType: string
+  source: "current" | "replied"
+  fileSize?: number
+}
+
+export function repliedBotMessageId(
+  message: TelegramMessageLike,
+  botId: number,
+): number | undefined {
+  const replied = message.reply_to_message
+  return replied?.from?.id === botId ? replied.message_id : undefined
+}
+
+export function documentReferences(message: TelegramMessageLike): DocumentReference[] {
+  const references: DocumentReference[] = []
+  const seen = new Set<string>()
+  add(message, "current")
+  if (message.reply_to_message) add(message.reply_to_message, "replied")
+  return references
+
+  function add(candidate: TelegramMessageLike, source: DocumentReference["source"]): void {
+    const document = candidate.document
+    if (
+      !document ||
+      document.mime_type?.toLowerCase().startsWith("image/") ||
+      seen.has(document.file_id)
+    ) {
+      return
+    }
+    seen.add(document.file_id)
+    references.push({
+      fileId: document.file_id,
+      filename: sanitizeDocumentFilename(document.file_name),
+      mediaType: sanitizeMediaType(document.mime_type),
+      source,
+      ...(document.file_size !== undefined ? { fileSize: document.file_size } : {}),
+    })
+  }
 }
 
 export function imageReferences(message: TelegramMessageLike): ImageReference[] {
@@ -159,6 +206,21 @@ function messageContent(message: TelegramMessageLike, type: string): string {
   return type === "unknown"
     ? "無法取得被回覆訊息內容"
     : `使用者回覆的是一則 ${type} 訊息，無文字內容`
+}
+
+function sanitizeDocumentFilename(value: string | undefined): string {
+  const sanitized = (value || "telegram-document")
+    .replace(/[\p{Cc}/\\<>]+/gu, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+  return (sanitized || "telegram-document").slice(0, 200)
+}
+
+function sanitizeMediaType(value: string | undefined): string {
+  const normalized = (value || "application/octet-stream").trim().toLowerCase()
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalized)
+    ? normalized.slice(0, 100)
+    : "application/octet-stream"
 }
 
 function escapeRegExp(value: string): string {

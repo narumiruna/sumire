@@ -2,8 +2,6 @@ import type { LookupAddress } from "node:dns"
 import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
-import { Type } from "@earendil-works/pi-ai"
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent"
 import {
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
@@ -12,8 +10,6 @@ import {
 } from "@narumitw/sumire-url-content"
 import ipaddr from "ipaddr.js"
 import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
-
-import type { Settings } from "../config/settings.js"
 
 const redirectStatuses = new Set([301, 302, 303, 307, 308])
 const acceptedContentTypes = [
@@ -30,32 +26,29 @@ const blockerPhrases = [
   "verify you're a human",
 ]
 
-export function buildUrlTools(settings: Settings): ToolDefinition[] {
-  if (!settings.botProactiveEnabled) return []
-  return [
-    defineTool({
-      name: "load_public_url",
-      label: "Load public URL",
-      description:
-        "Load readable text or Markdown from a public HTTP(S) URL. The bounded built-in loader is tried first, then the source-aware URL content loader handles source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
-      parameters: Type.Object({
-        url: Type.String({ description: "The absolute public HTTP(S) URL to load" }),
-      }),
-      execute: async (_toolCallId, parameters, signal) => {
-        const result = await loadPublicUrl(parameters.url, {
-          allowedSchemes: settings.botProactiveAllowedSchemes,
-          maxChars: settings.botProactiveMaxExtractedChars,
-          timeoutMs: Math.round(settings.botProactiveUrlTimeoutSeconds * 1_000),
-          urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
-          signal,
-        })
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          details: result,
-        }
-      },
-    }),
-  ]
+export interface PublicUrlLoader {
+  load(url: string, signal?: AbortSignal): Promise<LoadedUrl>
+}
+
+export interface PublicUrlLoaderOptions {
+  allowedSchemes?: ReadonlySet<string>
+  maxChars?: number
+  timeoutMs?: number
+  urlContentTimeoutSeconds?: number
+}
+
+export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): PublicUrlLoader {
+  const config = {
+    allowedSchemes: options.allowedSchemes ?? new Set(["http", "https"]),
+    maxChars: options.maxChars ?? 12_000,
+    timeoutMs: options.timeoutMs ?? 15_000,
+    urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
+  }
+  return {
+    load(url, signal) {
+      return loadPublicUrl(url, { ...config, ...(signal ? { signal } : {}) })
+    },
+  }
 }
 
 export interface LoadedUrl {

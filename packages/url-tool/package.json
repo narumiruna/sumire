@@ -1,0 +1,74 @@
+{
+  "name": "@narumitw/sumire-url-tool",
+  "version": "0.0.0",
+  "description": "Bounded public URL loading tool for Pi agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/narumiruna/sumire.git",
+    "directory": "packages/url-tool"
+  },
+  "homepage": "https://github.com/narumiruna/sumire/tree/main/packages/url-tool#readme",
+  "bugs": {
+    "url": "https://github.com/narumiruna/sumire/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "url"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-content",
+    "prebuild": "npm run build:dependencies",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "prepack": "npm run build",
+    "pretypecheck": "npm run build:dependencies",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@narumitw/sumire-url-content": "0.19.6",
+    "ipaddr.js": "2.5.0",
+    "undici": "8.10.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

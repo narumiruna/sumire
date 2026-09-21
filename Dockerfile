@@ -8,12 +8,14 @@ COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-content/package.json packages/url-content/package.json
+COPY packages/url-tool/package.json packages/url-tool/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --workspace @narumitw/sumire --include-workspace-root=false
 
 FROM dependencies AS build
 
 COPY packages/progress/ packages/progress/
 COPY packages/url-content/ packages/url-content/
+COPY packages/url-tool/ packages/url-tool/
 COPY apps/bot/ apps/bot/
 RUN npm run build --workspace @narumitw/sumire
 
@@ -37,7 +39,7 @@ WORKDIR /app
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/.telegramagent /app/.events /app/skills \
+    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/skills \
     && chown -R app:app /app /ms-playwright
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
@@ -50,6 +52,8 @@ COPY --from=build --chown=app:app /build/packages/progress/dist /app/packages/pr
 COPY --from=build --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
 COPY --from=build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
 COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
+COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
+COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
 COPY --chown=app:app SOUL.md /app/SOUL.md
 
 USER app

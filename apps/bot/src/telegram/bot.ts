@@ -4,17 +4,25 @@ import type { UserFromGetMe } from "grammy/types"
 
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { Settings } from "../config/settings.js"
+import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
+import { promptWithDocumentContext } from "../documents/prompt.js"
 import type { Logger } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, type MorselPublisher } from "../morsel.js"
-import { downloadTelegramImage, TelegramDownloadTooLargeError } from "./files.js"
+import {
+  downloadTelegramFile,
+  downloadTelegramImage,
+  TelegramDownloadTooLargeError,
+} from "./files.js"
 import {
   defaultImagePrompt,
+  documentReferences,
   imageReferences,
   isBotAddressed,
   messageText,
   passiveGroupContext,
   promptWithReplyContext,
+  repliedBotMessageId,
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
@@ -30,6 +38,7 @@ export interface TelegramAgentBot {
 interface TelegramBotDependencies {
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
+  documentConverter?: DocumentConverter
   marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
 }
@@ -48,7 +57,10 @@ export function createTelegramAgentBot(
   )
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
-  const submissionGenerations = new Map<number, number>()
+  const submissionGenerations = new Map<
+    number,
+    { generation: number; reason: "reset" | "cancel" }
+  >()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
   const marketDataQuery =
@@ -72,8 +84,13 @@ export function createTelegramAgentBot(
         "/ask <問題> — 詢問 AI 助理",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、USD）",
         "/reset — 清除目前 chat 的 Pi session",
-        "/cancel — 取消目前執行並清除 steering/follow-up queue",
+        "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
+        ...(settings.botDocumentInputEnabled
+          ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
+          : []),
+        ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
+        "可請助理使用 load_public_url 工具讀取公開網址。",
       ].join("\n"),
     )
   })
@@ -90,9 +107,16 @@ export function createTelegramAgentBot(
     await context.reply("已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
-    const cancelled = await sessions.cancel(context.chat.id)
+    const pending = submissionTails.has(context.chat.id)
+    const finishCancel = pending ? invalidateSubmissionOrder(context.chat.id, "cancel") : undefined
+    let cancelled: boolean
+    try {
+      cancelled = await sessions.cancel(context.chat.id)
+    } finally {
+      finishCancel?.()
+    }
     await context.reply(
-      cancelled ? "已取消目前任務。" : "目前沒有執行中的任務。",
+      cancelled || pending ? "已取消目前任務。" : "目前沒有執行中的任務。",
       replyOptions(context),
     )
   })
@@ -103,7 +127,13 @@ export function createTelegramAgentBot(
       return
     }
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      answer(context, prompt, [], release, isCurrent),
+      submitInput(
+        context,
+        context.message as unknown as TelegramMessageLike,
+        prompt,
+        release,
+        isCurrent,
+      ),
     )
   })
   bot.command("t", async (context) => {
@@ -157,45 +187,122 @@ export function createTelegramAgentBot(
 
     if (fromBot)
       botReplyStreaks.set(context.chat.id, (botReplyStreaks.get(context.chat.id) ?? 0) + 1)
-    await inSubmissionOrder(context.chat.id, async (release, isCurrent) => {
-      const strippedText = privateChat
-        ? messageText(message).trim()
-        : stripBotMention(messageText(message), context.me.username)
-      const references = imageReferences(message)
-      if (references.length > 0 && !settings.botImageInputEnabled) {
-        await context.reply("目前未啟用圖片輸入。", replyOptions(context))
-        return
-      }
+    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
+      submitInput(
+        context,
+        message,
+        privateChat
+          ? messageText(message).trim()
+          : stripBotMention(messageText(message), context.me.username),
+        release,
+        isCurrent,
+      ),
+    )
+  })
 
-      let images: Array<{ type: "image"; data: string; mimeType: string }>
-      try {
-        images = await Promise.all(
-          references.map((reference) =>
-            downloadTelegramImage(
+  async function submitInput(
+    context: Context,
+    message: TelegramMessageLike,
+    strippedText: string,
+    release: () => void,
+    isCurrent: () => boolean,
+  ): Promise<void> {
+    const imageRefs = imageReferences(message)
+    const documentRefs = documentReferences(message)
+    if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
+      await context.reply("目前未啟用圖片輸入。", replyOptions(context))
+      return
+    }
+    if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
+      await context.reply("目前未啟用文件輸入。", replyOptions(context))
+      return
+    }
+    if (documentRefs.length > 0 && !dependencies.documentConverter) {
+      await context.reply("文件轉換服務目前無法使用。", replyOptions(context))
+      return
+    }
+
+    let images: Array<{ type: "image"; data: string; mimeType: string }>
+    try {
+      images = await Promise.all(
+        imageRefs.map((reference) =>
+          downloadTelegramImage(
+            context.api,
+            settings.botToken,
+            reference,
+            settings.botImageMaxBytes,
+            dependencies.imageFetchImplementation,
+          ),
+        ),
+      )
+    } catch (error) {
+      if (!isCurrent()) return
+      const response =
+        error instanceof TelegramDownloadTooLargeError
+          ? "圖片超過允許的大小，無法處理。"
+          : "無法下載 Telegram 圖片，請稍後再試。"
+      logger.warn(`Telegram image input failed for chat_id=${context.chat?.id}`, error)
+      await context.reply(response, replyOptions(context))
+      return
+    }
+
+    if (!isCurrent()) return
+    let documentInputs: Array<{
+      reference: (typeof documentRefs)[number]
+      converted: Awaited<ReturnType<DocumentConverter["convert"]>>
+    }> = []
+    try {
+      documentInputs = await Promise.all(
+        documentRefs.map(async (reference) => {
+          const converted = await dependencies.documentConverter?.convert(async () => {
+            if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+            const bytes = await downloadTelegramFile(
               context.api,
               settings.botToken,
               reference,
-              settings.botImageMaxBytes,
+              settings.botDocumentMaxBytes,
               dependencies.imageFetchImplementation,
-            ),
-          ),
-        )
-      } catch (error) {
-        const message =
-          error instanceof TelegramDownloadTooLargeError
-            ? "圖片超過允許的大小，無法處理。"
-            : "無法下載 Telegram 圖片，請稍後再試。"
-        logger.warn(`Telegram image input failed for chat_id=${context.chat.id}`, error)
-        await context.reply(message, replyOptions(context))
-        return
-      }
-
+            )
+            if (!isCurrent()) throw new Error("Telegram document input was invalidated")
+            return bytes
+          }, reference.filename)
+          if (!converted) throw new Error("Document converter is unavailable")
+          return { reference, converted }
+        }),
+      )
+    } catch (error) {
       if (!isCurrent()) return
+      const response = documentFailureMessage(error)
+      logger.warn(`Telegram document input failed for chat_id=${context.chat?.id}`, error)
+      await context.reply(response, replyOptions(context))
+      return
+    }
+
+    if (!isCurrent()) return
+    let prompt: string
+    if (documentInputs.length > 0) {
+      prompt = promptWithReplyContext(
+        message,
+        promptWithDocumentContext(
+          strippedText,
+          documentInputs,
+          settings.botDocumentMaxMarkdownChars,
+        ),
+      )
+    } else {
       const basePrompt =
         strippedText || (images.length > 0 ? defaultImagePrompt : "請回應這則訊息。")
-      await answer(context, promptWithReplyContext(message, basePrompt), images, release, isCurrent)
-    })
-  })
+      prompt = promptWithReplyContext(message, basePrompt)
+    }
+    await answer(
+      context,
+      prompt,
+      images,
+      release,
+      isCurrent,
+      repliedBotMessageId(message, context.me.id),
+    )
+  }
 
   bot.catch((error) => {
     const context = error.ctx
@@ -223,6 +330,7 @@ export function createTelegramAgentBot(
     images: Array<{ type: "image"; data: string; mimeType: string }>,
     releaseSubmissionTurn: () => void,
     isCurrent: () => boolean,
+    replyToBotMessageId?: number,
   ): Promise<void> {
     if (!isCurrent()) return
     const sourceMessageId = context.message?.message_id
@@ -245,7 +353,9 @@ export function createTelegramAgentBot(
         context,
         status.chat.id,
         status.message_id,
-        "此請求已因重設對話而取消。",
+        submissionGenerations.get(status.chat.id)?.reason === "cancel"
+          ? "此請求已取消。"
+          : "此請求已因重設對話而取消。",
       )
     }
     if (!isCurrent()) {
@@ -253,8 +363,14 @@ export function createTelegramAgentBot(
       return
     }
     try {
+      const unresolvedReplyPrompt =
+        replyToBotMessageId !== undefined && context.message
+          ? promptWithReplyContext(context.message as unknown as TelegramMessageLike, prompt, true)
+          : undefined
       const result = await sessions.submit(context.chat?.id ?? status.chat.id, prompt, {
         images,
+        ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
+        ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
         onAccepted: releaseSubmissionTurn,
         onProgress: (steps) => progressStatus.publish(renderProgressStatus(steps)),
       })
@@ -284,17 +400,22 @@ export function createTelegramAgentBot(
         return
       }
       await progressStatus.close()
-      if (
-        !(await editStatusWithChunks(
-          context,
-          status.chat.id,
-          status.message_id,
-          outboundText,
-          isCurrent,
-        ))
-      ) {
+      const deliveredMessageIds = await editStatusWithChunks(
+        context,
+        status.chat.id,
+        status.message_id,
+        outboundText,
+        isCurrent,
+      )
+      if (!deliveredMessageIds) {
         await cancelStatus()
+        return
       }
+      await sessions.recordDelivery(
+        status.chat.id,
+        result.kind === "completed" ? result.checkpoint : undefined,
+        deliveredMessageIds,
+      )
     } catch (error) {
       if (!isCurrent()) {
         await cancelStatus()
@@ -320,7 +441,7 @@ export function createTelegramAgentBot(
     chatId: number,
     task: (release: () => void, isCurrent: () => boolean) => Promise<void>,
   ): Promise<void> {
-    const generation = submissionGenerations.get(chatId) ?? 0
+    const generation = submissionGenerations.get(chatId)?.generation ?? 0
     const previous = submissionTails.get(chatId) ?? Promise.resolve()
     const { gate, release } = submissionGate(chatId, previous)
     submissionTails.set(chatId, gate)
@@ -333,12 +454,18 @@ export function createTelegramAgentBot(
     }
 
     function isCurrent(): boolean {
-      return (submissionGenerations.get(chatId) ?? 0) === generation
+      return (submissionGenerations.get(chatId)?.generation ?? 0) === generation
     }
   }
 
-  function invalidateSubmissionOrder(chatId: number): () => void {
-    submissionGenerations.set(chatId, (submissionGenerations.get(chatId) ?? 0) + 1)
+  function invalidateSubmissionOrder(
+    chatId: number,
+    reason: "reset" | "cancel" = "reset",
+  ): () => void {
+    submissionGenerations.set(chatId, {
+      generation: (submissionGenerations.get(chatId)?.generation ?? 0) + 1,
+      reason,
+    })
     const { gate, release } = submissionGate(chatId, Promise.resolve())
     submissionTails.set(chatId, gate)
     return release
@@ -390,28 +517,61 @@ async function editStatusWithChunks(
   messageId: number,
   text: string,
   isCurrent: () => boolean = () => true,
-): Promise<boolean> {
+): Promise<number[] | undefined> {
   const [first = " ", ...rest] = telegramHtmlChunks(text)
   const continuationMessageIds: number[] = []
-  if (!isCurrent()) return false
+  if (!isCurrent()) return undefined
   await context.api.editMessageText(chatId, messageId, first, { parse_mode: "HTML" })
   let replyTo = messageId
-  for (const chunk of rest) {
-    if (!isCurrent()) return false
-    const sent = await context.api.sendMessage(chatId, chunk, {
-      parse_mode: "HTML",
-      reply_parameters: { message_id: replyTo },
-    })
-    continuationMessageIds.push(sent.message_id)
-    if (!isCurrent()) {
-      for (const continuationMessageId of continuationMessageIds) {
-        await context.api.deleteMessage(chatId, continuationMessageId)
+  try {
+    for (const chunk of rest) {
+      if (!isCurrent()) return undefined
+      const sent = await context.api.sendMessage(chatId, chunk, {
+        parse_mode: "HTML",
+        reply_parameters: { message_id: replyTo },
+      })
+      continuationMessageIds.push(sent.message_id)
+      if (!isCurrent()) {
+        await deleteContinuations()
+        return undefined
       }
-      return false
+      replyTo = sent.message_id
     }
-    replyTo = sent.message_id
+    return isCurrent() ? [messageId, ...continuationMessageIds] : undefined
+  } catch (error) {
+    await deleteContinuations()
+    throw error
   }
-  return isCurrent()
+
+  async function deleteContinuations(): Promise<void> {
+    await Promise.allSettled(
+      continuationMessageIds.map((continuationMessageId) =>
+        context.api.deleteMessage(chatId, continuationMessageId),
+      ),
+    )
+  }
+}
+
+function documentFailureMessage(error: unknown): string {
+  if (error instanceof TelegramDownloadTooLargeError) return "文件超過允許的大小，無法處理。"
+  if (!(error instanceof DocumentConversionError)) return "無法下載或轉換文件，請稍後再試。"
+  switch (error.kind) {
+    case "needsOcr":
+      return "這份 PDF 需要 OCR，目前只支援含可擷取文字的 PDF。"
+    case "encrypted":
+      return "這份文件有密碼或已加密，無法讀取。"
+    case "unsupported":
+      return "目前不支援這種文件格式。"
+    case "malformed":
+    case "missingPart":
+      return "文件內容損毀或缺少必要部分，無法讀取。"
+    case "resourceLimit":
+      return "文件內容過於複雜，已基於安全限制停止轉換。"
+    case "timeout":
+      return "文件轉換逾時，請改用較小或較簡單的文件。"
+    case "empty":
+      return "文件沒有可讀取的內容。"
+  }
 }
 
 function isAllowed(context: Context, whitelist: ReadonlySet<number>): boolean {

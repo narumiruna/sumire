@@ -1,14 +1,14 @@
 import type { lookup } from "node:dns/promises"
 
 import { describe, expect, it, vi } from "vitest"
-
 import {
   assertPublicUrl,
   createPinnedLookup,
   fetchPublicUrl,
   isPublicIp,
   loadPublicUrl,
-} from "../src/actions/url-tool.js"
+} from "../src/public-url.js"
+import { createUrlTool } from "../src/url-tool.js"
 
 const options = {
   allowedSchemes: new Set(["http", "https"]),
@@ -17,6 +17,28 @@ const options = {
 }
 
 describe("public URL loading", () => {
+  it.each([
+    "https://example.com",
+    "https://en.wikipedia.org/wiki/Function_(mathematics)",
+    "https://example.com/items[1]",
+    "https://example.com/items{1}",
+  ])("loads the exact URL only on agent execution and forwards cancellation: %s", async (url) => {
+    const load = vi.fn(async () => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "content",
+      truncated: false,
+    }))
+    const tool = createUrlTool({ load })
+    expect(load).not.toHaveBeenCalled()
+    const signal = new AbortController().signal
+    const result = await tool.execute("call", { url }, signal, undefined, undefined as never)
+    expect(load).toHaveBeenCalledWith(url, signal)
+    expect(result).toMatchObject({ details: { text: "content" } })
+  })
+
   it("classifies private, local, and public IP addresses", () => {
     expect(isPublicIp("127.0.0.1")).toBe(false)
     expect(isPublicIp("10.0.0.1")).toBe(false)
