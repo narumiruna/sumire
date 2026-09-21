@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-url-content",
-  "version": "0.19.7",
+  "version": "0.20.0",
   "description": "Source-aware URL content extraction for TypeScript and Node.js",
   "license": "MIT",
   "repository": {
