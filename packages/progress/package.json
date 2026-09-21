@@ -1,6 +1,7 @@
 {
   "name": "@narumitw/sumire-progress",
   "version": "0.1.0",
+  "private": true,
   "description": "Branch-aware Pi progress state for Sumire host interfaces",
   "license": "MIT",
   "repository": {
