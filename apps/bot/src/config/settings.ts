@@ -104,6 +104,7 @@ export interface Settings {
   botGroupPassiveContextEnabled: boolean
   botSkillsDir: string
   botEnabledSkills: ReadonlySet<string>
+  botSystemPromptPath: string
   botSoulPath: string
   botSoulRequired: boolean
   botSoulMaxChars: number
@@ -154,7 +155,8 @@ export function loadSettings(
     botGroupPassiveContextEnabled: true,
     botSkillsDir: path.resolve(root, "skills"),
     botEnabledSkills: new Set<string>(),
-    botSoulPath: path.resolve(root, "SOUL.md"),
+    botSystemPromptPath: path.resolve(root, "instructions/SYSTEM.md"),
+    botSoulPath: path.resolve(root, "instructions/SOUL.md"),
     botSoulRequired: false,
     botSoulMaxChars: 8_000,
     botDocumentInputEnabled: parsed.BOT_DOCUMENT_INPUT_ENABLED,

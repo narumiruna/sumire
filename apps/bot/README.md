@@ -29,7 +29,7 @@ Available now:
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
-- `SOUL.md` and filtered Agent Skills, including Otter expense management
+- `instructions/SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
@@ -59,7 +59,7 @@ npm run build
 npm start
 ```
 
-The scripts load `../../.env` first and then `./.env` as an optional override. Paths such as `SOUL.md`, `skills`, and `.telegramagent` resolve against the repository root. Skills are always loaded from `./skills`.
+The scripts load `../../.env` first and then `./.env` as an optional override. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the repository root. The system prompt is rendered from `instructions/SYSTEM.md`, which must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. Skills are always loaded from `./skills`.
 
 For development:
 
@@ -175,7 +175,7 @@ Telegram sends URL-only messages, summary requests, and short follow-ups through
 
 ## Docker
 
-Build and run from the repository root so the Dockerfile can copy `apps/bot/` and `SOUL.md`:
+Build and run from the repository root so the Dockerfile can copy `apps/bot/` and `instructions/`:
 
 ```bash
 docker build -t sumire:local .

@@ -16,10 +16,13 @@ const logger: Logger = {
   error: vi.fn(),
 }
 
-const otterSkillSource = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../skills/otter-manage-expenses",
-)
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
+const instructionsSource = path.join(repositoryRoot, "instructions")
+const otterSkillSource = path.join(repositoryRoot, "skills/otter-manage-expenses")
+
+async function installInstructions(projectRoot: string): Promise<void> {
+  await cp(instructionsSource, path.join(projectRoot, "instructions"), { recursive: true })
+}
 
 async function installOtterSkill(projectRoot: string): Promise<void> {
   const skillsDir = path.join(projectRoot, "skills")
@@ -30,6 +33,7 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 describe("createPiSessionFactory", () => {
   it("creates an isolated persistent Pi AgentSession with only approved custom tools", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
+    await installInstructions(root)
     const settings = loadSettings(
       {
         OPENAI_API_KEY: "test-key",
@@ -75,6 +79,8 @@ describe("createPiSessionFactory", () => {
         session.getAllTools().find((tool) => tool.name === "load_public_url")?.sourceInfo.source,
       ).not.toBe("sdk")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
+      expect(session.systemPrompt).toContain("虛構 AI companion")
+      expect(session.systemPrompt).not.toContain("{{SOUL_SECTION}}")
       expect(otherSession.sessionFile).toContain(
         path.join(".telegramagent", "sessions", "456", "pi"),
       )
@@ -88,6 +94,7 @@ describe("createPiSessionFactory", () => {
 
   it("enables Pi coding tools only for an explicit allowlisted configuration", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
+    await installInstructions(root)
     await installOtterSkill(root)
     const settings = loadSettings(
       {

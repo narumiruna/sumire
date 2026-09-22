@@ -39,7 +39,7 @@ WORKDIR /app
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/skills \
+    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/instructions /app/skills \
     && chown -R app:app /app /ms-playwright
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
@@ -56,8 +56,8 @@ COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/
 COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
 COPY --from=build --chown=app:app /build/packages/url-tool/skills /app/packages/url-tool/skills
 COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
-COPY --chown=app:app SOUL.md /app/SOUL.md
 
 USER app
 
