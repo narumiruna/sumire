@@ -217,6 +217,72 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
   })
 
+  it.each(["photo", "document"] as const)(
+    "routes /f in current %s captions through the article workflow",
+    async (kind) => {
+      const sessions = createSessions()
+      const documentConverter = {
+        convert: vi.fn(async (loadBytes: () => Promise<Uint8Array>) => {
+          expect(await loadBytes()).toEqual(Buffer.from("media bytes"))
+          return {
+            markdown: "# Converted document",
+            format: "csv",
+            originalChars: 20,
+            truncated: false,
+          }
+        }),
+      }
+      const publish = vi.fn(async () => "https://morsel.example/s/article")
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          documentConverter,
+          imageFetchImplementation: vi.fn(async () => new Response("media bytes")),
+          morselPublisher: { isConfigured: true, publish },
+        },
+      )
+      installApiMock(telegram.bot)
+      const update = privateMessage(21, "")
+      if (update.message) {
+        delete update.message.text
+        update.message.caption = "/f 補充內容"
+        update.message.caption_entities = [{ type: "bot_command", offset: 0, length: 2 }]
+        if (kind === "photo") {
+          update.message.photo = [
+            {
+              file_id: "photo",
+              file_unique_id: "photo",
+              width: 100,
+              height: 100,
+              file_size: 5,
+            },
+          ]
+        } else {
+          update.message.document = {
+            file_id: "document",
+            file_unique_id: "document",
+            file_name: "report.csv",
+            mime_type: "text/csv",
+            file_size: 5,
+          }
+        }
+      }
+
+      await telegram.bot.handleUpdate(update)
+
+      const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[0] ?? []
+      expect(prompt).toContain("written entirely in 台灣正體中文")
+      expect(prompt).toContain("補充內容")
+      expect(prompt).not.toContain("/f 補充內容")
+      expect(options?.images).toHaveLength(kind === "photo" ? 1 : 0)
+      expect(documentConverter.convert).toHaveBeenCalledTimes(kind === "document" ? 1 : 0)
+      expect(publish).toHaveBeenCalledExactlyOnceWith("AI 回覆")
+    },
+  )
+
   it("uses a replied message as the source of a bare /f command", async () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")

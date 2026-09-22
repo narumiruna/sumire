@@ -17,6 +17,7 @@ import {
   TelegramDownloadTooLargeError,
 } from "./files.js"
 import {
+  captionCommandArguments,
   defaultImagePrompt,
   documentReferences,
   imageReferences,
@@ -159,29 +160,18 @@ export function createTelegramAgentBot(
       ),
     )
   })
-  bot.command("f", async (context) => {
-    const source = context.match.trim()
-    const message = context.message as unknown as TelegramMessageLike
-    if (
-      !source &&
-      !message.reply_to_message &&
-      imageReferences(message).length === 0 &&
-      documentReferences(message).length === 0
-    ) {
-      await delivery.reply(
-        context,
-        "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。",
-        replyOptions(context),
-      )
+  bot.command("f", (context) => submitArticle(context, context.match.trim()))
+  bot.on("message:caption_entities:bot_command", async (context, next) => {
+    const source = captionCommandArguments(
+      context.message as unknown as TelegramMessageLike,
+      "f",
+      context.me.username,
+    )
+    if (source === undefined) {
+      await next()
       return
     }
-    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      submitInput(context, message, source, release, isCurrent, {
-        promptTransform: buildArticleRewritePrompt,
-        deliveryMode: "publish",
-        includeBotReplyContext: true,
-      }),
-    )
+    await submitArticle(context, source)
   })
   bot.command("t", async (context) => {
     const query = context.match.trim()
@@ -254,6 +244,33 @@ export function createTelegramAgentBot(
       ),
     )
   })
+
+  async function submitArticle(context: Context, source: string): Promise<void> {
+    const rawMessage = context.message
+    const chat = context.chat
+    if (!rawMessage || !chat) return
+    const message = rawMessage as unknown as TelegramMessageLike
+    if (
+      !source &&
+      !message.reply_to_message &&
+      imageReferences(message).length === 0 &&
+      documentReferences(message).length === 0
+    ) {
+      await delivery.reply(
+        context,
+        "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。",
+        replyOptions(context),
+      )
+      return
+    }
+    await inSubmissionOrder(chat.id, (release, isCurrent) =>
+      submitInput(context, message, source, release, isCurrent, {
+        promptTransform: buildArticleRewritePrompt,
+        deliveryMode: "publish",
+        includeBotReplyContext: true,
+      }),
+    )
+  }
 
   async function submitInput(
     context: Context,

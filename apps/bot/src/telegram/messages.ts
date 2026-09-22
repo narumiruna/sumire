@@ -12,6 +12,7 @@ export interface TelegramMessageLike {
   date?: number
   text?: string
   caption?: string
+  caption_entities?: Array<{ type: string; offset: number; length: number }>
   from?: TelegramActor
   sender_chat?: TelegramActor
   photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>
@@ -43,6 +44,30 @@ export function isBotAddressed(
 
 export function stripBotMention(text: string, botUsername: string): string {
   return text.replace(new RegExp(`@${escapeRegExp(botUsername)}\\b`, "giu"), "").trim()
+}
+
+export function captionCommandArguments(
+  message: TelegramMessageLike,
+  command: string,
+  botUsername: string,
+): string | undefined {
+  const caption = message.caption
+  const entity = message.caption_entities?.find(
+    (candidate) => candidate.type === "bot_command" && candidate.offset === 0,
+  )
+  if (!caption || !entity) return undefined
+
+  const commandText = caption.slice(1, entity.length)
+  const separator = commandText.indexOf("@")
+  const name = separator === -1 ? commandText : commandText.slice(0, separator)
+  const target = separator === -1 ? undefined : commandText.slice(separator + 1)
+  if (
+    name !== command ||
+    (target !== undefined && target.toLowerCase() !== botUsername.toLowerCase())
+  ) {
+    return undefined
+  }
+  return caption.slice(entity.length).trim()
 }
 
 export function passiveGroupContext(message: TelegramMessageLike): string {
