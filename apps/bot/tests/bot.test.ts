@@ -920,7 +920,9 @@ describe("Telegram bot update routing", () => {
       const calls = installApiMock(telegram.bot)
       await telegram.bot.handleUpdate(privateMessage(80, "長答案"))
       expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
-      expect(calls.at(-1)?.payload.text).toContain("Morsel 暫時無法使用")
+      const expectedReason =
+        failure === "missing-key" ? "MORSEL_API_KEY is not configured" : "Morsel unavailable"
+      expect(calls.at(-1)?.payload.text).toContain(`Morsel 暫時無法使用（原因：${expectedReason}）`)
       expect(calls.some((call) => String(call.payload.text).includes("長長長"))).toBe(false)
       expect(sessions.recordDelivery).not.toHaveBeenCalled()
       expect(publish).toHaveBeenCalledTimes(failure === "missing-key" ? 0 : 1)

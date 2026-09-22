@@ -5,7 +5,7 @@ import { MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
 
 export const maxTelegramMessageChars = 1_000
-const publicationFailure = "訊息超過 1,000 字，但 Morsel 暫時無法使用；未傳送長文，請稍後再試。"
+const maxPublicationFailureReasonChars = 200
 
 type EditResult = "delivered" | "unavailable" | "stale"
 
@@ -31,7 +31,7 @@ export function createTelegramDelivery(
       return { text: notice, delivered: true }
     } catch (error) {
       logger.warn("Required Morsel publication failed; withholding long Telegram message", error)
-      return { text: publicationFailure, delivered: false }
+      return { text: publicationFailure(error), delivered: false }
     }
   }
 
@@ -86,4 +86,12 @@ export function createTelegramDelivery(
       return prepared.delivered ? "delivered" : "unavailable"
     },
   }
+}
+
+function publicationFailure(error: unknown): string {
+  const rawReason = error instanceof Error ? error.message : "未知錯誤"
+  const normalizedReason = sanitizeTelegramText(rawReason).replace(/\s+/gu, " ").trim()
+  const reason =
+    Array.from(normalizedReason).slice(0, maxPublicationFailureReasonChars).join("") || "未知錯誤"
+  return `訊息超過 1,000 字，但 Morsel 暫時無法使用（原因：${reason}）；未傳送長文，請稍後再試。`
 }

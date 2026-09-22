@@ -125,7 +125,7 @@ The coding-tool flag is not a sandbox. When enabled, the tools run directly with
 
 Every outgoing text message and edit uses the same delivery policy, including AI answers, commands such as `/t`, and progress updates. Messages over **1000 characters** must be published to Morsel in full; Telegram receives only a short notice and the share URL. Exactly 1000 characters can be sent directly. Length is counted as Unicode code points after control-character cleanup and newline normalization, before HTML escaping; whitespace and Markdown syntax count toward the limit.
 
-Set `MORSEL_API_KEY` to enable publication. If the key is missing, publishing fails, or the returned link cannot fit, Telegram receives only a short failure notice. The original long message is never sent inline, split into chunks, or recorded as successfully delivered. The policy applies regardless of the optional rich-tool mode, and legacy thresholds cannot raise the 1000-character cap. Successful Morsel links retain reply-tree checkpoint mapping; `/reset` invalidates pending delivery so stale links do not replace the cancelled status.
+Set `MORSEL_API_KEY` to enable publication. If the key is missing, publishing fails, or the returned link cannot fit, Telegram receives only a short failure notice with the sanitized, bounded failure reason. The original long message is never sent inline, split into chunks, or recorded as successfully delivered. The policy applies regardless of the optional rich-tool mode, and legacy thresholds cannot raise the 1000-character cap. Successful Morsel links retain reply-tree checkpoint mapping; `/reset` invalidates pending delivery so stale links do not replace the cancelled status.
 
 ## Logging
 
