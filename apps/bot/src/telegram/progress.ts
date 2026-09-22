@@ -8,12 +8,12 @@ export interface ProgressStatusEditor {
   close(): Promise<void>
 }
 
-export function renderProgressStatus(steps: readonly ProgressStep[]): string {
-  if (steps.length === 0) return "處理中…"
+export function renderProgressStatus(steps: readonly ProgressStep[]): string | undefined {
+  if (steps.length === 0) return undefined
 
   const completed = steps.filter((step) => step.status === "completed").length
   const visible = selectVisibleSteps(steps)
-  const lines = [`處理中… ${completed}/${steps.length}`, "", ...visible.map(renderStep)]
+  const lines = [`進度 ${completed}/${steps.length}`, "", ...visible.map(renderStep)]
   const hidden = steps.length - visible.length
   if (hidden > 0) lines.push(`…還有 ${hidden} 個步驟`)
   return lines.join("\n")
@@ -22,11 +22,10 @@ export function renderProgressStatus(steps: readonly ProgressStep[]): string {
 export function createProgressStatusEditor(
   update: (text: string) => Promise<void>,
   onError: (error: unknown) => void,
-  initialText?: string,
 ): ProgressStatusEditor {
   let closed = false
   let pending: string | undefined
-  let lastPublished = initialText
+  let lastPublished: string | undefined
   let active: Promise<void> | undefined
 
   const drain = async () => {

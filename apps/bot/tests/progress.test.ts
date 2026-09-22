@@ -12,10 +12,14 @@ describe("Telegram progress status", () => {
         { text: "發布", status: "blocked", reason: "等待核准" },
       ]),
     ).toBe(
-      ["處理中… 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
+      ["進度 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
         "\n",
       ),
     )
+  })
+
+  it("does not render an empty progress snapshot", () => {
+    expect(renderProgressStatus([])).toBeUndefined()
   })
 
   it("prioritizes actionable work and bounds long lists", () => {
@@ -31,7 +35,7 @@ describe("Telegram progress status", () => {
     expect(text).toContain("🔄 目前工作")
     expect(text).toContain("⬜ 等待工作")
     expect(text).toContain("…還有 4 個步驟")
-    expect(text.split("\n")).toHaveLength(9)
+    expect(text?.split("\n")).toHaveLength(9)
   })
 
   it("coalesces updates and waits for an active edit before closing", async () => {

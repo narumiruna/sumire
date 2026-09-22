@@ -230,7 +230,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("routes private messages through the Pi session and edits the status reply", async () => {
+  it("routes private messages through the Pi session and replies with the final answer", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -247,11 +247,34 @@ describe("Telegram bot update routing", () => {
       onAccepted: expect.any(Function),
       onProgress: expect.any(Function),
     })
-    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
-    expect(calls[1]?.payload.text).toBe("AI 回覆")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
+    expect(calls[0]?.payload.text).toBe("AI 回覆")
+    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 1 })
   })
 
-  it("edits the pending reply with progress before publishing the final answer", async () => {
+  it("does not publish an empty progress snapshot", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([])
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "簡單問題"))
+
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
+    expect(calls[0]?.payload.text).toBe("完成")
+  })
+
+  it("replaces the structured progress reply with the final answer", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
@@ -272,17 +295,14 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
 
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "editMessageText",
-      "editMessageText",
-    ])
-    expect(calls[1]?.payload.text).toContain("處理中… 1/2")
-    expect(calls[1]?.payload.text).toContain("🔄 撰寫回覆")
-    expect(calls[2]?.payload.text).toBe("完成")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls[0]?.payload.text).toContain("進度 1/2")
+    expect(calls[0]?.payload.text).toContain("🔄 撰寫回覆")
+    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 2 })
+    expect(calls[1]?.payload.text).toBe("完成")
   })
 
-  it("waits for an active progress edit before publishing the final answer", async () => {
+  it("waits for an active progress reply before publishing the final answer", async () => {
     let finishProgressEdit: (() => void) | undefined
     const pendingProgressEdit = new Promise<void>((resolve) => {
       finishProgressEdit = resolve
@@ -300,24 +320,19 @@ describe("Telegram bot update routing", () => {
       logger,
       { botInfo },
     )
-    let editCount = 0
-    const calls = installApiMock(telegram.bot, async (method) => {
-      if (method === "editMessageText" && ++editCount === 1) await pendingProgressEdit
+    const calls = installApiMock(telegram.bot, async (method, payload) => {
+      if (method === "sendMessage" && String(payload.text).startsWith("進度 ")) {
+        await pendingProgressEdit
+      }
     })
 
     const handling = telegram.bot.handleUpdate(privateMessage(3, "長任務"))
-    await vi.waitFor(() =>
-      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"]),
-    )
+    await vi.waitFor(() => expect(calls.map((call) => call.method)).toEqual(["sendMessage"]))
 
     finishProgressEdit?.()
     await handling
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "editMessageText",
-      "editMessageText",
-    ])
-    expect(calls[2]?.payload.text).toBe("最終答案")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls[1]?.payload.text).toBe("最終答案")
   })
 
   it("enforces the allowlist before invoking session or Telegram APIs", async () => {
@@ -510,7 +525,7 @@ describe("Telegram bot update routing", () => {
     expect(submittedPrompts).toEqual(["重設後"])
   })
 
-  it("replaces the pending status when reset invalidates a completed submission", async () => {
+  it("sends a cancellation reply when reset invalidates a completed submission", async () => {
     let finishSubmission: ((value: { kind: "completed"; text: string }) => void) | undefined
     const pendingSubmission = new Promise<{ kind: "completed"; text: string }>((resolve) => {
       finishSubmission = resolve
@@ -539,12 +554,8 @@ describe("Telegram bot update routing", () => {
 
     finishSubmission?.({ kind: "completed", text: "過期回覆" })
     await runningUpdate
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "sendMessage",
-      "editMessageText",
-    ])
-    expect(calls[2]?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "sendMessage"])
+    expect(calls[1]?.payload.text).toBe("此請求已因重設對話而取消。")
   })
 
   it("does not publish a stale Morsel reply after reset", async () => {
@@ -576,15 +587,11 @@ describe("Telegram bot update routing", () => {
 
     finishPublication?.("https://morsel.example/s/share")
     await runningUpdate
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "sendMessage",
-      "editMessageText",
-    ])
-    expect(calls[2]?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "sendMessage"])
+    expect(calls[1]?.payload.text).toBe("此請求已因重設對話而取消。")
   })
 
-  it("replaces the pending status when an invalidated submission fails", async () => {
+  it("sends a cancellation reply when an invalidated submission fails", async () => {
     let failSubmission: ((reason: Error) => void) | undefined
     const pendingSubmission = new Promise<never>((_resolve, reject) => {
       failSubmission = reject
@@ -610,12 +617,8 @@ describe("Telegram bot update routing", () => {
 
     failSubmission?.(new Error("Pi session access was invalidated by reset"))
     await runningUpdate
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "sendMessage",
-      "editMessageText",
-    ])
-    expect(calls[2]?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "sendMessage"])
+    expect(calls[1]?.payload.text).toBe("此請求已因重設對話而取消。")
   })
 
   it("replaces a stale Morsel link when reset interrupts Telegram delivery", async () => {
@@ -641,8 +644,9 @@ describe("Telegram bot update routing", () => {
       },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
-      if (method === "editMessageText" && String(payload.text).includes(shareUrl))
+      if (method === "sendMessage" && String(payload.text).includes(shareUrl)) {
         await pendingDelivery
+      }
     })
     const runningUpdate = telegram.bot.handleUpdate(privateMessage(16, "長回覆"))
     try {
@@ -656,7 +660,6 @@ describe("Telegram bot update routing", () => {
     }
     expect(calls.map((call) => call.method)).toEqual([
       "sendMessage",
-      "editMessageText",
       "sendMessage",
       "editMessageText",
     ])
@@ -683,16 +686,13 @@ describe("Telegram bot update routing", () => {
       },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
-      if (method === "editMessageText" && String(payload.text).includes(shareUrl))
-        throw new Error("Telegram edit failed")
+      if (method === "sendMessage" && String(payload.text).includes(shareUrl)) {
+        throw new Error("Telegram reply failed")
+      }
     })
     await telegram.bot.handleUpdate(privateMessage(18, "長回覆"))
     expect(sessions.recordDelivery).not.toHaveBeenCalled()
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "editMessageText",
-      "editMessageText",
-    ])
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "sendMessage"])
     expect(calls.at(-1)?.payload.text).toBe("AI 服務暫時無法使用，請稍後再試。")
   })
 
@@ -806,8 +806,8 @@ describe("Telegram bot update routing", () => {
       const calls = installApiMock(telegram.bot)
       await telegram.bot.handleUpdate(privateMessage(7, "請回答"))
       expect(publish).toHaveBeenCalledExactlyOnceWith(text)
-      expect(calls[1]?.payload.text).toContain("https://morsel.example/s/share")
-      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+      expect(calls[0]?.payload.text).toContain("https://morsel.example/s/share")
+      expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
     },
   )
 
@@ -836,7 +836,7 @@ describe("Telegram bot update routing", () => {
       )
       const calls = installApiMock(telegram.bot)
       await telegram.bot.handleUpdate(privateMessage(80, "長答案"))
-      expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+      expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
       expect(calls.at(-1)?.payload.text).toContain("Morsel 暫時無法使用")
       expect(calls.some((call) => String(call.payload.text).includes("長長長"))).toBe(false)
       expect(sessions.recordDelivery).not.toHaveBeenCalled()
@@ -867,7 +867,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("applies the same Morsel policy to long progress edits", async () => {
+  it("applies the same Morsel policy to long progress replies", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
@@ -892,14 +892,10 @@ describe("Telegram bot update routing", () => {
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(privateMessage(82, "長任務"))
-    expect(publish).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("處理中… 0/6"))
-    expect(calls.map((call) => call.method)).toEqual([
-      "sendMessage",
-      "editMessageText",
-      "editMessageText",
-    ])
-    expect(calls[1]?.payload.text).toContain("https://morsel.example/s/progress")
-    expect(calls[2]?.payload.text).toBe("完成")
+    expect(publish).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("進度 0/6"))
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls[0]?.payload.text).toContain("https://morsel.example/s/progress")
+    expect(calls[1]?.payload.text).toBe("完成")
   })
 
   it.each(["private", "group", "bot-reply"])(
@@ -1421,37 +1417,40 @@ describe("Telegram bot update routing", () => {
       expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, "fresh", expect.any(Object))
       expect(
         calls.filter((call) => call.method === "sendMessage").map((call) => call.payload.text),
-      ).toEqual(["已取消目前任務。", "處理中…"])
+      ).toEqual(["已取消目前任務。", "AI 回覆"])
       expect(fetchDocument).toHaveBeenCalledTimes(stage === "queued" ? 0 : 1)
       expect(run).toHaveBeenCalledTimes(stage === "download" ? 0 : 1)
     },
   )
 
   it("cancels before agent acceptance without labelling it as a reset", async () => {
-    let releaseStatus = () => {}
-    const pendingStatus = new Promise<void>((resolve) => {
-      releaseStatus = resolve
+    let acceptSubmission = () => {}
+    const pendingAcceptance = new Promise<void>((resolve) => {
+      acceptSubmission = resolve
     })
-    const sessions = createSessions()
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        await pendingAcceptance
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "過期回覆" }
+      }),
+    })
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       { botInfo },
     )
-    const calls = installApiMock(telegram.bot, async (method, payload) => {
-      if (method === "sendMessage" && payload.text === "處理中…") await pendingStatus
-    })
+    const calls = installApiMock(telegram.bot)
     const handling = telegram.bot.handleUpdate(privateMessage(304, "request"))
     try {
-      await vi.waitFor(() => expect(calls).toHaveLength(1))
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
       await telegram.bot.handleUpdate(commandMessage(305, "/cancel"))
     } finally {
-      releaseStatus()
+      acceptSubmission()
       await handling
     }
-    expect(sessions.submit).not.toHaveBeenCalled()
-    expect(calls.at(-1)?.payload.text).toBe("此請求已取消。")
+    expect(calls.map((call) => call.payload.text)).toEqual(["已取消目前任務。", "此請求已取消。"])
   })
 
   it("reports no task when cancelling an idle chat", async () => {
@@ -1595,7 +1594,7 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(privateMessage(27, text))
 
     expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, text, expect.any(Object))
-    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
     expect(calls.at(-1)?.payload.text).toBe("AI 回覆")
   })
 

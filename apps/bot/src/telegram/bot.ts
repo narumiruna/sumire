@@ -353,31 +353,35 @@ export function createTelegramAgentBot(
     replyToBotMessageId?: number,
   ): Promise<void> {
     if (!isCurrent()) return
+    const chatId = context.chat?.id
+    if (chatId === undefined) return
     const sourceMessageId = context.message?.message_id
-    const status = await delivery.reply(
-      context,
-      "處理中…",
-      sourceMessageId ? { reply_parameters: { message_id: sourceMessageId } } : {},
-    )
+    const replyOptions = sourceMessageId
+      ? { reply_parameters: { message_id: sourceMessageId } }
+      : {}
+    let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     const progressStatus = createProgressStatusEditor(
       async (text) => {
-        if (!isCurrent()) return
-        await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
+        if (status) {
+          await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
+          return
+        }
+        const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
+        status = progressReply.message
       },
-      (error) =>
-        logger.warn(`Telegram progress update failed for chat_id=${status.chat.id}`, error),
-      "處理中…",
+      (error) => logger.warn(`Telegram progress update failed for chat_id=${chatId}`, error),
     )
     const cancelStatus = async () => {
       await progressStatus.close()
-      await delivery.edit(
-        context,
-        status.chat.id,
-        status.message_id,
-        submissionGenerations.get(status.chat.id)?.reason === "cancel"
+      const text =
+        submissionGenerations.get(chatId)?.reason === "cancel"
           ? "此請求已取消。"
-          : "此請求已因重設對話而取消。",
-      )
+          : "此請求已因重設對話而取消。"
+      if (status) {
+        await delivery.edit(context, status.chat.id, status.message_id, text)
+      } else {
+        status = await delivery.reply(context, text, replyOptions)
+      }
     }
     if (!isCurrent()) {
       await cancelStatus()
@@ -388,32 +392,47 @@ export function createTelegramAgentBot(
         replyToBotMessageId !== undefined && context.message
           ? promptWithReplyContext(context.message as unknown as TelegramMessageLike, prompt, true)
           : undefined
-      const result = await sessions.submit(context.chat?.id ?? status.chat.id, prompt, {
+      const result = await sessions.submit(chatId, prompt, {
         images,
         ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
         ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
         onAccepted: releaseSubmissionTurn,
-        onProgress: (steps) => progressStatus.publish(renderProgressStatus(steps)),
+        onProgress: (steps) => {
+          const text = renderProgressStatus(steps)
+          if (text) progressStatus.publish(text)
+        },
       })
       if (!isCurrent()) {
         await cancelStatus()
         return
       }
       await progressStatus.close()
-      const deliveryResult = await delivery.edit(
-        context,
-        status.chat.id,
-        status.message_id,
-        result.text,
-        isCurrent,
-      )
+      let deliveryResult: "delivered" | "unavailable" | "stale"
+      if (status) {
+        deliveryResult = await delivery.edit(
+          context,
+          status.chat.id,
+          status.message_id,
+          result.text,
+          isCurrent,
+        )
+      } else {
+        const finalReply = await delivery.guardedReply(
+          context,
+          result.text,
+          replyOptions,
+          isCurrent,
+        )
+        status = finalReply.message
+        deliveryResult = finalReply.result
+      }
       if (deliveryResult === "stale") {
         await cancelStatus()
         return
       }
-      if (deliveryResult === "delivered") {
+      if (deliveryResult === "delivered" && status) {
         await sessions.recordDelivery(
-          status.chat.id,
+          chatId,
           result.kind === "completed" ? result.checkpoint : undefined,
           [status.message_id],
         )
@@ -423,18 +442,29 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
-      logger.error(`Pi agent request failed for chat_id=${status.chat.id}`, error)
+      logger.error(`Pi agent request failed for chat_id=${chatId}`, error)
       await progressStatus.close()
-      if (
-        (await delivery.edit(
+      if (status) {
+        if (
+          (await delivery.edit(
+            context,
+            status.chat.id,
+            status.message_id,
+            "AI 服務暫時無法使用，請稍後再試。",
+            isCurrent,
+          )) === "stale"
+        ) {
+          await cancelStatus()
+        }
+      } else {
+        const errorReply = await delivery.guardedReply(
           context,
-          status.chat.id,
-          status.message_id,
           "AI 服務暫時無法使用，請稍後再試。",
+          replyOptions,
           isCurrent,
-        )) === "stale"
-      ) {
-        await cancelStatus()
+        )
+        status = errorReply.message
+        if (errorReply.result === "stale") await cancelStatus()
       }
     }
   }
