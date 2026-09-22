@@ -26,6 +26,7 @@ Available now:
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
+- Pi `read`, `bash`, `edit`, and `write` coding tools in the bot runtime
 - `SOUL.md` and filtered Agent Skills
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
@@ -39,7 +40,7 @@ Not yet at Python parity:
 
 - image generation command
 - file-backed events and task management commands
-- Yahoo Finance MCP, Firecrawl MCP, Gurume, and bounded container tools
+- Yahoo Finance MCP, Firecrawl MCP, Gurume, and sandboxed container tools
 - Logfire integration
 
 Track these items in [`docs/plans/2026-04-12_typescript-migration-plan.md`](docs/plans/2026-04-12_typescript-migration-plan.md).
@@ -125,7 +126,9 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader and structured progress tool are always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Pi's `read`, `bash`, `edit`, and `write` coding tools, the bounded public URL loader, and the structured progress tool are always enabled. Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
+
+The coding tools run directly with the bot process's filesystem permissions and working directory; Sumire does not sandbox commands or restrict tool paths. `bash` also inherits the process environment. Deploy the bot inside an appropriately isolated container and configure a non-empty `BOT_WHITELIST` before exposing it. An empty whitelist allows every Telegram user and chat.
 
 ## Telegram message length and Morsel
 

@@ -39,7 +39,14 @@ describe("createPiSessionFactory", () => {
         maxTokens: 20_000,
       })
       expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
-      expect(session.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
+      expect(session.getActiveToolNames()).toEqual([
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "update_progress",
+        "load_public_url",
+      ])
       const urlTool = session.getToolDefinition("load_public_url")
       expect(urlTool).toBeDefined()
       await expect(
@@ -58,7 +65,14 @@ describe("createPiSessionFactory", () => {
       expect(otherSession.sessionFile).toContain(
         path.join(".telegramagent", "sessions", "456", "pi"),
       )
-      expect(otherSession.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
+      expect(otherSession.getActiveToolNames()).toEqual([
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "update_progress",
+        "load_public_url",
+      ])
       expect(otherSession.sessionFile).not.toBe(session.sessionFile)
     } finally {
       session.dispose()

@@ -132,7 +132,6 @@ export async function createPiSessionFactory(
         model,
         thinkingLevel: "off",
         modelRuntime,
-        noTools: "builtin",
         customTools,
         resourceLoader,
         sessionManager: SessionManager.continueRecent(settings.projectRoot, sessionDirectory),
