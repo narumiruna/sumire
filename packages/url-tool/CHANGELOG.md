@@ -1,5 +1,15 @@
 # @narumitw/sumire-url-tool
 
+## 0.2.2
+
+### Patch Changes
+
+- 22806b5: Bundle a `load-public-url` skill with the URL tool Pi package and bind it to direct extension-factory loads so agents, including the Sumire bot runtime, get source-aware URL-loading guidance alongside the tool.
+- d416c5f: Add bounded public Threads post extraction that verifies canonical metadata and returns the decoded author and post body instead of the Threads application shell.
+- Updated dependencies [ced9e34]
+- Updated dependencies [d416c5f]
+  - @narumitw/sumire-url-content@0.21.0
+
 ## 0.2.1
 
 ### Patch Changes
