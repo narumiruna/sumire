@@ -1,6 +1,6 @@
 # Sumire
 
-Primary Sumire service used by CI/CD, isolated under `./apps/bot`; the Python implementation remains available for local development and reference.
+Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 
 ## Runtime stack
 
@@ -26,6 +26,7 @@ Available now:
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
+- optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
 - `SOUL.md` and filtered Agent Skills
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
@@ -34,15 +35,6 @@ Available now:
 - live multi-step progress as the first Telegram reply
 - Telegram HTML rendering with a 1000-character inline message limit
 - secret-redacted logs
-
-Not yet at Python parity:
-
-- image generation command
-- file-backed events and task management commands
-- Yahoo Finance MCP, Firecrawl MCP, Gurume, and bounded container tools
-- Logfire integration
-
-Track these items in [`docs/plans/2026-04-12_typescript-migration-plan.md`](docs/plans/2026-04-12_typescript-migration-plan.md).
 
 ## Requirements
 
@@ -73,8 +65,6 @@ For development:
 cd apps/bot
 npm run dev -- --verbose
 ```
-
-Do not run the Python and TypeScript bots with the same `BOT_TOKEN` simultaneously. Both would consume the same long-polling update stream.
 
 ## Market-data command
 
@@ -125,7 +115,9 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Coding tools are disabled, the bounded public URL loader and structured progress tool are always enabled, and Morsel is enabled when `MORSEL_API_KEY` is configured. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
+
+The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
 
 ## Telegram message length and Morsel
 
@@ -174,7 +166,7 @@ docker compose logs -f sumire
 docker compose down
 ```
 
-The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. The Compose file intentionally uses a different service and image name from the Python deployment. Stop the Python service before starting this one with the same bot token.
+The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies.
 
 ## Feature controls
 

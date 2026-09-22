@@ -65,4 +65,33 @@ describe("createPiSessionFactory", () => {
       otherSession.dispose()
     }
   })
+
+  it("enables Pi coding tools only for an explicit allowlisted configuration", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
+    const settings = loadSettings(
+      {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.example.test/v1",
+        OPENAI_MODEL: "test-model",
+        BOT_CODING_TOOLS_ENABLED: "true",
+        BOT_WHITELIST: "123",
+      },
+      root,
+    )
+    const factory = await createPiSessionFactory(settings, logger)
+    const session = await factory.create(123)
+
+    try {
+      expect(session.getActiveToolNames()).toEqual([
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "update_progress",
+        "load_public_url",
+      ])
+    } finally {
+      session.dispose()
+    }
+  })
 })

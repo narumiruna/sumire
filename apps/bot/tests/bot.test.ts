@@ -141,7 +141,7 @@ function installApiMock(
 }
 
 describe("Telegram bot update routing", () => {
-  it("documents the market-data command in help", async () => {
+  it("documents commands without advertising disabled coding tools", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -154,6 +154,27 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(commandMessage(1, "/help"))
 
     expect(calls[0]?.payload.text).toContain("/t <代碼>")
+    expect(calls[0]?.payload.text).not.toContain("read、bash、edit、write")
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("documents explicitly enabled coding tools in help", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        BOT_CODING_TOOLS_ENABLED: "true",
+        BOT_WHITELIST: "7",
+      }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(7, "/help"))
+
+    expect(calls[0]?.payload.text).toContain("read、bash、edit、write")
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
