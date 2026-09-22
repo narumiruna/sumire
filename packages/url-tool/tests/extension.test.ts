@@ -129,16 +129,13 @@ describe("URL tool Pi package", () => {
     ).rejects.toBe(error)
   })
 
-  it("loads the compiled package through its Pi manifest", async () => {
+  it("loads the compiled extension and bundled skill through its Pi manifest", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-url-tool-"))
-    const settingsManager = SettingsManager.inMemory()
+    const settingsManager = SettingsManager.inMemory({ packages: [path.resolve(".")] })
     const resourceLoader = new DefaultResourceLoader({
       cwd: root,
       agentDir: path.join(root, "agent"),
       settingsManager,
-      additionalExtensionPaths: [path.resolve(".")],
-      noExtensions: true,
-      noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
@@ -146,6 +143,14 @@ describe("URL tool Pi package", () => {
     try {
       await resourceLoader.reload()
       expect(resourceLoader.getExtensions().errors).toEqual([])
+      expect(resourceLoader.getSkills().diagnostics).toEqual([])
+      expect(resourceLoader.getSkills().skills).toContainEqual(
+        expect.objectContaining({
+          name: "load-public-url",
+          filePath: path.resolve("skills/load-public-url/SKILL.md"),
+          sourceInfo: expect.objectContaining({ origin: "package" }),
+        }),
+      )
       const { session } = await createAgentSession({
         cwd: root,
         resourceLoader,

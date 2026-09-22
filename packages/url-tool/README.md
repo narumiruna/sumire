@@ -1,6 +1,6 @@
 # Sumire URL Tool
 
-Pi package that registers `load_public_url`. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
+Pi package that registers `load_public_url` and bundles the `load-public-url` skill. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
 
 ## Load from this repository
 
@@ -12,9 +12,13 @@ npm run build --workspace @narumitw/sumire-url-tool
 pi -e ./packages/url-tool
 ```
 
-The Pi manifest loads `dist/index.js`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-content`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
+The Pi manifest loads `dist/index.js` and `skills/load-public-url/SKILL.md`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-content`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
 
 Pi packages execute with the current user's permissions. Review source before installation.
+
+## Bundled skill
+
+The `load-public-url` skill tells the agent when to call the tool, to preserve source attribution across multiple URLs, and to treat fetched content as untrusted. Pi discovers it through the package manifest. Hosts that load `createUrlExtension()` directly can bind the same bundled skill with the exported `urlToolSkillsPath`.
 
 ## Tool contract
 
@@ -63,7 +67,7 @@ flowchart LR
 ## SDK configuration
 
 ```typescript
-import { createUrlExtension } from "@narumitw/sumire-url-tool"
+import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 
 const extension = createUrlExtension({
   allowedSchemes: new Set(["https"]),
@@ -73,8 +77,9 @@ const extension = createUrlExtension({
   selectableLoaders: ["built-in", "httpx", "playwright"],
 })
 
-// Pass to DefaultResourceLoader:
+// Pass both values to DefaultResourceLoader:
 const extensionFactories = [{ name: "sumire-url-tool", factory: extension }]
+const additionalSkillPaths = [urlToolSkillsPath]
 ```
 
 All options are optional. The default export uses the loading defaults above and is auto-only; omitting `selectableLoaders` leaves `loader` out of the tool schema. Hosts should expose only loaders whose runtime dependencies, latency, and external costs they accept. Loader names are validated during extension registration, while missing requirements such as `FIRECRAWL_API_KEY` fail through the normal tool error path when selected. The package does not read bot environment variables or depend on Telegram.
@@ -90,7 +95,7 @@ npm run typecheck --workspace @narumitw/sumire-url-tool
 npm test --workspace @narumitw/sumire-url-tool
 ```
 
-Tests cover the compiled Pi manifest, registration, host allowlists, explicit and automatic routing, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
+Tests cover the compiled Pi manifest and bundled skill, registration, host allowlists, explicit and automatic routing, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
 
 ## License
 
