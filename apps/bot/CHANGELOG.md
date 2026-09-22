@@ -1,5 +1,16 @@
 # @narumitw/sumire
 
+## 0.2.0
+
+### Minor Changes
+
+- f144782: Expand `/t` fiat exchange-rate queries to accept compact or separated currency pairs, including reverse and TWD-derived cross rates such as `TWDJPY` and `USD/JPY`.
+- 7e0e03b: Add `/f` article rewriting for direct, replied, URL, image, and document input. Route the request through Pi's existing session and input pipeline, then publish the generated Taiwan Traditional Chinese article to Morsel and reply with its URL.
+
+### Patch Changes
+
+- 10f1f02: Include a sanitized, bounded failure reason in the Telegram notice when a required Morsel publication fails.
+
 ## 0.1.4
 
 ### Patch Changes
