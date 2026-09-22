@@ -128,6 +128,25 @@ describe("browser transport safety", () => {
     expect(harness.closeContext).toHaveBeenCalledOnce()
   })
 
+  it("closes browser context after caller cancellation", async () => {
+    const harness = browserHarness("ok", () => new Promise<number>(() => undefined))
+    const controller = new AbortController()
+    const reason = new Error("cancelled")
+    const loading = fetchBrowserHtmlResponse("https://example.com/page", {
+      loaderName: "TestLoader",
+      timeoutSuggestion: "timed out",
+      browser: harness.browser,
+      fetchUrl: async () => new Response("ok"),
+      validateUrl: async (value) => new URL(value),
+      signal: controller.signal,
+    })
+    await vi.waitFor(() => expect(harness.gotoPage).toHaveBeenCalledOnce())
+    controller.abort(reason)
+
+    await expect(loading).rejects.toBe(reason)
+    expect(harness.closeContext).toHaveBeenCalledOnce()
+  })
+
   it("rejects oversized browser response bodies", async () => {
     const harness = browserHarness("ok")
 
