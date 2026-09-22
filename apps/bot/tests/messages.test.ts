@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  captionCommandArguments,
   documentReferences,
   imageReferences,
   isBotAddressed,
@@ -15,6 +16,70 @@ describe("Telegram message normalization", () => {
     const message = { message_id: 1, text: "@FakeBot 請回答" }
     expect(isBotAddressed(message, 42, "fakebot")).toBe(true)
     expect(stripBotMention(message.text, "fakebot")).toBe("請回答")
+  })
+
+  it("extracts /f arguments from media captions addressed to this bot", () => {
+    const directCaption = "/f 整理圖片"
+    const addressedCaption = "/f@Test_Bot 整理文件"
+
+    expect(
+      captionCommandArguments(
+        {
+          message_id: 1,
+          caption: directCaption,
+          caption_entities: [{ type: "bot_command", offset: 0, length: 2 }],
+        },
+        "f",
+        "test_bot",
+      ),
+    ).toBe("整理圖片")
+    expect(
+      captionCommandArguments(
+        {
+          message_id: 2,
+          caption: addressedCaption,
+          caption_entities: [{ type: "bot_command", offset: 0, length: "/f@Test_Bot".length }],
+        },
+        "f",
+        "test_bot",
+      ),
+    ).toBe("整理文件")
+  })
+
+  it("rejects caption commands for other commands, bots, or non-leading entities", () => {
+    expect(
+      captionCommandArguments(
+        {
+          message_id: 1,
+          caption: "/ask hello",
+          caption_entities: [{ type: "bot_command", offset: 0, length: 4 }],
+        },
+        "f",
+        "test_bot",
+      ),
+    ).toBeUndefined()
+    expect(
+      captionCommandArguments(
+        {
+          message_id: 2,
+          caption: "/f@other_bot hello",
+          caption_entities: [{ type: "bot_command", offset: 0, length: 12 }],
+        },
+        "f",
+        "test_bot",
+      ),
+    ).toBeUndefined()
+    expect(
+      captionCommandArguments(
+        {
+          message_id: 3,
+          caption: "prefix /f hello",
+          caption_entities: [{ type: "bot_command", offset: 7, length: 2 }],
+        },
+        "f",
+        "test_bot",
+      ),
+    ).toBeUndefined()
   })
 
   it("records unaddressed user and sender-chat messages as passive context", () => {

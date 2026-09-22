@@ -73,6 +73,28 @@ describe("mandatory Morsel delivery", () => {
     expect(publisher.publish).toHaveBeenCalledOnce()
   })
 
+  it("can always publish short generated content and deliver only its URL", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    await expect(
+      delivery.guardedReply(context, "short article", undefined, () => true, "publish"),
+    ).resolves.toMatchObject({ result: "delivered" })
+    expect(publisher.publish).toHaveBeenCalledExactlyOnceWith("short article")
+    expect(reply).toHaveBeenCalledExactlyOnceWith(shareUrl, undefined)
+  })
+
+  it("withholds generated articles when required publication is unavailable", async () => {
+    const { delivery, context, publisher, reply } = setup(false)
+    await expect(
+      delivery.guardedReply(context, "private article", undefined, () => true, "publish"),
+    ).resolves.toMatchObject({ result: "unavailable" })
+    expect(publisher.publish).not.toHaveBeenCalled()
+    expect(reply).toHaveBeenCalledExactlyOnceWith(
+      "文章無法發布至 Morsel（原因：MORSEL_API_KEY is not configured），請稍後再試。",
+      undefined,
+    )
+    expect(reply.mock.calls[0]?.[0]).not.toContain("private article")
+  })
+
   it.each(["unconfigured", "failed", "oversized-link"])(
     "withholds long content when Morsel is %s",
     async (failure) => {
@@ -126,6 +148,9 @@ describe("mandatory Morsel delivery", () => {
   it("does not publish or deliver already invalidated work", async () => {
     const { delivery, context, publisher, reply, editMessageText } = setup()
     await expect(
+      delivery.guardedReply(context, "short article", undefined, () => false, "publish"),
+    ).resolves.toEqual({ result: "stale" })
+    await expect(
       delivery.guardedReply(context, "x".repeat(1001), undefined, () => false),
     ).resolves.toEqual({ result: "stale" })
     await expect(delivery.edit(context, 7, 100, "x".repeat(1001), () => false)).resolves.toBe(
@@ -144,7 +169,7 @@ describe("mandatory Morsel delivery", () => {
       return shareUrl
     })
     await expect(
-      delivery.guardedReply(context, "x".repeat(1001), undefined, () => current),
+      delivery.guardedReply(context, "short article", undefined, () => current, "publish"),
     ).resolves.toEqual({ result: "stale" })
     expect(publisher.publish).toHaveBeenCalledOnce()
     expect(reply).not.toHaveBeenCalled()
@@ -157,9 +182,9 @@ describe("mandatory Morsel delivery", () => {
       current = false
       return shareUrl
     })
-    await expect(delivery.edit(context, 7, 100, "x".repeat(1001), () => current)).resolves.toBe(
-      "stale",
-    )
+    await expect(
+      delivery.edit(context, 7, 100, "short article", () => current, "publish"),
+    ).resolves.toBe("stale")
     expect(publisher.publish).toHaveBeenCalledOnce()
     expect(editMessageText).not.toHaveBeenCalled()
   })

@@ -136,6 +136,23 @@ describe("ChatSessionRegistry", () => {
     expect(sessions.get(2)?.prompts).toEqual(["other"])
   })
 
+  it("returns a distinct outcome when Pi produces no assistant text", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    session.prompt = vi.fn(async (text: string) => {
+      session.prompts.push(text)
+      session.messages.push({ role: "user", content: text, timestamp: Date.now() })
+      session.leafId = "entry-1"
+      session.entries.add("entry-1")
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+
+    await expect(registry.submit(1, "silent")).resolves.toEqual({
+      kind: "no_response",
+      text: "模型沒有回覆內容，請稍後再試。",
+    })
+  })
+
   it("invalidates a session that finishes creating after reset", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const staleSession = new FakeSession()
@@ -456,6 +473,53 @@ describe("ChatSessionRegistry", () => {
     expect(session.contexts).toEqual(["旁聽內容"])
     expect(session.aborted).toBe(true)
     expect(session.disposed).toBe(true)
+  })
+
+  it("waits for an active response capture before starting a separate new turn", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const runningAccepted = deferred()
+    const agentFinished = deferred()
+    const idle = deferred()
+    const promptReturned = deferred()
+    const promptNormally = session.prompt.bind(session)
+    session.prompt = vi.fn(async (text: string) => {
+      if (text !== "running") return promptNormally(text)
+      session.prompts.push(text)
+      session.messages.push({ role: "user", content: text, timestamp: Date.now() })
+      session.isStreaming = true
+      await agentFinished.promise
+      session.messages.push(assistant("AI: running"))
+      session.leafId = "entry-1"
+      session.entries.add("entry-1")
+      session.isStreaming = false
+      idle.resolve()
+      await promptReturned.promise
+    })
+
+    const running = registry.submit(1, "running", { onAccepted: runningAccepted.resolve })
+    await runningAccepted.promise
+    agentFinished.resolve()
+    await idle.promise
+
+    const newTurnAccepted = vi.fn()
+    const newTurn = registry.submit(1, "article", {
+      intent: "newTurn",
+      onAccepted: newTurnAccepted,
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(session.isStreaming).toBe(false)
+    expect(session.prompts).toEqual(["running"])
+    expect(newTurnAccepted).not.toHaveBeenCalled()
+    expect(session.steering).toEqual([])
+
+    promptReturned.resolve()
+    await expect(running).resolves.toMatchObject({ kind: "completed", text: "AI: running" })
+    await expect(newTurn).resolves.toMatchObject({ kind: "completed", text: "AI: article" })
+    expect(session.prompts).toEqual(["running", "article"])
+    expect(newTurnAccepted).toHaveBeenCalledOnce()
   })
 
   it("restores a mapped older reply as a Pi branch and indexes every delivery alias", async () => {

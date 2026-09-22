@@ -23,10 +23,11 @@ export interface SubmissionCheckpoint extends PiReplyCheckpoint {
 
 export type SubmissionResult =
   | { kind: "completed"; text: string; checkpoint?: SubmissionCheckpoint }
+  | { kind: "no_response"; text: string }
   | { kind: "steered"; text: string }
   | { kind: "followed_up"; text: string }
 
-export type SubmissionIntent = "steer" | "followUp"
+export type SubmissionIntent = "steer" | "followUp" | "newTurn"
 
 export interface SessionHandle {
   readonly isStreaming: boolean
@@ -117,7 +118,12 @@ export class ChatSessionRegistry {
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
-    if (!restoredBranch && session.isStreaming) {
+    if (!restoredBranch && options.intent === "newTurn") {
+      const activeCapture = this.#activePromptCaptures.get(chatId)
+      if (activeCapture?.generation === generation) await activeCapture.done
+      if (!session.isIdle) await session.waitForIdle()
+      assertCurrent()
+    } else if (!restoredBranch && session.isStreaming) {
       assertCurrent()
       if (options.intent === "followUp") {
         const submission = session.followUp(submissionPrompt, images)
@@ -151,12 +157,12 @@ export class ChatSessionRegistry {
       )
       options.onAccepted?.()
       await submission
+      const text = lastAssistantText(session.messages.slice(previousMessageCount))
+      if (!text) return { kind: "no_response", text: "模型沒有回覆內容，請稍後再試。" }
       const entryId = session.sessionManager.getLeafId()
       return {
         kind: "completed",
-        text:
-          lastAssistantText(session.messages.slice(previousMessageCount)) ||
-          "模型沒有回覆內容，請稍後再試。",
+        text,
         ...(entryId ? { checkpoint: { sessionId: session.sessionId, entryId, generation } } : {}),
       }
     } finally {
