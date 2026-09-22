@@ -26,7 +26,7 @@ export type SubmissionResult =
   | { kind: "steered"; text: string }
   | { kind: "followed_up"; text: string }
 
-export type SubmissionIntent = "steer" | "followUp"
+export type SubmissionIntent = "steer" | "followUp" | "newTurn"
 
 export interface SessionHandle {
   readonly isStreaming: boolean
@@ -119,16 +119,23 @@ export class ChatSessionRegistry {
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
     if (!restoredBranch && session.isStreaming) {
       assertCurrent()
-      if (options.intent === "followUp") {
-        const submission = session.followUp(submissionPrompt, images)
+      if (options.intent === "newTurn") {
+        const activeCapture = this.#activePromptCaptures.get(chatId)
+        if (activeCapture?.generation === generation) await activeCapture.done
+        if (!session.isIdle) await session.waitForIdle()
+        assertCurrent()
+      } else {
+        if (options.intent === "followUp") {
+          const submission = session.followUp(submissionPrompt, images)
+          options.onAccepted?.()
+          await submission
+          return { kind: "followed_up", text: "已將新訊息排在目前任務完成後處理。" }
+        }
+        const submission = session.steer(submissionPrompt, images)
         options.onAccepted?.()
         await submission
-        return { kind: "followed_up", text: "已將新訊息排在目前任務完成後處理。" }
+        return { kind: "steered", text: "已將新訊息加入目前任務。" }
       }
-      const submission = session.steer(submissionPrompt, images)
-      options.onAccepted?.()
-      await submission
-      return { kind: "steered", text: "已將新訊息加入目前任務。" }
     }
 
     assertCurrent()

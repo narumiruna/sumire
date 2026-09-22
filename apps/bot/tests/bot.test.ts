@@ -200,8 +200,9 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(commandMessage(20, "/f 原始內容 https://example.com/article"))
 
     expect(sessions.submit).toHaveBeenCalledOnce()
-    const [chatId, prompt] = vi.mocked(sessions.submit).mock.calls[0] ?? []
+    const [chatId, prompt, options] = vi.mocked(sessions.submit).mock.calls[0] ?? []
     expect(chatId).toBe(7)
+    expect(options?.intent).toBe("newTurn")
     expect(prompt).toContain("written entirely in 台灣正體中文")
     expect(prompt).toContain("use load_public_url")
     expect(prompt).toContain("原始內容 https://example.com/article")
@@ -367,18 +368,43 @@ describe("Telegram bot update routing", () => {
     expect(calls[0]?.payload.text).toBe("已將新訊息加入目前任務。")
   })
 
-  it("withholds a generated /f article when Morsel is unavailable", async () => {
-    const article = "generated private article"
-    const sessions = createSessions({
-      submit: vi.fn(async (_chatId, _prompt, options) => {
-        options.onAccepted?.()
-        return {
-          kind: "completed" as const,
-          text: article,
-          checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
-        }
-      }),
-    })
+  it("rejects unsupported replied media without invoking Pi", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+    const update = commandMessage(24, "/f")
+    if (update.message) {
+      update.message.reply_to_message = {
+        message_id: 23,
+        date: 1_700_000_000,
+        chat: update.message.chat,
+        from: { id: 8, is_bot: false, first_name: "Bob" },
+        video: {
+          file_id: "video",
+          file_unique_id: "video",
+          width: 640,
+          height: 480,
+          duration: 10,
+        },
+        reply_to_message: undefined,
+      }
+    }
+
+    await telegram.bot.handleUpdate(update)
+
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls[0]?.payload.text).toContain("請使用 /f <內容>")
+  })
+
+  it("rejects /f before invoking Pi when Morsel is unavailable", async () => {
+    const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -390,12 +416,11 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(commandMessage(22, "/f 原始內容"))
 
+    expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
     expect(calls[0]?.payload.text).toBe(
       "文章無法發布至 Morsel（原因：MORSEL_API_KEY is not configured），請稍後再試。",
     )
-    expect(calls[0]?.payload.text).not.toContain(article)
-    expect(sessions.recordDelivery).not.toHaveBeenCalled()
   })
 
   it("shows /f usage when no source content or attachment is available", async () => {

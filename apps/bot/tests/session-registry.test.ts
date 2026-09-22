@@ -458,6 +458,45 @@ describe("ChatSessionRegistry", () => {
     expect(session.disposed).toBe(true)
   })
 
+  it("waits for an active response capture before starting a separate new turn", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const runningAccepted = deferred()
+    const finishRunning = deferred()
+    const promptNormally = session.prompt.bind(session)
+    session.prompt = vi.fn(async (text: string) => {
+      if (text !== "running") return promptNormally(text)
+      session.prompts.push(text)
+      session.messages.push({ role: "user", content: text, timestamp: Date.now() })
+      session.isStreaming = true
+      await finishRunning.promise
+      session.messages.push(assistant("AI: running"))
+      session.leafId = "entry-1"
+      session.entries.add("entry-1")
+      session.isStreaming = false
+    })
+
+    const running = registry.submit(1, "running", { onAccepted: runningAccepted.resolve })
+    await runningAccepted.promise
+    const newTurnAccepted = vi.fn()
+    const newTurn = registry.submit(1, "article", {
+      intent: "newTurn",
+      onAccepted: newTurnAccepted,
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(session.prompts).toEqual(["running"])
+    expect(newTurnAccepted).not.toHaveBeenCalled()
+    expect(session.steering).toEqual([])
+
+    finishRunning.resolve()
+    await expect(running).resolves.toMatchObject({ kind: "completed", text: "AI: running" })
+    await expect(newTurn).resolves.toMatchObject({ kind: "completed", text: "AI: article" })
+    expect(session.prompts).toEqual(["running", "article"])
+    expect(newTurnAccepted).toHaveBeenCalledOnce()
+  })
+
   it("restores a mapped older reply as a Pi branch and indexes every delivery alias", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()

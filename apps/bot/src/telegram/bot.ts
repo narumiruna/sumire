@@ -2,15 +2,15 @@ import type { RunnerHandle } from "@grammyjs/runner"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
-import type { ChatSessionRegistry } from "../agent/session-registry.js"
+import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
 import type { Logger } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
-import { createMorselPublisher, type MorselPublisher } from "../morsel.js"
+import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { buildArticleRewritePrompt } from "../writer/prompt.js"
-import { createTelegramDelivery, type DeliveryMode } from "./delivery.js"
+import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
 import {
   downloadTelegramFile,
   downloadTelegramImage,
@@ -50,6 +50,7 @@ interface InputSubmissionOptions {
   promptTransform?: (prompt: string) => string
   deliveryMode?: DeliveryMode
   includeBotReplyContext?: boolean
+  submissionIntent?: SubmissionIntent
 }
 
 export function createTelegramAgentBot(
@@ -250,9 +251,10 @@ export function createTelegramAgentBot(
     const chat = context.chat
     if (!rawMessage || !chat) return
     const message = rawMessage as unknown as TelegramMessageLike
+    const repliedText = message.reply_to_message ? messageText(message.reply_to_message).trim() : ""
     if (
       !source &&
-      !message.reply_to_message &&
+      !repliedText &&
       imageReferences(message).length === 0 &&
       documentReferences(message).length === 0
     ) {
@@ -263,11 +265,23 @@ export function createTelegramAgentBot(
       )
       return
     }
+    if (!morselPublisher.isConfigured) {
+      await delivery.reply(
+        context,
+        morselPublicationFailure(
+          new MorselPublishError("MORSEL_API_KEY is not configured"),
+          "publish",
+        ),
+        replyOptions(context),
+      )
+      return
+    }
     await inSubmissionOrder(chat.id, (release, isCurrent) =>
       submitInput(context, message, source, release, isCurrent, {
         promptTransform: buildArticleRewritePrompt,
         deliveryMode: "publish",
         includeBotReplyContext: true,
+        submissionIntent: "newTurn",
       }),
     )
   }
@@ -378,6 +392,7 @@ export function createTelegramAgentBot(
       repliedBotMessageId(message, context.me.id),
       submissionOptions.deliveryMode,
       submissionOptions.includeBotReplyContext,
+      submissionOptions.submissionIntent,
     )
   }
 
@@ -410,6 +425,7 @@ export function createTelegramAgentBot(
     replyToBotMessageId?: number,
     finalDeliveryMode: DeliveryMode = "default",
     replyContextIncluded = false,
+    submissionIntent?: SubmissionIntent,
   ): Promise<void> {
     if (!isCurrent()) return
     const chatId = context.chat?.id
@@ -468,6 +484,7 @@ export function createTelegramAgentBot(
           : undefined
       const result = await sessions.submit(chatId, prompt, {
         images,
+        ...(submissionIntent ? { intent: submissionIntent } : {}),
         ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
         ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
         onAccepted: releaseSubmissionTurn,

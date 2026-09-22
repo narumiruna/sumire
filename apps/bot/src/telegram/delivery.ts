@@ -43,7 +43,7 @@ export function createTelegramDelivery(
           : "Required Morsel publication failed; withholding long Telegram message",
         error,
       )
-      return { text: publicationFailure(error, mode), delivered: false }
+      return { text: morselPublicationFailure(error, mode), delivered: false }
     }
   }
 
@@ -102,7 +102,7 @@ export function createTelegramDelivery(
   }
 }
 
-function publicationFailure(error: unknown, mode: DeliveryMode): string {
+export function morselPublicationFailure(error: unknown, mode: DeliveryMode): string {
   const rawReason = error instanceof Error ? error.message : "未知錯誤"
   const normalizedReason = sanitizeTelegramText(rawReason).replace(/\s+/gu, " ").trim()
   const reason =
