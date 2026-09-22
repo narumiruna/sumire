@@ -45,6 +45,27 @@ export function createTelegramDelivery(
         options,
       )
     },
+    async guardedReply(
+      context: Context,
+      text: string,
+      options: Parameters<Context["reply"]>[1] | undefined,
+      isCurrent: () => boolean,
+    ) {
+      if (!isCurrent()) return { result: "stale" as const }
+      const prepared = await prepare(text)
+      if (!isCurrent()) return { result: "stale" as const }
+      const message = await context.reply(
+        options?.parse_mode === "HTML"
+          ? (telegramHtmlChunks(prepared.text)[0] ?? " ")
+          : prepared.text,
+        options,
+      )
+      if (!isCurrent()) return { message, result: "stale" as const }
+      return {
+        message,
+        result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
+      }
+    },
     async edit(
       context: Context,
       chatId: number,

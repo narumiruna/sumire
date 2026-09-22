@@ -170,6 +170,131 @@ describe("ChatSessionRegistry", () => {
     expect(replacementSession.prompts).toEqual(["fresh"])
   })
 
+  it("does not prompt when the host cancels during session creation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    let finishCreation: ((session: SessionHandle) => void) | undefined
+    const pendingCreation = new Promise<SessionHandle>((resolve) => {
+      finishCreation = resolve
+    })
+    const createSession = vi.fn(async () => pendingCreation)
+    const registry = new ChatSessionRegistry(createSession, root, logger)
+    const onAccepted = vi.fn()
+    let current = true
+
+    const staleSubmission = registry.submit(1, "stale", {
+      isCurrent: () => current,
+      onAccepted,
+    })
+    const staleOutcome = expect(staleSubmission).rejects.toThrow("cancelled before acceptance")
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce())
+    current = false
+    finishCreation?.(session)
+
+    await staleOutcome
+    expect(session.prompts).toEqual([])
+    expect(onAccepted).not.toHaveBeenCalled()
+    await registry.dispose()
+  })
+
+  it("does not restore or prompt when the host cancels during reply lookup", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    const checkpoint = first.kind === "completed" ? first.checkpoint : undefined
+    await registry.recordDelivery(1, checkpoint, [100])
+    await registry.submit(1, "latest")
+    const lookupStarted = deferred()
+    const lookupFinished = deferred()
+    const lookup = vi
+      .spyOn(TelegramReplyIndex.prototype, "resolve")
+      .mockImplementationOnce(async () => {
+        lookupStarted.resolve()
+        await lookupFinished.promise
+        return checkpoint
+      })
+    const onAccepted = vi.fn()
+    let current = true
+    try {
+      const staleSubmission = registry.submit(1, "stale", {
+        replyToBotMessageId: 100,
+        isCurrent: () => current,
+        onAccepted,
+      })
+      const staleOutcome = expect(staleSubmission).rejects.toThrow("cancelled before acceptance")
+      await lookupStarted.promise
+      current = false
+      lookupFinished.resolve()
+
+      await staleOutcome
+      expect(session.navigated).toEqual([])
+      expect(session.prompts).toEqual(["first", "latest"])
+      expect(onAccepted).not.toHaveBeenCalled()
+    } finally {
+      lookupFinished.resolve()
+      lookup.mockRestore()
+      await registry.dispose()
+    }
+  })
+
+  it("waits for cancelled branch navigation to roll back before cancellation completes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    await registry.submit(1, "latest")
+    const navigationStarted = deferred()
+    const navigationFinished = deferred()
+    const navigate = vi
+      .spyOn(session, "navigateTree")
+      .mockImplementationOnce(async (targetId: string) => {
+        navigationStarted.resolve()
+        await navigationFinished.promise
+        session.navigated.push(targetId)
+        session.leafId = targetId
+        return { cancelled: false }
+      })
+    let current = true
+    try {
+      const staleSubmission = registry.submit(1, "stale", {
+        replyToBotMessageId: 100,
+        isCurrent: () => current,
+      })
+      const staleOutcome = expect(staleSubmission).rejects.toThrow("cancelled before acceptance")
+      await navigationStarted.promise
+      current = false
+      let cancellationFinished = false
+      const cancellation = registry.cancel(1).then((result) => {
+        cancellationFinished = true
+        return result
+      })
+      await Promise.resolve()
+      expect(cancellationFinished).toBe(false)
+      navigationFinished.resolve()
+
+      await staleOutcome
+      await expect(cancellation).resolves.toBe(true)
+      expect(session.navigated).toEqual(["entry-1", "entry-2"])
+      expect(session.leafId).toBe("entry-2")
+      await expect(registry.submit(1, "fresh")).resolves.toMatchObject({ text: "AI: fresh" })
+      expect(session.prompts).toEqual(["first", "latest", "fresh"])
+    } finally {
+      navigationFinished.resolve()
+      navigate.mockRestore()
+      await registry.dispose()
+    }
+  })
+
   it("rejects access to an existing session when reset wins the acceptance race", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()

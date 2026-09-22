@@ -12,10 +12,14 @@ describe("Telegram progress status", () => {
         { text: "發布", status: "blocked", reason: "等待核准" },
       ]),
     ).toBe(
-      ["處理中… 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
+      ["進度 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
         "\n",
       ),
     )
+  })
+
+  it("renders the progress clear operation", () => {
+    expect(renderProgressStatus([])).toBe("進度已清除")
   })
 
   it("prioritizes actionable work and bounds long lists", () => {

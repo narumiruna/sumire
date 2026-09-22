@@ -99,16 +99,34 @@ describe("mandatory Morsel delivery", () => {
     },
   )
 
-  it("does not publish or edit already invalidated work", async () => {
-    const { delivery, context, publisher, editMessageText } = setup()
+  it("does not publish or deliver already invalidated work", async () => {
+    const { delivery, context, publisher, reply, editMessageText } = setup()
+    await expect(
+      delivery.guardedReply(context, "x".repeat(1001), undefined, () => false),
+    ).resolves.toEqual({ result: "stale" })
     await expect(delivery.edit(context, 7, 100, "x".repeat(1001), () => false)).resolves.toBe(
       "stale",
     )
     expect(publisher.publish).not.toHaveBeenCalled()
+    expect(reply).not.toHaveBeenCalled()
     expect(editMessageText).not.toHaveBeenCalled()
   })
 
-  it("rechecks validity after Morsel publication", async () => {
+  it("rechecks reply validity after Morsel publication", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    let current = true
+    publisher.publish.mockImplementation(async () => {
+      current = false
+      return shareUrl
+    })
+    await expect(
+      delivery.guardedReply(context, "x".repeat(1001), undefined, () => current),
+    ).resolves.toEqual({ result: "stale" })
+    expect(publisher.publish).toHaveBeenCalledOnce()
+    expect(reply).not.toHaveBeenCalled()
+  })
+
+  it("rechecks edit validity after Morsel publication", async () => {
     const { delivery, context, publisher, editMessageText } = setup()
     let current = true
     publisher.publish.mockImplementation(async () => {

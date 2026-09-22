@@ -65,6 +65,7 @@ export class ChatSessionRegistry {
   readonly #creating = new Map<number, Promise<SessionHandle>>()
   readonly #generations = new Map<number, number>()
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
+  readonly #branchNavigations = new Map<number, Promise<void>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
 
@@ -93,22 +94,31 @@ export class ChatSessionRegistry {
       unresolvedReplyPrompt?: string
       onAccepted?: () => void
       onProgress?: (steps: readonly ProgressStep[]) => void
+      isCurrent?: () => boolean
     } = {},
   ): Promise<SubmissionResult> {
     const generation = this.#generations.get(chatId) ?? 0
+    const assertCurrent = () => {
+      this.#assertCurrentGeneration(chatId, generation)
+      if (options.isCurrent?.() === false) {
+        throw new Error("Pi session submission was cancelled before acceptance")
+      }
+    }
     const session = await this.#getOrCreate(chatId)
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     const restoredBranch = await this.#restoreReplyBranch(
       chatId,
       session,
       options.replyToBotMessageId,
       generation,
+      assertCurrent,
     )
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
     if (!restoredBranch && session.isStreaming) {
+      assertCurrent()
       if (options.intent === "followUp") {
         const submission = session.followUp(submissionPrompt, images)
         options.onAccepted?.()
@@ -121,6 +131,7 @@ export class ChatSessionRegistry {
       return { kind: "steered", text: "已將新訊息加入目前任務。" }
     }
 
+    assertCurrent()
     const previousMessageCount = session.messages.length
     const unsubscribe = options.onProgress
       ? session.subscribe(progressListener(options.onProgress, this.logger))
@@ -194,8 +205,10 @@ export class ChatSessionRegistry {
   }
 
   async cancel(chatId: number): Promise<boolean> {
+    const branchNavigation = this.#branchNavigations.get(chatId)
+    if (branchNavigation) await branchNavigation
     const session = this.#sessions.get(chatId)
-    if (!session?.isStreaming) return false
+    if (!session?.isStreaming) return branchNavigation !== undefined
     session.clearQueue()
     await session.abort()
     return true
@@ -247,9 +260,11 @@ export class ChatSessionRegistry {
     session: SessionHandle,
     telegramMessageId: number | undefined,
     generation: number,
+    assertCurrent: () => void,
   ): Promise<boolean> {
     if (!this.#replyTreeEnabled || telegramMessageId === undefined) return false
     const target = await this.#replyIndex.resolve(chatId, telegramMessageId)
+    assertCurrent()
     if (
       !target ||
       target.sessionId !== session.sessionId ||
@@ -262,15 +277,44 @@ export class ChatSessionRegistry {
     const activeCapture = this.#activePromptCaptures.get(chatId)
     if (activeCapture?.generation === generation) {
       await activeCapture.done
-      this.#assertCurrentGeneration(chatId, generation)
+      assertCurrent()
     }
     if (!session.isIdle) await session.waitForIdle()
-    this.#assertCurrentGeneration(chatId, generation)
-    if (session.sessionManager.getLeafId() === target.entryId) return true
-    const result = await session.navigateTree(target.entryId, { summarize: false })
-    if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
-    this.#assertCurrentGeneration(chatId, generation)
-    return true
+    assertCurrent()
+    const previousLeafId = session.sessionManager.getLeafId()
+    if (previousLeafId === target.entryId) return true
+    const navigation = (async () => {
+      const result = await session.navigateTree(target.entryId, { summarize: false })
+      if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
+      try {
+        assertCurrent()
+      } catch (error) {
+        if (
+          previousLeafId &&
+          this.#sessions.get(chatId) === session &&
+          session.sessionManager.getLeafId() !== previousLeafId
+        ) {
+          const rollback = await session.navigateTree(previousLeafId, { summarize: false })
+          if (rollback.cancelled) {
+            throw new Error("Pi session branch navigation rollback was cancelled", { cause: error })
+          }
+        }
+        throw error
+      }
+    })()
+    const settledNavigation = navigation.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#branchNavigations.set(chatId, settledNavigation)
+    try {
+      await navigation
+      return true
+    } finally {
+      if (this.#branchNavigations.get(chatId) === settledNavigation) {
+        this.#branchNavigations.delete(chatId)
+      }
+    }
   }
 
   async #getOrCreate(chatId: number): Promise<SessionHandle> {
