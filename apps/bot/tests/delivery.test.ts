@@ -87,8 +87,14 @@ describe("mandatory Morsel delivery", () => {
       await expect(delivery.edit(context, 7, 100, text)).resolves.toBe("unavailable")
       const sent = String(reply.mock.calls[0]?.[0])
       const edited = String(editMessageText.mock.calls[0]?.[2])
+      const expectedReason =
+        failure === "unconfigured"
+          ? "MORSEL_API_KEY is not configured"
+          : failure === "failed"
+            ? "Morsel unavailable"
+            : "Morsel share link exceeds the Telegram message limit"
       for (const value of [sent, edited]) {
-        expect(value).toContain("Morsel 暫時無法使用")
+        expect(value).toContain(`Morsel 暫時無法使用（原因：${expectedReason}）`)
         expect(Array.from(value).length).toBeLessThanOrEqual(1000)
         expect(value).not.toContain("secret-long-answer")
       }
@@ -98,6 +104,24 @@ describe("mandatory Morsel delivery", () => {
       expect(publisher.publish).toHaveBeenCalledTimes(failure === "unconfigured" ? 0 : 2)
     },
   )
+
+  it("sanitizes and bounds the failure reason shown to users", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    publisher.publish.mockRejectedValue(new Error(`service\nfailed\u0000${"x".repeat(1000)}`))
+    await delivery.reply(context, "長".repeat(1001))
+    const sent = String(reply.mock.calls[0]?.[0])
+    expect(sent).toContain("原因：service failed")
+    expect(sent).not.toContain("\n")
+    expect(sent).not.toContain("\u0000")
+    expect(Array.from(sent).length).toBeLessThan(300)
+  })
+
+  it("reports an unknown reason for non-Error failures", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    publisher.publish.mockRejectedValue(undefined)
+    await delivery.reply(context, "長".repeat(1001))
+    expect(reply.mock.calls[0]?.[0]).toContain("原因：未知錯誤")
+  })
 
   it("does not publish or deliver already invalidated work", async () => {
     const { delivery, context, publisher, reply, editMessageText } = setup()
