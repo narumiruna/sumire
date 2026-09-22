@@ -79,9 +79,11 @@ Use `/t` with one or more whitespace- or comma-separated symbols:
 /t BTCUSDT       # MAX Exchange cryptocurrency pair
 /t USD           # Bank of Taiwan USD/TWD rate
 /t JPY/TWD       # Bank of Taiwan JPY/TWD rate
+/t TWDJPY        # Derived Bank of Taiwan TWD/JPY rate
+/t USD/JPY       # Derived Bank of Taiwan USD/JPY cross rate
 ```
 
-A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries. MAX-like suffixes are matched against the MAX markets catalogue; symbols absent from that catalogue (such as `GBTC`) fall back to Yahoo Finance. If the catalogue request fails, candidates still try Yahoo; the original MAX error is retained when no fallback returns data. Failures querying listed MAX markets are not retried through Yahoo.
+A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries against TWD. Supported fiat pairs can be written as `TWDJPY`, `TWD/JPY`, `TWD-JPY`, or `TWD_JPY`; reverse and cross rates are derived from Bank of Taiwan quotes and clearly marked in the result. MAX-like suffixes are matched against the MAX markets catalogue; symbols absent from that catalogue (such as `GBTC`) fall back to Yahoo Finance. If the catalogue request fails, candidates still try Yahoo; the original MAX error is retained when no fallback returns data. Failures querying listed MAX markets are not retried through Yahoo.
 
 Yahoo candle fields use the latest candle position; missing fields are omitted rather than carried forward from an older session.
 

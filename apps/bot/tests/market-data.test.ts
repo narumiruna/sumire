@@ -29,8 +29,11 @@ describe("market-data query", () => {
     ["1234AB", "yahoo", "1234AB"],
     ["BTCUSDT", "max", "BTCUSDT"],
     ["ETH/TWD", "max", "ETH/TWD"],
-    ["USD", "currency", "USD"],
-    ["JPY/TWD", "currency", "JPY"],
+    ["USD", "currency", "USD/TWD"],
+    ["JPY/TWD", "currency", "JPY/TWD"],
+    ["TWDJPY", "currency", "TWD/JPY"],
+    ["TWD-JPY", "currency", "TWD/JPY"],
+    ["USDJPY", "currency", "USD/JPY"],
   ] as const)("classifies %s for %s", (term, provider, symbol) => {
     expect(classifyMarketTerm(term)).toEqual({ provider, symbol })
   })
@@ -161,6 +164,43 @@ describe("market-data query", () => {
     expect(result).toContain("買價: 65,000.1 USDT")
     expect(result).toContain("台灣銀行 USD/TWD")
     expect(result).toContain("即期中價: 31.8 TWD")
+    expect(rateFetcher).toHaveBeenCalledOnce()
+  })
+
+  it("derives reverse and cross rates for supported currency pairs", async () => {
+    const rateFetcher = vi.fn(async () => [
+      {
+        cashBuy: 0.19,
+        cashSell: 0.26,
+        exchange: "BANK_OF_TAIWAN" as const,
+        fetchedAt,
+        source: "JPY",
+        spotBuy: 0.2,
+        spotSell: 0.25,
+        target: "TWD",
+      },
+      {
+        cashBuy: 29,
+        cashSell: 33,
+        exchange: "BANK_OF_TAIWAN" as const,
+        fetchedAt,
+        source: "USD",
+        spotBuy: 30,
+        spotSell: 32,
+        target: "TWD",
+      },
+    ])
+
+    const result = await queryMarketData("TWDJPY USD/JPY", { rateFetcher })
+
+    expect(result).toContain("台灣銀行 TWD/JPY")
+    expect(result).toContain("即期買入: 4 JPY")
+    expect(result).toContain("即期賣出: 5 JPY")
+    expect(result).toContain("即期中價: 4.5 JPY")
+    expect(result).toContain("台灣銀行 USD/JPY")
+    expect(result).toContain("即期買入: 120 JPY")
+    expect(result).toContain("即期賣出: 160 JPY")
+    expect(result).toContain("換算方式: 依台灣銀行牌告匯率換算")
     expect(rateFetcher).toHaveBeenCalledOnce()
   })
 

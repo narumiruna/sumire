@@ -24,6 +24,7 @@ const taiwanBankCurrencies = new Set([
   "SEK",
   "SGD",
   "THB",
+  "TWD",
   "USD",
   "VND",
   "ZAR",
@@ -137,7 +138,20 @@ export function classifyMarketTerm(term: string): {
 }
 
 function currencyFromTerm(term: string): string | undefined {
-  const match = /^([A-Z]{3})(?:[/_-]?TWD)?$/u.exec(term)
-  const currency = match?.[1]
-  return currency && taiwanBankCurrencies.has(currency) ? currency : undefined
+  if (/^[A-Z]{3}$/u.test(term) && term !== "TWD" && taiwanBankCurrencies.has(term)) {
+    return `${term}/TWD`
+  }
+  const match = /^([A-Z]{3})[/_-]?([A-Z]{3})$/u.exec(term)
+  const source = match?.[1]
+  const target = match?.[2]
+  if (
+    !source ||
+    !target ||
+    source === target ||
+    !taiwanBankCurrencies.has(source) ||
+    !taiwanBankCurrencies.has(target)
+  ) {
+    return undefined
+  }
+  return `${source}/${target}`
 }

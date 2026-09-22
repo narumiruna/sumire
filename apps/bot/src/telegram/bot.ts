@@ -90,7 +90,7 @@ export function createTelegramAgentBot(
       context,
       [
         "/ask <問題> — 詢問 AI 助理",
-        "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、USD）",
+        "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
         "/reset — 清除目前 chat 的 Pi session",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
@@ -156,7 +156,7 @@ export function createTelegramAgentBot(
     if (!query) {
       await delivery.reply(
         context,
-        "請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t USD。",
+        "請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t TWDJPY。",
         replyOptions(context),
       )
       return
