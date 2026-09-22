@@ -1,11 +1,18 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent"
 
 import { createPublicUrlLoader, type PublicUrlLoaderOptions } from "./public-url.js"
-import { createUrlTool } from "./url-tool.js"
+import { createUrlTool, type UrlToolOptions } from "./url-tool.js"
 
-export function createUrlExtension(options: PublicUrlLoaderOptions = {}): ExtensionFactory {
+export interface UrlExtensionOptions extends PublicUrlLoaderOptions, UrlToolOptions {}
+
+export function createUrlExtension(options: UrlExtensionOptions = {}): ExtensionFactory {
+  const { selectableLoaders, ...loaderOptions } = options
   return (pi) => {
-    pi.registerTool(createUrlTool(createPublicUrlLoader(options)))
+    pi.registerTool(
+      createUrlTool(createPublicUrlLoader(loaderOptions), {
+        ...(selectableLoaders ? { selectableLoaders } : {}),
+      }),
+    )
   }
 }
 

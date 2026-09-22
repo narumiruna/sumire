@@ -3,22 +3,28 @@ import type { LoadResult } from "./core/results.js"
 import { explainLoadChain } from "./load-chain.js"
 import { listLoaderNames } from "./loader-registry.js"
 
+export interface LoadUrlOptions {
+  deadlineSeconds?: number
+  loaderNames?: readonly string[]
+  signal?: AbortSignal
+}
+
 export async function loadUrlDetailed(
   url: string,
-  options: { deadlineSeconds?: number; signal?: AbortSignal } = {},
+  options: LoadUrlOptions = {},
 ): Promise<LoadResult> {
   const client = new UrlContentClient({ deadlineSeconds: options.deadlineSeconds }).start()
   try {
-    return await client.loadUrlDetailed(url, options.signal)
+    return await client.loadUrlDetailed(url, {
+      ...(options.loaderNames ? { loaderNames: options.loaderNames } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
   } finally {
     await client.close()
   }
 }
 
-export async function loadUrl(
-  url: string,
-  options: { deadlineSeconds?: number; signal?: AbortSignal } = {},
-): Promise<string> {
+export async function loadUrl(url: string, options: LoadUrlOptions = {}): Promise<string> {
   return (await loadUrlDetailed(url, options)).content
 }
 

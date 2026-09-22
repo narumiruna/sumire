@@ -35,7 +35,7 @@ describe("public URL loading", () => {
     expect(load).not.toHaveBeenCalled()
     const signal = new AbortController().signal
     const result = await tool.execute("call", { url }, signal, undefined, undefined as never)
-    expect(load).toHaveBeenCalledWith(url, signal)
+    expect(load).toHaveBeenCalledWith(url, { signal })
     expect(result).toMatchObject({ details: { text: "content" } })
   })
 
@@ -149,6 +149,82 @@ describe("public URL loading", () => {
       status: 200,
     })
     expect(urlContentLoadImplementation).not.toHaveBeenCalled()
+  })
+
+  it("runs only the explicitly selected built-in loader", async () => {
+    const fetchImplementation = vi.fn(
+      async () => new Response("plain content", { headers: { "content-type": "text/plain" } }),
+    )
+    const urlContentLoadImplementation = vi.fn(async () => {
+      throw new Error("URL content loader should not be called")
+    })
+
+    await expect(
+      loadPublicUrl("https://8.8.8.8/page", {
+        ...options,
+        loader: "built-in",
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
+      }),
+    ).resolves.toMatchObject({ source: "built-in", text: "plain content" })
+    expect(fetchImplementation).toHaveBeenCalledOnce()
+    expect(urlContentLoadImplementation).not.toHaveBeenCalled()
+  })
+
+  it("runs only the explicitly selected URL content loader", async () => {
+    const signal = new AbortController().signal
+    const fetchImplementation = vi.fn()
+    const urlContentLoadImplementation = vi.fn(async () => ({
+      content: "explicit content",
+      loaderId: "httpx",
+      contentType: "generic_web",
+      downgraded: false,
+      attempts: [],
+    }))
+
+    await expect(
+      loadPublicUrl("https://8.8.8.8/page", {
+        ...options,
+        maxChars: 8,
+        loader: "httpx",
+        signal,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
+      }),
+    ).resolves.toMatchObject({
+      source: "url-content",
+      loaderId: "httpx",
+      text: "explicit\n\n[truncated by telegramagent: 16 -> 8 chars]",
+      truncated: true,
+    })
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/page", {
+      deadlineSeconds: 12,
+      loaderNames: ["httpx"],
+      signal,
+    })
+  })
+
+  it("does not fall back when an explicit URL content loader fails", async () => {
+    const cause = new Error("explicit loader failed")
+    const fetchImplementation = vi.fn()
+    const urlContentLoadImplementation = vi.fn(async () => {
+      throw cause
+    })
+
+    await expect(
+      loadPublicUrl("https://8.8.8.8/page", {
+        ...options,
+        loader: "httpx",
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation,
+      }),
+    ).rejects.toBe(cause)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).toHaveBeenCalledOnce()
   })
 
   it("falls back to bounded URL content output with the configured deadline", async () => {
@@ -336,7 +412,7 @@ describe("public URL loading", () => {
     expect(urlContentLoadImplementation).not.toHaveBeenCalled()
   })
 
-  it("rejects unsafe targets before invoking the URL content loader", async () => {
+  it("rejects unsafe targets before invoking an explicit URL content loader", async () => {
     const urlContentLoadImplementation = vi.fn(async () => {
       throw new Error("URL content loader should not be called")
     })
@@ -344,6 +420,7 @@ describe("public URL loading", () => {
     await expect(
       loadPublicUrl("http://127.0.0.1/private", {
         ...options,
+        loader: "httpx",
         urlContentTimeoutSeconds: 12,
         urlContentLoadImplementation,
       }),

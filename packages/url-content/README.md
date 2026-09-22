@@ -41,9 +41,14 @@ console.log(text);
 
 const result = await loadUrlDetailed("https://github.com/user/repo/blob/main/README.md");
 console.log(result.loaderId, result.contentType, result.attempts);
+
+const explicit = await loadUrlDetailed("https://example.com/article", {
+  loaderNames: ["httpx"],
+});
+console.log(explicit.loaderId); // httpx
 ```
 
-The TypeScript API is async-only because JavaScript has no safe synchronous equivalent.
+The TypeScript API is async-only because JavaScript has no safe synchronous equivalent. `loaderNames` supplies an exact ordered chain: only those loaders are attempted, in order, and failure does not return to automatic planning. Unknown and empty lists are rejected. Prefer automatic planning unless a trusted caller needs a controlled override.
 
 ## Reusable client
 
@@ -61,7 +66,7 @@ await using client = new UrlContentClient({
 
 const results = await Promise.all([
   client.loadUrl("https://example.com/one"),
-  client.loadUrl("https://example.com/two"),
+  client.loadUrl("https://example.com/two", { loaderNames: ["httpx"] }),
 ]);
 ```
 
@@ -75,7 +80,7 @@ sumire-url-content --loader curl-cffi,playwright,httpx https://example.com
 sumire-url-content --list
 ```
 
-Automatic planning is preferred. Explicit loaders are intended for debugging.
+Automatic planning is preferred. Explicit loaders are exact overrides for debugging or allowlisted host integrations; they retain target validation, deadlines, cancellation, resource admission, and requirement checks.
 
 ## Runtime requirements
 

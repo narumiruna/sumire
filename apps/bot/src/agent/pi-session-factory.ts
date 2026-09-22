@@ -17,6 +17,7 @@ import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 
 const providerId = "telegramagent-openai"
+const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
 
 export interface PiSessionFactory {
   create(chatId: number): Promise<AgentSession>
@@ -92,6 +93,7 @@ export async function createPiSessionFactory(
     maxChars: settings.botUrlMaxExtractedChars,
     timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
     urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
+    selectableLoaders: selectableUrlLoaders,
   })
 
   return {

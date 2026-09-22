@@ -42,8 +42,16 @@ describe("createPiSessionFactory", () => {
       expect(session.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
       const urlTool = session.getToolDefinition("load_public_url")
       expect(urlTool).toBeDefined()
+      if (!urlTool) throw new Error("load_public_url was not registered")
+      expect(
+        (
+          urlTool.parameters as unknown as {
+            properties: { loader: { enum: string[] } }
+          }
+        ).properties.loader.enum,
+      ).toEqual(["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"])
       await expect(
-        urlTool?.execute(
+        urlTool.execute(
           "url-call",
           { url: "http://8.8.8.8/" },
           undefined,

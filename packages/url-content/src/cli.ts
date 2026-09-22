@@ -4,7 +4,6 @@ import { realpathSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 import { loadUrl } from "./api.js"
-import { resolveExplicitLoadChain } from "./load-chain.js"
 import { getLoaderDef, listLoaderDefs } from "./loader-registry.js"
 
 interface CliOptions {
@@ -42,7 +41,12 @@ export function parseArgs(args: readonly string[]): CliOptions {
   return options
 }
 
-export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
+type LoadUrlImplementation = typeof loadUrl
+
+export async function main(
+  args: readonly string[] = process.argv.slice(2),
+  load: LoadUrlImplementation = loadUrl,
+): Promise<void> {
   const options = parseArgs(args)
   if (options.list) {
     if (options.url || options.loaderNames)
@@ -53,9 +57,9 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     return
   }
   if (!options.url) throw new Error(`URL is required unless --list is used.\n${usage()}`)
-  const content = options.loaderNames
-    ? await resolveExplicitLoadChain(options.url, options.loaderNames).load()
-    : await loadUrl(options.url)
+  const content = await load(options.url, {
+    ...(options.loaderNames ? { loaderNames: options.loaderNames } : {}),
+  })
   console.log(content)
 }
 
