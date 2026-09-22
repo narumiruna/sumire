@@ -356,10 +356,19 @@ export function createTelegramAgentBot(
     const chatId = context.chat?.id
     if (chatId === undefined) return
     const sourceMessageId = context.message?.message_id
-    const replyOptions = sourceMessageId
-      ? { reply_parameters: { message_id: sourceMessageId } }
-      : {}
+    const replyOptions = {
+      parse_mode: "HTML" as const,
+      ...(sourceMessageId
+        ? {
+            reply_parameters: {
+              message_id: sourceMessageId,
+              allow_sending_without_reply: true,
+            },
+          }
+        : {}),
+    }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
+    let hasProgressSnapshot = false
     const progressStatus = createProgressStatusEditor(
       async (text) => {
         if (status) {
@@ -397,9 +406,11 @@ export function createTelegramAgentBot(
         ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
         ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
         onAccepted: releaseSubmissionTurn,
+        isCurrent,
         onProgress: (steps) => {
-          const text = renderProgressStatus(steps)
-          if (text) progressStatus.publish(text)
+          if (steps.length === 0 && !hasProgressSnapshot) return
+          if (steps.length > 0) hasProgressSnapshot = true
+          progressStatus.publish(renderProgressStatus(steps))
         },
       })
       if (!isCurrent()) {

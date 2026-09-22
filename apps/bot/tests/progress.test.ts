@@ -18,8 +18,8 @@ describe("Telegram progress status", () => {
     )
   })
 
-  it("does not render an empty progress snapshot", () => {
-    expect(renderProgressStatus([])).toBeUndefined()
+  it("renders the progress clear operation", () => {
+    expect(renderProgressStatus([])).toBe("進度已清除")
   })
 
   it("prioritizes actionable work and bounds long lists", () => {
@@ -35,7 +35,7 @@ describe("Telegram progress status", () => {
     expect(text).toContain("🔄 目前工作")
     expect(text).toContain("⬜ 等待工作")
     expect(text).toContain("…還有 4 個步驟")
-    expect(text?.split("\n")).toHaveLength(9)
+    expect(text.split("\n")).toHaveLength(9)
   })
 
   it("coalesces updates and waits for an active edit before closing", async () => {

@@ -8,8 +8,8 @@ export interface ProgressStatusEditor {
   close(): Promise<void>
 }
 
-export function renderProgressStatus(steps: readonly ProgressStep[]): string | undefined {
-  if (steps.length === 0) return undefined
+export function renderProgressStatus(steps: readonly ProgressStep[]): string {
+  if (steps.length === 0) return "進度已清除"
 
   const completed = steps.filter((step) => step.status === "completed").length
   const visible = selectVisibleSteps(steps)

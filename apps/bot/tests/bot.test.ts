@@ -41,6 +41,7 @@ function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessi
         options: {
           onAccepted?: () => void
           onProgress?: (steps: readonly ProgressStep[]) => void
+          isCurrent?: () => boolean
         } = {},
       ) => {
         options.onAccepted?.()
@@ -246,13 +247,39 @@ describe("Telegram bot update routing", () => {
       images: [],
       onAccepted: expect.any(Function),
       onProgress: expect.any(Function),
+      isCurrent: expect.any(Function),
     })
     expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
     expect(calls[0]?.payload.text).toBe("AI 回覆")
-    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 1 })
+    expect(calls[0]?.payload.reply_parameters).toEqual({
+      message_id: 1,
+      allow_sending_without_reply: true,
+    })
+    expect(calls[0]?.payload.parse_mode).toBe("HTML")
   })
 
-  it("does not publish an empty progress snapshot", async () => {
+  it("renders a progress-free answer as Telegram HTML", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "# 標題\n**粗體** `<tag>`" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "格式化回答"))
+
+    expect(calls[0]?.payload.text).toBe("<b>標題</b>\n<b>粗體</b> <code>&lt;tag&gt;</code>")
+    expect(calls[0]?.payload.parse_mode).toBe("HTML")
+  })
+
+  it("does not publish an initial empty progress snapshot", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
@@ -272,6 +299,37 @@ describe("Telegram bot update routing", () => {
 
     expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
     expect(calls[0]?.payload.text).toBe("完成")
+  })
+
+  it("clears a previously visible progress snapshot", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "執行中", status: "in_progress" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.([])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[0]?.payload.text).toContain("🔄 執行中")
+    expect(calls[1]?.payload.text).toBe("進度已清除")
+    expect(calls[2]?.payload.text).toBe("完成")
   })
 
   it("replaces the structured progress reply with the final answer", async () => {
@@ -298,7 +356,11 @@ describe("Telegram bot update routing", () => {
     expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
     expect(calls[0]?.payload.text).toContain("進度 1/2")
     expect(calls[0]?.payload.text).toContain("🔄 撰寫回覆")
-    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 2 })
+    expect(calls[0]?.payload.reply_parameters).toEqual({
+      message_id: 2,
+      allow_sending_without_reply: true,
+    })
+    expect(calls[0]?.payload.parse_mode).toBe("HTML")
     expect(calls[1]?.payload.text).toBe("完成")
   })
 
@@ -1431,6 +1493,9 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         await pendingAcceptance
+        if (options.isCurrent?.() === false) {
+          throw new Error("Pi session submission was cancelled before acceptance")
+        }
         options.onAccepted?.()
         return { kind: "completed" as const, text: "過期回覆" }
       }),

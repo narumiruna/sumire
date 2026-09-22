@@ -93,22 +93,31 @@ export class ChatSessionRegistry {
       unresolvedReplyPrompt?: string
       onAccepted?: () => void
       onProgress?: (steps: readonly ProgressStep[]) => void
+      isCurrent?: () => boolean
     } = {},
   ): Promise<SubmissionResult> {
     const generation = this.#generations.get(chatId) ?? 0
+    const assertCurrent = () => {
+      this.#assertCurrentGeneration(chatId, generation)
+      if (options.isCurrent?.() === false) {
+        throw new Error("Pi session submission was cancelled before acceptance")
+      }
+    }
     const session = await this.#getOrCreate(chatId)
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     const restoredBranch = await this.#restoreReplyBranch(
       chatId,
       session,
       options.replyToBotMessageId,
       generation,
+      assertCurrent,
     )
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
     if (!restoredBranch && session.isStreaming) {
+      assertCurrent()
       if (options.intent === "followUp") {
         const submission = session.followUp(submissionPrompt, images)
         options.onAccepted?.()
@@ -121,6 +130,7 @@ export class ChatSessionRegistry {
       return { kind: "steered", text: "已將新訊息加入目前任務。" }
     }
 
+    assertCurrent()
     const previousMessageCount = session.messages.length
     const unsubscribe = options.onProgress
       ? session.subscribe(progressListener(options.onProgress, this.logger))
@@ -247,9 +257,11 @@ export class ChatSessionRegistry {
     session: SessionHandle,
     telegramMessageId: number | undefined,
     generation: number,
+    assertCurrent: () => void,
   ): Promise<boolean> {
     if (!this.#replyTreeEnabled || telegramMessageId === undefined) return false
     const target = await this.#replyIndex.resolve(chatId, telegramMessageId)
+    assertCurrent()
     if (
       !target ||
       target.sessionId !== session.sessionId ||
@@ -262,14 +274,14 @@ export class ChatSessionRegistry {
     const activeCapture = this.#activePromptCaptures.get(chatId)
     if (activeCapture?.generation === generation) {
       await activeCapture.done
-      this.#assertCurrentGeneration(chatId, generation)
+      assertCurrent()
     }
     if (!session.isIdle) await session.waitForIdle()
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     if (session.sessionManager.getLeafId() === target.entryId) return true
     const result = await session.navigateTree(target.entryId, { summarize: false })
     if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
-    this.#assertCurrentGeneration(chatId, generation)
+    assertCurrent()
     return true
   }
 
