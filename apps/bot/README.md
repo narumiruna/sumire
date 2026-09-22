@@ -12,6 +12,7 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
 - `@firecrawl/anydoc`: isolated local document-to-Markdown conversion without hosted OCR.
+- `@narumitw/otter-cli`: non-interactive Otter expense management used by the bundled Agent Skill.
 - Vitest: tests.
 
 There is no custom agent loop and no Vercel AI SDK. Telegram code owns only update routing and the mapping from Telegram chat IDs to Pi sessions.
@@ -28,7 +29,7 @@ Available now:
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
-- `SOUL.md` and filtered Agent Skills
+- `SOUL.md` and filtered Agent Skills, including Otter expense management
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
@@ -66,6 +67,10 @@ For development:
 cd apps/bot
 npm run dev -- --verbose
 ```
+
+To use the `otter-manage-expenses` skill, set `OTTER_TOKEN` through the ignored `.env` or another deployment secret mechanism.
+The upstream skill runs the bundled `otter` CLI through Pi's shell tool, so also set `BOT_CODING_TOOLS_ENABLED=true` and configure a non-empty `BOT_WHITELIST` containing only trusted users or chats.
+Do not commit the token.
 
 ## Article command
 
@@ -126,7 +131,9 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 `.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured and is required for `/f` article publication and replies over 1,000 characters. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
 
-The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
+The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment, including `OTTER_TOKEN`. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
+
+The repository vendors the reviewed `otter-manage-expenses` skill from [narumiruna/otter](https://github.com/narumiruna/otter) and installs `@narumitw/otter-cli` as a pinned runtime dependency. The production image adds its npm binary directory to `PATH`; Compose passes `OTTER_TOKEN` from the ignored root `.env` without copying it into the image.
 
 ## Telegram message length and Morsel
 
