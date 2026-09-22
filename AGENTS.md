@@ -14,6 +14,8 @@
 - The Telegram bot owns transport and orchestration around that loop, including command and addressing rules, input and context assembly, session lifecycle, cancellation, progress reporting, reply-tree restoration, and response delivery.
 - Extensions and custom tools own their capability implementations, while Pi owns deciding when to invoke them and continuing the model turn with their results.
 - Pass ordinary natural-language intent, including summary requests, to Pi without keyword or regex-based intent routing unless a feature explicitly requires deterministic routing.
+- Shape model behavior with instructions, tool descriptions, response contracts, and structured fields; do not parse or repair model output or upstream warnings by matching text fragments.
+- Use deterministic code for data integrity, including normalization, validation, filtering, pagination, and structured result shaping; use instructions for model interpretation and presentation.
 
 ## Commands
 
@@ -25,7 +27,8 @@
 ## Security
 
 - Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data.
-- Keep `MEMORY.md` maintainer-facing and `SOUL.md` runtime-facing; neither file may contain secrets.
+- Enforce the configured byte limit while streaming every Telegram file; do not rely solely on Telegram's `file_size` metadata.
+- Keep `SOUL.md` runtime-facing and free of secrets.
 
 ## Git and commits
 

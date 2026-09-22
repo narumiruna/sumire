@@ -66,4 +66,4 @@ Use `npm run changeset -- --empty` when no package version should change. On eac
 
 ## Security
 
-Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data. Keep `SOUL.md` and `MEMORY.md` free of secrets.
+Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data. Keep `SOUL.md` free of secrets.
