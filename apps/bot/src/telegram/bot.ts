@@ -98,7 +98,9 @@ export function createTelegramAgentBot(
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),
         ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
-        "可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。",
+        ...(settings.botCodingToolsEnabled
+          ? ["可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。"]
+          : []),
         "可請助理使用 load_public_url 工具讀取公開網址。",
       ].join("\n"),
     )

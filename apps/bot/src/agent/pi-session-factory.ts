@@ -132,6 +132,7 @@ export async function createPiSessionFactory(
         model,
         thinkingLevel: "off",
         modelRuntime,
+        ...(settings.botCodingToolsEnabled ? {} : { noTools: "builtin" as const }),
         customTools,
         resourceLoader,
         sessionManager: SessionManager.continueRecent(settings.projectRoot, sessionDirectory),

@@ -26,7 +26,7 @@ Available now:
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
-- Pi `read`, `bash`, `edit`, and `write` coding tools in the bot runtime
+- optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
 - `SOUL.md` and filtered Agent Skills
 - bounded Telegram image and document input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
@@ -126,9 +126,9 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. Pi's `read`, `bash`, `edit`, and `write` coding tools, the bounded public URL loader, and the structured progress tool are always enabled. Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured. Multi-step requests edit the original `處理中…` reply with the latest model-reported step state; simple requests may finish without publishing progress.
 
-The coding tools run directly with the bot process's filesystem permissions and working directory; Sumire does not sandbox commands or restrict tool paths. `bash` also inherits the process environment. Deploy the bot inside an appropriately isolated container and configure a non-empty `BOT_WHITELIST` before exposing it. An empty whitelist allows every Telegram user and chat.
+The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
 
 ## Telegram message length and Morsel
 
