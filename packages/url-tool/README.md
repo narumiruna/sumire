@@ -26,14 +26,14 @@ Pi packages execute with the current user's permissions. Review source before in
 
 Failures throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
 
-Google Docs document links bypass the built-in HTML loader after public-target validation and use the dedicated `google-docs` source loader. It requests a plain-text export instead of downloading the editor application. Known document filename extensions also go directly to source-aware loading: Office, OpenDocument, RTF, EPUB, and CSV links use local `anydoc` conversion unless an existing source-specific plan takes precedence; PDF links keep their existing PDF loader. No hosted OCR is enabled. Document failures retain their source error details and do not fall back to generic HTML; the normal output character limit still applies.
+Threads post and Google Docs document links bypass the built-in HTML loader after public-target validation and use dedicated source loaders. Threads extraction verifies the post's canonical metadata and reads its public Open Graph text instead of accepting the JavaScript application shell. Google Docs requests a plain-text export instead of downloading the editor application. Known document filename extensions also go directly to source-aware loading: Office, OpenDocument, RTF, EPUB, and CSV links use local `anydoc` conversion unless an existing source-specific plan takes precedence; PDF links keep their existing PDF loader. No hosted OCR is enabled. Document failures retain their source error details and do not fall back to generic HTML; the normal output character limit still applies.
 
 ```mermaid
 flowchart LR
     Agent[Pi agent] --> Tool[load_public_url]
     Tool --> Check[Public target validation]
     Check -->|Other URLs| BuiltIn[Bounded text / HTML loader]
-    Check -->|Google Docs / document URLs| Fallback[sumire-url-content]
+    Check -->|Threads / Google Docs / document URLs| Fallback[sumire-url-content]
     BuiltIn -->|Failure or source-specific content| Fallback
     BuiltIn --> Result[Pi tool result]
     Fallback --> Result

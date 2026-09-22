@@ -5,6 +5,7 @@ import { isIP, type LookupFunction } from "node:net"
 import {
   isAnyDocUrl,
   isGoogleDocsUrl,
+  isThreadsPostUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
   loadUrlDetailed,
@@ -121,8 +122,10 @@ export async function loadPublicUrl(
     validationSignal,
   )
 
-  // Known document sources must not be mistaken for editor HTML or raw CSV text.
-  if (isGoogleDocsUrl(urlValue) || isAnyDocUrl(urlValue)) return loadSourceUrl(urlValue, options)
+  // These sources expose an application shell or raw document bytes to generic HTML extraction.
+  if (isGoogleDocsUrl(urlValue) || isAnyDocUrl(urlValue) || isThreadsPostUrl(urlValue)) {
+    return loadSourceUrl(urlValue, options)
+  }
 
   let builtInError: unknown
   try {

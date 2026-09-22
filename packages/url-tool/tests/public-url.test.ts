@@ -215,6 +215,40 @@ describe("public URL loading", () => {
     })
   })
 
+  it("routes Threads posts directly to source-aware metadata extraction", async () => {
+    const url = "https://www.threads.com/@ha_haha_1229/post/Ddi8GHWk1ga"
+    const resolve = vi.fn(async () => [
+      { address: "8.8.8.8", family: 4 as const },
+    ]) as unknown as typeof lookup
+    const fetchImplementation = vi.fn()
+    const urlContentLoadImplementation = vi.fn(async () => ({
+      content: "# Hana (@ha_haha_1229)\n\nPost body",
+      loaderId: "threads",
+      contentType: "social_post",
+      downgraded: false,
+      attempts: [],
+    }))
+
+    await expect(
+      loadPublicUrl(url, {
+        ...options,
+        resolve,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation,
+      }),
+    ).resolves.toMatchObject({
+      source: "url-content",
+      loaderId: "threads",
+      contentType: "social_post",
+      text: "# Hana (@ha_haha_1229)\n\nPost body",
+    })
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+      deadlineSeconds: 30,
+    })
+  })
+
   it.each([
     {
       url: "https://docs.google.com/document/d/test-doc_123/edit?tab=t.0",

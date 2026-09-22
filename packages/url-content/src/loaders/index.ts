@@ -70,6 +70,12 @@ export {
   toRedditRssUrl,
 } from "./reddit.js"
 export { ReelLoader } from "./reel.js"
+export {
+  DEFAULT_THREADS_TIMEOUT_MS,
+  extractThreadsPost,
+  MAX_THREADS_BYTES,
+  ThreadsLoader,
+} from "./threads.js"
 export { extractTruthSocialPost, TruthSocialLoader } from "./truthsocial.js"
 export {
   renderFxTwitterPayload,

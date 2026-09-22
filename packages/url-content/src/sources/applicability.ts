@@ -48,6 +48,12 @@ export const REDDIT_DOMAINS = [
   "www.redd.it",
 ] as const
 export const REEL_PREFIX = "https://www.instagram.com/reel"
+export const THREADS_DOMAINS = [
+  "threads.com",
+  "www.threads.com",
+  "threads.net",
+  "www.threads.net",
+] as const
 export const TRUTHSOCIAL_DOMAINS = ["truthsocial.com", "www.truthsocial.com"] as const
 export const TWITTER_DOMAINS = [
   "twitter.com",
@@ -124,6 +130,12 @@ export interface PiSessionTarget {
   fileName: string
   leafId?: string
   targetId?: string
+}
+
+export interface ThreadsTarget {
+  url: string
+  username: string
+  shortcode: string
 }
 
 export interface TwitterTarget {
@@ -464,6 +476,37 @@ export function parseReelTarget(url: string): string {
   return url
 }
 export const isReelUrl = (url: string): boolean => url.startsWith(REEL_PREFIX)
+
+export function parseThreadsTarget(url: string): ThreadsTarget {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new LoaderNotApplicableError("ThreadsLoader", url, "URL is not a Threads post URL")
+  }
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !THREADS_DOMAINS.includes(parsed.hostname.toLowerCase() as (typeof THREADS_DOMAINS)[number])
+  ) {
+    throw new LoaderNotApplicableError("ThreadsLoader", url, "URL is not a Threads post URL")
+  }
+  const match = /^\/@([A-Za-z0-9._]+)\/post\/([A-Za-z0-9_-]+)\/?$/u.exec(parsed.pathname)
+  const username = match?.[1]
+  const shortcode = match?.[2]
+  if (!username || !shortcode) {
+    throw new LoaderNotApplicableError("ThreadsLoader", url, "URL is not a Threads post URL")
+  }
+  return { url, username, shortcode }
+}
+
+export function isThreadsPostUrl(url: string): boolean {
+  try {
+    parseThreadsTarget(url)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function parseTruthSocialTarget(url: string): string {
   if (!hostIn(url, TRUTHSOCIAL_DOMAINS)) {

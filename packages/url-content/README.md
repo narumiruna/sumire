@@ -4,7 +4,7 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 
 ## Features
 
-- Source-aware plans for YouTube, Twitter/X, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
+- Source-aware plans for YouTube, Twitter/X, Threads, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
 - Local AnyDoc conversion of public Office, OpenDocument, RTF, EPUB, and CSV document URLs in killable child processes
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
@@ -95,6 +95,10 @@ npx playwright install chromium
 
 The Twitter loader first requests the exact status from `api.fxtwitter.com` and verifies the returned status ID. It falls back to Playwright when that API is unavailable. This avoids returning X login or error pages when X blocks browser automation.
 
+### Threads
+
+The `threads` loader recognizes public `threads.com` and `threads.net` post permalinks and reads their server-rendered Open Graph metadata. It verifies that the canonical metadata refers to the requested post, then returns the author, canonical URL, and decoded post body without accepting the JavaScript application shell. Requests have a 20-second timeout and a 2 MiB response limit.
+
 ### Google Docs
 
 The `google-docs` loader converts public document links (`/document/d/<id>`, `/edit`, `/view`, `/preview`, or `/export`, including `/document/u/<account>/d/<id>` variants) to an HTTPS `/export?format=txt` request. It preserves `tab` and `resourcekey` query parameters but drops editor-only parameters and fragments. No Google login, API key, browser, or OAuth token is needed.
@@ -146,7 +150,7 @@ The transcription loader writes only to an isolated temporary directory and remo
 Strict source plans do not accept unrelated generic HTML:
 
 - YouTube video URLs require transcript output.
-- Twitter status, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
+- Twitter status, Threads post, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.
