@@ -39,7 +39,7 @@ jobs:
           publish-script: npm run release
           pr-title: "chore(release): version packages"
           commit-message: "chore(release): version packages"
+          github-token: ${{ secrets.PAT_TOKEN }}
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
