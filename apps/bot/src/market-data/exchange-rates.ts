@@ -72,7 +72,17 @@ function resolveRate(
   const sourceToTwd = byPair.get(`${source}/TWD`)
   const targetToTwd = byPair.get(`${target}/TWD`)
   if (!sourceToTwd || !targetToTwd) return undefined
-  return { derived: true, rate: crossRate(sourceToTwd, targetToTwd) }
+  const rate = crossRate(sourceToTwd, targetToTwd)
+  return hasQuote(rate) ? { derived: true, rate } : undefined
+}
+
+function hasQuote(rate: Rate): boolean {
+  return (
+    rate.spotBuy !== undefined ||
+    rate.spotSell !== undefined ||
+    rate.cashBuy !== undefined ||
+    rate.cashSell !== undefined
+  )
 }
 
 function invertRate(rate: Rate): Rate {

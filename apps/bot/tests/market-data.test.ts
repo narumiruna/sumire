@@ -204,6 +204,31 @@ describe("market-data query", () => {
     expect(rateFetcher).toHaveBeenCalledOnce()
   })
 
+  it("returns no cross-rate data when quote modes do not overlap", async () => {
+    const result = await queryMarketData("USD/JPY", {
+      rateFetcher: async () => [
+        {
+          cashBuy: 29,
+          cashSell: 33,
+          exchange: "BANK_OF_TAIWAN" as const,
+          fetchedAt,
+          source: "USD",
+          target: "TWD",
+        },
+        {
+          exchange: "BANK_OF_TAIWAN" as const,
+          fetchedAt,
+          source: "JPY",
+          spotBuy: 0.2,
+          spotSell: 0.25,
+          target: "TWD",
+        },
+      ],
+    })
+
+    expect(result).toBe("")
+  })
+
   it("keeps successful provider results when another provider fails", async () => {
     const onError = vi.fn()
     const fetchImplementation: MarketFetch = vi.fn(async (input) => {
