@@ -240,6 +240,61 @@ describe("ChatSessionRegistry", () => {
     }
   })
 
+  it("waits for cancelled branch navigation to roll back before cancellation completes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    await registry.submit(1, "latest")
+    const navigationStarted = deferred()
+    const navigationFinished = deferred()
+    const navigate = vi
+      .spyOn(session, "navigateTree")
+      .mockImplementationOnce(async (targetId: string) => {
+        navigationStarted.resolve()
+        await navigationFinished.promise
+        session.navigated.push(targetId)
+        session.leafId = targetId
+        return { cancelled: false }
+      })
+    let current = true
+    try {
+      const staleSubmission = registry.submit(1, "stale", {
+        replyToBotMessageId: 100,
+        isCurrent: () => current,
+      })
+      const staleOutcome = expect(staleSubmission).rejects.toThrow("cancelled before acceptance")
+      await navigationStarted.promise
+      current = false
+      let cancellationFinished = false
+      const cancellation = registry.cancel(1).then((result) => {
+        cancellationFinished = true
+        return result
+      })
+      await Promise.resolve()
+      expect(cancellationFinished).toBe(false)
+      navigationFinished.resolve()
+
+      await staleOutcome
+      await expect(cancellation).resolves.toBe(true)
+      expect(session.navigated).toEqual(["entry-1", "entry-2"])
+      expect(session.leafId).toBe("entry-2")
+      await expect(registry.submit(1, "fresh")).resolves.toMatchObject({ text: "AI: fresh" })
+      expect(session.prompts).toEqual(["first", "latest", "fresh"])
+    } finally {
+      navigationFinished.resolve()
+      navigate.mockRestore()
+      await registry.dispose()
+    }
+  })
+
   it("rejects access to an existing session when reset wins the acceptance race", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()

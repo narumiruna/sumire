@@ -65,6 +65,7 @@ export class ChatSessionRegistry {
   readonly #creating = new Map<number, Promise<SessionHandle>>()
   readonly #generations = new Map<number, number>()
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
+  readonly #branchNavigations = new Map<number, Promise<void>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
 
@@ -204,8 +205,10 @@ export class ChatSessionRegistry {
   }
 
   async cancel(chatId: number): Promise<boolean> {
+    const branchNavigation = this.#branchNavigations.get(chatId)
+    if (branchNavigation) await branchNavigation
     const session = this.#sessions.get(chatId)
-    if (!session?.isStreaming) return false
+    if (!session?.isStreaming) return branchNavigation !== undefined
     session.clearQueue()
     await session.abort()
     return true
@@ -278,11 +281,40 @@ export class ChatSessionRegistry {
     }
     if (!session.isIdle) await session.waitForIdle()
     assertCurrent()
-    if (session.sessionManager.getLeafId() === target.entryId) return true
-    const result = await session.navigateTree(target.entryId, { summarize: false })
-    if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
-    assertCurrent()
-    return true
+    const previousLeafId = session.sessionManager.getLeafId()
+    if (previousLeafId === target.entryId) return true
+    const navigation = (async () => {
+      const result = await session.navigateTree(target.entryId, { summarize: false })
+      if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
+      try {
+        assertCurrent()
+      } catch (error) {
+        if (
+          previousLeafId &&
+          this.#sessions.get(chatId) === session &&
+          session.sessionManager.getLeafId() !== previousLeafId
+        ) {
+          const rollback = await session.navigateTree(previousLeafId, { summarize: false })
+          if (rollback.cancelled) {
+            throw new Error("Pi session branch navigation rollback was cancelled", { cause: error })
+          }
+        }
+        throw error
+      }
+    })()
+    const settledNavigation = navigation.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#branchNavigations.set(chatId, settledNavigation)
+    try {
+      await navigation
+      return true
+    } finally {
+      if (this.#branchNavigations.get(chatId) === settledNavigation) {
+        this.#branchNavigations.delete(chatId)
+      }
+    }
   }
 
   async #getOrCreate(chatId: number): Promise<SessionHandle> {
