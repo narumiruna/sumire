@@ -1,5 +1,15 @@
 # @narumitw/sumire-url-content
 
+## 0.21.0
+
+### Minor Changes
+
+- d416c5f: Add bounded public Threads post extraction that verifies canonical metadata and returns the decoded author and post body instead of the Threads application shell.
+
+### Patch Changes
+
+- ced9e34: Document and test Kabigon `0.19.6` loader parity, and preserve process-group escalation until descendants that survive `SIGTERM` receive `SIGKILL`.
+
 ## 0.20.1
 
 ### Patch Changes

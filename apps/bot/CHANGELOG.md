@@ -1,5 +1,19 @@
 # @narumitw/sumire
 
+## 0.1.3
+
+### Patch Changes
+
+- 22806b5: Bundle a `load-public-url` skill with the URL tool Pi package and bind it to direct extension-factory loads so agents, including the Sumire bot runtime, get source-aware URL-loading guidance alongside the tool.
+- f4d1606: Add an explicit, allowlist-gated opt-in for Pi's `read`, `bash`, `edit`, and `write` tools in Telegram agent sessions and document their runtime security boundary.
+- d416c5f: Add bounded public Threads post extraction that verifies canonical metadata and returns the decoded author and post body instead of the Threads application shell.
+- c71e69b: Show the first structured progress snapshot instead of a generic pending reply, and send progress-free answers directly.
+- Updated dependencies [ced9e34]
+- Updated dependencies [22806b5]
+- Updated dependencies [d416c5f]
+  - @narumitw/sumire-url-content@0.21.0
+  - @narumitw/sumire-url-tool@0.2.2
+
 ## 0.1.2
 
 ### Patch Changes
