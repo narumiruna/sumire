@@ -33,7 +33,9 @@ export const runCommand: CommandRunner = (command, args, signal) =>
     const child = spawn(command, args, { detached, stdio: ["ignore", "pipe", "pipe"] })
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
+    let childClosed = false
     let killTimer: NodeJS.Timeout | undefined
+    let settled = false
     const kill = (signalName: NodeJS.Signals) => {
       try {
         if (detached && child.pid) process.kill(-child.pid, signalName)
@@ -42,27 +44,45 @@ export const runCommand: CommandRunner = (command, args, signal) =>
         // The process has already exited.
       }
     }
-    const onAbort = () => {
-      kill("SIGTERM")
-      killTimer = setTimeout(() => kill("SIGKILL"), 1_000)
-      killTimer.unref()
+    const processGroupExists = (): boolean => {
+      if (!detached || !child.pid) return false
+      try {
+        process.kill(-child.pid, 0)
+        return true
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ESRCH") return false
+        return true
+      }
     }
     const finish = (operation: () => void) => {
+      if (settled) return
+      settled = true
       signal?.removeEventListener("abort", onAbort)
       if (killTimer) clearTimeout(killTimer)
       operation()
+    }
+    const finishCancelled = () => finish(() => reject(signal?.reason))
+    const onAbort = () => {
+      kill("SIGTERM")
+      killTimer = setTimeout(() => {
+        killTimer = undefined
+        kill("SIGKILL")
+        if (childClosed) finishCancelled()
+      }, 1_000)
     }
     signal?.addEventListener("abort", onAbort, { once: true })
     if (signal?.aborted) onAbort()
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk))
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk))
     child.once("error", (error) => finish(() => reject(error)))
-    child.once("close", (code) =>
+    child.once("close", (code) => {
+      childClosed = true
+      if (signal?.aborted) {
+        if (killTimer && processGroupExists()) return
+        finishCancelled()
+        return
+      }
       finish(() => {
-        if (signal?.aborted) {
-          reject(signal.reason)
-          return
-        }
         const result = {
           stdout: Buffer.concat(stdout).toString(),
           stderr: Buffer.concat(stderr).toString(),
@@ -70,8 +90,8 @@ export const runCommand: CommandRunner = (command, args, signal) =>
         if (code === 0) resolve(result)
         else
           reject(new Error(`${command} exited with code ${String(code)}: ${result.stderr.trim()}`))
-      }),
-    )
+      })
+    })
   })
 
 export class YtdlpLoader implements Loader {

@@ -156,6 +156,10 @@ Strict source plans do not accept unrelated generic HTML:
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.
 - Empty output and recognized challenge headings are rejected so the chain can continue.
 
+## Kabigon compatibility
+
+All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and contract compatibility, not byte-for-byte behavioral identity. Sumire keeps stricter source verification, public-target and redirect checks, bounded responses and media, cancellation cleanup, and Node.js-specific transport/transcription implementations. The versioned [Kabigon loader parity matrix](../../docs/kabigon-loader-parity.md) records applicability, pipeline placement, resource admission, limits, outputs, failures, and intentional differences for every baseline loader. Sumire-only loaders are documented separately as `anydoc`, `threads`, and `google-docs`.
+
 ## Implementation notes
 
 - Names use TypeScript camelCase (`loadUrl`, `explainPlan`, `loaderId`). `toObject()` helpers expose snake_case diagnostic objects.
