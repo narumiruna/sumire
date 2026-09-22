@@ -1,5 +1,14 @@
 # @narumitw/sumire
 
+## 0.1.4
+
+### Patch Changes
+
+- be660f2: Add allowlisted exact loader selection to `load_public_url`, backed by reusable explicit URL content chains that retain public-target validation, deadlines, cancellation, admission limits, and bounded output.
+- Updated dependencies [be660f2]
+  - @narumitw/sumire-url-content@0.22.0
+  - @narumitw/sumire-url-tool@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes
