@@ -1,6 +1,13 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { main, parseArgs } from "../src/cli.js"
 import { UrlContentClient } from "../src/client.js"
+import { MissingRequirementError } from "../src/core/errors.js"
+
+const originalFirecrawlApiKey = process.env.FIRECRAWL_API_KEY
+afterEach(() => {
+  if (originalFirecrawlApiKey === undefined) delete process.env.FIRECRAWL_API_KEY
+  else process.env.FIRECRAWL_API_KEY = originalFirecrawlApiKey
+})
 
 describe("UrlContentClient", () => {
   it("validates options and requires explicit lifecycle start", async () => {
@@ -61,6 +68,49 @@ describe("UrlContentClient", () => {
         attempts: [{ loaderId: "httpx", status: "success" }],
       })
       expect(fetchImplementation).toHaveBeenCalledOnce()
+    } finally {
+      await client.close()
+    }
+  })
+
+  it("preserves registry content types for explicit source loaders", async () => {
+    const fetchImplementation = vi.fn(
+      async () =>
+        new Response("source content", {
+          headers: { "content-type": "text/plain" },
+        }),
+    )
+    const client = new UrlContentClient({
+      fetchImplementation,
+      resolve: async () => [{ address: "8.8.8.8", family: 4 }],
+    }).start()
+    try {
+      await expect(
+        client.loadUrlDetailed("https://github.com/example/repository/blob/main/README.md", {
+          loaderNames: ["github"],
+        }),
+      ).resolves.toMatchObject({
+        content: "source content",
+        loaderId: "github",
+        contentType: "code_content",
+      })
+      expect(fetchImplementation).toHaveBeenCalledOnce()
+    } finally {
+      await client.close()
+    }
+  })
+
+  it("checks registry requirements before running an explicit loader", async () => {
+    delete process.env.FIRECRAWL_API_KEY
+    const fetchImplementation = vi.fn()
+    const resolve = vi.fn(async () => [{ address: "8.8.8.8", family: 4 as const }])
+    const client = new UrlContentClient({ fetchImplementation, resolve }).start()
+    try {
+      await expect(
+        client.loadUrl("https://example.com", { loaderNames: ["firecrawl"] }),
+      ).rejects.toBeInstanceOf(MissingRequirementError)
+      expect(resolve).not.toHaveBeenCalled()
+      expect(fetchImplementation).not.toHaveBeenCalled()
     } finally {
       await client.close()
     }

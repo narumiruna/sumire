@@ -11,7 +11,12 @@ import { type PublicProxy, startPublicProxy } from "./core/public-proxy.js"
 import type { ImpersSession, ResourceProvider } from "./core/resources.js"
 import type { LoadResult } from "./core/results.js"
 import { resolveExplicitLoadChain, resolveLoadChain } from "./load-chain.js"
-import { createLoader, getLoaderDef } from "./loader-registry.js"
+import {
+  createLoader,
+  getLoaderContentType,
+  getLoaderDef,
+  getLoaderRequirements,
+} from "./loader-registry.js"
 import { isPdfTarget } from "./sources/applicability.js"
 
 const CLIENT_CONTEXT_REQUIRED = "Call UrlContentClient.start() before loading URLs"
@@ -215,9 +220,10 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     this.checkActive()
     const chainOptions = {
       getFactory: (name: string) => () => createLoader(name, this),
+      getRequirements: getLoaderRequirements,
+      getContentType: getLoaderContentType,
       admit: (name: string, operation: () => Promise<string>) => this.admit(name, operation),
     }
-    for (const name of options.loaderNames ?? []) getLoaderDef(name)
     const explicitChain =
       options.loaderNames === undefined
         ? undefined
