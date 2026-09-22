@@ -346,6 +346,29 @@ describe("Telegram bot update routing", () => {
     expect(options?.unresolvedReplyPrompt).toBe(prompt)
   })
 
+  it("does not publish the /f no-response fallback as an article", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "no_response" as const, text: "模型沒有回覆內容，請稍後再試。" }
+      }),
+    })
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(23, "/f 原始內容"))
+
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls[0]?.payload.text).toBe("模型沒有回覆內容，請稍後再試。")
+    expect(sessions.recordDelivery).not.toHaveBeenCalled()
+  })
+
   it("does not publish /f steering acknowledgements as articles", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {

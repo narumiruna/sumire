@@ -136,6 +136,23 @@ describe("ChatSessionRegistry", () => {
     expect(sessions.get(2)?.prompts).toEqual(["other"])
   })
 
+  it("returns a distinct outcome when Pi produces no assistant text", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    session.prompt = vi.fn(async (text: string) => {
+      session.prompts.push(text)
+      session.messages.push({ role: "user", content: text, timestamp: Date.now() })
+      session.leafId = "entry-1"
+      session.entries.add("entry-1")
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+
+    await expect(registry.submit(1, "silent")).resolves.toEqual({
+      kind: "no_response",
+      text: "模型沒有回覆內容，請稍後再試。",
+    })
+  })
+
   it("invalidates a session that finishes creating after reset", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const staleSession = new FakeSession()

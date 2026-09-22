@@ -526,12 +526,8 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
-      if (deliveryResult === "delivered" && status) {
-        await sessions.recordDelivery(
-          chatId,
-          result.kind === "completed" ? result.checkpoint : undefined,
-          [status.message_id],
-        )
+      if (deliveryResult === "delivered" && status && result.kind === "completed") {
+        await sessions.recordDelivery(chatId, result.checkpoint, [status.message_id])
       }
     } catch (error) {
       if (!isCurrent()) {
