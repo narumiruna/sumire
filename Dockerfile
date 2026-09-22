@@ -56,6 +56,7 @@ COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/
 COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
 COPY --from=build --chown=app:app /build/packages/url-tool/skills /app/packages/url-tool/skills
 COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --chown=app:app skills/ /app/skills/
 COPY --chown=app:app SOUL.md /app/SOUL.md
 
 USER app
