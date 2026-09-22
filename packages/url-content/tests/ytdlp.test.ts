@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -19,6 +19,16 @@ async function expectRemoved(directory: string | undefined): Promise<void> {
   await expect(access(directory as string)).rejects.toMatchObject({ code: "ENOENT" })
 }
 
+function processGroupExists(processGroupId: number): boolean {
+  try {
+    process.kill(-processGroupId, 0)
+    return true
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false
+    throw error
+  }
+}
+
 describe("yt-dlp loader limits", () => {
   it("terminates subprocesses when their signal expires", async () => {
     const timeout = AbortSignal.timeout(10)
@@ -28,24 +38,38 @@ describe("yt-dlp loader limits", () => {
   })
 
   it.skipIf(process.platform === "win32")(
-    "terminates the subprocess tree when cancelled",
+    "terminates a subprocess tree whose descendant ignores SIGTERM",
     async () => {
       const directory = await mkdtemp(join(tmpdir(), "sumire-ytdlp-tree-"))
-      const sentinel = join(directory, "grandchild-finished")
-      const childScript = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(sentinel)}, "alive"), 500)`
+      const readyPath = join(directory, "grandchild-ready")
+      const childScript = [
+        'const fs = require("node:fs")',
+        'process.on("SIGTERM", () => undefined)',
+        `fs.writeFileSync(${JSON.stringify(readyPath)}, String(process.ppid))`,
+        "setInterval(() => undefined, 1000)",
+      ].join(";")
       const parentScript = [
         'const { spawn } = require("node:child_process")',
         `spawn(process.execPath, ["-e", ${JSON.stringify(childScript)}], { stdio: "ignore" })`,
         "setInterval(() => undefined, 1000)",
       ].join(";")
+      const controller = new AbortController()
+      const cancelled = new Error("cancelled")
+      const running = runCommand(process.execPath, ["-e", parentScript], controller.signal)
+      let processGroupId: number | undefined
 
       try {
-        await expect(
-          runCommand(process.execPath, ["-e", parentScript], AbortSignal.timeout(100)),
-        ).rejects.toMatchObject({ name: "TimeoutError" })
-        await new Promise((resolve) => setTimeout(resolve, 600))
-        await expect(access(sentinel)).rejects.toMatchObject({ code: "ENOENT" })
+        await vi.waitFor(async () => {
+          processGroupId = Number(await readFile(readyPath, "utf8"))
+          expect(processGroupId).toBeGreaterThan(0)
+        })
+        controller.abort(cancelled)
+        await expect(running).rejects.toBe(cancelled)
+        await vi.waitFor(() => expect(processGroupExists(processGroupId as number)).toBe(false))
       } finally {
+        if (processGroupId && processGroupExists(processGroupId)) {
+          process.kill(-processGroupId, "SIGKILL")
+        }
         await rm(directory, { recursive: true, force: true })
       }
     },

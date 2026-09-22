@@ -40,7 +40,9 @@ All 20 Kabigon loader IDs exist in Sumire. Sumire additionally registers `anydoc
 
 ## Compatibility limits and audit outcome
 
-Name parity does not mean byte-for-byte output parity. The audit found no unintentional behavior gap that should be copied from Kabigon. The observed differences are retained intentionally:
+Name parity does not mean byte-for-byte output parity. The audit found and fixed one lifecycle gap in Sumire's bounded media path: when the direct command child exited after `SIGTERM`, cancellation cleared the pending `SIGKILL` escalation even if another process-group member survived. The regression test starts a descendant that confirms readiness and ignores `SIGTERM`; `runCommand` now preserves escalation until that group is terminated.
+
+The remaining observed differences are retained intentionally:
 
 1. Sumire narrows PTT and LTN automatic applicability to article URLs, verifies requested social-post IDs, and rejects broad BBC/CNN `<main>` shells. These checks prevent a strict source pipeline from returning a listing, login page, or unrelated shell.
 2. Sumire enforces public-target and redirect validation, response/media limits, bounded browser defaults, caller cancellation, context/process cleanup, and worker admission where Kabigon relies more heavily on its shared deadline or blocking runner.
