@@ -32,6 +32,7 @@
     "@earendil-works/pi-coding-agent": "0.86.1",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
+    "@narumitw/otter-cli": "0.2.0",
     "@narumitw/sumire-progress": "0.1.1",
     "@narumitw/sumire-url-content": "0.22.0",
     "@narumitw/sumire-url-tool": "0.3.0",

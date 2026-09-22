@@ -45,6 +45,7 @@ RUN groupadd --system app \
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
 
 ENV NODE_ENV=production
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=build --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json

@@ -1,6 +1,7 @@
-import { mkdtemp } from "node:fs/promises"
+import { cp, mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { describe, expect, it, vi } from "vitest"
 
@@ -13,6 +14,17 @@ const logger: Logger = {
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
+}
+
+const otterSkillSource = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../skills/otter-manage-expenses",
+)
+
+async function installOtterSkill(projectRoot: string): Promise<void> {
+  const skillsDir = path.join(projectRoot, "skills")
+  await mkdir(skillsDir, { recursive: true })
+  await cp(otterSkillSource, path.join(skillsDir, "otter-manage-expenses"), { recursive: true })
 }
 
 describe("createPiSessionFactory", () => {
@@ -76,6 +88,7 @@ describe("createPiSessionFactory", () => {
 
   it("enables Pi coding tools only for an explicit allowlisted configuration", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
+    await installOtterSkill(root)
     const settings = loadSettings(
       {
         OPENAI_API_KEY: "test-key",
@@ -99,6 +112,10 @@ describe("createPiSessionFactory", () => {
         "load_public_url",
       ])
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")
+      expect(session.systemPrompt).toContain("<name>otter-manage-expenses</name>")
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("Pi skill diagnostic for chat_id=123"),
+      )
     } finally {
       session.dispose()
     }
