@@ -34,19 +34,99 @@ export function createCachedExchangeRateFetcher(
 }
 
 export async function queryExchangeRates(
-  currencies: readonly string[],
+  pairs: readonly string[],
   fetcher: ExchangeRateFetcher = defaultRateFetcher,
 ): Promise<string[]> {
-  if (currencies.length === 0) return []
+  if (pairs.length === 0) return []
   const rates = await fetcher()
-  const byCurrency = new Map(rates.map((rate) => [rate.source.toUpperCase(), rate]))
-  return currencies.flatMap((currency) => {
-    const rate = byCurrency.get(currency)
-    return rate ? [formatExchangeRate(rate)] : []
+  const byPair = new Map(
+    rates.map((rate) => [`${rate.source.toUpperCase()}/${rate.target.toUpperCase()}`, rate]),
+  )
+  return pairs.flatMap((pair) => {
+    const currencies = parseCurrencyPair(pair)
+    if (!currencies) return []
+    const [source, target] = currencies
+    const resolved = resolveRate(source, target, byPair)
+    return resolved ? [formatExchangeRate(resolved.rate, resolved.derived)] : []
   })
 }
 
-function formatExchangeRate(rate: Rate): string {
+function parseCurrencyPair(value: string): readonly [string, string] | undefined {
+  const match = /^([A-Z]{3})(?:[/_-]?([A-Z]{3}))?$/u.exec(value.toUpperCase())
+  const source = match?.[1]
+  const target = match?.[2] ?? "TWD"
+  return source && source !== target ? [source, target] : undefined
+}
+
+function resolveRate(
+  source: string,
+  target: string,
+  byPair: ReadonlyMap<string, Rate>,
+): { derived: boolean; rate: Rate } | undefined {
+  const direct = byPair.get(`${source}/${target}`)
+  if (direct) return { derived: false, rate: direct }
+
+  const reverse = byPair.get(`${target}/${source}`)
+  if (reverse) return { derived: true, rate: invertRate(reverse) }
+
+  const sourceToTwd = byPair.get(`${source}/TWD`)
+  const targetToTwd = byPair.get(`${target}/TWD`)
+  if (!sourceToTwd || !targetToTwd) return undefined
+  const rate = crossRate(sourceToTwd, targetToTwd)
+  return hasQuote(rate) ? { derived: true, rate } : undefined
+}
+
+function hasQuote(rate: Rate): boolean {
+  return (
+    rate.spotBuy !== undefined ||
+    rate.spotSell !== undefined ||
+    rate.cashBuy !== undefined ||
+    rate.cashSell !== undefined
+  )
+}
+
+function invertRate(rate: Rate): Rate {
+  return {
+    cashBuy: divide(1, rate.cashSell),
+    cashSell: divide(1, rate.cashBuy),
+    exchange: rate.exchange,
+    fetchedAt: rate.fetchedAt,
+    source: rate.target,
+    spotBuy: divide(1, rate.spotSell),
+    spotSell: divide(1, rate.spotBuy),
+    target: rate.source,
+  }
+}
+
+function crossRate(sourceToTwd: Rate, targetToTwd: Rate): Rate {
+  return {
+    cashBuy: divide(sourceToTwd.cashBuy, targetToTwd.cashSell),
+    cashSell: divide(sourceToTwd.cashSell, targetToTwd.cashBuy),
+    exchange: sourceToTwd.exchange,
+    fetchedAt: earlierTimestamp(sourceToTwd.fetchedAt, targetToTwd.fetchedAt),
+    source: sourceToTwd.source,
+    spotBuy: divide(sourceToTwd.spotBuy, targetToTwd.spotSell),
+    spotSell: divide(sourceToTwd.spotSell, targetToTwd.spotBuy),
+    target: targetToTwd.source,
+  }
+}
+
+function divide(
+  numerator: number | undefined,
+  denominator: number | undefined,
+): number | undefined {
+  if (numerator === undefined || denominator === undefined || denominator === 0) return undefined
+  return numerator / denominator
+}
+
+function earlierTimestamp(first: string, second: string): string {
+  const firstTime = new Date(first).getTime()
+  const secondTime = new Date(second).getTime()
+  if (Number.isNaN(firstTime) || Number.isNaN(secondTime)) return first
+  return firstTime <= secondTime ? first : second
+}
+
+function formatExchangeRate(rate: Rate, derived: boolean): string {
   const lines = [`💱 台灣銀行 ${rate.source}/${rate.target}`]
   appendRate(lines, "即期買入", rate.spotBuy, rate.target)
   appendRate(lines, "即期賣出", rate.spotSell, rate.target)
@@ -55,6 +135,7 @@ function formatExchangeRate(rate: Rate): string {
   }
   appendRate(lines, "現鈔買入", rate.cashBuy, rate.target)
   appendRate(lines, "現鈔賣出", rate.cashSell, rate.target)
+  if (derived) lines.push("換算方式: 依台灣銀行牌告匯率換算")
   lines.push(`資料時間: ${formatTimestamp(rate.fetchedAt)}`, "資料來源: 台灣銀行")
   return lines.join("\n")
 }
