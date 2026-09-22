@@ -53,6 +53,7 @@ COPY --from=build --chown=app:app /build/packages/progress/package.json /app/pac
 COPY --from=build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
 COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
 COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
+COPY --from=build --chown=app:app /build/packages/url-tool/skills /app/packages/url-tool/skills
 COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
 COPY --chown=app:app SOUL.md /app/SOUL.md
 

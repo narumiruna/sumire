@@ -90,6 +90,7 @@ describe("createPiSessionFactory", () => {
         "update_progress",
         "load_public_url",
       ])
+      expect(session.systemPrompt).toContain("<name>load-public-url</name>")
     } finally {
       session.dispose()
     }

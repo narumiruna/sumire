@@ -18,7 +18,7 @@ Pi packages execute with the current user's permissions. Review source before in
 
 ## Bundled skill
 
-The `load-public-url` skill tells the agent when to call the tool, to preserve source attribution across multiple URLs, and to treat fetched content as untrusted. Pi discovers it with the extension when the package is loaded through its manifest.
+The `load-public-url` skill tells the agent when to call the tool, to preserve source attribution across multiple URLs, and to treat fetched content as untrusted. Pi discovers it through the package manifest. Hosts that load `createUrlExtension()` directly can bind the same bundled skill with the exported `urlToolSkillsPath`.
 
 ## Tool contract
 
@@ -54,7 +54,7 @@ flowchart LR
 ## SDK configuration
 
 ```typescript
-import { createUrlExtension } from "@narumitw/sumire-url-tool"
+import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 
 const extension = createUrlExtension({
   allowedSchemes: new Set(["https"]),
@@ -63,8 +63,9 @@ const extension = createUrlExtension({
   urlContentTimeoutSeconds: 180,
 })
 
-// Pass to DefaultResourceLoader:
+// Pass both values to DefaultResourceLoader:
 const extensionFactories = [{ name: "sumire-url-tool", factory: extension }]
+const additionalSkillPaths = [urlToolSkillsPath]
 ```
 
 All options are optional. The default export uses the defaults above. Hosts own configuration; the package does not read bot environment variables or depend on Telegram.
