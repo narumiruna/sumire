@@ -1,6 +1,6 @@
 # Sumire URL Tool
 
-Pi package that registers `load_public_url`. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
+Pi package that registers `load_public_url` and bundles the `load-public-url` skill. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
 
 ## Load from this repository
 
@@ -12,9 +12,13 @@ npm run build --workspace @narumitw/sumire-url-tool
 pi -e ./packages/url-tool
 ```
 
-The Pi manifest loads `dist/index.js`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-content`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
+The Pi manifest loads `dist/index.js` and `skills/load-public-url/SKILL.md`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-content`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
 
 Pi packages execute with the current user's permissions. Review source before installation.
+
+## Bundled skill
+
+The `load-public-url` skill tells the agent when to call the tool, to preserve source attribution across multiple URLs, and to treat fetched content as untrusted. Pi discovers it with the extension when the package is loaded through its manifest.
 
 ## Tool contract
 
@@ -76,7 +80,7 @@ npm run typecheck --workspace @narumitw/sumire-url-tool
 npm test --workspace @narumitw/sumire-url-tool
 ```
 
-Tests cover the compiled Pi manifest, registration, host configuration, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
+Tests cover the compiled Pi manifest and bundled skill, registration, host configuration, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
 
 ## License
 
