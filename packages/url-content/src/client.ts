@@ -10,7 +10,7 @@ import {
 import { type PublicProxy, startPublicProxy } from "./core/public-proxy.js"
 import type { ImpersSession, ResourceProvider } from "./core/resources.js"
 import type { LoadResult } from "./core/results.js"
-import { resolveLoadChain } from "./load-chain.js"
+import { resolveExplicitLoadChain, resolveLoadChain } from "./load-chain.js"
 import { createLoader, getLoaderDef } from "./loader-registry.js"
 import { isPdfTarget } from "./sources/applicability.js"
 
@@ -81,6 +81,11 @@ export interface UrlContentClientOptions {
   workerLimit?: number
   fetchImplementation?: FetchImplementation
   resolve?: PublicUrlResolver
+}
+
+export interface UrlContentLoadOptions {
+  loaderNames?: readonly string[]
+  signal?: AbortSignal
 }
 
 export class UrlContentClient implements ResourceProvider, AsyncDisposable {
@@ -184,8 +189,39 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     return slots.use(operation, admissionSignal())
   }
 
-  async loadUrlDetailed(url: string, signal?: AbortSignal): Promise<LoadResult> {
+  async loadUrlDetailed(url: string, signal?: AbortSignal): Promise<LoadResult>
+  async loadUrlDetailed(url: string, options?: UrlContentLoadOptions): Promise<LoadResult>
+  async loadUrlDetailed(
+    url: string,
+    optionsOrSignal?: AbortSignal | UrlContentLoadOptions,
+  ): Promise<LoadResult> {
+    return this.loadUrlDetailedWithOptions(url, normalizeLoadOptions(optionsOrSignal))
+  }
+
+  async loadUrl(url: string, signal?: AbortSignal): Promise<string>
+  async loadUrl(url: string, options?: UrlContentLoadOptions): Promise<string>
+  async loadUrl(
+    url: string,
+    optionsOrSignal?: AbortSignal | UrlContentLoadOptions,
+  ): Promise<string> {
+    return (await this.loadUrlDetailedWithOptions(url, normalizeLoadOptions(optionsOrSignal)))
+      .content
+  }
+
+  private async loadUrlDetailedWithOptions(
+    url: string,
+    options: UrlContentLoadOptions,
+  ): Promise<LoadResult> {
     this.checkActive()
+    const chainOptions = {
+      getFactory: (name: string) => () => createLoader(name, this),
+      admit: (name: string, operation: () => Promise<string>) => this.admit(name, operation),
+    }
+    for (const name of options.loaderNames ?? []) getLoaderDef(name)
+    const explicitChain =
+      options.loaderNames === undefined
+        ? undefined
+        : resolveExplicitLoadChain(url, options.loaderNames, chainOptions)
     const deadlineAt =
       this.deadlineSeconds === undefined
         ? undefined
@@ -193,20 +229,13 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     return withDeadline(deadlineAt, async () => {
       const timeoutSignal = admissionSignal()
       const validationSignal =
-        signal && timeoutSignal
-          ? AbortSignal.any([signal, timeoutSignal])
-          : (signal ?? timeoutSignal)
+        options.signal && timeoutSignal
+          ? AbortSignal.any([options.signal, timeoutSignal])
+          : (options.signal ?? timeoutSignal)
       await validateTarget(url, this.resolve, validationSignal)
-      const chain = resolveLoadChain(url, {
-        getFactory: (name) => () => createLoader(name, this),
-        admit: (name, operation) => this.admit(name, operation),
-      })
-      return chain.loadDetailed(signal)
+      const chain = explicitChain ?? resolveLoadChain(url, chainOptions)
+      return chain.loadDetailed(options.signal)
     })
-  }
-
-  async loadUrl(url: string, signal?: AbortSignal): Promise<string> {
-    return (await this.loadUrlDetailed(url, signal)).content
   }
 
   async close(): Promise<void> {
@@ -248,6 +277,13 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   async [Symbol.asyncDispose](): Promise<void> {
     await this.close()
   }
+}
+
+function normalizeLoadOptions(
+  optionsOrSignal?: AbortSignal | UrlContentLoadOptions,
+): UrlContentLoadOptions {
+  if (!optionsOrSignal) return {}
+  return optionsOrSignal instanceof AbortSignal ? { signal: optionsOrSignal } : optionsOrSignal
 }
 
 function admissionSignal(): AbortSignal | undefined {

@@ -22,20 +22,33 @@ Pi packages execute with the current user's permissions. Review source before in
 { "url": "https://example.com/article" }
 ```
 
-`load_public_url` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, and `loaderId`. For the source-aware fallback, `finalUrl` remains the requested URL because that loader does not expose a final target.
+A host can expose an allowlisted exact override:
 
-Failures throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
+```json
+{ "url": "https://example.com/article", "loader": "httpx" }
+```
+
+Omitting `loader` preserves automatic selection. `built-in` runs only the bounded text/HTML path; another approved ID runs exactly that `@narumitw/sumire-url-content` loader without automatic fallback. The tool schema contains `loader` only when the host configures at least one `selectableLoaders` entry, and execution enforces the same allowlist even if schema validation is bypassed.
+
+`load_public_url` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, and `loaderId`. For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
+
+Failures, including unknown, disallowed, inapplicable, or unavailable explicit loaders, throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
 
 Threads post and Google Docs document links bypass the built-in HTML loader after public-target validation and use dedicated source loaders. Threads extraction verifies the post's canonical metadata and reads its public Open Graph text instead of accepting the JavaScript application shell. Google Docs requests a plain-text export instead of downloading the editor application. Known document filename extensions also go directly to source-aware loading: Office, OpenDocument, RTF, EPUB, and CSV links use local `anydoc` conversion unless an existing source-specific plan takes precedence; PDF links keep their existing PDF loader. No hosted OCR is enabled. Document failures retain their source error details and do not fall back to generic HTML; the normal output character limit still applies.
 
 ```mermaid
 flowchart LR
     Agent[Pi agent] --> Tool[load_public_url]
-    Tool --> Check[Public target validation]
-    Check -->|Other URLs| BuiltIn[Bounded text / HTML loader]
-    Check -->|Threads / Google Docs / document URLs| Fallback[sumire-url-content]
+    Tool --> Allowed{Approved loader supplied?}
+    Allowed --> Check[Public target validation]
+    Check -->|No: automatic| BuiltIn[Bounded text / HTML loader]
+    Check -->|built-in| BuiltInOnly[Built-in only]
+    Check -->|Other approved ID| Explicit[Exact url-content loader]
+    Check -->|Source-specific automatic| Fallback[Automatic url-content plan]
     BuiltIn -->|Failure or source-specific content| Fallback
     BuiltIn --> Result[Pi tool result]
+    BuiltInOnly --> Result
+    Explicit --> Result
     Fallback --> Result
 ```
 
@@ -57,15 +70,16 @@ const extension = createUrlExtension({
   maxChars: 12_000,
   timeoutMs: 15_000,
   urlContentTimeoutSeconds: 180,
+  selectableLoaders: ["built-in", "httpx", "playwright"],
 })
 
 // Pass to DefaultResourceLoader:
 const extensionFactories = [{ name: "sumire-url-tool", factory: extension }]
 ```
 
-All options are optional. The default export uses the defaults above. Hosts own configuration; the package does not read bot environment variables or depend on Telegram.
+All options are optional. The default export uses the loading defaults above and is auto-only; omitting `selectableLoaders` leaves `loader` out of the tool schema. Hosts should expose only loaders whose runtime dependencies, latency, and external costs they accept. Loader names are validated during extension registration, while missing requirements such as `FIRECRAWL_API_KEY` fail through the normal tool error path when selected. The package does not read bot environment variables or depend on Telegram.
 
-`createPublicUrlLoader(options)` and `createUrlTool(loader)` are also exported for hosts that need a standalone tool or an injected loader. The default extension and standalone tool register the same name; use only one per session.
+`createPublicUrlLoader(options)` and `createUrlTool(loader, { selectableLoaders })` are also exported for hosts that need a standalone tool or an injected loader. `PublicUrlLoader.load` accepts `load(url, { signal, loader })`; injected implementations using the old positional `load(url, signal)` contract must migrate. The default extension and standalone tool register the same name; use only one per session.
 
 ## Checks
 
@@ -76,7 +90,7 @@ npm run typecheck --workspace @narumitw/sumire-url-tool
 npm test --workspace @narumitw/sumire-url-tool
 ```
 
-Tests cover the compiled Pi manifest, registration, host configuration, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
+Tests cover the compiled Pi manifest, registration, host allowlists, explicit and automatic routing, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and source-aware fallback.
 
 ## License
 

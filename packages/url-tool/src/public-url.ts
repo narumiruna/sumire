@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
 import {
+  getLoaderDef,
   isAnyDocUrl,
   isGoogleDocsUrl,
   isThreadsPostUrl,
@@ -29,8 +30,19 @@ const blockerPhrases = [
   "verify you're a human",
 ]
 
+export const BUILT_IN_URL_LOADER = "built-in"
+
+export function assertUrlLoaderName(loader: string): void {
+  if (loader !== BUILT_IN_URL_LOADER) getLoaderDef(loader)
+}
+
+export interface PublicUrlLoadOptions {
+  loader?: string
+  signal?: AbortSignal
+}
+
 export interface PublicUrlLoader {
-  load(url: string, signal?: AbortSignal): Promise<LoadedUrl>
+  load(url: string, options?: PublicUrlLoadOptions): Promise<LoadedUrl>
 }
 
 export interface PublicUrlLoaderOptions {
@@ -48,8 +60,8 @@ export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): Pub
     urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
   }
   return {
-    load(url, signal) {
-      return loadPublicUrl(url, { ...config, ...(signal ? { signal } : {}) })
+    load(url, loadOptions = {}) {
+      return loadPublicUrl(url, { ...config, ...loadOptions })
     },
   }
 }
@@ -94,10 +106,15 @@ interface FetchPublicUrlOptions {
 
 type UrlContentLoadImplementation = (
   url: string,
-  options: { deadlineSeconds?: number; signal?: AbortSignal },
+  options: {
+    deadlineSeconds?: number
+    loaderNames?: readonly string[]
+    signal?: AbortSignal
+  },
 ) => Promise<UrlContentLoadResult>
 
 interface LoadPublicUrlOptions extends FetchPublicUrlOptions {
+  loader?: string
   urlContentTimeoutSeconds: number
   urlContentLoadImplementation?: UrlContentLoadImplementation
 }
@@ -111,6 +128,8 @@ export async function loadPublicUrl(
   urlValue: string,
   options: LoadPublicUrlOptions,
 ): Promise<LoadedUrl> {
+  if (options.loader) assertUrlLoaderName(options.loader)
+
   const validationTimeout = AbortSignal.timeout(options.timeoutMs)
   const validationSignal = options.signal
     ? AbortSignal.any([options.signal, validationTimeout])
@@ -122,6 +141,11 @@ export async function loadPublicUrl(
     validationSignal,
   )
 
+  if (options.loader === BUILT_IN_URL_LOADER) {
+    return loadedBuiltInUrl(await fetchPublicUrl(urlValue, options))
+  }
+  if (options.loader) return loadSourceUrl(urlValue, options, [options.loader])
+
   // These sources expose an application shell or raw document bytes to generic HTML extraction.
   if (isGoogleDocsUrl(urlValue) || isAnyDocUrl(urlValue) || isThreadsPostUrl(urlValue)) {
     return loadSourceUrl(urlValue, options)
@@ -130,18 +154,7 @@ export async function loadPublicUrl(
   let builtInError: unknown
   try {
     const result = await fetchPublicUrl(urlValue, options)
-    if (!requiresUrlContentLoader(urlValue, result)) {
-      return {
-        url: result.url,
-        finalUrl: result.finalUrl,
-        source: "built-in",
-        contentType: result.contentType,
-        ...(result.title ? { title: result.title } : {}),
-        text: result.text,
-        truncated: result.truncated,
-        status: result.status,
-      }
-    }
+    if (!requiresUrlContentLoader(urlValue, result)) return loadedBuiltInUrl(result)
     builtInError = new Error("The built-in loader did not extract source-specific content")
   } catch (error) {
     builtInError = error
@@ -157,10 +170,28 @@ export async function loadPublicUrl(
   }
 }
 
-async function loadSourceUrl(urlValue: string, options: LoadPublicUrlOptions): Promise<LoadedUrl> {
+function loadedBuiltInUrl(result: FetchedUrl): LoadedUrl {
+  return {
+    url: result.url,
+    finalUrl: result.finalUrl,
+    source: "built-in",
+    contentType: result.contentType,
+    ...(result.title ? { title: result.title } : {}),
+    text: result.text,
+    truncated: result.truncated,
+    status: result.status,
+  }
+}
+
+async function loadSourceUrl(
+  urlValue: string,
+  options: LoadPublicUrlOptions,
+  loaderNames?: readonly string[],
+): Promise<LoadedUrl> {
   const load = options.urlContentLoadImplementation ?? loadUrlDetailed
   const result = await load(urlValue, {
     deadlineSeconds: options.urlContentTimeoutSeconds,
+    ...(loaderNames ? { loaderNames } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   })
   const content = result.content.trim()

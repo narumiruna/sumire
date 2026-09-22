@@ -1,5 +1,15 @@
-export { availableLoaders, explainPlan, loadUrl, loadUrlDetailed } from "./api.js"
-export { UrlContentClient, type UrlContentClientOptions } from "./client.js"
+export {
+  availableLoaders,
+  explainPlan,
+  type LoadUrlOptions,
+  loadUrl,
+  loadUrlDetailed,
+} from "./api.js"
+export {
+  UrlContentClient,
+  type UrlContentClientOptions,
+  type UrlContentLoadOptions,
+} from "./client.js"
 export {
   ConfigurationError,
   FirecrawlApiKeyNotSetError,
