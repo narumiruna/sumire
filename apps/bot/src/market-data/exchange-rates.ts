@@ -51,7 +51,7 @@ export async function queryExchangeRates(
   })
 }
 
-function parseCurrencyPair(value: string): readonly [string, string] | undefined {
+export function parseCurrencyPair(value: string): readonly [string, string] | undefined {
   const match = /^([A-Z]{3})(?:[/_-]?([A-Z]{3}))?$/u.exec(value.toUpperCase())
   const source = match?.[1]
   const target = match?.[2] ?? "TWD"
@@ -67,22 +67,7 @@ function resolveRate(
   if (direct) return { derived: false, rate: direct }
 
   const reverse = byPair.get(`${target}/${source}`)
-  if (reverse) return { derived: true, rate: invertRate(reverse) }
-
-  const sourceToTwd = byPair.get(`${source}/TWD`)
-  const targetToTwd = byPair.get(`${target}/TWD`)
-  if (!sourceToTwd || !targetToTwd) return undefined
-  const rate = crossRate(sourceToTwd, targetToTwd)
-  return hasQuote(rate) ? { derived: true, rate } : undefined
-}
-
-function hasQuote(rate: Rate): boolean {
-  return (
-    rate.spotBuy !== undefined ||
-    rate.spotSell !== undefined ||
-    rate.cashBuy !== undefined ||
-    rate.cashSell !== undefined
-  )
+  return reverse ? { derived: true, rate: invertRate(reverse) } : undefined
 }
 
 function invertRate(rate: Rate): Rate {
@@ -98,32 +83,12 @@ function invertRate(rate: Rate): Rate {
   }
 }
 
-function crossRate(sourceToTwd: Rate, targetToTwd: Rate): Rate {
-  return {
-    cashBuy: divide(sourceToTwd.cashBuy, targetToTwd.cashSell),
-    cashSell: divide(sourceToTwd.cashSell, targetToTwd.cashBuy),
-    exchange: sourceToTwd.exchange,
-    fetchedAt: earlierTimestamp(sourceToTwd.fetchedAt, targetToTwd.fetchedAt),
-    source: sourceToTwd.source,
-    spotBuy: divide(sourceToTwd.spotBuy, targetToTwd.spotSell),
-    spotSell: divide(sourceToTwd.spotSell, targetToTwd.spotBuy),
-    target: targetToTwd.source,
-  }
-}
-
 function divide(
   numerator: number | undefined,
   denominator: number | undefined,
 ): number | undefined {
   if (numerator === undefined || denominator === undefined || denominator === 0) return undefined
   return numerator / denominator
-}
-
-function earlierTimestamp(first: string, second: string): string {
-  const firstTime = new Date(first).getTime()
-  const secondTime = new Date(second).getTime()
-  if (Number.isNaN(firstTime) || Number.isNaN(secondTime)) return first
-  return firstTime <= secondTime ? first : second
 }
 
 function formatExchangeRate(rate: Rate, derived: boolean): string {

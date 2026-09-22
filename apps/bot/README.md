@@ -25,7 +25,7 @@ Available now:
 - allowlist and bot-loop limits
 - `/start`, `/help`, `/id`, `/ask`, `/f`, `/cancel`, and `/reset`
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
-- `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
+- `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
@@ -89,13 +89,13 @@ Use `/t` with one or more whitespace- or comma-separated symbols:
 /t 2881A         # TWSE preferred share
 /t BTC-USD       # Yahoo Finance cryptocurrency pair
 /t BTCUSDT       # MAX Exchange cryptocurrency pair
-/t USD           # Bank of Taiwan USD/TWD rate
-/t JPY/TWD       # Bank of Taiwan JPY/TWD rate
-/t TWDJPY        # Derived Bank of Taiwan TWD/JPY rate
-/t USD/JPY       # Derived Bank of Taiwan USD/JPY cross rate
+/t USD           # Frankfurter USD/TWD reference rate and Bank of Taiwan quotes
+/t JPY/TWD       # Frankfurter JPY/TWD reference rate and Bank of Taiwan quotes
+/t TWDJPY        # Frankfurter TWD/JPY reference rate and reversed Bank of Taiwan quotes
+/t USD/JPY       # Frankfurter USD/JPY reference rate
 ```
 
-A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries against TWD. Supported fiat pairs can be written as `TWDJPY`, `TWD/JPY`, `TWD-JPY`, or `TWD_JPY`; reverse and cross rates are derived from Bank of Taiwan quotes and clearly marked in the result. MAX-like suffixes are matched against the MAX markets catalogue; symbols absent from that catalogue (such as `GBTC`) fall back to Yahoo Finance. If the catalogue request fails, candidates still try Yahoo; the original MAX error is retained when no fallback returns data. Failures querying listed MAX markets are not retried through Yahoo.
+A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries against TWD. Supported fiat pairs can be written as `TWDJPY`, `TWD/JPY`, `TWD-JPY`, or `TWD_JPY`. Every fiat query returns the Frankfurter v2 daily reference mid-rate. Pairs involving TWD also return Bank of Taiwan spot and cash quotes; reversed TWD pairs are calculated from the bank's published quote and clearly marked. MAX-like suffixes are matched against the MAX markets catalogue; symbols absent from that catalogue (such as `GBTC`) fall back to Yahoo Finance. If the catalogue request fails, candidates still try Yahoo; the original MAX error is retained when no fallback returns data. Failures querying listed MAX markets are not retried through Yahoo.
 
 Yahoo candle fields use the latest candle position; missing fields are omitted rather than carried forward from an older session.
 
