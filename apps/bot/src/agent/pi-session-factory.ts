@@ -10,7 +10,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
 import progressExtension from "@narumitw/sumire-progress"
-import { createUrlExtension } from "@narumitw/sumire-url-tool"
+import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
@@ -99,7 +99,7 @@ export async function createPiSessionFactory(
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.projectRoot,
         agentDir,
-        additionalSkillPaths: [settings.botSkillsDir],
+        additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath],
         extensionFactories: [
           { name: "sumire-progress", factory: progressExtension },
           { name: "sumire-url-tool", factory: urlExtension },
