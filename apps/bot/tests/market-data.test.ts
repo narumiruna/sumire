@@ -122,6 +122,10 @@ describe("market-data query", () => {
           ],
         })
       }
+      if (url.hostname === "api.frankfurter.dev") {
+        expect(url.pathname).toBe("/v2/rate/USD/TWD")
+        return Response.json({ base: "USD", date: "2026-09-22", quote: "TWD", rate: 31.8 })
+      }
       if (url.pathname === "/api/v3/markets") {
         return Response.json([{ id: "btcusdt", base_unit: "btc", quote_unit: "usdt" }])
       }
@@ -162,12 +166,26 @@ describe("market-data query", () => {
     expect(result).toContain("台積電 (2330)")
     expect(result).toContain("MAX Exchange BTC/USDT")
     expect(result).toContain("買價: 65,000.1 USDT")
+    expect(result).toContain("Frankfurter USD/TWD")
+    expect(result).toContain("參考中價: 31.8 TWD")
+    expect(result).toContain("資料日期: 2026年9月22日")
     expect(result).toContain("台灣銀行 USD/TWD")
     expect(result).toContain("即期中價: 31.8 TWD")
     expect(rateFetcher).toHaveBeenCalledOnce()
   })
 
-  it("derives reverse and cross rates for supported currency pairs", async () => {
+  it("uses Frankfurter for cross rates and retains Bank of Taiwan for TWD pairs", async () => {
+    const fetchImplementation: MarketFetch = vi.fn(async (input) => {
+      const url = new URL(String(input))
+      const [source, target] = url.pathname.split("/").slice(-2)
+      const rates: Record<string, number> = { "TWD/JPY": 4.5, "USD/JPY": 140 }
+      return Response.json({
+        base: source,
+        date: "2026-09-22",
+        quote: target,
+        rate: rates[`${source}/${target}`],
+      })
+    })
     const rateFetcher = vi.fn(async () => [
       {
         cashBuy: 0.19,
@@ -179,54 +197,38 @@ describe("market-data query", () => {
         spotSell: 0.25,
         target: "TWD",
       },
-      {
-        cashBuy: 29,
-        cashSell: 33,
-        exchange: "BANK_OF_TAIWAN" as const,
-        fetchedAt,
-        source: "USD",
-        spotBuy: 30,
-        spotSell: 32,
-        target: "TWD",
-      },
     ])
 
-    const result = await queryMarketData("TWDJPY USD/JPY", { rateFetcher })
+    const result = await queryMarketData("TWDJPY USD/JPY", {
+      fetchImplementation,
+      rateFetcher,
+    })
 
+    expect(result).toContain("Frankfurter TWD/JPY")
+    expect(result).toContain("Frankfurter USD/JPY")
+    expect(result).toContain("參考中價: 140 JPY")
     expect(result).toContain("台灣銀行 TWD/JPY")
     expect(result).toContain("即期買入: 4 JPY")
     expect(result).toContain("即期賣出: 5 JPY")
-    expect(result).toContain("即期中價: 4.5 JPY")
-    expect(result).toContain("台灣銀行 USD/JPY")
-    expect(result).toContain("即期買入: 120 JPY")
-    expect(result).toContain("即期賣出: 160 JPY")
-    expect(result).toContain("換算方式: 依台灣銀行牌告匯率換算")
+    expect(result).not.toContain("台灣銀行 USD/JPY")
     expect(rateFetcher).toHaveBeenCalledOnce()
+    expect(fetchImplementation).toHaveBeenCalledTimes(2)
   })
 
-  it("returns no cross-rate data when quote modes do not overlap", async () => {
-    const result = await queryMarketData("USD/JPY", {
-      rateFetcher: async () => [
-        {
-          cashBuy: 29,
-          cashSell: 33,
-          exchange: "BANK_OF_TAIWAN" as const,
-          fetchedAt,
-          source: "USD",
-          target: "TWD",
-        },
-        {
-          exchange: "BANK_OF_TAIWAN" as const,
-          fetchedAt,
-          source: "JPY",
-          spotBuy: 0.2,
-          spotSell: 0.25,
-          target: "TWD",
-        },
-      ],
-    })
+  it("rejects malformed Frankfurter data without querying Bank of Taiwan for a cross rate", async () => {
+    const onError = vi.fn()
+    const rateFetcher = vi.fn(async () => [])
 
-    expect(result).toBe("")
+    await expect(
+      queryMarketData("USD/JPY", {
+        fetchImplementation: async () =>
+          Response.json({ base: "USD", date: "2026-09-22", quote: "JPY", rate: 0 }),
+        onError,
+        rateFetcher,
+      }),
+    ).rejects.toThrow("Unexpected Frankfurter exchange-rate response")
+    expect(onError).toHaveBeenCalledWith("Frankfurter", expect.any(Error))
+    expect(rateFetcher).not.toHaveBeenCalled()
   })
 
   it("keeps successful provider results when another provider fails", async () => {
@@ -235,6 +237,9 @@ describe("market-data query", () => {
       const url = new URL(String(input))
       if (url.hostname === "mis.twse.com.tw") {
         return Response.json({ msgArray: [{ c: "2330", n: "台積電", z: "1000" }] })
+      }
+      if (url.hostname === "api.frankfurter.dev") {
+        return Response.json({ base: "USD", date: "2026-09-22", quote: "TWD", rate: 31.8 })
       }
       return new Response(null, { status: 503 })
     })
@@ -248,7 +253,8 @@ describe("market-data query", () => {
     })
 
     expect(result).toContain("台積電 (2330)")
-    expect(result).not.toContain("USD/TWD")
+    expect(result).toContain("Frankfurter USD/TWD")
+    expect(result).not.toContain("台灣銀行 USD/TWD")
     expect(onError).toHaveBeenCalledWith("Bank of Taiwan", expect.any(Error))
   })
 
@@ -268,30 +274,31 @@ describe("market-data query", () => {
     expect(onError).toHaveBeenCalledWith(provider, expect.any(Error))
   })
 
-  it("propagates a rate failure even when another provider succeeds without data", async () => {
-    const error = new Error("rate service unavailable")
+  it("propagates a Frankfurter failure when other providers succeed without data", async () => {
     const onError = vi.fn()
 
     await expect(
       queryMarketData("2330 USD", {
-        fetchImplementation: async () => Response.json({ msgArray: [] }),
-        onError,
-        rateFetcher: async () => {
-          throw error
+        fetchImplementation: async (input) => {
+          const url = new URL(String(input))
+          return url.hostname === "api.frankfurter.dev"
+            ? new Response(null, { status: 503 })
+            : Response.json({ msgArray: [] })
         },
+        onError,
+        rateFetcher: async () => [],
       }),
-    ).rejects.toBe(error)
-    expect(onError).toHaveBeenCalledWith("Bank of Taiwan", error)
+    ).rejects.toThrow("Market-data request failed (503)")
+    expect(onError).toHaveBeenCalledWith("Frankfurter", expect.any(Error))
   })
 
   it("returns no data when providers succeed without matches", async () => {
     const onError = vi.fn()
 
     await expect(
-      queryMarketData("2330 USD", {
+      queryMarketData("2330", {
         fetchImplementation: async () => Response.json({ msgArray: [] }),
         onError,
-        rateFetcher: async () => [],
       }),
     ).resolves.toBe("")
     expect(onError).not.toHaveBeenCalled()

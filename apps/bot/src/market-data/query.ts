@@ -1,4 +1,5 @@
 import { type ExchangeRateFetcher, queryExchangeRates } from "./exchange-rates.js"
+import { queryFrankfurterRates } from "./frankfurter.js"
 import type { MarketFetch } from "./http.js"
 import { normalizeMaxMarket, queryMaxExchange } from "./max-exchange.js"
 import { queryTwse } from "./twse.js"
@@ -31,7 +32,12 @@ const taiwanBankCurrencies = new Set([
 ])
 const maxQuoteCurrencies = ["usdt", "twd", "btc"]
 
-export type MarketProvider = "Bank of Taiwan" | "MAX Exchange" | "TWSE" | "Yahoo Finance"
+export type MarketProvider =
+  | "Bank of Taiwan"
+  | "Frankfurter"
+  | "MAX Exchange"
+  | "TWSE"
+  | "Yahoo Finance"
 
 export interface MarketDataDependencies {
   fetchImplementation?: MarketFetch
@@ -82,9 +88,16 @@ export async function queryMarketData(
   }
   if (groups.currency.length > 0) {
     jobs.push({
-      name: "Bank of Taiwan",
-      query: () => queryExchangeRates(groups.currency, dependencies.rateFetcher),
+      name: "Frankfurter",
+      query: () => queryFrankfurterRates(groups.currency, dependencies.fetchImplementation),
     })
+    const bankPairs = groups.currency.filter(includesTwd)
+    if (bankPairs.length > 0) {
+      jobs.push({
+        name: "Bank of Taiwan",
+        query: () => queryExchangeRates(bankPairs, dependencies.rateFetcher),
+      })
+    }
   }
 
   const settled = await Promise.allSettled(jobs.map((job) => job.query()))
@@ -135,6 +148,10 @@ export function classifyMarketTerm(term: string): {
     return { provider: "max", symbol: term }
   }
   return { provider: "yahoo", symbol: term }
+}
+
+function includesTwd(pair: string): boolean {
+  return pair.startsWith("TWD/") || pair.endsWith("/TWD")
 }
 
 function currencyFromTerm(term: string): string | undefined {
