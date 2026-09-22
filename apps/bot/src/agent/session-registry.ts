@@ -117,25 +117,23 @@ export class ChatSessionRegistry {
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
-    if (!restoredBranch && session.isStreaming) {
+    if (!restoredBranch && options.intent === "newTurn") {
+      const activeCapture = this.#activePromptCaptures.get(chatId)
+      if (activeCapture?.generation === generation) await activeCapture.done
+      if (!session.isIdle) await session.waitForIdle()
       assertCurrent()
-      if (options.intent === "newTurn") {
-        const activeCapture = this.#activePromptCaptures.get(chatId)
-        if (activeCapture?.generation === generation) await activeCapture.done
-        if (!session.isIdle) await session.waitForIdle()
-        assertCurrent()
-      } else {
-        if (options.intent === "followUp") {
-          const submission = session.followUp(submissionPrompt, images)
-          options.onAccepted?.()
-          await submission
-          return { kind: "followed_up", text: "已將新訊息排在目前任務完成後處理。" }
-        }
-        const submission = session.steer(submissionPrompt, images)
+    } else if (!restoredBranch && session.isStreaming) {
+      assertCurrent()
+      if (options.intent === "followUp") {
+        const submission = session.followUp(submissionPrompt, images)
         options.onAccepted?.()
         await submission
-        return { kind: "steered", text: "已將新訊息加入目前任務。" }
+        return { kind: "followed_up", text: "已將新訊息排在目前任務完成後處理。" }
       }
+      const submission = session.steer(submissionPrompt, images)
+      options.onAccepted?.()
+      await submission
+      return { kind: "steered", text: "已將新訊息加入目前任務。" }
     }
 
     assertCurrent()

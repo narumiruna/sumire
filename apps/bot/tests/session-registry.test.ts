@@ -463,22 +463,29 @@ describe("ChatSessionRegistry", () => {
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger)
     const runningAccepted = deferred()
-    const finishRunning = deferred()
+    const agentFinished = deferred()
+    const idle = deferred()
+    const promptReturned = deferred()
     const promptNormally = session.prompt.bind(session)
     session.prompt = vi.fn(async (text: string) => {
       if (text !== "running") return promptNormally(text)
       session.prompts.push(text)
       session.messages.push({ role: "user", content: text, timestamp: Date.now() })
       session.isStreaming = true
-      await finishRunning.promise
+      await agentFinished.promise
       session.messages.push(assistant("AI: running"))
       session.leafId = "entry-1"
       session.entries.add("entry-1")
       session.isStreaming = false
+      idle.resolve()
+      await promptReturned.promise
     })
 
     const running = registry.submit(1, "running", { onAccepted: runningAccepted.resolve })
     await runningAccepted.promise
+    agentFinished.resolve()
+    await idle.promise
+
     const newTurnAccepted = vi.fn()
     const newTurn = registry.submit(1, "article", {
       intent: "newTurn",
@@ -486,11 +493,12 @@ describe("ChatSessionRegistry", () => {
     })
     await new Promise<void>((resolve) => setImmediate(resolve))
 
+    expect(session.isStreaming).toBe(false)
     expect(session.prompts).toEqual(["running"])
     expect(newTurnAccepted).not.toHaveBeenCalled()
     expect(session.steering).toEqual([])
 
-    finishRunning.resolve()
+    promptReturned.resolve()
     await expect(running).resolves.toMatchObject({ kind: "completed", text: "AI: running" })
     await expect(newTurn).resolves.toMatchObject({ kind: "completed", text: "AI: article" })
     expect(session.prompts).toEqual(["running", "article"])
