@@ -22,7 +22,8 @@ Available now:
 
 - private chat and group mention/reply routing
 - allowlist and bot-loop limits
-- `/start`, `/help`, `/id`, `/ask`, `/cancel`, and `/reset`
+- `/start`, `/help`, `/id`, `/ask`, `/f`, `/cancel`, and `/reset`
+- `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, and Bank of Taiwan exchange rates
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
@@ -65,6 +66,12 @@ For development:
 cd apps/bot
 npm run dev -- --verbose
 ```
+
+## Article command
+
+Use `/f <內容>` to reorganize text into a coherent Markdown article in Taiwan Traditional Chinese. A bare `/f` can reply to a text message, public URL, image, or supported document. Reply and media inputs use the same bounded context assembly, feature controls, submission ordering, cancellation, and reply-tree restoration as ordinary Pi requests. Public URLs remain agent-driven and are loaded through `load_public_url`; Telegram does not prefetch them.
+
+The writer request preserves material information, forbids new facts, uses specific emoji section headings, and limits each section to 1,000 characters and the complete article to fewer than 5,000 characters. Sumire publishes every successful `/f` result to Morsel and replies to the triggering message with only the article URL. `MORSEL_API_KEY` is therefore required for `/f`; if publication is unavailable, Sumire withholds the generated article and returns a short error.
 
 ## Market-data command
 
@@ -117,7 +124,7 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured and is required for `/f` article publication and replies over 1,000 characters. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
 
 The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
 

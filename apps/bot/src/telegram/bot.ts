@@ -9,7 +9,8 @@ import { promptWithDocumentContext } from "../documents/prompt.js"
 import type { Logger } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, type MorselPublisher } from "../morsel.js"
-import { createTelegramDelivery } from "./delivery.js"
+import { buildArticleRewritePrompt } from "../writer/prompt.js"
+import { createTelegramDelivery, type DeliveryMode } from "./delivery.js"
 import {
   downloadTelegramFile,
   downloadTelegramImage,
@@ -42,6 +43,12 @@ interface TelegramBotDependencies {
   documentConverter?: DocumentConverter
   marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
+}
+
+interface InputSubmissionOptions {
+  promptTransform?: (prompt: string) => string
+  deliveryMode?: DeliveryMode
+  includeBotReplyContext?: boolean
 }
 
 export function createTelegramAgentBot(
@@ -90,6 +97,7 @@ export function createTelegramAgentBot(
       context,
       [
         "/ask <問題> — 詢問 AI 助理",
+        "/f <內容> — 將內容或回覆的訊息整理成台灣繁體中文文章",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
         "/reset — 清除目前 chat 的 Pi session",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
@@ -149,6 +157,30 @@ export function createTelegramAgentBot(
         release,
         isCurrent,
       ),
+    )
+  })
+  bot.command("f", async (context) => {
+    const source = context.match.trim()
+    const message = context.message as unknown as TelegramMessageLike
+    if (
+      !source &&
+      !message.reply_to_message &&
+      imageReferences(message).length === 0 &&
+      documentReferences(message).length === 0
+    ) {
+      await delivery.reply(
+        context,
+        "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。",
+        replyOptions(context),
+      )
+      return
+    }
+    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
+      submitInput(context, message, source, release, isCurrent, {
+        promptTransform: buildArticleRewritePrompt,
+        deliveryMode: "publish",
+        includeBotReplyContext: true,
+      }),
     )
   })
   bot.command("t", async (context) => {
@@ -229,6 +261,7 @@ export function createTelegramAgentBot(
     strippedText: string,
     release: () => void,
     isCurrent: () => boolean,
+    submissionOptions: InputSubmissionOptions = {},
   ): Promise<void> {
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
@@ -311,12 +344,14 @@ export function createTelegramAgentBot(
           documentInputs,
           settings.botDocumentMaxMarkdownChars,
         ),
+        submissionOptions.includeBotReplyContext,
       )
     } else {
       const basePrompt =
         strippedText || (images.length > 0 ? defaultImagePrompt : "請回應這則訊息。")
-      prompt = promptWithReplyContext(message, basePrompt)
+      prompt = promptWithReplyContext(message, basePrompt, submissionOptions.includeBotReplyContext)
     }
+    prompt = submissionOptions.promptTransform?.(prompt) ?? prompt
     await answer(
       context,
       prompt,
@@ -324,6 +359,8 @@ export function createTelegramAgentBot(
       release,
       isCurrent,
       repliedBotMessageId(message, context.me.id),
+      submissionOptions.deliveryMode,
+      submissionOptions.includeBotReplyContext,
     )
   }
 
@@ -354,6 +391,8 @@ export function createTelegramAgentBot(
     releaseSubmissionTurn: () => void,
     isCurrent: () => boolean,
     replyToBotMessageId?: number,
+    finalDeliveryMode: DeliveryMode = "default",
+    replyContextIncluded = false,
   ): Promise<void> {
     if (!isCurrent()) return
     const chatId = context.chat?.id
@@ -402,7 +441,13 @@ export function createTelegramAgentBot(
     try {
       const unresolvedReplyPrompt =
         replyToBotMessageId !== undefined && context.message
-          ? promptWithReplyContext(context.message as unknown as TelegramMessageLike, prompt, true)
+          ? replyContextIncluded
+            ? prompt
+            : promptWithReplyContext(
+                context.message as unknown as TelegramMessageLike,
+                prompt,
+                true,
+              )
           : undefined
       const result = await sessions.submit(chatId, prompt, {
         images,
@@ -421,6 +466,7 @@ export function createTelegramAgentBot(
         return
       }
       await progressStatus.close()
+      const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
       let deliveryResult: "delivered" | "unavailable" | "stale"
       if (status) {
         deliveryResult = await delivery.edit(
@@ -429,6 +475,7 @@ export function createTelegramAgentBot(
           status.message_id,
           result.text,
           isCurrent,
+          resultDeliveryMode,
         )
       } else {
         const finalReply = await delivery.guardedReply(
@@ -436,6 +483,7 @@ export function createTelegramAgentBot(
           result.text,
           replyOptions,
           isCurrent,
+          resultDeliveryMode,
         )
         status = finalReply.message
         deliveryResult = finalReply.result
