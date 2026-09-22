@@ -58,35 +58,48 @@ const allowedSchemes = z
     return schemes
   })
 
-const environmentSchema = z.object({
-  BOT_TOKEN: z.string().default(""),
-  BOT_WHITELIST: csvIntegers,
-  BOT_DOCUMENT_INPUT_ENABLED: envBoolean(true),
-  BOT_DOCUMENT_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
-  BOT_DOCUMENT_MAX_MARKDOWN_CHARS: envInteger(50_000, 1, 1_000_000),
-  BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: envNumber(30, 0.1, 600),
-  BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: envInteger(2, 1, 16),
-  BOT_REPLY_TREE_ENABLED: envBoolean(true),
-  BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: envInteger(1_000, 1, 100_000),
-  BOT_REPLY_TREE_MAX_INDEX_BYTES: envInteger(1_000_000, 1_024, 100_000_000),
-  BOT_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
-  BOT_URL_CONTENT_TIMEOUT_SECONDS: envNumber(180, 0.1, 3_600),
-  BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
-  BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
-  BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
-  BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
-  LOGFIRE_TOKEN: optionalString,
-  MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
-  MORSEL_API_KEY: optionalString,
-  OPENAI_BASE_URL: z.url().default("https://api.openai.com/v1"),
-  OPENAI_API_KEY: optionalString,
-  OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
-})
+const environmentSchema = z
+  .object({
+    BOT_TOKEN: z.string().default(""),
+    BOT_WHITELIST: csvIntegers,
+    BOT_CODING_TOOLS_ENABLED: envBoolean(false),
+    BOT_DOCUMENT_INPUT_ENABLED: envBoolean(true),
+    BOT_DOCUMENT_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
+    BOT_DOCUMENT_MAX_MARKDOWN_CHARS: envInteger(50_000, 1, 1_000_000),
+    BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: envNumber(30, 0.1, 600),
+    BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: envInteger(2, 1, 16),
+    BOT_REPLY_TREE_ENABLED: envBoolean(true),
+    BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: envInteger(1_000, 1, 100_000),
+    BOT_REPLY_TREE_MAX_INDEX_BYTES: envInteger(1_000_000, 1_024, 100_000_000),
+    BOT_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
+    BOT_URL_CONTENT_TIMEOUT_SECONDS: envNumber(180, 0.1, 3_600),
+    BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
+    BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
+    BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
+    BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
+    LOGFIRE_TOKEN: optionalString,
+    MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
+    MORSEL_API_KEY: optionalString,
+    OPENAI_BASE_URL: z.url().default("https://api.openai.com/v1"),
+    OPENAI_API_KEY: optionalString,
+    OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
+  })
+  .superRefine((settings, context) => {
+    if (settings.BOT_CODING_TOOLS_ENABLED && settings.BOT_WHITELIST.size === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["BOT_WHITELIST"],
+        message:
+          "BOT_WHITELIST must contain at least one Telegram user or chat ID when BOT_CODING_TOOLS_ENABLED=true",
+      })
+    }
+  })
 
 export interface Settings {
   projectRoot: string
   botToken: string
   botWhitelist: ReadonlySet<number>
+  botCodingToolsEnabled: boolean
   botMaxConsecutiveRepliesToBots: number
   botGroupPassiveContextEnabled: boolean
   botSkillsDir: string
@@ -136,6 +149,7 @@ export function loadSettings(
     projectRoot: root,
     botToken: parsed.BOT_TOKEN,
     botWhitelist: parsed.BOT_WHITELIST,
+    botCodingToolsEnabled: parsed.BOT_CODING_TOOLS_ENABLED,
     botMaxConsecutiveRepliesToBots: 1,
     botGroupPassiveContextEnabled: true,
     botSkillsDir: path.resolve(root, "skills"),
