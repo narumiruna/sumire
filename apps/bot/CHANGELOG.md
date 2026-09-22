@@ -1,5 +1,11 @@
 # @narumitw/sumire
 
+## 0.2.1
+
+### Patch Changes
+
+- f9e8c5c: Bundle the Otter expense-management skill and pinned CLI so trusted, allowlisted bot sessions can manage Otter data with an environment-provided token.
+
 ## 0.2.0
 
 ### Minor Changes
