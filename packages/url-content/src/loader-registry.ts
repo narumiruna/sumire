@@ -3,6 +3,7 @@ import type { ResourceProvider } from "./core/resources.js"
 
 export const ANYDOC = "anydoc"
 export const PTT = "ptt"
+export const THREADS = "threads"
 export const TWITTER = "twitter"
 export const TRUTHSOCIAL = "truthsocial"
 export const REDDIT = "reddit"
@@ -56,6 +57,7 @@ export const LOADER_DEFS: readonly LoaderDef[] = [
     resourceKind: "worker",
   }),
   definition(PTT, "Taiwan PTT forum posts", "social_post"),
+  definition(THREADS, "Extracts public Threads post metadata", "social_post"),
   definition(TWITTER, "Extracts Twitter/X post content", "social_post"),
   definition(TRUTHSOCIAL, "Extracts Truth Social posts", "social_post", {
     resourceKind: "browser",
@@ -168,6 +170,10 @@ export async function createLoader(name: string, resources?: ResourceProvider): 
     case PTT: {
       const { PttLoader } = await import("./loaders/ptt.js")
       return new PttLoader({ resources })
+    }
+    case THREADS: {
+      const { ThreadsLoader } = await import("./loaders/threads.js")
+      return new ThreadsLoader({ resources })
     }
     case TWITTER: {
       const { TwitterLoader } = await import("./loaders/twitter.js")

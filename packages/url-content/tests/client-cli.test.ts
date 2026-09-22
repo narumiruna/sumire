@@ -45,6 +45,7 @@ describe("CLI", () => {
     expect(output).toContain("anydoc -")
     expect(output).toContain("google-docs -")
     expect(output).toContain("pi-session -")
+    expect(output).toContain("threads -")
     expect(output).toContain("curl-cffi -")
     expect(output).not.toContain("playwright-networkidle -")
   })

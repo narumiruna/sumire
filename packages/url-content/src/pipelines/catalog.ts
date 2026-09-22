@@ -15,6 +15,7 @@ import {
   PTT,
   REDDIT,
   REEL,
+  THREADS,
   TRUTHSOCIAL,
   TWITTER,
   YOUTUBE,
@@ -33,6 +34,7 @@ import {
   isPttUrl,
   isRedditUrl,
   isReelUrl,
+  isThreadsPostUrl,
   isTruthSocialUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
@@ -84,6 +86,10 @@ type PipelineEntry = readonly [Pipeline, (url: string) => boolean]
 
 const PIPELINE_ENTRIES: readonly PipelineEntry[] = [
   [{ name: PTT, contentType: ContentType.SocialPost, targetedLoaders: [PTT] }, isPttUrl],
+  [
+    { name: THREADS, contentType: ContentType.SocialPost, targetedLoaders: [THREADS] },
+    isThreadsPostUrl,
+  ],
   [
     { name: TWITTER, contentType: ContentType.SocialPost, targetedLoaders: [TWITTER] },
     isTwitterStatusUrl,

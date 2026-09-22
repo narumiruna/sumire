@@ -13,11 +13,13 @@ import {
   isPttUrl,
   isRedditUrl,
   isReelUrl,
+  isThreadsPostUrl,
   isTruthSocialUrl,
   isTwitterUrl,
   isYouTubeVideoUrl,
   parseGitHubRawContentTarget,
   parsePiSessionTarget,
+  parseThreadsTarget,
   parseTwitterTarget,
   parseYouTubeVideoTarget,
   requireLoaderApplicability,
@@ -26,6 +28,7 @@ import {
 const supported: [string, (url: string) => boolean][] = [
   ["https://www.ptt.cc/bbs/Gossiping/M.1746078381.A.FFC.html", isPttUrl],
   ["https://x.com/howie_serious/status/1917768568135115147", isTwitterUrl],
+  ["https://www.threads.com/@ha_haha_1229/post/Ddi8GHWk1ga", isThreadsPostUrl],
   ["https://truthsocial.com/@realDonaldTrump/posts/115830428767897167", isTruthSocialUrl],
   ["https://www.reddit.com/r/python/comments/abc/example/", isRedditUrl],
   ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", isYouTubeVideoUrl],
@@ -61,6 +64,9 @@ describe("source applicability", () => {
       statusId: "1",
     })
     expect(
+      parseThreadsTarget("https://www.threads.com/@ha_haha_1229/post/Ddi8GHWk1ga?xmt=1"),
+    ).toMatchObject({ username: "ha_haha_1229", shortcode: "Ddi8GHWk1ga" })
+    expect(
       parsePiSessionTarget("https://pi.dev/session/#abc123/custom%20session.html&leafId=leaf-1"),
     ).toMatchObject({
       gistId: "abc123",
@@ -69,8 +75,10 @@ describe("source applicability", () => {
     })
   })
 
-  it("rejects playlists, PTT listings, and unsupported PDF schemes", () => {
+  it("rejects playlists, social profiles, PTT listings, and unsupported PDF schemes", () => {
     expect(isYouTubeVideoUrl("https://www.youtube.com/playlist?list=PL123")).toBe(false)
+    expect(isThreadsPostUrl("https://www.threads.com/@ha_haha_1229")).toBe(false)
+    expect(isThreadsPostUrl("https://threads.example/@ha_haha_1229/post/Ddi8GHWk1ga")).toBe(false)
     expect(isPttUrl("https://www.ptt.cc/")).toBe(false)
     expect(isPttUrl("https://www.ptt.cc/bbs/Gossiping/index.html")).toBe(false)
     expect(isPdfTarget("ftp://example.com/document.pdf")).toBe(false)
@@ -89,11 +97,17 @@ describe("source applicability", () => {
 })
 
 describe("pipeline planning", () => {
-  it("keeps strict YouTube plans source-specific", () => {
+  it("keeps strict source plans source-specific", () => {
     expect(planForUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toMatchObject({
       pipelineName: "youtube",
       contentType: "youtube_video",
       executionPlan: ["youtube", "youtube-ytdlp"],
+      fallbackLoaders: [],
+    })
+    expect(planForUrl("https://www.threads.com/@ha_haha_1229/post/Ddi8GHWk1ga")).toMatchObject({
+      pipelineName: "threads",
+      contentType: "social_post",
+      executionPlan: ["threads"],
       fallbackLoaders: [],
     })
   })
