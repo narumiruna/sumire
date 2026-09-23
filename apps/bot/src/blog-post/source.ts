@@ -3,7 +3,10 @@ import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
 const maxArticleUrls = 4
 const urlPattern = /https?:\/\/[^\s<>"]+/giu
 const trailingPunctuation = /[.,;!?。，；！？]+$/u
-const closingQuote = /'[.,;!?。，；！？]*$/u
+const closingWrappers = new Map([
+  ["'", /'[.,;!?。，；！？]*$/u],
+  ["`", /`[.,;!?。，；！？]*$/u],
+])
 const closingDelimiters = new Map([
   [")", "("],
   ["]", "["],
@@ -50,7 +53,8 @@ export async function loadArticleSourceUrls(
       [...source.matchAll(urlPattern)]
         .map((match) => {
           const url = trimUrlEnd(match[0])
-          return source[(match.index ?? 0) - 1] === "'" ? url.replace(closingQuote, "") : url
+          const wrapper = closingWrappers.get(source[(match.index ?? 0) - 1] ?? "")
+          return wrapper ? url.replace(wrapper, "") : url
         })
         .filter(Boolean),
     ),

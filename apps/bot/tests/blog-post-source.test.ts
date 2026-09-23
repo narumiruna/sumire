@@ -60,7 +60,12 @@ describe("article source URLs", () => {
     ["'https://example.com/O'Reilly'", "https://example.com/O'Reilly"],
     ["[來源]('https://example.com/O'Reilly').", "https://example.com/O'Reilly"],
     ["https://example.com/path'", "https://example.com/path'"],
-  ])("preserves apostrophes within %s", async (source, url) => {
+    ["`https://example.com/article`", "https://example.com/article"],
+    ["[來源](`https://example.com/article`),", "https://example.com/article"],
+    ["`https://example.com/a`b`", "https://example.com/a`b"],
+    ["https://example.com/a`b", "https://example.com/a`b"],
+    ["https://example.com/path`", "https://example.com/path`"],
+  ])("preserves URL characters inside %s", async (source, url) => {
     const load = vi.fn(async (value: string) => loaded(value, "content"))
     const result = await loadArticleSourceUrls(
       source,

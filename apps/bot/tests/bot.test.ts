@@ -234,6 +234,37 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
   })
 
+  it("loads /f URLs with fractional timeout configuration", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "來源內容",
+      truncated: false,
+    }))
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        MORSEL_API_KEY: "secret",
+        BOT_URL_TIMEOUT_SECONDS: "1.2345",
+        BOT_URL_CONTENT_TIMEOUT_SECONDS: "1.2345",
+      }),
+      sessions,
+      logger,
+      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+    )
+    installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(21, "/f https://example.com/article"))
+
+    expect(load).toHaveBeenCalledOnce()
+    expect(sessions.submit).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenCalledOnce()
+  })
+
   it("does not submit or publish /f when a source URL fails to load", async () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")

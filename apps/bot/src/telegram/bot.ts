@@ -90,7 +90,7 @@ export function createTelegramAgentBot(
     createPublicUrlLoader({
       allowedSchemes: settings.botUrlAllowedSchemes,
       maxChars: settings.botUrlMaxExtractedChars,
-      timeoutMs: settings.botUrlTimeoutSeconds * 1_000,
+      timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
       urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
     })
   const audioTranscriber =
@@ -506,7 +506,7 @@ export function createTelegramAgentBot(
           },
           {
             maxChars: settings.botUrlMaxExtractedChars,
-            timeoutMs: Math.min(30, settings.botUrlContentTimeoutSeconds) * 1_000,
+            timeoutMs: Math.round(Math.min(30, settings.botUrlContentTimeoutSeconds) * 1_000),
             signal: controller.signal,
           },
         )
