@@ -1,5 +1,15 @@
 # @narumitw/sumire
 
+## 0.3.0
+
+### Minor Changes
+
+- f573945: Add Frankfurter v2 daily reference mid-rates to `/t` fiat queries while retaining Bank of Taiwan cash and spot quotes for TWD pairs.
+
+### Patch Changes
+
+- 7746613: Load the bot system prompt from `instructions/SYSTEM.md` and move its persona to `instructions/SOUL.md`.
+
 ## 0.2.1
 
 ### Patch Changes
