@@ -146,7 +146,8 @@ export function createLogger(
         }
         writeLocal("WARN", "Logfire span failed; continuing without trace", error)
       }
-      return operation ?? callback(noOpSpan)
+      operation ??= Promise.resolve().then(() => callback(noOpSpan))
+      return operation
     },
     debug: (message, details) => {
       if (verbose) write("DEBUG", message, details)

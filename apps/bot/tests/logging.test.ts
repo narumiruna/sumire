@@ -178,6 +178,46 @@ describe("createLogger", () => {
     expect(operation).toHaveBeenCalledOnce()
   })
 
+  it.each(["resolves", "rejects"])(
+    "shares the fallback operation with a late SDK callback when the span %s early",
+    async (outcome) => {
+      const client = createLogfireClient()
+      let delayedCallback: (() => Promise<unknown>) | undefined
+      client.span = (_name, { callback }) => {
+        delayedCallback = () => callback({ setAttribute: () => {} })
+        return outcome === "resolves"
+          ? Promise.resolve(undefined as never)
+          : Promise.reject(new Error("span export failed"))
+      }
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+      const logger = createLogger(false, "write-token", client)
+      const operation = vi.fn(async () => "delivered")
+
+      await expect(logger.span?.("telegram.deliver", {}, operation)).resolves.toBe("delivered")
+      await expect(delayedCallback?.()).resolves.toBe("delivered")
+      expect(operation).toHaveBeenCalledOnce()
+    },
+  )
+
+  it("shares a rejected fallback operation with a late SDK callback", async () => {
+    const client = createLogfireClient()
+    let delayedCallback: (() => Promise<unknown>) | undefined
+    client.span = (_name, { callback }) => {
+      delayedCallback = () => callback({ setAttribute: () => {} })
+      return Promise.reject(new Error("span startup failed"))
+    }
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const failure = new Error("publication failed")
+    const operation = vi.fn(async () => {
+      throw failure
+    })
+
+    await expect(logger.span?.("morsel.publish", {}, operation)).rejects.toBe(failure)
+    await expect(delayedCallback?.()).rejects.toBe(failure)
+    expect(operation).toHaveBeenCalledOnce()
+  })
+
   it("uses stderr only when Logfire is not configured", async () => {
     const client = createLogfireClient()
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
