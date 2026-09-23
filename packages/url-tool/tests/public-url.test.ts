@@ -1,5 +1,6 @@
 import type { lookup } from "node:dns/promises"
 
+import { htmlToMarkdown } from "@narumitw/sumire-url-content/loaders"
 import { describe, expect, it, vi } from "vitest"
 import {
   assertPublicUrl,
@@ -243,6 +244,41 @@ describe("public URL loading", () => {
       deadlineSeconds: 12,
       loaderNames: ["httpx"],
       signal,
+    })
+  })
+
+  it("keeps the document heading in bounded source-aware output after removing page assets", async () => {
+    const html = `<script>${"window.siteData = 'noise';".repeat(650)}</script>
+      <style>${".navigation { color: red; }".repeat(650)}</style>
+      <main><h1>Model guidance</h1><p>${"Read this documentation. ".repeat(40)}</p></main>`
+    const content = htmlToMarkdown(html)
+    const maxChars = 96
+    const urlContentLoadImplementation = vi.fn(async () => ({
+      content,
+      loaderId: "curl-cffi",
+      contentType: "generic_web",
+      downgraded: false,
+      attempts: [],
+    }))
+
+    const result = await loadPublicUrl("https://8.8.8.8/guide", {
+      ...options,
+      maxChars,
+      loader: "curl-cffi",
+      urlContentTimeoutSeconds: 12,
+      urlContentLoadImplementation,
+    })
+
+    expect(result).toMatchObject({ source: "url-content", loaderId: "curl-cffi", truncated: true })
+    expect(result.text.slice(0, maxChars)).toContain("# Model guidance")
+    expect(result.text).not.toContain("window.siteData")
+    expect(result.text).not.toContain(".navigation")
+    expect(result.text).toBe(
+      `${content.slice(0, maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${maxChars} chars]`,
+    )
+    expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/guide", {
+      deadlineSeconds: 12,
+      loaderNames: ["curl-cffi"],
     })
   })
 

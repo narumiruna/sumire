@@ -23,7 +23,9 @@ export function htmlToMarkdown(content: string): string {
     filter: "img",
     replacement: () => "",
   })
-  return normalizeWhitespace(turndown.turndown(content))
+  const $ = cheerio.load(content)
+  $("script,style,template").remove()
+  return normalizeWhitespace(turndown.turndown($.html()))
 }
 
 export function extractFirstTagSubtree(

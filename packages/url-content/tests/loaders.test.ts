@@ -199,6 +199,94 @@ describe("source loaders", () => {
     ).rejects.toThrow("3 byte limit")
   })
 
+  it("preserves literal HTML tags in non-HTML textual HTTP responses", async () => {
+    const text = "<script>const demo = 1;</script>\n<style>body { color: red; }</style>"
+    const resources = {
+      fetch: async () =>
+        new Response(text, { headers: { "content-type": "text/plain; charset=utf-8" } }),
+    } as unknown as ResourceProvider
+
+    await expect(
+      new HttpLoader({ resources }).load("https://example.com/example.txt"),
+    ).resolves.toBe(text)
+  })
+
+  it("converts XHTML responses as HTML instead of returning raw markup", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response(
+          '<html xmlns="http://www.w3.org/1999/xhtml"><head><script>noise()</script><style>body { color: red }</style></head><body><h1>XHTML article</h1><p>Readable body.</p></body></html>',
+          { headers: { "content-type": "application/xhtml+xml; charset=utf-8" } },
+        ),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/article")).resolves.toBe(
+      "# XHTML article\nReadable body.",
+    )
+  })
+
+  it("preserves literal HTML tags in non-HTML textual impers responses", async () => {
+    const text = "<template>literal snippet</template>"
+    let content: Buffer = Buffer.from(text)
+    const session = {
+      get: async (_url: string, options: Record<string, unknown>) => {
+        ;(options.contentCallback as (chunk: Buffer) => void)(content)
+        return {
+          status: 200,
+          get text() {
+            return content.toString()
+          },
+          headers: {
+            get: (name: string) => (name === "content-type" ? "text/plain" : null),
+          },
+          setContent: (value: Buffer) => {
+            content = value
+          },
+          close: async () => undefined,
+        }
+      },
+      close: async () => undefined,
+    } as unknown as ImpersSession
+    const resources = {
+      validateUrl: async (input: string | URL) => new URL(input),
+      impersProxy: async () => "http://127.0.0.1:8080",
+      impersSession: async () => session,
+    } as unknown as ResourceProvider
+
+    await expect(
+      new CurlCffiLoader({ resources }).load("https://example.com/example.txt"),
+    ).resolves.toBe(text)
+  })
+
+  it("loads an HTML article provided entirely through noscript", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response("<noscript><h1>Fallback article</h1><p>Readable body.</p></noscript>", {
+          headers: { "content-type": "text/html" },
+        }),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/page")).resolves.toBe(
+      "# Fallback article\nReadable body.",
+    )
+  })
+
+  it("does not accept a page consisting only of scripts as extracted content", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response(
+          "<script>window.siteData = 'noise'</script><style>body { color: red }</style>",
+          {
+            headers: { "content-type": "text/html" },
+          },
+        ),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/page")).rejects.toThrow(
+      LoaderContentError,
+    )
+  })
+
   it("times out stalled HTTP requests by default", async () => {
     const resources = {
       fetch: async (_input: string | URL, init?: RequestInit) =>
