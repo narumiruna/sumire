@@ -1,4 +1,5 @@
 import type { ProgressStep } from "@narumitw/sumire-progress"
+import type { LoadedUrl } from "@narumitw/sumire-url-tool"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
@@ -190,11 +191,23 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "網址內文",
+      truncated: false,
+    }))
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -205,8 +218,10 @@ describe("Telegram bot update routing", () => {
     expect(chatId).toBe(7)
     expect(options?.intent).toBe("newTurn")
     expect(prompt).toContain("written entirely in 台灣正體中文")
-    expect(prompt).toContain("use load_public_url")
+    expect(prompt).toContain("do not load those URLs again")
     expect(prompt).toContain("原始內容 https://example.com/article")
+    expect(prompt).toContain('"text":"網址內文"')
+    expect(load).toHaveBeenCalledOnce()
     expect(prompt).not.toContain("/f 原始內容")
     expect(publish).toHaveBeenCalledExactlyOnceWith(article)
     expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
@@ -217,6 +232,152 @@ describe("Telegram bot update routing", () => {
       allow_sending_without_reply: true,
     })
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
+  })
+
+  it("loads /f URLs with fractional timeout configuration", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "來源內容",
+      truncated: false,
+    }))
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        MORSEL_API_KEY: "secret",
+        BOT_URL_TIMEOUT_SECONDS: "1.2345",
+        BOT_URL_CONTENT_TIMEOUT_SECONDS: "1.2345",
+      }),
+      sessions,
+      logger,
+      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+    )
+    installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(21, "/f https://example.com/article"))
+
+    expect(load).toHaveBeenCalledOnce()
+    expect(sessions.submit).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenCalledOnce()
+  })
+
+  it("does not submit or publish /f when a source URL fails to load", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const load = vi.fn(async () => {
+      throw new Error("unavailable")
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(21, "/f https://example.com/blocked"))
+
+    expect(load).toHaveBeenCalledOnce()
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls[0]?.payload.text).toContain("無法載入文章來源網址")
+  })
+
+  it("rejects an insufficient article content budget without misreporting the URL count", async () => {
+    const sessions = createSessions()
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "unused",
+      truncated: false,
+    }))
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        MORSEL_API_KEY: "secret",
+        BOT_URL_MAX_EXTRACTED_CHARS: "1",
+      }),
+      sessions,
+      logger,
+      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(
+      commandMessage(22, "/f https://example.com/1 https://example.com/2"),
+    )
+
+    expect(load).not.toHaveBeenCalled()
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls[0]?.payload.text).toContain("BOT_URL_MAX_EXTRACTED_CHARS")
+    expect(calls[0]?.payload.text).not.toContain("最多可處理 4 個網址")
+  })
+
+  it.each(["cancel", "reset"] as const)(
+    "aborts in-flight /f URL loading when /%s invalidates the submission",
+    async (command) => {
+      let loadingSignal: AbortSignal | undefined
+      const load = vi.fn(
+        async (_url: string, options?: { signal?: AbortSignal }) =>
+          new Promise<LoadedUrl>((_, reject) => {
+            loadingSignal = options?.signal
+            loadingSignal?.addEventListener("abort", () => reject(loadingSignal?.reason), {
+              once: true,
+            })
+          }),
+      )
+      const sessions = createSessions()
+      const publish = vi.fn(async () => "https://morsel.example/s/article")
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        sessions,
+        logger,
+        { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+      )
+      const calls = installApiMock(telegram.bot)
+
+      const pending = telegram.bot.handleUpdate(commandMessage(30, "/f https://example.com/slow"))
+      await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
+      await telegram.bot.handleUpdate(commandMessage(31, `/${command}`))
+      await pending
+
+      expect(loadingSignal?.aborted).toBe(true)
+      expect(sessions.submit).not.toHaveBeenCalled()
+      expect(publish).not.toHaveBeenCalled()
+      expect(calls.filter((call) => call.method === "sendMessage")).toHaveLength(1)
+    },
+  )
+
+  it("does not prefetch ordinary chat URLs", async () => {
+    const sessions = createSessions()
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "unused",
+      truncated: false,
+    }))
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, articleUrlLoader: { load } },
+    )
+    installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(22, "請摘要 https://example.com/article"))
+
+    expect(load).not.toHaveBeenCalled()
+    expect(sessions.submit).toHaveBeenCalledOnce()
   })
 
   it.each(["photo", "document"] as const)(

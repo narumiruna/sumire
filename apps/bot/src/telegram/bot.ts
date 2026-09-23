@@ -1,16 +1,23 @@
 import type { RunnerHandle } from "@grammyjs/runner"
+import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
 import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
+import { buildBlogPostPrompt } from "../blog-post/prompt.js"
+import {
+  ArticleUrlBudgetError,
+  type ArticleUrlContent,
+  loadArticleSourceUrls,
+  TooManyArticleUrlsError,
+} from "../blog-post/source.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
 import { type Logger, withLogSpan } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
-import { singleUrlFingerprint } from "../url-telemetry.js"
-import { buildArticleRewritePrompt } from "../writer/prompt.js"
+import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
 import {
@@ -48,10 +55,12 @@ interface TelegramBotDependencies {
   marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
   audioTranscriber?: AudioTranscriber
+  articleUrlLoader?: PublicUrlLoader
 }
 
 interface InputSubmissionOptions {
-  promptTransform?: (prompt: string) => string
+  promptTransform?: (prompt: string, loadedUrls: readonly ArticleUrlContent[]) => string
+  articleUrlSource?: string
   deliveryMode?: DeliveryMode
   includeBotReplyContext?: boolean
   submissionIntent?: SubmissionIntent
@@ -69,12 +78,21 @@ export function createTelegramAgentBot(
   )
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
+  const activeArticleLoads = new Map<number, Set<AbortController>>()
   const submissionGenerations = new Map<
     number,
     { generation: number; reason: "reset" | "cancel" }
   >()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
+  const articleUrlLoader =
+    dependencies.articleUrlLoader ??
+    createPublicUrlLoader({
+      allowedSchemes: settings.botUrlAllowedSchemes,
+      maxChars: settings.botUrlMaxExtractedChars,
+      timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
+      urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
+    })
   const audioTranscriber =
     dependencies.audioTranscriber ??
     new TelegramAudioTranscriber({
@@ -291,7 +309,8 @@ export function createTelegramAgentBot(
     }
     await inSubmissionOrder(chat.id, (release, isCurrent) =>
       submitInput(context, message, source, release, isCurrent, {
-        promptTransform: buildArticleRewritePrompt,
+        promptTransform: buildBlogPostPrompt,
+        articleUrlSource: [source, repliedText].filter(Boolean).join("\n"),
         deliveryMode: "publish",
         includeBotReplyContext: true,
         submissionIntent: "newTurn",
@@ -468,7 +487,55 @@ export function createTelegramAgentBot(
               : "請回應這則訊息。")
     if (transcripts.length > 0) prompt = promptWithAudioContext(prompt, transcripts)
     prompt = promptWithReplyContext(message, prompt, submissionOptions.includeBotReplyContext)
-    prompt = submissionOptions.promptTransform?.(prompt) ?? prompt
+    let loadedUrls: ArticleUrlContent[] = []
+    if (submissionOptions.articleUrlSource !== undefined) {
+      const chatId = context.chat?.id
+      const controller = new AbortController()
+      const active =
+        chatId === undefined ? undefined : (activeArticleLoads.get(chatId) ?? new Set())
+      if (chatId !== undefined && active) activeArticleLoads.set(chatId, active)
+      active?.add(controller)
+      try {
+        loadedUrls = await loadArticleSourceUrls(
+          submissionOptions.articleUrlSource,
+          {
+            load: (url, options) =>
+              traceUrlLoad(logger, url, undefined, "article-source", () =>
+                articleUrlLoader.load(url, options),
+              ),
+          },
+          {
+            maxChars: settings.botUrlMaxExtractedChars,
+            timeoutMs: Math.round(Math.min(30, settings.botUrlContentTimeoutSeconds) * 1_000),
+            signal: controller.signal,
+          },
+        )
+      } catch (error) {
+        if (!isCurrent()) return
+        logger.warn(
+          "Article source URL loading failed",
+          error instanceof TooManyArticleUrlsError
+            ? undefined
+            : { name: error instanceof Error ? error.name : "unknown" },
+        )
+        await delivery.reply(
+          context,
+          error instanceof TooManyArticleUrlsError
+            ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
+            : error instanceof ArticleUrlBudgetError
+              ? "網址內容長度上限不足，請提高 BOT_URL_MAX_EXTRACTED_CHARS 後再試。"
+              : "無法載入文章來源網址，請確認網址可公開存取後再試。",
+          replyOptions(context),
+        )
+        return
+      } finally {
+        controller.abort()
+        active?.delete(controller)
+        if (chatId !== undefined && active?.size === 0) activeArticleLoads.delete(chatId)
+      }
+    }
+    if (!isCurrent()) return
+    prompt = submissionOptions.promptTransform?.(prompt, loadedUrls) ?? prompt
     await answer(
       context,
       prompt,
@@ -711,6 +778,7 @@ export function createTelegramAgentBot(
       generation: (submissionGenerations.get(chatId)?.generation ?? 0) + 1,
       reason,
     })
+    for (const controller of activeArticleLoads.get(chatId) ?? []) controller.abort()
     const { gate, release } = submissionGate(chatId, Promise.resolve())
     submissionTails.set(chatId, gate)
     return release
