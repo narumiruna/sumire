@@ -770,6 +770,41 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toBe("回答")
   })
 
+  it("sends a fresh answer when the pending reply can no longer be edited", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "回答", checkpoint }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method) => {
+      if (method === "editMessageText") throw new Error("message to edit not found")
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請回答"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "sendMessage",
+    ])
+    expect(calls[2]?.payload.text).toBe("回答")
+    expect(calls[2]?.payload.reply_parameters).toEqual({
+      message_id: 2,
+      allow_sending_without_reply: true,
+    })
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
+  })
+
   it("keeps the pending reply when it is exactly the final answer", async () => {
     const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
     const sessions = createSessions({
@@ -1394,6 +1429,48 @@ describe("Telegram bot update routing", () => {
     expect(calls[2]?.payload.text).toBe("此請求已因重設對話而取消。")
   })
 
+  it("sends a fresh cancellation reply if the pending reply was deleted", async () => {
+    let finishSubmission: ((value: { kind: "completed"; text: string }) => void) | undefined
+    const pendingSubmission = new Promise<{ kind: "completed"; text: string }>((resolve) => {
+      finishSubmission = resolve
+    })
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return pendingSubmission
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method) => {
+      if (method === "editMessageText") throw new Error("message to edit not found")
+    })
+
+    const handling = telegram.bot.handleUpdate(privateMessage(12, "長任務"))
+    try {
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+      await telegram.bot.handleUpdate(commandMessage(13, "/reset"))
+    } finally {
+      finishSubmission?.({ kind: "completed", text: "過期回覆" })
+      await handling
+    }
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "sendMessage",
+      "editMessageText",
+      "sendMessage",
+    ])
+    expect(calls.at(-1)?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(sessions.recordDelivery).not.toHaveBeenCalled()
+  })
+
   it("does not publish a stale Morsel reply after reset", async () => {
     let finishPublication: ((value: string) => void) | undefined
     const pendingPublication = new Promise<string>((resolve) => {
@@ -1515,13 +1592,15 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).not.toHaveBeenCalled()
   })
 
-  it("does not record a Morsel answer when Telegram rejects its link", async () => {
+  it("reuses the published Morsel link when editing the pending reply fails", async () => {
     const shareUrl = "https://morsel.example/s/share"
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const publish = vi.fn(async () => shareUrl)
     const sessions = createSessions({
       submit: vi.fn(async () => ({
         kind: "completed" as const,
         text: "x".repeat(5_000),
-        checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
+        checkpoint,
       })),
     })
     const telegram = createTelegramAgentBot(
@@ -1530,7 +1609,7 @@ describe("Telegram bot update routing", () => {
       logger,
       {
         botInfo,
-        morselPublisher: { isConfigured: true, publish: vi.fn(async () => shareUrl) },
+        morselPublisher: { isConfigured: true, publish },
       },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
@@ -1539,13 +1618,15 @@ describe("Telegram bot update routing", () => {
       }
     })
     await telegram.bot.handleUpdate(privateMessage(18, "長回覆"))
-    expect(sessions.recordDelivery).not.toHaveBeenCalled()
+    expect(publish).toHaveBeenCalledExactlyOnceWith("x".repeat(5_000))
     expect(calls.map((call) => call.method)).toEqual([
       "sendMessage",
       "editMessageText",
-      "editMessageText",
+      "sendMessage",
     ])
-    expect(calls.at(-1)?.payload.text).toBe("AI 服務暫時無法使用，請稍後再試。")
+    expect(calls[2]?.payload.text).toBe(calls[1]?.payload.text)
+    expect(calls[2]?.payload.text).toContain(shareUrl)
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
   })
 
   it("orders passive group context after an earlier addressed image submission", async () => {

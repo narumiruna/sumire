@@ -627,7 +627,15 @@ export function createTelegramAgentBot(
           ? "此請求已取消。"
           : "此請求已因重設對話而取消。"
       if (status) {
-        await delivery.edit(context, status.chat.id, status.message_id, text)
+        const replacement = await delivery.editOrReply(
+          context,
+          status.chat.id,
+          status.message_id,
+          text,
+          replyOptions,
+          () => true,
+        )
+        if (replacement.message) status = replacement.message
       } else {
         status = await delivery.reply(context, text, replyOptions)
       }
@@ -711,21 +719,25 @@ export function createTelegramAgentBot(
           let outcome: "delivered" | "unavailable" | "stale"
           if (status) {
             // Telegram rejects edits that leave the pending reply unchanged.
-            outcome =
+            if (
               pendingVisible &&
               resultDeliveryMode === "default" &&
               sanitizeTelegramText(result.text) === pendingText
-                ? isCurrent()
-                  ? "delivered"
-                  : "stale"
-                : await delivery.edit(
-                    context,
-                    status.chat.id,
-                    status.message_id,
-                    result.text,
-                    isCurrent,
-                    resultDeliveryMode,
-                  )
+            ) {
+              outcome = isCurrent() ? "delivered" : "stale"
+            } else {
+              const replacement = await delivery.editOrReply(
+                context,
+                status.chat.id,
+                status.message_id,
+                result.text,
+                replyOptions,
+                isCurrent,
+                resultDeliveryMode,
+              )
+              if (replacement.message) status = replacement.message
+              outcome = replacement.result
+            }
           } else {
             const finalReply = await delivery.guardedReply(
               context,
@@ -757,17 +769,16 @@ export function createTelegramAgentBot(
       logger.error(`Pi agent request failed for chat_id=${chatId}`, error)
       await progressStatus.close()
       if (status) {
-        if (
-          (await delivery.edit(
-            context,
-            status.chat.id,
-            status.message_id,
-            "AI 服務暫時無法使用，請稍後再試。",
-            isCurrent,
-          )) === "stale"
-        ) {
-          await cancelStatus()
-        }
+        const replacement = await delivery.editOrReply(
+          context,
+          status.chat.id,
+          status.message_id,
+          "AI 服務暫時無法使用，請稍後再試。",
+          replyOptions,
+          isCurrent,
+        )
+        if (replacement.message) status = replacement.message
+        if (replacement.result === "stale") await cancelStatus()
       } else {
         const errorReply = await delivery.guardedReply(
           context,

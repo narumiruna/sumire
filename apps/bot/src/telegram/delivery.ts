@@ -46,6 +46,24 @@ export function createTelegramDelivery(
     }
   }
 
+  async function editPrepared(
+    context: Context,
+    chatId: number,
+    messageId: number,
+    prepared: Awaited<ReturnType<typeof prepare>>,
+    isCurrent: () => boolean,
+  ): Promise<EditResult> {
+    if (!isCurrent()) return "stale"
+    await context.api.editMessageText(
+      chatId,
+      messageId,
+      telegramHtmlChunks(prepared.text)[0] ?? " ",
+      { parse_mode: "HTML" },
+    )
+    if (!isCurrent()) return "stale"
+    return prepared.delivered ? "delivered" : "unavailable"
+  }
+
   return {
     async reply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
       const prepared = await prepare(text)
@@ -88,15 +106,31 @@ export function createTelegramDelivery(
     ): Promise<EditResult> {
       if (!isCurrent()) return "stale"
       const prepared = await prepare(text, mode)
-      if (!isCurrent()) return "stale"
-      await context.api.editMessageText(
-        chatId,
-        messageId,
-        telegramHtmlChunks(prepared.text)[0] ?? " ",
-        { parse_mode: "HTML" },
-      )
-      if (!isCurrent()) return "stale"
-      return prepared.delivered ? "delivered" : "unavailable"
+      return editPrepared(context, chatId, messageId, prepared, isCurrent)
+    },
+    async editOrReply(
+      context: Context,
+      chatId: number,
+      messageId: number,
+      text: string,
+      options: Parameters<Context["reply"]>[1],
+      isCurrent: () => boolean,
+      mode: DeliveryMode = "default",
+    ) {
+      if (!isCurrent()) return { result: "stale" as const }
+      const prepared = await prepare(text, mode)
+      try {
+        return { result: await editPrepared(context, chatId, messageId, prepared, isCurrent) }
+      } catch (error) {
+        logger.warn(`Telegram edit failed for chat_id=${chatId}; sending a new reply`, error)
+        if (!isCurrent()) return { result: "stale" as const }
+        const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
+        if (!isCurrent()) return { message, result: "stale" as const }
+        return {
+          message,
+          result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
+        }
+      }
     },
   }
 }
