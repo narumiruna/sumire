@@ -78,6 +78,7 @@ export function createTelegramAgentBot(
   )
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
+  const pendingBotReplies = new Map<number, Set<number>>()
   const activeArticleLoads = new Map<number, Set<AbortController>>()
   const submissionGenerations = new Map<
     number,
@@ -281,7 +282,10 @@ export function createTelegramAgentBot(
     const chat = context.chat
     if (!rawMessage || !chat) return
     const message = rawMessage as unknown as TelegramMessageLike
-    const repliedText = message.reply_to_message ? messageText(message.reply_to_message).trim() : ""
+    const repliedText =
+      message.reply_to_message && !isPendingBotReply(chat.id, message, context.me.id)
+        ? messageText(message.reply_to_message).trim()
+        : ""
     if (
       !source &&
       !repliedText &&
@@ -486,7 +490,10 @@ export function createTelegramAgentBot(
               ? "請回應這段音訊的內容。"
               : "請回應這則訊息。")
     if (transcripts.length > 0) prompt = promptWithAudioContext(prompt, transcripts)
-    prompt = promptWithReplyContext(message, prompt, submissionOptions.includeBotReplyContext)
+    const promptMessage = isPendingBotReply(context.chat?.id, message, context.me.id)
+      ? { ...message, reply_to_message: undefined }
+      : message
+    prompt = promptWithReplyContext(promptMessage, prompt, submissionOptions.includeBotReplyContext)
     let loadedUrls: ArticleUrlContent[] = []
     if (submissionOptions.articleUrlSource !== undefined) {
       const chatId = context.chat?.id
@@ -542,7 +549,7 @@ export function createTelegramAgentBot(
       images,
       release,
       isCurrent,
-      repliedBotMessageId(message, context.me.id),
+      repliedBotMessageId(promptMessage, context.me.id),
       submissionOptions.deliveryMode,
       submissionOptions.includeBotReplyContext,
       submissionOptions.submissionIntent,
@@ -568,6 +575,19 @@ export function createTelegramAgentBot(
       )
     }
   })
+
+  function isPendingBotReply(
+    chatId: number | undefined,
+    message: TelegramMessageLike,
+    botId: number,
+  ): boolean {
+    const replyId = repliedBotMessageId(message, botId)
+    return (
+      chatId !== undefined &&
+      replyId !== undefined &&
+      pendingBotReplies.get(chatId)?.has(replyId) === true
+    )
+  }
 
   async function answer(
     context: Context,
@@ -597,14 +617,34 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
+    const pendingText = "處理中…"
+    let visiblePayload: string | undefined
+    let pendingMessageId: number | undefined
+    const clearPendingReply = () => {
+      if (pendingMessageId === undefined) return
+      const ids = pendingBotReplies.get(chatId)
+      ids?.delete(pendingMessageId)
+      if (ids?.size === 0) pendingBotReplies.delete(chatId)
+      pendingMessageId = undefined
+    }
     const progressStatus = createProgressStatusEditor(
       async (text) => {
         if (status) {
-          await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
+          visiblePayload = undefined
+          const outcome = await delivery.edit(
+            context,
+            status.chat.id,
+            status.message_id,
+            text,
+            isCurrent,
+          )
+          visiblePayload = outcome === "delivered" ? delivery.directPayload(text) : undefined
           return
         }
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
+        visiblePayload =
+          progressReply.result === "delivered" ? delivery.directPayload(text) : undefined
       },
       (error) => logger.warn(`Telegram progress update failed for chat_id=${chatId}`, error),
     )
@@ -615,7 +655,15 @@ export function createTelegramAgentBot(
           ? "此請求已取消。"
           : "此請求已因重設對話而取消。"
       if (status) {
-        await delivery.edit(context, status.chat.id, status.message_id, text)
+        const replacement = await delivery.editOrReply(
+          context,
+          status.chat.id,
+          status.message_id,
+          text,
+          replyOptions,
+          () => true,
+        )
+        if (replacement.message) status = replacement.message
       } else {
         status = await delivery.reply(context, text, replyOptions)
       }
@@ -625,6 +673,25 @@ export function createTelegramAgentBot(
       return
     }
     try {
+      const pendingReply = await delivery.guardedReply(
+        context,
+        pendingText,
+        replyOptions,
+        isCurrent,
+      )
+      status = pendingReply.message
+      visiblePayload =
+        pendingReply.result === "delivered" ? delivery.directPayload(pendingText) : undefined
+      if (pendingReply.result === "stale") {
+        await cancelStatus()
+        return
+      }
+      if (status) {
+        pendingMessageId = status.message_id
+        const ids = pendingBotReplies.get(chatId) ?? new Set<number>()
+        ids.add(pendingMessageId)
+        pendingBotReplies.set(chatId, ids)
+      }
       const unresolvedReplyPrompt =
         replyToBotMessageId !== undefined && context.message
           ? replyContextIncluded
@@ -656,8 +723,8 @@ export function createTelegramAgentBot(
             isCurrent,
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
-              if (steps.length > 0) hasProgressSnapshot = true
-              progressStatus.publish(renderProgressStatus(steps))
+              hasProgressSnapshot = steps.length > 0
+              progressStatus.publish(steps.length > 0 ? renderProgressStatus(steps) : pendingText)
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
@@ -674,6 +741,7 @@ export function createTelegramAgentBot(
       }
       await progressStatus.close()
       const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
+      let previousStatusId: number | undefined
       const deliveryResult = await withLogSpan(
         logger,
         "telegram.deliver",
@@ -686,14 +754,28 @@ export function createTelegramAgentBot(
         async (span) => {
           let outcome: "delivered" | "unavailable" | "stale"
           if (status) {
-            outcome = await delivery.edit(
+            // Telegram has no API to check whether an unchanged reply still exists.
+            // Send the answer as a new message and clear the old status if possible.
+            const replace =
+              visiblePayload !== undefined &&
+              resultDeliveryMode === "default" &&
+              delivery.directPayload(result.text) === visiblePayload
+                ? delivery.replyAndClearPrevious
+                : delivery.editOrReply
+            const replacement = await replace(
               context,
               status.chat.id,
               status.message_id,
               result.text,
+              replyOptions,
               isCurrent,
               resultDeliveryMode,
             )
+            if (replacement.message) {
+              if (replacement.previousMessageUpdated) previousStatusId = status.message_id
+              status = replacement.message
+            }
+            outcome = replacement.result
           } else {
             const finalReply = await delivery.guardedReply(
               context,
@@ -714,8 +796,15 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
+      clearPendingReply()
       if (deliveryResult === "delivered" && status && result.kind === "completed") {
-        await sessions.recordDelivery(chatId, result.checkpoint, [status.message_id])
+        await sessions.recordDelivery(
+          chatId,
+          result.checkpoint,
+          previousStatusId === undefined
+            ? [status.message_id]
+            : [previousStatusId, status.message_id],
+        )
       }
     } catch (error) {
       if (!isCurrent()) {
@@ -725,17 +814,16 @@ export function createTelegramAgentBot(
       logger.error(`Pi agent request failed for chat_id=${chatId}`, error)
       await progressStatus.close()
       if (status) {
-        if (
-          (await delivery.edit(
-            context,
-            status.chat.id,
-            status.message_id,
-            "AI 服務暫時無法使用，請稍後再試。",
-            isCurrent,
-          )) === "stale"
-        ) {
-          await cancelStatus()
-        }
+        const replacement = await delivery.editOrReply(
+          context,
+          status.chat.id,
+          status.message_id,
+          "AI 服務暫時無法使用，請稍後再試。",
+          replyOptions,
+          isCurrent,
+        )
+        if (replacement.message) status = replacement.message
+        if (replacement.result === "stale") await cancelStatus()
       } else {
         const errorReply = await delivery.guardedReply(
           context,
@@ -746,6 +834,8 @@ export function createTelegramAgentBot(
         status = errorReply.message
         if (errorReply.result === "stale") await cancelStatus()
       }
+    } finally {
+      clearPendingReply()
     }
   }
 

@@ -67,6 +67,74 @@ describe("mandatory Morsel delivery", () => {
     })
   })
 
+  it("sends the prepared content as a new reply when editing fails", async () => {
+    const { delivery, context, editMessageText, reply, publisher } = setup()
+    editMessageText.mockRejectedValue(new Error("message to edit not found"))
+    const options = { parse_mode: "HTML" as const }
+
+    await expect(
+      delivery.editOrReply(context, 7, 100, "<回答>", options, () => true),
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: false,
+      result: "delivered",
+    })
+    expect(editMessageText).toHaveBeenCalledWith(7, 100, "&lt;回答&gt;", {
+      parse_mode: "HTML",
+    })
+    expect(reply).toHaveBeenCalledExactlyOnceWith("&lt;回答&gt;", options)
+    expect(publisher.publish).not.toHaveBeenCalled()
+  })
+
+  it("clears the old pending status after a transient edit failure", async () => {
+    const { delivery, context, editMessageText, reply } = setup()
+    editMessageText.mockRejectedValueOnce(new Error("temporary transport failure"))
+
+    await expect(
+      delivery.editOrReply(context, 7, 100, "回答", { parse_mode: "HTML" }, () => true),
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: true,
+      result: "delivered",
+    })
+    expect(editMessageText).toHaveBeenCalledTimes(2)
+    expect(editMessageText).toHaveBeenNthCalledWith(2, 7, 100, "已改以新訊息回覆。", {
+      parse_mode: "HTML",
+    })
+    expect(reply).toHaveBeenCalledExactlyOnceWith("回答", { parse_mode: "HTML" })
+  })
+
+  it("sends an unchanged answer first, then clears the previous status", async () => {
+    const { delivery, context, editMessageText, reply } = setup()
+    const options = { parse_mode: "HTML" as const }
+
+    await expect(
+      delivery.replyAndClearPrevious(context, 7, 100, "處理中…", options, () => true),
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: true,
+      result: "delivered",
+    })
+    expect(reply).toHaveBeenCalledExactlyOnceWith("處理中…", options)
+    expect(editMessageText).toHaveBeenCalledExactlyOnceWith(7, 100, "已改以新訊息回覆。", {
+      parse_mode: "HTML",
+    })
+  })
+
+  it("does not retry a failed edit after the request is invalidated", async () => {
+    const { delivery, context, editMessageText, reply } = setup()
+    let current = true
+    editMessageText.mockImplementation(async () => {
+      current = false
+      throw new Error("message to edit not found")
+    })
+
+    await expect(
+      delivery.editOrReply(context, 7, 100, "回答", { parse_mode: "HTML" }, () => current),
+    ).resolves.toEqual({ result: "stale" })
+    expect(reply).not.toHaveBeenCalled()
+  })
+
   it("cannot raise the hard limit through legacy threshold settings", async () => {
     const { delivery, context, publisher } = setup(true, 5000)
     await delivery.reply(context, "x".repeat(1001))

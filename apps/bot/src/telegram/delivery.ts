@@ -46,7 +46,60 @@ export function createTelegramDelivery(
     }
   }
 
+  async function editPrepared(
+    context: Context,
+    chatId: number,
+    messageId: number,
+    prepared: Awaited<ReturnType<typeof prepare>>,
+    isCurrent: () => boolean,
+  ): Promise<EditResult> {
+    if (!isCurrent()) return "stale"
+    await context.api.editMessageText(
+      chatId,
+      messageId,
+      telegramHtmlChunks(prepared.text)[0] ?? " ",
+      { parse_mode: "HTML" },
+    )
+    if (!isCurrent()) return "stale"
+    return prepared.delivered ? "delivered" : "unavailable"
+  }
+
+  async function sendPreparedAndClearPrevious(
+    context: Context,
+    chatId: number,
+    messageId: number,
+    prepared: Awaited<ReturnType<typeof prepare>>,
+    options: Parameters<Context["reply"]>[1],
+    isCurrent: () => boolean,
+  ) {
+    if (!isCurrent()) return { result: "stale" as const }
+    const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
+    // The original may still be visible, or may have been deleted already.
+    let previousMessageUpdated = false
+    try {
+      await context.api.editMessageText(chatId, messageId, "已改以新訊息回覆。", {
+        parse_mode: "HTML",
+      })
+      previousMessageUpdated = true
+    } catch (cleanupError) {
+      logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
+    }
+    if (!isCurrent()) return { message, result: "stale" as const }
+    return {
+      message,
+      previousMessageUpdated,
+      result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
+    }
+  }
+
   return {
+    // Only direct replies have a predictable payload without publishing to Morsel.
+    directPayload(text: string): string | undefined {
+      const sanitized = sanitizeTelegramText(text)
+      return Array.from(sanitized).length <= limit
+        ? (telegramHtmlChunks(sanitized)[0] ?? " ")
+        : undefined
+    },
     async reply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
       const prepared = await prepare(text)
       return context.reply(
@@ -88,15 +141,48 @@ export function createTelegramDelivery(
     ): Promise<EditResult> {
       if (!isCurrent()) return "stale"
       const prepared = await prepare(text, mode)
-      if (!isCurrent()) return "stale"
-      await context.api.editMessageText(
-        chatId,
-        messageId,
-        telegramHtmlChunks(prepared.text)[0] ?? " ",
-        { parse_mode: "HTML" },
-      )
-      if (!isCurrent()) return "stale"
-      return prepared.delivered ? "delivered" : "unavailable"
+      return editPrepared(context, chatId, messageId, prepared, isCurrent)
+    },
+    async editOrReply(
+      context: Context,
+      chatId: number,
+      messageId: number,
+      text: string,
+      options: Parameters<Context["reply"]>[1],
+      isCurrent: () => boolean,
+      mode: DeliveryMode = "default",
+    ) {
+      if (!isCurrent()) return { result: "stale" as const }
+      const prepared = await prepare(text, mode)
+      try {
+        return {
+          result: await editPrepared(context, chatId, messageId, prepared, isCurrent),
+          message: undefined,
+        }
+      } catch (error) {
+        logger.warn(`Telegram edit failed for chat_id=${chatId}; sending a new reply`, error)
+        return sendPreparedAndClearPrevious(
+          context,
+          chatId,
+          messageId,
+          prepared,
+          options,
+          isCurrent,
+        )
+      }
+    },
+    async replyAndClearPrevious(
+      context: Context,
+      chatId: number,
+      messageId: number,
+      text: string,
+      options: Parameters<Context["reply"]>[1],
+      isCurrent: () => boolean,
+      mode: DeliveryMode = "default",
+    ) {
+      if (!isCurrent()) return { result: "stale" as const }
+      const prepared = await prepare(text, mode)
+      return sendPreparedAndClearPrevious(context, chatId, messageId, prepared, options, isCurrent)
     },
   }
 }
