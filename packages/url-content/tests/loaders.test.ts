@@ -211,6 +211,20 @@ describe("source loaders", () => {
     ).resolves.toBe(text)
   })
 
+  it("converts XHTML responses as HTML instead of returning raw markup", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response(
+          '<html xmlns="http://www.w3.org/1999/xhtml"><head><script>noise()</script><style>body { color: red }</style></head><body><h1>XHTML article</h1><p>Readable body.</p></body></html>',
+          { headers: { "content-type": "application/xhtml+xml; charset=utf-8" } },
+        ),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/article")).resolves.toBe(
+      "# XHTML article\nReadable body.",
+    )
+  })
+
   it("preserves literal HTML tags in non-HTML textual impers responses", async () => {
     const text = "<template>literal snippet</template>"
     let content: Buffer = Buffer.from(text)

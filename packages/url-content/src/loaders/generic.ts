@@ -26,7 +26,7 @@ export const DEFAULT_HTTP_HEADERS = {
 
 function readableText(response: RetrievedHtml): string {
   const mediaType = response.contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
-  return !mediaType || mediaType === "text/html"
+  return !mediaType || mediaType === "text/html" || mediaType === "application/xhtml+xml"
     ? htmlToMarkdown(response.content)
     : response.content.trim()
 }
