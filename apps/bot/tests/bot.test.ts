@@ -770,6 +770,65 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toBe("回答")
   })
 
+  it("keeps the pending reply when it is exactly the final answer", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "處理中…", checkpoint }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method, payload) => {
+      if (method === "editMessageText" && payload.text === "處理中…") {
+        throw new Error("message is not modified")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請重複：處理中…"))
+
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
+    expect(calls[0]?.payload.text).toBe("處理中…")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
+  })
+
+  it("edits the pending reply when progress is visible before the same final answer", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return { kind: "completed" as const, text: "處理中…" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請重複：處理中…"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[1]?.payload.text).toContain("🔄 分析需求")
+    expect(calls[2]?.payload.text).toBe("處理中…")
+  })
+
   it("renders a progress-free answer as Telegram HTML", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
@@ -846,6 +905,42 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toContain("🔄 執行中")
     expect(calls[2]?.payload.text).toBe("處理中…")
     expect(calls[3]?.payload.text).toBe("完成")
+  })
+
+  it("skips an unchanged final edit after progress is cleared", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.([])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return { kind: "completed" as const, text: "處理中…" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method, payload) => {
+      if (method === "editMessageText" && payload.text === "處理中…") {
+        const precedingText = calls.at(-2)?.payload.text
+        if (precedingText === "處理中…") throw new Error("message is not modified")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請重複：處理中…"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+    expect(calls[2]?.payload.text).toBe("處理中…")
   })
 
   it("replaces the structured progress reply with the final answer", async () => {

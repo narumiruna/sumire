@@ -598,14 +598,24 @@ export function createTelegramAgentBot(
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
     const pendingText = "處理中…"
+    let pendingVisible = false
     const progressStatus = createProgressStatusEditor(
       async (text) => {
         if (status) {
-          await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
+          pendingVisible = false
+          const outcome = await delivery.edit(
+            context,
+            status.chat.id,
+            status.message_id,
+            text,
+            isCurrent,
+          )
+          pendingVisible = outcome === "delivered" && text === pendingText
           return
         }
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
+        pendingVisible = progressReply.result === "delivered" && text === pendingText
       },
       (error) => logger.warn(`Telegram progress update failed for chat_id=${chatId}`, error),
     )
@@ -633,6 +643,7 @@ export function createTelegramAgentBot(
         isCurrent,
       )
       status = pendingReply.message
+      pendingVisible = pendingReply.result === "delivered"
       if (pendingReply.result === "stale") {
         await cancelStatus()
         return
@@ -698,14 +709,20 @@ export function createTelegramAgentBot(
         async (span) => {
           let outcome: "delivered" | "unavailable" | "stale"
           if (status) {
-            outcome = await delivery.edit(
-              context,
-              status.chat.id,
-              status.message_id,
-              result.text,
-              isCurrent,
-              resultDeliveryMode,
-            )
+            // Telegram rejects edits that leave the pending reply unchanged.
+            outcome =
+              pendingVisible && resultDeliveryMode === "default" && result.text === pendingText
+                ? isCurrent()
+                  ? "delivered"
+                  : "stale"
+                : await delivery.edit(
+                    context,
+                    status.chat.id,
+                    status.message_id,
+                    result.text,
+                    isCurrent,
+                    resultDeliveryMode,
+                  )
           } else {
             const finalReply = await delivery.guardedReply(
               context,
