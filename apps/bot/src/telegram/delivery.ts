@@ -64,6 +64,31 @@ export function createTelegramDelivery(
     return prepared.delivered ? "delivered" : "unavailable"
   }
 
+  async function sendPreparedAndClearPrevious(
+    context: Context,
+    chatId: number,
+    messageId: number,
+    prepared: Awaited<ReturnType<typeof prepare>>,
+    options: Parameters<Context["reply"]>[1],
+    isCurrent: () => boolean,
+  ) {
+    if (!isCurrent()) return { result: "stale" as const }
+    const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
+    // The original may still be visible, or may have been deleted already.
+    try {
+      await context.api.editMessageText(chatId, messageId, "已改以新訊息回覆。", {
+        parse_mode: "HTML",
+      })
+    } catch (cleanupError) {
+      logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
+    }
+    if (!isCurrent()) return { message, result: "stale" as const }
+    return {
+      message,
+      result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
+    }
+  }
+
   return {
     // Only direct replies have a predictable payload without publishing to Morsel.
     directPayload(text: string): string | undefined {
@@ -127,26 +152,34 @@ export function createTelegramDelivery(
       if (!isCurrent()) return { result: "stale" as const }
       const prepared = await prepare(text, mode)
       try {
-        return { result: await editPrepared(context, chatId, messageId, prepared, isCurrent) }
+        return {
+          result: await editPrepared(context, chatId, messageId, prepared, isCurrent),
+          message: undefined,
+        }
       } catch (error) {
         logger.warn(`Telegram edit failed for chat_id=${chatId}; sending a new reply`, error)
-        if (!isCurrent()) return { result: "stale" as const }
-        const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
-        // A transient edit failure can leave the original pending message visible.
-        // Best effort: replace it with a pointer to the fresh reply.
-        try {
-          await context.api.editMessageText(chatId, messageId, "已改以新訊息回覆。", {
-            parse_mode: "HTML",
-          })
-        } catch (cleanupError) {
-          logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
-        }
-        if (!isCurrent()) return { message, result: "stale" as const }
-        return {
-          message,
-          result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
-        }
+        return sendPreparedAndClearPrevious(
+          context,
+          chatId,
+          messageId,
+          prepared,
+          options,
+          isCurrent,
+        )
       }
+    },
+    async replyAndClearPrevious(
+      context: Context,
+      chatId: number,
+      messageId: number,
+      text: string,
+      options: Parameters<Context["reply"]>[1],
+      isCurrent: () => boolean,
+      mode: DeliveryMode = "default",
+    ) {
+      if (!isCurrent()) return { result: "stale" as const }
+      const prepared = await prepare(text, mode)
+      return sendPreparedAndClearPrevious(context, chatId, messageId, prepared, options, isCurrent)
     },
   }
 }

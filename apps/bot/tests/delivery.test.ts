@@ -96,6 +96,19 @@ describe("mandatory Morsel delivery", () => {
     expect(reply).toHaveBeenCalledExactlyOnceWith("回答", { parse_mode: "HTML" })
   })
 
+  it("sends an unchanged answer first, then clears the previous status", async () => {
+    const { delivery, context, editMessageText, reply } = setup()
+    const options = { parse_mode: "HTML" as const }
+
+    await expect(
+      delivery.replyAndClearPrevious(context, 7, 100, "處理中…", options, () => true),
+    ).resolves.toMatchObject({ message: { message_id: 1 }, result: "delivered" })
+    expect(reply).toHaveBeenCalledExactlyOnceWith("處理中…", options)
+    expect(editMessageText).toHaveBeenCalledExactlyOnceWith(7, 100, "已改以新訊息回覆。", {
+      parse_mode: "HTML",
+    })
+  })
+
   it("does not retry a failed edit after the request is invalidated", async () => {
     const { delivery, context, editMessageText, reply } = setup()
     let current = true

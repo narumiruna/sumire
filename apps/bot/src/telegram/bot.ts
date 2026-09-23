@@ -753,26 +753,25 @@ export function createTelegramAgentBot(
         async (span) => {
           let outcome: "delivered" | "unavailable" | "stale"
           if (status) {
-            // Telegram rejects edits that leave the rendered reply unchanged.
-            if (
+            // Telegram has no API to check whether an unchanged reply still exists.
+            // Send the answer as a new message and clear the old status if possible.
+            const replace =
               visiblePayload !== undefined &&
               resultDeliveryMode === "default" &&
               delivery.directPayload(result.text) === visiblePayload
-            ) {
-              outcome = isCurrent() ? "delivered" : "stale"
-            } else {
-              const replacement = await delivery.editOrReply(
-                context,
-                status.chat.id,
-                status.message_id,
-                result.text,
-                replyOptions,
-                isCurrent,
-                resultDeliveryMode,
-              )
-              if (replacement.message) status = replacement.message
-              outcome = replacement.result
-            }
+                ? delivery.replyAndClearPrevious
+                : delivery.editOrReply
+            const replacement = await replace(
+              context,
+              status.chat.id,
+              status.message_id,
+              result.text,
+              replyOptions,
+              isCurrent,
+              resultDeliveryMode,
+            )
+            if (replacement.message) status = replacement.message
+            outcome = replacement.result
           } else {
             const finalReply = await delivery.guardedReply(
               context,
