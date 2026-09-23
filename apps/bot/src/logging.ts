@@ -112,10 +112,42 @@ export function createLogger(
   }
 
   return {
-    span: (name, attributes, callback) =>
-      logfireEnabled && logfireClient.span
-        ? logfireClient.span(name, { attributes, callback })
-        : callback(noOpSpan),
+    span: async <T>(
+      name: string,
+      attributes: SpanAttributes,
+      callback: (span: TraceSpan) => Promise<T>,
+    ): Promise<T> => {
+      if (!logfireEnabled || !logfireClient.span) return callback(noOpSpan)
+
+      let operation: Promise<T> | undefined
+      try {
+        await logfireClient.span(name, {
+          attributes,
+          callback: (span) => {
+            operation ??= Promise.resolve().then(() =>
+              callback({
+                setAttribute: (key, value) => {
+                  try {
+                    span.setAttribute(key, value)
+                  } catch (error) {
+                    writeLocal("WARN", "Logfire span attribute failed", error)
+                  }
+                },
+              }),
+            )
+            return operation
+          },
+        })
+      } catch (error) {
+        if (operation) {
+          const result = await operation
+          writeLocal("WARN", "Logfire span failed; continuing without trace", error)
+          return result
+        }
+        writeLocal("WARN", "Logfire span failed; continuing without trace", error)
+      }
+      return operation ?? callback(noOpSpan)
+    },
     debug: (message, details) => {
       if (verbose) write("DEBUG", message, details)
     },

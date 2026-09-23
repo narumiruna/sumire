@@ -87,6 +87,97 @@ describe("createLogger", () => {
     expect(recorded).toEqual({ "telegram.message_id": 42, outcome: "delivered" })
   })
 
+  it.each(["throws", "rejects"])(
+    "runs an operation without a span when Logfire %s before invoking it",
+    async (failure) => {
+      const client = createLogfireClient()
+      client.span = () => {
+        if (failure === "throws") throw new Error("span startup failed")
+        return Promise.reject(new Error("span startup failed"))
+      }
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+      const logger = createLogger(false, "write-token", client)
+      const operation = vi.fn(async () => "delivered")
+
+      await expect(logger.span?.("telegram.request", {}, operation)).resolves.toBe("delivered")
+      expect(operation).toHaveBeenCalledOnce()
+      expect(stderr.mock.calls.flat().join(" ")).toContain("Logfire span failed")
+    },
+  )
+
+  it("preserves a completed operation when Logfire rejects after invoking it", async () => {
+    const client = createLogfireClient()
+    client.span = async (_name, { callback }) => {
+      await callback({ setAttribute: () => {} })
+      throw new Error("span export failed")
+    }
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const operation = vi.fn(async (span: TraceSpan) => {
+      span.setAttribute("delivery.outcome", "delivered")
+      return "delivered"
+    })
+
+    await expect(logger.span?.("telegram.deliver", {}, operation)).resolves.toBe("delivered")
+    expect(operation).toHaveBeenCalledOnce()
+    expect(stderr.mock.calls.flat().join(" ")).toContain("Logfire span failed")
+  })
+
+  it("waits for an in-flight operation and ignores attribute failures and early SDK rejection", async () => {
+    const client = createLogfireClient()
+    client.span = async (_name, { callback }) => {
+      void callback({
+        setAttribute: () => {
+          throw new Error("span attribute failed")
+        },
+      })
+      throw new Error("span export failed")
+    }
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const operation = vi.fn(async (span: TraceSpan) => {
+      await Promise.resolve()
+      span.setAttribute("url.outcome", "success")
+      return "loaded"
+    })
+
+    await expect(logger.span?.("url.load", {}, operation)).resolves.toBe("loaded")
+    expect(operation).toHaveBeenCalledOnce()
+    expect(stderr.mock.calls.flat().join(" ")).toContain("Logfire span attribute failed")
+  })
+
+  it("preserves the operation's error rather than a span's replacement error", async () => {
+    const client = createLogfireClient()
+    client.span = async (_name, { callback }) => {
+      try {
+        await callback({ setAttribute: () => {} })
+      } catch {
+        throw new Error("span wrapped the error")
+      }
+      throw new Error("unreachable")
+    }
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const failure = new Error("publication failed")
+    const operation = vi.fn(async () => {
+      throw failure
+    })
+
+    await expect(logger.span?.("morsel.publish", {}, operation)).rejects.toBe(failure)
+    expect(operation).toHaveBeenCalledOnce()
+  })
+
+  it("runs the operation if the SDK resolves without invoking its callback", async () => {
+    const client = createLogfireClient()
+    client.span = async () => undefined as never
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const operation = vi.fn(async () => "ok")
+
+    await expect(logger.span?.("telegram.request", {}, operation)).resolves.toBe("ok")
+    expect(operation).toHaveBeenCalledOnce()
+  })
+
   it("uses stderr only when Logfire is not configured", async () => {
     const client = createLogfireClient()
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
