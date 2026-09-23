@@ -55,6 +55,23 @@ describe("article source URLs", () => {
     },
   )
 
+  it.each([
+    ["https://example.com/O'Reilly", "https://example.com/O'Reilly"],
+    ["'https://example.com/O'Reilly'", "https://example.com/O'Reilly"],
+    ["[來源]('https://example.com/O'Reilly').", "https://example.com/O'Reilly"],
+    ["https://example.com/path'", "https://example.com/path'"],
+  ])("preserves apostrophes within %s", async (source, url) => {
+    const load = vi.fn(async (value: string) => loaded(value, "content"))
+    const result = await loadArticleSourceUrls(
+      source,
+      { load },
+      { maxChars: 100, timeoutMs: 1_000 },
+    )
+
+    expect(load).toHaveBeenCalledWith(url, expect.any(Object))
+    expect(result[0]?.url).toBe(url)
+  })
+
   it("trims punctuation outside an unmatched Markdown closing delimiter", async () => {
     const load = vi.fn(async (url: string) => loaded(url, "content"))
     const result = await loadArticleSourceUrls(
@@ -89,6 +106,39 @@ describe("article source URLs", () => {
       ),
     ).rejects.toBeInstanceOf(TooManyArticleUrlsError)
     expect(load).not.toHaveBeenCalled()
+  })
+
+  it("redistributes unused character budget from short URLs to longer sources", async () => {
+    const short = "s".repeat(100)
+    const long = "l".repeat(10_000)
+    const load = vi.fn(async (url: string) => loaded(url, url.endsWith("/short") ? short : long))
+    const source = "https://example.com/short https://example.com/long"
+
+    const full = await loadArticleSourceUrls(
+      source,
+      { load },
+      {
+        maxChars: 12_000,
+        timeoutMs: 1_000,
+      },
+    )
+    expect(full.map(({ text, truncated }) => [text.length, truncated])).toEqual([
+      [100, false],
+      [10_000, false],
+    ])
+
+    const bounded = await loadArticleSourceUrls(
+      source,
+      { load },
+      {
+        maxChars: 6_000,
+        timeoutMs: 1_000,
+      },
+    )
+    expect(bounded.map(({ text, truncated }) => [text.length, truncated])).toEqual([
+      [100, false],
+      [5_900, true],
+    ])
   })
 
   it("keeps the count limit at four even with a tiny character budget", async () => {

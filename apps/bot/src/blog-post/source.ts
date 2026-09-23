@@ -1,8 +1,9 @@
 import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
 
 const maxArticleUrls = 4
-const urlPattern = /https?:\/\/[^\s<>"']+/giu
+const urlPattern = /https?:\/\/[^\s<>"]+/giu
 const trailingPunctuation = /[.,;!?。，；！？]+$/u
+const closingQuote = /'[.,;!?。，；！？]*$/u
 const closingDelimiters = new Map([
   [")", "("],
   ["]", "["],
@@ -46,7 +47,12 @@ export async function loadArticleSourceUrls(
 ): Promise<ArticleUrlContent[]> {
   const urls = [
     ...new Set(
-      [...source.matchAll(urlPattern)].map(([url]) => trimUrlEnd(url ?? "")).filter(Boolean),
+      [...source.matchAll(urlPattern)]
+        .map((match) => {
+          const url = trimUrlEnd(match[0])
+          return source[(match.index ?? 0) - 1] === "'" ? url.replace(closingQuote, "") : url
+        })
+        .filter(Boolean),
     ),
   ]
   if (urls.length > maxArticleUrls) {
@@ -65,22 +71,26 @@ export async function loadArticleSourceUrls(
   ])
   if (signal.aborted) throw signal.reason
   try {
-    return await Promise.race([
-      Promise.all(
-        urls.map(async (url) => {
-          const result = await loader.load(url, { signal })
-          const charLimit = Math.floor(options.maxChars / urls.length)
-          return {
-            url,
-            text: result.text.slice(0, charLimit),
-            truncated: result.truncated || result.text.length > charLimit,
-          }
-        }),
-      ),
+    const results = await Promise.race([
+      Promise.all(urls.map((url) => loader.load(url, { signal }))),
       new Promise<never>((_, reject) => {
         signal.addEventListener("abort", () => reject(signal.reason), { once: true })
       }),
     ])
+    const share = Math.floor(options.maxChars / results.length)
+    const allocated = results.map((result) => Math.min(share, result.text.length))
+    let remaining = options.maxChars - allocated.reduce((sum, chars) => sum + chars, 0)
+    return results.map((result, index) => {
+      const base = allocated[index] ?? 0
+      const extra = Math.min(remaining, result.text.length - base)
+      remaining -= extra
+      const charLimit = base + extra
+      return {
+        url: result.url,
+        text: result.text.slice(0, charLimit),
+        truncated: result.truncated || result.text.length > charLimit,
+      }
+    })
   } finally {
     controller.abort()
   }
