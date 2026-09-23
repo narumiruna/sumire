@@ -509,6 +509,53 @@ describe("Telegram bot update routing", () => {
     expect(options?.unresolvedReplyPrompt).toBe(prompt)
   })
 
+  it("excludes an in-flight pending reply from /f article context", async () => {
+    let finishFirst: (() => void) | undefined
+    const pendingFirst = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        options.onAccepted?.()
+        if (prompt === "第一個問題") await pendingFirst
+        return { kind: "completed" as const, text: "文章" }
+      }),
+    })
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: true, publish } },
+    )
+    installApiMock(telegram.bot)
+    const firstHandling = telegram.bot.handleUpdate(privateMessage(21, "第一個問題"))
+    try {
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+      const reply = commandMessage(22, "/f 新內容")
+      if (reply.message) {
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: botInfo,
+          text: "處理中…",
+          reply_to_message: undefined,
+        }
+      }
+      await telegram.bot.handleUpdate(reply)
+
+      const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+      expect(prompt).toContain("新內容")
+      expect(prompt).not.toContain("處理中…")
+      expect(options).not.toHaveProperty("replyToBotMessageId")
+      expect(options).not.toHaveProperty("unresolvedReplyPrompt")
+    } finally {
+      finishFirst?.()
+      await firstHandling
+    }
+  })
+
   it("does not publish the /f no-response fallback as an article", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
@@ -796,6 +843,7 @@ describe("Telegram bot update routing", () => {
       "sendMessage",
       "editMessageText",
       "sendMessage",
+      "editMessageText",
     ])
     expect(calls[2]?.payload.text).toBe("回答")
     expect(calls[2]?.payload.reply_parameters).toEqual({
@@ -895,6 +943,42 @@ describe("Telegram bot update routing", () => {
     ])
     expect(calls[1]?.payload.text).toContain("🔄 分析需求")
     expect(calls[2]?.payload.text).toBe("處理中…")
+  })
+
+  it("keeps the progress reply when the final answer renders identically", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const steps: ProgressStep[] = [{ text: "分析需求", status: "in_progress" }]
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.(steps)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return {
+          kind: "completed" as const,
+          text: "進度 0/1\n\n🔄 分析需求\u0000",
+          checkpoint,
+        }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method, payload) => {
+      if (method === "editMessageText" && payload.text === calls.at(-2)?.payload.text) {
+        throw new Error("message is not modified")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請回報進度"))
+
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls[1]?.payload.text).toBe("進度 0/1\n\n🔄 分析需求")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
   })
 
   it("renders a progress-free answer as Telegram HTML", async () => {
@@ -1466,8 +1550,9 @@ describe("Telegram bot update routing", () => {
       "sendMessage",
       "editMessageText",
       "sendMessage",
+      "editMessageText",
     ])
-    expect(calls.at(-1)?.payload.text).toBe("此請求已因重設對話而取消。")
+    expect(calls[3]?.payload.text).toBe("此請求已因重設對話而取消。")
     expect(sessions.recordDelivery).not.toHaveBeenCalled()
   })
 
@@ -1623,6 +1708,7 @@ describe("Telegram bot update routing", () => {
       "sendMessage",
       "editMessageText",
       "sendMessage",
+      "editMessageText",
     ])
     expect(calls[2]?.payload.text).toBe(calls[1]?.payload.text)
     expect(calls[2]?.payload.text).toContain(shareUrl)
@@ -2516,6 +2602,107 @@ describe("Telegram bot update routing", () => {
       { sessionId: "session", entryId: "entry", generation: 0 },
       [100],
     )
+  })
+
+  it("does not quote an in-flight pending reply in a user's clarification", async () => {
+    let finishFirst: (() => void) | undefined
+    const pendingFirst = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        options.onAccepted?.()
+        if (prompt === "第一個問題") await pendingFirst
+        return { kind: "completed" as const, text: "回答" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    const firstHandling = telegram.bot.handleUpdate(privateMessage(26, "第一個問題"))
+    try {
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+      expect(calls[0]?.payload.text).toBe("處理中…")
+
+      const reply = privateMessage(27, "補充：請繼續")
+      if (reply.message) {
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: { id: botInfo.id, is_bot: true, first_name: "Test Bot" },
+          text: "處理中…",
+          reply_to_message: undefined,
+        }
+      }
+      await telegram.bot.handleUpdate(reply)
+      const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+      expect(prompt).toBe("補充：請繼續")
+      expect(options).not.toHaveProperty("replyToBotMessageId")
+      expect(options).not.toHaveProperty("unresolvedReplyPrompt")
+    } finally {
+      finishFirst?.()
+      await firstHandling
+    }
+  })
+
+  it("restores normal bot-reply context after a pending status becomes an answer", async () => {
+    let finishRecord: (() => void) | undefined
+    const pendingRecord = new Promise<void>((resolve) => {
+      finishRecord = resolve
+    })
+    let recordCount = 0
+    const recordDelivery = vi.fn(async () => {
+      if (++recordCount === 1) await pendingRecord
+    })
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return {
+          kind: "completed" as const,
+          text: "回答",
+          checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
+        }
+      }),
+      recordDelivery,
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    installApiMock(telegram.bot)
+    const firstHandling = telegram.bot.handleUpdate(privateMessage(26, "第一個問題"))
+    try {
+      await vi.waitFor(() => expect(recordDelivery).toHaveBeenCalledOnce())
+      const reply = privateMessage(27, "接著呢？")
+      if (reply.message) {
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: botInfo,
+          text: "回答",
+          reply_to_message: undefined,
+        }
+      }
+      await telegram.bot.handleUpdate(reply)
+      const [, , options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+      expect(options?.replyToBotMessageId).toBe(100)
+      expect(options?.unresolvedReplyPrompt).toContain("Content: 回答")
+    } finally {
+      finishRecord?.()
+      await firstHandling
+    }
   })
 
   it.each([

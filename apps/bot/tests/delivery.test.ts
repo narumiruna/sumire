@@ -82,6 +82,20 @@ describe("mandatory Morsel delivery", () => {
     expect(publisher.publish).not.toHaveBeenCalled()
   })
 
+  it("clears the old pending status after a transient edit failure", async () => {
+    const { delivery, context, editMessageText, reply } = setup()
+    editMessageText.mockRejectedValueOnce(new Error("temporary transport failure"))
+
+    await expect(
+      delivery.editOrReply(context, 7, 100, "回答", { parse_mode: "HTML" }, () => true),
+    ).resolves.toMatchObject({ message: { message_id: 1 }, result: "delivered" })
+    expect(editMessageText).toHaveBeenCalledTimes(2)
+    expect(editMessageText).toHaveBeenNthCalledWith(2, 7, 100, "已改以新訊息回覆。", {
+      parse_mode: "HTML",
+    })
+    expect(reply).toHaveBeenCalledExactlyOnceWith("回答", { parse_mode: "HTML" })
+  })
+
   it("does not retry a failed edit after the request is invalidated", async () => {
     const { delivery, context, editMessageText, reply } = setup()
     let current = true
