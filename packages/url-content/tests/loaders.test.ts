@@ -258,6 +258,19 @@ describe("source loaders", () => {
     ).resolves.toBe(text)
   })
 
+  it("loads an HTML article provided entirely through noscript", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response("<noscript><h1>Fallback article</h1><p>Readable body.</p></noscript>", {
+          headers: { "content-type": "text/html" },
+        }),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/page")).resolves.toBe(
+      "# Fallback article\nReadable body.",
+    )
+  })
+
   it("does not accept a page consisting only of scripts as extracted content", async () => {
     const resources = {
       fetch: async () =>

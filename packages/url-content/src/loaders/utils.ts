@@ -24,7 +24,7 @@ export function htmlToMarkdown(content: string): string {
     replacement: () => "",
   })
   const $ = cheerio.load(content)
-  $("script,style,noscript,template").remove()
+  $("script,style,template").remove()
   return normalizeWhitespace(turndown.turndown($.html()))
 }
 

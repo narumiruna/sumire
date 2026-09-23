@@ -23,8 +23,7 @@ describe("HTML extraction", () => {
     const html = `<html><head>
       <script>${"window.prefetch = 'noise';".repeat(650)}</script>
       <style>${".navigation { color: red; }".repeat(650)}</style>
-      </head><body><noscript>Enable JavaScript to continue</noscript>
-      <template>Hidden application shell</template>
+      </head><body><template>Hidden application shell</template>
       <main><h1>Model guidance</h1><p>Read this documentation.</p>
       <pre><code>&lt;script&gt;visible example&lt;/script&gt;</code></pre></main></body></html>`
     const markdown = htmlToMarkdown(html)
@@ -34,8 +33,13 @@ describe("HTML extraction", () => {
     expect(markdown).toContain("<script>visible example</script>")
     expect(markdown).not.toContain("window.prefetch")
     expect(markdown).not.toContain(".navigation")
-    expect(markdown).not.toContain("Enable JavaScript")
     expect(markdown).not.toContain("Hidden application shell")
+  })
+
+  it("retains a readable document inside a no-JavaScript fallback", () => {
+    const html =
+      "<noscript><article><h1>No-JS guide</h1><p>Readable fallback body.</p></article></noscript>"
+    expect(htmlToMarkdown(html)).toBe("# No-JS guide\nReadable fallback body.")
   })
 
   it("returns empty content for a page with only non-visible assets", () => {
