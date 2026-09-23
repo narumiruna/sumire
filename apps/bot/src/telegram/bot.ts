@@ -597,6 +597,7 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
+    const pendingText = "處理中…"
     const progressStatus = createProgressStatusEditor(
       async (text) => {
         if (status) {
@@ -625,6 +626,17 @@ export function createTelegramAgentBot(
       return
     }
     try {
+      const pendingReply = await delivery.guardedReply(
+        context,
+        pendingText,
+        replyOptions,
+        isCurrent,
+      )
+      status = pendingReply.message
+      if (pendingReply.result === "stale") {
+        await cancelStatus()
+        return
+      }
       const unresolvedReplyPrompt =
         replyToBotMessageId !== undefined && context.message
           ? replyContextIncluded
@@ -656,8 +668,8 @@ export function createTelegramAgentBot(
             isCurrent,
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
-              if (steps.length > 0) hasProgressSnapshot = true
-              progressStatus.publish(renderProgressStatus(steps))
+              hasProgressSnapshot = steps.length > 0
+              progressStatus.publish(steps.length > 0 ? renderProgressStatus(steps) : pendingText)
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
