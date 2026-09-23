@@ -419,7 +419,7 @@ describe("ChatSessionRegistry", () => {
         result: {
           content: [],
           details: {
-            version: 1,
+            version: 4,
             steps: [{ text: "檢查資料", status: "in_progress" }],
           },
         },
@@ -429,14 +429,14 @@ describe("ChatSessionRegistry", () => {
         type: "tool_execution_end",
         toolCallId: "invalid",
         toolName: "update_progress",
-        result: { content: [], details: { version: 1, steps: "invalid" } },
+        result: { content: [], details: { version: 4, steps: "invalid" } },
         isError: false,
       })
       session.emit({
         type: "tool_execution_end",
         toolCallId: "failed",
         toolName: "update_progress",
-        result: { content: [], details: { version: 1, steps: [] } },
+        result: { content: [], details: { version: 4, steps: [] } },
         isError: true,
       })
       session.messages.push(assistant(`AI: ${text}`))

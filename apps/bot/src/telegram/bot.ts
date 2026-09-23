@@ -181,14 +181,19 @@ export function createTelegramAgentBot(
       await delivery.reply(context, "請使用 /ask <問題>。", replyOptions(context))
       return
     }
-    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      submitInput(
-        context,
-        context.message as unknown as TelegramMessageLike,
-        prompt,
-        release,
-        isCurrent,
-      ),
+    const pending = createPendingReply(context)
+    await inSubmissionOrder(
+      context.chat.id,
+      (release, isCurrent) =>
+        submitInput(
+          context,
+          context.message as unknown as TelegramMessageLike,
+          prompt,
+          release,
+          isCurrent,
+          pending,
+        ),
+      () => pending.cancel(),
     )
   })
   bot.command("f", (context) => submitArticle(context, context.match.trim()))
@@ -263,16 +268,21 @@ export function createTelegramAgentBot(
 
     if (fromBot)
       botReplyStreaks.set(context.chat.id, (botReplyStreaks.get(context.chat.id) ?? 0) + 1)
-    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      submitInput(
-        context,
-        message,
-        privateChat
-          ? messageText(message).trim()
-          : stripBotMention(messageText(message), context.me.username),
-        release,
-        isCurrent,
-      ),
+    const pending = createPendingReply(context)
+    await inSubmissionOrder(
+      context.chat.id,
+      (release, isCurrent) =>
+        submitInput(
+          context,
+          message,
+          privateChat
+            ? messageText(message).trim()
+            : stripBotMention(messageText(message), context.me.username),
+          release,
+          isCurrent,
+          pending,
+        ),
+      () => pending.cancel(),
     )
   })
 
@@ -307,14 +317,18 @@ export function createTelegramAgentBot(
       )
       return
     }
-    await inSubmissionOrder(chat.id, (release, isCurrent) =>
-      submitInput(context, message, source, release, isCurrent, {
-        promptTransform: buildBlogPostPrompt,
-        articleUrlSource: [source, repliedText].filter(Boolean).join("\n"),
-        deliveryMode: "publish",
-        includeBotReplyContext: true,
-        submissionIntent: "newTurn",
-      }),
+    const pending = createPendingReply(context)
+    await inSubmissionOrder(
+      chat.id,
+      (release, isCurrent) =>
+        submitInput(context, message, source, release, isCurrent, pending, {
+          promptTransform: buildBlogPostPrompt,
+          articleUrlSource: [source, repliedText].filter(Boolean).join("\n"),
+          deliveryMode: "publish",
+          includeBotReplyContext: true,
+          submissionIntent: "newTurn",
+        }),
+      () => pending.cancel(),
     )
   }
 
@@ -324,29 +338,46 @@ export function createTelegramAgentBot(
     strippedText: string,
     release: () => void,
     isCurrent: () => boolean,
+    pending: ReturnType<typeof createPendingReply>,
     submissionOptions: InputSubmissionOptions = {},
   ): Promise<void> {
     const fingerprint = singleUrlFingerprint(strippedText)
-    return withLogSpan(
-      logger,
-      "telegram.request",
-      {
-        "telegram.chat_id": context.chat?.id ?? 0,
-        "telegram.message_id": message.message_id,
-        "telegram.update_id": context.update.update_id,
-        "telegram.chat_type": context.chat?.type ?? "unknown",
-        "telegram.text_chars": strippedText.length,
-        "telegram.has_reply": Boolean(message.reply_to_message),
-        "telegram.images": imageReferences(message).length,
-        "telegram.documents": documentReferences(message).length,
-        "telegram.audio": audioReferences(message).length,
-        ...(fingerprint ? { "telegram.input_url_fingerprint": fingerprint } : {}),
-      },
-      async (span) => {
-        await processInput(context, message, strippedText, release, isCurrent, submissionOptions)
-        span.setAttribute("telegram.outcome", isCurrent() ? "finished" : "cancelled")
-      },
-    )
+    try {
+      await withLogSpan(
+        logger,
+        "telegram.request",
+        {
+          "telegram.chat_id": context.chat?.id ?? 0,
+          "telegram.message_id": message.message_id,
+          "telegram.update_id": context.update.update_id,
+          "telegram.chat_type": context.chat?.type ?? "unknown",
+          "telegram.text_chars": strippedText.length,
+          "telegram.has_reply": Boolean(message.reply_to_message),
+          "telegram.images": imageReferences(message).length,
+          "telegram.documents": documentReferences(message).length,
+          "telegram.audio": audioReferences(message).length,
+          ...(fingerprint ? { "telegram.input_url_fingerprint": fingerprint } : {}),
+        },
+        async (span) => {
+          await processInput(
+            context,
+            message,
+            strippedText,
+            release,
+            isCurrent,
+            pending,
+            submissionOptions,
+          )
+          span.setAttribute("telegram.outcome", isCurrent() ? "finished" : "cancelled")
+        },
+      )
+    } catch (error) {
+      if (!isCurrent()) return
+      logger.error(`Telegram input processing failed for chat_id=${context.chat?.id}`, error)
+      await pending.update("AI 服務暫時無法使用，請稍後再試。", isCurrent)
+    } finally {
+      if (!isCurrent()) await pending.cancel()
+    }
   }
 
   async function processInput(
@@ -355,29 +386,30 @@ export function createTelegramAgentBot(
     strippedText: string,
     release: () => void,
     isCurrent: () => boolean,
+    pending: ReturnType<typeof createPendingReply>,
     submissionOptions: InputSubmissionOptions,
   ): Promise<void> {
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
     const audioRefs = audioReferences(message)
     if (audioRefs.length > 0 && !settings.botAudioInputEnabled) {
-      await delivery.reply(context, "目前未啟用音訊輸入。", replyOptions(context))
+      await pending.update("目前未啟用音訊輸入。", isCurrent)
       return
     }
     if (audioRefs.some((reference) => reference.duration > settings.botAudioMaxDurationSeconds)) {
-      await delivery.reply(context, "音訊長度超過允許的限制。", replyOptions(context))
+      await pending.update("音訊長度超過允許的限制。", isCurrent)
       return
     }
     if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
-      await delivery.reply(context, "目前未啟用圖片輸入。", replyOptions(context))
+      await pending.update("目前未啟用圖片輸入。", isCurrent)
       return
     }
     if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
-      await delivery.reply(context, "目前未啟用文件輸入。", replyOptions(context))
+      await pending.update("目前未啟用文件輸入。", isCurrent)
       return
     }
     if (documentRefs.length > 0 && !dependencies.documentConverter) {
-      await delivery.reply(context, "文件轉換服務目前無法使用。", replyOptions(context))
+      await pending.update("文件轉換服務目前無法使用。", isCurrent)
       return
     }
 
@@ -401,7 +433,7 @@ export function createTelegramAgentBot(
           ? "圖片超過允許的大小，無法處理。"
           : "無法下載 Telegram 圖片，請稍後再試。"
       logger.warn(`Telegram image input failed for chat_id=${context.chat?.id}`, error)
-      await delivery.reply(context, response, replyOptions(context))
+      await pending.update(response, isCurrent)
       return
     }
 
@@ -429,12 +461,11 @@ export function createTelegramAgentBot(
     } catch (error) {
       if (!isCurrent()) return
       logger.warn(`Telegram audio input failed for chat_id=${context.chat?.id}`, error)
-      await delivery.reply(
-        context,
+      await pending.update(
         error instanceof TelegramDownloadTooLargeError
           ? "音訊超過允許的大小，無法處理。"
           : "無法下載或轉錄音訊，請稍後再試。",
-        replyOptions(context),
+        isCurrent,
       )
       return
     }
@@ -467,7 +498,7 @@ export function createTelegramAgentBot(
       if (!isCurrent()) return
       const response = documentFailureMessage(error)
       logger.warn(`Telegram document input failed for chat_id=${context.chat?.id}`, error)
-      await delivery.reply(context, response, replyOptions(context))
+      await pending.update(response, isCurrent)
       return
     }
 
@@ -518,14 +549,13 @@ export function createTelegramAgentBot(
             ? undefined
             : { name: error instanceof Error ? error.name : "unknown" },
         )
-        await delivery.reply(
-          context,
+        await pending.update(
           error instanceof TooManyArticleUrlsError
             ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
             : error instanceof ArticleUrlBudgetError
               ? "網址內容長度上限不足，請提高 BOT_URL_MAX_EXTRACTED_CHARS 後再試。"
               : "無法載入文章來源網址，請確認網址可公開存取後再試。",
-          replyOptions(context),
+          isCurrent,
         )
         return
       } finally {
@@ -542,6 +572,7 @@ export function createTelegramAgentBot(
       images,
       release,
       isCurrent,
+      pending,
       repliedBotMessageId(message, context.me.id),
       submissionOptions.deliveryMode,
       submissionOptions.includeBotReplyContext,
@@ -569,12 +600,66 @@ export function createTelegramAgentBot(
     }
   })
 
+  function createPendingReply(context: Context) {
+    const chatId = context.chat?.id ?? 0
+    const options = {
+      parse_mode: "HTML" as const,
+      ...(context.message
+        ? {
+            reply_parameters: {
+              message_id: context.message.message_id,
+              allow_sending_without_reply: true,
+            },
+          }
+        : {}),
+    }
+    let message: Awaited<ReturnType<typeof delivery.reply>> | undefined
+    let cancelled = false
+    const sent = delivery.reply(context, "處理中...", options).then(
+      (reply) => {
+        message = reply
+      },
+      (error) => logger.warn(`Telegram pending reply failed for chat_id=${chatId}`, error),
+    )
+
+    return {
+      get message() {
+        return message
+      },
+      async update(text: string, isCurrent: () => boolean, mode: DeliveryMode = "default") {
+        await sent
+        if (!isCurrent()) return "stale" as const
+        if (message) {
+          return delivery.edit(context, message.chat.id, message.message_id, text, isCurrent, mode)
+        }
+        const reply = await delivery.guardedReply(context, text, options, isCurrent, mode)
+        message = reply.message
+        return reply.result
+      },
+      async cancel() {
+        if (cancelled) return
+        cancelled = true
+        await sent
+        const text =
+          submissionGenerations.get(chatId)?.reason === "cancel"
+            ? "此請求已取消。"
+            : "此請求已因重設對話而取消。"
+        if (message) {
+          await delivery.edit(context, message.chat.id, message.message_id, text)
+        } else {
+          message = await delivery.reply(context, text, options)
+        }
+      },
+    }
+  }
+
   async function answer(
     context: Context,
     prompt: string,
     images: Array<{ type: "image"; data: string; mimeType: string }>,
     releaseSubmissionTurn: () => void,
     isCurrent: () => boolean,
+    pending: ReturnType<typeof createPendingReply>,
     replyToBotMessageId?: number,
     finalDeliveryMode: DeliveryMode = "default",
     replyContextIncluded = false,
@@ -584,41 +669,16 @@ export function createTelegramAgentBot(
     const chatId = context.chat?.id
     if (chatId === undefined) return
     const sourceMessageId = context.message?.message_id
-    const replyOptions = {
-      parse_mode: "HTML" as const,
-      ...(sourceMessageId
-        ? {
-            reply_parameters: {
-              message_id: sourceMessageId,
-              allow_sending_without_reply: true,
-            },
-          }
-        : {}),
-    }
-    let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
     const progressStatus = createProgressStatusEditor(
       async (text) => {
-        if (status) {
-          await delivery.edit(context, status.chat.id, status.message_id, text, isCurrent)
-          return
-        }
-        const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
-        status = progressReply.message
+        await pending.update(text, isCurrent)
       },
       (error) => logger.warn(`Telegram progress update failed for chat_id=${chatId}`, error),
     )
     const cancelStatus = async () => {
       await progressStatus.close()
-      const text =
-        submissionGenerations.get(chatId)?.reason === "cancel"
-          ? "此請求已取消。"
-          : "此請求已因重設對話而取消。"
-      if (status) {
-        await delivery.edit(context, status.chat.id, status.message_id, text)
-      } else {
-        status = await delivery.reply(context, text, replyOptions)
-      }
+      await pending.cancel()
     }
     if (!isCurrent()) {
       await cancelStatus()
@@ -684,29 +744,9 @@ export function createTelegramAgentBot(
           "delivery.content_chars": result.text.length,
         },
         async (span) => {
-          let outcome: "delivered" | "unavailable" | "stale"
-          if (status) {
-            outcome = await delivery.edit(
-              context,
-              status.chat.id,
-              status.message_id,
-              result.text,
-              isCurrent,
-              resultDeliveryMode,
-            )
-          } else {
-            const finalReply = await delivery.guardedReply(
-              context,
-              result.text,
-              replyOptions,
-              isCurrent,
-              resultDeliveryMode,
-            )
-            status = finalReply.message
-            outcome = finalReply.result
-          }
+          const outcome = await pending.update(result.text, isCurrent, resultDeliveryMode)
           span.setAttribute("delivery.outcome", outcome)
-          if (status) span.setAttribute("delivery.message_id", status.message_id)
+          if (pending.message) span.setAttribute("delivery.message_id", pending.message.message_id)
           return outcome
         },
       )
@@ -714,8 +754,8 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
-      if (deliveryResult === "delivered" && status && result.kind === "completed") {
-        await sessions.recordDelivery(chatId, result.checkpoint, [status.message_id])
+      if (deliveryResult === "delivered" && pending.message && result.kind === "completed") {
+        await sessions.recordDelivery(chatId, result.checkpoint, [pending.message.message_id])
       }
     } catch (error) {
       if (!isCurrent()) {
@@ -724,27 +764,8 @@ export function createTelegramAgentBot(
       }
       logger.error(`Pi agent request failed for chat_id=${chatId}`, error)
       await progressStatus.close()
-      if (status) {
-        if (
-          (await delivery.edit(
-            context,
-            status.chat.id,
-            status.message_id,
-            "AI 服務暫時無法使用，請稍後再試。",
-            isCurrent,
-          )) === "stale"
-        ) {
-          await cancelStatus()
-        }
-      } else {
-        const errorReply = await delivery.guardedReply(
-          context,
-          "AI 服務暫時無法使用，請稍後再試。",
-          replyOptions,
-          isCurrent,
-        )
-        status = errorReply.message
-        if (errorReply.result === "stale") await cancelStatus()
+      if ((await pending.update("AI 服務暫時無法使用，請稍後再試。", isCurrent)) === "stale") {
+        await cancelStatus()
       }
     }
   }
@@ -752,6 +773,7 @@ export function createTelegramAgentBot(
   async function inSubmissionOrder(
     chatId: number,
     task: (release: () => void, isCurrent: () => boolean) => Promise<void>,
+    onInvalidated?: () => Promise<void>,
   ): Promise<void> {
     const generation = submissionGenerations.get(chatId)?.generation ?? 0
     const previous = submissionTails.get(chatId) ?? Promise.resolve()
@@ -761,6 +783,7 @@ export function createTelegramAgentBot(
 
     try {
       if (isCurrent()) await task(release, isCurrent)
+      else await onInvalidated?.()
     } finally {
       release()
     }

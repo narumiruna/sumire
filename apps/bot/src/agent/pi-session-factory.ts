@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import path from "node:path"
 
 import {
@@ -9,13 +10,18 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
-import progressExtension from "@narumitw/sumire-progress"
 import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { traceUrlLoad } from "../url-telemetry.js"
+
+const require = createRequire(import.meta.url)
+const progressExtensionPath = path.join(
+  path.dirname(require.resolve("@narumitw/pi-progress/package.json")),
+  "dist/index.ts",
+)
 
 const providerId = "telegramagent-openai"
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
@@ -106,10 +112,8 @@ export async function createPiSessionFactory(
         cwd: settings.projectRoot,
         agentDir,
         additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath],
-        extensionFactories: [
-          { name: "sumire-progress", factory: progressExtension },
-          { name: "sumire-url-tool", factory: urlExtension },
-        ],
+        additionalExtensionPaths: [progressExtensionPath],
+        extensionFactories: [{ name: "sumire-url-tool", factory: urlExtension }],
         noExtensions: true,
         noPromptTemplates: true,
         noThemes: true,

@@ -8,13 +8,8 @@ import type {
   AgentSessionEvent,
   AgentSessionEventListener,
 } from "@earendil-works/pi-coding-agent"
-import {
-  PROGRESS_TOOL_NAME,
-  type ProgressStep,
-  parseProgressDetails,
-} from "@narumitw/sumire-progress"
-
 import type { Logger } from "../logging.js"
+import { type ProgressStep, parsePiProgressDetails } from "./pi-progress.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
 
 export interface SubmissionCheckpoint extends PiReplyCheckpoint {
@@ -396,15 +391,15 @@ function progressListener(
   return (event: AgentSessionEvent) => {
     if (
       event.type !== "tool_execution_end" ||
-      event.toolName !== PROGRESS_TOOL_NAME ||
+      event.toolName !== "update_progress" ||
       event.isError
     ) {
       return
     }
-    const details = parseProgressDetails(toolResultDetails(event.result))
-    if (!details) return
+    const steps = parsePiProgressDetails(toolResultDetails(event.result))
+    if (!steps) return
     try {
-      onProgress(details.steps)
+      onProgress(steps)
     } catch (error) {
       logger.warn("Progress listener failed", error)
     }

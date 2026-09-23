@@ -1,8 +1,23 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { parsePiProgressDetails } from "../src/agent/pi-progress.js"
 import { createProgressStatusEditor, renderProgressStatus } from "../src/telegram/progress.js"
 
 describe("Telegram progress status", () => {
+  it("accepts only valid pi-progress version 4 tool details", () => {
+    const steps = [{ text: "分析需求", status: "in_progress" }]
+    expect(parsePiProgressDetails({ version: 4, steps })).toEqual(steps)
+    expect(parsePiProgressDetails({ version: 4, steps: [] })).toEqual([])
+    expect(parsePiProgressDetails({ version: 1, steps })).toBeUndefined()
+    expect(
+      parsePiProgressDetails({ version: 4, steps: [{ text: "", status: "pending" }] }),
+    ).toBeUndefined()
+    expect(
+      parsePiProgressDetails({ version: 4, steps: [{ text: "等待", status: "blocked" }] }),
+    ).toBeUndefined()
+    expect(parsePiProgressDetails({ version: 4, steps: "invalid" })).toBeUndefined()
+  })
+
   it("renders completed, active, pending, and blocked steps", () => {
     expect(
       renderProgressStatus([

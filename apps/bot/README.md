@@ -7,7 +7,7 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 - `@earendil-works/pi-coding-agent`: complete per-chat `AgentSession` lifecycle, persistence, retry, compaction, steering, follow-up, tool loop, and Agent Skills.
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
-- `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
+- `@narumitw/pi-progress`: Pi extension for structured multi-step progress.
 - `@narumitw/sumire-url-tool`: repository-owned Pi package for agent-driven public URL loading.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
@@ -129,7 +129,7 @@ Pi owns the agent session lifecycle, transcript, and branches. After a completed
 
 ## Model configuration
 
-`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured and is required for `/f` article publication and replies over 1,000 characters. For multi-step requests, the first non-empty `update_progress` snapshot creates the Telegram reply and later snapshots edit it in place. Requests without structured progress send the final answer directly, without a generic pending message.
+`.env.example` lists the complete supported environment configuration. The runtime registers the configured OpenAI-compatible provider. The bounded public URL loader and structured progress tool are always enabled. Pi's `read`, `bash`, `edit`, and `write` coding tools are disabled by default; enable them with `BOT_CODING_TOOLS_ENABLED=true`. Startup rejects that opt-in unless `BOT_WHITELIST` contains at least one Telegram user or chat ID. Morsel is enabled when `MORSEL_API_KEY` is configured and is required for `/f` article publication and replies over 1,000 characters. Accepted AI inputs immediately receive a 「處理中...」 Telegram reply, including while media or article sources are loading. Successful `update_progress` snapshots edit that reply in place; the final answer, input error, or cancellation replaces it. Requests without structured progress still show the pending reply before the final answer.
 
 The coding-tool flag is not a sandbox. When enabled, the tools run directly with the bot process's filesystem permissions and working directory; Sumire does not restrict tool paths, and `bash` inherits the process environment, including `OTTER_TOKEN`. Use the opt-in only for trusted allowlisted users inside an appropriately isolated deployment. With coding tools disabled, an empty whitelist retains the existing behavior of allowing every Telegram user and chat.
 
