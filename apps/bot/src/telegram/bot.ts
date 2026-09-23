@@ -13,6 +13,7 @@ import { createMorselPublisher, MorselPublishError, type MorselPublisher } from 
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { buildArticleRewritePrompt } from "../writer/prompt.js"
 import {
+  ArticleUrlBudgetError,
   type ArticleUrlContent,
   loadArticleSourceUrls,
   TooManyArticleUrlsError,
@@ -77,6 +78,7 @@ export function createTelegramAgentBot(
   )
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
+  const activeArticleLoads = new Map<number, Set<AbortController>>()
   const submissionGenerations = new Map<
     number,
     { generation: number; reason: "reset" | "cancel" }
@@ -487,6 +489,12 @@ export function createTelegramAgentBot(
     prompt = promptWithReplyContext(message, prompt, submissionOptions.includeBotReplyContext)
     let loadedUrls: ArticleUrlContent[] = []
     if (submissionOptions.articleUrlSource !== undefined) {
+      const chatId = context.chat?.id
+      const controller = new AbortController()
+      const active =
+        chatId === undefined ? undefined : (activeArticleLoads.get(chatId) ?? new Set())
+      if (chatId !== undefined && active) activeArticleLoads.set(chatId, active)
+      active?.add(controller)
       try {
         loadedUrls = await loadArticleSourceUrls(
           submissionOptions.articleUrlSource,
@@ -499,6 +507,7 @@ export function createTelegramAgentBot(
           {
             maxChars: settings.botUrlMaxExtractedChars,
             timeoutMs: Math.min(30, settings.botUrlContentTimeoutSeconds) * 1_000,
+            signal: controller.signal,
           },
         )
       } catch (error) {
@@ -513,10 +522,16 @@ export function createTelegramAgentBot(
           context,
           error instanceof TooManyArticleUrlsError
             ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
-            : "無法載入文章來源網址，請確認網址可公開存取後再試。",
+            : error instanceof ArticleUrlBudgetError
+              ? "網址內容長度上限不足，請提高 BOT_URL_MAX_EXTRACTED_CHARS 後再試。"
+              : "無法載入文章來源網址，請確認網址可公開存取後再試。",
           replyOptions(context),
         )
         return
+      } finally {
+        controller.abort()
+        active?.delete(controller)
+        if (chatId !== undefined && active?.size === 0) activeArticleLoads.delete(chatId)
       }
     }
     if (!isCurrent()) return
@@ -763,6 +778,7 @@ export function createTelegramAgentBot(
       generation: (submissionGenerations.get(chatId)?.generation ?? 0) + 1,
       reason,
     })
+    for (const controller of activeArticleLoads.get(chatId) ?? []) controller.abort()
     const { gate, release } = submissionGate(chatId, Promise.resolve())
     submissionTails.set(chatId, gate)
     return release
