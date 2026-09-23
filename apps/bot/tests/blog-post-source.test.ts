@@ -4,7 +4,7 @@ import {
   ArticleUrlBudgetError,
   loadArticleSourceUrls,
   TooManyArticleUrlsError,
-} from "../src/writer/source.js"
+} from "../src/blog-post/source.js"
 
 function loaded(url: string, text: string) {
   return {

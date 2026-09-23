@@ -2,7 +2,7 @@ import type { ArticleUrlContent } from "./source.js"
 
 const articleLanguage = "台灣正體中文"
 
-export function buildArticleRewritePrompt(
+export function buildBlogPostPrompt(
   sourceContext: string,
   loadedUrls: readonly ArticleUrlContent[] = [],
 ): string {

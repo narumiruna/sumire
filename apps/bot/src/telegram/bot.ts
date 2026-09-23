@@ -4,6 +4,13 @@ import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
 import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
+import { buildBlogPostPrompt } from "../blog-post/prompt.js"
+import {
+  ArticleUrlBudgetError,
+  type ArticleUrlContent,
+  loadArticleSourceUrls,
+  TooManyArticleUrlsError,
+} from "../blog-post/source.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
@@ -11,13 +18,6 @@ import { type Logger, withLogSpan } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
-import { buildArticleRewritePrompt } from "../writer/prompt.js"
-import {
-  ArticleUrlBudgetError,
-  type ArticleUrlContent,
-  loadArticleSourceUrls,
-  TooManyArticleUrlsError,
-} from "../writer/source.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
 import {
@@ -309,7 +309,7 @@ export function createTelegramAgentBot(
     }
     await inSubmissionOrder(chat.id, (release, isCurrent) =>
       submitInput(context, message, source, release, isCurrent, {
-        promptTransform: buildArticleRewritePrompt,
+        promptTransform: buildBlogPostPrompt,
         articleUrlSource: [source, repliedText].filter(Boolean).join("\n"),
         deliveryMode: "publish",
         includeBotReplyContext: true,

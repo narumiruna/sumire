@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { buildArticleRewritePrompt } from "../src/writer/prompt.js"
+import { buildBlogPostPrompt } from "../src/blog-post/prompt.js"
 
-describe("article rewrite prompt", () => {
-  it("wraps untrusted source context with the legacy writer constraints", () => {
-    const prompt = buildArticleRewritePrompt("  原始內容 https://example.com/article  ")
+describe("blog post prompt", () => {
+  it("wraps untrusted source context with blog post constraints", () => {
+    const prompt = buildBlogPostPrompt("  原始內容 https://example.com/article  ")
 
     expect(prompt).toContain("written entirely in 台灣正體中文")
     expect(prompt).toContain("Preserve all materially important information")
@@ -19,7 +19,7 @@ describe("article rewrite prompt", () => {
   })
 
   it("uses preloaded URLs without asking Pi to fetch the same content again", () => {
-    const prompt = buildArticleRewritePrompt("https://example.com/article", [
+    const prompt = buildBlogPostPrompt("https://example.com/article", [
       { url: "https://example.com/article", text: "文章內容", truncated: false },
     ])
 
