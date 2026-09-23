@@ -42,6 +42,29 @@ describe("article source URLs", () => {
     ])
   })
 
+  it.each([".", ";", "!", "?", ",", "。"])(
+    "preserves an explicit URL ending in %s when it is not a prose delimiter",
+    async (ending) => {
+      const url = `https://example.com/article${ending}`
+      const load = vi.fn(async (value: string) => loaded(value, "content"))
+
+      const result = await loadArticleSourceUrls(url, { load }, { maxChars: 100, timeoutMs: 1_000 })
+
+      expect(load).toHaveBeenCalledWith(url, expect.any(Object))
+      expect(result[0]?.url).toBe(url)
+    },
+  )
+
+  it("trims punctuation outside an unmatched Markdown closing delimiter", async () => {
+    const load = vi.fn(async (url: string) => loaded(url, "content"))
+    const result = await loadArticleSourceUrls(
+      "[來源](https://example.com/article!).",
+      { load },
+      { maxChars: 100, timeoutMs: 1_000 },
+    )
+    expect(result[0]?.url).toBe("https://example.com/article!")
+  })
+
   it("keeps balanced delimiters in URLs and drops only unmatched closers", async () => {
     const load = vi.fn(async (url: string) => loaded(url, "content"))
     const result = await loadArticleSourceUrls(

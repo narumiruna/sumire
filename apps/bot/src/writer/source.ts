@@ -2,23 +2,29 @@ import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
 
 const maxArticleUrls = 4
 const urlPattern = /https?:\/\/[^\s<>"']+/giu
-const trailingPunctuation = /[.,;!?。，；！？]/u
+const trailingPunctuation = /[.,;!?。，；！？]+$/u
 const closingDelimiters = new Map([
   [")", "("],
   ["]", "["],
   ["）", "（"],
 ])
 
+function hasUnmatchedClosingDelimiter(value: string): boolean {
+  const closing = value.at(-1) ?? ""
+  const opening = closingDelimiters.get(closing)
+  return opening !== undefined && value.split(closing).length > value.split(opening).length
+}
+
 function trimUrlEnd(value: string): string {
   let url = value
   while (url) {
-    const last = url.at(-1) ?? ""
-    if (trailingPunctuation.test(last)) {
-      url = url.slice(0, -1)
+    // Bare punctuation can be part of a URL; only strip it outside an unmatched wrapper.
+    const withoutPunctuation = url.replace(trailingPunctuation, "")
+    if (withoutPunctuation !== url && hasUnmatchedClosingDelimiter(withoutPunctuation)) {
+      url = withoutPunctuation
       continue
     }
-    const opening = closingDelimiters.get(last)
-    if (!opening || url.split(last).length <= url.split(opening).length) break
+    if (!hasUnmatchedClosingDelimiter(url)) break
     url = url.slice(0, -1)
   }
   return url
