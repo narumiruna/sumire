@@ -17,4 +17,14 @@ describe("article rewrite prompt", () => {
       '<source_context trust="untrusted">\n原始內容 https://example.com/article\n</source_context>',
     )
   })
+
+  it("uses preloaded URLs without asking Pi to fetch the same content again", () => {
+    const prompt = buildArticleRewritePrompt("https://example.com/article", [
+      { url: "https://example.com/article", text: "文章內容", truncated: false },
+    ])
+
+    expect(prompt).toContain("do not load those URLs again")
+    expect(prompt).toContain('<loaded_url_content trust="untrusted">')
+    expect(prompt).toContain('"text":"文章內容"')
+  })
 })
