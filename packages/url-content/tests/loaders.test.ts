@@ -199,6 +199,51 @@ describe("source loaders", () => {
     ).rejects.toThrow("3 byte limit")
   })
 
+  it("preserves literal HTML tags in non-HTML textual HTTP responses", async () => {
+    const text = "<script>const demo = 1;</script>\n<style>body { color: red; }</style>"
+    const resources = {
+      fetch: async () =>
+        new Response(text, { headers: { "content-type": "text/plain; charset=utf-8" } }),
+    } as unknown as ResourceProvider
+
+    await expect(
+      new HttpLoader({ resources }).load("https://example.com/example.txt"),
+    ).resolves.toBe(text)
+  })
+
+  it("preserves literal HTML tags in non-HTML textual impers responses", async () => {
+    const text = "<template>literal snippet</template>"
+    let content: Buffer = Buffer.from(text)
+    const session = {
+      get: async (_url: string, options: Record<string, unknown>) => {
+        ;(options.contentCallback as (chunk: Buffer) => void)(content)
+        return {
+          status: 200,
+          get text() {
+            return content.toString()
+          },
+          headers: {
+            get: (name: string) => (name === "content-type" ? "text/plain" : null),
+          },
+          setContent: (value: Buffer) => {
+            content = value
+          },
+          close: async () => undefined,
+        }
+      },
+      close: async () => undefined,
+    } as unknown as ImpersSession
+    const resources = {
+      validateUrl: async (input: string | URL) => new URL(input),
+      impersProxy: async () => "http://127.0.0.1:8080",
+      impersSession: async () => session,
+    } as unknown as ResourceProvider
+
+    await expect(
+      new CurlCffiLoader({ resources }).load("https://example.com/example.txt"),
+    ).resolves.toBe(text)
+  })
+
   it("does not accept a page consisting only of scripts as extracted content", async () => {
     const resources = {
       fetch: async () =>

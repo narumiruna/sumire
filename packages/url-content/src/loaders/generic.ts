@@ -24,6 +24,13 @@ export const DEFAULT_HTTP_HEADERS = {
   "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
 } as const
 
+function readableText(response: RetrievedHtml): string {
+  const mediaType = response.contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
+  return !mediaType || mediaType === "text/html"
+    ? htmlToMarkdown(response.content)
+    : response.content.trim()
+}
+
 function requireTextContentType(contentType: string, loaderName: string, url: string): void {
   const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
   if (
@@ -124,7 +131,7 @@ export class HttpLoader implements Loader {
       timeoutMs: this.timeoutMs,
     })
     requireTextContentType(response.contentType, "HttpLoader", url)
-    const result = htmlToMarkdown(response.content)
+    const result = readableText(response)
     ensureUsableContent(result, { loaderName: "HttpLoader", url })
     return result
   }
@@ -160,7 +167,7 @@ export class CurlCffiLoader implements Loader {
       loaderName: "CurlCffiLoader",
     })
     requireTextContentType(response.contentType, "CurlCffiLoader", url)
-    const result = htmlToMarkdown(response.content)
+    const result = readableText(response)
     ensureUsableContent(result, { loaderName: "CurlCffiLoader", url })
     return result
   }
