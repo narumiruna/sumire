@@ -10,6 +10,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
 import progressExtension from "@narumitw/sumire-progress"
+import { urlContentSkillsPath } from "@narumitw/sumire-url-content/resources"
 import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 
 import type { Settings } from "../config/settings.js"
@@ -105,7 +106,11 @@ export async function createPiSessionFactory(
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.projectRoot,
         agentDir,
-        additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath],
+        additionalSkillPaths: [
+          settings.botSkillsDir,
+          urlToolSkillsPath,
+          ...(settings.botCodingToolsEnabled ? [urlContentSkillsPath] : []),
+        ],
         extensionFactories: [
           { name: "sumire-progress", factory: progressExtension },
           { name: "sumire-url-tool", factory: urlExtension },

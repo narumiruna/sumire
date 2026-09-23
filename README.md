@@ -8,13 +8,13 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | --- | --- |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi and used by CI/CD. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
-| [`packages/url-content`](packages/url-content/README.md) | Shared TypeScript URL-content extraction package. |
+| [`packages/url-content`](packages/url-content/README.md) | URL-content CLI and library with a bundled Pi skill. |
 
-Shared runtime resources stay at the repository root:
+Bot-owned shared runtime resources stay at the repository root:
 
 - `instructions/SYSTEM.md`: bot system prompt template.
 - `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
-- `skills/`: Agent Skills loaded by the bot.
+- `skills/`: Bot-owned Agent Skills; package-specific Pi skills live in their owning package's `skills/` directory.
 - `.events` and `.telegramagent`: ignored runtime state.
 - `.env`: ignored deployment and local configuration; copy it from `.env.example` for the TypeScript bot.
 
