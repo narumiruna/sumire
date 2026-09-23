@@ -148,7 +148,7 @@ YouTube captions use `youtube-transcript`. The `youtube-ytdlp`, `ytdlp`, and `re
 - OpenAI Whisper's `whisper` CLI
 - FFmpeg
 
-The transcription loader writes only to an isolated temporary directory and removes it after each attempt.
+The transcription loader writes only to an isolated temporary directory and removes it after each attempt. YouTube and Reel audio downloads strip arbitrary URL query parameters and use canonical video URLs; the CLI is launched without user-level yt-dlp configuration.
 
 ## Extraction policy
 

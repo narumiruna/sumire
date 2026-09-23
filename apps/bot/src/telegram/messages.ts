@@ -19,8 +19,8 @@ export interface TelegramMessageLike {
   document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string }
   video?: unknown
   sticker?: unknown
-  voice?: unknown
-  audio?: unknown
+  voice?: { file_id: string; file_size?: number; duration: number }
+  audio?: { file_id: string; file_size?: number; duration: number }
   animation?: unknown
   video_note?: unknown
   reply_to_message?: TelegramMessageLike
@@ -105,6 +105,37 @@ export function promptWithReplyContext(
     "Treat the replied message as the primary object the user wants you to address. If no explicit instruction was provided, respond directly with a useful interpretation or summary instead of asking what to do.",
   )
   return lines.join("\n")
+}
+
+export interface AudioReference {
+  fileId: string
+  fileSize?: number
+  duration: number
+  source: "current" | "replied"
+  kind: "voice" | "audio"
+}
+
+export function audioReferences(message: TelegramMessageLike): AudioReference[] {
+  const references: AudioReference[] = []
+  const seen = new Set<string>()
+  add(message, "current")
+  if (message.reply_to_message) add(message.reply_to_message, "replied")
+  return references
+
+  function add(candidate: TelegramMessageLike, source: AudioReference["source"]): void {
+    for (const kind of ["voice", "audio"] as const) {
+      const audio = candidate[kind]
+      if (!audio || seen.has(audio.file_id)) continue
+      seen.add(audio.file_id)
+      references.push({
+        fileId: audio.file_id,
+        duration: audio.duration,
+        source,
+        kind,
+        ...(audio.file_size !== undefined ? { fileSize: audio.file_size } : {}),
+      })
+    }
+  }
 }
 
 export interface ImageReference {

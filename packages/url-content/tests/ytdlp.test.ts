@@ -5,7 +5,7 @@ import { dirname, join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
 import { LoaderContentError, LoaderTimeoutError } from "../src/core/errors.js"
-import { runCommand, YtdlpLoader } from "../src/loaders/ytdlp.js"
+import { runCommand, YouTubeYtdlpLoader, YtdlpLoader } from "../src/loaders/ytdlp.js"
 
 function captureOutputDirectory(args: readonly string[]): string {
   const outputIndex = args.indexOf("--output")
@@ -30,6 +30,17 @@ function processGroupExists(processGroupId: number): boolean {
 }
 
 describe("yt-dlp loader limits", () => {
+  it("passes only a validated canonical video URL to yt-dlp", async () => {
+    const load = vi.fn(async () => "transcript")
+    const loader = new YouTubeYtdlpLoader({ load })
+    await expect(
+      loader.load("https://vid.plus/watch?v=dQw4w9WgXcQ&next=http://127.0.0.1/"),
+    ).resolves.toBe("transcript")
+    expect(load).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ", undefined)
+    await expect(loader.load("https://youtube.com/watch?v=dQw4w9WgX%3C")).rejects.toThrow()
+    expect(load).toHaveBeenCalledOnce()
+  })
+
   it("terminates subprocesses when their signal expires", async () => {
     const timeout = AbortSignal.timeout(10)
     await expect(

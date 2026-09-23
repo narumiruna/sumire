@@ -117,6 +117,7 @@ export class YtdlpLoader implements Loader {
       const maxDurationSeconds =
         this.options.maxDurationSeconds ?? DEFAULT_MAX_MEDIA_DURATION_SECONDS
       const downloadArgs = [
+        "--no-config",
         "--no-playlist",
         "--format",
         "bestaudio/best",
@@ -222,8 +223,16 @@ export class YouTubeYtdlpLoader implements Loader {
   constructor(private readonly loader: Loader = new YtdlpLoader()) {}
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
-    requireLoaderApplicability("YouTubeYtdlpLoader", url, parseYouTubeVideoTarget)
-    return this.loader.load(url, signal)
+    const { videoId } = requireLoaderApplicability(
+      "YouTubeYtdlpLoader",
+      url,
+      parseYouTubeVideoTarget,
+    )
+    if (!/^[A-Za-z0-9_-]{11}$/u.test(videoId)) {
+      throw new LoaderContentError("YouTubeYtdlpLoader", url, "Invalid video ID")
+    }
+    // Do not forward arbitrary query parameters or third-party YouTube-compatible hosts to yt-dlp.
+    return this.loader.load(`https://www.youtube.com/watch?v=${videoId}`, signal)
   }
 }
 

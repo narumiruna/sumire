@@ -30,7 +30,7 @@ Available now:
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - optional Pi `read`, `bash`, `edit`, and `write` coding tools for explicitly allowlisted deployments
 - `instructions/SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
-- bounded Telegram image and document input
+- bounded Telegram image, document, and locally transcribed voice/audio input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
 - Morsel rich-rendering tool and mandatory routing for messages over 1000 characters
@@ -162,6 +162,14 @@ When `BOT_DOCUMENT_INPUT_ENABLED=true`, current and replied Word, PowerPoint, Ex
 Replying to a document with `/ask <question>` uses the same bounded media-input pipeline as an addressed message, including feature flags, direct failures, cancellation, and reply-tree restoration. An empty `/ask` still returns usage without processing attachments.
 
 The production image currently qualifies the AnyDoc native adapter on Linux x86_64 glibc. Other architectures are not release-qualified even if upstream optional packages exist. Disable `BOT_DOCUMENT_INPUT_ENABLED` if the native adapter is unavailable.
+
+## Local audio transcription
+
+The production image installs `yt-dlp`, FFmpeg, and the Python `openai-whisper` CLI with a CPU PyTorch runtime. The YouTube loader tries captions first, then downloads audio and transcribes it with the local `tiny` model; Instagram Reels use the same local audio transcription path. URL media remains subject to the public URL validation and the URL content timeout. It does not call OpenAI's hosted audio API.
+
+Voice notes and audio attachments sent to Sumire (or replied to with an addressed message) are downloaded only when their conversion slot is free. The streamed download is bounded to `BOT_AUDIO_MAX_BYTES` (default 20 MB); Telegram's reported duration is checked against `BOT_AUDIO_MAX_DURATION_SECONDS` (default 600 s). This metadata check does not verify the actual audio duration: the transcription also has a 180-second deadline and a 12,000-character transcript limit. Only one Telegram audio input transcribes at once; each request uses a private temporary file removed after success or failure. Transcripts are passed to Pi as explicitly untrusted reference text alongside the caption or question. Use `BOT_AUDIO_INPUT_ENABLED=false` to disable this input without disabling video-link loading. Unsupported/corrupt audio, download errors, and missing local tools produce a direct error rather than an invented transcript. Cancellation skips queued work and suppresses late results; an already running transcription finishes or times out before freeing its slot.
+
+The first use of the local `tiny` model downloads model weights. Compose keeps the cache in the `whisper-cache` volume, so later restarts do not repeat that download; the container needs network access for the first transcription. Local development requires `yt-dlp`, `whisper` from `openai-whisper`, and FFmpeg on `PATH`. This CPU-only stack increases image size and may take time to build or transcribe.
 
 ## URL content loading
 

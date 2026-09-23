@@ -717,6 +717,119 @@ describe("Telegram bot update routing", () => {
     expect(calls).toEqual([])
   })
 
+  it("transcribes private voice and replied audio before submitting them to Pi", async () => {
+    const sessions = createSessions()
+    const transcribe = vi.fn(async (loadBytes: () => Promise<Uint8Array>) => {
+      expect(await loadBytes()).toEqual(Buffer.from("audio bytes"))
+      return "轉錄內容"
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        audioTranscriber: { transcribe },
+        imageFetchImplementation: vi.fn(async () => new Response("audio bytes")),
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    const voice = privateMessage(90, "")
+    if (voice.message) {
+      delete voice.message.text
+      voice.message.voice = {
+        file_id: "voice-id",
+        file_unique_id: "voice-unique",
+        duration: 5,
+        file_size: 11,
+      }
+    }
+    await telegram.bot.handleUpdate(voice)
+    expect(sessions.submit).toHaveBeenCalledWith(
+      7,
+      expect.stringContaining('<audio-transcript source="current" kind="voice" trust="untrusted">'),
+      expect.anything(),
+    )
+    expect(calls.map((call) => call.method)).toEqual(["getFile", "sendMessage"])
+
+    const reply = privateMessage(91, "請摘要")
+    if (reply.message) {
+      reply.message.reply_to_message = {
+        message_id: 80,
+        date: 1_700_000_000,
+        chat: reply.message.chat,
+        from: { id: 8, is_bot: false, first_name: "Bob" },
+        audio: { file_id: "audio-id", file_unique_id: "audio-unique", duration: 8 },
+        reply_to_message: undefined,
+      }
+    }
+    await telegram.bot.handleUpdate(reply)
+    expect(sessions.submit).toHaveBeenCalledWith(
+      7,
+      expect.stringContaining('<audio-transcript source="replied" kind="audio" trust="untrusted">'),
+      expect.anything(),
+    )
+    expect(transcribe).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns a direct error instead of sending failed audio transcription to Pi", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        audioTranscriber: {
+          transcribe: vi.fn(async () => {
+            throw new Error("Whisper unavailable")
+          }),
+        },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    const update = privateMessage(93, "")
+    if (update.message) {
+      delete update.message.text
+      update.message.voice = { file_id: "voice-id", file_unique_id: "voice-unique", duration: 1 }
+    }
+    await telegram.bot.handleUpdate(update)
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(calls.find((call) => call.method === "sendMessage")?.payload.text).toBe(
+      "無法下載或轉錄音訊，請稍後再試。",
+    )
+  })
+
+  it("rejects disabled, over-duration, and oversized Telegram audio without invoking Pi", async () => {
+    for (const [settings, voice, expected] of [
+      [{ BOT_AUDIO_INPUT_ENABLED: "false" }, { duration: 1 }, "目前未啟用音訊輸入。"],
+      [{ BOT_AUDIO_MAX_DURATION_SECONDS: "10" }, { duration: 11 }, "音訊長度超過允許的限制。"],
+      [
+        { BOT_AUDIO_MAX_BYTES: "4" },
+        { duration: 1, file_size: 5 },
+        "音訊超過允許的大小，無法處理。",
+      ],
+    ] as const) {
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token", ...settings }),
+        sessions,
+        logger,
+        { botInfo },
+      )
+      const calls = installApiMock(telegram.bot)
+      const update = privateMessage(92, "")
+      if (update.message) {
+        delete update.message.text
+        update.message.voice = { file_id: "voice-id", file_unique_id: "voice-unique", ...voice }
+      }
+      await telegram.bot.handleUpdate(update)
+      expect(sessions.submit).not.toHaveBeenCalled()
+      expect(calls.find((call) => call.method === "sendMessage")?.payload.text).toBe(expected)
+      expect(calls.some((call) => call.method === "getFile")).toBe(false)
+    }
+  })
+
   it("records unaddressed group updates as passive context", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(

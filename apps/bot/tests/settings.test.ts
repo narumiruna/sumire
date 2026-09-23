@@ -20,6 +20,9 @@ describe("loadSettings", () => {
     )
     expect(settings.botSoulPath).toBe(path.resolve("/workspace/project/instructions/SOUL.md"))
     expect(settings.botDocumentMaxBytes).toBe(20_000_000)
+    expect(settings.botAudioInputEnabled).toBe(true)
+    expect(settings.botAudioMaxBytes).toBe(20_000_000)
+    expect(settings.botAudioMaxDurationSeconds).toBe(600)
     expect(settings.botReplyTreeEnabled).toBe(true)
     expect(settings.botUrlTimeoutSeconds).toBe(15)
     expect(settings.botUrlContentTimeoutSeconds).toBe(180)
@@ -41,6 +44,11 @@ describe("loadSettings", () => {
       BOT_DOCUMENT_MAX_MARKDOWN_CHARS: "4321",
       BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: "2.5",
       BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "3",
+      BOT_AUDIO_INPUT_ENABLED: "false",
+      BOT_AUDIO_MAX_BYTES: "1234",
+      BOT_AUDIO_MAX_DURATION_SECONDS: "120",
+      BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS: "42",
+      BOT_AUDIO_MAX_TRANSCRIPT_CHARS: "789",
       BOT_REPLY_TREE_ENABLED: "false",
       BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: "20",
       BOT_REPLY_TREE_MAX_INDEX_BYTES: "2048",
@@ -60,6 +68,11 @@ describe("loadSettings", () => {
     expect(settings.botDocumentMaxMarkdownChars).toBe(4321)
     expect(settings.botDocumentConversionTimeoutSeconds).toBe(2.5)
     expect(settings.botDocumentMaxConcurrentConversions).toBe(3)
+    expect(settings.botAudioInputEnabled).toBe(false)
+    expect(settings.botAudioMaxBytes).toBe(1234)
+    expect(settings.botAudioMaxDurationSeconds).toBe(120)
+    expect(settings.botAudioTranscriptionTimeoutSeconds).toBe(42)
+    expect(settings.botAudioMaxTranscriptChars).toBe(789)
     expect(settings.botReplyTreeEnabled).toBe(false)
     expect(settings.botReplyTreeMaxRecordsPerChat).toBe(20)
     expect(settings.botReplyTreeMaxIndexBytes).toBe(2048)
@@ -77,6 +90,9 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_AUDIO_INPUT_ENABLED: "yes" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_AUDIO_MAX_BYTES: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_AUDIO_MAX_DURATION_SECONDS: "0" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "17" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_REPLY_TREE_MAX_INDEX_BYTES: "100" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_URL_TIMEOUT_SECONDS: "0" })).toThrow(ZodError)
