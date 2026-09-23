@@ -159,7 +159,7 @@ Strict source plans do not accept unrelated generic HTML:
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.
-- Empty output and recognized challenge headings are rejected so the chain can continue.
+- Generic HTML conversion drops non-visible `script`, `style`, `noscript`, and `template` nodes before Markdown extraction. Escaped markup in visible code examples is preserved. Empty output and recognized challenge headings are rejected so the chain can continue.
 
 ## Kabigon compatibility
 

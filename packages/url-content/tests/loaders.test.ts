@@ -199,6 +199,22 @@ describe("source loaders", () => {
     ).rejects.toThrow("3 byte limit")
   })
 
+  it("does not accept a page consisting only of scripts as extracted content", async () => {
+    const resources = {
+      fetch: async () =>
+        new Response(
+          "<script>window.siteData = 'noise'</script><style>body { color: red }</style>",
+          {
+            headers: { "content-type": "text/html" },
+          },
+        ),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/page")).rejects.toThrow(
+      LoaderContentError,
+    )
+  })
+
   it("times out stalled HTTP requests by default", async () => {
     const resources = {
       fetch: async (_input: string | URL, init?: RequestInit) =>
