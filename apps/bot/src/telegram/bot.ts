@@ -41,6 +41,7 @@ import {
 } from "./messages.js"
 import { runTelegramPolling } from "./polling.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
+import { sanitizeTelegramText } from "./rendering.js"
 
 export interface TelegramAgentBot {
   bot: Bot
@@ -711,7 +712,9 @@ export function createTelegramAgentBot(
           if (status) {
             // Telegram rejects edits that leave the pending reply unchanged.
             outcome =
-              pendingVisible && resultDeliveryMode === "default" && result.text === pendingText
+              pendingVisible &&
+              resultDeliveryMode === "default" &&
+              sanitizeTelegramText(result.text) === pendingText
                 ? isCurrent()
                   ? "delivered"
                   : "stale"

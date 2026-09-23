@@ -799,6 +799,39 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
   })
 
+  it.each([
+    ["NUL", "\u0000"],
+    ["control", "\u0007"],
+    ["unpaired surrogate", "\ud800"],
+  ])("keeps the pending reply when the final answer adds a removed %s", async (_name, suffix) => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: `處理中…${suffix}`, checkpoint }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+      },
+    )
+    const calls = installApiMock(telegram.bot, (method, payload) => {
+      if (method === "editMessageText" && payload.text === "處理中…") {
+        throw new Error("message is not modified")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請重複：處理中…"))
+
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
+    expect(calls[0]?.payload.text).toBe("處理中…")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
+  })
+
   it("edits the pending reply when progress is visible before the same final answer", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
