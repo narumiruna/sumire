@@ -15,6 +15,7 @@ import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
+import { traceUrlLoad } from "../url-telemetry.js"
 
 const providerId = "telegramagent-openai"
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
@@ -95,6 +96,8 @@ export async function createPiSessionFactory(
     timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
     urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
     selectableLoaders: selectableUrlLoaders,
+    traceLoad: (url, requestedLoader, toolCallId, load) =>
+      traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
   })
 
   return {

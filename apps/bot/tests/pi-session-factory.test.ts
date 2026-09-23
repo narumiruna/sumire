@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { loadSettings } from "../src/config/settings.js"
-import type { Logger } from "../src/logging.js"
+import type { Logger, SpanAttributes } from "../src/logging.js"
+import { urlFingerprint } from "../src/url-telemetry.js"
 
 const logger: Logger = {
   debug: vi.fn(),
@@ -43,7 +44,20 @@ describe("createPiSessionFactory", () => {
       },
       root,
     )
-    const factory = await createPiSessionFactory(settings, logger)
+    const spans: Array<{ name: string; attributes: SpanAttributes }> = []
+    const tracedLogger: Logger = {
+      ...logger,
+      span: async (name, attributes, callback) => {
+        const record = { name, attributes: { ...attributes } }
+        spans.push(record)
+        return callback({
+          setAttribute: (key, value) => {
+            record.attributes[key] = value
+          },
+        })
+      },
+    }
+    const factory = await createPiSessionFactory(settings, tracedLogger)
     const session = await factory.create(123)
     const otherSession = await factory.create(456)
 
@@ -75,10 +89,26 @@ describe("createPiSessionFactory", () => {
           undefined as never,
         ),
       ).rejects.toThrow("URL scheme is not allowed: http")
+      expect(spans).toEqual([
+        {
+          name: "url.load",
+          attributes: {
+            "url.fingerprint": urlFingerprint("http://8.8.8.8/"),
+            "url.requested_loader": "auto",
+            "pi.tool_call_id": "url-call",
+            "url.outcome": "error",
+            "url.error_type": "Error",
+          },
+        },
+      ])
+      expect(JSON.stringify(spans)).not.toContain("http://8.8.8.8/")
       expect(
         session.getAllTools().find((tool) => tool.name === "load_public_url")?.sourceInfo.source,
       ).not.toBe("sdk")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
+      expect(session.systemPrompt).toContain(
+        "使用者只提供網址時，先以 load_public_url 讀取本則訊息的網址",
+      )
       expect(session.systemPrompt).toContain("虛構 AI companion")
       expect(session.systemPrompt).not.toContain("{{SOUL_SECTION}}")
       expect(otherSession.sessionFile).toContain(

@@ -1,7 +1,7 @@
 import type { Context } from "grammy"
 
 import type { Logger } from "../logging.js"
-import { MorselPublishError, type MorselPublisher } from "../morsel.js"
+import { MorselPublishError, type MorselPublisher, publishMorselWithTrace } from "../morsel.js"
 import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
 
 export const maxTelegramMessageChars = 1_000
@@ -26,8 +26,7 @@ export function createTelegramDelivery(
     const length = Array.from(sanitized).length
     if (mode === "default" && length <= limit) return { text: sanitized, delivered: true }
     try {
-      if (!publisher.isConfigured) throw new MorselPublishError("MORSEL_API_KEY is not configured")
-      const url = await publisher.publish(sanitized)
+      const url = await publishMorselWithTrace(publisher, sanitized, mode, logger)
       const notice =
         mode === "publish"
           ? url

@@ -6,9 +6,10 @@ import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-reg
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
-import type { Logger } from "../logging.js"
+import { type Logger, withLogSpan } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
+import { singleUrlFingerprint } from "../url-telemetry.js"
 import { buildArticleRewritePrompt } from "../writer/prompt.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
@@ -306,6 +307,37 @@ export function createTelegramAgentBot(
     isCurrent: () => boolean,
     submissionOptions: InputSubmissionOptions = {},
   ): Promise<void> {
+    const fingerprint = singleUrlFingerprint(strippedText)
+    return withLogSpan(
+      logger,
+      "telegram.request",
+      {
+        "telegram.chat_id": context.chat?.id ?? 0,
+        "telegram.message_id": message.message_id,
+        "telegram.update_id": context.update.update_id,
+        "telegram.chat_type": context.chat?.type ?? "unknown",
+        "telegram.text_chars": strippedText.length,
+        "telegram.has_reply": Boolean(message.reply_to_message),
+        "telegram.images": imageReferences(message).length,
+        "telegram.documents": documentReferences(message).length,
+        "telegram.audio": audioReferences(message).length,
+        ...(fingerprint ? { "telegram.input_url_fingerprint": fingerprint } : {}),
+      },
+      async (span) => {
+        await processInput(context, message, strippedText, release, isCurrent, submissionOptions)
+        span.setAttribute("telegram.outcome", isCurrent() ? "finished" : "cancelled")
+      },
+    )
+  }
+
+  async function processInput(
+    context: Context,
+    message: TelegramMessageLike,
+    strippedText: string,
+    release: () => void,
+    isCurrent: () => boolean,
+    submissionOptions: InputSubmissionOptions,
+  ): Promise<void> {
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
     const audioRefs = audioReferences(message)
@@ -536,46 +568,81 @@ export function createTelegramAgentBot(
                 true,
               )
           : undefined
-      const result = await sessions.submit(chatId, prompt, {
-        images,
-        ...(submissionIntent ? { intent: submissionIntent } : {}),
-        ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
-        ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
-        onAccepted: releaseSubmissionTurn,
-        isCurrent,
-        onProgress: (steps) => {
-          if (steps.length === 0 && !hasProgressSnapshot) return
-          if (steps.length > 0) hasProgressSnapshot = true
-          progressStatus.publish(renderProgressStatus(steps))
+      const result = await withLogSpan(
+        logger,
+        "pi.submit",
+        {
+          "telegram.chat_id": chatId,
+          "telegram.message_id": sourceMessageId ?? 0,
+          "pi.intent": submissionIntent ?? "automatic",
+          "pi.reply_to_bot_message_id": replyToBotMessageId ?? 0,
+          "pi.prompt_chars": prompt.length,
+          "pi.image_count": images.length,
         },
-      })
+        async (span) => {
+          const submission = await sessions.submit(chatId, prompt, {
+            images,
+            ...(submissionIntent ? { intent: submissionIntent } : {}),
+            ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
+            ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
+            onAccepted: releaseSubmissionTurn,
+            isCurrent,
+            onProgress: (steps) => {
+              if (steps.length === 0 && !hasProgressSnapshot) return
+              if (steps.length > 0) hasProgressSnapshot = true
+              progressStatus.publish(renderProgressStatus(steps))
+            },
+          })
+          span.setAttribute("pi.outcome", submission.kind)
+          if (submission.kind === "completed" && submission.checkpoint) {
+            span.setAttribute("pi.session_id", submission.checkpoint.sessionId)
+            span.setAttribute("pi.entry_id", submission.checkpoint.entryId)
+          }
+          return submission
+        },
+      )
       if (!isCurrent()) {
         await cancelStatus()
         return
       }
       await progressStatus.close()
       const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
-      let deliveryResult: "delivered" | "unavailable" | "stale"
-      if (status) {
-        deliveryResult = await delivery.edit(
-          context,
-          status.chat.id,
-          status.message_id,
-          result.text,
-          isCurrent,
-          resultDeliveryMode,
-        )
-      } else {
-        const finalReply = await delivery.guardedReply(
-          context,
-          result.text,
-          replyOptions,
-          isCurrent,
-          resultDeliveryMode,
-        )
-        status = finalReply.message
-        deliveryResult = finalReply.result
-      }
+      const deliveryResult = await withLogSpan(
+        logger,
+        "telegram.deliver",
+        {
+          "telegram.chat_id": chatId,
+          "telegram.message_id": sourceMessageId ?? 0,
+          "delivery.mode": resultDeliveryMode,
+          "delivery.content_chars": result.text.length,
+        },
+        async (span) => {
+          let outcome: "delivered" | "unavailable" | "stale"
+          if (status) {
+            outcome = await delivery.edit(
+              context,
+              status.chat.id,
+              status.message_id,
+              result.text,
+              isCurrent,
+              resultDeliveryMode,
+            )
+          } else {
+            const finalReply = await delivery.guardedReply(
+              context,
+              result.text,
+              replyOptions,
+              isCurrent,
+              resultDeliveryMode,
+            )
+            status = finalReply.message
+            outcome = finalReply.result
+          }
+          span.setAttribute("delivery.outcome", outcome)
+          if (status) span.setAttribute("delivery.message_id", status.message_id)
+          return outcome
+        },
+      )
       if (deliveryResult === "stale") {
         await cancelStatus()
         return
