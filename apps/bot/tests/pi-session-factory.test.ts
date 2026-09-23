@@ -106,6 +106,7 @@ describe("createPiSessionFactory", () => {
         session.getAllTools().find((tool) => tool.name === "load_public_url")?.sourceInfo.source,
       ).not.toBe("sdk")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
+      expect(session.systemPrompt).not.toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(
         "使用者只提供網址時，先以 load_public_url 讀取本則訊息的網址",
       )
@@ -149,6 +150,7 @@ describe("createPiSessionFactory", () => {
         "load_public_url",
       ])
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")
+      expect(session.systemPrompt.match(/<name>load-url-content<\/name>/g)).toHaveLength(1)
       expect(session.systemPrompt).toContain("<name>otter-manage-expenses</name>")
       expect(logger.warn).not.toHaveBeenCalledWith(
         expect.stringContaining("Pi skill diagnostic for chat_id=123"),

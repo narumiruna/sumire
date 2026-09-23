@@ -37,7 +37,7 @@
 
 - `apps/bot/` contains the Telegram service; `packages/progress/`, `packages/url-content/`, and `packages/url-tool/` contain the shared Pi and URL-loading packages.
 - The root `package.json` and `package-lock.json` own all npm workspaces; do not move them into an app or package.
-- Keep shared runtime resources at the root: `instructions/`, `skills/`, `.env`, `.events/`, and `.telegramagent/`.
+- Keep bot-owned runtime resources at the root (`instructions/`, `skills/`, `.env`, `.events/`, `.telegramagent/`); bundle package-specific Pi skills under the owning package's `skills/` directory.
 
 ## Git and commits
 

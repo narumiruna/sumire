@@ -68,6 +68,7 @@ COPY --from=build --chown=app:app /build/apps/bot/package.json /app/apps/bot/pac
 COPY --from=build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
 COPY --from=build --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
 COPY --from=build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
+COPY --from=build --chown=app:app /build/packages/url-content/skills /app/packages/url-content/skills
 COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
 COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
 COPY --from=build --chown=app:app /build/packages/url-tool/skills /app/packages/url-tool/skills
