@@ -741,6 +741,7 @@ export function createTelegramAgentBot(
       }
       await progressStatus.close()
       const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
+      let previousStatusId: number | undefined
       const deliveryResult = await withLogSpan(
         logger,
         "telegram.deliver",
@@ -770,7 +771,10 @@ export function createTelegramAgentBot(
               isCurrent,
               resultDeliveryMode,
             )
-            if (replacement.message) status = replacement.message
+            if (replacement.message) {
+              if (replacement.previousMessageUpdated) previousStatusId = status.message_id
+              status = replacement.message
+            }
             outcome = replacement.result
           } else {
             const finalReply = await delivery.guardedReply(
@@ -794,7 +798,13 @@ export function createTelegramAgentBot(
       }
       clearPendingReply()
       if (deliveryResult === "delivered" && status && result.kind === "completed") {
-        await sessions.recordDelivery(chatId, result.checkpoint, [status.message_id])
+        await sessions.recordDelivery(
+          chatId,
+          result.checkpoint,
+          previousStatusId === undefined
+            ? [status.message_id]
+            : [previousStatusId, status.message_id],
+        )
       }
     } catch (error) {
       if (!isCurrent()) {

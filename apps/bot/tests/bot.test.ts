@@ -853,6 +853,39 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
   })
 
+  it("maps the old status pointer and fresh reply after a transient edit failure", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "回答", checkpoint }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    let editCount = 0
+    const calls = installApiMock(telegram.bot, (method) => {
+      if (method === "editMessageText" && ++editCount === 1) {
+        throw new Error("temporary transport failure")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請回答"))
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "sendMessage",
+      "editMessageText",
+    ])
+    expect(calls[3]?.payload.text).toBe("已改以新訊息回覆。")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
+  })
+
   it("sends a fresh answer and clears the pending reply when text is identical", async () => {
     const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
     const sessions = createSessions({
@@ -885,7 +918,25 @@ describe("Telegram bot update routing", () => {
     expect(calls[0]?.payload.text).toBe("處理中…")
     expect(calls[1]?.payload.text).toBe("處理中…")
     expect(calls[2]?.payload.text).toBe("已改以新訊息回覆。")
-    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
+
+    const reply = privateMessage(3, "接著呢？")
+    if (reply.message) {
+      reply.message.reply_to_message = {
+        message_id: 100,
+        date: 1_700_000_001,
+        chat: reply.message.chat,
+        from: botInfo,
+        text: "已改以新訊息回覆。",
+        reply_to_message: undefined,
+      }
+    }
+    await telegram.bot.handleUpdate(reply)
+    expect(sessions.submit).toHaveBeenLastCalledWith(
+      7,
+      "接著呢？",
+      expect.objectContaining({ replyToBotMessageId: 100 }),
+    )
   })
 
   it("delivers an identical answer even when the pending reply was deleted", async () => {
@@ -954,7 +1005,7 @@ describe("Telegram bot update routing", () => {
     ])
     expect(calls[1]?.payload.text).toBe("處理中…")
     expect(calls[2]?.payload.text).toBe("已改以新訊息回覆。")
-    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
 
   it("edits the pending reply when progress is visible before the same final answer", async () => {
@@ -1027,7 +1078,7 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toBe("進度 0/1\n\n🔄 分析需求")
     expect(calls[2]?.payload.text).toBe(calls[1]?.payload.text)
     expect(calls[3]?.payload.text).toBe("已改以新訊息回覆。")
-    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
 
   it("delivers an identical answer even when the progress reply was deleted", async () => {
@@ -1801,7 +1852,7 @@ describe("Telegram bot update routing", () => {
     ])
     expect(calls[2]?.payload.text).toBe(calls[1]?.payload.text)
     expect(calls[2]?.payload.text).toContain(shareUrl)
-    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
 
   it("orders passive group context after an earlier addressed image submission", async () => {

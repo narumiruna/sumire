@@ -74,7 +74,11 @@ describe("mandatory Morsel delivery", () => {
 
     await expect(
       delivery.editOrReply(context, 7, 100, "<回答>", options, () => true),
-    ).resolves.toMatchObject({ message: { message_id: 1 }, result: "delivered" })
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: false,
+      result: "delivered",
+    })
     expect(editMessageText).toHaveBeenCalledWith(7, 100, "&lt;回答&gt;", {
       parse_mode: "HTML",
     })
@@ -88,7 +92,11 @@ describe("mandatory Morsel delivery", () => {
 
     await expect(
       delivery.editOrReply(context, 7, 100, "回答", { parse_mode: "HTML" }, () => true),
-    ).resolves.toMatchObject({ message: { message_id: 1 }, result: "delivered" })
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: true,
+      result: "delivered",
+    })
     expect(editMessageText).toHaveBeenCalledTimes(2)
     expect(editMessageText).toHaveBeenNthCalledWith(2, 7, 100, "已改以新訊息回覆。", {
       parse_mode: "HTML",
@@ -102,7 +110,11 @@ describe("mandatory Morsel delivery", () => {
 
     await expect(
       delivery.replyAndClearPrevious(context, 7, 100, "處理中…", options, () => true),
-    ).resolves.toMatchObject({ message: { message_id: 1 }, result: "delivered" })
+    ).resolves.toMatchObject({
+      message: { message_id: 1 },
+      previousMessageUpdated: true,
+      result: "delivered",
+    })
     expect(reply).toHaveBeenCalledExactlyOnceWith("處理中…", options)
     expect(editMessageText).toHaveBeenCalledExactlyOnceWith(7, 100, "已改以新訊息回覆。", {
       parse_mode: "HTML",

@@ -75,16 +75,19 @@ export function createTelegramDelivery(
     if (!isCurrent()) return { result: "stale" as const }
     const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
     // The original may still be visible, or may have been deleted already.
+    let previousMessageUpdated = false
     try {
       await context.api.editMessageText(chatId, messageId, "已改以新訊息回覆。", {
         parse_mode: "HTML",
       })
+      previousMessageUpdated = true
     } catch (cleanupError) {
       logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
     }
     if (!isCurrent()) return { message, result: "stale" as const }
     return {
       message,
+      previousMessageUpdated,
       result: prepared.delivered ? ("delivered" as const) : ("unavailable" as const),
     }
   }
