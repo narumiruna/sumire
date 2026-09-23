@@ -15,6 +15,10 @@ describe("loadSettings", () => {
       path.resolve("/workspace/project/.telegramagent/sessions"),
     )
     expect(settings.botSkillsDir).toBe(path.resolve("/workspace/project/skills"))
+    expect(settings.botSystemPromptPath).toBe(
+      path.resolve("/workspace/project/instructions/SYSTEM.md"),
+    )
+    expect(settings.botSoulPath).toBe(path.resolve("/workspace/project/instructions/SOUL.md"))
     expect(settings.botDocumentMaxBytes).toBe(20_000_000)
     expect(settings.botReplyTreeEnabled).toBe(true)
     expect(settings.botUrlTimeoutSeconds).toBe(15)

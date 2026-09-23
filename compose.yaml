@@ -9,10 +9,10 @@ services:
     init: true
     restart: unless-stopped
     volumes:
+      - ./instructions:/app/instructions:ro
       - ./skills:/app/skills:ro
       - events:/app/.events
       - state:/app/.telegramagent
-      - ./SOUL.md:/app/SOUL.md:ro
 
 volumes:
   events:

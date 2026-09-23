@@ -12,7 +12,8 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 
 Shared runtime resources stay at the repository root:
 
-- `SOUL.md`: bot persona and runtime context.
+- `instructions/SYSTEM.md`: bot system prompt template.
+- `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
 - `skills/`: Agent Skills loaded by the bot.
 - `.events` and `.telegramagent`: ignored runtime state.
 - `.env`: ignored deployment and local configuration; copy it from `.env.example` for the TypeScript bot.
@@ -66,4 +67,4 @@ Use `npm run changeset -- --empty` when no package version should change. On eac
 
 ## Security
 
-Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data. Keep `SOUL.md` free of secrets.
+Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data. Keep `instructions/` free of secrets.
