@@ -6,6 +6,8 @@ const trailingPunctuation = /[.,;!?。，；！？]+$/u
 const closingWrappers = new Map([
   ["'", /'[.,;!?。，；！？]*$/u],
   ["`", /`[.,;!?。，；！？]*$/u],
+  ["「", /」[.,;!?。，；！？]*$/u],
+  ["“", /”[.,;!?。，；！？]*$/u],
 ])
 const closingDelimiters = new Map([
   [")", "("],
