@@ -23,11 +23,26 @@ FROM dependencies AS production-dependencies
 
 RUN npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false
 
+FROM node:24-bookworm-slim AS audio-dependencies
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m venv /opt/audio \
+    && /opt/audio/bin/pip install --upgrade pip \
+    && /opt/audio/bin/pip install torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cpu \
+    && /opt/audio/bin/pip install openai-whisper==20250625 yt-dlp==2026.8.19
+
 FROM node:24-bookworm-slim AS runtime
 
 ARG PLAYWRIGHT_VERSION
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV XDG_CACHE_HOME=/app/.cache
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -39,13 +54,14 @@ WORKDIR /app
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/instructions /app/skills \
+    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
     && chown -R app:app /app /ms-playwright
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
+COPY --from=audio-dependencies /opt/audio /opt/audio
 
 ENV NODE_ENV=production
-ENV PATH="/app/node_modules/.bin:${PATH}"
+ENV PATH="/opt/audio/bin:/app/node_modules/.bin:${PATH}"
 
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=build --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json

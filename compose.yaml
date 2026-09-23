@@ -13,7 +13,9 @@ services:
       - ./skills:/app/skills:ro
       - events:/app/.events
       - state:/app/.telegramagent
+      - whisper-cache:/app/.cache/whisper
 
 volumes:
   events:
   state:
+  whisper-cache:

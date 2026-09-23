@@ -17,7 +17,10 @@ export class ReelLoader implements Loader {
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
     parseReelTarget(url)
-    const audio = await this.audio.load(url, signal)
+    const shortcode = /^\/reel\/([A-Za-z0-9_-]+)\/?$/u.exec(new URL(url).pathname)?.[1]
+    if (!shortcode) throw new Error("Invalid Instagram Reel path")
+    // Keep tracking parameters and unexpected paths out of the audio downloader.
+    const audio = await this.audio.load(`https://www.instagram.com/reel/${shortcode}/`, signal)
     const html = await this.html.load(url, signal)
     return `${audio}\n\n${html}`
   }

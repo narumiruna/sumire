@@ -77,6 +77,11 @@ const environmentSchema = z
     BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
     BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
     BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
+    BOT_AUDIO_INPUT_ENABLED: envBoolean(true),
+    BOT_AUDIO_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
+    BOT_AUDIO_MAX_DURATION_SECONDS: envInteger(600, 1, 3_600),
+    BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS: envNumber(180, 1, 3_600),
+    BOT_AUDIO_MAX_TRANSCRIPT_CHARS: envInteger(12_000, 1, 100_000),
     LOGFIRE_TOKEN: optionalString,
     MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
     MORSEL_API_KEY: optionalString,
@@ -127,6 +132,11 @@ export interface Settings {
   botAgentCompactionTriggerRatio: number
   botImageInputEnabled: boolean
   botImageMaxBytes: number
+  botAudioInputEnabled: boolean
+  botAudioMaxBytes: number
+  botAudioMaxDurationSeconds: number
+  botAudioTranscriptionTimeoutSeconds: number
+  botAudioMaxTranscriptChars: number
   logfireToken?: string
   morselUrl: string
   morselApiKey?: string
@@ -178,6 +188,11 @@ export function loadSettings(
     botAgentCompactionTriggerRatio: 0.8,
     botImageInputEnabled: parsed.BOT_IMAGE_INPUT_ENABLED,
     botImageMaxBytes: parsed.BOT_IMAGE_MAX_BYTES,
+    botAudioInputEnabled: parsed.BOT_AUDIO_INPUT_ENABLED,
+    botAudioMaxBytes: parsed.BOT_AUDIO_MAX_BYTES,
+    botAudioMaxDurationSeconds: parsed.BOT_AUDIO_MAX_DURATION_SECONDS,
+    botAudioTranscriptionTimeoutSeconds: parsed.BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS,
+    botAudioMaxTranscriptChars: parsed.BOT_AUDIO_MAX_TRANSCRIPT_CHARS,
     ...(parsed.LOGFIRE_TOKEN ? { logfireToken: parsed.LOGFIRE_TOKEN } : {}),
     morselUrl: parsed.MORSEL_URL,
     ...(parsed.MORSEL_API_KEY ? { morselApiKey: parsed.MORSEL_API_KEY } : {}),

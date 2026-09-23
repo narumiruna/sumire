@@ -1,5 +1,5 @@
 import type { Page } from "playwright"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { LoaderContentError, LoaderTimeoutError } from "../src/core/errors.js"
 import type { ImpersSession, ResourceProvider } from "../src/core/resources.js"
@@ -409,12 +409,16 @@ describe("source loaders", () => {
   })
 
   it("combines Reel audio transcription and HTML metadata", async () => {
-    const audioLoader = { load: async () => "audio" }
+    const audioLoader = { load: vi.fn(async () => "audio") }
     const htmlLoader = { load: async () => "metadata" }
     await expect(
       new ReelLoader({ audioLoader, htmlLoader }).load(
-        "https://www.instagram.com/reel/CuA0XYZ1234/",
+        "https://www.instagram.com/reel/CuA0XYZ1234/?next=http://127.0.0.1/",
       ),
     ).resolves.toBe("audio\n\nmetadata")
+    expect(audioLoader.load).toHaveBeenCalledWith(
+      "https://www.instagram.com/reel/CuA0XYZ1234/",
+      undefined,
+    )
   })
 })

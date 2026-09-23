@@ -10,6 +10,7 @@ import type { Logger } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { buildArticleRewritePrompt } from "../writer/prompt.js"
+import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
 import {
   downloadTelegramFile,
@@ -17,6 +18,7 @@ import {
   TelegramDownloadTooLargeError,
 } from "./files.js"
 import {
+  audioReferences,
   captionCommandArguments,
   defaultImagePrompt,
   documentReferences,
@@ -44,6 +46,7 @@ interface TelegramBotDependencies {
   documentConverter?: DocumentConverter
   marketDataQuery?: (input: string) => Promise<string>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
+  audioTranscriber?: AudioTranscriber
 }
 
 interface InputSubmissionOptions {
@@ -71,6 +74,13 @@ export function createTelegramAgentBot(
   >()
   let runner: RunnerHandle | undefined
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
+  const audioTranscriber =
+    dependencies.audioTranscriber ??
+    new TelegramAudioTranscriber({
+      maxConcurrency: 1,
+      timeoutMs: settings.botAudioTranscriptionTimeoutSeconds * 1_000,
+      maxChars: settings.botAudioMaxTranscriptChars,
+    })
   const delivery = createTelegramDelivery(
     morselPublisher,
     logger,
@@ -107,6 +117,7 @@ export function createTelegramAgentBot(
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),
+        ...(settings.botAudioInputEnabled ? ["可傳送語音訊息或音訊檔以轉錄並提問。"] : []),
         ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
         ...(settings.botCodingToolsEnabled
           ? ["可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。"]
@@ -256,7 +267,8 @@ export function createTelegramAgentBot(
       !source &&
       !repliedText &&
       imageReferences(message).length === 0 &&
-      documentReferences(message).length === 0
+      documentReferences(message).length === 0 &&
+      audioReferences(message).length === 0
     ) {
       await delivery.reply(
         context,
@@ -296,6 +308,15 @@ export function createTelegramAgentBot(
   ): Promise<void> {
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
+    const audioRefs = audioReferences(message)
+    if (audioRefs.length > 0 && !settings.botAudioInputEnabled) {
+      await delivery.reply(context, "目前未啟用音訊輸入。", replyOptions(context))
+      return
+    }
+    if (audioRefs.some((reference) => reference.duration > settings.botAudioMaxDurationSeconds)) {
+      await delivery.reply(context, "音訊長度超過允許的限制。", replyOptions(context))
+      return
+    }
     if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
       await delivery.reply(context, "目前未啟用圖片輸入。", replyOptions(context))
       return
@@ -334,6 +355,40 @@ export function createTelegramAgentBot(
     }
 
     if (!isCurrent()) return
+    const transcripts: Array<{
+      source: "current" | "replied"
+      kind: "voice" | "audio"
+      text: string
+    }> = []
+    try {
+      for (const reference of audioRefs) {
+        const text = await audioTranscriber.transcribe(async () => {
+          if (!isCurrent()) throw new Error("Telegram audio input was invalidated")
+          return downloadTelegramFile(
+            context.api,
+            settings.botToken,
+            reference,
+            settings.botAudioMaxBytes,
+            dependencies.imageFetchImplementation,
+          )
+        }, isCurrent)
+        if (!isCurrent()) return
+        transcripts.push({ source: reference.source, kind: reference.kind, text })
+      }
+    } catch (error) {
+      if (!isCurrent()) return
+      logger.warn(`Telegram audio input failed for chat_id=${context.chat?.id}`, error)
+      await delivery.reply(
+        context,
+        error instanceof TelegramDownloadTooLargeError
+          ? "音訊超過允許的大小，無法處理。"
+          : "無法下載或轉錄音訊，請稍後再試。",
+        replyOptions(context),
+      )
+      return
+    }
+
+    if (!isCurrent()) return
     let documentInputs: Array<{
       reference: (typeof documentRefs)[number]
       converted: Awaited<ReturnType<DocumentConverter["convert"]>>
@@ -366,22 +421,21 @@ export function createTelegramAgentBot(
     }
 
     if (!isCurrent()) return
-    let prompt: string
-    if (documentInputs.length > 0) {
-      prompt = promptWithReplyContext(
-        message,
-        promptWithDocumentContext(
-          strippedText,
-          documentInputs,
-          settings.botDocumentMaxMarkdownChars,
-        ),
-        submissionOptions.includeBotReplyContext,
-      )
-    } else {
-      const basePrompt =
-        strippedText || (images.length > 0 ? defaultImagePrompt : "請回應這則訊息。")
-      prompt = promptWithReplyContext(message, basePrompt, submissionOptions.includeBotReplyContext)
-    }
+    let prompt =
+      documentInputs.length > 0
+        ? promptWithDocumentContext(
+            strippedText,
+            documentInputs,
+            settings.botDocumentMaxMarkdownChars,
+          )
+        : strippedText ||
+          (images.length > 0
+            ? defaultImagePrompt
+            : transcripts.length > 0
+              ? "請回應這段音訊的內容。"
+              : "請回應這則訊息。")
+    if (transcripts.length > 0) prompt = promptWithAudioContext(prompt, transcripts)
+    prompt = promptWithReplyContext(message, prompt, submissionOptions.includeBotReplyContext)
     prompt = submissionOptions.promptTransform?.(prompt) ?? prompt
     await answer(
       context,
