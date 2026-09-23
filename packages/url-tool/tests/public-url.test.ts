@@ -6,6 +6,7 @@ import {
   createPinnedLookup,
   fetchPublicUrl,
   isPublicIp,
+  type LoadedUrl,
   loadPublicUrl,
 } from "../src/public-url.js"
 import { createUrlTool } from "../src/url-tool.js"
@@ -37,6 +38,44 @@ describe("public URL loading", () => {
     const result = await tool.execute("call", { url }, signal, undefined, undefined as never)
     expect(load).toHaveBeenCalledWith(url, { signal })
     expect(result).toMatchObject({ details: { text: "content" } })
+  })
+
+  it("traces the requested URL and selected result without changing loading or error behavior", async () => {
+    const url = "https://example.com/article?key=private"
+    const loaded = {
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "article",
+      truncated: false,
+    }
+    const load = vi.fn(async () => loaded)
+    const traceLoad = vi.fn(
+      async (
+        _url: string,
+        _loader: string | undefined,
+        _toolCallId: string,
+        run: () => Promise<LoadedUrl>,
+      ) => run(),
+    )
+    const tool = createUrlTool({ load }, { traceLoad })
+
+    await expect(
+      tool.execute("call", { url, loader: "built-in" }, undefined, undefined, undefined as never),
+    ).rejects.toThrow("URL loader is not selectable")
+    expect(traceLoad).not.toHaveBeenCalled()
+
+    const result = await tool.execute("call", { url }, undefined, undefined, undefined as never)
+    expect(traceLoad).toHaveBeenCalledWith(url, undefined, "call", expect.any(Function))
+    expect(load).toHaveBeenCalledExactlyOnceWith(url, {})
+    expect(result.details).toEqual(loaded)
+
+    load.mockRejectedValueOnce(new Error("load failed"))
+    await expect(
+      tool.execute("call", { url }, undefined, undefined, undefined as never),
+    ).rejects.toThrow("load failed")
+    expect(traceLoad).toHaveBeenCalledTimes(2)
   })
 
   it("classifies private, local, and public IP addresses", () => {

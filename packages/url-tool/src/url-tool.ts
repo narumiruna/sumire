@@ -3,12 +3,19 @@ import { defineTool } from "@earendil-works/pi-coding-agent"
 
 import {
   assertUrlLoaderName,
+  type LoadedUrl,
   type PublicUrlLoader,
   type PublicUrlLoadOptions,
 } from "./public-url.js"
 
 export interface UrlToolOptions {
   selectableLoaders?: readonly string[]
+  traceLoad?: (
+    url: string,
+    loader: string | undefined,
+    toolCallId: string,
+    load: () => Promise<LoadedUrl>,
+  ) => Promise<LoadedUrl>
 }
 
 export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions = {}) {
@@ -34,7 +41,7 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
     description:
       "Load readable text or Markdown from a public HTTP(S) URL. Google Docs links use plain-text export; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Other URLs try the bounded built-in loader first, then source-aware extraction for source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
     parameters,
-    execute: async (_toolCallId, toolParameters, signal) => {
+    execute: async (toolCallId, toolParameters, signal) => {
       const rawLoader = "loader" in toolParameters ? toolParameters.loader : undefined
       if (rawLoader !== undefined && typeof rawLoader !== "string") {
         throw new TypeError("URL loader must be a string")
@@ -47,7 +54,10 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
         ...(requestedLoader !== undefined ? { loader: requestedLoader } : {}),
         ...(signal ? { signal } : {}),
       }
-      const result = await loader.load(toolParameters.url, loadOptions)
+      const load = () => loader.load(toolParameters.url, loadOptions)
+      const result = await (options.traceLoad
+        ? options.traceLoad(toolParameters.url, requestedLoader, toolCallId, load)
+        : load())
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
         details: result,

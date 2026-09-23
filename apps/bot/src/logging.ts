@@ -19,7 +19,20 @@ export function redactLogMessage(message: string): string {
     .replace(sensitiveBareValuePattern, "$1$2[redacted]")
 }
 
+export type SpanAttributes = Record<string, string | number | boolean>
+
+export interface TraceSpan {
+  setAttribute(key: string, value: string | number | boolean): void
+}
+
+const noOpSpan: TraceSpan = { setAttribute: () => {} }
+
 export interface Logger {
+  span?<T>(
+    name: string,
+    attributes: SpanAttributes,
+    callback: (span: TraceSpan) => Promise<T>,
+  ): Promise<T>
   debug(message: string, details?: unknown): void
   info(message: string, details?: unknown): void
   warn(message: string, details?: unknown): void
@@ -34,6 +47,19 @@ export interface LogfireClient {
   warning(message: string): void
   error(message: string): void
   shutdown(options?: { timeoutMillis?: number }): Promise<void>
+  span?: <T>(
+    name: string,
+    options: { attributes: SpanAttributes; callback: (span: TraceSpan) => Promise<T> },
+  ) => Promise<T>
+}
+
+export function withLogSpan<T>(
+  logger: Logger,
+  name: string,
+  attributes: SpanAttributes,
+  callback: (span: TraceSpan) => Promise<T>,
+): Promise<T> {
+  return logger.span ? logger.span(name, attributes, callback) : callback(noOpSpan)
 }
 
 export function createLogger(
@@ -86,6 +112,10 @@ export function createLogger(
   }
 
   return {
+    span: (name, attributes, callback) =>
+      logfireEnabled && logfireClient.span
+        ? logfireClient.span(name, { attributes, callback })
+        : callback(noOpSpan),
     debug: (message, details) => {
       if (verbose) write("DEBUG", message, details)
     },

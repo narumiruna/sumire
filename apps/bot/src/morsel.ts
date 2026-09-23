@@ -2,7 +2,7 @@ import { Type } from "@earendil-works/pi-ai"
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent"
 
 import type { Settings } from "./config/settings.js"
-import type { Logger } from "./logging.js"
+import { type Logger, withLogSpan } from "./logging.js"
 
 const shareCapabilityPattern = /^[A-Za-z0-9_-]{43}$/u
 
@@ -68,6 +68,37 @@ export class MorselPublisher {
   }
 }
 
+export function publishMorselWithTrace(
+  publisher: Pick<MorselPublisher, "isConfigured" | "publish">,
+  content: string,
+  mode: "default" | "publish" | "rich_tool",
+  logger: Logger,
+  toolCallId?: string,
+): Promise<string> {
+  return withLogSpan(
+    logger,
+    "morsel.publish",
+    {
+      "morsel.content_chars": Array.from(content).length,
+      "morsel.delivery_mode": mode,
+      ...(toolCallId ? { "pi.tool_call_id": toolCallId } : {}),
+    },
+    async (span) => {
+      try {
+        if (!publisher.isConfigured)
+          throw new MorselPublishError("MORSEL_API_KEY is not configured")
+        const url = await publisher.publish(content)
+        span.setAttribute("morsel.outcome", "published")
+        return url
+      } catch (error) {
+        span.setAttribute("morsel.outcome", "error")
+        span.setAttribute("morsel.error_type", error instanceof Error ? error.name : "unknown")
+        throw error
+      }
+    },
+  )
+}
+
 export function createMorselPublisher(settings: Settings): MorselPublisher {
   return new MorselPublisher(settings.morselUrl, settings.morselApiKey, {
     timeoutMs: Math.round(settings.morselTimeoutSeconds * 1_000),
@@ -90,9 +121,15 @@ export function buildMorselTools(
         "Publish a complete Markdown answer for rich Mermaid, Vega-Lite, or LaTeX rendering. Pass the complete answer exactly once, then return only the share URL when successful.",
       parameters: Type.Object({ content: Type.String({ minLength: 1 }) }),
       executionMode: "sequential",
-      execute: async (_toolCallId, parameters) => {
+      execute: async (toolCallId, parameters) => {
         try {
-          const shareUrl = await publisher.publish(parameters.content)
+          const shareUrl = await publishMorselWithTrace(
+            publisher,
+            parameters.content,
+            "rich_tool",
+            logger,
+            toolCallId,
+          )
           return {
             content: [
               {

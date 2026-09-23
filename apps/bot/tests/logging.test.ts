@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createLogger, type LogfireClient, redactLogMessage } from "../src/logging.js"
+import {
+  createLogger,
+  type LogfireClient,
+  redactLogMessage,
+  type SpanAttributes,
+  type TraceSpan,
+} from "../src/logging.js"
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -54,16 +60,46 @@ describe("createLogger", () => {
     expect(stderr.mock.calls.flat().join(" ")).not.toContain("info-secret")
   })
 
-  it("uses stderr only when Logfire is not configured", () => {
+  it("uses the configured Logfire span with structured metadata", async () => {
+    const client = createLogfireClient()
+    const recorded: Record<string, string | number | boolean> = {}
+    client.span = async <T>(
+      _name: string,
+      options: { attributes: SpanAttributes; callback: (span: TraceSpan) => Promise<T> },
+    ): Promise<T> => {
+      Object.assign(recorded, options.attributes)
+      return options.callback({
+        setAttribute: (key, value) => {
+          recorded[key] = value
+        },
+      })
+    }
+    const span = vi.spyOn(client, "span")
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const result = await logger.span?.("request", { "telegram.message_id": 42 }, async (span) => {
+      span.setAttribute("outcome", "delivered")
+      return "ok"
+    })
+
+    expect(result).toBe("ok")
+    expect(span).toHaveBeenCalledOnce()
+    expect(recorded).toEqual({ "telegram.message_id": 42, outcome: "delivered" })
+  })
+
+  it("uses stderr only when Logfire is not configured", async () => {
     const client = createLogfireClient()
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
     const logger = createLogger(false, undefined, client)
+    const span = vi.spyOn(client, "span")
 
     logger.info("local message")
 
     expect(client.configure).not.toHaveBeenCalled()
     expect(client.info).not.toHaveBeenCalled()
     expect(stderr).toHaveBeenCalledOnce()
+    await expect(logger.span?.("ignored", {}, async () => 123)).resolves.toBe(123)
+    expect(span).not.toHaveBeenCalled()
   })
 
   it("falls back to stderr when Logfire configuration fails", () => {
@@ -92,5 +128,9 @@ function createLogfireClient() {
     warning: vi.fn<LogfireClient["warning"]>(),
     error: vi.fn<LogfireClient["error"]>(),
     shutdown: vi.fn<LogfireClient["shutdown"]>(async () => undefined),
+    span: async <T>(
+      _name: string,
+      options: { attributes: SpanAttributes; callback: (span: TraceSpan) => Promise<T> },
+    ): Promise<T> => options.callback({ setAttribute: () => {} }),
   } satisfies LogfireClient
 }

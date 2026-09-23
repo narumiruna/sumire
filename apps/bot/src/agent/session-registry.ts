@@ -115,6 +115,9 @@ export class ChatSessionRegistry {
       assertCurrent,
     )
     assertCurrent()
+    this.logger.info(
+      `Pi submission chat_id=${chatId} session_id=${session.sessionId} reply_branch_restored=${restoredBranch} intent=${options.intent ?? "automatic"}`,
+    )
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
@@ -139,9 +142,13 @@ export class ChatSessionRegistry {
 
     assertCurrent()
     const previousMessageCount = session.messages.length
-    const unsubscribe = options.onProgress
-      ? session.subscribe(progressListener(options.onProgress, this.logger))
+    const notifyProgress = options.onProgress
+      ? progressListener(options.onProgress, this.logger)
       : undefined
+    const unsubscribe = session.subscribe((event) => {
+      notifyProgress?.(event)
+      logPiEvent(event, chatId, session.sessionId, this.logger)
+    })
     let finishCapture = () => {}
     const capture = {
       generation,
@@ -346,6 +353,33 @@ export class ChatSessionRegistry {
     } finally {
       if (this.#creating.get(chatId) === creation) this.#creating.delete(chatId)
     }
+  }
+}
+
+function logPiEvent(
+  event: AgentSessionEvent,
+  chatId: number,
+  sessionId: string,
+  logger: Logger,
+): void {
+  const prefix = `chat_id=${chatId} session_id=${sessionId}`
+  if (event.type === "tool_execution_start") {
+    logger.info(`Pi tool started ${prefix} tool=${event.toolName} call_id=${event.toolCallId}`)
+  } else if (event.type === "tool_execution_end") {
+    logger.info(
+      `Pi tool finished ${prefix} tool=${event.toolName} call_id=${event.toolCallId} success=${!event.isError}`,
+    )
+  } else if (event.type === "message_end" && event.message.role === "assistant") {
+    const message = event.message
+    logger.info(
+      `Pi model response ${prefix} model=${message.model} stop_reason=${message.stopReason} input_tokens=${message.usage.input} output_tokens=${message.usage.output} total_tokens=${message.usage.totalTokens}`,
+    )
+  } else if (event.type === "auto_retry_start") {
+    logger.info(`Pi retry ${prefix} attempt=${event.attempt} max_attempts=${event.maxAttempts}`)
+  } else if (event.type === "compaction_end") {
+    logger.info(
+      `Pi compaction ${prefix} reason=${event.reason} aborted=${event.aborted} will_retry=${event.willRetry}`,
+    )
   }
 }
 

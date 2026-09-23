@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from "vitest"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
-import type { Logger } from "../src/logging.js"
+import type { Logger, SpanAttributes } from "../src/logging.js"
 import { queryMarketData } from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { urlFingerprint } from "../src/url-telemetry.js"
 
 const botInfo: UserFromGetMe = {
   id: 999,
@@ -2084,6 +2085,64 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, text, expect.any(Object))
     expect(calls.map((call) => call.method)).toEqual(["sendMessage"])
     expect(calls.at(-1)?.payload.text).toBe("AI 回覆")
+  })
+
+  it("correlates a URL-only Telegram request, Pi turn, delivery and Morsel publication", async () => {
+    const spans: Array<{ name: string; attributes: SpanAttributes }> = []
+    const tracedLogger: Logger = {
+      ...logger,
+      span: async (name, attributes, callback) => {
+        const record = { name, attributes: { ...attributes } }
+        spans.push(record)
+        return callback({
+          setAttribute: (key, value) => {
+            record.attributes[key] = value
+          },
+        })
+      },
+    }
+    const url = "https://youtu.be/TuK6oX9BhtQ?token=private"
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "長文".repeat(501) }
+      }),
+    })
+    const publisher = {
+      isConfigured: true,
+      publish: vi.fn(async () => "https://morsel.example/s/share"),
+    }
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      tracedLogger,
+      { botInfo, morselPublisher: publisher },
+    )
+    installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(27, url))
+
+    expect(spans.map((span) => span.name)).toEqual([
+      "telegram.request",
+      "pi.submit",
+      "telegram.deliver",
+      "morsel.publish",
+    ])
+    expect(spans[0]?.attributes).toMatchObject({
+      "telegram.chat_id": 7,
+      "telegram.message_id": 27,
+      "telegram.input_url_fingerprint": urlFingerprint(url),
+      "telegram.outcome": "finished",
+    })
+    expect(spans[1]?.attributes).toMatchObject({
+      "telegram.message_id": 27,
+      "pi.outcome": "completed",
+    })
+    expect(spans[2]?.attributes).toMatchObject({ "delivery.outcome": "delivered" })
+    expect(spans[3]?.attributes).toMatchObject({ "morsel.outcome": "published" })
+    expect(JSON.stringify(spans)).not.toContain(url)
+    expect(JSON.stringify(spans)).not.toContain("token=private")
+    expect(JSON.stringify(spans)).not.toContain("長文")
   })
 
   it("routes addressed group URLs and follow-ups after reset through the agent", async () => {

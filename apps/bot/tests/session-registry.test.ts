@@ -456,6 +456,72 @@ describe("ChatSessionRegistry", () => {
     expect(session.listeners.size).toBe(0)
   })
 
+  it("logs Pi session, tool outcome, model usage, retry and compaction without tool inputs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const prompt = session.prompt.bind(session)
+    session.prompt = vi.fn(async (text) => {
+      session.emit({
+        type: "tool_execution_start",
+        toolCallId: "call-1",
+        toolName: "load_public_url",
+        args: { url: "https://example.com/?key=private" },
+      })
+      session.emit({
+        type: "tool_execution_end",
+        toolCallId: "call-1",
+        toolName: "load_public_url",
+        result: { content: [], details: { text: "private content" } },
+        isError: false,
+      })
+      session.emit({
+        type: "auto_retry_start",
+        attempt: 1,
+        maxAttempts: 2,
+        delayMs: 100,
+        errorMessage: "private failure",
+      })
+      session.emit({
+        type: "compaction_end",
+        reason: "threshold",
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+      })
+      session.emit({ type: "message_end", message: assistant("private content") })
+      await prompt(text)
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    vi.mocked(logger.info).mockClear()
+
+    await registry.submit(1, "request")
+
+    const messages = vi.mocked(logger.info).mock.calls.map(([message]) => message)
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("session_id=fake-session reply_branch_restored=false"),
+        expect.stringContaining(
+          "Pi tool started chat_id=1 session_id=fake-session tool=load_public_url call_id=call-1",
+        ),
+        expect.stringContaining(
+          "Pi tool finished chat_id=1 session_id=fake-session tool=load_public_url call_id=call-1 success=true",
+        ),
+        expect.stringContaining(
+          "Pi model response chat_id=1 session_id=fake-session model=test stop_reason=stop input_tokens=0",
+        ),
+        expect.stringContaining(
+          "Pi retry chat_id=1 session_id=fake-session attempt=1 max_attempts=2",
+        ),
+        expect.stringContaining(
+          "Pi compaction chat_id=1 session_id=fake-session reason=threshold aborted=false",
+        ),
+      ]),
+    )
+    expect(messages.join(" ")).not.toContain("private content")
+    expect(messages.join(" ")).not.toContain("key=private")
+    expect(session.listeners.size).toBe(0)
+  })
+
   it("delegates steering, follow-up, passive context, cancellation, and reset to Pi sessions", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
