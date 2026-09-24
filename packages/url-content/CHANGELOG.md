@@ -1,5 +1,14 @@
 # @narumitw/sumire-url-content
 
+## 0.22.1
+
+### Patch Changes
+
+- f71efc8: Bundle the URL-content CLI skill as a local Pi package resource, and load it in the bot only when coding tools are enabled.
+- fef1294: Remove non-visible scripts, styles, noscript blocks, and templates before generic HTML-to-Markdown conversion so bounded public URL output contains readable page content instead of page assets.
+- b64107b: Enable local yt-dlp and Whisper transcription for YouTube and Reels in the production image, and transcribe bounded Telegram voice and audio inputs before submitting untrusted transcript context to Pi. Canonicalize video URLs passed to yt-dlp and ignore user CLI configuration.
+- aa6345b: Verify Threads share links against post metadata before returning content, preserve safe loader diagnostics, and attribute Firecrawl API errors correctly.
+
 ## 0.22.0
 
 ### Minor Changes
