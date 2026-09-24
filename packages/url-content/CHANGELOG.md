@@ -1,5 +1,11 @@
 # @narumitw/sumire-url-content
 
+## 0.22.2
+
+### Patch Changes
+
+- 65ad21a: Enable Pi's native read, bash, edit, and write tools in every bot session, remove the coding-tool opt-in flag, and require a non-empty Telegram whitelist before starting sessions. Make the URL-content CLI skill available by default.
+
 ## 0.22.1
 
 ### Patch Changes
