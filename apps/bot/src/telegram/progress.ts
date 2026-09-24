@@ -1,12 +1,12 @@
 import type { ProgressStep } from "@narumitw/sumire-progress"
 
-const maxVisibleSteps = 6
 const activityEditIntervalMs = 2_000
 const bidiControls = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 
 export interface ProgressStatusEditor {
-  publish(text: string): void
+  publish(text: string, isProgress?: boolean): void
   publishActivity(text: string): void
+  flush(): Promise<void>
   close(): Promise<void>
 }
 
@@ -14,19 +14,15 @@ export function renderProgressStatus(steps: readonly ProgressStep[]): string {
   if (steps.length === 0) return "進度已清除"
 
   const completed = steps.filter((step) => step.status === "completed").length
-  const visible = selectVisibleSteps(steps)
-  const lines = [`進度 ${completed}/${steps.length}`, "", ...visible.map(renderStep)]
-  const hidden = steps.length - visible.length
-  if (hidden > 0) lines.push(`…還有 ${hidden} 個步驟`)
-  return lines.join("\n")
+  return [`進度 ${completed}/${steps.length}`, "", ...steps.map(renderStep)].join("\n")
 }
 
 export function createProgressStatusEditor(
-  update: (text: string) => Promise<void>,
+  update: (text: string, isProgress: boolean) => Promise<void>,
   onError: (error: unknown) => void,
 ): ProgressStatusEditor {
   let closed = false
-  let pending: string | undefined
+  let pending: { text: string; isProgress: boolean } | undefined
   let lastPublished: string | undefined
   let active: Promise<void> | undefined
   let nextActivityAt = 0
@@ -35,11 +31,11 @@ export function createProgressStatusEditor(
 
   const drain = async () => {
     while (!closed && pending !== undefined) {
-      const text = pending
+      const { text, isProgress } = pending
       pending = undefined
       if (text === lastPublished) continue
       try {
-        await update(text)
+        await update(text, isProgress)
         lastPublished = text
       } catch (error) {
         onError(error)
@@ -55,9 +51,9 @@ export function createProgressStatusEditor(
     })
   }
 
-  const enqueue = (text: string) => {
-    if (closed || text === pending || (!active && text === lastPublished)) return
-    pending = text
+  const enqueue = (text: string, isProgress = false) => {
+    if (closed || text === pending?.text || (!active && text === lastPublished)) return
+    pending = { text, isProgress }
     start()
   }
 
@@ -77,9 +73,9 @@ export function createProgressStatusEditor(
   }
 
   return {
-    publish(text) {
+    publish(text, isProgress = false) {
       cancelActivity()
-      enqueue(text)
+      enqueue(text, isProgress)
     },
     publishActivity(text) {
       if (closed) return
@@ -89,36 +85,15 @@ export function createProgressStatusEditor(
       if (delay === 0) flushActivity()
       else activityTimer = setTimeout(flushActivity, delay)
     },
+    async flush() {
+      while (active) await active
+    },
     async close() {
       closed = true
       cancelActivity()
       pending = undefined
       while (active) await active
     },
-  }
-}
-
-function selectVisibleSteps(steps: readonly ProgressStep[]): ProgressStep[] {
-  if (steps.length <= maxVisibleSteps) return [...steps]
-
-  const ranked = steps
-    .map((step, index) => ({ step, index, rank: statusRank(step.status) }))
-    .sort((left, right) => left.rank - right.rank || left.index - right.index)
-    .slice(0, maxVisibleSteps)
-    .sort((left, right) => left.index - right.index)
-  return ranked.map(({ step }) => step)
-}
-
-function statusRank(status: ProgressStep["status"]): number {
-  switch (status) {
-    case "in_progress":
-      return 0
-    case "blocked":
-      return 1
-    case "pending":
-      return 2
-    case "completed":
-      return 3
   }
 }
 

@@ -68,6 +68,7 @@ export class ChatSessionRegistry {
   readonly #generations = new Map<number, number>()
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
   readonly #branchNavigations = new Map<number, Promise<void>>()
+  readonly #pendingReplyCheckpoints = new Map<number, Map<number, SubmissionCheckpoint>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
 
@@ -193,6 +194,36 @@ export class ChatSessionRegistry {
     }
   }
 
+  holdReplyCheckpoint(
+    chatId: number,
+    checkpoint: SubmissionCheckpoint | undefined,
+    telegramMessageId: number,
+  ): () => void {
+    const session = this.#sessions.get(chatId)
+    if (
+      !this.#replyTreeEnabled ||
+      !checkpoint ||
+      !session ||
+      !Number.isSafeInteger(telegramMessageId) ||
+      telegramMessageId <= 0 ||
+      (this.#generations.get(chatId) ?? 0) !== checkpoint.generation ||
+      session.sessionId !== checkpoint.sessionId ||
+      !session.sessionManager.getEntry(checkpoint.entryId)
+    ) {
+      return () => undefined
+    }
+    const aliases = this.#pendingReplyCheckpoints.get(chatId) ?? new Map()
+    aliases.set(telegramMessageId, checkpoint)
+    this.#pendingReplyCheckpoints.set(chatId, aliases)
+    return () => {
+      if (aliases.get(telegramMessageId) !== checkpoint) return
+      aliases.delete(telegramMessageId)
+      if (aliases.size === 0 && this.#pendingReplyCheckpoints.get(chatId) === aliases) {
+        this.#pendingReplyCheckpoints.delete(chatId)
+      }
+    }
+  }
+
   async recordDelivery(
     chatId: number,
     checkpoint: SubmissionCheckpoint | undefined,
@@ -241,6 +272,7 @@ export class ChatSessionRegistry {
 
   async reset(chatId: number): Promise<void> {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
+    this.#pendingReplyCheckpoints.delete(chatId)
     const session = this.#sessions.get(chatId)
     if (session) {
       if (session.isStreaming) {
@@ -258,6 +290,7 @@ export class ChatSessionRegistry {
   }
 
   async dispose(): Promise<void> {
+    this.#pendingReplyCheckpoints.clear()
     for (const chatId of this.#creating.keys()) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     }
@@ -288,7 +321,9 @@ export class ChatSessionRegistry {
     assertCurrent: () => void,
   ): Promise<boolean> {
     if (!this.#replyTreeEnabled || telegramMessageId === undefined) return false
-    const target = await this.#replyIndex.resolve(chatId, telegramMessageId)
+    const target =
+      this.#pendingReplyCheckpoints.get(chatId)?.get(telegramMessageId) ??
+      (await this.#replyIndex.resolve(chatId, telegramMessageId))
     assertCurrent()
     if (
       !target ||

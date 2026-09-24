@@ -639,9 +639,14 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
+    let reportedProgress = false
+    let progressCleared = false
     const pendingText = "處理中…"
+    let lastDeliveredStatusText: string | undefined
+    let lastDeliveredProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
+    let releaseReplyCheckpoint = () => {}
     let statusDisplayText: string | undefined = pendingText
     const clearPendingReply = () => {
       if (pendingMessageId === undefined) return
@@ -654,7 +659,7 @@ export function createTelegramAgentBot(
       pendingMessageId = undefined
     }
     const progressStatus = createProgressStatusEditor(
-      async (text) => {
+      async (text, isProgress) => {
         if (status) {
           visiblePayload = undefined
           const outcome = await delivery.edit(
@@ -668,22 +673,32 @@ export function createTelegramAgentBot(
               statusDisplayText = displayText
             },
           )
+          lastDeliveredStatusText = outcome === "delivered" ? text : undefined
+          if (outcome === "delivered" && isProgress) {
+            lastDeliveredProgress = { text, visibleText: statusDisplayText ?? text }
+          }
           visiblePayload = outcome === "delivered" ? delivery.directPayload(text) : undefined
           return
         }
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
+        lastDeliveredStatusText = progressReply.result === "delivered" ? text : undefined
+        if (progressReply.result === "delivered" && isProgress) {
+          statusDisplayText = progressReply.message?.text ?? text
+          lastDeliveredProgress = { text, visibleText: statusDisplayText }
+        }
         visiblePayload =
           progressReply.result === "delivered" ? delivery.directPayload(text) : undefined
       },
       (error) => logger.warn(`Telegram progress update failed for chat_id=${chatId}`, error),
     )
+    const cancellationText = () =>
+      submissionGenerations.get(chatId)?.reason === "cancel"
+        ? "此請求已取消。"
+        : "此請求已因重設對話而取消。"
     const cancelStatus = async () => {
       await progressStatus.close()
-      const text =
-        submissionGenerations.get(chatId)?.reason === "cancel"
-          ? "此請求已取消。"
-          : "此請求已因重設對話而取消。"
+      const text = cancellationText()
       if (status) {
         const replacement = await delivery.editOrReply(
           context,
@@ -710,6 +725,7 @@ export function createTelegramAgentBot(
         isCurrent,
       )
       status = pendingReply.message
+      lastDeliveredStatusText = pendingReply.result === "delivered" ? pendingText : undefined
       visiblePayload =
         pendingReply.result === "delivered" ? delivery.directPayload(pendingText) : undefined
       if (pendingReply.result === "stale") {
@@ -764,7 +780,16 @@ export function createTelegramAgentBot(
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
               hasProgressSnapshot = steps.length > 0
-              progressStatus.publish(steps.length > 0 ? renderProgressStatus(steps) : pendingText)
+              if (steps.length > 0) {
+                reportedProgress = true
+                progressCleared = false
+              } else {
+                progressCleared = true
+              }
+              progressStatus.publish(
+                steps.length > 0 ? renderProgressStatus(steps) : pendingText,
+                steps.length > 0,
+              )
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
@@ -779,7 +804,42 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
+      if (result.kind === "completed" && reportedProgress) await progressStatus.flush()
+      const lastProgress = lastDeliveredProgress
+      let archiveText: string | undefined
+      if (result.kind === "completed" && reportedProgress && lastProgress) {
+        // Reuse an existing Morsel notice instead of republishing a long snapshot after failure.
+        const progressText =
+          (!progressCleared && lastDeliveredStatusText === lastProgress.text) ||
+          delivery.directPayload(lastProgress.text) !== undefined
+            ? lastProgress.text
+            : lastProgress.visibleText
+        const labeledText = progressCleared
+          ? `最後回報的進度（已清除）\n\n${progressText}`
+          : progressText
+        // Preserve the full inline snapshot if only the label would require Morsel.
+        archiveText =
+          progressCleared &&
+          delivery.directPayload(labeledText) === undefined &&
+          delivery.directPayload(progressText) !== undefined
+            ? progressText
+            : labeledText
+      }
+      if (archiveText && lastDeliveredStatusText !== archiveText) {
+        progressStatus.publish(archiveText, true)
+        await progressStatus.flush()
+      }
       await progressStatus.close()
+      const retainedProgressMessageId =
+        archiveText && lastDeliveredStatusText === archiveText ? status?.message_id : undefined
+      if (retainedProgressMessageId !== undefined) {
+        releaseReplyCheckpoint = sessions.holdReplyCheckpoint(
+          chatId,
+          result.kind === "completed" ? result.checkpoint : undefined,
+          retainedProgressMessageId,
+        )
+        clearPendingReply()
+      }
       if (status && pendingMessageId === status.message_id && statusDisplayText !== undefined) {
         const finalizing = finalizingBotReplies.get(chatId) ?? new Map<number, string>()
         finalizing.set(pendingMessageId, statusDisplayText)
@@ -798,7 +858,17 @@ export function createTelegramAgentBot(
         },
         async (span) => {
           let outcome: "delivered" | "unavailable" | "stale"
-          if (status) {
+          if (retainedProgressMessageId !== undefined) {
+            const finalReply = await delivery.guardedReply(
+              context,
+              result.text,
+              replyOptions,
+              isCurrent,
+              resultDeliveryMode,
+            )
+            if (finalReply.message) status = finalReply.message
+            outcome = finalReply.result
+          } else if (status) {
             // Telegram has no API to check whether an unchanged reply still exists.
             // Send the answer as a new message and clear the old status if possible.
             const replace =
@@ -838,7 +908,18 @@ export function createTelegramAgentBot(
         },
       )
       if (deliveryResult === "stale") {
+        const finalStatusId = status?.message_id
         await cancelStatus()
+        if (
+          retainedProgressMessageId !== undefined &&
+          retainedProgressMessageId !== finalStatusId
+        ) {
+          try {
+            await delivery.edit(context, chatId, retainedProgressMessageId, cancellationText())
+          } catch (error) {
+            logger.warn(`Could not clear stale progress for chat_id=${chatId}`, error)
+          }
+        }
         return
       }
       clearPendingReply()
@@ -846,9 +927,11 @@ export function createTelegramAgentBot(
         await sessions.recordDelivery(
           chatId,
           result.checkpoint,
-          previousStatusId === undefined
-            ? [status.message_id]
-            : [previousStatusId, status.message_id],
+          retainedProgressMessageId !== undefined
+            ? [retainedProgressMessageId, status.message_id]
+            : previousStatusId === undefined
+              ? [status.message_id]
+              : [previousStatusId, status.message_id],
         )
       }
     } catch (error) {
@@ -880,6 +963,7 @@ export function createTelegramAgentBot(
         if (errorReply.result === "stale") await cancelStatus()
       }
     } finally {
+      releaseReplyCheckpoint()
       clearPendingReply()
     }
   }
