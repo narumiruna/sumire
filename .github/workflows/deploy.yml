@@ -33,6 +33,7 @@ jobs:
             echo "FIRECRAWL_API_KEY=${{secrets.FIRECRAWL_API_KEY}}"
             echo "LOGFIRE_TOKEN=${{secrets.LOGFIRE_TOKEN}}"
             echo "MORSEL_API_KEY=${{secrets.MORSEL_API_KEY}}"
+            echo "OTTER_TOKEN=${{secrets.OTTER_TOKEN}}"
           } >> .env
 
       - name: Deploy TypeScript bot with Docker Compose
