@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { sanitizeTelegramText, telegramHtmlChunks, trimUrl } from "../src/telegram/rendering.js"
+import {
+  sanitizeTelegramText,
+  telegramHtmlChunks,
+  telegramVisibleText,
+  trimUrl,
+} from "../src/telegram/rendering.js"
 
 describe("Telegram rendering", () => {
   it("renders basic Markdown as Telegram HTML and escapes unsafe markup", () => {
@@ -15,6 +20,13 @@ describe("Telegram rendering", () => {
     expect(telegramHtmlChunks("https://example.test/a**b**c")).toEqual([
       '<a href="https://example.test/a**b**c">https://example.test/a**b**c</a>',
     ])
+  })
+
+  it("compares Telegram-visible text rather than generated HTML markup", () => {
+    expect(telegramVisibleText("# Title\n**bold** `<tag>`\nhttps://example.test/a?x=1&y=2")).toBe(
+      "Title\nbold <tag>\nhttps://example.test/a?x=1&y=2",
+    )
+    expect(telegramVisibleText("文字 &lt;b&gt; <b>標籤</b>")).toBe("文字 &lt;b&gt; <b>標籤</b>")
   })
 
   it("chunks by Unicode code point and strips disallowed controls", () => {

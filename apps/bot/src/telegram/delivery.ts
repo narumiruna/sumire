@@ -2,7 +2,7 @@ import type { Context } from "grammy"
 
 import type { Logger } from "../logging.js"
 import { MorselPublishError, type MorselPublisher, publishMorselWithTrace } from "../morsel.js"
-import { sanitizeTelegramText, telegramHtmlChunks } from "./rendering.js"
+import { sanitizeTelegramText, telegramHtmlChunks, telegramVisibleText } from "./rendering.js"
 
 export const maxTelegramMessageChars = 1_000
 const maxPublicationFailureReasonChars = 200
@@ -138,10 +138,13 @@ export function createTelegramDelivery(
       text: string,
       isCurrent: () => boolean = () => true,
       mode: DeliveryMode = "default",
+      onDelivered?: (visibleText: string) => void,
     ): Promise<EditResult> {
       if (!isCurrent()) return "stale"
       const prepared = await prepare(text, mode)
-      return editPrepared(context, chatId, messageId, prepared, isCurrent)
+      const result = await editPrepared(context, chatId, messageId, prepared, isCurrent)
+      if (result !== "stale") onDelivered?.(telegramVisibleText(prepared.text))
+      return result
     },
     async editOrReply(
       context: Context,
