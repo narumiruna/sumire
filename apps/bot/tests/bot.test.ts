@@ -53,6 +53,7 @@ function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessi
       },
     ),
     recordDelivery: vi.fn(async () => undefined),
+    holdReplyCheckpoint: vi.fn(() => () => undefined),
     appendPassiveContext: vi.fn(async () => undefined),
     cancel: vi.fn(async () => false),
     reset: vi.fn(async () => undefined),
@@ -1659,6 +1660,63 @@ describe("Telegram bot update routing", () => {
     }
   })
 
+  it("restores a retained progress reply during a slow final send", async () => {
+    let finishSend: (() => void) | undefined
+    const pendingSend = new Promise<void>((resolve) => {
+      finishSend = resolve
+    })
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const release = vi.fn()
+    const sessions = createSessions({
+      holdReplyCheckpoint: vi.fn(() => release),
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        options.onAccepted?.()
+        if (prompt === "第一題") {
+          options.onProgress?.([{ text: "檢查", status: "completed" }])
+          return { kind: "completed" as const, text: "完成", checkpoint }
+        }
+        return { kind: "completed" as const, text: "下一題" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot, async (method, payload) => {
+      if (method === "sendMessage" && payload.text === "完成") await pendingSend
+    })
+    const handling = telegram.bot.handleUpdate(privateMessage(2, "第一題"))
+    try {
+      await vi.waitFor(() => expect(calls.some((call) => call.payload.text === "完成")).toBe(true))
+      expect(sessions.holdReplyCheckpoint).toHaveBeenCalledWith(7, checkpoint, 100)
+      const reply = privateMessage(3, "接著呢？")
+      if (reply.message) {
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: botInfo,
+          text: "進度 1/1\n\n✅ 檢查",
+          reply_to_message: undefined,
+        }
+      }
+      await telegram.bot.handleUpdate(reply)
+      expect(sessions.submit).toHaveBeenLastCalledWith(
+        7,
+        "接著呢？",
+        expect.objectContaining({ replyToBotMessageId: 100 }),
+      )
+      expect(release).not.toHaveBeenCalled()
+    } finally {
+      finishSend?.()
+      await handling
+    }
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 102])
+    expect(release).toHaveBeenCalledOnce()
+  })
+
   it("preserves the retained progress reply ID while its checkpoint is being recorded", async () => {
     let finishRecord: (() => void) | undefined
     const pendingRecord = new Promise<void>((resolve) => {
@@ -1858,11 +1916,17 @@ describe("Telegram bot update routing", () => {
   })
 
   it("replaces retained progress with an error when sending the answer fails", async () => {
+    const release = vi.fn()
     const sessions = createSessions({
+      holdReplyCheckpoint: vi.fn(() => release),
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
         options.onProgress?.([{ text: "檢查", status: "in_progress" }])
-        return { kind: "completed" as const, text: "完成" }
+        return {
+          kind: "completed" as const,
+          text: "完成",
+          checkpoint: { sessionId: "session", entryId: "entry", generation: 0 },
+        }
       }),
     })
     const telegram = createTelegramAgentBot(
@@ -1884,6 +1948,7 @@ describe("Telegram bot update routing", () => {
     ])
     expect(calls[3]?.payload.text).toBe("AI 服務暫時無法使用，請稍後再試。")
     expect(sessions.recordDelivery).not.toHaveBeenCalled()
+    expect(release).toHaveBeenCalledOnce()
   })
 
   it("waits for an active progress reply before publishing the final answer", async () => {

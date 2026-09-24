@@ -646,6 +646,7 @@ export function createTelegramAgentBot(
     let lastDeliveredProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
+    let releaseReplyCheckpoint = () => {}
     let statusDisplayText: string | undefined = pendingText
     const clearPendingReply = () => {
       if (pendingMessageId === undefined) return
@@ -831,6 +832,14 @@ export function createTelegramAgentBot(
       await progressStatus.close()
       const retainedProgressMessageId =
         archiveText && lastDeliveredStatusText === archiveText ? status?.message_id : undefined
+      if (retainedProgressMessageId !== undefined) {
+        releaseReplyCheckpoint = sessions.holdReplyCheckpoint(
+          chatId,
+          result.kind === "completed" ? result.checkpoint : undefined,
+          retainedProgressMessageId,
+        )
+        clearPendingReply()
+      }
       if (status && pendingMessageId === status.message_id && statusDisplayText !== undefined) {
         const finalizing = finalizingBotReplies.get(chatId) ?? new Map<number, string>()
         finalizing.set(pendingMessageId, statusDisplayText)
@@ -954,6 +963,7 @@ export function createTelegramAgentBot(
         if (errorReply.result === "stale") await cancelStatus()
       }
     } finally {
+      releaseReplyCheckpoint()
       clearPendingReply()
     }
   }

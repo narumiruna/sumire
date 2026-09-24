@@ -654,6 +654,60 @@ describe("ChatSessionRegistry", () => {
     expect(session.prompts).toEqual(["first", "latest", "branch one", "branch two"])
   })
 
+  it("uses a temporary checkpoint while final delivery is pending and releases it afterward", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+
+    const first = await registry.submit(1, "first")
+    await registry.submit(1, "newer leaf")
+    const release = registry.holdReplyCheckpoint(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      100,
+    )
+    await registry.submit(1, "reply to delivered progress", { replyToBotMessageId: 100 })
+    expect(session.navigated).toEqual(["entry-1"])
+
+    release()
+    await registry.submit(1, "another leaf")
+    await registry.submit(1, "unmapped", {
+      replyToBotMessageId: 100,
+      unresolvedReplyPrompt: "quoted progress fallback",
+    })
+    expect(session.navigated).toEqual(["entry-1"])
+    expect(session.prompts.at(-1)).toBe("quoted progress fallback")
+    await registry.dispose()
+  })
+
+  it("drops temporary reply checkpoints on reset", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    let session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+
+    const first = await registry.submit(1, "first")
+    const release = registry.holdReplyCheckpoint(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      100,
+    )
+    await registry.reset(1)
+    session = new FakeSession()
+    release()
+    await registry.submit(1, "after reset", {
+      replyToBotMessageId: 100,
+      unresolvedReplyPrompt: "unmapped after reset",
+    })
+
+    expect(session.navigated).toEqual([])
+    expect(session.prompts).toEqual(["unmapped after reset"])
+    await registry.dispose()
+  })
+
   it("resolves a reply against an in-flight checkpoint write before navigating", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
