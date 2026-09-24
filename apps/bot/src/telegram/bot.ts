@@ -813,7 +813,16 @@ export function createTelegramAgentBot(
           delivery.directPayload(lastProgress.text) !== undefined
             ? lastProgress.text
             : lastProgress.visibleText
-        archiveText = `${progressCleared ? "最後回報的進度（已清除）\n\n" : ""}${progressText}`
+        const labeledText = progressCleared
+          ? `最後回報的進度（已清除）\n\n${progressText}`
+          : progressText
+        // Preserve the full inline snapshot if only the label would require Morsel.
+        archiveText =
+          progressCleared &&
+          delivery.directPayload(labeledText) === undefined &&
+          delivery.directPayload(progressText) !== undefined
+            ? progressText
+            : labeledText
       }
       if (archiveText && lastDeliveredStatusText !== archiveText) {
         progressStatus.publish(archiveText, true)

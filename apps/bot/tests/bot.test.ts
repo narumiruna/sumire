@@ -9,6 +9,7 @@ import { AnyDocConverter, DocumentConversionError } from "../src/documents/conve
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { queryMarketData } from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 
 const botInfo: UserFromGetMe = {
@@ -1492,6 +1493,49 @@ describe("Telegram bot update routing", () => {
     expect(calls[2]?.payload.text).toBe("處理中…")
     expect(calls[3]?.payload.text).toBe("最後回報的進度（已清除）\n\n進度 0/1\n\n🔄 執行中")
     expect(calls[4]?.payload.text).toBe("完成")
+  })
+
+  it("keeps a full inline snapshot when the clear label would require Morsel", async () => {
+    const steps = Array.from({ length: 4 }, (_, index) => ({
+      text: `${"字".repeat(244)}${index}`,
+      status: "completed" as const,
+    }))
+    const snapshot = renderProgressStatus(steps)
+    expect(Array.from(snapshot)).toHaveLength(999)
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.(steps)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.([])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return { kind: "completed" as const, text: "完成", checkpoint }
+      }),
+    })
+    const publish = vi.fn(async () => "https://morsel.example/s/unexpected")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: false, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
+
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+      "editMessageText",
+      "sendMessage",
+    ])
+    expect(calls[1]?.payload.text).toBe(snapshot)
+    expect(calls[3]?.payload.text).toBe(snapshot)
+    expect(calls[4]?.payload.text).toBe("完成")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
 
   it("archives cleared progress and sends a separate final answer", async () => {
