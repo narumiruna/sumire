@@ -80,6 +80,8 @@ export function createTelegramAgentBot(
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
   const pendingBotReplies = new Map<number, Set<number>>()
+  const finalizingBotReplies = new Map<number, Map<number, string>>()
+  const articleUsageMessage = "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。"
   const activeArticleLoads = new Map<number, Set<AbortController>>()
   const submissionGenerations = new Map<
     number,
@@ -293,11 +295,7 @@ export function createTelegramAgentBot(
       documentReferences(message).length === 0 &&
       audioReferences(message).length === 0
     ) {
-      await delivery.reply(
-        context,
-        "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。",
-        replyOptions(context),
-      )
+      await delivery.reply(context, articleUsageMessage, replyOptions(context))
       return
     }
     if (!morselPublisher.isConfigured) {
@@ -504,6 +502,16 @@ export function createTelegramAgentBot(
         !replyToPendingStatus && message.reply_to_message
           ? messageText(message.reply_to_message).trim()
           : ""
+      if (
+        !strippedText &&
+        !repliedText &&
+        imageRefs.length === 0 &&
+        documentRefs.length === 0 &&
+        audioRefs.length === 0
+      ) {
+        await delivery.reply(context, articleUsageMessage, replyOptions(context))
+        return
+      }
       const articleUrlSource = [submissionOptions.articleUrlSource, repliedText]
         .filter(Boolean)
         .join("\n")
@@ -592,12 +600,17 @@ export function createTelegramAgentBot(
     message: TelegramMessageLike,
     botId: number,
   ): boolean {
+    const replied = message.reply_to_message
     const replyId = repliedBotMessageId(message, botId)
-    return (
-      chatId !== undefined &&
-      replyId !== undefined &&
-      pendingBotReplies.get(chatId)?.has(replyId) === true
+    if (
+      chatId === undefined ||
+      !replied ||
+      replyId === undefined ||
+      pendingBotReplies.get(chatId)?.has(replyId) !== true
     )
+      return false
+    const previousStatusText = finalizingBotReplies.get(chatId)?.get(replyId)
+    return previousStatusText === undefined || messageText(replied) === previousStatusText
   }
 
   async function answer(
@@ -631,11 +644,15 @@ export function createTelegramAgentBot(
     const pendingText = "處理中…"
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
+    let statusDisplayText: string | undefined = pendingText
     const clearPendingReply = () => {
       if (pendingMessageId === undefined) return
       const ids = pendingBotReplies.get(chatId)
       ids?.delete(pendingMessageId)
       if (ids?.size === 0) pendingBotReplies.delete(chatId)
+      const finalizing = finalizingBotReplies.get(chatId)
+      finalizing?.delete(pendingMessageId)
+      if (finalizing?.size === 0) finalizingBotReplies.delete(chatId)
       pendingMessageId = undefined
     }
     const progressStatus = createProgressStatusEditor(
@@ -648,6 +665,10 @@ export function createTelegramAgentBot(
             status.message_id,
             text,
             isCurrent,
+            "default",
+            (displayText) => {
+              statusDisplayText = displayText
+            },
           )
           visiblePayload = outcome === "delivered" ? delivery.directPayload(text) : undefined
           return
@@ -751,6 +772,11 @@ export function createTelegramAgentBot(
         return
       }
       await progressStatus.close()
+      if (status && pendingMessageId === status.message_id && statusDisplayText !== undefined) {
+        const finalizing = finalizingBotReplies.get(chatId) ?? new Map<number, string>()
+        finalizing.set(pendingMessageId, statusDisplayText)
+        finalizingBotReplies.set(chatId, finalizing)
+      }
       const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
       let previousStatusId: number | undefined
       const deliveryResult = await withLogSpan(
