@@ -487,6 +487,24 @@ describe("source loaders", () => {
     expect(apiAborted).toBe(true)
   })
 
+  it("attributes HTTP failures from the target website to that website", async () => {
+    const resources = {
+      fetch: async () => new Response(null, { status: 403 }),
+    } as unknown as ResourceProvider
+    await expect(new HttpLoader({ resources }).load("https://example.com")).rejects.toThrow(
+      "Target website returned HTTP 403",
+    )
+  })
+
+  it("attributes HTTP failures to the Firecrawl API rather than the target website", async () => {
+    const resources = {
+      fetch: async () => new Response(null, { status: 403 }),
+    } as unknown as ResourceProvider
+    await expect(
+      new FirecrawlLoader({ apiKey: "test", resources }).load("https://example.com"),
+    ).rejects.toThrow("Firecrawl API returned HTTP 403")
+  })
+
   it("extracts markdown from Firecrawl's response envelope", async () => {
     const resources = {
       fetch: async () => Response.json({ success: true, data: { markdown: "# Loaded" } }),

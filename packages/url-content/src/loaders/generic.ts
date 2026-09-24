@@ -1,6 +1,6 @@
 import { CurlOpt } from "impers"
 
-import { LoaderContentError, LoaderTimeoutError } from "../core/errors.js"
+import { LoaderContentError, LoaderTimeoutError, TargetHttpError } from "../core/errors.js"
 import { remainingMilliseconds } from "../core/execution.js"
 import type { Loader } from "../core/loader.js"
 import { assertPublicUrl, readResponseText, safeFetch } from "../core/network.js"
@@ -73,13 +73,7 @@ async function checkedFetch(
       throw new LoaderTimeoutError(options.loaderName, url, options.timeoutMs / 1_000)
     throw new LoaderContentError(options.loaderName, url, `HTTP request failed: ${String(error)}`)
   }
-  if (!response.ok) {
-    throw new LoaderContentError(
-      options.loaderName,
-      url,
-      `HTTP request failed with status ${response.status}`,
-    )
-  }
+  if (!response.ok) throw new TargetHttpError(options.loaderName, url, response.status)
   return response
 }
 
@@ -102,6 +96,7 @@ export async function fetchHttpHtml(
   return {
     content: await readResponseText(response, options.maxBytes ?? MAX_HTML_BYTES),
     contentType: response.headers.get("content-type") ?? "",
+    finalUrl: response.url || url,
   }
 }
 
@@ -283,11 +278,7 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
       }
       if (response.status >= 400) {
         await response.close()
-        throw new LoaderContentError(
-          loaderName,
-          url,
-          `HTTP request failed with status ${response.status}`,
-        )
+        throw new TargetHttpError(loaderName, url, response.status)
       }
       if (maxBytes !== undefined) {
         const declaredLength = Number(response.headers.get("content-length"))
@@ -306,7 +297,13 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
     throw new LoaderContentError(loaderName, url, "URL redirect handling ended unexpectedly")
   } catch (error) {
     if (error instanceof LoaderContentError) throw error
-    throw new LoaderContentError(loaderName, url, `HTTP request failed: ${String(error)}`)
+    throw new LoaderContentError(
+      loaderName,
+      url,
+      `HTTP request failed: ${String(error)}`,
+      undefined,
+      error,
+    )
   } finally {
     await owned?.close()
     await ownedProxy?.close()

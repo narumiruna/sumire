@@ -14,6 +14,7 @@ import {
   isRedditUrl,
   isReelUrl,
   isThreadsPostUrl,
+  isThreadsShareUrl,
   isTruthSocialUrl,
   isTwitterUrl,
   isYouTubeVideoUrl,
@@ -29,6 +30,7 @@ const supported: [string, (url: string) => boolean][] = [
   ["https://www.ptt.cc/bbs/Gossiping/M.1746078381.A.FFC.html", isPttUrl],
   ["https://x.com/howie_serious/status/1917768568135115147", isTwitterUrl],
   ["https://www.threads.com/@ha_haha_1229/post/Ddi8GHWk1ga", isThreadsPostUrl],
+  ["https://www.threads.com/share/_mwJv9S32/", isThreadsShareUrl],
   ["https://truthsocial.com/@realDonaldTrump/posts/115830428767897167", isTruthSocialUrl],
   ["https://www.reddit.com/r/python/comments/abc/example/", isRedditUrl],
   ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", isYouTubeVideoUrl],
@@ -79,6 +81,10 @@ describe("source applicability", () => {
     expect(isYouTubeVideoUrl("https://www.youtube.com/playlist?list=PL123")).toBe(false)
     expect(isThreadsPostUrl("https://www.threads.com/@ha_haha_1229")).toBe(false)
     expect(isThreadsPostUrl("https://threads.example/@ha_haha_1229/post/Ddi8GHWk1ga")).toBe(false)
+    expect(isThreadsShareUrl("https://threads.example/share/abc")).toBe(false)
+    expect(isThreadsShareUrl("https://www.threads.com/share/")).toBe(true)
+    expect(isThreadsShareUrl("https://www.threads.com/share/%5Fid")).toBe(true)
+    expect(isThreadsShareUrl("https://www.threads.com/share/abc/more")).toBe(true)
     expect(isPttUrl("https://www.ptt.cc/")).toBe(false)
     expect(isPttUrl("https://www.ptt.cc/bbs/Gossiping/index.html")).toBe(false)
     expect(isPdfTarget("ftp://example.com/document.pdf")).toBe(false)
@@ -110,6 +116,13 @@ describe("pipeline planning", () => {
       executionPlan: ["threads"],
       fallbackLoaders: [],
     })
+    expect(planForUrl("https://www.threads.com/share/_mwJv9S32/?x=1")).toMatchObject({
+      pipelineName: "threads_share",
+      contentType: "social_post",
+      executionPlan: ["threads"],
+      fallbackLoaders: [],
+    })
+    expect(planForUrl("https://www.threads.com/share/%5Fid").executionPlan).toEqual(["threads"])
   })
 
   it("uses the generic transport order for ordinary pages and source homepages", () => {

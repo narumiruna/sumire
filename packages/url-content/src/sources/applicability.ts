@@ -508,6 +508,19 @@ export function isThreadsPostUrl(url: string): boolean {
   }
 }
 
+export function isThreadsShareUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return (
+      ["http:", "https:"].includes(parsed.protocol) &&
+      THREADS_DOMAINS.includes(parsed.hostname.toLowerCase() as (typeof THREADS_DOMAINS)[number]) &&
+      /^\/share(?:\/|$)/u.test(parsed.pathname)
+    )
+  } catch {
+    return false
+  }
+}
+
 export function parseTruthSocialTarget(url: string): string {
   if (!hostIn(url, TRUTHSOCIAL_DOMAINS)) {
     throw new LoaderNotApplicableError("TruthSocialLoader", url, "Not a Truth Social URL")

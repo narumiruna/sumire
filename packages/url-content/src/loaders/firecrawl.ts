@@ -1,4 +1,5 @@
 import {
+  FirecrawlApiHttpError,
   FirecrawlApiKeyNotSetError,
   LoaderContentError,
   LoaderTimeoutError,
@@ -37,12 +38,7 @@ export class FirecrawlLoader implements Loader {
           body: JSON.stringify({ url, formats: ["markdown"], timeout: this.timeoutMs }),
           signal: activeSignal,
         }))
-      if (!response.ok)
-        throw new LoaderContentError(
-          "FirecrawlLoader",
-          url,
-          `Firecrawl returned HTTP ${response.status}`,
-        )
+      if (!response.ok) throw new FirecrawlApiHttpError(url, response.status)
       const payload = (await response.json()) as Record<string, unknown>
       if (payload.success === false)
         throw new LoaderContentError("FirecrawlLoader", url, "Firecrawl scrape was unsuccessful")

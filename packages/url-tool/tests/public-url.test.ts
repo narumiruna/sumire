@@ -400,6 +400,61 @@ describe("public URL loading", () => {
     })
   })
 
+  it("routes Threads share links through verified post extraction and never accepts generic results", async () => {
+    const url = "https://www.threads.com/share/_mwJv9S32/"
+    const resolve = vi.fn(async () => [
+      { address: "8.8.8.8", family: 4 as const },
+    ]) as unknown as typeof lookup
+    const fetchImplementation = vi.fn()
+    const verified = vi.fn(async () => ({
+      content: "# Author (@author)\n\n- URL: https://www.threads.com/@author/post/Abc\n\nPost body",
+      loaderId: "threads",
+      contentType: "social_post",
+      downgraded: false,
+      attempts: [{ loaderId: "threads", status: "success" as const, elapsedSeconds: 0 }],
+    }))
+    await expect(
+      loadPublicUrl(url, {
+        ...options,
+        resolve,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 30,
+        urlContentLoadImplementation: verified,
+      }),
+    ).resolves.toMatchObject({ loaderId: "threads", contentType: "social_post" })
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(verified).toHaveBeenCalledWith(url, { deadlineSeconds: 30 })
+
+    for (const loader of [undefined, "httpx", "firecrawl"]) {
+      await expect(
+        loadPublicUrl(url, {
+          ...options,
+          resolve,
+          fetchImplementation,
+          urlContentTimeoutSeconds: 30,
+          ...(loader ? { loader } : {}),
+          urlContentLoadImplementation: async () => ({
+            content: "Threads",
+            loaderId: loader ?? "playwright-networkidle",
+            contentType: "generic_web",
+            downgraded: false,
+            attempts: [],
+          }),
+        }),
+      ).rejects.toThrow("requires verified post metadata")
+    }
+    await expect(
+      loadPublicUrl(url, {
+        ...options,
+        resolve,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 30,
+        loader: "built-in",
+      }),
+    ).rejects.toThrow("requires verified post metadata")
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
   it.each([
     {
       url: "https://docs.google.com/document/d/test-doc_123/edit?tab=t.0",

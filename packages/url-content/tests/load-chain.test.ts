@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest"
 
 import {
+  FirecrawlApiHttpError,
   LoaderContentError,
   LoaderError,
   LoaderNotApplicableError,
   LoaderTimeoutError,
   MissingRequirementError,
+  TargetHttpError,
 } from "../src/core/errors.js"
 import { withDeadline } from "../src/core/execution.js"
 import type { Loader } from "../src/core/loader.js"
@@ -106,6 +108,45 @@ describe("load chain", () => {
       "content-fail: Content extraction failed - parse failed",
       "empty: Empty result",
     ])
+  })
+
+  it("classifies API status and typed TLS failures without copying error messages into attempts", async () => {
+    const url = "https://example.com/private?key=secret"
+    const chain = resolveExplicitLoadChain(url, ["firecrawl", "httpx", "curl-cffi"], {
+      getFactory: (name) => () => ({
+        load: async () => {
+          if (name === "firecrawl") throw new FirecrawlApiHttpError(url, 403)
+          if (name === "httpx") throw new TargetHttpError("HttpLoader", url, 403)
+          const cause = Object.assign(new Error("private certificate path"), {
+            name: "CertificateVerifyError",
+          })
+          throw new LoaderContentError("CurlCffiLoader", url, "TLS failed", undefined, cause)
+        },
+      }),
+      getRequirements: () => [],
+    })
+    const error = await chain.loadDetailed().catch((caught: unknown) => caught as LoaderError)
+    expect(error.attempts).toMatchObject([
+      {
+        loaderId: "firecrawl",
+        status: "failed",
+        errorType: "FirecrawlApiHttpError",
+        errorCode: "firecrawl_api_http_403",
+      },
+      {
+        loaderId: "httpx",
+        status: "failed",
+        errorType: "TargetHttpError",
+        errorCode: "target_http_403",
+      },
+      {
+        loaderId: "curl-cffi",
+        status: "failed",
+        errorType: "LoaderContentError",
+        errorCode: "tls_certificate",
+      },
+    ])
+    expect(error.attempts.some((attempt) => attempt.message?.includes("private"))).toBe(false)
   })
 
   it("skips unavailable alternatives but fails early when none are eligible", async () => {
