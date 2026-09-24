@@ -32,7 +32,15 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
-  it("creates an isolated persistent Pi AgentSession with only approved custom tools", async () => {
+  it("rejects an empty whitelist before enabling coding tools", async () => {
+    const settings = loadSettings({ OPENAI_API_KEY: "test-key" })
+
+    await expect(createPiSessionFactory(settings, logger)).rejects.toThrow(
+      "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
+    )
+  })
+
+  it("creates isolated persistent Pi AgentSessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
     const settings = loadSettings(
@@ -41,6 +49,7 @@ describe("createPiSessionFactory", () => {
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
         BOT_URL_ALLOWED_SCHEMES: "https",
+        BOT_WHITELIST: "123",
       },
       root,
     )
@@ -69,7 +78,14 @@ describe("createPiSessionFactory", () => {
         maxTokens: 20_000,
       })
       expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
-      expect(session.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
+      expect(session.getActiveToolNames()).toEqual([
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "update_progress",
+        "load_public_url",
+      ])
       const urlTool = session.getToolDefinition("load_public_url")
       expect(urlTool).toBeDefined()
       if (!urlTool) throw new Error("load_public_url was not registered")
@@ -106,7 +122,7 @@ describe("createPiSessionFactory", () => {
         session.getAllTools().find((tool) => tool.name === "load_public_url")?.sourceInfo.source,
       ).not.toBe("sdk")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
-      expect(session.systemPrompt).not.toContain("<name>load-url-content</name>")
+      expect(session.systemPrompt).toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(
         "使用者只提供網址時，先以 load_public_url 讀取本則訊息的網址",
       )
@@ -115,7 +131,7 @@ describe("createPiSessionFactory", () => {
       expect(otherSession.sessionFile).toContain(
         path.join(".telegramagent", "sessions", "456", "pi"),
       )
-      expect(otherSession.getActiveToolNames()).toEqual(["update_progress", "load_public_url"])
+      expect(otherSession.getActiveToolNames()).toEqual(session.getActiveToolNames())
       expect(otherSession.sessionFile).not.toBe(session.sessionFile)
     } finally {
       session.dispose()
@@ -123,7 +139,7 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("enables Pi coding tools only for an explicit allowlisted configuration", async () => {
+  it("executes Pi coding tools for an allowlisted deployment", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
     await installInstructions(root)
     await installOtterSkill(root)
@@ -132,7 +148,6 @@ describe("createPiSessionFactory", () => {
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
-        BOT_CODING_TOOLS_ENABLED: "true",
         BOT_WHITELIST: "123",
       },
       root,
@@ -149,6 +164,48 @@ describe("createPiSessionFactory", () => {
         "update_progress",
         "load_public_url",
       ])
+      for (const name of ["read", "bash", "edit", "write"]) {
+        expect(session.getAllTools().find((tool) => tool.name === name)?.sourceInfo.source).toBe(
+          "builtin",
+        )
+      }
+      const write = session.getToolDefinition("write")
+      const edit = session.getToolDefinition("edit")
+      const read = session.getToolDefinition("read")
+      const bash = session.getToolDefinition("bash")
+      if (!write || !edit || !read || !bash) throw new Error("Pi coding tools were not registered")
+
+      await write.execute(
+        "write-call",
+        { path: "scratch/note.txt", content: "before\n" },
+        undefined,
+        undefined,
+        undefined as never,
+      )
+      await edit.execute(
+        "edit-call",
+        { path: "scratch/note.txt", edits: [{ oldText: "before", newText: "after" }] },
+        undefined,
+        undefined,
+        undefined as never,
+      )
+      const readResult = await read.execute(
+        "read-call",
+        { path: "scratch/note.txt" },
+        undefined,
+        undefined,
+        undefined as never,
+      )
+      expect(readResult.content).toContainEqual({ type: "text", text: "after\n" })
+      const bashResult = await bash.execute(
+        "bash-call",
+        { command: "test -f scratch/note.txt && printf tool-ok", timeout: 5 },
+        undefined,
+        undefined,
+        undefined as never,
+      )
+      expect(bashResult.content).toContainEqual({ type: "text", text: "tool-ok" })
+
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")
       expect(session.systemPrompt.match(/<name>load-url-content<\/name>/g)).toHaveLength(1)
       expect(session.systemPrompt).toContain("<name>otter-manage-expenses</name>")

@@ -30,6 +30,12 @@ export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
 ): Promise<PiSessionFactory> {
+  if (settings.botWhitelist.size === 0) {
+    throw new Error(
+      "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
+    )
+  }
+
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
   const modelRuntime = await ModelRuntime.create({
     authPath: path.join(agentDir, "auth.json"),
@@ -71,6 +77,7 @@ export async function createPiSessionFactory(
 
   const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
+    defaultTools: ["read", "bash", "edit", "write"],
     compaction: {
       enabled: true,
       reserveTokens: Math.max(
@@ -106,11 +113,7 @@ export async function createPiSessionFactory(
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.projectRoot,
         agentDir,
-        additionalSkillPaths: [
-          settings.botSkillsDir,
-          urlToolSkillsPath,
-          ...(settings.botCodingToolsEnabled ? [urlContentSkillsPath] : []),
-        ],
+        additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath, urlContentSkillsPath],
         extensionFactories: [
           { name: "sumire-progress", factory: progressExtension },
           { name: "sumire-url-tool", factory: urlExtension },
@@ -143,7 +146,6 @@ export async function createPiSessionFactory(
         model,
         thinkingLevel: "off",
         modelRuntime,
-        ...(settings.botCodingToolsEnabled ? {} : { noTools: "builtin" as const }),
         customTools,
         resourceLoader,
         sessionManager: SessionManager.continueRecent(settings.projectRoot, sessionDirectory),
