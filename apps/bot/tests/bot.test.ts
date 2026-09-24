@@ -3,7 +3,7 @@ import type { LoadedUrl } from "@narumitw/sumire-url-tool"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
-import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import type { ChatSessionRegistry, SubmissionActivity } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
@@ -43,6 +43,7 @@ function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessi
         options: {
           onAccepted?: () => void
           onProgress?: (steps: readonly ProgressStep[]) => void
+          onActivity?: (activity: SubmissionActivity) => void
           isCurrent?: () => boolean
         } = {},
       ) => {
@@ -1003,6 +1004,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).toHaveBeenCalledWith(7, "你好", {
       images: [],
       onAccepted: expect.any(Function),
+      onActivity: expect.any(Function),
       onProgress: expect.any(Function),
       isCurrent: expect.any(Function),
     })
@@ -1245,6 +1247,65 @@ describe("Telegram bot update routing", () => {
     expect(calls[1]?.payload.text).toBe("處理中…")
     expect(calls[2]?.payload.text).toBe("已改以新訊息回覆。")
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
+  })
+
+  it("shows Pi activity when the model never calls update_progress", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onActivity?.("model")
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onActivity?.("tool")
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onActivity?.("tool_finished")
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
+
+    expect(calls.map((call) => call.payload.text)).toEqual(["處理中…", "正在等待模型回覆…", "完成"])
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+    ])
+  })
+
+  it("does not replace structured progress with generic activity", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onActivity?.("model")
+        options.onActivity?.("tool")
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
+
+    expect(calls.map((call) => call.payload.text)).toEqual([
+      "處理中…",
+      "進度 0/1\n\n🔄 分析需求",
+      "完成",
+    ])
   })
 
   it("edits the pending reply when progress is visible before the same final answer", async () => {

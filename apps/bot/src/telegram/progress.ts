@@ -1,10 +1,12 @@
 import type { ProgressStep } from "@narumitw/sumire-progress"
 
 const maxVisibleSteps = 6
+const activityEditIntervalMs = 2_000
 const bidiControls = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 
 export interface ProgressStatusEditor {
   publish(text: string): void
+  publishActivity(text: string): void
   close(): Promise<void>
 }
 
@@ -27,6 +29,9 @@ export function createProgressStatusEditor(
   let pending: string | undefined
   let lastPublished: string | undefined
   let active: Promise<void> | undefined
+  let nextActivityAt = 0
+  let latestActivity: string | undefined
+  let activityTimer: ReturnType<typeof setTimeout> | undefined
 
   const drain = async () => {
     while (!closed && pending !== undefined) {
@@ -50,14 +55,43 @@ export function createProgressStatusEditor(
     })
   }
 
+  const enqueue = (text: string) => {
+    if (closed || text === pending || (!active && text === lastPublished)) return
+    pending = text
+    start()
+  }
+
+  const cancelActivity = () => {
+    if (activityTimer !== undefined) clearTimeout(activityTimer)
+    activityTimer = undefined
+    latestActivity = undefined
+  }
+
+  const flushActivity = () => {
+    activityTimer = undefined
+    const text = latestActivity
+    latestActivity = undefined
+    if (closed || text === undefined) return
+    nextActivityAt = Date.now() + activityEditIntervalMs
+    enqueue(text)
+  }
+
   return {
     publish(text) {
-      if (closed || text === pending || text === lastPublished) return
-      pending = text
-      start()
+      cancelActivity()
+      enqueue(text)
+    },
+    publishActivity(text) {
+      if (closed) return
+      latestActivity = text
+      if (activityTimer !== undefined) return
+      const delay = Math.max(0, nextActivityAt - Date.now())
+      if (delay === 0) flushActivity()
+      else activityTimer = setTimeout(flushActivity, delay)
     },
     async close() {
       closed = true
+      cancelActivity()
       pending = undefined
       while (active) await active
     },
