@@ -1,9 +1,11 @@
 import {
+  FirecrawlApiHttpError,
   LoaderContentError,
   LoaderError,
   LoaderNotApplicableError,
   LoaderTimeoutError,
   MissingRequirementError,
+  TargetHttpError,
 } from "./core/errors.js"
 import { recordAttempt, remainingMilliseconds, withAttemptSink } from "./core/execution.js"
 import type { LoaderFactory } from "./core/loader.js"
@@ -221,13 +223,31 @@ function appendAttempt(
   error?: Error,
   message?: string,
 ): void {
+  const errorCode = error ? classifyFailure(error) : undefined
   recordAttempt({
     loaderId,
     status,
     elapsedSeconds: Math.round(Math.max(0, performance.now() - started) * 1_000) / 1_000_000,
     ...(error ? { errorType: error.name } : {}),
+    ...(errorCode ? { errorCode } : {}),
     ...(message ? { message } : {}),
   })
+}
+
+function classifyFailure(error: Error): string | undefined {
+  if (error instanceof FirecrawlApiHttpError) return `firecrawl_api_http_${error.status}`
+  if (error instanceof TargetHttpError) return `target_http_${error.status}`
+  if (error instanceof LoaderContentError && error.loaderName === "CurlCffiLoader") {
+    const cause = error.cause
+    if (
+      cause instanceof Error &&
+      (cause.name === "CertificateVerifyError" ||
+        ("code" in cause && cause.code === "CURLE_PEER_FAILED_VERIFICATION"))
+    )
+      return "tls_certificate"
+    return "transport_failure"
+  }
+  return undefined
 }
 
 function deadlineSignal(

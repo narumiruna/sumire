@@ -3,7 +3,12 @@ import * as cheerio from "cheerio"
 import { LoaderContentError } from "../core/errors.js"
 import type { Loader } from "../core/loader.js"
 import type { ResourceProvider } from "../core/resources.js"
-import { parseThreadsTarget, type ThreadsTarget } from "../sources/applicability.js"
+import {
+  isThreadsPostUrl,
+  isThreadsShareUrl,
+  parseThreadsTarget,
+  type ThreadsTarget,
+} from "../sources/applicability.js"
 import { ensureUsableContent } from "./content-guard.js"
 import { DEFAULT_HTTP_HEADERS, fetchHttpHtml } from "./generic.js"
 
@@ -36,6 +41,39 @@ function renderAuthor(title: string, username: string): string {
   const name = match?.[1]?.trim()
   const handle = match?.[2] ?? username
   return name ? `${name} (@${handle})` : `@${handle}`
+}
+
+export function extractThreadsSharePost(html: string, url: string, finalUrl = url): string {
+  const $ = cheerio.load(html)
+  const ogUrl = metaContent($, ['meta[property="og:url"]'])
+  const canonicalUrl = $('link[rel="canonical"]').first().attr("href")?.trim() ?? ""
+  let ogTarget: ThreadsTarget
+  let canonicalTarget: ThreadsTarget
+  try {
+    ogTarget = parseThreadsTarget(ogUrl)
+    canonicalTarget = parseThreadsTarget(canonicalUrl)
+    if (
+      new URL(ogUrl).username ||
+      new URL(ogUrl).password ||
+      new URL(canonicalUrl).username ||
+      new URL(canonicalUrl).password
+    ) {
+      throw new Error("Post metadata contains credentials")
+    }
+  } catch {
+    throw new LoaderContentError("ThreadsLoader", url, "Could not verify the shared Threads post")
+  }
+  const finalTarget = isThreadsPostUrl(finalUrl) ? parseThreadsTarget(finalUrl) : undefined
+  if (
+    ogTarget.shortcode !== canonicalTarget.shortcode ||
+    ogTarget.username.toLowerCase() !== canonicalTarget.username.toLowerCase() ||
+    (finalTarget &&
+      (ogTarget.shortcode !== finalTarget.shortcode ||
+        ogTarget.username.toLowerCase() !== finalTarget.username.toLowerCase()))
+  ) {
+    throw new LoaderContentError("ThreadsLoader", url, "Shared Threads post metadata disagrees")
+  }
+  return extractThreadsPost(html, ogTarget)
 }
 
 export function extractThreadsPost(html: string, target: ThreadsTarget): string {
@@ -85,7 +123,11 @@ export class ThreadsLoader implements Loader {
   }
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
-    const target = parseThreadsTarget(url)
+    const share = isThreadsShareUrl(url)
+    if (share && !/^\/share\/[A-Za-z0-9_-]+\/?$/u.test(new URL(url).pathname)) {
+      throw new LoaderContentError("ThreadsLoader", url, "Invalid Threads share link")
+    }
+    if (!share) parseThreadsTarget(url)
     const response = await fetchHttpHtml(url, {
       headers: {
         ...DEFAULT_HTTP_HEADERS,
@@ -106,6 +148,20 @@ export class ThreadsLoader implements Loader {
         `Expected HTML content, got: ${JSON.stringify(response.contentType)}`,
       )
     }
-    return extractThreadsPost(response.content, target)
+    if (share) {
+      const finalUrl = response.finalUrl ?? url
+      const finalShareMatches =
+        isThreadsShareUrl(finalUrl) &&
+        new URL(finalUrl).pathname.replace(/\/$/u, "") === new URL(url).pathname.replace(/\/$/u, "")
+      if (
+        new URL(finalUrl).username ||
+        new URL(finalUrl).password ||
+        (!isThreadsPostUrl(finalUrl) && !finalShareMatches)
+      ) {
+        throw new LoaderContentError("ThreadsLoader", url, "Share link left the requested post")
+      }
+      return extractThreadsSharePost(response.content, url, finalUrl)
+    }
+    return extractThreadsPost(response.content, parseThreadsTarget(url))
   }
 }

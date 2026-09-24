@@ -12,6 +12,7 @@ export {
 } from "./client.js"
 export {
   ConfigurationError,
+  FirecrawlApiHttpError,
   FirecrawlApiKeyNotSetError,
   FirecrawlApiKeyNotSetError as FirecrawlAPIKeyNotSetError,
   InvalidUrlError,
@@ -22,6 +23,7 @@ export {
   LoaderTimeoutError,
   MissingDependencyError,
   MissingRequirementError,
+  TargetHttpError,
   UrlContentError,
 } from "./core/errors.js"
 export type { Loader, LoaderFactory } from "./core/loader.js"
@@ -81,6 +83,7 @@ export {
   isRedditUrl,
   isReelUrl,
   isThreadsPostUrl,
+  isThreadsShareUrl,
   isTruthSocialUrl,
   isTwitterStatusUrl,
   isTwitterUrl,

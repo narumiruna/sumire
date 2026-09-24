@@ -35,6 +35,7 @@ import {
   isRedditUrl,
   isReelUrl,
   isThreadsPostUrl,
+  isThreadsShareUrl,
   isTruthSocialUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
@@ -89,6 +90,10 @@ const PIPELINE_ENTRIES: readonly PipelineEntry[] = [
   [
     { name: THREADS, contentType: ContentType.SocialPost, targetedLoaders: [THREADS] },
     isThreadsPostUrl,
+  ],
+  [
+    { name: "threads_share", contentType: ContentType.SocialPost, targetedLoaders: [THREADS] },
+    isThreadsShareUrl,
   ],
   [
     { name: TWITTER, contentType: ContentType.SocialPost, targetedLoaders: [TWITTER] },

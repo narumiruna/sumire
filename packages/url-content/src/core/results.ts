@@ -15,6 +15,7 @@ export interface AttemptRecord {
   status: AttemptStatus
   elapsedSeconds: number
   errorType?: string
+  errorCode?: string
   message?: string
 }
 
@@ -32,6 +33,7 @@ export function attemptRecordToObject(record: AttemptRecord): Record<string, unk
     status: record.status,
     elapsed_seconds: record.elapsedSeconds,
     error_type: record.errorType ?? null,
+    error_code: record.errorCode ?? null,
     message: record.message ?? null,
   }
 }

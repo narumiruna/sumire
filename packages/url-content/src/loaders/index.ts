@@ -73,6 +73,7 @@ export { ReelLoader } from "./reel.js"
 export {
   DEFAULT_THREADS_TIMEOUT_MS,
   extractThreadsPost,
+  extractThreadsSharePost,
   MAX_THREADS_BYTES,
   ThreadsLoader,
 } from "./threads.js"

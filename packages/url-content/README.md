@@ -106,7 +106,7 @@ The Twitter loader first requests the exact status from `api.fxtwitter.com` and 
 
 ### Threads
 
-The `threads` loader recognizes public `threads.com` and `threads.net` post permalinks and reads their server-rendered Open Graph metadata. It verifies that the canonical metadata refers to the requested post, then returns the author, canonical URL, and decoded post body without accepting the JavaScript application shell. Requests have a 20-second timeout and a 2 MiB response limit.
+The `threads` loader recognizes public `threads.com` and `threads.net` post permalinks and `/share/<id>` links. For a share link it requests the mobile page, requires matching Open Graph and canonical post URLs, and applies the existing post metadata extractor. An error page, missing/mismatched post metadata, or a redirect away from the requested Threads share/post fails rather than falling back to generic web scraping. The result contains the author, canonical post URL, and decoded public Open Graph description, which may be only an excerpt of a longer post. Requests and every redirect retain public-target validation, a 20-second timeout, and a 2 MiB response limit.
 
 ### Google Docs
 
@@ -122,7 +122,7 @@ Set `FIRECRAWL_API_KEY` for OpenAI web pages or explicit `firecrawl` loading:
 export FIRECRAWL_API_KEY=...
 ```
 
-The loader calls Firecrawl's v1 scrape endpoint and requests Markdown.
+The loader calls Firecrawl's v1 scrape endpoint and requests Markdown. An HTTP error is reported as an error from the Firecrawl API, not from the target website.
 
 ### AnyDoc
 
@@ -159,7 +159,7 @@ The transcription loader writes only to an isolated temporary directory and remo
 Strict source plans do not accept unrelated generic HTML:
 
 - YouTube video URLs require transcript output.
-- Twitter status, Threads post, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
+- Twitter status, Threads post/share, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
 - Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.

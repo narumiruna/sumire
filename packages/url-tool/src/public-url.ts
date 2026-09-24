@@ -3,12 +3,15 @@ import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
 import {
+  type AttemptRecord,
   getLoaderDef,
   isAnyDocUrl,
   isGoogleDocsUrl,
   isThreadsPostUrl,
+  isThreadsShareUrl,
   isTwitterStatusUrl,
   isYouTubeVideoUrl,
+  LoaderContentError,
   loadUrlDetailed,
   type LoadResult as UrlContentLoadResult,
 } from "@narumitw/sumire-url-content"
@@ -76,6 +79,7 @@ export interface LoadedUrl {
   truncated: boolean
   status?: number
   loaderId?: string
+  attempts?: readonly Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode">[]
 }
 
 export interface FetchedUrl {
@@ -142,12 +146,23 @@ export async function loadPublicUrl(
   )
 
   if (options.loader === BUILT_IN_URL_LOADER) {
+    if (isThreadsShareUrl(urlValue))
+      throw new LoaderContentError(
+        "ThreadsLoader",
+        urlValue,
+        "A Threads share link requires verified post metadata",
+      )
     return loadedBuiltInUrl(await fetchPublicUrl(urlValue, options))
   }
   if (options.loader) return loadSourceUrl(urlValue, options, [options.loader])
 
   // These sources expose an application shell or raw document bytes to generic HTML extraction.
-  if (isGoogleDocsUrl(urlValue) || isAnyDocUrl(urlValue) || isThreadsPostUrl(urlValue)) {
+  if (
+    isGoogleDocsUrl(urlValue) ||
+    isAnyDocUrl(urlValue) ||
+    isThreadsPostUrl(urlValue) ||
+    isThreadsShareUrl(urlValue)
+  ) {
     return loadSourceUrl(urlValue, options)
   }
 
@@ -196,6 +211,16 @@ async function loadSourceUrl(
   })
   const content = result.content.trim()
   if (!content) throw new Error("URL content loader returned no content")
+  if (
+    isThreadsShareUrl(urlValue) &&
+    (result.loaderId !== "threads" || result.contentType !== "social_post")
+  ) {
+    throw new LoaderContentError(
+      "ThreadsLoader",
+      urlValue,
+      "A Threads share link requires verified post metadata",
+    )
+  }
   const truncated = content.length > options.maxChars
   return {
     url: urlValue,
@@ -207,6 +232,12 @@ async function loadSourceUrl(
       : content,
     truncated,
     loaderId: result.loaderId,
+    attempts: result.attempts.map(({ loaderId, status, errorType, errorCode }) => ({
+      loaderId,
+      status,
+      ...(errorType ? { errorType } : {}),
+      ...(errorCode ? { errorCode } : {}),
+    })),
   }
 }
 

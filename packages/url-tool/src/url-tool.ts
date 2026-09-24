@@ -39,7 +39,7 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
     name: "load_public_url",
     label: "Load public URL",
     description:
-      "Load readable text or Markdown from a public HTTP(S) URL. Google Docs links use plain-text export; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Other URLs try the bounded built-in loader first, then source-aware extraction for source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
+      "Load readable text or Markdown from a public HTTP(S) URL. Google Docs links use plain-text export; Threads post and share links require verified post metadata; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Other URLs try the bounded built-in loader first, then source-aware extraction for source-specific or blocked content. Private, local, oversized, and unsafe redirect targets are rejected.",
     parameters,
     execute: async (toolCallId, toolParameters, signal) => {
       const rawLoader = "loader" in toolParameters ? toolParameters.loader : undefined

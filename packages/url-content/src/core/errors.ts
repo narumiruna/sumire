@@ -81,9 +81,30 @@ export class LoaderContentError extends UrlContentError {
     public readonly url: string,
     public readonly reason: string,
     public readonly suggestion?: string,
+    cause?: unknown,
   ) {
     super(
       `${loaderName} failed to extract content from: ${url} - ${reason}${suggestion ? `\nSuggestion: ${suggestion}` : ""}`,
     )
+    if (cause !== undefined) this.cause = cause
+  }
+}
+
+export class TargetHttpError extends LoaderContentError {
+  constructor(
+    loaderName: string,
+    url: string,
+    public readonly status: number,
+  ) {
+    super(loaderName, url, `Target website returned HTTP ${status}`)
+  }
+}
+
+export class FirecrawlApiHttpError extends LoaderContentError {
+  constructor(
+    url: string,
+    public readonly status: number,
+  ) {
+    super("FirecrawlLoader", url, `Firecrawl API returned HTTP ${status}`)
   }
 }

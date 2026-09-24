@@ -1,6 +1,6 @@
 import type { Browser, Page, Response } from "playwright"
 
-import { LoaderContentError, LoaderTimeoutError } from "../core/errors.js"
+import { LoaderContentError, LoaderTimeoutError, TargetHttpError } from "../core/errors.js"
 import {
   assertPublicUrl,
   type FetchImplementation,
@@ -142,11 +142,7 @@ async function withBrowser(
     }
     if (routeError) throw routeError
     if (response && response.status() >= 400) {
-      throw new LoaderContentError(
-        options.loaderName,
-        url,
-        `HTTP request failed with status ${response.status()}`,
-      )
+      throw new TargetHttpError(options.loaderName, url, response.status())
     }
     try {
       return await raceWithSignal(
