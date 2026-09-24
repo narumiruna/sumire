@@ -759,7 +759,7 @@ export function createTelegramAgentBot(
                   : activity === "tool"
                     ? "正在執行工具…"
                     : "工具執行結束，等待模型回覆…"
-              progressStatus.publish(text)
+              progressStatus.publishActivity(text)
             },
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return

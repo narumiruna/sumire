@@ -38,6 +38,74 @@ describe("Telegram progress status", () => {
     expect(text.split("\n")).toHaveLength(9)
   })
 
+  it("rate-limits activity edits and retains the latest state", async () => {
+    vi.useFakeTimers()
+    try {
+      const update = vi.fn(async (_text: string) => undefined)
+      const editor = createProgressStatusEditor(update, vi.fn())
+
+      editor.publishActivity("model")
+      editor.publishActivity("tool")
+      editor.publishActivity("tool_finished")
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["model"])
+
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(update).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["model", "tool_finished"])
+
+      editor.publishActivity("tool")
+      await editor.close()
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(update).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("publishes structured progress immediately and cancels stale activity", async () => {
+    vi.useFakeTimers()
+    try {
+      const update = vi.fn(async (_text: string) => undefined)
+      const editor = createProgressStatusEditor(update, vi.fn())
+
+      editor.publishActivity("model")
+      await Promise.resolve()
+      editor.publishActivity("tool")
+      editor.publish("進度 0/1")
+      await Promise.resolve()
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["model", "進度 0/1"])
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(update).toHaveBeenCalledTimes(2)
+      await editor.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("restores the last structured status after an in-flight activity edit", async () => {
+    let finishActivity: (() => void) | undefined
+    const activity = new Promise<void>((resolve) => {
+      finishActivity = resolve
+    })
+    const update = vi.fn(async (text: string) => {
+      if (text === "tool") await activity
+    })
+    const editor = createProgressStatusEditor(update, vi.fn())
+
+    editor.publish("進度 0/1")
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    editor.publishActivity("tool")
+    editor.publish("進度 0/1")
+    expect(update.mock.calls.map(([text]) => text)).toEqual(["進度 0/1", "tool"])
+
+    finishActivity?.()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(3))
+    expect(update.mock.calls[2]?.[0]).toBe("進度 0/1")
+    await editor.close()
+  })
+
   it("coalesces updates and waits for an active edit before closing", async () => {
     let finishFirst: (() => void) | undefined
     const first = new Promise<void>((resolve) => {

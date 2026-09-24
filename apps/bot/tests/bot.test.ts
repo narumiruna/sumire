@@ -1272,17 +1272,9 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
 
-    expect(calls.map((call) => call.payload.text)).toEqual([
-      "處理中…",
-      "正在等待模型回覆…",
-      "正在執行工具…",
-      "工具執行結束，等待模型回覆…",
-      "完成",
-    ])
+    expect(calls.map((call) => call.payload.text)).toEqual(["處理中…", "正在等待模型回覆…", "完成"])
     expect(calls.map((call) => call.method)).toEqual([
       "sendMessage",
-      "editMessageText",
-      "editMessageText",
       "editMessageText",
       "editMessageText",
     ])
