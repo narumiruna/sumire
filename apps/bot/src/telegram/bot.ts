@@ -64,6 +64,7 @@ interface InputSubmissionOptions {
   deliveryMode?: DeliveryMode
   includeBotReplyContext?: boolean
   submissionIntent?: SubmissionIntent
+  replyToPendingStatus?: boolean
 }
 
 export function createTelegramAgentBot(
@@ -182,14 +183,10 @@ export function createTelegramAgentBot(
       await delivery.reply(context, "請使用 /ask <問題>。", replyOptions(context))
       return
     }
+    const message = context.message as unknown as TelegramMessageLike
+    const replyToPendingStatus = isPendingBotReply(context.chat.id, message, context.me.id)
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      submitInput(
-        context,
-        context.message as unknown as TelegramMessageLike,
-        prompt,
-        release,
-        isCurrent,
-      ),
+      submitInput(context, message, prompt, release, isCurrent, { replyToPendingStatus }),
     )
   })
   bot.command("f", (context) => submitArticle(context, context.match.trim()))
@@ -264,6 +261,7 @@ export function createTelegramAgentBot(
 
     if (fromBot)
       botReplyStreaks.set(context.chat.id, (botReplyStreaks.get(context.chat.id) ?? 0) + 1)
+    const replyToPendingStatus = isPendingBotReply(context.chat.id, message, context.me.id)
     await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
       submitInput(
         context,
@@ -273,6 +271,7 @@ export function createTelegramAgentBot(
           : stripBotMention(messageText(message), context.me.username),
         release,
         isCurrent,
+        { replyToPendingStatus },
       ),
     )
   })
@@ -282,8 +281,9 @@ export function createTelegramAgentBot(
     const chat = context.chat
     if (!rawMessage || !chat) return
     const message = rawMessage as unknown as TelegramMessageLike
+    const replyToPendingStatus = isPendingBotReply(chat.id, message, context.me.id)
     const repliedText =
-      message.reply_to_message && !isPendingBotReply(chat.id, message, context.me.id)
+      message.reply_to_message && !replyToPendingStatus
         ? messageText(message.reply_to_message).trim()
         : ""
     if (
@@ -318,6 +318,7 @@ export function createTelegramAgentBot(
         deliveryMode: "publish",
         includeBotReplyContext: true,
         submissionIntent: "newTurn",
+        replyToPendingStatus,
       }),
     )
   }
@@ -490,7 +491,7 @@ export function createTelegramAgentBot(
               ? "請回應這段音訊的內容。"
               : "請回應這則訊息。")
     if (transcripts.length > 0) prompt = promptWithAudioContext(prompt, transcripts)
-    const promptMessage = isPendingBotReply(context.chat?.id, message, context.me.id)
+    const promptMessage = submissionOptions.replyToPendingStatus
       ? { ...message, reply_to_message: undefined }
       : message
     prompt = promptWithReplyContext(promptMessage, prompt, submissionOptions.includeBotReplyContext)

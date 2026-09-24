@@ -556,6 +556,106 @@ describe("Telegram bot update routing", () => {
     }
   })
 
+  it("keeps an in-flight status out of /f context after slow document preparation", async () => {
+    let finishFirst: (() => void) | undefined
+    const pendingFirst = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    let finishConversion:
+      | ((result: {
+          markdown: string
+          format: string
+          originalChars: number
+          truncated: boolean
+        }) => void)
+      | undefined
+    const conversion = new Promise<{
+      markdown: string
+      format: string
+      originalChars: number
+      truncated: boolean
+    }>((resolve) => {
+      finishConversion = resolve
+    })
+    const convert = vi.fn(async () => conversion)
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        options.onAccepted?.()
+        if (prompt === "第一個問題") await pendingFirst
+        return { kind: "completed" as const, text: "文章" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        documentConverter: { convert },
+        imageFetchImplementation: vi.fn(async () => new Response("bytes")),
+        morselPublisher: {
+          isConfigured: true,
+          publish: vi.fn(async () => "https://morsel.example/s/article"),
+        },
+      },
+    )
+    installApiMock(telegram.bot)
+    const firstHandling = telegram.bot.handleUpdate(privateMessage(21, "第一個問題"))
+    let replyHandling: Promise<void> | undefined
+    try {
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+      const reply = privateMessage(22, "")
+      if (reply.message) {
+        delete reply.message.text
+        reply.message.caption = "/f 新內容"
+        reply.message.caption_entities = [{ type: "bot_command", offset: 0, length: 2 }]
+        reply.message.document = {
+          file_id: "document",
+          file_unique_id: "document",
+          file_name: "report.csv",
+          mime_type: "text/csv",
+          file_size: 5,
+        }
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: botInfo,
+          text: "處理中…",
+          reply_to_message: undefined,
+        }
+      }
+      replyHandling = telegram.bot.handleUpdate(reply)
+      await vi.waitFor(() => expect(convert).toHaveBeenCalledOnce())
+      finishFirst?.()
+      await firstHandling
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      finishConversion?.({
+        markdown: "document",
+        format: "csv",
+        originalChars: 8,
+        truncated: false,
+      })
+      await replyHandling
+
+      const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+      expect(prompt).toContain("新內容")
+      expect(prompt).toContain("document")
+      expect(prompt).not.toContain("處理中…")
+      expect(options).not.toHaveProperty("replyToBotMessageId")
+      expect(options).not.toHaveProperty("unresolvedReplyPrompt")
+    } finally {
+      finishFirst?.()
+      finishConversion?.({
+        markdown: "document",
+        format: "csv",
+        originalChars: 8,
+        truncated: false,
+      })
+      await Promise.all([firstHandling, replyHandling])
+    }
+  })
+
   it("does not publish the /f no-response fallback as an article", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
@@ -2789,6 +2889,70 @@ describe("Telegram bot update routing", () => {
     } finally {
       finishFirst?.()
       await firstHandling
+    }
+  })
+
+  it("keeps a pending reply classified through slow image preparation", async () => {
+    let finishFirst: (() => void) | undefined
+    const pendingFirst = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    let finishImage: ((response: Response) => void) | undefined
+    const pendingImage = new Promise<Response>((resolve) => {
+      finishImage = resolve
+    })
+    const imageFetchImplementation = vi.fn(async () => pendingImage)
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        options.onAccepted?.()
+        if (prompt === "第一個問題") await pendingFirst
+        return { kind: "completed" as const, text: "回答" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, imageFetchImplementation },
+    )
+    installApiMock(telegram.bot)
+    const firstHandling = telegram.bot.handleUpdate(privateMessage(26, "第一個問題"))
+    let replyHandling: Promise<void> | undefined
+    try {
+      await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+      const reply = privateMessage(27, "")
+      if (reply.message) {
+        delete reply.message.text
+        reply.message.caption = "補充：請繼續"
+        reply.message.photo = [
+          { file_id: "image", file_unique_id: "image", width: 100, height: 100, file_size: 5 },
+        ]
+        reply.message.reply_to_message = {
+          message_id: 100,
+          date: 1_700_000_001,
+          chat: reply.message.chat,
+          from: botInfo,
+          text: "處理中…",
+          reply_to_message: undefined,
+        }
+      }
+      replyHandling = telegram.bot.handleUpdate(reply)
+      await vi.waitFor(() => expect(imageFetchImplementation).toHaveBeenCalledOnce())
+      finishFirst?.()
+      await firstHandling
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      finishImage?.(new Response("bytes"))
+      await replyHandling
+
+      const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+      expect(prompt).toBe("補充：請繼續")
+      expect(options?.images).toHaveLength(1)
+      expect(options).not.toHaveProperty("replyToBotMessageId")
+      expect(options).not.toHaveProperty("unresolvedReplyPrompt")
+    } finally {
+      finishFirst?.()
+      finishImage?.(new Response("bytes"))
+      await Promise.all([firstHandling, replyHandling])
     }
   })
 
