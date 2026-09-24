@@ -1,5 +1,12 @@
 # @narumitw/sumire-url-tool
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [65ad21a]
+  - @narumitw/sumire-url-content@0.22.2
+
 ## 0.3.1
 
 ### Patch Changes
