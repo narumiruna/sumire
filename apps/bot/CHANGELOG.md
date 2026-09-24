@@ -1,5 +1,29 @@
 # @narumitw/sumire
 
+## 0.4.0
+
+### Minor Changes
+
+- b64107b: Enable local yt-dlp and Whisper transcription for YouTube and Reels in the production image, and transcribe bounded Telegram voice and audio inputs before submitting untrusted transcript context to Pi. Canonicalize video URLs passed to yt-dlp and ignore user CLI configuration.
+
+### Patch Changes
+
+- f71efc8: Bundle the URL-content CLI skill as a local Pi package resource, and load it in the bot only when coding tools are enabled.
+- fef1294: Remove non-visible scripts, styles, noscript blocks, and templates before generic HTML-to-Markdown conversion so bounded public URL output contains readable page content instead of page assets.
+- 4e308b7: Send a pending Telegram reply before submitting to Pi, replace it with structured progress when available, and edit the same reply with the final result or cancellation.
+- c635709: Keep Telegram, URL loading, delivery, and Morsel operations running when Logfire span instrumentation fails, without repeating an operation or hiding its error.
+- ee957b0: Keep replies to in-flight Telegram status messages out of Pi context even when media preparation finishes after the original response.
+- 8bca8e1: Load explicit `/f` source URLs concurrently before asking Pi to write the article, avoiding repeated model/tool round trips while keeping URL safety limits and publication behavior.
+- 1142faf: Trace Telegram requests, Pi turns, URL loads and Morsel delivery with correlated, content-free metadata. Record Pi tool and model lifecycle events, and instruct the agent to load the current URL before answering URL-only messages.
+- aa6345b: Verify Threads share links against post metadata before returning content, preserve safe loader diagnostics, and attribute Firecrawl API errors correctly.
+- Updated dependencies [f71efc8]
+- Updated dependencies [fef1294]
+- Updated dependencies [1142faf]
+- Updated dependencies [b64107b]
+- Updated dependencies [aa6345b]
+  - @narumitw/sumire-url-content@0.22.1
+  - @narumitw/sumire-url-tool@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
