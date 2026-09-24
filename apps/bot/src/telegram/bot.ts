@@ -142,9 +142,7 @@ export function createTelegramAgentBot(
           : []),
         ...(settings.botAudioInputEnabled ? ["可傳送語音訊息或音訊檔以轉錄並提問。"] : []),
         ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
-        ...(settings.botCodingToolsEnabled
-          ? ["可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。"]
-          : []),
+        "可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。",
         "可請助理使用 load_public_url 工具讀取公開網址。",
       ].join("\n"),
     )

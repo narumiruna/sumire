@@ -10,7 +10,7 @@ describe("loadSettings", () => {
     const settings = loadSettings({}, "/workspace/project")
 
     expect(settings.botGroupPassiveContextEnabled).toBe(true)
-    expect(settings.botCodingToolsEnabled).toBe(false)
+    expect(settings.botWhitelist).toEqual(new Set())
     expect(settings.botSessionLogDir).toBe(
       path.resolve("/workspace/project/.telegramagent/sessions"),
     )
@@ -35,7 +35,6 @@ describe("loadSettings", () => {
   it("parses the supported environment configuration", () => {
     const settings = loadSettings({
       BOT_WHITELIST: "123, -456,123",
-      BOT_CODING_TOOLS_ENABLED: "true",
       LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
       OPENAI_BASE_URL: "https://example.test/v1/",
@@ -59,7 +58,6 @@ describe("loadSettings", () => {
     })
 
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
-    expect(settings.botCodingToolsEnabled).toBe(true)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
     expect(settings.openaiBaseUrl).toBe("https://example.test/v1")
@@ -84,9 +82,6 @@ describe("loadSettings", () => {
 
   it("rejects invalid supported settings", () => {
     expect(() => loadSettings({ BOT_WHITELIST: "123,nope" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_CODING_TOOLS_ENABLED: "true" })).toThrow(
-      "BOT_WHITELIST must contain at least one Telegram user or chat ID",
-    )
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
