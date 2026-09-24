@@ -314,7 +314,7 @@ export function createTelegramAgentBot(
     await inSubmissionOrder(chat.id, (release, isCurrent) =>
       submitInput(context, message, source, release, isCurrent, {
         promptTransform: buildBlogPostPrompt,
-        articleUrlSource: [source, repliedText].filter(Boolean).join("\n"),
+        articleUrlSource: source,
         deliveryMode: "publish",
         includeBotReplyContext: true,
         submissionIntent: "newTurn",
@@ -491,12 +491,22 @@ export function createTelegramAgentBot(
               ? "請回應這段音訊的內容。"
               : "請回應這則訊息。")
     if (transcripts.length > 0) prompt = promptWithAudioContext(prompt, transcripts)
-    const promptMessage = submissionOptions.replyToPendingStatus
+    const replyToPendingStatus =
+      submissionOptions.replyToPendingStatus ||
+      isPendingBotReply(context.chat?.id, message, context.me.id)
+    const promptMessage = replyToPendingStatus
       ? { ...message, reply_to_message: undefined }
       : message
     prompt = promptWithReplyContext(promptMessage, prompt, submissionOptions.includeBotReplyContext)
     let loadedUrls: ArticleUrlContent[] = []
     if (submissionOptions.articleUrlSource !== undefined) {
+      const repliedText =
+        !replyToPendingStatus && message.reply_to_message
+          ? messageText(message.reply_to_message).trim()
+          : ""
+      const articleUrlSource = [submissionOptions.articleUrlSource, repliedText]
+        .filter(Boolean)
+        .join("\n")
       const chatId = context.chat?.id
       const controller = new AbortController()
       const active =
@@ -505,7 +515,7 @@ export function createTelegramAgentBot(
       active?.add(controller)
       try {
         loadedUrls = await loadArticleSourceUrls(
-          submissionOptions.articleUrlSource,
+          articleUrlSource,
           {
             load: (url, options) =>
               traceUrlLoad(logger, url, undefined, "article-source", () =>

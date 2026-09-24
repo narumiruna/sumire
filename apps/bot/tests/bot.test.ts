@@ -656,6 +656,86 @@ describe("Telegram bot update routing", () => {
     }
   })
 
+  it.each(["ordinary", "article"] as const)(
+    "rechecks a reply sent before the pending HTTP request finishes (%s)",
+    async (kind) => {
+      let finishStatus: (() => void) | undefined
+      const pendingStatus = new Promise<void>((resolve) => {
+        finishStatus = resolve
+      })
+      let finishFirst: (() => void) | undefined
+      const pendingFirst = new Promise<void>((resolve) => {
+        finishFirst = resolve
+      })
+      const load = vi.fn(async (url: string) => ({
+        url,
+        finalUrl: url,
+        source: "built-in" as const,
+        contentType: "text/plain",
+        text: "synthetic status content",
+        truncated: false,
+      }))
+      const sessions = createSessions({
+        submit: vi.fn(async (_chatId, prompt, options) => {
+          options.onAccepted?.()
+          if (prompt === "第一個問題") await pendingFirst
+          return { kind: "completed" as const, text: "回答" }
+        }),
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          articleUrlLoader: { load },
+          morselPublisher: {
+            isConfigured: true,
+            publish: vi.fn(async () => "https://morsel.example/s/article"),
+          },
+        },
+      )
+      const calls = installApiMock(telegram.bot, async (method, payload) => {
+        if (method === "sendMessage" && payload.text === "處理中…" && calls.length === 1) {
+          await pendingStatus
+        }
+      })
+      const firstHandling = telegram.bot.handleUpdate(privateMessage(21, "第一個問題"))
+      let replyHandling: Promise<void> | undefined
+      try {
+        await vi.waitFor(() => expect(calls[0]?.payload.text).toBe("處理中…"))
+        const reply =
+          kind === "article" ? commandMessage(22, "/f 新內容") : privateMessage(22, "接著呢？")
+        if (reply.message) {
+          reply.message.reply_to_message = {
+            message_id: 100,
+            date: 1_700_000_001,
+            chat: reply.message.chat,
+            from: botInfo,
+            text: "處理中… https://example.com/synthetic",
+            reply_to_message: undefined,
+          }
+        }
+        replyHandling = telegram.bot.handleUpdate(reply)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        finishStatus?.()
+        await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledTimes(2))
+        await replyHandling
+
+        const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
+        expect(prompt).not.toContain("處理中…")
+        expect(prompt).not.toContain("https://example.com/synthetic")
+        expect(options).not.toHaveProperty("replyToBotMessageId")
+        expect(options).not.toHaveProperty("unresolvedReplyPrompt")
+        expect(load).not.toHaveBeenCalled()
+      } finally {
+        finishStatus?.()
+        finishFirst?.()
+        await Promise.all([firstHandling, replyHandling])
+      }
+    },
+  )
+
   it("does not publish the /f no-response fallback as an article", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
