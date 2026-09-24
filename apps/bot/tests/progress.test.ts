@@ -22,7 +22,7 @@ describe("Telegram progress status", () => {
     expect(renderProgressStatus([])).toBe("進度已清除")
   })
 
-  it("prioritizes actionable work and bounds long lists", () => {
+  it("renders every step in order, including completed steps beyond six", () => {
     const text = renderProgressStatus([
       ...Array.from({ length: 8 }, (_, index) => ({
         text: `完成 ${index}`,
@@ -30,12 +30,19 @@ describe("Telegram progress status", () => {
       })),
       { text: "目前工作", status: "in_progress" },
       { text: "等待工作", status: "pending" },
+      { text: "發布\u202e\n操作", status: "blocked", reason: "等待\u200f 核准" },
     ])
 
-    expect(text).toContain("🔄 目前工作")
-    expect(text).toContain("⬜ 等待工作")
-    expect(text).toContain("…還有 4 個步驟")
-    expect(text.split("\n")).toHaveLength(9)
+    expect(text).toBe(
+      [
+        "進度 8/11",
+        "",
+        ...Array.from({ length: 8 }, (_, index) => `✅ 完成 ${index}`),
+        "🔄 目前工作",
+        "⬜ 等待工作",
+        "⛔ 發布操作 — 等待 核准",
+      ].join("\n"),
+    )
   })
 
   it("rate-limits activity edits and retains the latest state", async () => {
@@ -104,6 +111,27 @@ describe("Telegram progress status", () => {
     await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(3))
     expect(update.mock.calls[2]?.[0]).toBe("進度 0/1")
     await editor.close()
+  })
+
+  it("flushes the latest snapshot before keeping the status as history", async () => {
+    let finishFirst: (() => void) | undefined
+    const first = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const update = vi.fn(async (text: string) => {
+      if (text === "first") await first
+    })
+    const editor = createProgressStatusEditor(update, vi.fn())
+
+    editor.publish("first")
+    editor.publish("intermediate")
+    editor.publish("latest")
+    const flushing = editor.flush()
+    finishFirst?.()
+    await flushing
+    await editor.close()
+
+    expect(update.mock.calls.map(([text]) => text)).toEqual(["first", "latest"])
   })
 
   it("coalesces updates and waits for an active edit before closing", async () => {

@@ -1,12 +1,12 @@
 import type { ProgressStep } from "@narumitw/sumire-progress"
 
-const maxVisibleSteps = 6
 const activityEditIntervalMs = 2_000
 const bidiControls = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 
 export interface ProgressStatusEditor {
   publish(text: string): void
   publishActivity(text: string): void
+  flush(): Promise<void>
   close(): Promise<void>
 }
 
@@ -14,11 +14,7 @@ export function renderProgressStatus(steps: readonly ProgressStep[]): string {
   if (steps.length === 0) return "進度已清除"
 
   const completed = steps.filter((step) => step.status === "completed").length
-  const visible = selectVisibleSteps(steps)
-  const lines = [`進度 ${completed}/${steps.length}`, "", ...visible.map(renderStep)]
-  const hidden = steps.length - visible.length
-  if (hidden > 0) lines.push(`…還有 ${hidden} 個步驟`)
-  return lines.join("\n")
+  return [`進度 ${completed}/${steps.length}`, "", ...steps.map(renderStep)].join("\n")
 }
 
 export function createProgressStatusEditor(
@@ -89,36 +85,15 @@ export function createProgressStatusEditor(
       if (delay === 0) flushActivity()
       else activityTimer = setTimeout(flushActivity, delay)
     },
+    async flush() {
+      while (active) await active
+    },
     async close() {
       closed = true
       cancelActivity()
       pending = undefined
       while (active) await active
     },
-  }
-}
-
-function selectVisibleSteps(steps: readonly ProgressStep[]): ProgressStep[] {
-  if (steps.length <= maxVisibleSteps) return [...steps]
-
-  const ranked = steps
-    .map((step, index) => ({ step, index, rank: statusRank(step.status) }))
-    .sort((left, right) => left.rank - right.rank || left.index - right.index)
-    .slice(0, maxVisibleSteps)
-    .sort((left, right) => left.index - right.index)
-  return ranked.map(({ step }) => step)
-}
-
-function statusRank(status: ProgressStep["status"]): number {
-  switch (status) {
-    case "in_progress":
-      return 0
-    case "blocked":
-      return 1
-    case "pending":
-      return 2
-    case "completed":
-      return 3
   }
 }
 
