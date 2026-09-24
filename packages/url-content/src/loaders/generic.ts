@@ -1,5 +1,3 @@
-import { CurlOpt } from "impers"
-
 import { LoaderContentError, LoaderTimeoutError, TargetHttpError } from "../core/errors.js"
 import { remainingMilliseconds } from "../core/execution.js"
 import type { Loader } from "../core/loader.js"
@@ -15,6 +13,8 @@ export const DEFAULT_HTTP_TIMEOUT_MS = 20_000
 export const DEFAULT_PLAYWRIGHT_TIMEOUT_MS = DEFAULT_BROWSER_TIMEOUT_MS
 export const MAX_HTML_BYTES = 10 * 1024 * 1024
 const SENSITIVE_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"])
+// CURLOPT_NOPROXY = CURLOPTTYPE_STRINGPOINT (10_000) + 177. Avoid importing impers at startup.
+const CURLOPT_NOPROXY = 10_177
 
 export const DEFAULT_HTTP_HEADERS = {
   "User-Agent":
@@ -228,7 +228,7 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
           headers: requestHeaders,
           allowRedirects: false,
           proxy,
-          curlOptions: { [CurlOpt.NOPROXY]: "" },
+          curlOptions: { [CURLOPT_NOPROXY]: "" },
           signal: requestSignal,
           stream: maxBytes !== undefined,
           ...(maxBytes === undefined

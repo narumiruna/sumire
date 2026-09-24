@@ -12,6 +12,26 @@ import { urlContentSkillsPath } from "../src/resources.js"
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
 describe("URL content Pi package", () => {
+  it("imports all loaders without initializing impers", () => {
+    const loaders = path.resolve(packageRoot, "dist/loaders/index.js")
+    const result = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", "await import(process.argv[1]); console.log('ready')", loaders],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          LIBCURL_PATH: "/nonexistent/libcurl.so",
+          IMPER_DOWNLOAD_LIBCURL: "0",
+        },
+      },
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("ready")
+  })
+
   it("discovers the bundled skill and runs the package-local CLI outside the workspace", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-url-content-pi-"))
     const resourceLoader = new DefaultResourceLoader({

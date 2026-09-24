@@ -39,9 +39,10 @@ FROM node:24-bookworm-slim AS runtime
 ARG PLAYWRIGHT_VERSION
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV XDG_CACHE_HOME=/app/.cache
+ENV IMPER_DOWNLOAD_LIBCURL=0
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 ffmpeg \
+    && apt-get install -y --no-install-recommends python3 ffmpeg libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \

@@ -194,7 +194,7 @@ docker compose logs -f sumire
 docker compose down
 ```
 
-The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies.
+The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. It also installs system libcurl and sets `IMPER_DOWNLOAD_LIBCURL=0`, so `impers` does not download a native library at runtime. The `curl-cffi` loader works without browser TLS impersonation in this configuration; to enable impersonation, provide a compatible library in the container and set `LIBCURL_IMPERSONATE_PATH` to its path.
 
 ## Feature controls
 
