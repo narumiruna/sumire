@@ -1615,7 +1615,7 @@ describe("Telegram bot update routing", () => {
     }
   })
 
-  it("does not quote retained progress while its checkpoint is being recorded", async () => {
+  it("preserves the retained progress reply ID while its checkpoint is being recorded", async () => {
     let finishRecord: (() => void) | undefined
     const pendingRecord = new Promise<void>((resolve) => {
       finishRecord = resolve
@@ -1656,7 +1656,7 @@ describe("Telegram bot update routing", () => {
       expect(sessions.submit).toHaveBeenLastCalledWith(
         7,
         "接著呢？",
-        expect.not.objectContaining({ replyToBotMessageId: 100 }),
+        expect.objectContaining({ replyToBotMessageId: 100 }),
       )
     } finally {
       finishRecord?.()
@@ -1693,6 +1693,124 @@ describe("Telegram bot update routing", () => {
     ])
     expect(calls[2]?.payload.text).toBe("完成")
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
+  })
+
+  it("retains the last displayed progress when a later Telegram edit fails", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "已完成", status: "completed" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.([{ text: "尚未顯示", status: "in_progress" }])
+        return { kind: "completed" as const, text: "完成", checkpoint }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot, (method, payload) => {
+      if (method === "editMessageText" && String(payload.text).includes("尚未顯示")) {
+        throw new Error("progress edit failed")
+      }
+    })
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+      "sendMessage",
+    ])
+    expect(calls[1]?.payload.text).toBe("進度 1/1\n\n✅ 已完成")
+    expect(calls[3]?.payload.text).toBe("完成")
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
+  })
+
+  it("restores the last displayed progress after a later Morsel failure", async () => {
+    const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.([{ text: "已完成", status: "completed" }])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.(
+          Array.from({ length: 5 }, (_, index) => ({
+            text: `未發布 ${index} ${"新".repeat(250)}`,
+            status: index === 0 ? ("in_progress" as const) : ("pending" as const),
+          })),
+        )
+        return { kind: "completed" as const, text: "完成", checkpoint }
+      }),
+    })
+    const publish = vi.fn(async () => {
+      throw new Error("Morsel unavailable")
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
+    expect(publish).toHaveBeenCalledOnce()
+    expect(calls.map((call) => call.method)).toEqual([
+      "sendMessage",
+      "editMessageText",
+      "editMessageText",
+      "editMessageText",
+      "sendMessage",
+    ])
+    expect(calls[2]?.payload.text).toContain("Morsel 暫時無法使用")
+    expect(calls[3]?.payload.text).toBe("進度 1/1\n\n✅ 已完成")
+    expect(calls.some((call) => String(call.payload.text).includes("未發布 0"))).toBe(false)
+    expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
+  })
+
+  it("reuses an earlier Morsel link after a later publication fails", async () => {
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        options.onProgress?.(
+          Array.from({ length: 5 }, (_, index) => ({
+            text: `已完成 ${index} ${"長".repeat(250)}`,
+            status: "completed" as const,
+          })),
+        )
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onProgress?.(
+          Array.from({ length: 5 }, (_, index) => ({
+            text: `未發布 ${index} ${"新".repeat(250)}`,
+            status: index === 0 ? ("in_progress" as const) : ("pending" as const),
+          })),
+        )
+        return { kind: "completed" as const, text: "完成" }
+      }),
+    })
+    let publicationCount = 0
+    const publish = vi.fn(async (_text: string) => {
+      if (++publicationCount > 1) throw new Error("Morsel unavailable")
+      return "https://morsel.example/s/previous-progress"
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo, morselPublisher: { isConfigured: true, publish } },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
+    expect(publish).toHaveBeenCalledTimes(2)
+    expect(calls[1]?.payload.text).toContain("https://morsel.example/s/previous-progress")
+    expect(calls[2]?.payload.text).toContain("Morsel 暫時無法使用")
+    expect(calls[3]?.payload.text).toBe(calls[1]?.payload.text)
+    expect(calls[4]?.payload.text).toBe("完成")
   })
 
   it("replaces retained progress with an error when sending the answer fails", async () => {

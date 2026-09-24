@@ -654,6 +654,28 @@ describe("ChatSessionRegistry", () => {
     expect(session.prompts).toEqual(["first", "latest", "branch one", "branch two"])
   })
 
+  it("resolves a reply against an in-flight checkpoint write before navigating", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+
+    const first = await registry.submit(1, "first")
+    await registry.submit(1, "newer leaf")
+    const recording = registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    const reply = registry.submit(1, "reply to progress", { replyToBotMessageId: 100 })
+    await Promise.all([recording, reply])
+
+    expect(session.navigated).toEqual(["entry-1"])
+    expect(session.prompts).toEqual(["first", "newer leaf", "reply to progress"])
+    await registry.dispose()
+  })
+
   it("waits for an active run before restoring a mapped branch but keeps unmapped steering", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()

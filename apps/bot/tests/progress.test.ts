@@ -118,20 +118,23 @@ describe("Telegram progress status", () => {
     const first = new Promise<void>((resolve) => {
       finishFirst = resolve
     })
-    const update = vi.fn(async (text: string) => {
+    const update = vi.fn(async (text: string, _isProgress: boolean) => {
       if (text === "first") await first
     })
     const editor = createProgressStatusEditor(update, vi.fn())
 
-    editor.publish("first")
-    editor.publish("intermediate")
-    editor.publish("latest")
+    editor.publish("first", true)
+    editor.publish("intermediate", true)
+    editor.publish("latest", true)
     const flushing = editor.flush()
     finishFirst?.()
     await flushing
     await editor.close()
 
-    expect(update.mock.calls.map(([text]) => text)).toEqual(["first", "latest"])
+    expect(update.mock.calls).toEqual([
+      ["first", true],
+      ["latest", true],
+    ])
   })
 
   it("coalesces updates and waits for an active edit before closing", async () => {

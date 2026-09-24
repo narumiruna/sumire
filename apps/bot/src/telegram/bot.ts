@@ -1,5 +1,4 @@
 import type { RunnerHandle } from "@grammyjs/runner"
-import type { ProgressStep } from "@narumitw/sumire-progress"
 import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
@@ -640,10 +639,11 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
     let hasProgressSnapshot = false
-    let latestProgress: readonly ProgressStep[] | undefined
+    let reportedProgress = false
     let progressCleared = false
     const pendingText = "處理中…"
     let lastDeliveredStatusText: string | undefined
+    let lastDeliveredProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
     let statusDisplayText: string | undefined = pendingText
@@ -658,7 +658,7 @@ export function createTelegramAgentBot(
       pendingMessageId = undefined
     }
     const progressStatus = createProgressStatusEditor(
-      async (text) => {
+      async (text, isProgress) => {
         if (status) {
           visiblePayload = undefined
           const outcome = await delivery.edit(
@@ -673,12 +673,19 @@ export function createTelegramAgentBot(
             },
           )
           lastDeliveredStatusText = outcome === "delivered" ? text : undefined
+          if (outcome === "delivered" && isProgress) {
+            lastDeliveredProgress = { text, visibleText: statusDisplayText ?? text }
+          }
           visiblePayload = outcome === "delivered" ? delivery.directPayload(text) : undefined
           return
         }
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
         lastDeliveredStatusText = progressReply.result === "delivered" ? text : undefined
+        if (progressReply.result === "delivered" && isProgress) {
+          statusDisplayText = progressReply.message?.text ?? text
+          lastDeliveredProgress = { text, visibleText: statusDisplayText }
+        }
         visiblePayload =
           progressReply.result === "delivered" ? delivery.directPayload(text) : undefined
       },
@@ -773,12 +780,15 @@ export function createTelegramAgentBot(
               if (steps.length === 0 && !hasProgressSnapshot) return
               hasProgressSnapshot = steps.length > 0
               if (steps.length > 0) {
-                latestProgress = steps.map((step) => ({ ...step }))
+                reportedProgress = true
                 progressCleared = false
               } else {
                 progressCleared = true
               }
-              progressStatus.publish(steps.length > 0 ? renderProgressStatus(steps) : pendingText)
+              progressStatus.publish(
+                steps.length > 0 ? renderProgressStatus(steps) : pendingText,
+                steps.length > 0,
+              )
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
@@ -793,12 +803,22 @@ export function createTelegramAgentBot(
         await cancelStatus()
         return
       }
-      const archiveText =
-        result.kind === "completed" && latestProgress
-          ? `${progressCleared ? "最後回報的進度（已清除）\n\n" : ""}${renderProgressStatus(latestProgress)}`
-          : undefined
-      if (archiveText && progressCleared) progressStatus.publish(archiveText)
-      if (archiveText) await progressStatus.flush()
+      if (result.kind === "completed" && reportedProgress) await progressStatus.flush()
+      const lastProgress = lastDeliveredProgress
+      let archiveText: string | undefined
+      if (result.kind === "completed" && reportedProgress && lastProgress) {
+        // Reuse an existing Morsel notice instead of republishing a long snapshot after failure.
+        const progressText =
+          (!progressCleared && lastDeliveredStatusText === lastProgress.text) ||
+          delivery.directPayload(lastProgress.text) !== undefined
+            ? lastProgress.text
+            : lastProgress.visibleText
+        archiveText = `${progressCleared ? "最後回報的進度（已清除）\n\n" : ""}${progressText}`
+      }
+      if (archiveText && lastDeliveredStatusText !== archiveText) {
+        progressStatus.publish(archiveText, true)
+        await progressStatus.flush()
+      }
       await progressStatus.close()
       const retainedProgressMessageId =
         archiveText && lastDeliveredStatusText === archiveText ? status?.message_id : undefined
@@ -884,6 +904,7 @@ export function createTelegramAgentBot(
         }
         return
       }
+      clearPendingReply()
       if (deliveryResult === "delivered" && status && result.kind === "completed") {
         await sessions.recordDelivery(
           chatId,
@@ -895,7 +916,6 @@ export function createTelegramAgentBot(
               : [previousStatusId, status.message_id],
         )
       }
-      clearPendingReply()
     } catch (error) {
       if (!isCurrent()) {
         await cancelStatus()
