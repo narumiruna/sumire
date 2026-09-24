@@ -32,6 +32,14 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
+  it("rejects an empty whitelist before enabling coding tools", async () => {
+    const settings = loadSettings({ OPENAI_API_KEY: "test-key" })
+
+    await expect(createPiSessionFactory(settings, logger)).rejects.toThrow(
+      "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
+    )
+  })
+
   it("creates isolated persistent Pi AgentSessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
@@ -41,6 +49,7 @@ describe("createPiSessionFactory", () => {
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
         BOT_URL_ALLOWED_SCHEMES: "https",
+        BOT_WHITELIST: "123",
       },
       root,
     )
@@ -130,7 +139,7 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("executes Pi coding tools with no whitelist configured", async () => {
+  it("executes Pi coding tools for an allowlisted deployment", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
     await installInstructions(root)
     await installOtterSkill(root)
@@ -139,6 +148,7 @@ describe("createPiSessionFactory", () => {
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
+        BOT_WHITELIST: "123",
       },
       root,
     )

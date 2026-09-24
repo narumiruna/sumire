@@ -30,6 +30,12 @@ export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
 ): Promise<PiSessionFactory> {
+  if (settings.botWhitelist.size === 0) {
+    throw new Error(
+      "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
+    )
+  }
+
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
   const modelRuntime = await ModelRuntime.create({
     authPath: path.join(agentDir, "auth.json"),

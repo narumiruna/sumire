@@ -84,7 +84,7 @@ Automatic planning is preferred. Explicit loaders are exact overrides for debugg
 
 ## Pi package
 
-From the repository root, run `npm ci` and build this workspace before loading it locally with `pi -e ./packages/url-content`. Pi discovers `skills/load-url-content/SKILL.md` through the package manifest; the package remains private and is not published to npm. The skill calls `dist/cli.js` relative to its own directory, so it works outside the repository's npm workspace when the package and its dependencies are installed. It needs Pi's `bash` tool and the CLI's runtime requirements below; it does not register a Pi tool. In the Telegram bot, this CLI skill and the bounded `load_public_url` tool are available in every session. Set `BOT_WHITELIST` to restrict access to trusted Telegram users or chats.
+From the repository root, run `npm ci` and build this workspace before loading it locally with `pi -e ./packages/url-content`. Pi discovers `skills/load-url-content/SKILL.md` through the package manifest; the package remains private and is not published to npm. The skill calls `dist/cli.js` relative to its own directory, so it works outside the repository's npm workspace when the package and its dependencies are installed. It needs Pi's `bash` tool and the CLI's runtime requirements below; it does not register a Pi tool. In the Telegram bot, this CLI skill and the bounded `load_public_url` tool are available in every session. The bot requires a non-empty `BOT_WHITELIST` to restrict access to trusted Telegram users or chats.
 
 ## Runtime requirements
 
