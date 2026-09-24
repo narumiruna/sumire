@@ -28,6 +28,7 @@ export type SubmissionResult =
   | { kind: "followed_up"; text: string }
 
 export type SubmissionIntent = "steer" | "followUp" | "newTurn"
+export type SubmissionActivity = "model" | "tool" | "tool_finished"
 
 export interface SessionHandle {
   readonly isStreaming: boolean
@@ -95,6 +96,7 @@ export class ChatSessionRegistry {
       unresolvedReplyPrompt?: string
       onAccepted?: () => void
       onProgress?: (steps: readonly ProgressStep[]) => void
+      onActivity?: (activity: SubmissionActivity) => void
       isCurrent?: () => boolean
     } = {},
   ): Promise<SubmissionResult> {
@@ -147,6 +149,16 @@ export class ChatSessionRegistry {
       : undefined
     const unsubscribe = session.subscribe((event) => {
       notifyProgress?.(event)
+      if (options.onActivity) {
+        const activity = submissionActivity(event)
+        if (activity) {
+          try {
+            options.onActivity(activity)
+          } catch (error) {
+            this.logger.warn("Activity listener failed", error)
+          }
+        }
+      }
       logPiEvent(event, chatId, session.sessionId, this.logger)
     })
     let finishCapture = () => {}
@@ -387,6 +399,14 @@ export function asSessionCreator(factory: {
   create(chatId: number): Promise<AgentSession>
 }): SessionCreator {
   return (chatId) => factory.create(chatId)
+}
+
+function submissionActivity(event: AgentSessionEvent): SubmissionActivity | undefined {
+  if (event.type === "agent_start") return "model"
+  if (event.type === "tool_execution_start" && event.toolName !== PROGRESS_TOOL_NAME) return "tool"
+  if (event.type === "tool_execution_end" && event.toolName !== PROGRESS_TOOL_NAME)
+    return "tool_finished"
+  return undefined
 }
 
 function progressListener(

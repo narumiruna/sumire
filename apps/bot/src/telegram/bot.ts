@@ -751,6 +751,16 @@ export function createTelegramAgentBot(
             ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
             onAccepted: releaseSubmissionTurn,
             isCurrent,
+            onActivity: (activity) => {
+              if (hasProgressSnapshot) return
+              const text =
+                activity === "model"
+                  ? "正在等待模型回覆…"
+                  : activity === "tool"
+                    ? "正在執行工具…"
+                    : "工具執行結束，等待模型回覆…"
+              progressStatus.publish(text)
+            },
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
               hasProgressSnapshot = steps.length > 0
