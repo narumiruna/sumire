@@ -111,7 +111,7 @@ export async function createPiSessionFactory(
   return {
     async create(chatId: number) {
       const resourceLoader = new DefaultResourceLoader({
-        cwd: settings.projectRoot,
+        cwd: settings.botWorkdir,
         agentDir,
         additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath, urlContentSkillsPath],
         extensionFactories: [
@@ -141,14 +141,14 @@ export async function createPiSessionFactory(
 
       const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
       const { session, modelFallbackMessage } = await createAgentSession({
-        cwd: settings.projectRoot,
+        cwd: settings.botWorkdir,
         agentDir,
         model,
         thinkingLevel: "off",
         modelRuntime,
         customTools,
         resourceLoader,
-        sessionManager: SessionManager.continueRecent(settings.projectRoot, sessionDirectory),
+        sessionManager: SessionManager.continueRecent(settings.botWorkdir, sessionDirectory),
         settingsManager: piSettings,
       })
       if (modelFallbackMessage)

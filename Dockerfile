@@ -39,6 +39,7 @@ FROM node:24-bookworm-slim AS runtime
 ARG PLAYWRIGHT_VERSION
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV XDG_CACHE_HOME=/app/.cache
+ENV BOT_WORKDIR=/workdir
 ENV IMPER_DOWNLOAD_LIBCURL=0
 
 RUN apt-get update \
@@ -51,12 +52,12 @@ RUN --mount=type=cache,target=/root/.npm \
 RUN --mount=type=cache,target=/root/.npm \
     npx --yes playwright@${PLAYWRIGHT_VERSION} install chromium
 
-WORKDIR /app
+WORKDIR /workdir
 
 RUN groupadd --system app \
-    && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
-    && mkdir -p /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
-    && chown -R app:app /app /ms-playwright
+    && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
+    && mkdir -p /workdir /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
+    && chown -R app:app /app /workdir /ms-playwright
 
 COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
 COPY --from=audio-dependencies /opt/audio /opt/audio
@@ -77,6 +78,7 @@ COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/pac
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
 
+ENV HOME=/workdir
 USER app
 
 ENTRYPOINT ["node", "/app/apps/bot/dist/index.js"]

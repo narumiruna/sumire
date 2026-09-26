@@ -9,6 +9,7 @@ describe("loadSettings", () => {
   it("loads fixed runtime defaults and resolves repository paths", () => {
     const settings = loadSettings({}, "/workspace/project")
 
+    expect(settings.botWorkdir).toBe(path.resolve("/workspace/project"))
     expect(settings.botGroupPassiveContextEnabled).toBe(true)
     expect(settings.botWhitelist).toEqual(new Set())
     expect(settings.botAdminId).toBeUndefined()
@@ -35,6 +36,7 @@ describe("loadSettings", () => {
 
   it("parses the supported environment configuration", () => {
     const settings = loadSettings({
+      BOT_WORKDIR: "notes",
       BOT_WHITELIST: "123, -456,123",
       BOT_ADMIN_ID: "123",
       LOGFIRE_TOKEN: "logfire-token",
@@ -59,6 +61,7 @@ describe("loadSettings", () => {
       BOT_URL_ALLOWED_SCHEMES: "https",
     })
 
+    expect(settings.botWorkdir).toBe(path.resolve(process.cwd(), "notes"))
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
     expect(settings.botAdminId).toBe(123)
     expect(settings.logfireToken).toBe("logfire-token")
@@ -90,6 +93,12 @@ describe("loadSettings", () => {
     }
     expect(loadSettings({ BOT_ADMIN_ID: "" }).botAdminId).toBeUndefined()
     expect(loadSettings({ BOT_ADMIN_ID: "  " }).botAdminId).toBeUndefined()
+    expect(loadSettings({ BOT_WORKDIR: "  " }, "/workspace/project").botWorkdir).toBe(
+      path.resolve("/workspace/project"),
+    )
+    expect(loadSettings({ BOT_WORKDIR: "/workdir" }, "/workspace/project").botWorkdir).toBe(
+      "/workdir",
+    )
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)

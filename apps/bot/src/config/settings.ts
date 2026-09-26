@@ -71,6 +71,7 @@ const allowedSchemes = z
 
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
+  BOT_WORKDIR: optionalString,
   BOT_WHITELIST: csvIntegers,
   BOT_ADMIN_ID: optionalTelegramUserId,
   BOT_DOCUMENT_INPUT_ENABLED: envBoolean(true),
@@ -102,6 +103,7 @@ const environmentSchema = z.object({
 
 export interface Settings {
   projectRoot: string
+  botWorkdir: string
   botToken: string
   botWhitelist: ReadonlySet<number>
   botAdminId?: number
@@ -158,6 +160,7 @@ export function loadSettings(
   const root = path.resolve(projectRoot)
   return {
     projectRoot: root,
+    botWorkdir: path.resolve(root, parsed.BOT_WORKDIR ?? "."),
     botToken: parsed.BOT_TOKEN,
     botWhitelist: parsed.BOT_WHITELIST,
     ...(parsed.BOT_ADMIN_ID !== undefined ? { botAdminId: parsed.BOT_ADMIN_ID } : {}),

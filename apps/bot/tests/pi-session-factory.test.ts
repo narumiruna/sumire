@@ -1,8 +1,10 @@
+import { existsSync } from "node:fs"
 import { cp, mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { SessionManager } from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
@@ -139,12 +141,15 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("executes Pi coding tools for an allowlisted deployment", async () => {
+  it("executes Pi coding tools from a separate workdir while loading root skills", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
+    const workdir = path.join(root, "workdir")
+    await mkdir(workdir)
     await installInstructions(root)
     await installOtterSkill(root)
     const settings = loadSettings(
       {
+        BOT_WORKDIR: "workdir",
         OPENAI_API_KEY: "test-key",
         OPENAI_BASE_URL: "https://api.example.test/v1",
         OPENAI_MODEL: "test-model",
@@ -156,6 +161,7 @@ describe("createPiSessionFactory", () => {
     const session = await factory.create(123)
 
     try {
+      expect(session.sessionManager.getCwd()).toBe(workdir)
       expect(session.getActiveToolNames()).toEqual([
         "read",
         "bash",
@@ -197,6 +203,8 @@ describe("createPiSessionFactory", () => {
         undefined as never,
       )
       expect(readResult.content).toContainEqual({ type: "text", text: "after\n" })
+      expect(existsSync(path.join(workdir, "scratch/note.txt"))).toBe(true)
+      expect(existsSync(path.join(root, "scratch/note.txt"))).toBe(false)
       const bashResult = await bash.execute(
         "bash-call",
         { command: "test -f scratch/note.txt && printf tool-ok", timeout: 5 },
@@ -212,6 +220,49 @@ describe("createPiSessionFactory", () => {
       expect(logger.warn).not.toHaveBeenCalledWith(
         expect.stringContaining("Pi skill diagnostic for chat_id=123"),
       )
+    } finally {
+      session.dispose()
+    }
+  })
+
+  it("starts a new session when the stored session used the old cwd", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-migration-"))
+    const workdir = path.join(root, "workdir")
+    await mkdir(workdir)
+    await installInstructions(root)
+    const sessionDirectory = path.join(root, ".telegramagent/sessions/123/pi")
+    const oldSession = SessionManager.create(root, sessionDirectory)
+    oldSession.appendMessage({ role: "user", content: "old conversation", timestamp: Date.now() })
+    oldSession.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "old answer" }],
+      api: "openai-completions",
+      provider: "test",
+      model: "test",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    })
+    const oldFile = oldSession.getSessionFile()
+
+    const settings = loadSettings(
+      { BOT_WORKDIR: workdir, BOT_WHITELIST: "123", OPENAI_API_KEY: "test-key" },
+      root,
+    )
+    const factory = await createPiSessionFactory(settings, logger)
+    const session = await factory.create(123)
+    try {
+      expect(session.sessionManager.getCwd()).toBe(workdir)
+      expect(session.sessionManager.getSessionId()).not.toBe(oldSession.getSessionId())
+      expect(session.sessionManager.getSessionFile()).not.toBe(oldFile)
+      expect(oldFile && existsSync(oldFile)).toBe(true)
     } finally {
       session.dispose()
     }
