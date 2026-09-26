@@ -1,5 +1,11 @@
 # @narumitw/sumire-url-content
 
+## 0.22.3
+
+### Patch Changes
+
+- b0ff41f: Avoid initializing impers while loading shared URL loaders, and provide system libcurl in the Docker image without relying on a runtime download.
+
 ## 0.22.2
 
 ### Patch Changes
