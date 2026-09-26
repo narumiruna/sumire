@@ -9,6 +9,7 @@ services:
     init: true
     restart: unless-stopped
     volumes:
+      - workdir:/app
       - ./instructions:/app/instructions:ro
       - ./skills:/app/skills:ro
       - events:/app/.events
@@ -16,6 +17,7 @@ services:
       - whisper-cache:/app/.cache/whisper
 
 volumes:
+  workdir:
   events:
   state:
   whisper-cache:
