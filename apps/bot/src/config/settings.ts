@@ -8,6 +8,17 @@ const optionalString = z.preprocess((value) => {
   return normalized || undefined
 }, z.string().optional())
 
+const optionalTelegramUserId = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
+    .string()
+    .trim()
+    .regex(/^[1-9]\d*$/u)
+    .transform(Number)
+    .pipe(z.number().int().max(Number.MAX_SAFE_INTEGER))
+    .optional(),
+)
+
 const envBoolean = (defaultValue: boolean) =>
   z
     .enum(["true", "false"])
@@ -61,6 +72,7 @@ const allowedSchemes = z
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
   BOT_WHITELIST: csvIntegers,
+  BOT_ADMIN_ID: optionalTelegramUserId,
   BOT_DOCUMENT_INPUT_ENABLED: envBoolean(true),
   BOT_DOCUMENT_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
   BOT_DOCUMENT_MAX_MARKDOWN_CHARS: envInteger(50_000, 1, 1_000_000),
@@ -92,6 +104,7 @@ export interface Settings {
   projectRoot: string
   botToken: string
   botWhitelist: ReadonlySet<number>
+  botAdminId?: number
   botMaxConsecutiveRepliesToBots: number
   botGroupPassiveContextEnabled: boolean
   botSkillsDir: string
@@ -147,6 +160,7 @@ export function loadSettings(
     projectRoot: root,
     botToken: parsed.BOT_TOKEN,
     botWhitelist: parsed.BOT_WHITELIST,
+    ...(parsed.BOT_ADMIN_ID !== undefined ? { botAdminId: parsed.BOT_ADMIN_ID } : {}),
     botMaxConsecutiveRepliesToBots: 1,
     botGroupPassiveContextEnabled: true,
     botSkillsDir: path.resolve(root, "skills"),

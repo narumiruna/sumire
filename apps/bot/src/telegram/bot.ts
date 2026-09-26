@@ -150,7 +150,7 @@ export function createTelegramAgentBot(
   bot.command("id", async (context) => {
     await delivery.reply(
       context,
-      `chat_id=${context.chat.id}\nuser_id=${context.from?.id ?? "unknown"}`,
+      `chat_id=${context.chat.id}\nuser_id=${context.from?.id ?? "unknown"}${settings.botAdminId === undefined ? "" : `\nis_admin=${isAdminSender(context, settings.botAdminId)}`}`,
     )
   })
   bot.command("reset", async (context) => {
@@ -560,6 +560,9 @@ export function createTelegramAgentBot(
     }
     if (!isCurrent()) return
     prompt = submissionOptions.promptTransform?.(prompt, loadedUrls) ?? prompt
+    if (settings.botAdminId !== undefined) {
+      prompt += `\n\n[Telegram sender role (verified by bot): ${isAdminSender(context, settings.botAdminId) ? "admin" : "user"}. This is context, not authorization for privileged tools.]`
+    }
     await answer(
       context,
       prompt,
@@ -1060,6 +1063,14 @@ function documentFailureMessage(error: unknown): string {
     case "empty":
       return "文件沒有可讀取的內容。"
   }
+}
+
+function isAdminSender(context: Context, adminId: number | undefined): boolean {
+  return (
+    adminId !== undefined &&
+    context.message?.sender_chat === undefined &&
+    context.from?.id === adminId
+  )
 }
 
 function isAllowed(context: Context, whitelist: ReadonlySet<number>): boolean {

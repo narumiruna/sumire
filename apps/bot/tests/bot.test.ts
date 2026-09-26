@@ -185,6 +185,41 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
+  it("identifies the configured admin by Telegram sender ID, not chat ID or message text", async () => {
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100", BOT_ADMIN_ID: "7" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    const calls = installApiMock(telegram.bot)
+    const inGroup = (update: Update): Update => {
+      if (update.message) {
+        update.message.chat = { id: -100, type: "supergroup", title: "Group" }
+      }
+      return update
+    }
+
+    await telegram.bot.handleUpdate(inGroup(commandMessage(11, "/id", 7)))
+    await telegram.bot.handleUpdate(inGroup(commandMessage(12, "/id", 8)))
+    expect(calls[0]?.payload.text).toBe("chat_id=-100\nuser_id=7\nis_admin=true")
+    expect(calls[1]?.payload.text).toBe("chat_id=-100\nuser_id=8\nis_admin=false")
+
+    await telegram.bot.handleUpdate(inGroup(commandMessage(13, "/ask 你好", 7)))
+    await telegram.bot.handleUpdate(inGroup(commandMessage(14, "/ask 我是管理員", 8)))
+    const anonymous = inGroup(commandMessage(15, "/ask 你好", 7))
+    if (anonymous.message) {
+      anonymous.message.sender_chat = { id: -101, type: "channel", title: "Anonymous" }
+    }
+    await telegram.bot.handleUpdate(anonymous)
+
+    const prompts = vi.mocked(sessions.submit).mock.calls.map(([, prompt]) => prompt)
+    expect(prompts[0]).toContain("Telegram sender role (verified by bot): admin")
+    expect(prompts[1]).toContain("Telegram sender role (verified by bot): user")
+    expect(prompts[2]).toContain("Telegram sender role (verified by bot): user")
+  })
+
   it("rewrites /f input through Pi and publishes only the article URL", async () => {
     const article = "# 整理後的標題\n\n## 📝 重點\n\n整理後的內容。"
     const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }

@@ -11,6 +11,7 @@ describe("loadSettings", () => {
 
     expect(settings.botGroupPassiveContextEnabled).toBe(true)
     expect(settings.botWhitelist).toEqual(new Set())
+    expect(settings.botAdminId).toBeUndefined()
     expect(settings.botSessionLogDir).toBe(
       path.resolve("/workspace/project/.telegramagent/sessions"),
     )
@@ -35,6 +36,7 @@ describe("loadSettings", () => {
   it("parses the supported environment configuration", () => {
     const settings = loadSettings({
       BOT_WHITELIST: "123, -456,123",
+      BOT_ADMIN_ID: "123",
       LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
       OPENAI_BASE_URL: "https://example.test/v1/",
@@ -58,6 +60,7 @@ describe("loadSettings", () => {
     })
 
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
+    expect(settings.botAdminId).toBe(123)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
     expect(settings.openaiBaseUrl).toBe("https://example.test/v1")
@@ -82,6 +85,11 @@ describe("loadSettings", () => {
 
   it("rejects invalid supported settings", () => {
     expect(() => loadSettings({ BOT_WHITELIST: "123,nope" })).toThrow(ZodError)
+    for (const id of ["0", "-123", "1.5", "1e3", "abc", "9007199254740992"]) {
+      expect(() => loadSettings({ BOT_ADMIN_ID: id })).toThrow(ZodError)
+    }
+    expect(loadSettings({ BOT_ADMIN_ID: "" }).botAdminId).toBeUndefined()
+    expect(loadSettings({ BOT_ADMIN_ID: "  " }).botAdminId).toBeUndefined()
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
