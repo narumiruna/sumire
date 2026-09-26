@@ -1,5 +1,16 @@
 # @narumitw/sumire
 
+## 0.4.2
+
+### Patch Changes
+
+- 4836744: Add an optional Telegram admin user ID, expose the sender role to Pi per message, and show admin status in `/id`.
+- b0ff41f: Avoid initializing impers while loading shared URL loaders, and provide system libcurl in the Docker image without relying on a runtime download.
+- caba261: Show every reported progress step, including completed ones, and keep the last snapshot alongside the final Telegram answer.
+- Updated dependencies [b0ff41f]
+  - @narumitw/sumire-url-content@0.22.3
+  - @narumitw/sumire-url-tool@0.3.3
+
 ## 0.4.1
 
 ### Patch Changes
