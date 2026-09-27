@@ -36,7 +36,7 @@
     "@narumitw/sumire-progress": "0.1.1",
     "@narumitw/sumire-url-content": "0.22.2",
     "@narumitw/sumire-url-tool": "0.3.2",
-    "@pydantic/logfire-node": "0.18.25",
+    "@pydantic/logfire-node": "0.18.26",
     "grammy": "1.46.0",
     "taiwan-exchange-rates": "0.0.0",
     "zod": "4.6.5"
