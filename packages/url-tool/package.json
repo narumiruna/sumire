@@ -63,17 +63,17 @@
   "dependencies": {
     "@narumitw/sumire-url-content": "0.22.2",
     "ipaddr.js": "2.5.0",
-    "undici": "8.10.2"
+    "undici": "8.11.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.86.1",
-    "@earendil-works/pi-coding-agent": "0.86.1",
-    "@types/node": "26.6.2",
+    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@types/node": "26.6.3",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.2"
   }
 }
