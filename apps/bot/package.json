@@ -27,7 +27,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.86.1",
+    "@earendil-works/pi-agent-core": "0.87.1",
     "@earendil-works/pi-ai": "0.86.1",
     "@earendil-works/pi-coding-agent": "0.86.1",
     "@firecrawl/anydoc": "0.2.4",
