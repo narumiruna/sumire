@@ -16,11 +16,14 @@ export async function downloadTelegramFile(
   maxBytes: number,
   fetchImplementation: typeof fetch = fetch,
   timeoutMs = 60_000,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  signal?.throwIfAborted()
   if (reference.fileSize !== undefined && reference.fileSize > maxBytes) {
     throw new TelegramDownloadTooLargeError("Telegram file exceeds the configured byte limit")
   }
   const file = await api.getFile(reference.fileId)
+  signal?.throwIfAborted()
   if (!file.file_path) throw new Error("Telegram did not return a file path")
   if (file.file_size !== undefined && file.file_size > maxBytes) {
     throw new TelegramDownloadTooLargeError("Telegram file exceeds the configured byte limit")
@@ -30,7 +33,9 @@ export async function downloadTelegramFile(
     `https://api.telegram.org/file/bot${token}/${file.file_path}`,
     {
       redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     },
   )
   if (!response.ok) throw new Error(`Telegram file download failed with HTTP ${response.status}`)
@@ -63,8 +68,17 @@ export async function downloadTelegramImage(
   reference: ImageReference,
   maxBytes: number,
   fetchImplementation: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<{ type: "image"; data: string; mimeType: string }> {
-  const content = await downloadTelegramFile(api, token, reference, maxBytes, fetchImplementation)
+  const content = await downloadTelegramFile(
+    api,
+    token,
+    reference,
+    maxBytes,
+    fetchImplementation,
+    60_000,
+    signal,
+  )
   return {
     type: "image",
     data: Buffer.from(content).toString("base64"),

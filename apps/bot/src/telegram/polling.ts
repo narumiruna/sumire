@@ -6,7 +6,11 @@ import type { Logger } from "../logging.js"
 const retryIntervalMs = 5_000
 const warningIntervalMs = 60_000
 
-export function runTelegramPolling(bot: Bot, logger: Logger): RunnerHandle {
+export function runTelegramPolling(
+  bot: Bot,
+  logger: Logger,
+  channelImagesEnabled = false,
+): RunnerHandle {
   let failures = 0
   let lastWarningAt = 0
 
@@ -52,7 +56,9 @@ export function runTelegramPolling(bot: Bot, logger: Logger): RunnerHandle {
     },
     {
       runner: {
-        fetch: { allowed_updates: ["message"] },
+        fetch: {
+          allowed_updates: channelImagesEnabled ? ["message", "channel_post"] : ["message"],
+        },
         // Avoid the runner's raw console output, which can expose bot tokens.
         silent: true,
         // Unbounded exponential delays can leave a recovered connection idle for hours.

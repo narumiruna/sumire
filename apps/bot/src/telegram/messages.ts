@@ -199,7 +199,7 @@ export function imageReferences(message: TelegramMessageLike): ImageReference[] 
   return references
 }
 
-function selectImageReference(message: TelegramMessageLike): ImageReference | undefined {
+export function selectImageReference(message: TelegramMessageLike): ImageReference | undefined {
   if (message.photo && message.photo.length > 0) {
     const largest = [...message.photo].sort((left, right) => {
       const areaDifference = right.width * right.height - left.width * left.height

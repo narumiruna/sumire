@@ -32,7 +32,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-function setup(logger: Logger = createTestLogger()) {
+function setup(logger: Logger = createTestLogger(), channelImagesEnabled = false) {
   const bot = new Bot(testToken)
   vi.spyOn(bot, "init").mockResolvedValue(undefined)
   const handleUpdate = vi.spyOn(bot, "handleUpdate").mockResolvedValue(undefined)
@@ -49,7 +49,7 @@ function setup(logger: Logger = createTestLogger()) {
     handleUpdate,
     logger,
     start() {
-      const runner = runTelegramPolling(bot, logger)
+      const runner = runTelegramPolling(bot, logger, channelImagesEnabled)
       runners.push(runner)
       return runner
     },
@@ -110,6 +110,17 @@ describe("Telegram polling", () => {
     expect(logger.info).toHaveBeenCalledTimes(2)
     expect(logger.info).toHaveBeenLastCalledWith("Telegram polling recovered", { failures: 1 })
     expect(handleUpdate).toHaveBeenCalledOnce()
+  })
+
+  it("subscribes to new channel posts only when channel images are enabled", async () => {
+    const { getUpdates, start } = setup(createTestLogger(), true)
+    start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getUpdates).toHaveBeenCalledWith(
+      expect.objectContaining({ allowed_updates: ["message", "channel_post"] }),
+      expect.anything(),
+    )
+    expect(getUpdates.mock.calls[0]?.[0]?.allowed_updates).not.toContain("edited_channel_post")
   })
 
   it("honors Telegram retry_after before retrying rate-limited polling", async () => {

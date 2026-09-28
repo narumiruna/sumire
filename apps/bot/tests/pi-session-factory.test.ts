@@ -141,6 +141,43 @@ describe("createPiSessionFactory", () => {
     }
   })
 
+  it("registers read_image only when both channel and image input are enabled", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-channel-tool-"))
+    await installInstructions(root)
+    for (const [channelEnabled, imageEnabled] of [
+      [true, true],
+      [true, false],
+      [false, true],
+    ]) {
+      const settings = loadSettings(
+        {
+          OPENAI_API_KEY: "test-key",
+          BOT_WHITELIST: "123,-100",
+          BOT_CHANNEL_IMAGE_INPUT_ENABLED: String(channelEnabled),
+          BOT_IMAGE_INPUT_ENABLED: String(imageEnabled),
+        },
+        root,
+      )
+      const factory = await createPiSessionFactory(settings, logger)
+      const session = await factory.create(123)
+      try {
+        const enabled = channelEnabled && imageEnabled
+        expect(session.getActiveToolNames().includes("read_image")).toBe(enabled)
+        if (enabled) {
+          const tool = session.getToolDefinition("read_image")
+          expect(tool).toBeDefined()
+          const result = await tool?.execute("list", {}, undefined, undefined, undefined as never)
+          expect(result?.content[0]).toMatchObject({
+            type: "text",
+            text: expect.stringContaining("No indexed channel images"),
+          })
+        }
+      } finally {
+        session.dispose()
+      }
+    }
+  })
+
   it("executes Pi coding tools from a separate workdir while loading root skills", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-tools-"))
     const workdir = path.join(root, "workdir")

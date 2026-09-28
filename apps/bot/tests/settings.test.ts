@@ -22,6 +22,7 @@ describe("loadSettings", () => {
     )
     expect(settings.botSoulPath).toBe(path.resolve("/workspace/project/instructions/SOUL.md"))
     expect(settings.botDocumentMaxBytes).toBe(20_000_000)
+    expect(settings.botChannelImageInputEnabled).toBe(false)
     expect(settings.botAudioInputEnabled).toBe(true)
     expect(settings.botAudioMaxBytes).toBe(20_000_000)
     expect(settings.botAudioMaxDurationSeconds).toBe(600)
@@ -47,6 +48,7 @@ describe("loadSettings", () => {
       BOT_DOCUMENT_MAX_MARKDOWN_CHARS: "4321",
       BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: "2.5",
       BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "3",
+      BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
       BOT_AUDIO_INPUT_ENABLED: "false",
       BOT_AUDIO_MAX_BYTES: "1234",
       BOT_AUDIO_MAX_DURATION_SECONDS: "120",
@@ -72,6 +74,7 @@ describe("loadSettings", () => {
     expect(settings.botDocumentMaxMarkdownChars).toBe(4321)
     expect(settings.botDocumentConversionTimeoutSeconds).toBe(2.5)
     expect(settings.botDocumentMaxConcurrentConversions).toBe(3)
+    expect(settings.botChannelImageInputEnabled).toBe(true)
     expect(settings.botAudioInputEnabled).toBe(false)
     expect(settings.botAudioMaxBytes).toBe(1234)
     expect(settings.botAudioMaxDurationSeconds).toBe(120)
@@ -102,6 +105,7 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
+    expect(() => loadSettings({ BOT_CHANNEL_IMAGE_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_AUDIO_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_AUDIO_MAX_BYTES: "0" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_AUDIO_MAX_DURATION_SECONDS: "0" })).toThrow(ZodError)

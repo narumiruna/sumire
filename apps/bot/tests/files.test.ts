@@ -101,6 +101,43 @@ describe("bounded Telegram file downloads", () => {
     ).rejects.toMatchObject({ name: "TimeoutError" })
   })
 
+  it("cancels on-demand image downloads before or during fetch", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const api = apiWithFile()
+    const fetchImplementation = vi.fn<typeof fetch>()
+    await expect(
+      downloadTelegramImage(
+        api,
+        "token",
+        { fileId: "image", filename: "image.jpg", mediaType: "image/jpeg" },
+        100,
+        fetchImplementation,
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" })
+    expect(api.getFile).not.toHaveBeenCalled()
+
+    const active = new AbortController()
+    const waitingFetch = vi.fn<typeof fetch>(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true })
+        }),
+    )
+    const pending = downloadTelegramImage(
+      api,
+      "token",
+      { fileId: "image", filename: "image.jpg", mediaType: "image/jpeg" },
+      100,
+      waitingFetch,
+      active.signal,
+    )
+    await vi.waitFor(() => expect(waitingFetch).toHaveBeenCalledOnce())
+    active.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+  })
+
   it("returns bytes and keeps the image wrapper behavior", async () => {
     const fetchImplementation = vi.fn<typeof fetch>(async () => new Response("hello"))
     await expect(

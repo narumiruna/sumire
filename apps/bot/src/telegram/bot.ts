@@ -19,6 +19,7 @@ import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
+import { ChannelImageIndex } from "./channel-images.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
 import {
   downloadTelegramFile,
@@ -36,6 +37,7 @@ import {
   passiveGroupContext,
   promptWithReplyContext,
   repliedBotMessageId,
+  selectImageReference,
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
@@ -56,6 +58,7 @@ interface TelegramBotDependencies {
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
   audioTranscriber?: AudioTranscriber
   articleUrlLoader?: PublicUrlLoader
+  channelImages?: ChannelImageIndex
 }
 
 interface InputSubmissionOptions {
@@ -77,6 +80,8 @@ export function createTelegramAgentBot(
     settings.botToken,
     dependencies.botInfo ? { botInfo: dependencies.botInfo } : {},
   )
+  const channelImages =
+    dependencies.channelImages ?? new ChannelImageIndex(settings.botSessionLogDir, logger)
   const botReplyStreaks = new Map<number, number>()
   const submissionTails = new Map<number, Promise<void>>()
   const pendingBotReplies = new Map<number, Set<number>>()
@@ -117,8 +122,34 @@ export function createTelegramAgentBot(
       }))
 
   bot.use(async (context, next) => {
-    if (!isAllowed(context, settings.botWhitelist)) return
+    if (context.update.channel_post) {
+      if (
+        !settings.botChannelImageInputEnabled ||
+        !settings.botImageInputEnabled ||
+        context.update.channel_post.chat.type !== "channel" ||
+        !settings.botWhitelist.has(context.update.channel_post.chat.id)
+      )
+        return
+    } else if (context.chat?.type === "channel" || !isAllowed(context, settings.botWhitelist))
+      return
     await next()
+  })
+
+  bot.on("channel_post", async (context) => {
+    const message = context.channelPost as unknown as TelegramMessageLike
+    const image = selectImageReference(message)
+    if (!image) return
+    try {
+      await channelImages.record({
+        channelChatId: context.chat.id,
+        messageId: message.message_id,
+        date: context.channelPost.date,
+        caption: (message.caption ?? "").slice(0, 500),
+        image,
+      })
+    } catch (error) {
+      logger.warn(`Could not index channel image for chat_id=${context.chat.id}`, error)
+    }
   })
 
   bot.command("start", async (context) => {
@@ -1032,7 +1063,11 @@ export function createTelegramAgentBot(
     async start() {
       await bot.init()
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
-      runner = runTelegramPolling(bot, logger)
+      runner = runTelegramPolling(
+        bot,
+        logger,
+        settings.botChannelImageInputEnabled && settings.botImageInputEnabled,
+      )
       await runner.task()
     },
     async stop() {
