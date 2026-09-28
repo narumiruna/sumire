@@ -78,6 +78,9 @@ COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/pac
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
 
+# Fail the build if production pruning removed a module needed at startup.
+RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+
 ENV HOME=/workdir
 USER app
 
