@@ -256,7 +256,10 @@ export class ChatSessionRegistry {
     this.#assertCurrentGeneration(chatId, generation)
     await session.sendCustomMessage(
       { customType: "telegram-passive-context", content: text, display: false },
-      { triggerTurn: false, deliverAs: "nextTurn" },
+      // Pi inserts nextTurn messages *after* the next user prompt, where they can
+      // become the question the model answers. Context-only messages append now
+      // when idle, or at the end of the active turn when streaming.
+      { triggerTurn: false },
     )
   }
 

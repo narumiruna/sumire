@@ -5,6 +5,7 @@ import {
   type LogfireClient,
   redactLogMessage,
   type SpanAttributes,
+  safeNodeAutoInstrumentations,
   type TraceSpan,
 } from "../src/logging.js"
 
@@ -51,6 +52,7 @@ describe("createLogger", () => {
       token: "write-token",
       serviceName: "sumire",
       console: false,
+      nodeAutoInstrumentations: safeNodeAutoInstrumentations,
     })
     expect(client.debug).toHaveBeenCalledWith("debug token=[redacted]")
     expect(client.info).toHaveBeenCalledWith("request [redacted] { authorization: '[redacted]' }")
@@ -58,6 +60,16 @@ describe("createLogger", () => {
     expect(client.error).toHaveBeenCalledWith("failure apiKey=[redacted]")
     expect(client.shutdown).toHaveBeenCalledWith({ timeoutMillis: 5_000 })
     expect(stderr.mock.calls.flat().join(" ")).not.toContain("info-secret")
+  })
+
+  it("omits entire HTTP URLs from stderr and Logfire records when query secrets are unknown", () => {
+    const client = createLogfireClient()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    logger.warn("Fetch failed at https://example.com/path?signature=unknown-query-secret")
+
+    expect(client.warning).toHaveBeenCalledWith("Fetch failed at [redacted-url]")
+    expect(stderr.mock.calls.flat().join(" ")).not.toContain("unknown-query-secret")
   })
 
   it("uses the configured Logfire span with structured metadata", async () => {
@@ -146,6 +158,31 @@ describe("createLogger", () => {
     expect(stderr.mock.calls.flat().join(" ")).toContain("Logfire span attribute failed")
   })
 
+  it("keeps original operation errors out of Logfire exception events", async () => {
+    const client = createLogfireClient()
+    const attributes: Record<string, string | number | boolean> = {}
+    client.span = async (_name, { callback }) => {
+      await expect(
+        callback({
+          setAttribute: (key, value) => {
+            attributes[key] = value
+          },
+        }),
+      ).resolves.toBeUndefined()
+      return undefined as never
+    }
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const failure = new Error("https://example.com/private?signature=synthetic-secret")
+    const operation = vi.fn(async () => {
+      throw failure
+    })
+
+    await expect(logger.span?.("url.load", {}, operation)).rejects.toBe(failure)
+    expect(operation).toHaveBeenCalledOnce()
+    expect(attributes).toEqual({ "operation.outcome": "error" })
+  })
+
   it("preserves the operation's error rather than a span's replacement error", async () => {
     const client = createLogfireClient()
     client.span = async (_name, { callback }) => {
@@ -199,7 +236,7 @@ describe("createLogger", () => {
     },
   )
 
-  it("shares a rejected fallback operation with a late SDK callback", async () => {
+  it("shares a rejected fallback operation with a late SDK callback without leaking the error", async () => {
     const client = createLogfireClient()
     let delayedCallback: (() => Promise<unknown>) | undefined
     client.span = (_name, { callback }) => {
@@ -214,7 +251,7 @@ describe("createLogger", () => {
     })
 
     await expect(logger.span?.("morsel.publish", {}, operation)).rejects.toBe(failure)
-    await expect(delayedCallback?.()).rejects.toBe(failure)
+    await expect(delayedCallback?.()).resolves.toBeUndefined()
     expect(operation).toHaveBeenCalledOnce()
   })
 

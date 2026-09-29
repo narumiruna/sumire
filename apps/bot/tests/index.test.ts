@@ -32,7 +32,7 @@ describe("application entrypoint", () => {
     expect(process.exitCode).toBe(1)
     const output = stderr.mock.calls.flat().join(" ")
     expect(output).toContain("ERROR | Application failed")
-    expect(output).toContain("/bot[redacted]/getUpdates")
+    expect(output).toContain("request to [redacted-url] failed")
     expect(output).not.toContain(token)
   })
 

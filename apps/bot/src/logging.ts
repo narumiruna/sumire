@@ -9,6 +9,15 @@ const sensitiveQuotedValuePattern =
 const sensitiveBareValuePattern =
   /\b(token|api[_-]?key|authorization|cookie|set-cookie|password|secret)(\s*[:=]\s*)((?!['"])[^\s;,}]+)/gi
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi
+const httpUrlPattern = /https?:\/\/[^\s'"<>]+/giu
+
+// Logfire's Node auto-instrumentation records full HTTP URLs before our log
+// redactor runs. Telegram embeds its bot token in the API URL; other outbound
+// requests can carry secrets in query strings. Keep our safe manual spans.
+export const safeNodeAutoInstrumentations = {
+  "@opentelemetry/instrumentation-http": { enabled: false },
+  "@opentelemetry/instrumentation-undici": { enabled: false },
+} as const
 
 export function redactLogMessage(message: string): string {
   return message
@@ -41,7 +50,12 @@ export interface Logger {
 }
 
 export interface LogfireClient {
-  configure(options: { token: string; serviceName: string; console: false }): void
+  configure(options: {
+    token: string
+    serviceName: string
+    console: false
+    nodeAutoInstrumentations: typeof safeNodeAutoInstrumentations
+  }): void
   debug(message: string): void
   info(message: string): void
   warning(message: string): void
@@ -68,7 +82,7 @@ export function createLogger(
   logfireClient: LogfireClient = logfire,
 ): Logger {
   const redact = (message: string) => {
-    const redacted = redactLogMessage(message)
+    const redacted = redactLogMessage(message).replace(httpUrlPattern, "[redacted-url]")
     return logfireToken ? redacted.replaceAll(logfireToken, "[redacted]") : redacted
   }
   const writeLocal = (level: string, message: string, details?: unknown) => {
@@ -84,6 +98,7 @@ export function createLogger(
         token: logfireToken,
         serviceName: "sumire",
         console: false,
+        nodeAutoInstrumentations: safeNodeAutoInstrumentations,
       })
       logfireEnabled = true
     } catch (error) {
@@ -124,18 +139,27 @@ export function createLogger(
         await logfireClient.span(name, {
           attributes,
           callback: (span) => {
-            operation ??= Promise.resolve().then(() =>
-              callback({
-                setAttribute: (key, value) => {
-                  try {
-                    span.setAttribute(key, value)
-                  } catch (error) {
-                    writeLocal("WARN", "Logfire span attribute failed", error)
-                  }
-                },
-              }),
+            const safeSpan: TraceSpan = {
+              setAttribute: (key, value) => {
+                try {
+                  span.setAttribute(key, value)
+                } catch (error) {
+                  writeLocal("WARN", "Logfire span attribute failed", error)
+                }
+              },
+            }
+            operation ??= Promise.resolve().then(() => callback(safeSpan))
+            // The SDK records rejected callbacks as exception events, including the
+            // raw error message. Some upstream errors contain credential-bearing
+            // URLs. Let the span finish with safe metadata and rethrow the original
+            // error to the caller only after the SDK has finished.
+            return operation.then(
+              (result) => result,
+              () => {
+                safeSpan.setAttribute("operation.outcome", "error")
+                return undefined as T
+              },
             )
-            return operation
           },
         })
       } catch (error) {

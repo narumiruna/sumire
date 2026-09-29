@@ -198,7 +198,7 @@ describe("Telegram polling", () => {
 
     const output = stderr.mock.calls.flat().join(" ")
     expect(output).toContain("WARN | Telegram polling failed; retrying automatically")
-    expect(output).toContain("/bot[redacted]/getUpdates")
+    expect(output).toContain("request to [redacted-url] failed")
     expect(output).toContain("socket hang up")
     expect(output).not.toContain(testToken)
     expect(output).not.toContain("    at ")

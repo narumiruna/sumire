@@ -32,6 +32,7 @@ class FakeSession implements SessionHandle {
   readonly steering: string[] = []
   readonly followUps: string[] = []
   readonly contexts: string[] = []
+  readonly contextOptions: Array<{ triggerTurn?: boolean; deliverAs?: string } | undefined> = []
   readonly listeners = new Set<AgentSessionEventListener>()
   aborted = false
   disposed = false
@@ -77,8 +78,12 @@ class FakeSession implements SessionHandle {
     return queued
   }
 
-  async sendCustomMessage(message: { content: string }): Promise<void> {
+  async sendCustomMessage(
+    message: { content: string },
+    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+  ): Promise<void> {
     this.contexts.push(message.content)
+    this.contextOptions.push(options)
   }
 
   async navigateTree(targetId: string): Promise<{ cancelled: boolean }> {
@@ -573,8 +578,31 @@ describe("ChatSessionRegistry", () => {
     await registry.reset(1)
 
     expect(session.contexts).toEqual(["旁聽內容"])
+    expect(session.contextOptions).toEqual([{ triggerTurn: false }])
     expect(session.aborted).toBe(true)
     expect(session.disposed).toBe(true)
+  })
+
+  it("adds background context without steering an active Pi run or carrying it across reset", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const first = new FakeSession("first")
+    const second = new FakeSession("second")
+    let created = 0
+    const registry = new ChatSessionRegistry(
+      async () => (created++ === 0 ? first : second),
+      root,
+      logger,
+    )
+
+    first.isStreaming = true
+    await registry.appendPassiveContext(1, "群組旁聽")
+    expect(first.contextOptions).toEqual([{ triggerTurn: false }])
+    expect(first.steering).toEqual([])
+    expect(first.followUps).toEqual([])
+    await registry.reset(1)
+    await registry.submit(1, "當前請求")
+    expect(second.contexts).toEqual([])
+    expect(second.prompts).toEqual(["當前請求"])
   })
 
   it("waits for an active response capture before starting a separate new turn", async () => {
