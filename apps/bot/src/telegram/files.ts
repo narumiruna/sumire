@@ -22,8 +22,15 @@ export async function downloadTelegramFile(
   if (reference.fileSize !== undefined && reference.fileSize > maxBytes) {
     throw new TelegramDownloadTooLargeError("Telegram file exceeds the configured byte limit")
   }
-  const file = await api.getFile(reference.fileId)
-  signal?.throwIfAborted()
+  const requestSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs)
+  // grammY's signal declaration uses abort-controller types; its runtime accepts native AbortSignal.
+  const file = await api.getFile(
+    reference.fileId,
+    requestSignal as unknown as Parameters<Api["getFile"]>[1],
+  )
+  requestSignal.throwIfAborted()
   if (!file.file_path) throw new Error("Telegram did not return a file path")
   if (file.file_size !== undefined && file.file_size > maxBytes) {
     throw new TelegramDownloadTooLargeError("Telegram file exceeds the configured byte limit")
@@ -33,9 +40,7 @@ export async function downloadTelegramFile(
     `https://api.telegram.org/file/bot${token}/${file.file_path}`,
     {
       redirect: "manual",
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
-        : AbortSignal.timeout(timeoutMs),
+      signal: requestSignal,
     },
   )
   if (!response.ok) throw new Error(`Telegram file download failed with HTTP ${response.status}`)

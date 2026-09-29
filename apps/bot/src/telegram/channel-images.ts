@@ -27,7 +27,14 @@ export class ChannelImageIndex {
   async record(record: ChannelImageRecord): Promise<void> {
     if (!validChannelId(record.channelChatId) || !validMessageId(record.messageId)) return
     const chatId = record.channelChatId
-    const safeRecord = parseRecord({ ...record, caption: record.caption.slice(0, 500) }, chatId)
+    const safeRecord = parseRecord(
+      {
+        ...record,
+        caption: record.caption.slice(0, 500),
+        image: { ...record.image, filename: record.image.filename.slice(0, 200) },
+      },
+      chatId,
+    )
     const previous = this.#writes.get(chatId) ?? Promise.resolve()
     const write = previous
       .catch(() => undefined)

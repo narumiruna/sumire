@@ -235,7 +235,7 @@ describe("Telegram bot update routing", () => {
         file_id: "image-file",
         file_unique_id: "image-file",
         mime_type: "image/png",
-        file_name: "picture.png",
+        file_name: `${"a".repeat(240)}.png`,
         file_size: 12,
       }
     }
@@ -245,7 +245,9 @@ describe("Telegram bot update routing", () => {
       12, 7, 2, 1,
     ])
     expect(await index.find(-101, 3)).toBeUndefined()
-    expect(await index.find(-100, 7)).toMatchObject({ image: { mediaType: "image/png" } })
+    expect(await index.find(-100, 7)).toMatchObject({
+      image: { mediaType: "image/png", filename: "a".repeat(200) },
+    })
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)

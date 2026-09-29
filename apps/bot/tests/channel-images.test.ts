@@ -39,6 +39,19 @@ describe("channel image index", () => {
     expect(JSON.parse(await readFile(file, "utf8")).records).toHaveLength(100)
   })
 
+  it("truncates long image-document filenames instead of discarding the post", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "channel-long-filename-"))
+    const index = new ChannelImageIndex(root, logger)
+    const original = post(3)
+    await index.record({
+      ...original,
+      image: { ...original.image, filename: `${"a".repeat(240)}.png` },
+    })
+    expect(await new ChannelImageIndex(root, logger).find(-100, 3)).toMatchObject({
+      image: { fileId: "image-3", filename: "a".repeat(200) },
+    })
+  })
+
   it("refuses invalid or foreign records, and fails closed for corrupt stored data", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "channel-invalid-"))
     const index = new ChannelImageIndex(root, logger)
