@@ -6,6 +6,7 @@ import { loadSettings } from "./config/settings.js"
 import { AnyDocConverter, type DocumentConverter } from "./documents/converter.js"
 import { createLogger } from "./logging.js"
 import { createTelegramAgentBot } from "./telegram/bot.js"
+import { ChannelImageIndex } from "./telegram/channel-images.js"
 
 export async function startApplication(): Promise<void> {
   const defaultProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
@@ -19,7 +20,8 @@ export async function startApplication(): Promise<void> {
   )
   try {
     const documentConverter = await createConfiguredDocumentConverter(settings)
-    const piFactory = await createPiSessionFactory(settings, logger)
+    const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
+    const piFactory = await createPiSessionFactory(settings, logger, channelImages)
     const sessions = new ChatSessionRegistry(
       asSessionCreator(piFactory),
       settings.botSessionLogDir,
@@ -32,6 +34,7 @@ export async function startApplication(): Promise<void> {
     )
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       ...(documentConverter ? { documentConverter } : {}),
+      channelImages,
     })
 
     let stopping = false

@@ -1,4 +1,4 @@
-import type { Api } from "grammy"
+import { Api } from "grammy"
 import { describe, expect, it, vi } from "vitest"
 
 import {
@@ -99,6 +99,105 @@ describe("bounded Telegram file downloads", () => {
     await expect(
       downloadTelegramFile(apiWithFile(), "token", { fileId: "file" }, 100, fetchImplementation, 1),
     ).rejects.toMatchObject({ name: "TimeoutError" })
+  })
+
+  it("cancels or times out a pending getFile before starting the media fetch", async () => {
+    const getFile = vi.fn(
+      (_fileId: string, requestSignal?: AbortSignal) =>
+        new Promise<never>((_resolve, reject) => {
+          requestSignal?.addEventListener("abort", () => reject(requestSignal.reason), {
+            once: true,
+          })
+        }),
+    )
+    const api = { getFile } as unknown as Api
+    const fetchImplementation = vi.fn<typeof fetch>()
+    const controller = new AbortController()
+    const pending = downloadTelegramFile(
+      api,
+      "token",
+      { fileId: "image" },
+      100,
+      fetchImplementation,
+      60_000,
+      controller.signal,
+    )
+    await vi.waitFor(() => expect(getFile).toHaveBeenCalledOnce())
+    const passedSignal = getFile.mock.calls[0]?.[1]
+    expect(passedSignal).toBeDefined()
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    expect(passedSignal?.aborted).toBe(true)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+
+    await expect(
+      downloadTelegramFile(api, "token", { fileId: "image" }, 100, fetchImplementation, 1),
+    ).rejects.toMatchObject({ name: "TimeoutError" })
+    expect(getFile).toHaveBeenCalledTimes(2)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
+  it("propagates a native cancellation signal through the real grammY getFile client", async () => {
+    const telegramFetch = vi.fn<
+      NonNullable<NonNullable<ConstructorParameters<typeof Api>[1]>["fetch"]>
+    >(
+      async (_input, init) =>
+        new Promise<never>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("getFile aborted")))
+        }),
+    )
+    const mediaFetch = vi.fn<typeof fetch>()
+    const api = new Api("test-token", { fetch: telegramFetch })
+    const controller = new AbortController()
+    const pending = downloadTelegramImage(
+      api,
+      "test-token",
+      { fileId: "image", filename: "image.jpg", mediaType: "image/jpeg" },
+      100,
+      mediaFetch,
+      controller.signal,
+    )
+    await vi.waitFor(() => expect(telegramFetch).toHaveBeenCalledOnce())
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    expect(mediaFetch).not.toHaveBeenCalled()
+  })
+
+  it("cancels on-demand image downloads before or during fetch", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const api = apiWithFile()
+    const fetchImplementation = vi.fn<typeof fetch>()
+    await expect(
+      downloadTelegramImage(
+        api,
+        "token",
+        { fileId: "image", filename: "image.jpg", mediaType: "image/jpeg" },
+        100,
+        fetchImplementation,
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" })
+    expect(api.getFile).not.toHaveBeenCalled()
+
+    const active = new AbortController()
+    const waitingFetch = vi.fn<typeof fetch>(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true })
+        }),
+    )
+    const pending = downloadTelegramImage(
+      api,
+      "token",
+      { fileId: "image", filename: "image.jpg", mediaType: "image/jpeg" },
+      100,
+      waitingFetch,
+      active.signal,
+    )
+    await vi.waitFor(() => expect(waitingFetch).toHaveBeenCalledOnce())
+    active.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
   })
 
   it("returns bytes and keeps the image wrapper behavior", async () => {

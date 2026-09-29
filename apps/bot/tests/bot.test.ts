@@ -1,3 +1,7 @@
+import { mkdtemp } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
+
 import type { ProgressStep } from "@narumitw/sumire-progress"
 import type { LoadedUrl } from "@narumitw/sumire-url-tool"
 import type { Transformer } from "grammy"
@@ -9,6 +13,7 @@ import { AnyDocConverter, DocumentConversionError } from "../src/documents/conve
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { queryMarketData } from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 
@@ -70,6 +75,32 @@ function privateMessage(updateId: number, text: string, userId = 7): Update {
       chat: { id: userId, type: "private", first_name: "Alice" },
       from: { id: userId, is_bot: false, first_name: "Alice" },
       text,
+    },
+  }
+}
+
+function channelPost(updateId: number, chatId = -100, fromId?: number): Update {
+  return {
+    update_id: updateId,
+    channel_post: {
+      message_id: updateId,
+      date: 1_700_000_000 + updateId,
+      chat: { id: chatId, type: "channel", title: "Test channel" },
+      ...(fromId === undefined ? {} : { from: { id: fromId, is_bot: false, first_name: "Alice" } }),
+      photo: [
+        {
+          file_id: `small-${updateId}`,
+          file_unique_id: `small-${updateId}`,
+          width: 10,
+          height: 10,
+        },
+        {
+          file_id: `image-${updateId}`,
+          file_unique_id: `image-${updateId}`,
+          width: 100,
+          height: 100,
+        },
+      ],
     },
   }
 }
@@ -146,6 +177,144 @@ function installApiMock(
 }
 
 describe("Telegram bot update routing", () => {
+  it("indexes only new images from channel chat IDs on the whitelist without downloading, replying, or running Pi", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "channel-bot-"))
+    const index = new ChannelImageIndex(root, logger)
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        BOT_WHITELIST: "7,-100",
+        BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
+      }),
+      sessions,
+      logger,
+      { botInfo, channelImages: index },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(channelPost(1)) // no from
+    await telegram.bot.handleUpdate(channelPost(2, -100, 8))
+    const captionCommand = channelPost(12)
+    if (captionCommand.channel_post) {
+      captionCommand.channel_post.caption = "/ask analyze this image"
+      captionCommand.channel_post.caption_entities = [{ type: "bot_command", offset: 0, length: 4 }]
+    }
+    await telegram.bot.handleUpdate(captionCommand) // channel commands must never invoke Pi
+    await telegram.bot.handleUpdate(channelPost(3, -101, 7)) // allowlisted sender, unauthorized channel
+    const text = channelPost(4)
+    if (text.channel_post) {
+      delete text.channel_post.photo
+      text.channel_post.text = "plain text"
+      const replied = channelPost(5).channel_post
+      if (replied) text.channel_post.reply_to_message = { ...replied, reply_to_message: undefined }
+    }
+    await telegram.bot.handleUpdate(text) // replied image must not count as current image
+    const edited = channelPost(6)
+    if (edited.channel_post) {
+      edited.edited_channel_post = {
+        ...edited.channel_post,
+        edit_date: edited.channel_post.date + 1,
+      }
+      delete edited.channel_post
+    }
+    await telegram.bot.handleUpdate(edited)
+    const wrongUpdateType = privateMessage(13, "/ask bypass channel routing")
+    if (wrongUpdateType.message) {
+      wrongUpdateType.message.chat = {
+        id: -100,
+        type: "channel",
+        title: "Test channel",
+      } as unknown as typeof wrongUpdateType.message.chat
+      wrongUpdateType.message.entities = [{ type: "bot_command", offset: 0, length: 4 }]
+    }
+    await telegram.bot.handleUpdate(wrongUpdateType)
+    const document = channelPost(7)
+    if (document.channel_post) {
+      delete document.channel_post.photo
+      document.channel_post.document = {
+        file_id: "image-file",
+        file_unique_id: "image-file",
+        mime_type: "image/png",
+        file_name: `${"a".repeat(240)}.png`,
+        file_size: 12,
+      }
+    }
+    await telegram.bot.handleUpdate(document)
+
+    expect((await index.recent(new Set([-100, -101]))).map((record) => record.messageId)).toEqual([
+      12, 7, 2, 1,
+    ])
+    expect(await index.find(-101, 3)).toBeUndefined()
+    expect(await index.find(-100, 7)).toMatchObject({
+      image: { mediaType: "image/png", filename: "a".repeat(200) },
+    })
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(0)
+
+    await telegram.bot.handleUpdate(commandMessage(8, "/ask 看看頻道圖片"))
+    expect(sessions.submit).toHaveBeenCalledOnce()
+    expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
+    expect(calls[0]?.payload.chat_id).toBe(7) // output stays in the requesting chat
+    await telegram.bot.handleUpdate(commandMessage(9, "/cancel"))
+    await telegram.bot.handleUpdate(commandMessage(10, "/reset"))
+    expect(sessions.cancel).toHaveBeenCalledWith(7)
+    expect(sessions.reset).toHaveBeenCalledWith(7)
+    expect(await index.find(-100, 1)).toBeDefined() // session reset does not erase channel metadata
+  })
+
+  it("logs channel indexing failures without starting Pi or trying to post", async () => {
+    const index = new ChannelImageIndex(
+      await mkdtemp(path.join(tmpdir(), "channel-failure-")),
+      logger,
+    )
+    const record = vi.spyOn(index, "record").mockRejectedValue(new Error("storage unavailable"))
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        BOT_WHITELIST: "-100",
+        BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
+      }),
+      sessions,
+      logger,
+      { botInfo, channelImages: index },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(channelPost(20))
+    expect(record).toHaveBeenCalledOnce()
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Could not index channel image for chat_id=-100",
+      expect.anything(),
+    )
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(0)
+  })
+
+  it("keeps channel updates inert when channel input or general image input is disabled", async () => {
+    for (const flags of [
+      { BOT_CHANNEL_IMAGE_INPUT_ENABLED: "false", BOT_IMAGE_INPUT_ENABLED: "true" },
+      { BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true", BOT_IMAGE_INPUT_ENABLED: "false" },
+    ]) {
+      const index = new ChannelImageIndex(
+        await mkdtemp(path.join(tmpdir(), "channel-off-")),
+        logger,
+      )
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100", ...flags }),
+        sessions,
+        logger,
+        { botInfo, channelImages: index },
+      )
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(channelPost(11))
+      expect(await index.find(-100, 11)).toBeUndefined()
+      expect(calls).toHaveLength(0)
+      expect(sessions.submit).not.toHaveBeenCalled()
+    }
+  })
+
   it("documents coding tools by default", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(

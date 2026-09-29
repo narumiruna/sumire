@@ -87,6 +87,7 @@ const environmentSchema = z.object({
   BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
   BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
   BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
+  BOT_CHANNEL_IMAGE_INPUT_ENABLED: envBoolean(false),
   BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
   BOT_AUDIO_INPUT_ENABLED: envBoolean(true),
   BOT_AUDIO_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
@@ -133,6 +134,7 @@ export interface Settings {
   botAgentContextTokenBudget: number
   botAgentCompactionTriggerRatio: number
   botImageInputEnabled: boolean
+  botChannelImageInputEnabled: boolean
   botImageMaxBytes: number
   botAudioInputEnabled: boolean
   botAudioMaxBytes: number
@@ -190,6 +192,7 @@ export function loadSettings(
     botAgentContextTokenBudget: 100_000,
     botAgentCompactionTriggerRatio: 0.8,
     botImageInputEnabled: parsed.BOT_IMAGE_INPUT_ENABLED,
+    botChannelImageInputEnabled: parsed.BOT_CHANNEL_IMAGE_INPUT_ENABLED,
     botImageMaxBytes: parsed.BOT_IMAGE_MAX_BYTES,
     botAudioInputEnabled: parsed.BOT_AUDIO_INPUT_ENABLED,
     botAudioMaxBytes: parsed.BOT_AUDIO_MAX_BYTES,

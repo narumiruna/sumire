@@ -16,7 +16,9 @@ import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
+import { ChannelImageIndex } from "../telegram/channel-images.js"
 import { traceUrlLoad } from "../url-telemetry.js"
+import { createReadImageExtension } from "./read-image.js"
 
 const providerId = "telegramagent-openai"
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
@@ -29,6 +31,7 @@ export interface PiSessionFactory {
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
+  channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
 ): Promise<PiSessionFactory> {
   if (settings.botWhitelist.size === 0) {
     throw new Error(
@@ -117,6 +120,14 @@ export async function createPiSessionFactory(
         extensionFactories: [
           { name: "sumire-progress", factory: progressExtension },
           { name: "sumire-url-tool", factory: urlExtension },
+          ...(settings.botChannelImageInputEnabled && settings.botImageInputEnabled
+            ? [
+                {
+                  name: "sumire-read-image",
+                  factory: createReadImageExtension(settings, channelImages, logger),
+                },
+              ]
+            : []),
         ],
         noExtensions: true,
         noPromptTemplates: true,
