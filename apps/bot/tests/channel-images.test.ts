@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
@@ -37,6 +37,36 @@ describe("channel image index", () => {
     expect(await reloaded.recent(new Set([7, -101]))).toEqual([])
     const file = path.join(root, "channel-images/-100.json")
     expect(JSON.parse(await readFile(file, "utf8")).records).toHaveLength(100)
+  })
+
+  it("evicts the oldest records when the byte limit is reached before the count limit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "channel-byte-limit-"))
+    const index = new ChannelImageIndex(root, logger)
+    await Promise.all(
+      Array.from({ length: 110 }, (_, n) => {
+        const record = post(n + 1)
+        return index.record({
+          ...record,
+          caption: "字".repeat(500),
+          image: { ...record.image, fileId: "x".repeat(512), filename: "名".repeat(200) },
+        })
+      }),
+    )
+    const file = path.join(root, "channel-images/-100.json")
+    const snapshot = JSON.parse(await readFile(file, "utf8"))
+    expect(snapshot.records.length).toBeLessThan(100)
+    expect((await stat(file)).size).toBeLessThanOrEqual(256_000)
+    const reloaded = new ChannelImageIndex(root, logger)
+    expect(await reloaded.find(-100, 1)).toBeUndefined()
+    expect(await reloaded.find(-100, 110)).toBeDefined()
+    const next = post(111)
+    await reloaded.record({
+      ...next,
+      caption: "字".repeat(500),
+      image: { ...next.image, fileId: "x".repeat(512), filename: "名".repeat(200) },
+    })
+    expect(await new ChannelImageIndex(root, logger).find(-100, 111)).toBeDefined()
+    expect((await stat(file)).size).toBeLessThanOrEqual(256_000)
   })
 
   it("truncates long image-document filenames instead of discarding the post", async () => {

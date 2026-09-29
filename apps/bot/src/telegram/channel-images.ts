@@ -45,7 +45,11 @@ export class ChannelImageIndex {
         records.push(safeRecord)
         records.sort((a, b) => a.messageId - b.messageId)
         while (records.length > maxRecords) records.shift()
-        const serialized = `${JSON.stringify({ version: 1, records })}\n`
+        let serialized = `${JSON.stringify({ version: 1, records })}\n`
+        while (Buffer.byteLength(serialized) > maxIndexBytes && records.length > 1) {
+          records.shift()
+          serialized = `${JSON.stringify({ version: 1, records })}\n`
+        }
         if (Buffer.byteLength(serialized) > maxIndexBytes) {
           throw new Error("Channel image index exceeds its byte limit")
         }
