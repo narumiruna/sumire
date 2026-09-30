@@ -9,7 +9,7 @@ const sensitiveQuotedValuePattern =
 const sensitiveBareValuePattern =
   /\b(token|api[_-]?key|authorization|cookie|set-cookie|password|secret)(\s*[:=]\s*)((?!['"])[^\s;,}]+)/gi
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi
-const httpUrlPattern = /https?:\/\/[^\s'"<>]+/giu
+const httpUrlPattern = /https?:\/\/[^\s"<>]+/giu
 
 // Logfire's Node auto-instrumentation records full HTTP URLs before our log
 // redactor runs. Telegram embeds its bot token in the API URL; other outbound

@@ -69,7 +69,7 @@ describe("pinned Pi passive-context behavior", () => {
     }
   })
 
-  it("sends passive context before the current URL to the model, unlike nextTurn", async () => {
+  it("sends passive context before the current URL even after restoring an older Pi branch", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-passive-model-"))
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = []
     const server = createServer(async (request, response) => {
@@ -111,7 +111,7 @@ describe("pinned Pi passive-context behavior", () => {
       await runtime.setRuntimeApiKey("passive-test", "local-test-key")
       const model = runtime.getModel("passive-test", "test")
       if (!model) throw new Error("Missing test model")
-      for (const mode of ["nextTurn", "context"] as const) {
+      for (const mode of ["nextTurn", "context", "reply"] as const) {
         const manager = SessionManager.inMemory(root)
         const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } })
         const resourceLoader = new DefaultResourceLoader({
@@ -136,26 +136,58 @@ describe("pinned Pi passive-context behavior", () => {
           settingsManager,
         })
         try {
+          const registry = new ChatSessionRegistry(async () => session, root, logger, {
+            replyTreeEnabled: mode === "reply",
+          })
+          if (mode === "reply") {
+            const first = await registry.submit(1, "first")
+            await registry.recordDelivery(
+              1,
+              first.kind === "completed" ? first.checkpoint : undefined,
+              [100],
+            )
+            await registry.submit(1, "latest")
+          }
           if (mode === "nextTurn") {
             await session.sendCustomMessage(
               { customType: "telegram-passive-context", content: "Codex reset?", display: false },
               { triggerTurn: false, deliverAs: "nextTurn" },
             )
           } else {
-            await new ChatSessionRegistry(async () => session, root, logger).appendPassiveContext(
-              1,
-              "Codex reset?",
-            )
+            await registry.appendPassiveContext(1, "Codex reset?")
           }
-          await session.prompt("https://example.com/airbus")
+          if (mode === "reply") {
+            await registry.submit(1, "https://example.com/airbus", { replyToBotMessageId: 100 })
+            const branch = manager.getBranch()
+            expect(
+              branch.some(
+                (entry) =>
+                  entry.type === "message" &&
+                  entry.message.role === "user" &&
+                  entry.message.content === "latest",
+              ),
+            ).toBe(false)
+            expect(
+              branch.some(
+                (entry) => entry.type === "custom_message" && entry.content === "Codex reset?",
+              ),
+            ).toBe(true)
+          } else {
+            await session.prompt("https://example.com/airbus")
+          }
         } finally {
           session.dispose()
         }
       }
-      expect(requests).toHaveLength(2)
+      expect(requests).toHaveLength(5)
       expect(JSON.stringify(requests[0]?.messages.at(-1))).toContain("Codex reset?")
-      expect(JSON.stringify(requests[1]?.messages.at(-2))).toContain("Codex reset?")
-      expect(JSON.stringify(requests[1]?.messages.at(-1))).toContain("https://example.com/airbus")
+      for (const index of [1, 4]) {
+        expect(JSON.stringify(requests[index]?.messages.at(-2))).toContain("Codex reset?")
+        expect(JSON.stringify(requests[index]?.messages.at(-1))).toContain(
+          "https://example.com/airbus",
+        )
+      }
+      expect(JSON.stringify(requests[4]?.messages)).not.toContain("latest")
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

@@ -72,6 +72,16 @@ describe("createLogger", () => {
     expect(stderr.mock.calls.flat().join(" ")).not.toContain("unknown-query-secret")
   })
 
+  it("redacts URLs containing an apostrophe without leaving their query suffix", () => {
+    const client = createLogfireClient()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    logger.warn("Fetch failed at https://example.com/a'b?signature=private-query")
+
+    expect(client.warning).toHaveBeenCalledWith("Fetch failed at [redacted-url]")
+    expect(stderr.mock.calls.flat().join(" ")).not.toContain("private-query")
+  })
+
   it("uses the configured Logfire span with structured metadata", async () => {
     const client = createLogfireClient()
     const recorded: Record<string, string | number | boolean> = {}
