@@ -4030,6 +4030,65 @@ describe("Telegram bot update routing", () => {
     expect(JSON.stringify(spans)).not.toContain("長文")
   })
 
+  it("keeps other bots' group conversation as background before an addressed URL", async () => {
+    const order: string[] = []
+    const sessions = createSessions({
+      appendPassiveContext: vi.fn(async (_chatId, text) => {
+        order.push(`background: ${text}`)
+      }),
+      submit: vi.fn(async (_chatId, prompt, options) => {
+        order.push(`request: ${prompt}`)
+        options.onAccepted?.()
+        return { kind: "completed" as const, text: "AI 回覆" }
+      }),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      { botInfo },
+    )
+    installApiMock(telegram.bot)
+    const base = {
+      date: 1_700_000_000,
+      chat: { id: -100, type: "supergroup" as const, title: "測試群組" },
+    }
+    await telegram.bot.handleUpdate({
+      update_id: 40,
+      message: {
+        ...base,
+        message_id: 40,
+        from: { id: 8, is_bot: false, first_name: "Bob" },
+        text: "@other_bot 下一次 Codex reset 何時？",
+      },
+    })
+    await telegram.bot.handleUpdate({
+      update_id: 41,
+      message: {
+        ...base,
+        message_id: 41,
+        from: { id: 1001, is_bot: true, first_name: "Other Bot" },
+        text: "正在查詢 Codex reset",
+      },
+    })
+    await telegram.bot.handleUpdate({
+      update_id: 42,
+      message: {
+        ...base,
+        message_id: 42,
+        from: { id: 7, is_bot: false, first_name: "Alice" },
+        text: "https://example.com/airbus @test_bot @other_bot",
+      },
+    })
+
+    expect(order).toEqual([
+      "background: [群組旁聽訊息 from Bob] @other_bot 下一次 Codex reset 何時？",
+      "background: [群組旁聽訊息 from Other Bot] 正在查詢 Codex reset",
+      "request: https://example.com/airbus  @other_bot",
+    ])
+    expect(sessions.submit).toHaveBeenCalledOnce()
+  })
+
   it("routes addressed group URLs and follow-ups after reset through the agent", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(

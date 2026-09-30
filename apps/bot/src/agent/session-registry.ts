@@ -7,6 +7,7 @@ import type {
   AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
+  SessionEntry,
 } from "@earendil-works/pi-coding-agent"
 import {
   PROGRESS_TOOL_NAME,
@@ -38,6 +39,7 @@ export interface SessionHandle {
   readonly sessionManager: {
     getLeafId(): string | null
     getEntry(id: string): unknown
+    getBranch(): SessionEntry[]
   }
   subscribe(listener: AgentSessionEventListener): () => void
   prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>
@@ -256,7 +258,10 @@ export class ChatSessionRegistry {
     this.#assertCurrentGeneration(chatId, generation)
     await session.sendCustomMessage(
       { customType: "telegram-passive-context", content: text, display: false },
-      { triggerTurn: false, deliverAs: "nextTurn" },
+      // Pi inserts nextTurn messages *after* the next user prompt, where they can
+      // become the question the model answers. Context-only messages append now
+      // when idle, or at the end of the active turn when streaming.
+      { triggerTurn: false },
     )
   }
 
@@ -343,11 +348,32 @@ export class ChatSessionRegistry {
     assertCurrent()
     const previousLeafId = session.sessionManager.getLeafId()
     if (previousLeafId === target.entryId) return true
+    // A reply to an older bot message switches to a sibling Pi branch. Carry
+    // only the passive messages since the most recent model/user message, not
+    // older background or prompts from the branch we are leaving.
+    const recentPassiveContexts: string[] = []
+    for (const entry of session.sessionManager.getBranch().reverse()) {
+      if (entry.type === "message") break
+      if (
+        entry.type === "custom_message" &&
+        entry.customType === "telegram-passive-context" &&
+        typeof entry.content === "string"
+      ) {
+        recentPassiveContexts.unshift(entry.content)
+      }
+    }
     const navigation = (async () => {
       const result = await session.navigateTree(target.entryId, { summarize: false })
       if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
       try {
         assertCurrent()
+        for (const content of recentPassiveContexts) {
+          await session.sendCustomMessage(
+            { customType: "telegram-passive-context", content, display: false },
+            { triggerTurn: false },
+          )
+          assertCurrent()
+        }
       } catch (error) {
         if (
           previousLeafId &&

@@ -3,7 +3,11 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
-import type { AgentSessionEvent, AgentSessionEventListener } from "@earendil-works/pi-coding-agent"
+import type {
+  AgentSessionEvent,
+  AgentSessionEventListener,
+  SessionEntry,
+} from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
 
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
@@ -22,16 +26,19 @@ class FakeSession implements SessionHandle {
   readonly sessionId: string
   leafId: string | null = null
   readonly entries = new Set<string>()
+  readonly branchEntries: SessionEntry[] = []
   readonly navigated: string[] = []
   readonly sessionManager = {
     getLeafId: () => this.leafId,
     getEntry: (id: string) => (this.entries.has(id) ? { id } : undefined),
+    getBranch: () => this.branchEntries,
   }
   messages: AgentMessage[] = []
   readonly prompts: string[] = []
   readonly steering: string[] = []
   readonly followUps: string[] = []
   readonly contexts: string[] = []
+  readonly contextOptions: Array<{ triggerTurn?: boolean; deliverAs?: string } | undefined> = []
   readonly listeners = new Set<AgentSessionEventListener>()
   aborted = false
   disposed = false
@@ -77,8 +84,12 @@ class FakeSession implements SessionHandle {
     return queued
   }
 
-  async sendCustomMessage(message: { content: string }): Promise<void> {
+  async sendCustomMessage(
+    message: { content: string },
+    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+  ): Promise<void> {
     this.contexts.push(message.content)
+    this.contextOptions.push(options)
   }
 
   async navigateTree(targetId: string): Promise<{ cancelled: boolean }> {
@@ -573,8 +584,31 @@ describe("ChatSessionRegistry", () => {
     await registry.reset(1)
 
     expect(session.contexts).toEqual(["旁聽內容"])
+    expect(session.contextOptions).toEqual([{ triggerTurn: false }])
     expect(session.aborted).toBe(true)
     expect(session.disposed).toBe(true)
+  })
+
+  it("adds background context without steering an active Pi run or carrying it across reset", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const first = new FakeSession("first")
+    const second = new FakeSession("second")
+    let created = 0
+    const registry = new ChatSessionRegistry(
+      async () => (created++ === 0 ? first : second),
+      root,
+      logger,
+    )
+
+    first.isStreaming = true
+    await registry.appendPassiveContext(1, "群組旁聽")
+    expect(first.contextOptions).toEqual([{ triggerTurn: false }])
+    expect(first.steering).toEqual([])
+    expect(first.followUps).toEqual([])
+    await registry.reset(1)
+    await registry.submit(1, "當前請求")
+    expect(second.contexts).toEqual([])
+    expect(second.prompts).toEqual(["當前請求"])
   })
 
   it("waits for an active response capture before starting a separate new turn", async () => {
@@ -652,6 +686,116 @@ describe("ChatSessionRegistry", () => {
 
     expect(session.navigated).toEqual(["entry-1", "entry-1"])
     expect(session.prompts).toEqual(["first", "latest", "branch one", "branch two"])
+  })
+
+  it("replays recent passive group context before a reply to an older branch", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    await registry.submit(1, "latest")
+    const timestamp = new Date().toISOString()
+    session.branchEntries.push(
+      {
+        type: "custom_message",
+        id: "old-context",
+        parentId: null,
+        timestamp,
+        customType: "telegram-passive-context",
+        content: "舊背景",
+        display: false,
+      },
+      {
+        type: "message",
+        id: "latest-answer",
+        parentId: "old-context",
+        timestamp,
+        message: assistant("latest answer"),
+      },
+      {
+        type: "custom_message",
+        id: "current-context",
+        parentId: "latest-answer",
+        timestamp,
+        customType: "telegram-passive-context",
+        content: "新背景",
+        display: false,
+      },
+      {
+        type: "custom_message",
+        id: "second-context",
+        parentId: "current-context",
+        timestamp,
+        customType: "telegram-passive-context",
+        content: "第二則背景",
+        display: false,
+      },
+    )
+    await registry.appendPassiveContext(1, "新背景")
+    await registry.appendPassiveContext(1, "第二則背景")
+    await registry.submit(1, "reply", { replyToBotMessageId: 100 })
+
+    expect(session.navigated).toEqual(["entry-1"])
+    expect(session.contexts).toEqual(["新背景", "第二則背景", "新背景", "第二則背景"])
+    expect(session.prompts).toEqual(["first", "latest", "reply"])
+    await registry.dispose()
+  })
+
+  it("rolls back a restored branch when cancellation arrives during passive context replay", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      replyTreeEnabled: true,
+    })
+    const first = await registry.submit(1, "first")
+    await registry.recordDelivery(
+      1,
+      first.kind === "completed" ? first.checkpoint : undefined,
+      [100],
+    )
+    await registry.submit(1, "latest")
+    session.branchEntries.push({
+      type: "custom_message",
+      id: "recent-context",
+      parentId: "entry-2",
+      timestamp: new Date().toISOString(),
+      customType: "telegram-passive-context",
+      content: "新背景",
+      display: false,
+    })
+    const replayStarted = deferred()
+    const replayFinished = deferred()
+    const send = vi.spyOn(session, "sendCustomMessage").mockImplementationOnce(async () => {
+      replayStarted.resolve()
+      await replayFinished.promise
+    })
+    let current = true
+    try {
+      const stale = registry.submit(1, "reply", {
+        replyToBotMessageId: 100,
+        isCurrent: () => current,
+      })
+      const outcome = expect(stale).rejects.toThrow("cancelled before acceptance")
+      await replayStarted.promise
+      current = false
+      const cancellation = registry.cancel(1)
+      replayFinished.resolve()
+      await outcome
+      await expect(cancellation).resolves.toBe(true)
+      expect(session.navigated).toEqual(["entry-1", "entry-2"])
+      expect(session.prompts).toEqual(["first", "latest"])
+    } finally {
+      replayFinished.resolve()
+      send.mockRestore()
+      await registry.dispose()
+    }
   })
 
   it("uses a temporary checkpoint while final delivery is pending and releases it afterward", async () => {
