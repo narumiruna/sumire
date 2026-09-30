@@ -43,8 +43,8 @@ export interface SessionHandle {
   }
   subscribe(listener: AgentSessionEventListener): () => void
   prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>
-  steer(text: string, images?: ImageContent[]): Promise<void>
-  followUp(text: string, images?: ImageContent[]): Promise<void>
+  steer(text: string, images?: ImageContent[]): ReturnType<AgentSession["steer"]>
+  followUp(text: string, images?: ImageContent[]): ReturnType<AgentSession["followUp"]>
   clearQueue(): { steering: string[]; followUp: string[] }
   sendCustomMessage(
     message: { customType: string; content: string; display: boolean; details?: unknown },

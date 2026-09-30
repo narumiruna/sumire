@@ -69,12 +69,14 @@ class FakeSession implements SessionHandle {
     this.entries.add(this.leafId)
   }
 
-  async steer(text: string): Promise<void> {
+  async steer(text: string): ReturnType<SessionHandle["steer"]> {
     this.steering.push(text)
+    return "queued"
   }
 
-  async followUp(text: string): Promise<void> {
+  async followUp(text: string): ReturnType<SessionHandle["followUp"]> {
     this.followUps.push(text)
+    return "queued"
   }
 
   clearQueue() {

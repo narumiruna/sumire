@@ -27,9 +27,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.87.1",
-    "@earendil-works/pi-ai": "0.87.1",
-    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-agent-core": "0.99.1",
+    "@earendil-works/pi-ai": "0.99.1",
+    "@earendil-works/pi-coding-agent": "0.99.1",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/otter-cli": "0.3.0",
@@ -38,13 +38,13 @@
     "@narumitw/sumire-url-tool": "0.3.2",
     "@pydantic/logfire-node": "0.18.26",
     "grammy": "1.46.0",
-    "taiwan-exchange-rates": "0.2.0",
+    "taiwan-exchange-rates": "0.2.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "26.6.3",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vitest": "5.0.2"
+    "vitest": "5.0.3"
   }
 }
