@@ -46,6 +46,7 @@ Available now:
 - Telegram bot token
 - OpenAI-compatible Chat Completions endpoint and API key
 - Playwright Chromium for source-aware browser fallbacks
+- Git and OpenSSH client tools (`ssh`, `ssh-keygen`) for repository cloning and SSH key generation outside Docker
 
 ## Install and run
 
@@ -206,6 +207,8 @@ docker compose up -d --build
 docker compose logs -f sumire
 docker compose down
 ```
+
+The image includes Git, OpenSSH client tools (`ssh`, `ssh-keygen`), and CA certificates for HTTPS cloning. The build checks that Git and SSH tools are available to the non-root bot user. No SSH keys or GitHub credentials are bundled: use a dedicated key with only the required repository permissions, register only its `.pub` public key with GitHub, and never share its private key. All allowlisted users with coding-tool access can read or use credentials available to the bot, so keep the allowlist restricted to trusted users.
 
 The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. Docker Compose mounts `workdir:/workdir`, not `/app`, so rebuilt images update the running code without masking it. Before migrating from `workdir:/app`, stop the bot and back up the independent `state` volume; a changed Pi cwd starts new conversations while leaving the old `/app` sessions archived. Do not use `docker compose down -v`: it removes named volumes, including bot state. If the old `workdir` volume was deleted, restore needed files or SSH keys from a separate backup or generate them again. The bot user's home is `/workdir`, so `~/.ssh` is `/workdir/.ssh` and persists in the new volume. It also installs system libcurl and sets `IMPER_DOWNLOAD_LIBCURL=0`, so `impers` does not download a native library at runtime. The `curl-cffi` loader works without browser TLS impersonation in this configuration; to enable impersonation, provide a compatible library in the container and set `LIBCURL_IMPERSONATE_PATH` to its path.
 
