@@ -43,7 +43,7 @@ ENV BOT_WORKDIR=/workdir
 ENV IMPER_DOWNLOAD_LIBCURL=0
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 ffmpeg libcurl4 \
+    && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ffmpeg libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -83,5 +83,8 @@ RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 ENV HOME=/workdir
 USER app
+
+# Fail the build if Git or SSH tools are unavailable to the bot user.
+RUN git --version && ssh -V && command -v ssh-keygen
 
 ENTRYPOINT ["node", "/app/apps/bot/dist/index.js"]
