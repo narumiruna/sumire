@@ -31,6 +31,7 @@ describe("loadSettings", () => {
     expect(settings.botUrlContentTimeoutSeconds).toBe(180)
     expect(settings.botUrlMaxExtractedChars).toBe(12_000)
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
+    expect(settings.openaiAuthMode).toBe("api_key")
     expect(settings.openaiBaseUrl).toBe("https://api.openai.com/v1")
     expect(settings.morselLongReplyThreshold).toBe(1_000)
   })
@@ -42,6 +43,7 @@ describe("loadSettings", () => {
       BOT_ADMIN_ID: "123",
       LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
+      OPENAI_AUTH_MODE: "oauth",
       OPENAI_BASE_URL: "https://example.test/v1/",
       BOT_DOCUMENT_INPUT_ENABLED: "false",
       BOT_DOCUMENT_MAX_BYTES: "1234",
@@ -68,6 +70,7 @@ describe("loadSettings", () => {
     expect(settings.botAdminId).toBe(123)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
+    expect(settings.openaiAuthMode).toBe("oauth")
     expect(settings.openaiBaseUrl).toBe("https://example.test/v1")
     expect(settings.botDocumentInputEnabled).toBe(false)
     expect(settings.botDocumentMaxBytes).toBe(1234)
@@ -102,6 +105,7 @@ describe("loadSettings", () => {
     expect(loadSettings({ BOT_WORKDIR: "/workdir" }, "/workspace/project").botWorkdir).toBe(
       "/workdir",
     )
+    expect(() => loadSettings({ OPENAI_AUTH_MODE: "unknown" })).toThrow(ZodError)
     expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
     expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)

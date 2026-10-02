@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { cp, mkdir, mkdtemp } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -34,6 +34,47 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
+  it("bootstraps OAuth without a key and shares stored native auth across chat sessions", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-oauth-"))
+    await installInstructions(root)
+    const settings = loadSettings(
+      {
+        OPENAI_AUTH_MODE: "oauth",
+        BOT_WHITELIST: "7",
+        BOT_ADMIN_ID: "7",
+      },
+      root,
+    )
+    const factory = await createPiSessionFactory(settings, logger)
+    expect(factory.login).toBeDefined()
+    await expect(factory.create(7)).rejects.toThrow("請管理員在私聊使用 /login")
+    const authPath = path.join(settings.botSessionLogDir, ".pi-agent/auth.json")
+    await mkdir(path.dirname(authPath), { recursive: true })
+    await writeFile(
+      authPath,
+      JSON.stringify({
+        openai: {
+          type: "oauth",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: Date.now() + 3_600_000,
+        },
+      }),
+      { mode: 0o600 },
+    )
+    const first = await factory.create(7)
+    const second = await factory.create(8)
+    try {
+      expect(first.model).toMatchObject({ provider: "openai", api: "openai-responses" })
+      expect(second.model).toMatchObject({ provider: "openai", api: "openai-responses" })
+      expect(first.modelRuntime).toBe(second.modelRuntime)
+      expect(first.messages).toEqual([])
+    } finally {
+      first.dispose()
+      second.dispose()
+    }
+  })
+
   it("rejects an empty whitelist before enabling coding tools", async () => {
     const settings = loadSettings({ OPENAI_API_KEY: "test-key" })
 

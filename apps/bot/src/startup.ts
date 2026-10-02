@@ -12,7 +12,6 @@ export async function startApplication(): Promise<void> {
   const defaultProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
   const settings = loadSettings(process.env, defaultProjectRoot)
   if (!settings.botToken) throw new Error("BOT_TOKEN is required")
-  if (!settings.openaiApiKey) throw new Error("OPENAI_API_KEY is required")
 
   const logger = createLogger(
     process.argv.includes("--verbose") || process.argv.includes("-v"),
@@ -35,6 +34,7 @@ export async function startApplication(): Promise<void> {
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
+      login: piFactory.login,
     })
 
     let stopping = false
@@ -50,6 +50,7 @@ export async function startApplication(): Promise<void> {
     try {
       await telegram.start()
     } finally {
+      await telegram.stop()
       await sessions.dispose()
     }
   } finally {
