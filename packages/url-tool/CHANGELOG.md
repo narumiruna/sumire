@@ -1,5 +1,18 @@
 # @narumitw/sumire-url-tool
 
+## 0.3.3
+
+### Patch Changes
+
+- 5b7a634: Update Pi dependencies to 0.99.1, Vitest to 5.0.3, taiwan-exchange-rates to 0.2.1, and fast-xml-parser to 5.11.2, and refresh the dependency lockfile. Align the bot's session interface with Pi's steering and follow-up return types.
+- 93b032c: Update Pi dependencies to 1.0.0, Biome to 2.5.15, and Node.js type definitions to 26.6.4, and refresh the dependency lockfile.
+- 5cb94f8: Update Pi and other workspace dependencies, including the dependency lockfile.
+- Updated dependencies [b0ff41f]
+- Updated dependencies [5b7a634]
+- Updated dependencies [93b032c]
+- Updated dependencies [5cb94f8]
+  - @narumitw/sumire-url-content@0.22.3
+
 ## 0.3.2
 
 ### Patch Changes

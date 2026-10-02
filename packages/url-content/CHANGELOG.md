@@ -1,5 +1,14 @@
 # @narumitw/sumire-url-content
 
+## 0.22.3
+
+### Patch Changes
+
+- b0ff41f: Avoid initializing impers while loading shared URL loaders, and provide system libcurl in the Docker image without relying on a runtime download.
+- 5b7a634: Update Pi dependencies to 0.99.1, Vitest to 5.0.3, taiwan-exchange-rates to 0.2.1, and fast-xml-parser to 5.11.2, and refresh the dependency lockfile. Align the bot's session interface with Pi's steering and follow-up return types.
+- 93b032c: Update Pi dependencies to 1.0.0, Biome to 2.5.15, and Node.js type definitions to 26.6.4, and refresh the dependency lockfile.
+- 5cb94f8: Update Pi and other workspace dependencies, including the dependency lockfile.
+
 ## 0.22.2
 
 ### Patch Changes
