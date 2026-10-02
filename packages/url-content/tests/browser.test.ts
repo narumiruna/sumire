@@ -147,6 +147,38 @@ describe("browser transport safety", () => {
     expect(harness.closeContext).toHaveBeenCalledOnce()
   })
 
+  it("closes a stalled navigation immediately after caller cancellation", async () => {
+    const harness = browserHarness("ok")
+    harness.gotoPage.mockImplementation(async () => new Promise(() => {}))
+    const controller = new AbortController()
+    const loading = fetchBrowserHtmlResponse("https://example.com/page", {
+      loaderName: "TestLoader",
+      timeoutSuggestion: "timed out",
+      browser: harness.browser,
+      validateUrl: async (value) => new URL(value),
+      signal: controller.signal,
+    })
+    await vi.waitFor(() => expect(harness.gotoPage).toHaveBeenCalledOnce())
+    controller.abort()
+    await expect(loading).rejects.toMatchObject({ name: "AbortError" })
+    expect(harness.closeContext).toHaveBeenCalledOnce()
+  })
+
+  it("does not create a page after cancelled browser startup completes late", async () => {
+    const harness = browserHarness("ok")
+    const controller = new AbortController()
+    const resources = {
+      browser: async () => {
+        controller.abort()
+        return harness.browser
+      },
+    } as unknown as ResourceProvider
+    await expect(
+      new PlaywrightLoader({ resources }).load("https://example.com/page", controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" })
+    expect(harness.newContext).not.toHaveBeenCalled()
+  })
+
   it("rejects oversized browser response bodies", async () => {
     const harness = browserHarness("ok")
 

@@ -26,6 +26,7 @@ export {
   TargetHttpError,
   UrlContentError,
 } from "./core/errors.js"
+export { getInterruptedAttempts } from "./core/interruption.js"
 export type { Loader, LoaderFactory } from "./core/loader.js"
 export type { AttemptRecord, AttemptStatus, LoadResult } from "./core/results.js"
 export { attemptRecordToObject, loadResultToObject } from "./core/results.js"

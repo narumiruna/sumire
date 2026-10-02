@@ -185,7 +185,12 @@ export async function safeFetch(
   throw new Error("URL redirect handling ended unexpectedly")
 }
 
-export async function readResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+export async function readResponseBytes(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  signal?.throwIfAborted()
   const declaredLength = Number(response.headers.get("content-length"))
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     await response.body?.cancel()
@@ -196,21 +201,36 @@ export async function readResponseBytes(response: Response, maxBytes: number): P
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > maxBytes) {
-      await reader.cancel()
-      throw new Error(`Response exceeds the ${maxBytes} byte limit`)
-    }
-    chunks.push(value)
+  const onAbort = () => {
+    void reader.cancel(signal?.reason).catch(() => {})
   }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
+  signal?.addEventListener("abort", onAbort, { once: true })
+  try {
+    while (true) {
+      signal?.throwIfAborted()
+      const { done, value } = await withAbortSignal(reader.read(), signal)
+      signal?.throwIfAborted()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        throw new Error(`Response exceeds the ${maxBytes} byte limit`)
+      }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
+  } finally {
+    signal?.removeEventListener("abort", onAbort)
+    reader.releaseLock()
+  }
 }
 
-export async function readResponseText(response: Response, maxBytes: number): Promise<string> {
-  return new TextDecoder().decode(await readResponseBytes(response, maxBytes))
+export async function readResponseText(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  return new TextDecoder().decode(await readResponseBytes(response, maxBytes, signal))
 }
 
 function withAbortSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {

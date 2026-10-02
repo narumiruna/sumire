@@ -126,7 +126,7 @@ describe("pipeline planning", () => {
   })
 
   it("uses the generic transport order for ordinary pages and source homepages", () => {
-    const genericOrder = ["curl-cffi", "playwright-networkidle", "playwright-fast", "httpx"]
+    const genericOrder = ["curl-cffi", "playwright-fast", "httpx", "playwright-networkidle"]
     expect(planForUrl("https://example.com").executionPlan).toEqual(genericOrder)
     expect(isLtnUrl("https://www.ltn.com.tw/")).toBe(false)
     expect(planForUrl("https://www.ltn.com.tw/").executionPlan).toEqual(genericOrder)

@@ -206,6 +206,7 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
       }
     }
 
+    options.signal?.throwIfAborted()
     let currentUrl = new URL(url)
     const requestHeaders = { ...options.headers }
     for (let redirects = 0; redirects <= 5; redirects += 1) {
@@ -334,6 +335,7 @@ export class PlaywrightLoader implements Loader {
   async load(url: string, signal?: AbortSignal): Promise<string> {
     const resources = this.options.resources
     const browser = await resources?.browser()
+    signal?.throwIfAborted()
     const content = await fetchBrowserHtml(url, {
       loaderName: "PlaywrightLoader",
       timeoutMs: this.options.timeoutMs ?? DEFAULT_PLAYWRIGHT_TIMEOUT_MS,
