@@ -1,0 +1,58 @@
+{
+  "name": "@narumitw/sumire-login",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UI-neutral Pi OAuth login and an OpenAI login extension",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/narumiruna/sumire.git",
+    "directory": "packages/login"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "oauth"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@types/node": "26.6.4",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

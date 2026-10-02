@@ -97,6 +97,7 @@ const environmentSchema = z.object({
   LOGFIRE_TOKEN: optionalString,
   MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
   MORSEL_API_KEY: optionalString,
+  OPENAI_AUTH_MODE: z.enum(["api_key", "oauth"]).default("api_key"),
   OPENAI_BASE_URL: z.url().default("https://api.openai.com/v1"),
   OPENAI_API_KEY: optionalString,
   OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
@@ -149,6 +150,7 @@ export interface Settings {
   morselShareExpiresInSeconds: number
   morselTelegramInstantView: boolean
   morselTimeoutSeconds: number
+  openaiAuthMode: "api_key" | "oauth"
   openaiBaseUrl: string
   openaiApiKey?: string
   openaiModel: string
@@ -207,6 +209,7 @@ export function loadSettings(
     morselShareExpiresInSeconds: 2_592_000,
     morselTelegramInstantView: true,
     morselTimeoutSeconds: 12,
+    openaiAuthMode: parsed.OPENAI_AUTH_MODE,
     openaiBaseUrl: parsed.OPENAI_BASE_URL.replace(/\/$/, ""),
     ...(parsed.OPENAI_API_KEY ? { openaiApiKey: parsed.OPENAI_API_KEY } : {}),
     openaiModel: parsed.OPENAI_MODEL,

@@ -1,4 +1,5 @@
 import type { RunnerHandle } from "@grammyjs/runner"
+import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
@@ -26,6 +27,7 @@ import {
   downloadTelegramImage,
   TelegramDownloadTooLargeError,
 } from "./files.js"
+import { registerTelegramLogin } from "./login.js"
 import {
   audioReferences,
   captionCommandArguments,
@@ -51,6 +53,7 @@ export interface TelegramAgentBot {
 }
 
 interface TelegramBotDependencies {
+  login?: OAuthLoginClient
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
   documentConverter?: DocumentConverter
@@ -135,6 +138,8 @@ export function createTelegramAgentBot(
     await next()
   })
 
+  const loginBridge = registerTelegramLogin(bot, settings, logger, dependencies.login)
+
   bot.on("channel_post", async (context) => {
     const message = context.channelPost as unknown as TelegramMessageLike
     const image = selectImageReference(message)
@@ -168,6 +173,9 @@ export function createTelegramAgentBot(
         "/reset — 清除目前 chat 的 Pi session",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
+        ...(settings.openaiAuthMode === "oauth"
+          ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"]
+          : []),
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),
@@ -1071,6 +1079,7 @@ export function createTelegramAgentBot(
       await runner.task()
     },
     async stop() {
+      await loginBridge.stop()
       if (!runner) return
       await runner.stop()
       runner = undefined

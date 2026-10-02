@@ -5,10 +5,10 @@ import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
-  ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
+import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import progressExtension from "@narumitw/sumire-progress"
 import { urlContentSkillsPath } from "@narumitw/sumire-url-content/resources"
 import { createUrlExtension, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
@@ -18,13 +18,14 @@ import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { ChannelImageIndex } from "../telegram/channel-images.js"
 import { traceUrlLoad } from "../url-telemetry.js"
+import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
 
-const providerId = "telegramagent-openai"
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
 const soulSectionPlaceholder = "{{SOUL_SECTION}}"
 
 export interface PiSessionFactory {
+  login?: OAuthLoginClient
   create(chatId: number): Promise<AgentSession>
 }
 
@@ -40,43 +41,7 @@ export async function createPiSessionFactory(
   }
 
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
-  const modelRuntime = await ModelRuntime.create({
-    authPath: path.join(agentDir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: path.join(agentDir, "models-store.json"),
-    refreshOnCreate: false,
-  })
-  modelRuntime.registerProvider(providerId, {
-    name: "telegramagent OpenAI-compatible provider",
-    baseUrl: settings.openaiBaseUrl,
-    api: "openai-completions",
-    authHeader: true,
-    models: [
-      {
-        id: settings.openaiModel,
-        name: settings.openaiModel,
-        reasoning: false,
-        input: ["text", "image"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: settings.botAgentContextTokenBudget,
-        maxTokens: Math.min(
-          settings.botAgentContextTokenBudget,
-          Math.max(1, Math.min(32_768, Math.floor(settings.botAgentContextTokenBudget * 0.2))),
-        ),
-        compat: {
-          supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
-        },
-      },
-    ],
-  })
-  if (settings.openaiApiKey) {
-    await modelRuntime.setRuntimeApiKey(providerId, settings.openaiApiKey)
-  }
-
-  const model = modelRuntime.getModel(providerId, settings.openaiModel)
-  if (!model)
-    throw new Error(`Pi model registration failed for ${providerId}/${settings.openaiModel}`)
+  const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
 
   const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
@@ -112,7 +77,11 @@ export async function createPiSessionFactory(
   })
 
   return {
+    login,
     async create(chatId: number) {
+      if (login && (await modelRuntime.checkAuth("openai"))?.type !== "oauth") {
+        throw new Error("尚未登入 OpenAI，請管理員在私聊使用 /login。")
+      }
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.botWorkdir,
         agentDir,
