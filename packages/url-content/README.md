@@ -70,7 +70,9 @@ const results = await Promise.all([
 ]);
 ```
 
-A deadline includes time spent waiting for a concurrency slot. Cancellation is propagated through `AbortSignal` where the underlying library supports it.
+A deadline starts before target validation and includes loader construction and waiting for a concurrency slot. Automatic generic attempts use the smaller of their cap and remaining time divided by remaining eligible alternatives: 15 seconds for fast Playwright, 20 seconds for other local methods, and 30 seconds for Firecrawl. Missing requirements are not included in that division. Local attempt timeouts continue the chain; a shared deadline or caller cancellation stops it. Without a shared deadline, the same per-attempt caps still apply. Explicit chains and source-required plans retain their existing limits instead of using generic budget allocation.
+
+Cancellation is propagated through `AbortSignal`; waiting is bounded even if an operation ignores cancellation. Browser navigation is interrupted and its context is closed. The one-shot API allows up to five additional seconds for client cleanup; cleanup continues if that wait expires, and never replaces an original load failure. Reusable clients remain responsible for awaiting `close()`. `getInterruptedAttempts(error, url)` exposes safe attempt records for that URL while preserving the caller's original cancellation reason and identity, including concurrent URLs sharing a signal. Omitting `url` returns the most recently stored records; interruption statuses distinguish `cancelled` from `timeout`.
 
 ## CLI
 
@@ -122,7 +124,9 @@ Set `FIRECRAWL_API_KEY` for OpenAI web pages or explicit `firecrawl` loading:
 export FIRECRAWL_API_KEY=...
 ```
 
-The loader calls Firecrawl's v1 scrape endpoint and requests Markdown. An HTTP error is reported as an error from the Firecrawl API, not from the target website.
+The loader calls Firecrawl's v1 scrape endpoint and requests Markdown. An HTTP error is reported as an error from the Firecrawl API, not from the target website. Responses are streamed with a 10 MiB cap, empty/challenge results are rejected, and reported final URLs are validated as public targets. Firecrawl performs remote navigation; intermediate redirects inside that service cannot be independently inspected by this package.
+
+For ordinary HTML pages, opt in with `loadUrlDetailed(url, { firecrawlFallback: true })` or `client.loadUrlDetailed(url, { firecrawlFallback: true })`. This adds Firecrawl after all local generic alternatives. The default is `false`, even when an API key exists: opting in sends the target URL (including its query) to an external service and may incur charges. Missing keys skip this alternative; less than one second of remaining time also skips it. Explicit Firecrawl selection and the existing OpenAI web pipeline are unchanged. Source-required document and social pipelines never gain generic fallback.
 
 ### AnyDoc
 
@@ -161,7 +165,7 @@ Strict source plans do not accept unrelated generic HTML:
 - YouTube video URLs require transcript output.
 - Twitter status, Threads post/share, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
 - BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
-- Generic pages try `curl-cffi` (`impers`), Playwright network-idle, faster Playwright, then standard fetch.
+- Generic pages try `curl-cffi` (`impers`), fast Playwright (`domcontentloaded`), standard fetch, then Playwright network-idle; opted-in Firecrawl is last. Successful extraction stops further attempts.
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.
 - Generic HTML and XHTML conversion removes `script`, `style`, and `template` nodes before Markdown extraction, but keeps readable no-JavaScript content inside `noscript`. Non-HTML textual responses retain literal tags instead of being parsed as HTML; escaped markup in visible HTML code examples is preserved. Empty output and recognized challenge headings are rejected so the chain can continue.
 

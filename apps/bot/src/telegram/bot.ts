@@ -104,6 +104,7 @@ export function createTelegramAgentBot(
       maxChars: settings.botUrlMaxExtractedChars,
       timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
       urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
+      firecrawlFallback: settings.botUrlFirecrawlFallbackEnabled,
     })
   const audioTranscriber =
     dependencies.audioTranscriber ??
@@ -534,6 +535,7 @@ export function createTelegramAgentBot(
       : message
     prompt = promptWithReplyContext(promptMessage, prompt, submissionOptions.includeBotReplyContext)
     let loadedUrls: ArticleUrlContent[] = []
+    let preparedStatus: Awaited<ReturnType<typeof delivery.reply>> | undefined
     if (submissionOptions.articleUrlSource !== undefined) {
       const repliedText =
         !replyToPendingStatus && message.reply_to_message
@@ -559,6 +561,32 @@ export function createTelegramAgentBot(
       if (chatId !== undefined && active) activeArticleLoads.set(chatId, active)
       active?.add(controller)
       try {
+        if (/https?:\/\//iu.test(articleUrlSource)) {
+          const pending = await delivery
+            .guardedReply(
+              context,
+              "正在載入文章來源…",
+              {
+                ...replyOptions(context),
+                reply_parameters: {
+                  message_id: message.message_id,
+                  allow_sending_without_reply: true,
+                },
+              },
+              isCurrent,
+            )
+            .catch((error) => {
+              logger.warn("Could not send article loading status", error)
+              return { message: undefined, result: "unavailable" as const }
+            })
+          preparedStatus = pending.message
+          if (preparedStatus && chatId !== undefined) {
+            const ids = pendingBotReplies.get(chatId) ?? new Set<number>()
+            ids.add(preparedStatus.message_id)
+            pendingBotReplies.set(chatId, ids)
+          }
+          if (!isCurrent()) throw new DOMException("Submission cancelled", "AbortError")
+        }
         loadedUrls = await loadArticleSourceUrls(
           articleUrlSource,
           {
@@ -569,30 +597,55 @@ export function createTelegramAgentBot(
           },
           {
             maxChars: settings.botUrlMaxExtractedChars,
-            timeoutMs: Math.round(Math.min(30, settings.botUrlContentTimeoutSeconds) * 1_000),
+            timeoutMs: Math.round(settings.botUrlContentTimeoutSeconds * 1_000),
             signal: controller.signal,
           },
         )
       } catch (error) {
-        if (!isCurrent()) return
+        if (!isCurrent()) {
+          if (preparedStatus)
+            await delivery.editOrReply(
+              context,
+              preparedStatus.chat.id,
+              preparedStatus.message_id,
+              submissionGenerations.get(chatId ?? 0)?.reason === "cancel"
+                ? "此請求已取消。"
+                : "此請求已因重設對話而取消。",
+              replyOptions(context),
+              () => true,
+            )
+          return
+        }
         logger.warn(
           "Article source URL loading failed",
           error instanceof TooManyArticleUrlsError
             ? undefined
             : { name: error instanceof Error ? error.name : "unknown" },
         )
-        await delivery.reply(
-          context,
+        const text =
           error instanceof TooManyArticleUrlsError
             ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
             : error instanceof ArticleUrlBudgetError
               ? "網址內容長度上限不足，請提高 BOT_URL_MAX_EXTRACTED_CHARS 後再試。"
-              : "無法載入文章來源網址，請確認網址可公開存取後再試。",
-          replyOptions(context),
-        )
+              : "無法載入文章來源網址，請確認網址可公開存取後再試。"
+        if (preparedStatus)
+          await delivery.editOrReply(
+            context,
+            preparedStatus.chat.id,
+            preparedStatus.message_id,
+            text,
+            replyOptions(context),
+            isCurrent,
+          )
+        else await delivery.reply(context, text, replyOptions(context))
         return
       } finally {
         controller.abort()
+        if (preparedStatus && chatId !== undefined) {
+          const ids = pendingBotReplies.get(chatId)
+          ids?.delete(preparedStatus.message_id)
+          if (ids?.size === 0) pendingBotReplies.delete(chatId)
+        }
         active?.delete(controller)
         if (chatId !== undefined && active?.size === 0) activeArticleLoads.delete(chatId)
       }
@@ -612,6 +665,7 @@ export function createTelegramAgentBot(
       submissionOptions.deliveryMode,
       submissionOptions.includeBotReplyContext,
       submissionOptions.submissionIntent,
+      preparedStatus,
     )
   }
 
@@ -663,6 +717,7 @@ export function createTelegramAgentBot(
     finalDeliveryMode: DeliveryMode = "default",
     replyContextIncluded = false,
     submissionIntent?: SubmissionIntent,
+    preparedStatus?: Awaited<ReturnType<typeof delivery.reply>>,
   ): Promise<void> {
     if (!isCurrent()) return
     const chatId = context.chat?.id
@@ -679,17 +734,18 @@ export function createTelegramAgentBot(
           }
         : {}),
     }
-    let status: Awaited<ReturnType<typeof delivery.reply>> | undefined
+    let status: Awaited<ReturnType<typeof delivery.reply>> | undefined = preparedStatus
     let hasProgressSnapshot = false
     let reportedProgress = false
     let progressCleared = false
     const pendingText = "處理中…"
+    const initialPendingText = preparedStatus ? "正在載入文章來源…" : pendingText
     let lastDeliveredStatusText: string | undefined
     let lastDeliveredProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
     let releaseReplyCheckpoint = () => {}
-    let statusDisplayText: string | undefined = pendingText
+    let statusDisplayText: string | undefined = initialPendingText
     const clearPendingReply = () => {
       if (pendingMessageId === undefined) return
       const ids = pendingBotReplies.get(chatId)
@@ -760,16 +816,13 @@ export function createTelegramAgentBot(
       return
     }
     try {
-      const pendingReply = await delivery.guardedReply(
-        context,
-        pendingText,
-        replyOptions,
-        isCurrent,
-      )
+      const pendingReply = preparedStatus
+        ? { message: preparedStatus, result: "delivered" as const }
+        : await delivery.guardedReply(context, pendingText, replyOptions, isCurrent)
       status = pendingReply.message
-      lastDeliveredStatusText = pendingReply.result === "delivered" ? pendingText : undefined
+      lastDeliveredStatusText = pendingReply.result === "delivered" ? initialPendingText : undefined
       visiblePayload =
-        pendingReply.result === "delivered" ? delivery.directPayload(pendingText) : undefined
+        pendingReply.result === "delivered" ? delivery.directPayload(initialPendingText) : undefined
       if (pendingReply.result === "stale") {
         await cancelStatus()
         return

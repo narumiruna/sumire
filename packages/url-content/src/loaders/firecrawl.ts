@@ -5,9 +5,12 @@ import {
   LoaderTimeoutError,
 } from "../core/errors.js"
 import type { Loader } from "../core/loader.js"
+import { assertPublicUrl, readResponseText } from "../core/network.js"
 import type { ResourceProvider } from "../core/resources.js"
+import { ensureUsableContent } from "./content-guard.js"
 
 export const DEFAULT_FIRECRAWL_TIMEOUT_MS = 30_000
+export const MAX_FIRECRAWL_BYTES = 10 * 1024 * 1024
 
 export class FirecrawlLoader implements Loader {
   readonly apiKey: string
@@ -38,8 +41,20 @@ export class FirecrawlLoader implements Loader {
           body: JSON.stringify({ url, formats: ["markdown"], timeout: this.timeoutMs }),
           signal: activeSignal,
         }))
-      if (!response.ok) throw new FirecrawlApiHttpError(url, response.status)
-      const payload = (await response.json()) as Record<string, unknown>
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new FirecrawlApiHttpError(url, response.status)
+      }
+      const payload = JSON.parse(
+        await readResponseText(response, MAX_FIRECRAWL_BYTES, activeSignal),
+      ) as Record<string, unknown>
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new LoaderContentError(
+          "FirecrawlLoader",
+          url,
+          "Firecrawl returned an invalid response envelope",
+        )
+      }
       if (payload.success === false)
         throw new LoaderContentError("FirecrawlLoader", url, "Firecrawl scrape was unsuccessful")
       const data =
@@ -53,6 +68,17 @@ export class FirecrawlLoader implements Loader {
           "Firecrawl scrape result did not include markdown",
         )
       }
+      const metadata = data.metadata
+      if (metadata && typeof metadata === "object") {
+        for (const field of ["url", "sourceURL"]) {
+          const target = (metadata as Record<string, unknown>)[field]
+          if (typeof target === "string") {
+            if (this.resources) await this.resources.validateUrl(target, activeSignal)
+            else await assertPublicUrl(target, { signal: activeSignal })
+          }
+        }
+      }
+      ensureUsableContent(data.markdown, { loaderName: "FirecrawlLoader", url })
       return data.markdown
     } catch (error) {
       if (timeoutSignal.aborted)

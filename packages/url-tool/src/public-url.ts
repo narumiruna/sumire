@@ -53,6 +53,7 @@ export interface PublicUrlLoaderOptions {
   maxChars?: number
   timeoutMs?: number
   urlContentTimeoutSeconds?: number
+  firecrawlFallback?: boolean
 }
 
 export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): PublicUrlLoader {
@@ -61,6 +62,7 @@ export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): Pub
     maxChars: options.maxChars ?? 12_000,
     timeoutMs: options.timeoutMs ?? 15_000,
     urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
+    firecrawlFallback: options.firecrawlFallback ?? false,
   }
   return {
     load(url, loadOptions = {}) {
@@ -79,7 +81,8 @@ export interface LoadedUrl {
   truncated: boolean
   status?: number
   loaderId?: string
-  attempts?: readonly Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode">[]
+  attempts?: readonly (Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode"> &
+    Partial<Pick<AttemptRecord, "elapsedSeconds">>)[]
 }
 
 export interface FetchedUrl {
@@ -112,6 +115,7 @@ type UrlContentLoadImplementation = (
   url: string,
   options: {
     deadlineSeconds?: number
+    firecrawlFallback?: boolean
     loaderNames?: readonly string[]
     signal?: AbortSignal
   },
@@ -120,6 +124,8 @@ type UrlContentLoadImplementation = (
 interface LoadPublicUrlOptions extends FetchPublicUrlOptions {
   loader?: string
   urlContentTimeoutSeconds: number
+  firecrawlFallback?: boolean
+  deadlineAt?: number
   urlContentLoadImplementation?: UrlContentLoadImplementation
 }
 
@@ -133,6 +139,15 @@ export async function loadPublicUrl(
   options: LoadPublicUrlOptions,
 ): Promise<LoadedUrl> {
   if (options.loader) assertUrlLoaderName(options.loader)
+  const deadlineAt = performance.now() + options.urlContentTimeoutSeconds * 1_000
+  const totalTimeout = AbortSignal.timeout(
+    Math.max(1, Math.ceil(options.urlContentTimeoutSeconds * 1_000)),
+  )
+  options = {
+    ...options,
+    deadlineAt,
+    signal: options.signal ? AbortSignal.any([options.signal, totalTimeout]) : totalTimeout,
+  }
 
   const validationTimeout = AbortSignal.timeout(options.timeoutMs)
   const validationSignal = options.signal
@@ -152,7 +167,9 @@ export async function loadPublicUrl(
         urlValue,
         "A Threads share link requires verified post metadata",
       )
-    return loadedBuiltInUrl(await fetchPublicUrl(urlValue, options))
+    const result = await fetchPublicUrl(urlValue, options)
+    assertWithinBudget(options)
+    return loadedBuiltInUrl(result)
   }
   if (options.loader) return loadSourceUrl(urlValue, options, [options.loader])
 
@@ -169,19 +186,29 @@ export async function loadPublicUrl(
   let builtInError: unknown
   try {
     const result = await fetchPublicUrl(urlValue, options)
+    assertWithinBudget(options)
     if (!requiresUrlContentLoader(urlValue, result)) return loadedBuiltInUrl(result)
     builtInError = new Error("The built-in loader did not extract source-specific content")
   } catch (error) {
+    assertWithinBudget(options)
     builtInError = error
   }
 
   try {
     return await loadSourceUrl(urlValue, options)
   } catch (urlContentError) {
+    assertWithinBudget(options)
     throw new AggregateError(
       [builtInError, urlContentError],
       "Built-in and source-aware URL loading both failed",
     )
+  }
+}
+
+function assertWithinBudget(options: LoadPublicUrlOptions): void {
+  options.signal?.throwIfAborted()
+  if (options.deadlineAt !== undefined && performance.now() >= options.deadlineAt) {
+    throw new DOMException("Deadline expired", "TimeoutError")
   }
 }
 
@@ -204,11 +231,19 @@ async function loadSourceUrl(
   loaderNames?: readonly string[],
 ): Promise<LoadedUrl> {
   const load = options.urlContentLoadImplementation ?? loadUrlDetailed
+  options.signal?.throwIfAborted()
+  const remaining =
+    options.deadlineAt === undefined
+      ? options.urlContentTimeoutSeconds
+      : Math.max(0, options.deadlineAt - performance.now()) / 1_000
+  if (remaining <= 0) throw new DOMException("Deadline expired", "TimeoutError")
   const result = await load(urlValue, {
-    deadlineSeconds: options.urlContentTimeoutSeconds,
+    deadlineSeconds: remaining,
+    ...(options.firecrawlFallback ? { firecrawlFallback: true } : {}),
     ...(loaderNames ? { loaderNames } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   })
+  assertWithinBudget(options)
   const content = result.content.trim()
   if (!content) throw new Error("URL content loader returned no content")
   if (
@@ -232,9 +267,10 @@ async function loadSourceUrl(
       : content,
     truncated,
     loaderId: result.loaderId,
-    attempts: result.attempts.map(({ loaderId, status, errorType, errorCode }) => ({
+    attempts: result.attempts.map(({ loaderId, status, elapsedSeconds, errorType, errorCode }) => ({
       loaderId,
       status,
+      elapsedSeconds,
       ...(errorType ? { errorType } : {}),
       ...(errorCode ? { errorCode } : {}),
     })),

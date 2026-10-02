@@ -71,6 +71,7 @@ export async function createPiSessionFactory(
     maxChars: settings.botUrlMaxExtractedChars,
     timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
     urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
+    firecrawlFallback: settings.botUrlFirecrawlFallbackEnabled,
     selectableLoaders: selectableUrlLoaders,
     traceLoad: (url, requestedLoader, toolCallId, load) =>
       traceUrlLoad(logger, url, requestedLoader, toolCallId, load),

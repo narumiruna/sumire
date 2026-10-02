@@ -78,9 +78,9 @@ export interface PipelinePlan {
 
 export const GENERIC_HTML_LOADERS = [
   CURL_CFFI,
-  PLAYWRIGHT_NETWORKIDLE,
   PLAYWRIGHT_FAST,
   HTTPX,
+  PLAYWRIGHT_NETWORKIDLE,
 ] as const
 
 type PipelineEntry = readonly [Pipeline, (url: string) => boolean]
@@ -146,14 +146,20 @@ export function matchPipeline(url: string): Pipeline | undefined {
   return PIPELINE_ENTRIES.find(([, matches]) => matches(url))?.[0]
 }
 
-export function planForUrl(url: string): PipelinePlan {
+export function planForUrl(
+  url: string,
+  options: { firecrawlFallback?: boolean } = {},
+): PipelinePlan {
   const pipeline = matchPipeline(url)
   if (!pipeline) {
+    const loaders = options.firecrawlFallback
+      ? [...GENERIC_HTML_LOADERS, FIRECRAWL]
+      : GENERIC_HTML_LOADERS
     return {
       contentType: ContentType.GenericWeb,
       targetedLoaders: [],
-      fallbackLoaders: GENERIC_HTML_LOADERS,
-      executionPlan: GENERIC_HTML_LOADERS,
+      fallbackLoaders: loaders,
+      executionPlan: loaders,
       contentContract: ContentContract.GenericHtml,
     }
   }

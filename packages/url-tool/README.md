@@ -34,7 +34,7 @@ A host can expose an allowlisted exact override:
 
 Omitting `loader` preserves automatic selection. `built-in` runs only the bounded text/HTML path; another approved ID runs exactly that `@narumitw/sumire-url-content` loader without automatic fallback. The tool schema contains `loader` only when the host configures at least one `selectableLoaders` entry, and execution enforces the same allowlist even if schema validation is bypassed.
 
-`load_public_url` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, error types/codes; no upstream error messages). For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
+`load_public_url` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, elapsed seconds, error types/codes; no upstream error messages). For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
 
 Failures, including unknown, disallowed, inapplicable, or unavailable explicit loaders, throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
 
@@ -58,7 +58,9 @@ flowchart LR
 
 ## Bounds and safety
 
-- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 180-second source-aware timeout, and 12,000 extracted characters plus a truncation marker.
+- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 180-second total URL deadline starting before validation, and 12,000 extracted characters plus a truncation marker. Built-in time is deducted from the source-aware budget; one-shot source resource cleanup may take up to five additional seconds.
+- Automatic generic loading tries curl, fast browser, standard HTTP, then network-idle browser. Each attempt receives at most its cap (15 seconds for fast browser, 20 seconds for other local methods) and a fair share of remaining time for eligible alternatives. A local timeout continues fallback; total expiry or caller cancellation stops it.
+- `firecrawlFallback: true` opts into a final generic Firecrawl attempt (at most 30 seconds, skipped without a key or with less than one second remaining). It is off by default, sends the target URL to an external service, and may incur charges. Existing explicit Firecrawl and source-specific selection remain unchanged. Remote Firecrawl intermediate redirects cannot be inspected locally; reported final URLs are checked.
 - Rejects URL credentials and local, private, link-local, metadata, or non-routable targets.
 - Built-in requests pin validated DNS addresses, revalidate redirects, and cap response bytes and redirect count.
 - Source-aware extraction retains the URL content package's public-target and network safety checks.
@@ -74,6 +76,7 @@ const extension = createUrlExtension({
   maxChars: 12_000,
   timeoutMs: 15_000,
   urlContentTimeoutSeconds: 180,
+  firecrawlFallback: false,
   selectableLoaders: ["built-in", "httpx", "playwright"],
 })
 

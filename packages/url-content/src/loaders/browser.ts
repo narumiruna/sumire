@@ -113,7 +113,7 @@ async function withBrowser(
         await route.fulfill({
           status: response.status,
           headers,
-          body: Buffer.from(await readResponseBytes(response, maxBytes)),
+          body: Buffer.from(await readResponseBytes(response, maxBytes, activeSignal)),
         })
       } catch (error) {
         routeError ??= error
@@ -123,10 +123,13 @@ async function withBrowser(
     const page = await context.newPage()
     let response: Response | null
     try {
-      response = await page.goto(url, {
-        timeout: timeoutMs,
-        ...(options.waitUntil ? { waitUntil: options.waitUntil } : {}),
-      })
+      response = await raceWithSignal(
+        page.goto(url, {
+          timeout: timeoutMs,
+          ...(options.waitUntil ? { waitUntil: options.waitUntil } : {}),
+        }),
+        activeSignal,
+      )
     } catch (error) {
       if (options.signal?.aborted) throw options.signal.reason
       if (timeoutSignal.aborted || (error instanceof Error && error.name === "TimeoutError")) {
