@@ -89,6 +89,7 @@ export interface UrlContentClientOptions {
 }
 
 export interface UrlContentLoadOptions {
+  firecrawlFallback?: boolean
   loaderNames?: readonly string[]
   signal?: AbortSignal
 }
@@ -183,7 +184,11 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     return this.workerSlots.use(operation, admissionSignal())
   }
 
-  private admit(loaderName: string, operation: () => Promise<string>): Promise<string> {
+  private admit(
+    loaderName: string,
+    operation: () => Promise<string>,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const kind = getLoaderDef(loaderName).resourceKind
     const slots =
       kind === "browser"
@@ -191,7 +196,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
         : kind === "worker"
           ? this.workerSlots
           : this.requestSlots
-    return slots.use(operation, admissionSignal())
+    return slots.use(operation, signal ?? admissionSignal())
   }
 
   async loadUrlDetailed(url: string, signal?: AbortSignal): Promise<LoadResult>
@@ -222,7 +227,8 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
       getFactory: (name: string) => () => createLoader(name, this),
       getRequirements: getLoaderRequirements,
       getContentType: getLoaderContentType,
-      admit: (name: string, operation: () => Promise<string>) => this.admit(name, operation),
+      admit: (name: string, operation: () => Promise<string>, signal?: AbortSignal) =>
+        this.admit(name, operation, signal),
     }
     const explicitChain =
       options.loaderNames === undefined
@@ -239,7 +245,9 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
           ? AbortSignal.any([options.signal, timeoutSignal])
           : (options.signal ?? timeoutSignal)
       await validateTarget(url, this.resolve, validationSignal)
-      const chain = explicitChain ?? resolveLoadChain(url, chainOptions)
+      const chain =
+        explicitChain ??
+        resolveLoadChain(url, { ...chainOptions, firecrawlFallback: options.firecrawlFallback })
       return chain.loadDetailed(options.signal)
     })
   }

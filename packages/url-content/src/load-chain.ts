@@ -7,7 +7,13 @@ import {
   MissingRequirementError,
   TargetHttpError,
 } from "./core/errors.js"
-import { recordAttempt, remainingMilliseconds, withAttemptSink } from "./core/execution.js"
+import {
+  recordAttempt,
+  remainingMilliseconds,
+  withAttemptSink,
+  withDeadline,
+} from "./core/execution.js"
+import { retainInterruptedAttempts, runBounded } from "./core/interruption.js"
 import type { LoaderFactory } from "./core/loader.js"
 import { type AttemptRecord, AttemptStatus, type LoadResult } from "./core/results.js"
 import { getLoaderContentType, getLoaderFactory, getLoaderRequirements } from "./loader-registry.js"
@@ -20,7 +26,11 @@ import {
   planForUrl,
 } from "./pipelines/catalog.js"
 
-export type Admission = (loaderName: string, operation: () => Promise<string>) => Promise<string>
+export type Admission = (
+  loaderName: string,
+  operation: () => Promise<string>,
+  signal?: AbortSignal,
+) => Promise<string>
 export type RequirementsLookup = (loaderName: string) => readonly string[]
 export type ContentTypeLookup = (loaderName: string) => string
 
@@ -63,6 +73,7 @@ interface LoadChainOptions {
   getRequirements: RequirementsLookup
   getContentType: ContentTypeLookup
   admit?: Admission
+  automaticGeneric?: boolean
 }
 
 export class LoadChain {
@@ -71,6 +82,7 @@ export class LoadChain {
   readonly getRequirements: RequirementsLookup
   readonly getContentType: ContentTypeLookup
   readonly admit?: Admission
+  readonly automaticGeneric: boolean
 
   constructor(options: LoadChainOptions) {
     this.getFactory = options.getFactory
@@ -78,11 +90,17 @@ export class LoadChain {
     this.getRequirements = options.getRequirements
     this.getContentType = options.getContentType
     this.admit = options.admit
+    this.automaticGeneric = options.automaticGeneric ?? false
   }
 
   async loadDetailed(signal?: AbortSignal): Promise<LoadResult> {
     const attempts: AttemptRecord[] = []
-    return withAttemptSink(attempts, () => this.executeDetailed(attempts, signal))
+    try {
+      return await withAttemptSink(attempts, () => this.executeDetailed(attempts, signal))
+    } catch (error) {
+      retainInterruptedAttempts(error, attempts, this.explanation.url)
+      throw error
+    }
   }
 
   private async executeDetailed(
@@ -90,7 +108,7 @@ export class LoadChain {
     signal?: AbortSignal,
   ): Promise<LoadResult> {
     const errors: string[] = []
-    for (const plannedLoaderName of this.explanation.executionPlan) {
+    for (const [index, plannedLoaderName] of this.explanation.executionPlan.entries()) {
       if (signal?.aborted) throw signal.reason
       const missing = missingRequirements(this.getRequirements(plannedLoaderName))
       if (missing.length > 0) {
@@ -119,17 +137,54 @@ export class LoadChain {
         break
       }
 
+      if (
+        this.automaticGeneric &&
+        plannedLoaderName === "firecrawl" &&
+        remaining !== undefined &&
+        remaining < 1_000
+      ) {
+        appendAttempt(
+          plannedLoaderName,
+          AttemptStatus.Skipped,
+          performance.now(),
+          undefined,
+          "Insufficient remaining time for external fallback",
+        )
+        continue
+      }
+      const alternatives = this.explanation.executionPlan
+        .slice(index)
+        .filter((name) => missingRequirements(this.getRequirements(name)).length === 0).length
+      const budget = this.automaticGeneric
+        ? Math.min(
+            genericAttemptLimit(plannedLoaderName),
+            remaining === undefined ? Infinity : remaining / alternatives,
+          )
+        : remaining
+      const localTimeout = budget !== undefined && (remaining === undefined || budget < remaining)
       const started = performance.now()
       try {
-        const loader = await this.getFactory(plannedLoaderName)()
-        const operation = () => loader.load(this.explanation.url, deadlineSignal(remaining, signal))
-        const result = await runWithDeadline(
-          this.admit
-            ? () => this.admit?.(plannedLoaderName, operation) as Promise<string>
-            : operation,
-          remaining,
+        const result = await runBounded(
+          async (activeSignal) => {
+            const operation = async () => {
+              activeSignal.throwIfAborted()
+              const loader = await this.getFactory(plannedLoaderName)()
+              activeSignal.throwIfAborted()
+              return loader.load(this.explanation.url, activeSignal)
+            }
+            return withDeadline(budget === undefined ? undefined : started + budget, () =>
+              this.admit ? this.admit(plannedLoaderName, operation, activeSignal) : operation(),
+            )
+          },
+          budget,
           signal,
+          localTimeout
+            ? new LoaderTimeoutError(plannedLoaderName, this.explanation.url, (budget ?? 0) / 1_000)
+            : new DOMException("Deadline expired", "TimeoutError"),
         )
+        signal?.throwIfAborted()
+        if (remainingMilliseconds() === 0)
+          throw new DOMException("Deadline expired", "TimeoutError")
         if (!result.trim()) {
           errors.push(`${plannedLoaderName}: Empty result`)
           appendAttempt(plannedLoaderName, AttemptStatus.Empty, started, undefined, "Empty result")
@@ -163,7 +218,18 @@ export class LoadChain {
           attempts: [...attempts],
         }
       } catch (error) {
-        if (signal?.aborted) throw signal.reason
+        if (signal?.aborted) {
+          appendAttempt(
+            plannedLoaderName,
+            signal.reason instanceof DOMException && signal.reason.name === "TimeoutError"
+              ? AttemptStatus.Timeout
+              : AttemptStatus.Cancelled,
+            started,
+            signal.reason instanceof Error ? signal.reason : undefined,
+            "Load interrupted",
+          )
+          throw signal.reason
+        }
         if (error instanceof LoaderNotApplicableError) {
           const message = error.reason ?? "not applicable"
           errors.push(`${plannedLoaderName}: Not applicable (${message})`)
@@ -250,40 +316,10 @@ function classifyFailure(error: Error): string | undefined {
   return undefined
 }
 
-function deadlineSignal(
-  remaining: number | undefined,
-  signal?: AbortSignal,
-): AbortSignal | undefined {
-  if (remaining === undefined) return signal
-  const timeout = AbortSignal.timeout(Math.max(1, Math.ceil(remaining)))
-  return signal ? AbortSignal.any([signal, timeout]) : timeout
-}
-
-async function runWithDeadline<T>(
-  operation: () => Promise<T>,
-  remaining: number | undefined,
-  signal?: AbortSignal,
-): Promise<T> {
-  const timeout =
-    remaining === undefined ? undefined : AbortSignal.timeout(Math.max(1, Math.ceil(remaining)))
-  const combined = signal && timeout ? AbortSignal.any([signal, timeout]) : (signal ?? timeout)
-  if (combined?.aborted) throw combined.reason
-  const promise = operation()
-  if (!combined) return promise
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(combined.reason)
-    combined.addEventListener("abort", onAbort, { once: true })
-    promise.then(
-      (value) => {
-        combined.removeEventListener("abort", onAbort)
-        resolve(value)
-      },
-      (error: unknown) => {
-        combined.removeEventListener("abort", onAbort)
-        reject(error)
-      },
-    )
-  })
+function genericAttemptLimit(name: string): number {
+  if (name === "playwright-fast") return 15_000
+  if (name === "firecrawl") return 30_000
+  return 20_000
 }
 
 function isDeadlineError(error: unknown): error is DOMException {
@@ -337,8 +373,11 @@ function ensureAnyEligible(explanation: LoadChainExplanation, lookup: Requiremen
   }
 }
 
-export function explainLoadChain(url: string): LoadChainExplanation {
-  const plan = planForUrl(url)
+export function explainLoadChain(
+  url: string,
+  options: { firecrawlFallback?: boolean } = {},
+): LoadChainExplanation {
+  const plan = planForUrl(url, options)
   return buildExplanation({
     url,
     pipeline: plan.pipelineName,
@@ -353,6 +392,7 @@ export function explainLoadChain(url: string): LoadChainExplanation {
 export function resolveLoadChain(
   url: string,
   options: {
+    firecrawlFallback?: boolean
     getFactory?: (name: string) => LoaderFactory
     getRequirements?: RequirementsLookup
     getContentType?: ContentTypeLookup
@@ -360,11 +400,12 @@ export function resolveLoadChain(
   } = {},
 ): LoadChain {
   const getRequirements = options.getRequirements ?? getLoaderRequirements
-  const explanation = explainLoadChain(url)
+  const explanation = explainLoadChain(url, options)
   ensureAnyEligible(explanation, getRequirements)
   return new LoadChain({
     getFactory: options.getFactory ?? getLoaderFactory,
     explanation,
+    automaticGeneric: explanation.pipeline === undefined,
     getRequirements,
     getContentType: options.getContentType ?? getLoaderContentType,
     ...(options.admit ? { admit: options.admit } : {}),

@@ -4,6 +4,7 @@ export const AttemptStatus = {
   Skipped: "skipped",
   NotApplicable: "not_applicable",
   Timeout: "timeout",
+  Cancelled: "cancelled",
   Empty: "empty",
   Rejected: "rejected",
 } as const

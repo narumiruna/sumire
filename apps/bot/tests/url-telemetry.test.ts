@@ -1,4 +1,4 @@
-import { LoaderError } from "@narumitw/sumire-url-content"
+import { LoaderError, resolveExplicitLoadChain } from "@narumitw/sumire-url-content"
 import { describe, expect, it, vi } from "vitest"
 
 import type { Logger, SpanAttributes } from "../src/logging.js"
@@ -140,10 +140,11 @@ describe("URL telemetry", () => {
     expect(spans[2]).toMatchObject({
       "url.outcome": "error",
       "url.attempts": JSON.stringify([
-        { loader: "threads", status: "failed", errorType: "LoaderContentError" },
+        { loader: "threads", status: "failed", elapsedSeconds: 0, errorType: "LoaderContentError" },
         {
           loader: "curl-cffi",
           status: "failed",
+          elapsedSeconds: 0,
           errorType: "LoaderContentError",
           code: "tls_certificate",
         },
@@ -152,6 +153,58 @@ describe("URL telemetry", () => {
     expect(JSON.stringify(spans)).not.toContain("sensitive details")
     expect(JSON.stringify(spans)).not.toContain("private text")
   })
+
+  it.each(["AbortError", "TimeoutError"])(
+    "retains safe attempts for %s without logging the cancellation reason",
+    async (name) => {
+      const attributes: SpanAttributes = {}
+      const logger: Logger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        span: async (_name, initial, callback) => {
+          Object.assign(attributes, initial)
+          return callback({
+            setAttribute: (key, value) => {
+              attributes[key] = value
+            },
+          })
+        },
+      }
+      const controller = new AbortController()
+      const entered = vi.fn()
+      const chain = resolveExplicitLoadChain("https://example.com/private?key=secret", ["httpx"], {
+        getFactory: () => () => ({
+          load: async () => {
+            entered()
+            return new Promise<string>(() => {})
+          },
+        }),
+      })
+      const reason = new DOMException("private raw error", name)
+      const loading = traceUrlLoad(
+        logger,
+        "https://example.com/private?key=secret",
+        undefined,
+        "call",
+        async () => {
+          await chain.loadDetailed(controller.signal)
+          throw new Error("unreachable")
+        },
+      ).catch((error) => error)
+      await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce())
+      controller.abort(reason)
+      expect(await loading).toBe(reason)
+      expect(attributes["url.error_type"]).toBe(name)
+      expect(JSON.parse(String(attributes["url.attempts"]))[0]).toMatchObject({
+        loader: "httpx",
+        status: name === "AbortError" ? "cancelled" : "timeout",
+        elapsedSeconds: expect.any(Number),
+      })
+      expect(JSON.stringify(attributes)).not.toMatch(/private|secret|raw error/u)
+    },
+  )
 
   it("exposes only the hostname of successfully loaded public URLs", () => {
     expect(loadedUrlHost("https://example.com/private?api_key=secret")).toBe("example.com")

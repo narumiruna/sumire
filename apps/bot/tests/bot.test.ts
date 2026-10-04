@@ -3,10 +3,12 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import type { ProgressStep } from "@narumitw/sumire-progress"
+import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
 import type { LoadedUrl } from "@narumitw/sumire-url-tool"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
+import { loadPublicUrl } from "../../../packages/url-tool/src/public-url.js"
 import type { ChatSessionRegistry, SubmissionActivity } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
@@ -433,7 +435,7 @@ describe("Telegram bot update routing", () => {
     expect(prompt).not.toContain("/f 原始內容")
     expect(publish).toHaveBeenCalledExactlyOnceWith(article)
     expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
-    expect(calls[0]?.payload.text).toBe("處理中…")
+    expect(calls[0]?.payload.text).toBe("正在載入文章來源…")
     expect(calls[1]?.payload.text).toContain("https://morsel.example/s/article")
     expect(calls[0]?.payload.text).not.toContain(article)
     expect(calls[0]?.payload.reply_parameters).toEqual({
@@ -474,6 +476,104 @@ describe("Telegram bot update routing", () => {
     expect(publish).toHaveBeenCalledOnce()
   })
 
+  it("automatically loads an article on its first /f request and uses the full configured budget", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const built: string[] = []
+    const timeout = vi.spyOn(AbortSignal, "timeout")
+    try {
+      const telegram = createTelegramAgentBot(
+        loadSettings({
+          BOT_TOKEN: "test-token",
+          MORSEL_API_KEY: "secret",
+          BOT_URL_CONTENT_TIMEOUT_SECONDS: "60",
+        }),
+        sessions,
+        logger,
+        {
+          botInfo,
+          morselPublisher: { isConfigured: true, publish },
+          articleUrlLoader: {
+            load: (url, options) =>
+              loadPublicUrl(url, {
+                allowedSchemes: new Set(["https"]),
+                maxChars: 12_000,
+                timeoutMs: 1_000,
+                urlContentTimeoutSeconds: 60,
+                signal: options?.signal,
+                fetchImplementation: async () => new Response(null, { status: 403 }),
+                urlContentLoadImplementation: async () =>
+                  resolveLoadChain(url, {
+                    getFactory: (name) => () => {
+                      built.push(name)
+                      return {
+                        load: async () => {
+                          if (name === "curl-cffi")
+                            throw new LoaderContentError("CurlCffiLoader", url, "transport failed")
+                          if (name === "playwright-fast") return "Recovered article body"
+                          throw new Error("must not try a slower method after success")
+                        },
+                      }
+                    },
+                  }).loadDetailed(options?.signal),
+              }),
+          },
+        },
+      )
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(commandMessage(21, "/f https://8.8.8.8/article"))
+      expect(built).toEqual(["curl-cffi", "playwright-fast"])
+      expect(vi.mocked(sessions.submit).mock.calls[0]?.[1]).toContain("Recovered article body")
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      expect(publish).toHaveBeenCalledOnce()
+      expect(timeout.mock.calls.some(([ms]) => ms === 60_000)).toBe(true)
+      expect(timeout.mock.calls.some(([ms]) => ms === 30_000)).toBe(false)
+      expect(calls[0]?.payload.text).toBe("正在載入文章來源…")
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it("does not submit a late result after the article deadline", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    let finish: ((value: LoadedUrl) => void) | undefined
+    const load = vi.fn(
+      async () =>
+        new Promise<LoadedUrl>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const telegram = createTelegramAgentBot(
+      loadSettings({
+        BOT_TOKEN: "test-token",
+        MORSEL_API_KEY: "secret",
+        BOT_URL_CONTENT_TIMEOUT_SECONDS: "0.1",
+      }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(commandMessage(21, "/f https://example.com/slow"))
+    finish?.({
+      url: "https://example.com/slow",
+      finalUrl: "https://example.com/slow",
+      source: "built-in",
+      contentType: "text/plain",
+      text: "late",
+      truncated: false,
+    })
+    await Promise.resolve()
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(calls[1]?.payload.text).toContain("無法載入文章來源網址")
+  })
+
   it("does not submit or publish /f when a source URL fails to load", async () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
@@ -493,7 +593,8 @@ describe("Telegram bot update routing", () => {
     expect(load).toHaveBeenCalledOnce()
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("無法載入文章來源網址")
+    expect(calls[0]?.payload.text).toBe("正在載入文章來源…")
+    expect(calls[1]?.payload.text).toContain("無法載入文章來源網址")
   })
 
   it("rejects an insufficient article content budget without misreporting the URL count", async () => {
@@ -526,8 +627,8 @@ describe("Telegram bot update routing", () => {
     expect(load).not.toHaveBeenCalled()
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("BOT_URL_MAX_EXTRACTED_CHARS")
-    expect(calls[0]?.payload.text).not.toContain("最多可處理 4 個網址")
+    expect(calls[1]?.payload.text).toContain("BOT_URL_MAX_EXTRACTED_CHARS")
+    expect(calls[1]?.payload.text).not.toContain("最多可處理 4 個網址")
   })
 
   it.each(["cancel", "reset"] as const)(
@@ -561,9 +662,132 @@ describe("Telegram bot update routing", () => {
       expect(loadingSignal?.aborted).toBe(true)
       expect(sessions.submit).not.toHaveBeenCalled()
       expect(publish).not.toHaveBeenCalled()
-      expect(calls.filter((call) => call.method === "sendMessage")).toHaveLength(1)
+      expect(calls.filter((call) => call.method === "sendMessage")).toHaveLength(2)
+      expect(
+        calls.some(
+          (call) => call.method === "editMessageText" && String(call.payload.text).includes("取消"),
+        ),
+      ).toBe(true)
     },
   )
+
+  it("does not quote the early article-loading status in a queued clarification", async () => {
+    let finish: ((result: LoadedUrl) => void) | undefined
+    const load = vi.fn(
+      async () =>
+        new Promise<LoadedUrl>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const sessions = createSessions()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: {
+          isConfigured: true,
+          publish: async () => "https://morsel.example/s/article",
+        },
+      },
+    )
+    installApiMock(telegram.bot)
+    const pending = telegram.bot.handleUpdate(commandMessage(30, "/f https://example.com/article"))
+    await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
+    const clarification = commandMessage(31, "/ask 請簡短回答")
+    if (clarification.message)
+      clarification.message.reply_to_message = {
+        message_id: 100,
+        date: 1_700_000_001,
+        chat: clarification.message.chat,
+        from: botInfo,
+        text: "正在載入文章來源…",
+        reply_to_message: undefined,
+      }
+    const next = telegram.bot.handleUpdate(clarification)
+    finish?.({
+      url: "https://example.com/article",
+      finalUrl: "https://example.com/article",
+      source: "built-in",
+      contentType: "text/plain",
+      text: "Article body",
+      truncated: false,
+    })
+    await Promise.all([pending, next])
+    expect(sessions.submit).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(sessions.submit).mock.calls[1]?.[1]).not.toContain("正在載入文章來源")
+  })
+
+  it("continues article loading if the early Telegram status cannot be sent", async () => {
+    const sessions = createSessions()
+    const load = vi.fn(async (url: string) => ({
+      url,
+      finalUrl: url,
+      source: "built-in" as const,
+      contentType: "text/plain",
+      text: "Article",
+      truncated: false,
+    }))
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: {
+          isConfigured: true,
+          publish: async () => "https://morsel.example/s/article",
+        },
+      },
+    )
+    installApiMock(telegram.bot, (method, payload) => {
+      if (method === "sendMessage" && payload.text === "正在載入文章來源…")
+        throw new Error("Telegram unavailable")
+    })
+    await telegram.bot.handleUpdate(commandMessage(30, "/f https://example.com/article"))
+    expect(load).toHaveBeenCalledOnce()
+    expect(sessions.submit).toHaveBeenCalledOnce()
+  })
+
+  it("does not start URL loading if cancellation occurs while the status is being sent", async () => {
+    const sessions = createSessions()
+    const load = vi.fn()
+    let acknowledge: (() => void) | undefined
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      logger,
+      {
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: {
+          isConfigured: true,
+          publish: async () => "https://morsel.example/s/article",
+        },
+      },
+    )
+    const calls = installApiMock(telegram.bot, async (method, payload) => {
+      if (method === "sendMessage" && payload.text === "正在載入文章來源…")
+        await new Promise<void>((resolve) => {
+          acknowledge = resolve
+        })
+    })
+    const pending = telegram.bot.handleUpdate(commandMessage(30, "/f https://example.com/article"))
+    await vi.waitFor(() => expect(acknowledge).toBeDefined())
+    await telegram.bot.handleUpdate(commandMessage(31, "/cancel"))
+    acknowledge?.()
+    await pending
+    expect(load).not.toHaveBeenCalled()
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(
+      calls.some(
+        (call) => call.method === "editMessageText" && String(call.payload.text).includes("取消"),
+      ),
+    ).toBe(true)
+  })
 
   it("does not prefetch ordinary chat URLs", async () => {
     const sessions = createSessions()

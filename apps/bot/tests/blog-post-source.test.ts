@@ -209,6 +209,34 @@ describe("article source URLs", () => {
     await expect(pending).rejects.toThrow()
   })
 
+  it("applies one deadline to all four sources and rejects late results", async () => {
+    const signals: (AbortSignal | undefined)[] = []
+    const finishes: ((value: LoadedUrl) => void)[] = []
+    const load: PublicUrlLoader["load"] = vi.fn(async (_url, options) => {
+      signals.push(options?.signal)
+      return new Promise<LoadedUrl>((resolve) => finishes.push(resolve))
+    })
+    await expect(
+      loadArticleSourceUrls(
+        "https://example.com/1 https://example.com/2 https://example.com/3 https://example.com/4",
+        { load },
+        { maxChars: 100, timeoutMs: 10 },
+      ),
+    ).rejects.toMatchObject({ name: "TimeoutError" })
+    expect(load).toHaveBeenCalledTimes(4)
+    expect(new Set(signals).size).toBe(1)
+    expect(signals.every((signal) => signal?.aborted)).toBe(true)
+    for (const finish of finishes)
+      finish({
+        url: "https://example.com/late",
+        finalUrl: "https://example.com/late",
+        source: "built-in",
+        contentType: "text/plain",
+        text: "late",
+        truncated: false,
+      })
+  })
+
   it("enforces a single deadline even if a URL loader ignores abort", async () => {
     const load: PublicUrlLoader["load"] = vi.fn(async () => new Promise<LoadedUrl>(() => {}))
     await expect(

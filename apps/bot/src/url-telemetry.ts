@@ -1,6 +1,11 @@
 import { createHmac, randomBytes } from "node:crypto"
 
-import { type AttemptRecord, getLoaderDef, LoaderError } from "@narumitw/sumire-url-content"
+import {
+  type AttemptRecord,
+  getInterruptedAttempts,
+  getLoaderDef,
+  LoaderError,
+} from "@narumitw/sumire-url-content"
 import type { LoadedUrl } from "@narumitw/sumire-url-tool"
 
 import { type Logger, withLogSpan } from "./logging.js"
@@ -57,7 +62,7 @@ export function traceUrlLoad(
       } catch (error) {
         span.setAttribute("url.outcome", "error")
         span.setAttribute("url.error_type", safeErrorType(error))
-        recordAttempts(span, errorAttempts(error))
+        recordAttempts(span, errorAttempts(error, url))
         throw error
       }
     },
@@ -70,6 +75,7 @@ const attemptStatuses = new Set([
   "skipped",
   "not_applicable",
   "timeout",
+  "cancelled",
   "empty",
   "rejected",
 ])
@@ -96,11 +102,13 @@ function safeErrorName(name: string | undefined): string {
   return name && safeErrorTypes.has(name) ? name : "other"
 }
 
-function errorAttempts(error: unknown): readonly AttemptRecord[] | undefined {
+function errorAttempts(error: unknown, url: string): readonly AttemptRecord[] | undefined {
+  const interrupted = getInterruptedAttempts(error, url)
+  if (interrupted?.length) return interrupted
   if (error instanceof LoaderError) return error.attempts
   if (error instanceof AggregateError) {
     for (const nested of error.errors as unknown[]) {
-      const attempts = errorAttempts(nested)
+      const attempts = errorAttempts(nested, url)
       if (attempts?.length) return attempts
     }
   }
@@ -110,7 +118,8 @@ function errorAttempts(error: unknown): readonly AttemptRecord[] | undefined {
 function recordAttempts(
   span: { setAttribute(key: string, value: string): void },
   attempts:
-    | readonly Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode">[]
+    | readonly (Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode"> &
+        Partial<Pick<AttemptRecord, "elapsedSeconds">>)[]
     | undefined,
 ): void {
   if (!attempts?.length) return
@@ -126,6 +135,11 @@ function recordAttempts(
       {
         loader: attempt.loaderId,
         status: attempt.status,
+        ...(Number.isFinite(attempt.elapsedSeconds) &&
+        (attempt.elapsedSeconds ?? -1) >= 0 &&
+        (attempt.elapsedSeconds ?? Infinity) <= 3_600
+          ? { elapsedSeconds: attempt.elapsedSeconds }
+          : {}),
         ...(attempt.errorType ? { errorType: safeErrorName(attempt.errorType) } : {}),
         ...(code === "tls_certificate" ||
         code === "transport_failure" ||
