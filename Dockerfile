@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG PLAYWRIGHT_VERSION=1.63.0
 
 FROM node:24-bookworm-slim AS dependencies
@@ -10,75 +12,123 @@ COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-content/package.json packages/url-content/package.json
 COPY packages/url-tool/package.json packages/url-tool/package.json
-RUN --mount=type=cache,target=/root/.npm npm ci --workspace @narumitw/sumire --include-workspace-root=false
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
+
+# Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
+FROM dependencies AS login-build
+
+COPY packages/login/tsconfig*.json packages/login/
+COPY packages/login/src/ packages/login/src/
+RUN npm run build --workspace @narumitw/sumire-login
+
+FROM dependencies AS progress-build
+
+COPY packages/progress/tsconfig*.json packages/progress/
+COPY packages/progress/src/ packages/progress/src/
+RUN npm run build --workspace @narumitw/sumire-progress
+
+FROM dependencies AS url-content-build
+
+COPY packages/url-content/tsconfig*.json packages/url-content/
+COPY packages/url-content/src/ packages/url-content/src/
+RUN npm run build --workspace @narumitw/sumire-url-content
+
+FROM dependencies AS url-tool-build
+
+COPY --from=url-content-build /build/packages/url-content/dist /build/packages/url-content/dist
+COPY packages/url-tool/tsconfig*.json packages/url-tool/
+COPY packages/url-tool/src/ packages/url-tool/src/
+# Dependencies are already compiled; skip the prebuild hook that recompiles them.
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire-url-tool
 
 FROM dependencies AS build
 
-COPY packages/login/ packages/login/
-COPY packages/progress/ packages/progress/
-COPY packages/url-content/ packages/url-content/
-COPY packages/url-tool/ packages/url-tool/
-COPY apps/bot/ apps/bot/
-RUN npm run build --workspace @narumitw/sumire
+COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
+COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
+COPY --from=url-content-build /build/packages/url-content/dist /build/packages/url-content/dist
+COPY --from=url-tool-build /build/packages/url-tool/dist /build/packages/url-tool/dist
+COPY apps/bot/tsconfig*.json apps/bot/
+COPY apps/bot/src/ apps/bot/src/
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire
 
 FROM dependencies AS production-dependencies
 
-RUN npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false
+RUN --mount=type=cache,target=/root/.npm \
+    npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
 
 FROM node:24-bookworm-slim AS audio-dependencies
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-venv \
-    && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+# Docker's default apt hook deletes downloaded packages, defeating the cache mount.
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m venv /opt/audio \
     && /opt/audio/bin/pip install --upgrade pip \
-    && /opt/audio/bin/pip install torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cpu \
-    && /opt/audio/bin/pip install openai-whisper==20250625 yt-dlp==2026.8.19
+    && /opt/audio/bin/pip install torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cpu
+# Keep the heavyweight torch layer reusable when audio tool versions change.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/audio/bin/pip install openai-whisper==20250625 yt-dlp==2026.8.19
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS browser-download
 
 ARG PLAYWRIGHT_VERSION
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN --mount=type=cache,target=/root/.npm \
+    npx --yes playwright@${PLAYWRIGHT_VERSION} install chromium
+
+FROM node:24-bookworm-slim AS runtime-dependencies
+
+ARG TARGETARCH
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ffmpeg libcurl4
+
+ARG PLAYWRIGHT_VERSION
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
+    npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium
+
+FROM runtime-dependencies AS runtime
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV XDG_CACHE_HOME=/app/.cache
 ENV BOT_WORKDIR=/workdir
 ENV IMPER_DOWNLOAD_LIBCURL=0
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ffmpeg libcurl4 \
-    && rm -rf /var/lib/apt/lists/*
-RUN --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium
-RUN --mount=type=cache,target=/root/.npm \
-    npx --yes playwright@${PLAYWRIGHT_VERSION} install chromium
-
 WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /workdir /app/apps/bot /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
-    && chown -R app:app /app /workdir /ms-playwright
+    && mkdir -p /workdir /app/apps/bot /app/packages/login /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
+    && chown -R app:app /app /workdir
 
-COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
+COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
 COPY --from=audio-dependencies /opt/audio /opt/audio
+COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
 
 ENV NODE_ENV=production
 ENV PATH="/opt/audio/bin:/app/node_modules/.bin:${PATH}"
 
+COPY --from=production-dependencies --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
+COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=url-content-build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
+COPY --from=url-tool-build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
-COPY --from=build --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json
-COPY --from=build --chown=app:app /build/packages/login/dist /app/packages/login/dist
-COPY --from=build --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
-COPY --from=build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
-COPY --from=build --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
-COPY --from=build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
-COPY --from=build --chown=app:app /build/packages/url-content/skills /app/packages/url-content/skills
-COPY --from=build --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
-COPY --from=build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
-COPY --from=build --chown=app:app /build/packages/url-tool/skills /app/packages/url-tool/skills
-COPY --from=build --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --chown=app:app packages/url-content/skills/ /app/packages/url-content/skills/
+COPY --chown=app:app packages/url-tool/skills/ /app/packages/url-tool/skills/
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
 
