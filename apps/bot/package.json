@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -33,10 +33,10 @@
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/otter-cli": "0.3.1",
-    "@narumitw/sumire-login": "0.1.0",
-    "@narumitw/sumire-progress": "0.1.1",
-    "@narumitw/sumire-url-content": "0.22.2",
-    "@narumitw/sumire-url-tool": "0.3.2",
+    "@narumitw/sumire-login": "0.1.1",
+    "@narumitw/sumire-progress": "0.1.2",
+    "@narumitw/sumire-url-content": "0.22.3",
+    "@narumitw/sumire-url-tool": "0.3.3",
     "@pydantic/logfire-node": "0.18.27",
     "grammy": "1.46.0",
     "taiwan-exchange-rates": "0.2.1",

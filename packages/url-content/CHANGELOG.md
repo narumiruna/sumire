@@ -1,5 +1,16 @@
 # @narumitw/sumire-url-content
 
+## 0.22.3
+
+### Patch Changes
+
+- d914527: Prevent slow URL attempts from starving automatic fallback, prefer fast browser extraction, and share a total deadline across validation and built-in/source-aware loading. Article preloading now uses its configured budget and displays a reusable status before fetching. Preserve safe timeout/cancellation diagnostics and bound cleanup waiting. Add an opt-in final Firecrawl fallback, with streamed response limits and reported-target validation, without enabling external costs merely because an API key exists.
+- b0ff41f: Avoid initializing impers while loading shared URL loaders, and provide system libcurl in the Docker image without relying on a runtime download.
+- 5b7a634: Update Pi dependencies to 0.99.1, Vitest to 5.0.3, taiwan-exchange-rates to 0.2.1, and fast-xml-parser to 5.11.2, and refresh the dependency lockfile. Align the bot's session interface with Pi's steering and follow-up return types.
+- 93b032c: Update Pi dependencies to 1.0.0, Biome to 2.5.15, and Node.js type definitions to 26.6.4, and refresh the dependency lockfile.
+- 2709cfb: Update Pi dependencies to 1.0.2 across all workspaces, update the bot's Otter CLI to 0.3.1 and Logfire Node to 0.18.27, and refresh the dependency lockfile.
+- 5cb94f8: Update Pi and other workspace dependencies, including the dependency lockfile.
+
 ## 0.22.2
 
 ### Patch Changes
