@@ -1,5 +1,40 @@
 # @narumitw/sumire
 
+## 0.5.0
+
+### Minor Changes
+
+- 9011460: Index new images from explicitly allowlisted Telegram channels without starting Pi or posting to the channel. Add an opt-in `read_image` tool so Pi can list and read indexed channel images on demand during authorized conversations.
+- a0dd83e: Add a reusable Pi OAuth login package and an admin-only private Telegram `/login`. Support shared OpenAI subscription authentication through Pi's native Responses provider, with persistent credentials, cancellation, timeout, and authentication input interception. Preserve the existing API-key/OpenAI-compatible mode.
+
+### Patch Changes
+
+- 4836744: Add an optional Telegram admin user ID, expose the sender role to Pi per message, and show admin status in `/id`.
+- d914527: Prevent slow URL attempts from starving automatic fallback, prefer fast browser extraction, and share a total deadline across validation and built-in/source-aware loading. Article preloading now uses its configured budget and displays a reusable status before fetching. Preserve safe timeout/cancellation diagnostics and bound cleanup waiting. Add an opt-in final Firecrawl fallback, with streamed response limits and reported-target validation, without enabling external costs merely because an API key exists.
+- 420d4df: Reuse independent workspace build layers and npm, pip, and apt download caches in Docker builds. Isolate Chromium downloads and torch installation, exclude test inputs from the build context, and persist intermediate container build layers in GitHub Actions cache.
+- b0ff41f: Avoid initializing impers while loading shared URL loaders, and provide system libcurl in the Docker image without relying on a runtime download.
+- 04beab6: Keep group passive context before the next user turn and disable Logfire's HTTP auto-instrumentation so raw request URLs cannot leak the Telegram bot token into traces.
+- b40c95a: Keep typebox in the production image and smoke-test bot startup imports during the Docker build.
+- 76a74e4: Install Git, OpenSSH client tools, and CA certificates in the bot runtime image so coding tools can clone repositories and generate SSH keys. Verify tool availability as the non-root bot user during the image build.
+- caba261: Show every reported progress step, including completed ones, and keep the last snapshot alongside the final Telegram answer.
+- a4443be: Run Pi tools and the bot user home in a dedicated `/workdir` volume so image-managed code under `/app` updates on rebuild.
+- 5b7a634: Update Pi dependencies to 0.99.1, Vitest to 5.0.3, taiwan-exchange-rates to 0.2.1, and fast-xml-parser to 5.11.2, and refresh the dependency lockfile. Align the bot's session interface with Pi's steering and follow-up return types.
+- 93b032c: Update Pi dependencies to 1.0.0, Biome to 2.5.15, and Node.js type definitions to 26.6.4, and refresh the dependency lockfile.
+- 2709cfb: Update Pi dependencies to 1.0.2 across all workspaces, update the bot's Otter CLI to 0.3.1 and Logfire Node to 0.18.27, and refresh the dependency lockfile.
+- 5cb94f8: Update Pi and other workspace dependencies, including the dependency lockfile.
+- Updated dependencies [d914527]
+- Updated dependencies [b0ff41f]
+- Updated dependencies [b40c95a]
+- Updated dependencies [a0dd83e]
+- Updated dependencies [5b7a634]
+- Updated dependencies [93b032c]
+- Updated dependencies [2709cfb]
+- Updated dependencies [5cb94f8]
+  - @narumitw/sumire-url-content@0.22.3
+  - @narumitw/sumire-url-tool@0.3.3
+  - @narumitw/sumire-progress@0.1.2
+  - @narumitw/sumire-login@0.1.1
+
 ## 0.4.1
 
 ### Patch Changes
