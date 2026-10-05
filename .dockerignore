@@ -23,3 +23,11 @@ htmlcov
 .telegramagent
 third_party
 .codex
+.github
+.changeset
+docs
+**/tests
+**/vitest.config.ts
+coverage
+**/coverage
+**/*.tsbuildinfo
