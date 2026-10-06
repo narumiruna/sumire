@@ -74,13 +74,16 @@ function setup(
   options: {
     client?: OAuthLoginClient | null
     adminId?: string
+    whitelist?: string
+    baseUrl?: string
     fail?: Parameters<typeof apiMock>[1]
   } = {},
 ) {
   const settings = loadSettings({
     BOT_TOKEN: "1:test",
-    BOT_WHITELIST: "7,8,-100",
+    BOT_WHITELIST: options.whitelist ?? "7,8,-100",
     BOT_ADMIN_ID: options.adminId ?? "7",
+    OPENAI_BASE_URL: options.baseUrl ?? "https://api.openai.com/v1",
     OPENAI_API_KEY: "fixture-key",
   })
   const bot = new Bot(settings.botToken, { botInfo })
@@ -143,18 +146,59 @@ describe("Telegram OAuth login", () => {
     expect(forwarded).toEqual([])
   })
 
-  it("rejects an unset admin, unavailable login, and secret command arguments", async () => {
-    for (const options of [{ adminId: "" }, { client: null }]) {
-      const { bot, runtime, forwarded, calls } = setup(options)
-      await bot.handleUpdate(message(1, "/login"))
-      expect(runtime.login).not.toHaveBeenCalled()
-      expect(forwarded).toEqual([])
-      if (options.client === null) {
-        expect(
-          calls.some((call) => String(call.payload.text).includes("官方 OPENAI_BASE_URL")),
-        ).toBe(true)
-      }
-    }
+  it("rejects an unset admin without initiating OAuth", async () => {
+    const { bot, runtime, forwarded } = setup({ adminId: "" })
+    await bot.handleUpdate(message(1, "/login"))
+    expect(runtime.login).not.toHaveBeenCalled()
+    expect(forwarded).toEqual([])
+  })
+
+  it.each([
+    {
+      name: "custom endpoint with an allowlisted admin",
+      options: { baseUrl: "https://proxy.example.test/v1?key=fixture-secret" },
+      expected: ["自訂 OPENAI_BASE_URL", "https://api.openai.com/v1", "OPENAI_API_KEY"],
+      unexpected: ["BOT_WHITELIST", "登入服務未啟用"],
+    },
+    {
+      name: "admin missing from the explicit whitelist",
+      options: { whitelist: "8,-100" },
+      expected: ["執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID", "群組 ID 不算"],
+      unexpected: ["OPENAI_BASE_URL", "登入服務未啟用"],
+    },
+    {
+      name: "custom endpoint and missing allowlisted admin",
+      options: { baseUrl: "https://proxy.example.test/v1", whitelist: "8,-100" },
+      expected: ["自訂 OPENAI_BASE_URL", "執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID"],
+      unexpected: ["登入服務未啟用"],
+    },
+    {
+      name: "eligible settings with no login client",
+      options: {},
+      expected: ["設定符合 /login 條件", "登入服務未啟用", "部署版本", "啟動紀錄"],
+      unexpected: ["請使用官方", "明確加入白名單", "重新部署"],
+    },
+    {
+      name: "eligible settings with duplicate IDs, whitespace, and a trailing endpoint slash",
+      options: { whitelist: "7, -100,7", baseUrl: "https://api.openai.com/v1/" },
+      expected: ["設定符合 /login 條件", "登入服務未啟用"],
+      unexpected: ["自訂 OPENAI_BASE_URL", "明確加入白名單", "重新部署"],
+    },
+  ])("explains unavailable login: $name", async ({ options, expected, unexpected }) => {
+    const { bot, runtime, forwarded, calls } = setup({ ...options, client: null })
+    await bot.handleUpdate(message(1, "/login"))
+    expect(runtime.login).not.toHaveBeenCalled()
+    expect(forwarded).toEqual([])
+    const replies = calls.filter((call) => call.method === "sendMessage")
+    expect(replies).toHaveLength(1)
+    const text = String(replies[0]?.payload.text)
+    for (const value of expected) expect(text).toContain(value)
+    for (const value of unexpected) expect(text).not.toContain(value)
+    expect(text).not.toContain("proxy.example.test")
+    expect(text).not.toContain("fixture-secret")
+  })
+
+  it("rejects secret command arguments without echoing them", async () => {
     const { bot, runtime, calls } = setup()
     await bot.handleUpdate(message(1, "/login fixture-secret"))
     expect(runtime.login).not.toHaveBeenCalled()
