@@ -174,9 +174,7 @@ export function createTelegramAgentBot(
         "/reset — 清除目前 chat 的 Pi session",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
-        ...(settings.openaiAuthMode === "oauth"
-          ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"]
-          : []),
+        ...(dependencies.login ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"] : []),
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),

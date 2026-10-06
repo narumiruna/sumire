@@ -1,23 +1,19 @@
 import path from "node:path"
 
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai"
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent"
 import { createOAuthLogin } from "@narumitw/sumire-login"
 
 import type { Settings } from "../config/settings.js"
 
 export async function createBotModelRuntime(settings: Settings, agentDir: string) {
-  const oauth = settings.openaiAuthMode === "oauth"
+  const nativeOpenai = settings.openaiBaseUrl === "https://api.openai.com/v1"
   const apiKey = settings.openaiApiKey
-  if (oauth) {
-    if (settings.botAdminId === undefined || !settings.botWhitelist.has(settings.botAdminId)) {
-      throw new Error("OAuth mode requires BOT_ADMIN_ID explicitly listed in BOT_WHITELIST")
-    }
-    if (settings.openaiBaseUrl !== "https://api.openai.com/v1") {
-      throw new Error("OAuth mode requires OPENAI_BASE_URL=https://api.openai.com/v1")
-    }
-  } else if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required in api_key mode")
+  const canLogin =
+    nativeOpenai &&
+    settings.botAdminId !== undefined &&
+    settings.botWhitelist.has(settings.botAdminId)
+  if (!nativeOpenai && !apiKey) {
+    throw new Error("OPENAI_API_KEY is required for a custom OPENAI_BASE_URL")
   }
 
   const modelRuntime = await ModelRuntime.create({
@@ -26,11 +22,10 @@ export async function createBotModelRuntime(settings: Settings, agentDir: string
     modelsStorePath: path.join(agentDir, "models-store.json"),
     refreshOnCreate: false,
   })
-  const providerId = oauth ? "openai" : "telegramagent-openai"
-  if (oauth) {
-    const provider = openaiProvider()
-    // Keep Pi's native OAuth and Responses implementation, without API-key fallback.
-    modelRuntime.registerNativeProvider({ ...provider, auth: { oauth: provider.auth.oauth } })
+  const providerId = nativeOpenai ? "openai" : "telegramagent-openai"
+  if (nativeOpenai) {
+    // A configured key preserves Pi's stored-credential priority; a runtime key overrides OAuth.
+    if (apiKey) modelRuntime.registerProvider(providerId, { apiKey })
   } else {
     modelRuntime.registerProvider(providerId, {
       name: "telegramagent OpenAI-compatible provider",
@@ -58,10 +53,16 @@ export async function createBotModelRuntime(settings: Settings, agentDir: string
   const model = modelRuntime.getModel(providerId, settings.openaiModel)
   if (!model) throw new Error(`Pi model not found: ${providerId}/${settings.openaiModel}`)
 
+  if (nativeOpenai && !canLogin && !(await modelRuntime.checkAuth(providerId))) {
+    throw new Error(
+      "OpenAI requires OPENAI_API_KEY or BOT_ADMIN_ID explicitly listed in BOT_WHITELIST for /login",
+    )
+  }
+
   const authSettings = SettingsManager.create(settings.botWorkdir, agentDir, {
     projectTrusted: false,
   })
-  const login = oauth
+  const login = canLogin
     ? createOAuthLogin(modelRuntime, {
         getDeviceId: () => authSettings.getOrCreateDeviceId(),
       })

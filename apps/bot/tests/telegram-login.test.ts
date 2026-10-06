@@ -81,7 +81,7 @@ function setup(
     BOT_TOKEN: "1:test",
     BOT_WHITELIST: "7,8,-100",
     BOT_ADMIN_ID: options.adminId ?? "7",
-    OPENAI_AUTH_MODE: "oauth",
+    OPENAI_API_KEY: "fixture-key",
   })
   const bot = new Bot(settings.botToken, { botInfo })
   const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -143,12 +143,17 @@ describe("Telegram OAuth login", () => {
     expect(forwarded).toEqual([])
   })
 
-  it("rejects an unset admin, disabled OAuth, and secret command arguments", async () => {
+  it("rejects an unset admin, unavailable login, and secret command arguments", async () => {
     for (const options of [{ adminId: "" }, { client: null }]) {
-      const { bot, runtime, forwarded } = setup(options)
+      const { bot, runtime, forwarded, calls } = setup(options)
       await bot.handleUpdate(message(1, "/login"))
       expect(runtime.login).not.toHaveBeenCalled()
       expect(forwarded).toEqual([])
+      if (options.client === null) {
+        expect(
+          calls.some((call) => String(call.payload.text).includes("官方 OPENAI_BASE_URL")),
+        ).toBe(true)
+      }
     }
     const { bot, runtime, calls } = setup()
     await bot.handleUpdate(message(1, "/login fixture-secret"))
@@ -333,12 +338,33 @@ describe("Telegram OAuth login", () => {
     expect(calls).toHaveLength(count)
   })
 
+  it.each([true, false])(
+    "shows /login in help only when login is available: %s",
+    async (enabled) => {
+      const settings = loadSettings({
+        BOT_TOKEN: "1:test",
+        BOT_WHITELIST: "7",
+        BOT_ADMIN_ID: "7",
+        OPENAI_API_KEY: "fixture-key",
+      })
+      const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const app = createTelegramAgentBot(settings, {} as ChatSessionRegistry, logger, {
+        botInfo,
+        ...(enabled ? { login: loginClient().client } : {}),
+      })
+      const calls = apiMock(app.bot)
+      await app.bot.handleUpdate(message(1, "/help"))
+      expect(calls.some((call) => String(call.payload.text).includes("/login"))).toBe(enabled)
+      await app.stop()
+    },
+  )
+
   it("is wired before ordinary bot submissions and never uses Morsel", async () => {
     const settings = loadSettings({
       BOT_TOKEN: "1:test",
       BOT_WHITELIST: "7",
       BOT_ADMIN_ID: "7",
-      OPENAI_AUTH_MODE: "oauth",
+      OPENAI_API_KEY: "fixture-key",
     })
     const submit = vi.fn()
     const appendPassiveContext = vi.fn()

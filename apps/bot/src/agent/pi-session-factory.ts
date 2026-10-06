@@ -87,8 +87,8 @@ export async function createPiSessionFactory(
   return {
     login,
     async create(chatId: number) {
-      if (login && (await modelRuntime.checkAuth("openai"))?.type !== "oauth") {
-        throw new Error("尚未登入 OpenAI，請管理員在私聊使用 /login。")
+      if (!(await modelRuntime.checkAuth(model.provider))) {
+        throw new Error("尚未設定 OpenAI 驗證，請設定 OPENAI_API_KEY 或請管理員在私聊使用 /login。")
       }
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.botWorkdir,
