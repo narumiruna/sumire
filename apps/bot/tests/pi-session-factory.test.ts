@@ -5,7 +5,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { loadSettings } from "../src/config/settings.js"
@@ -34,12 +34,14 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
+  beforeEach(() => vi.stubEnv("OPENAI_API_KEY", ""))
+  afterEach(() => vi.unstubAllEnvs())
+
   it("bootstraps OAuth without a key and shares stored native auth across chat sessions", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-oauth-"))
     await installInstructions(root)
     const settings = loadSettings(
       {
-        OPENAI_AUTH_MODE: "oauth",
         BOT_WHITELIST: "7",
         BOT_ADMIN_ID: "7",
       },
@@ -72,6 +74,57 @@ describe("createPiSessionFactory", () => {
     } finally {
       first.dispose()
       second.dispose()
+    }
+  })
+
+  it("uses a key before login and switches existing sessions to shared OAuth after login", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-auth-"))
+    await installInstructions(root)
+    const settings = loadSettings(
+      { BOT_WHITELIST: "7", BOT_ADMIN_ID: "7", OPENAI_API_KEY: "fixture-key" },
+      root,
+    )
+    const factory = await createPiSessionFactory(settings, logger)
+    const first = await factory.create(7)
+    try {
+      const model = first.model
+      if (!model) throw new Error("Missing OpenAI model")
+      expect(factory.login).toBeDefined()
+      expect(model).toMatchObject({ provider: "openai", api: "openai-responses" })
+      expect(await first.modelRuntime.getAuth(model)).toMatchObject({
+        auth: { apiKey: "fixture-key" },
+      })
+      const provider = first.modelRuntime.getProvider("openai")
+      if (!provider?.auth.oauth || !factory.login) throw new Error("Missing OAuth provider")
+      first.modelRuntime.registerNativeProvider({
+        ...provider,
+        auth: {
+          ...provider.auth,
+          oauth: {
+            ...provider.auth.oauth,
+            login: async () => ({
+              type: "oauth",
+              access: "fixture-access",
+              refresh: "fixture-refresh",
+              expires: Date.now() + 3_600_000,
+            }),
+          },
+        },
+      })
+      await factory.login.login({ prompt: vi.fn(), notify: vi.fn() })
+      expect(await first.modelRuntime.getAuth(model)).toMatchObject({
+        auth: { apiKey: "fixture-access" },
+        source: "OAuth",
+      })
+      const second = await factory.create(8)
+      try {
+        expect(second.modelRuntime).toBe(first.modelRuntime)
+        expect(await second.modelRuntime.checkAuth("openai")).toMatchObject({ type: "oauth" })
+      } finally {
+        second.dispose()
+      }
+    } finally {
+      first.dispose()
     }
   })
 

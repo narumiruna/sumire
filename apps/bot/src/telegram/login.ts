@@ -91,7 +91,10 @@ export function registerTelegramLogin(
       return
     }
     if (!login) {
-      await safeReply(context, "請先設定 OPENAI_AUTH_MODE=oauth 並重新啟動 bot。")
+      await safeReply(
+        context,
+        "此設定無法使用 /login。請使用官方 OPENAI_BASE_URL，並將 BOT_ADMIN_ID 明確列入 BOT_WHITELIST 後重新啟動 bot。",
+      )
       return
     }
     if (context.match.trim()) {
