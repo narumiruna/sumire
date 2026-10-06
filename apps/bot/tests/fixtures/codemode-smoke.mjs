@@ -135,7 +135,7 @@ text(results); store('marker', 'persisted');`,
   assert.equal(result.isError, false)
   assert.ok(JSON.stringify(result.content).includes("native-worker-ok"))
   assert.ok(JSON.stringify(result.content).includes("native-bash-ok"))
-  session.dispose()
+  await session.dispose()
   session = await factory.create(123)
   assert.deepEqual((await call("codemode", { code: "return load('marker')" })).content.at(-1), {
     type: "text",
@@ -154,7 +154,7 @@ text(results); store('marker', 'persisted');`,
 } finally {
   if (session) {
     await session.abort()
-    session.dispose()
+    await session.dispose()
   }
   await new Promise((resolve) => server.close(resolve))
   await rm(root, { recursive: true, force: true })

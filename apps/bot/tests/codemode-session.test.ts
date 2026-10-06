@@ -1,9 +1,10 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent"
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import { reconstructProgress } from "@narumitw/sumire-progress"
 import { afterEach, describe, expect, it } from "vitest"
+import type { DurableSession } from "../src/agent/durable-session.js"
 
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
@@ -40,7 +41,6 @@ describe("codemode through Bot Pi sessions", () => {
     expect(toolResultText(result)).toContain('"image":false')
     expect(toolResultText(result)).toContain('"load_public_url"')
     for (const name of ["update_progress", "read_image"]) {
-      expect(session.getAllTools().find((tool) => tool.name === name)?.exposure).toBe("model-only")
       expect(fixture.requests[0]?.tools.some((tool) => tool.function.name === name)).toBe(true)
     }
     for (const name of ["read", "bash", "edit", "write"]) {
@@ -52,7 +52,7 @@ describe("codemode through Bot Pi sessions", () => {
       type: "function",
       function: { parameters: { properties: { code: { type: "string" } } } },
     })
-    expect(session.getToolDefinition("tool_search")).toBeUndefined()
+    expect(session.getActiveToolNames()).not.toContain("tool_search")
     expect(
       (await fixture.script(session, "await tools.update_progress({ steps: [] })")).isError,
     ).toBe(true)
@@ -106,7 +106,7 @@ text(results.map(result => result.status === 'fulfilled' ? { status: result.stat
     expect(
       ends.filter((event) => event.type === "tool_execution_end" && event.isError),
     ).toHaveLength(5)
-    expect(result.nestedCalls).toBeDefined()
+    expect(result.details).toMatchObject({ calls: expect.any(Array) })
     expect(await readFile(path.join(fixture.root, "note.txt"), "utf8")).toBe("after")
     expect(fixture.requests).toHaveLength(2) // unsafe URLs never reach this server
   })
@@ -220,12 +220,11 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
       type: "text",
       text: "1",
     })
-    resumed.dispose()
+    await resumed.dispose()
     const disabledFactory = await fixture.createFactory(false)
     const disabled = await disabledFactory.create(123)
     try {
       expect(disabled.getActiveToolNames()).not.toContain("codemode")
-      expect(disabled.getToolDefinition("codemode")).toBeUndefined()
       expect((await fixture.call(disabled, "update_progress", { steps: [] })).isError).toBe(false)
       expect(
         (
@@ -236,7 +235,7 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
         ).isError,
       ).toBe(false)
     } finally {
-      disabled.dispose()
+      await disabled.dispose()
     }
   })
 
@@ -248,7 +247,7 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
       const bashStarted = new Promise<void>((resolve) => {
         started = resolve
       })
-      const createdSessions: AgentSession[] = []
+      const createdSessions: DurableSession[] = []
       const registry = new ChatSessionRegistry(
         async (chatId) => {
           const session = await fixture.createSession(chatId)

@@ -35,6 +35,7 @@ export async function startApplication(): Promise<void> {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
       login: piFactory.login,
+      recoverChats: () => piFactory.listChats(),
     })
 
     let stopping = false
@@ -42,7 +43,7 @@ export async function startApplication(): Promise<void> {
       if (stopping) return
       stopping = true
       logger.info(`Received ${signal}; stopping Telegram bot`)
-      await telegram.stop()
+      await Promise.all([telegram.stop(), sessions.dispose()])
     }
     process.once("SIGINT", () => void stop("SIGINT"))
     process.once("SIGTERM", () => void stop("SIGTERM"))

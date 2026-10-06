@@ -4,15 +4,18 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent"
-import { createUrlExtension } from "@narumitw/sumire-url-tool"
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import { SessionManager } from "@earendil-works/pi-coding-agent"
+import { createPublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { DurableSession } from "../src/agent/durable-session.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
+import { appendMessage, currentConversation } from "./helpers/durable-session.js"
 
 vi.mock("@narumitw/sumire-url-tool", { spy: true })
 
@@ -80,8 +83,8 @@ describe("createPiSessionFactory", () => {
       expect(first.modelRuntime).toBe(second.modelRuntime)
       expect(first.messages).toEqual([])
     } finally {
-      first.dispose()
-      second.dispose()
+      await first.dispose()
+      await second.dispose()
     }
   })
 
@@ -175,10 +178,10 @@ describe("createPiSessionFactory", () => {
         expect(second.modelRuntime).toBe(first.modelRuntime)
         expect(await second.modelRuntime.checkAuth("openai")).toMatchObject({ type: "oauth" })
       } finally {
-        second.dispose()
+        await second.dispose()
       }
     } finally {
-      first.dispose()
+      await first.dispose()
     }
   })
 
@@ -194,16 +197,16 @@ describe("createPiSessionFactory", () => {
       .find((model) => model.reasoning && model.id !== defaultModel?.id)
     if (!alternative) throw new Error("Missing alternative reasoning model")
     try {
-      first.sessionManager.appendMessage({
+      await appendMessage(first, {
         role: "user",
         content: "fixture conversation",
         timestamp: Date.now(),
       })
       await first.setModel(alternative)
-      first.setThinkingLevel("high")
+      await first.setThinkingLevel("high")
       expect(first.thinkingLevel).toBe("high")
     } finally {
-      first.dispose()
+      await first.dispose()
     }
     const restartedFactory = await createPiSessionFactory(settings, logger)
     const resumed = await restartedFactory.create(7)
@@ -218,8 +221,8 @@ describe("createPiSessionFactory", () => {
       expect(other.thinkingLevel).toBe("off")
       expect(other.messages).toEqual([])
     } finally {
-      resumed.dispose()
-      other.dispose()
+      await resumed.dispose()
+      await other.dispose()
     }
     const registry = new ChatSessionRegistry(
       asSessionCreator(restartedFactory),
@@ -244,21 +247,24 @@ describe("createPiSessionFactory", () => {
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     try {
-      first.sessionManager.appendMessage({
+      await appendMessage(first, {
         role: "user",
         content: "fixture conversation",
         timestamp: Date.now(),
       })
-      first.sessionManager.appendModelChange("unavailable", "missing")
+      await (await currentConversation(first)).configure(
+        { model: { provider: "unavailable", modelId: "missing" } },
+        context,
+      )
     } finally {
-      first.dispose()
+      await first.dispose()
     }
     const resumed = await factory.create(7)
     try {
       expect(resumed.model).toMatchObject({ provider: "openai", id: "gpt-5.6-luna" })
       expect(resumed.messages).toContainEqual(expect.objectContaining({ role: "user" }))
     } finally {
-      resumed.dispose()
+      await resumed.dispose()
     }
   })
 
@@ -270,48 +276,30 @@ describe("createPiSessionFactory", () => {
     )
   })
 
-  it.each(["rejection", "reported event"] as const)(
-    "disposes an undelivered session on initialization %s",
-    async (failure) => {
-      const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-startup-"))
-      await installInstructions(root)
-      const factory = await createPiSessionFactory(
-        loadSettings({ BOT_WHITELIST: "123" }, root),
-        logger,
+  it("closes storage after initialization fails and allows a clean reopen", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-durable-startup-"))
+    await installInstructions(root)
+    const factory = await createPiSessionFactory(
+      loadSettings({ OPENAI_API_KEY: "test-key", BOT_WHITELIST: "123" }, root),
+      logger,
+    )
+    const open = vi
+      .spyOn(DurableSession, "open")
+      .mockRejectedValueOnce(new Error("startup fixture failed"))
+    try {
+      await expect(factory.create(123)).rejects.toThrow("startup fixture failed")
+      expect(logger.error).toHaveBeenCalledWith(
+        "Durable session initialization failed for chat_id=123",
+        expect.any(Error),
       )
-      const dispose = vi.spyOn(AgentSession.prototype, "dispose")
-      const bind = vi.spyOn(AgentSession.prototype, "bindExtensions")
-      if (failure === "rejection") bind.mockRejectedValueOnce(new Error("startup fixture failed"))
-      else
-        bind.mockImplementationOnce(async (bindings) => {
-          bindings.onError?.({
-            extensionPath: "fixture",
-            event: "session_start",
-            error: "startup fixture failed",
-          })
-        })
-      try {
-        await expect(factory.create(123)).rejects.toThrow(
-          /initialization failed|startup fixture failed/u,
-        )
-        expect(dispose).toHaveBeenCalledOnce()
-        expect(logger.error).toHaveBeenCalledWith(
-          "Pi session initialization failed for chat_id=123",
-          expect.any(Error),
-        )
-        if (failure === "reported event")
-          expect(logger.warn).toHaveBeenCalledWith(
-            "Pi extension error for chat_id=123 event=session_start",
-            expect.objectContaining({ error: "startup fixture failed" }),
-          )
-      } finally {
-        bind.mockRestore()
-        dispose.mockRestore()
-      }
-    },
-  )
+      const reopened = await factory.create(123)
+      await reopened.dispose()
+    } finally {
+      open.mockRestore()
+    }
+  })
 
-  it("creates isolated persistent Pi AgentSessions with native tools by default", async () => {
+  it("creates isolated persistent Durable sessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
     const settings = loadSettings(
@@ -335,7 +323,7 @@ describe("createPiSessionFactory", () => {
       },
     }
     const factory = await createPiSessionFactory(settings, tracedLogger)
-    expect(createUrlExtension).toHaveBeenLastCalledWith(
+    expect(createPublicUrlLoader).toHaveBeenLastCalledWith(
       expect.objectContaining({ firecrawlFallback: true }),
     )
     const session = await factory.create(123)
@@ -347,17 +335,19 @@ describe("createPiSessionFactory", () => {
         id: "gpt-5.6-luna",
         api: "openai-responses",
       })
-      expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
+      expect(session.sessionFile).toContain(
+        path.join(".telegramagent", "sessions", "123", "durable"),
+      )
       expect(session.getActiveToolNames()).toEqual([
         "read",
         "bash",
         "edit",
         "write",
-        "update_progress",
         "load_public_url",
+        "update_progress",
       ])
-      expect(session.getToolDefinition("codemode")).toBeUndefined()
-      const urlTool = session.getToolDefinition("load_public_url")
+      expect(session.getActiveToolNames()).not.toContain("codemode")
+      const urlTool = session.nativeTools.find((tool) => tool.name === "load_public_url")
       expect(urlTool).toBeDefined()
       if (!urlTool) throw new Error("load_public_url was not registered")
       expect(
@@ -390,8 +380,11 @@ describe("createPiSessionFactory", () => {
       ])
       expect(JSON.stringify(spans)).not.toContain("http://8.8.8.8/")
       expect(
-        session.getAllTools().find((tool) => tool.name === "load_public_url")?.sourceInfo.source,
-      ).not.toBe("sdk")
+        session.registry
+          .snapshot()
+          .tools()
+          .find(({ tool }) => tool.name === "load_public_url")?.tool.replay,
+      ).toBe("unsafe")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(
@@ -400,13 +393,13 @@ describe("createPiSessionFactory", () => {
       expect(session.systemPrompt).toContain("虛構 AI companion")
       expect(session.systemPrompt).not.toContain("{{SOUL_SECTION}}")
       expect(otherSession.sessionFile).toContain(
-        path.join(".telegramagent", "sessions", "456", "pi"),
+        path.join(".telegramagent", "sessions", "456", "durable"),
       )
       expect(otherSession.getActiveToolNames()).toEqual(session.getActiveToolNames())
       expect(otherSession.sessionFile).not.toBe(session.sessionFile)
     } finally {
-      session.dispose()
-      otherSession.dispose()
+      await session.dispose()
+      await otherSession.dispose()
     }
   })
 
@@ -432,7 +425,7 @@ describe("createPiSessionFactory", () => {
         const enabled = channelEnabled && imageEnabled
         expect(session.getActiveToolNames().includes("read_image")).toBe(enabled)
         if (enabled) {
-          const tool = session.getToolDefinition("read_image")
+          const tool = session.nativeTools.find((tool) => tool.name === "read_image")
           expect(tool).toBeDefined()
           const result = await tool?.execute("list", {}, undefined, undefined, undefined as never)
           expect(result?.content[0]).toMatchObject({
@@ -441,7 +434,7 @@ describe("createPiSessionFactory", () => {
           })
         }
       } finally {
-        session.dispose()
+        await session.dispose()
       }
     }
   })
@@ -469,18 +462,16 @@ describe("createPiSessionFactory", () => {
         "bash",
         "edit",
         "write",
-        "update_progress",
         "load_public_url",
+        "update_progress",
       ])
       for (const name of ["read", "bash", "edit", "write"]) {
-        expect(session.getAllTools().find((tool) => tool.name === name)?.sourceInfo.source).toBe(
-          "builtin",
-        )
+        expect(session.nativeTools.find((tool) => tool.name === name)).toBeDefined()
       }
-      const write = session.getToolDefinition("write")
-      const edit = session.getToolDefinition("edit")
-      const read = session.getToolDefinition("read")
-      const bash = session.getToolDefinition("bash")
+      const write = session.nativeTools.find((tool) => tool.name === "write")
+      const edit = session.nativeTools.find((tool) => tool.name === "edit")
+      const read = session.nativeTools.find((tool) => tool.name === "read")
+      const bash = session.nativeTools.find((tool) => tool.name === "bash")
       if (!write || !edit || !read || !bash) throw new Error("Pi coding tools were not registered")
 
       await write.execute(
@@ -523,7 +514,7 @@ describe("createPiSessionFactory", () => {
         expect.stringContaining("Pi skill diagnostic for chat_id=123"),
       )
     } finally {
-      session.dispose()
+      await session.dispose()
     }
   })
 
@@ -563,7 +554,7 @@ describe("createPiSessionFactory", () => {
       expect(session.sessionManager.getSessionFile()).not.toBe(oldFile)
       expect(oldFile && existsSync(oldFile)).toBe(true)
     } finally {
-      session.dispose()
+      await session.dispose()
     }
   })
 })

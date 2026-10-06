@@ -6,7 +6,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 
 | Path | Purpose |
 | --- | --- |
-| [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi and used by CI/CD. |
+| [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension, with a Telegram admin bridge. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
 | [`packages/url-content`](packages/url-content/README.md) | URL-content CLI and library with a bundled Pi skill. |
