@@ -45,6 +45,7 @@ import {
 } from "./messages.js"
 import { registerTelegramModelCommands } from "./model-commands.js"
 import { runTelegramPolling } from "./polling.js"
+import { recoverTelegramResponses } from "./recovery.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
 
 export interface TelegramAgentBot {
@@ -55,6 +56,7 @@ export interface TelegramAgentBot {
 
 interface TelegramBotDependencies {
   login?: OAuthLoginClient
+  recoverChats?: () => Promise<number[]>
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
   documentConverter?: DocumentConverter
@@ -97,6 +99,7 @@ export function createTelegramAgentBot(
     { generation: number; reason: "reset" | "cancel" }
   >()
   let runner: RunnerHandle | undefined
+  let stopping = false
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
   const articleUrlLoader =
     dependencies.articleUrlLoader ??
@@ -797,6 +800,7 @@ export function createTelegramAgentBot(
         ? "此請求已取消。"
         : "此請求已因重設對話而取消。"
     const cancelStatus = async () => {
+      if (stopping) return
       await progressStatus.close()
       const text = cancellationText()
       if (status) {
@@ -859,6 +863,15 @@ export function createTelegramAgentBot(
         async (span) => {
           const submission = await sessions.submit(chatId, prompt, {
             images,
+            ...(sourceMessageId
+              ? {
+                  delivery: {
+                    sourceMessageId,
+                    ...(status ? { statusMessageId: status.message_id } : {}),
+                    mode: finalDeliveryMode,
+                  },
+                }
+              : {}),
             ...(submissionIntent ? { intent: submissionIntent } : {}),
             ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
             ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
@@ -1032,6 +1045,7 @@ export function createTelegramAgentBot(
         )
       }
     } catch (error) {
+      if (stopping) return
       if (!isCurrent()) {
         await cancelStatus()
         return
@@ -1082,7 +1096,7 @@ export function createTelegramAgentBot(
     }
 
     function isCurrent(): boolean {
-      return (submissionGenerations.get(chatId)?.generation ?? 0) === generation
+      return !stopping && (submissionGenerations.get(chatId)?.generation ?? 0) === generation
     }
   }
 
@@ -1145,6 +1159,8 @@ export function createTelegramAgentBot(
         logger.warn("Could not register Telegram command menu", error)
       }
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
+      if (dependencies.recoverChats)
+        await recoverTelegramResponses(bot, sessions, delivery, await dependencies.recoverChats())
       runner = runTelegramPolling(
         bot,
         logger,
@@ -1153,6 +1169,7 @@ export function createTelegramAgentBot(
       await runner.task()
     },
     async stop() {
+      stopping = true
       await loginBridge.stop()
       if (!runner) return
       await runner.stop()

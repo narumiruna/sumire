@@ -1448,6 +1448,7 @@ describe("Telegram bot update routing", () => {
 
     expect(sessions.submit).toHaveBeenCalledWith(7, "你好", {
       images: [],
+      delivery: { mode: "default", sourceMessageId: 1, statusMessageId: 100 },
       onAccepted: expect.any(Function),
       onActivity: expect.any(Function),
       onProgress: expect.any(Function),

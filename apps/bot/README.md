@@ -4,7 +4,8 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 
 ## Runtime stack
 
-- `@earendil-works/pi-coding-agent`: complete per-chat `AgentSession` lifecycle, persistence, retry, compaction, steering, follow-up, tool loop, and Agent Skills.
+- `@earendil-works/pi-durable` and `@earendil-works/chord`: persistent conversations, generation/tool tasks, retries, compaction, steering, follow-up, forks, cancellation, and recovery.
+- `@earendil-works/pi-coding-agent`: shared ModelRuntime/OAuth, Agent Skills discovery, image-capable coding tools, and the native codemode sandbox; the bot does not create an AgentSession.
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
 - `@narumitw/sumire-login`: repository-owned Pi package for UI-neutral OAuth login.
@@ -29,13 +30,13 @@ Available now:
 - admin-only private `/login` for a shared OpenAI subscription account, with credentials resolved by Pi
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes
-- isolated durable Pi JSONL session per Telegram chat
+- isolated Pi Durable SQLite storage per Telegram chat, with restart recovery
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - Pi's native `read`, `bash`, `edit`, and `write` coding tools in every chat session
 - opt-in Pi codemode for JavaScript tool orchestration with a host-owned deadline
 - `instructions/SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
 - bounded Telegram image, document, and locally transcribed voice/audio input
-- native Pi reply-tree restoration when users reply to earlier completed bot output
+- durable conversation forks when users reply to earlier completed bot output
 - public HTTP(S)-only URL loading as a Pi tool, with bounded built-in extraction and source-aware URL content fallback
 - Morsel rich-rendering tool and mandatory routing for messages over 1000 characters
 - live multi-step progress as the first Telegram reply
@@ -123,14 +124,24 @@ npm run check:write
 
 ## Session storage
 
-Each chat uses a Pi-native session directory plus a derived Telegram reply index:
+Every chat starts with Pi Durable. Legacy AgentSession JSONL files are neither imported nor continued; upgrading starts a fresh conversation without deleting those files.
 
 ```text
-.telegramagent/sessions/<chat-id>/pi/*.jsonl
+.telegramagent/sessions/<chat-id>/durable/session.sqlite
 .telegramagent/sessions/<chat-id>/telegram-reply-index.json
 ```
 
-Pi owns the agent session lifecycle, transcript, and branches. Compose keeps this state in the separate `state` volume under `/app/.telegramagent` even though Pi's tool working directory is `/workdir`. Sessions created with the former `/app` working directory are retained but do not automatically resume after changing Pi's cwd to `/workdir`; old reply-tree checkpoints are ignored when their session ID differs. Do not use `/reset` to preserve old chat data, because `/reset` removes both old and new session files for that chat. After a completed answer is delivered, the bounded index records only Telegram message IDs and the corresponding Pi session/entry IDs. Replying to a delivered message, including a Morsel link or a legacy continuation chunk, restores that native checkpoint with no abandoned-branch summary. Unknown, stale, evicted, or disabled mappings continue from the latest leaf and preserve ordinary quoted reply context. `/reset` removes both the chat's Pi data and reply index. Unaddressed group messages are added as labeled, context-only Pi messages before the next addressed request (or after a currently streaming turn ends); they must not be injected after the next user's message as a separate question. When a reply restores an older branch, only the passive messages after the latest user/model message on the previous branch are copied ahead of the new prompt; earlier background and abandoned user turns are not copied. Group context is untrusted and never authorizes tools.
+The Harness owns generation, tool scheduling, retries, compaction, and storage. The bot stores a stable chat-session identity, the selected conversation fork, branch-aware progress/codemode documents, and pending response delivery metadata. SQLite uses WAL mode with `synchronous=NORMAL`: process crashes are recoverable, but the newest commits may be lost on power or host failure. Each database belongs to one bot process; do not run multiple replicas against the same state directory. Compose persists it in the existing `state` volume under `/app/.telegramagent`; tools still work in `/workdir`.
+
+On startup, the bot reopens durable chat databases and resumes admitted work. Pending primary responses retain their source message ID, status message ID, and delivery mode, so a recovered answer replaces the saved status through the normal bounded Telegram/Morsel delivery path. Successfully delivered responses are acknowledged even when reply-tree routing is disabled. Failed deliveries stay pending for the next restart. Missing model credentials defer recovery; after provisioning credentials, restart to retry automatic delivery. Changing `BOT_WHITELIST` cancels all previously pending work before any task resumes, even when the change only adds an ID.
+
+Graceful shutdown closes storage without withdrawing admitted work. `/cancel` explicitly withdraws inputs and aborts work; `/reset` additionally deletes the chat's durable storage, legacy Pi directory, and reply index. Interrupted mutations, Bash, URL requests, Morsel publication, codemode scripts, and nested codemode calls are **not replayed automatically**: Pi receives an interrupted-tool error and decides how to continue. Local reads and progress updates are replay-safe. Side effects are not rolled back; a model may choose to issue a new call, so inspect effects before retrying sensitive work.
+
+Telegram sends and local commits are not atomic. Recovery prefers editing the same saved status, but a crash after sending a replacement message or publishing to Morsel and before acknowledgement can duplicate delivery/publication. Recovery does not reconstruct the old live progress editor or preserve its retained-progress layout; the committed progress state remains available to the model. Media download, document conversion, audio transcription, and article URL preloading are not durable until their prepared input is admitted.
+
+After delivery, the bounded reply index maps Telegram message IDs to the durable session/entry checkpoint. Replying to an earlier answer forks its source conversation at that entry and persists the new active fork, without an abandoned-branch summary. Unknown, legacy, evicted, or disabled mappings continue from the current conversation and retain ordinary quoted reply context. Unaddressed group messages remain untrusted passive context: they precede the next addressed question, or append after active work becomes idle without steering it. Only recent passive messages are carried to a restored reply branch.
+
+The durable API is experimental and pinned to 1.0.2 alongside the other Pi packages. Upgrade them deliberately and re-run recovery, unsafe-tool, codemode, and fork tests. Before deployment, stop the old bot, back up the state volume, then run `docker compose up -d --build sumire`. To roll back, stop the bot and restore the previous image; keep the state volume and never use `docker compose down -v`. The old runtime cannot read durable databases and will use its legacy transcripts instead. Automated tests cover offline provider requests, process kill/reopen, unsafe-call interruption, and mocked Telegram recovery; live provider/Telegram delivery and the Linux production image still require deployment verification.
 
 ## Model configuration
 
@@ -166,7 +177,7 @@ Pi's existing bounds remain in place: a 256 MB VM heap, output truncation with a
 
 `update_progress` and `read_image` are model-only tools: Pi calls them directly, never from a script. Direct progress snapshots remain reconstructable across compaction, restart, and reply-tree navigation; direct image reads keep their image blocks. For images read through native `read`, use a direct call too: nested tools without an output schema provide only text to the script. `load_public_url` keeps its existing result contract and URL defenses; it returns JSON text, so scripts can use `JSON.parse(await tools.load_public_url({ url }))`. Native `bash` returns a structured result; `read`, `edit`, and `write` return text.
 
-Codemode does not grant new permissions or make `bash` safe for untrusted users. The existing non-empty `BOT_WHITELIST` remains required, and all callable tools retain their validation and execution hooks. Nested URL loads still reject credentials, local/private/link-local/metadata targets and unsafe redirects, with their existing byte, time and output limits. Tool output and fetched content remain untrusted data, not authorization.
+Codemode does not grant new permissions or make `bash` safe for untrusted users. The existing non-empty `BOT_WHITELIST` remains required, and all callable tools retain validation and durable task ownership. Nested URL loads still reject credentials, local/private/link-local/metadata targets and unsafe redirects, with their existing byte, time and output limits. Tool output and fetched content remain untrusted data, not authorization.
 
 To roll back, set `BOT_CODEMODE_ENABLED=false` and restart. Existing sessions can resume without codemode; direct tools, progress and image access remain available. Keep the state volumes and do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification before enabling this opt-in feature.
 
@@ -260,7 +271,7 @@ The agent can optionally request one of the bot's approved exact loaders: `built
 
 Both the tool and `/f` enable a final generic Firecrawl fallback (30-second cap) by default after local loaders fail. Missing `FIRECRAWL_API_KEY` or less than one second remaining skip it. Configuring the key allows this fallback to send the URL, including its query, to Firecrawl and may incur charges; provide it only if the operator accepts that external transfer and cost. Explicit `firecrawl` and existing source-specific plans remain unchanged. Reported final targets are checked, but Firecrawl's remote intermediate redirects cannot be inspected locally. `BOT_URL_ALLOWED_SCHEMES` can restrict loading to HTTP, HTTPS, or both. Every path retains its deadlines, cancellation, and bounded output; source-aware loaders also retain their concurrency admission. Unsafe local, private, link-local, and metadata targets are rejected before the selected loader is invoked.
 
-Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `load_public_url`; the Telegram router does not prefetch URLs or retain pending URL state. For URL-only messages, the system prompt instructs the agent to read the URL in the current message first and not substitute an older or unrelated page. Tool results and follow-up context use Pi's native session lifecycle.
+Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `load_public_url`; the Telegram router does not prefetch URLs or retain pending URL state. For URL-only messages, the system prompt instructs the agent to read the URL in the current message first and not substitute an older or unrelated page. Tool results and follow-up context use Pi Durable's conversation lifecycle.
 
 ## Docker
 
@@ -275,7 +286,7 @@ docker compose down
 
 The image includes Git, OpenSSH client tools (`ssh`, `ssh-keygen`), and CA certificates for HTTPS cloning. The build checks that Git and SSH tools are available to the non-root bot user. No SSH keys or GitHub credentials are bundled: use a dedicated key with only the required repository permissions, register only its `.pub` public key with GitHub, and never share its private key. All allowlisted users with coding-tool access can read or use credentials available to the bot, so keep the allowlist restricted to trusted users.
 
-The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. Docker Compose mounts `workdir:/workdir`, not `/app`, so rebuilt images update the running code without masking it. Before migrating from `workdir:/app`, stop the bot and back up the independent `state` volume; a changed Pi cwd starts new conversations while leaving the old `/app` sessions archived. Do not use `docker compose down -v`: it removes named volumes, including bot state. If the old `workdir` volume was deleted, restore needed files or SSH keys from a separate backup or generate them again. The bot user's home is `/workdir`, so `~/.ssh` is `/workdir/.ssh` and persists in the new volume.
+The image builds the local URL tool and URL content workspace packages, includes the AnyDoc Linux native adapter, and installs Playwright Chromium with its runtime dependencies. Docker Compose mounts `workdir:/workdir`, not `/app`, so rebuilt images update the running code without masking it. Before migrating from `workdir:/app`, stop the bot and back up the independent `state` volume; legacy AgentSession data from `/app` stays archived and is not imported into Pi Durable. Changing `BOT_WORKDIR` changes the tool directory for subsequent durable calls, so cancel pending work before moving it. Do not use `docker compose down -v`: it removes named volumes, including bot state. If the old `workdir` volume was deleted, restore needed files or SSH keys from a separate backup or generate them again. The bot user's home is `/workdir`, so `~/.ssh` is `/workdir/.ssh` and persists in the new volume.
 
 The production image bundles checksum-verified libcurl-impersonate v2.2.2 for Linux amd64 and arm64, matching `impers` 0.1.2. Archive downloads accept HTTPS redirects only, use 15-second connection and 10-minute attempt timeouts, resume partial archives across up to three retries, and fail on checksum mismatches or unsupported architectures. `LIBCURL_PATH` points to `/opt/curl-impersonate/libcurl-impersonate.so`; runtime library downloads remain disabled with `IMPER_DOWNLOAD_LIBCURL=0`. An offline build check runs as the bot user and verifies every built-in Chrome fingerprint. When updating `impers`, review its pinned libcurl release and update both archive URLs and SHA-256 digests together. This does not enable Firecrawl fallback or guarantee that every website accepts automated requests.
 

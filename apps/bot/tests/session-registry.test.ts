@@ -460,10 +460,12 @@ describe("ChatSessionRegistry", () => {
     const concurrentStaleOutcome =
       expect(concurrentStaleSubmission).rejects.toThrow("invalidated by reset")
     await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce())
-    await registry.reset(1)
+    const resetting = registry.reset(1)
     const replacementSubmission = registry.submit(1, "fresh")
-    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(2))
+    expect(createSession).toHaveBeenCalledOnce()
     finishCreation?.(staleSession)
+    await resetting
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(2))
 
     await Promise.all([staleOutcome, concurrentStaleOutcome])
     await expect(replacementSubmission).resolves.toMatchObject({

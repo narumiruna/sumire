@@ -1,122 +1,101 @@
-import { mkdtemp } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import path from "node:path"
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable"
+import { afterEach, describe, expect, it } from "vitest"
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core"
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent"
-import { describe, expect, it } from "vitest"
+import { BotSessionDoc } from "../src/agent/durable-state.js"
+import { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
-function assistant(text: string): Extract<AgentMessage, { role: "assistant" }> {
-  return {
-    role: "assistant",
-    content: [{ type: "text", text }],
-    api: "openai-completions",
-    provider: "test",
-    model: "test",
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
-  }
+const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
+const setup = async () => {
+  const fixture = await createPiFixture()
+  fixtures.push(fixture)
+  return fixture
 }
 
-describe("pinned Pi reply-tree behavior", () => {
-  it("creates sibling branches from terminal assistant checkpoints across reload and compaction", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-tree-"))
-    const manager = SessionManager.create(root, path.join(root, "sessions"))
-    manager.appendMessage({ role: "user", content: "root", timestamp: Date.now() })
-    const rootAssistant = manager.appendMessage(assistant("root answer"))
-    const session = await createNavigationSession(root, manager)
-
-    manager.appendMessage({ role: "user", content: "later", timestamp: Date.now() })
-    manager.appendMessage(assistant("later answer"))
-    await session.navigateTree(rootAssistant, { summarize: false })
-    const branchAUser = manager.appendMessage({
-      role: "user",
-      content: "branch A",
-      timestamp: Date.now(),
-    })
-    const branchAAssistant = manager.appendMessage(assistant("branch A answer"))
-    await session.navigateTree(rootAssistant, { summarize: false })
-    const branchBUser = manager.appendMessage({
-      role: "user",
-      content: "branch B",
-      timestamp: Date.now(),
-    })
-    manager.appendMessage(assistant("branch B answer"))
-
-    expect(manager.getChildren(rootAssistant).map((entry) => entry.id)).toEqual(
-      expect.arrayContaining([branchAUser, branchBUser]),
-    )
-    session.dispose()
-
-    const sessionFile = manager.getSessionFile()
-    expect(sessionFile).toBeDefined()
-    const reloadedManager = SessionManager.open(sessionFile ?? "")
-    const reloaded = await createNavigationSession(root, reloadedManager)
-    await reloaded.navigateTree(branchAAssistant, { summarize: false })
-    const context = reloadedManager.buildSessionContext().messages
-    expect(JSON.stringify(context)).toContain("branch A answer")
-    expect(JSON.stringify(context)).not.toContain("branch B")
-    expect(JSON.stringify(context)).not.toContain("later answer")
-
-    reloadedManager.appendCompaction("root and branch A summary", branchAUser, 100)
-    reloadedManager.appendMessage({ role: "user", content: "after compact", timestamp: Date.now() })
-    const compactedCheckpoint = reloadedManager.appendMessage(assistant("compacted answer"))
-    reloadedManager.appendMessage({
-      role: "user",
-      content: "after checkpoint",
-      timestamp: Date.now(),
-    })
-    reloadedManager.appendMessage(assistant("unrelated later sibling"))
-    await reloaded.navigateTree(compactedCheckpoint, { summarize: false })
-    reloadedManager.appendMessage({
-      role: "user",
-      content: "reply after compact",
-      timestamp: Date.now(),
-    })
-    reloadedManager.appendMessage(assistant("reply answer"))
-
-    const compactedContext = reloadedManager.buildSessionContext().messages
-    expect(JSON.stringify(compactedContext)).toContain("root and branch A summary")
-    expect(JSON.stringify(compactedContext)).toContain("reply after compact")
-    expect(JSON.stringify(compactedContext)).not.toContain("unrelated later sibling")
-    reloaded.dispose()
-  })
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0)) await fixture.cleanup()
 })
 
-async function createNavigationSession(cwd: string, sessionManager: SessionManager) {
-  const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } })
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    agentDir: path.join(cwd, "agent"),
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPrompt: "test",
+describe("durable reply-tree behavior", () => {
+  it("forks sibling conversations and restores an abandoned sibling after storage reopen", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const registry = new ChatSessionRegistry(
+      async () => session,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+      { replyTreeEnabled: true },
+    )
+    const ask = async (question: string, replyToBotMessageId?: number) => {
+      fixture.enqueueAnswer(`${question} answer`)
+      const answer = await registry.submit(123, question, { replyToBotMessageId })
+      if (answer.kind !== "completed") throw new Error("Missing answer")
+      return answer
+    }
+    const first = await ask("root")
+    await registry.recordDelivery(123, first.checkpoint, [100])
+    await ask("abandoned latest")
+    const branchA = await ask("branch A", 100)
+    await registry.recordDelivery(123, branchA.checkpoint, [101])
+    await ask("branch B", 100)
+    expect(JSON.stringify(session.messages)).toContain("branch B answer")
+    expect(JSON.stringify(session.messages)).not.toContain("branch A")
+    expect(JSON.stringify(session.messages)).not.toContain("abandoned latest")
+    await registry.dispose()
+    const reopened = await fixture.createSession()
+    expect(JSON.stringify(reopened.messages)).toContain("branch B answer")
+    const second = new ChatSessionRegistry(
+      async () => reopened,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+      { replyTreeEnabled: true },
+    )
+    try {
+      fixture.enqueueAnswer("restored A")
+      await second.submit(123, "reply after restart", { replyToBotMessageId: 101 })
+      expect(JSON.stringify(reopened.messages)).toContain("branch A answer")
+      expect(JSON.stringify(reopened.messages)).not.toContain("branch B")
+      expect(reopened.sessionId).toBe(session.sessionId)
+    } finally {
+      await second.dispose()
+    }
   })
-  await resourceLoader.reload()
-  return (
-    await createAgentSession({
-      cwd,
-      noTools: "all",
-      resourceLoader,
-      sessionManager,
-      settingsManager,
+
+  it("keeps progress and codemode state when compaction removes their old result entries", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    await fixture.call(session, "update_progress", {
+      steps: [{ text: "persistent progress", status: "pending" }],
     })
-  ).session
-}
+    await fixture.script(session, "store('marker', 'persistent store')")
+    const leaf = session.sessionManager.getLeafId()
+    if (!leaf) throw new Error("Missing checkpoint")
+    const saved = await session.harness.snapshot(BotSessionDoc, context)
+    const conversation = await session.harness.conversation(
+      saved?.activeConversation as ConversationId,
+      context,
+    )
+    if (!conversation) throw new Error("Missing conversation")
+    // Exercise the durable context boundary without paying for a real summarization request.
+    await conversation.commit(
+      (tx) =>
+        tx.appendEntry(CompactionEntry, conversation.id, {
+          head: Number(leaf.split(":")[1]) as EntryId,
+          data: { reason: "manual" },
+          model: [{ role: "user", content: "Earlier work summarized", timestamp: Date.now() }],
+        }),
+      context,
+    )
+    await session.dispose()
+    const reopened = await fixture.createSession()
+    expect(
+      reopened.messages.some(
+        (message) => message.role === "toolResult" && message.toolName === "update_progress",
+      ),
+    ).toBe(false)
+    const result = await fixture.script(reopened, "return load('marker')")
+    expect(toolResultText(result)).toContain("persistent store")
+    expect(JSON.stringify(fixture.requests.at(-2)?.messages)).toContain("persistent progress")
+  })
+})

@@ -5,7 +5,7 @@ export interface SessionModelSettings {
   readonly thinkingLevel: AgentSession["thinkingLevel"]
   readonly modelRuntime: Pick<AgentSession["modelRuntime"], "getAvailable">
   setModel: AgentSession["setModel"]
-  setThinkingLevel: AgentSession["setThinkingLevel"]
+  setThinkingLevel(level: AgentSession["thinkingLevel"]): void | Promise<void>
   getAvailableThinkingLevels: AgentSession["getAvailableThinkingLevels"]
 }
 

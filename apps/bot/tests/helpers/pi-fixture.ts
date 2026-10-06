@@ -5,7 +5,8 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { type AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent"
+import { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import type { DurableSession } from "../../src/agent/durable-session.js"
 
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import { loadSettings } from "../../src/config/settings.js"
@@ -30,13 +31,23 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
   const requests: CompletionRequest[] = []
   const requestErrors: unknown[] = []
   let callId = 0
+  let nextRequestGate: Promise<void> | undefined
+  let disconnectedRequests = 0
   const server = createServer(async (request, response) => {
+    response.on("close", () => {
+      if (!response.writableEnded) disconnectedRequests++
+    })
     try {
       assert.equal(request.url, "/v1/chat/completions")
       let body = ""
       for await (const chunk of request) body += chunk
       const payload = JSON.parse(body) as CompletionRequest
       requests.push(payload)
+
+      const gate = nextRequestGate
+      nextRequestGate = undefined
+      if (gate) await gate
+      if (response.destroyed) return
       const reply = replies.shift()
       assert.ok(reply, "Unexpected model request")
       const id = `fixture-${++callId}`
@@ -91,7 +102,7 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
     botAgentMaxAttempts: 1,
   }
   const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} }
-  const sessions = new Set<AgentSession>()
+  const sessions = new Set<DurableSession>()
   try {
     const modelRuntime = await ModelRuntime.create({
       authPath: path.join(root, "fixture-auth.json"),
@@ -126,7 +137,7 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
       replies.push({ tool, args })
       if (finalAnswer) replies.push({ text: "Offline fixture completed." })
     }
-    const call = async (session: AgentSession, tool: string, args: unknown) => {
+    const call = async (session: DurableSession, tool: string, args: unknown) => {
       enqueue(tool, args)
       await session.prompt("Execute the queued offline fixture.")
       const result = session.messages
@@ -138,10 +149,26 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
     }
     return {
       root,
+      endpoint: `http://127.0.0.1:${address.port}/v1`,
+      modelRuntime,
+      factory,
       settings,
       logger,
       requests,
       enqueue,
+      enqueueAnswer: (text = "Recovered answer.") => {
+        replies.push({ text })
+      },
+      get disconnectedRequests() {
+        return disconnectedRequests
+      },
+      pauseNextRequest() {
+        let release = () => {}
+        nextRequestGate = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return release
+      },
       createSession,
       createFactory: (enabled: boolean) =>
         createPiSessionFactory(
@@ -151,11 +178,11 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
           modelRuntime,
         ),
       call,
-      script: (session: AgentSession, code: string) => call(session, "codemode", { code }),
+      script: (session: DurableSession, code: string) => call(session, "codemode", { code }),
       async cleanup() {
         for (const session of sessions) {
           await session.abort()
-          session.dispose()
+          await session.dispose()
         }
         await new Promise<void>((resolve, reject) =>
           server.close((error) => (error ? reject(error) : resolve())),
