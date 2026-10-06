@@ -32,6 +32,7 @@ Available now:
 - isolated durable Pi JSONL session per Telegram chat
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - Pi's native `read`, `bash`, `edit`, and `write` coding tools in every chat session
+- opt-in Pi codemode for JavaScript tool orchestration with a host-owned deadline
 - `instructions/SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
 - bounded Telegram image, document, and locally transcribed voice/audio input
 - native Pi reply-tree restoration when users reply to earlier completed bot output
@@ -139,6 +140,31 @@ The coding tools run with the bot process's filesystem permissions and Pi's conf
 
 The repository vendors the reviewed `otter-manage-expenses` skill from [narumiruna/otter](https://github.com/narumiruna/otter) and installs `@narumitw/otter-cli` as a pinned runtime dependency. The production image adds its npm binary directory to `PATH`; Compose passes `OTTER_TOKEN` from the ignored root `.env` without copying it into the image.
 
+## Codemode (opt-in)
+
+Set `BOT_CODEMODE_ENABLED=true` in the ignored root `.env` and restart to let Pi use its native `codemode` tool. It is disabled by default. No MCP server is required. Sumire uses `mode: "on"`, so existing tools remain directly available; it does not enable `tool_search`, MCP, classifier models, or image generation. The script's `models` namespace is unavailable.
+
+Scripts run in Pi's QuickJS sandbox with no Node APIs, filesystem, network, or timers. They can reach registered callable tools through `tools.<name>(args)`, use `Promise.allSettled()` for independent calls, and filter results before returning them to the model. Only output explicitly returned or emitted by the script reaches the model; nested results are not independent transcript messages. Do not run dependent writes or publication operations in parallel. `store()` holds small JSON values on the current Pi branch and survives session reload; chat stores are isolated, but coding-tool filesystem access still uses the shared Bot workdir.
+
+`BOT_CODEMODE_TIMEOUT_SECONDS` defaults to 300 and accepts 0.1–3,600 seconds. The host starts this deadline for each script, including nested tool work, and combines it with Pi's cancellation signal. A script's `// @options:` may shorten its deadline but cannot extend the host limit. The deadline does not cover model requests or the whole conversation turn. Abort-aware tools begin cancellation at expiry; cleanup may outlast the deadline. `/cancel` and `/reset` use the existing Pi cancellation path. Errors, timeouts, and cancellation do **not** undo completed file modifications, network requests, or publication. Inspect side effects before retrying a failed script; do not assume it is safe to replay.
+
+Pi's existing bounds remain in place: a 256 MB VM heap, output truncation with a default 10,000 estimated tokens and full text saved to a temporary file, and a hard output ceiling of 16,777,216 characters of text plus base64 data or 100,000 output calls. Scripts may change the token truncation budget through Pi's options but not bypass its hard ceilings. Sumire does not create another VM or agent loop.
+
+`update_progress` and `read_image` are model-only tools: Pi calls them directly, never from a script. Direct progress snapshots remain reconstructable across compaction, restart, and reply-tree navigation; direct image reads keep their image blocks. For images read through native `read`, use a direct call too: nested tools without an output schema provide only text to the script. `load_public_url` keeps its existing result contract and URL defenses; it returns JSON text, so scripts can use `JSON.parse(await tools.load_public_url({ url }))`. Native `bash` returns a structured result; `read`, `edit`, and `write` return text.
+
+Codemode does not grant new permissions or make `bash` safe for untrusted users. The existing non-empty `BOT_WHITELIST` remains required, and all callable tools retain their validation and execution hooks. Nested URL loads still reject credentials, local/private/link-local/metadata targets and unsafe redirects, with their existing byte, time and output limits. Tool output and fetched content remain untrusted data, not authorization.
+
+To roll back, set `BOT_CODEMODE_ENABLED=false` and restart. Existing sessions can resume without codemode; direct tools, progress and image access remain available. Keep the state volumes and do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification before enabling this opt-in feature.
+
+Run the isolated Linux x86_64 production-runtime smoke from the repository root:
+
+```bash
+docker compose -p sumire-codemode-smoke -f compose.codemode-smoke.yaml run --build --rm sumire
+docker compose -p sumire-codemode-smoke -f compose.codemode-smoke.yaml down
+```
+
+This uses a separate image, no `.env` or state volumes, and disabled container networking. Its loopback Chat Completions fixture verifies the pruned production worker/WASM, native tools, direct progress, persistence, host deadline and recovery without provider charges or Telegram polling. It does not replace a live endpoint/Telegram test.
+
 ## OpenAI login from Telegram
 
 Configure the ignored root `.env`:
@@ -242,4 +268,4 @@ The production image bundles checksum-verified libcurl-impersonate v2.2.2 for Li
 
 ## Feature controls
 
-The root [`.env.example`](../../.env.example) lists document, reply-tree, and image flags plus URL tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.
+The root [`.env.example`](../../.env.example) lists codemode, document, reply-tree, and image flags plus tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.

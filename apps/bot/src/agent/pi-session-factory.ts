@@ -18,6 +18,7 @@ import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { ChannelImageIndex } from "../telegram/channel-images.js"
 import { traceUrlLoad } from "../url-telemetry.js"
+import { createBotCodemodeExtension } from "./codemode.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
 
@@ -45,7 +46,13 @@ export async function createPiSessionFactory(
 
   const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
-    defaultTools: ["read", "bash", "edit", "write"],
+    defaultTools: [
+      "read",
+      "bash",
+      "edit",
+      "write",
+      ...(settings.botCodemodeEnabled ? ["codemode"] : []),
+    ],
     compaction: {
       enabled: true,
       reserveTokens: Math.max(
@@ -90,6 +97,16 @@ export async function createPiSessionFactory(
         extensionFactories: [
           { name: "sumire-progress", factory: progressExtension },
           { name: "sumire-url-tool", factory: urlExtension },
+          ...(settings.botCodemodeEnabled
+            ? [
+                {
+                  name: "sumire-codemode",
+                  factory: createBotCodemodeExtension(
+                    Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
+                  ),
+                },
+              ]
+            : []),
           ...(settings.botChannelImageInputEnabled && settings.botImageInputEnabled
             ? [
                 {
@@ -134,7 +151,23 @@ export async function createPiSessionFactory(
       })
       if (modelFallbackMessage)
         logger.warn(`Pi session model fallback for chat_id=${chatId}: ${modelFallbackMessage}`)
-      return session
+      try {
+        let startupFailed = false
+        let initializing = true
+        await session.bindExtensions({
+          onError: (error) => {
+            if (initializing) startupFailed = true
+            logger.warn(`Pi extension error for chat_id=${chatId} event=${error.event}`, error)
+          },
+        })
+        initializing = false
+        if (startupFailed) throw new Error("Pi extension initialization failed")
+        return session
+      } catch (error) {
+        session.dispose()
+        logger.error(`Pi session initialization failed for chat_id=${chatId}`, error)
+        throw error
+      }
     },
   }
 }

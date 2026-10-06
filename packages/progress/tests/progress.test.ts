@@ -23,6 +23,7 @@ type Handler = (event: never, ctx: ExtensionContext) => unknown
 
 interface RegisteredTool {
   name: string
+  exposure?: string
   promptGuidelines: string[]
   prepareArguments(value: unknown): { steps: ProgressStep[] }
   execute(
@@ -132,6 +133,7 @@ describe("progress extension", () => {
     progressExtension(pi)
 
     expect(tools.map((tool) => tool.name)).toEqual([PROGRESS_TOOL_NAME])
+    expect(tools[0]?.exposure).toBe("model-only")
     expect(tools[0]?.promptGuidelines).toContain(
       "Use update_progress to track work with multiple meaningful steps; skip it for simple, single-step tasks.",
     )

@@ -57,11 +57,14 @@ Successful results contain versioned details:
 }
 ```
 
-SDK hosts can subscribe to `tool_execution_end`, select successful `update_progress` events, and pass `event.result.details` to `parseProgressDetails()`.
+SDK hosts must call `await session.bindExtensions({})` before using the tool so `session_start` initializes ownership and restores branch state. Subscribe to `tool_execution_end`, select successful `update_progress` events, and pass `event.result.details` to `parseProgressDetails()`.
+
+The tool uses `exposure: "model-only"`: the model can call it directly, but codemode and other nested callers cannot. Pi does not persist nested results as independent transcript entries, so allowing nested updates would lose the canonical snapshot on restart or branch navigation. Hosts should not reconstruct progress from codemode output text.
 
 ## Limitations
 
 - The model decides when to call the tool; simple tasks may not publish progress.
+- Calls must be direct, including when codemode is enabled; nested tool orchestration is unsupported.
 - The package reports step completion, not elapsed time or a measured percentage.
 - It does not provide a TUI widget. Host applications own presentation and delivery throttling.
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { SessionManager } from "@earendil-works/pi-coding-agent"
+import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
@@ -83,6 +83,47 @@ describe("createPiSessionFactory", () => {
     )
   })
 
+  it.each(["rejection", "reported event"] as const)(
+    "disposes an undelivered session on initialization %s",
+    async (failure) => {
+      const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-startup-"))
+      await installInstructions(root)
+      const factory = await createPiSessionFactory(
+        loadSettings({ OPENAI_API_KEY: "test-key", BOT_WHITELIST: "123" }, root),
+        logger,
+      )
+      const dispose = vi.spyOn(AgentSession.prototype, "dispose")
+      const bind = vi.spyOn(AgentSession.prototype, "bindExtensions")
+      if (failure === "rejection") bind.mockRejectedValueOnce(new Error("startup fixture failed"))
+      else
+        bind.mockImplementationOnce(async (bindings) => {
+          bindings.onError?.({
+            extensionPath: "fixture",
+            event: "session_start",
+            error: "startup fixture failed",
+          })
+        })
+      try {
+        await expect(factory.create(123)).rejects.toThrow(
+          /initialization failed|startup fixture failed/u,
+        )
+        expect(dispose).toHaveBeenCalledOnce()
+        expect(logger.error).toHaveBeenCalledWith(
+          "Pi session initialization failed for chat_id=123",
+          expect.any(Error),
+        )
+        if (failure === "reported event")
+          expect(logger.warn).toHaveBeenCalledWith(
+            "Pi extension error for chat_id=123 event=session_start",
+            expect.objectContaining({ error: "startup fixture failed" }),
+          )
+      } finally {
+        bind.mockRestore()
+        dispose.mockRestore()
+      }
+    },
+  )
+
   it("creates isolated persistent Pi AgentSessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
@@ -129,6 +170,7 @@ describe("createPiSessionFactory", () => {
         "update_progress",
         "load_public_url",
       ])
+      expect(session.getToolDefinition("codemode")).toBeUndefined()
       const urlTool = session.getToolDefinition("load_public_url")
       expect(urlTool).toBeDefined()
       if (!urlTool) throw new Error("load_public_url was not registered")
