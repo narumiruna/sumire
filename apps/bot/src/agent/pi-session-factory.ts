@@ -87,7 +87,15 @@ export async function createPiSessionFactory(
   return {
     login,
     async create(chatId: number) {
-      if (!(await modelRuntime.checkAuth(model.provider))) {
+      const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
+      const sessionManager = SessionManager.continueRecent(settings.botWorkdir, sessionDirectory)
+      const savedContext = sessionManager.buildSessionContext()
+      const savedModel = savedContext.model
+        ? modelRuntime.getModel(savedContext.model.provider, savedContext.model.modelId)
+        : undefined
+      const selectedModel =
+        savedModel && (await modelRuntime.checkAuth(savedModel.provider)) ? savedModel : model
+      if (!(await modelRuntime.checkAuth(selectedModel.provider))) {
         throw new Error("尚未設定 OpenAI 驗證，請設定 OPENAI_API_KEY 或請管理員在私聊使用 /login。")
       }
       const resourceLoader = new DefaultResourceLoader({
@@ -137,16 +145,15 @@ export async function createPiSessionFactory(
         logger.warn(`Pi extension diagnostic for chat_id=${chatId}: ${error.path}: ${error.error}`)
       }
 
-      const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
       const { session, modelFallbackMessage } = await createAgentSession({
         cwd: settings.botWorkdir,
         agentDir,
-        model,
-        thinkingLevel: "off",
+        model: selectedModel,
+        thinkingLevel: savedContext.messages.length > 0 ? undefined : "off",
         modelRuntime,
         customTools,
         resourceLoader,
-        sessionManager: SessionManager.continueRecent(settings.botWorkdir, sessionDirectory),
+        sessionManager,
         settingsManager: piSettings,
       })
       if (modelFallbackMessage)

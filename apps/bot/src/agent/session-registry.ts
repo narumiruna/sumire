@@ -16,6 +16,13 @@ import {
 } from "@narumitw/sumire-progress"
 
 import type { Logger } from "../logging.js"
+import {
+  type ChatModelSettings,
+  type ChatModelState,
+  currentModelState,
+  ModelSettingsError,
+  type SessionModelSettings,
+} from "./model-settings.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
 
 export interface SubmissionCheckpoint extends PiReplyCheckpoint {
@@ -31,7 +38,7 @@ export type SubmissionResult =
 export type SubmissionIntent = "steer" | "followUp" | "newTurn"
 export type SubmissionActivity = "model" | "tool" | "tool_finished"
 
-export interface SessionHandle {
+export interface SessionHandle extends SessionModelSettings {
   readonly isStreaming: boolean
   readonly isIdle: boolean
   readonly sessionId: string
@@ -70,6 +77,7 @@ export class ChatSessionRegistry {
   readonly #generations = new Map<number, number>()
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
   readonly #branchNavigations = new Map<number, Promise<void>>()
+  readonly #modelMutations = new Map<number, Promise<void>>()
   readonly #pendingReplyCheckpoints = new Map<number, Map<number, SubmissionCheckpoint>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
@@ -110,6 +118,7 @@ export class ChatSessionRegistry {
         throw new Error("Pi session submission was cancelled before acceptance")
       }
     }
+    await this.#modelMutations.get(chatId)
     const session = await this.#getOrCreate(chatId)
     assertCurrent()
     const restoredBranch = await this.#restoreReplyBranch(
@@ -251,9 +260,92 @@ export class ChatSessionRegistry {
     }
   }
 
+  async getModelSettings(chatId: number): Promise<ChatModelSettings> {
+    const generation = this.#generations.get(chatId) ?? 0
+    await this.#modelMutations.get(chatId)
+    const session = await this.#getOrCreate(chatId)
+    const models = await session.modelRuntime.getAvailable()
+    this.#assertCurrentGeneration(chatId, generation)
+    return {
+      ...currentModelState(session),
+      models: models.map((model) => `${model.provider}/${model.id}`).sort(),
+    }
+  }
+
+  setModel(chatId: number, reference: string): Promise<ChatModelState> {
+    return this.#mutateModelSettings(chatId, async (session, assertCurrent) => {
+      const models = await session.modelRuntime.getAvailable()
+      assertCurrent()
+      const matches = models.filter(
+        (model) => `${model.provider}/${model.id}` === reference || model.id === reference,
+      )
+      const model = matches.length === 1 ? matches[0] : undefined
+      if (!model) {
+        throw new ModelSettingsError(
+          matches.length > 1
+            ? "Model 名稱不唯一，請使用 /model <provider/model>。"
+            : "找不到可用的 model，請使用 /model 查看已驗證的模型。",
+        )
+      }
+      await session.setModel(model)
+      assertCurrent()
+      return currentModelState(session)
+    })
+  }
+
+  setThinkingLevel(chatId: number, requestedLevel: string): Promise<ChatModelState> {
+    return this.#mutateModelSettings(chatId, async (session, assertCurrent) => {
+      const level = session.getAvailableThinkingLevels().find((level) => level === requestedLevel)
+      if (!level) {
+        throw new ModelSettingsError(
+          "目前 model 不支援這個 thinking level，請使用 /thinking 查看選項。",
+        )
+      }
+      assertCurrent()
+      session.setThinkingLevel(level)
+      return currentModelState(session)
+    })
+  }
+
+  async #mutateModelSettings(
+    chatId: number,
+    change: (session: SessionHandle, assertCurrent: () => void) => Promise<ChatModelState>,
+  ): Promise<ChatModelState> {
+    if (this.#modelMutations.has(chatId)) {
+      throw new ModelSettingsError("正在切換設定，請稍後再試。")
+    }
+    const generation = this.#generations.get(chatId) ?? 0
+    const mutation = (async () => {
+      const session = await this.#getOrCreate(chatId)
+      const assertCurrent = () => {
+        this.#assertCurrentGeneration(chatId, generation)
+        if (
+          !session.isIdle ||
+          this.#activePromptCaptures.has(chatId) ||
+          this.#branchNavigations.has(chatId)
+        ) {
+          throw new ModelSettingsError("目前有任務執行中，請等待完成或使用 /cancel 後再切換設定。")
+        }
+      }
+      assertCurrent()
+      return change(session, assertCurrent)
+    })()
+    const settled = mutation.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#modelMutations.set(chatId, settled)
+    try {
+      return await mutation
+    } finally {
+      if (this.#modelMutations.get(chatId) === settled) this.#modelMutations.delete(chatId)
+    }
+  }
+
   async appendPassiveContext(chatId: number, text: string): Promise<void> {
     if (!text) return
     const generation = this.#generations.get(chatId) ?? 0
+    await this.#modelMutations.get(chatId)
     const session = await this.#getOrCreate(chatId)
     this.#assertCurrentGeneration(chatId, generation)
     await session.sendCustomMessage(
@@ -278,6 +370,7 @@ export class ChatSessionRegistry {
   async reset(chatId: number): Promise<void> {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
+    await this.#modelMutations.get(chatId)
     const session = this.#sessions.get(chatId)
     if (session) {
       if (session.isStreaming) {
@@ -296,9 +389,10 @@ export class ChatSessionRegistry {
 
   async dispose(): Promise<void> {
     this.#pendingReplyCheckpoints.clear()
-    for (const chatId of this.#creating.keys()) {
+    for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     }
+    await Promise.all(this.#modelMutations.values())
     await Promise.all(
       [...this.#sessions.values()].map(async (session) => {
         if (session.isStreaming) {

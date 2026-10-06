@@ -9,6 +9,7 @@ import { createUrlExtension } from "@narumitw/sumire-url-tool"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
+import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
@@ -128,6 +129,86 @@ describe("createPiSessionFactory", () => {
       }
     } finally {
       first.dispose()
+    }
+  })
+
+  it("restores a chat's model and thinking after restart without changing defaults in other chats", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-persistence-"))
+    await installInstructions(root)
+    const settings = loadSettings({ BOT_WHITELIST: "7", OPENAI_API_KEY: "fixture-key" }, root)
+    const factory = await createPiSessionFactory(settings, logger)
+    const first = await factory.create(7)
+    const defaultModel = first.model
+    const alternative = first.modelRuntime
+      .getModels("openai")
+      .find((model) => model.reasoning && model.id !== defaultModel?.id)
+    if (!alternative) throw new Error("Missing alternative reasoning model")
+    try {
+      first.sessionManager.appendMessage({
+        role: "user",
+        content: "fixture conversation",
+        timestamp: Date.now(),
+      })
+      await first.setModel(alternative)
+      first.setThinkingLevel("high")
+      expect(first.thinkingLevel).toBe("high")
+    } finally {
+      first.dispose()
+    }
+    const restartedFactory = await createPiSessionFactory(settings, logger)
+    const resumed = await restartedFactory.create(7)
+    const other = await restartedFactory.create(8)
+    try {
+      expect(resumed.model).toMatchObject({ provider: alternative.provider, id: alternative.id })
+      expect(resumed.thinkingLevel).toBe("high")
+      expect(resumed.messages).toContainEqual(
+        expect.objectContaining({ role: "user", content: "fixture conversation" }),
+      )
+      expect(other.model).toMatchObject({ provider: defaultModel?.provider, id: defaultModel?.id })
+      expect(other.thinkingLevel).toBe("off")
+      expect(other.messages).toEqual([])
+    } finally {
+      resumed.dispose()
+      other.dispose()
+    }
+    const registry = new ChatSessionRegistry(
+      asSessionCreator(restartedFactory),
+      settings.botSessionLogDir,
+      logger,
+    )
+    try {
+      await registry.reset(7)
+      await expect(registry.getModelSettings(7)).resolves.toMatchObject({
+        currentModel: `${defaultModel?.provider}/${defaultModel?.id}`,
+        thinkingLevel: "off",
+      })
+    } finally {
+      await registry.dispose()
+    }
+  })
+
+  it("falls back to the configured model when a saved model is no longer available", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-fallback-"))
+    await installInstructions(root)
+    const settings = loadSettings({ BOT_WHITELIST: "7", OPENAI_API_KEY: "fixture-key" }, root)
+    const factory = await createPiSessionFactory(settings, logger)
+    const first = await factory.create(7)
+    try {
+      first.sessionManager.appendMessage({
+        role: "user",
+        content: "fixture conversation",
+        timestamp: Date.now(),
+      })
+      first.sessionManager.appendModelChange("unavailable", "missing")
+    } finally {
+      first.dispose()
+    }
+    const resumed = await factory.create(7)
+    try {
+      expect(resumed.model).toMatchObject({ provider: "openai", id: settings.openaiModel })
+      expect(resumed.messages).toContainEqual(expect.objectContaining({ role: "user" }))
+    } finally {
+      resumed.dispose()
     }
   })
 

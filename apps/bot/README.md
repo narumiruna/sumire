@@ -25,7 +25,7 @@ Available now:
 - private chat and group mention/reply routing
 - opt-in, on-demand reading of newly indexed images from allowlisted Telegram channels via Pi's `read_image` tool
 - allowlist and bot-loop limits
-- `/start`, `/help`, `/id`, `/ask`, `/f`, `/cancel`, and `/reset`
+- `/start`, `/help`, `/id`, `/ask`, `/f`, `/model`, `/thinking`, `/cancel`, and `/reset`
 - admin-only private `/login` for a shared OpenAI subscription account, alongside API-key authentication on the official endpoint
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes
@@ -144,6 +144,16 @@ The coding tools run with the bot process's filesystem permissions and Pi's conf
 
 The repository vendors the reviewed `otter-manage-expenses` skill from [narumiruna/otter](https://github.com/narumiruna/otter) and installs `@narumitw/otter-cli` as a pinned runtime dependency. The production image adds its npm binary directory to `PATH`; Compose passes `OTTER_TOKEN` from the ignored root `.env` without copying it into the image.
 
+## Model and thinking commands
+
+`/model` shows the current model and a paginated inline picker of authenticated Pi chat models. Select a button or send `/model <provider/model>`; an unambiguous model ID also works. Custom `OPENAI_BASE_URL` endpoints expose only their configured `OPENAI_MODEL`, alongside any other independently authenticated Pi providers. Selecting a model does not invoke a model turn.
+
+`/thinking` shows the current thinking level and only the levels supported by the selected model. Select a button or send `/thinking <level>` (for example, `/thinking high`). Unsupported levels are rejected rather than silently clamped. Models without reasoning support offer only `off`; Pi adjusts the thinking level to the new model's capabilities when switching models.
+
+Both commands use the existing `BOT_WHITELIST` rules, including for button callbacks. Choices apply to the **chat**, not individual users in a group, and do not change defaults for other chats. Changes are rejected while Pi is busy; wait for completion or use `/cancel` first. Pi records choices on the current session branch and restores them after restart once that session contains a conversation message. Before the first conversation message, Pi keeps setup-only changes in memory. `/reset` clears the chat's conversation and choices, returning to `OPENAI_MODEL` and its supported equivalent of `off`. If a saved model is missing or no longer authenticated, the configured model is used instead.
+
+The bot registers `/model` and `/thinking` in Telegram's command menu at startup and subscribes to `callback_query` updates in addition to message updates. Menu-registration failures are logged without stopping polling.
+
 ## Codemode (opt-in)
 
 Set `BOT_CODEMODE_ENABLED=true` in the ignored root `.env` and restart to let Pi use its native `codemode` tool. It is disabled by default. No MCP server is required. Sumire uses `mode: "on"`, so existing tools remain directly available; it does not enable `tool_search`, MCP, classifier models, or image generation. The script's `models` namespace is unavailable.
@@ -212,7 +222,7 @@ If polling warnings continue, check the container's outbound HTTPS connection to
 
 Disabled by default. Add the **channel chat ID** (a negative Telegram ID, typically starting with `-100`) to `BOT_WHITELIST` in the ignored root `.env`, set `BOT_CHANNEL_IMAGE_INPUT_ENABLED=true` and keep `BOT_IMAGE_INPUT_ENABLED=true`, then restart. Obtain the ID through a trusted Telegram update inspection or a channel ID lookup; `/id` reports chat IDs only in existing user/group conversations. The bot must be an administrator of the channel to receive new `channel_post` updates and access its images; it does **not** need permission to publish posts. Grant only the minimum channel permissions Telegram requires. Do not put the bot token in a post or the repository.
 
-The bot subscribes to `message` and `channel_post` only when both flags are enabled; otherwise it subscribes only to `message`. A channel post is accepted **only** when its channel `chat.id` is in `BOT_WHITELIST`, regardless of `from.id`, `sender_chat`, caption, or the normal user-ID allowance for private/group conversations. Accepted new `photo` or image `document` posts are indexed without downloading media, invoking Pi, or sending a channel message. Non-image posts, edited posts, and unauthorized channels are ignored; album items are indexed separately. Channel commands and captions do not run the agent. Ordinary private/group messages and `/cancel`/`/reset` keep their existing behavior.
+The bot subscribes to `message` and `callback_query`, plus `channel_post` only when both flags are enabled. A channel post is accepted **only** when its channel `chat.id` is in `BOT_WHITELIST`, regardless of `from.id`, `sender_chat`, caption, or the normal user-ID allowance for private/group conversations. Accepted new `photo` or image `document` posts are indexed without downloading media, invoking Pi, or sending a channel message. Non-image posts, edited posts, and unauthorized channels are ignored; album items are indexed separately. Channel commands and captions do not run the agent. Ordinary private/group messages and `/cancel`/`/reset` keep their existing behavior.
 
 When an allowlisted user or group asks about channel images, Pi can call `read_image` without arguments to list up to 10 recent indexed channel/message IDs and bounded captions, then call with `channel_chat_id` and `message_id` to download one image into the Pi tool result. Responses go only to the requesting private/group chat through the existing delivery path; **no output is ever posted to the source channel**. All users who can address the bot in an allowlisted group, and all allowlisted users, may use this tool to read indexed images from **any** allowlisted channel. Do not allowlist a public group or a private channel unless this cross-chat access is intended. The tool does not authorize by a sender ID on channel posts.
 

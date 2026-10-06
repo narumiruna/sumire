@@ -102,7 +102,7 @@ describe("Telegram polling", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2)
     expect(getUpdates).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ offset: 43, allowed_updates: ["message"] }),
+      expect.objectContaining({ offset: 43, allowed_updates: ["message", "callback_query"] }),
       expect.anything(),
     )
 
@@ -117,7 +117,7 @@ describe("Telegram polling", () => {
     start()
     await vi.advanceTimersByTimeAsync(0)
     expect(getUpdates).toHaveBeenCalledWith(
-      expect.objectContaining({ allowed_updates: ["message", "channel_post"] }),
+      expect.objectContaining({ allowed_updates: ["message", "callback_query", "channel_post"] }),
       expect.anything(),
     )
     expect(getUpdates.mock.calls[0]?.[0]?.allowed_updates).not.toContain("edited_channel_post")
