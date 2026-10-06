@@ -16,6 +16,8 @@ import {
 } from "@narumitw/sumire-progress"
 
 import type { Logger } from "../logging.js"
+import type { DurableAnswer } from "./durable-session.js"
+import type { ResponseDelivery } from "./durable-state.js"
 import {
   type ChatModelSettings,
   type ChatModelState,
@@ -23,8 +25,6 @@ import {
   ModelSettingsError,
   type SessionModelSettings,
 } from "./model-settings.js"
-import type { DurableAnswer } from "./durable-session.js"
-import type { ResponseDelivery } from "./durable-state.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
 
 export interface SubmissionCheckpoint extends PiReplyCheckpoint {

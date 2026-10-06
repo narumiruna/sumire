@@ -5,10 +5,9 @@ import path from "node:path"
 
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
+import { OutboxDoc } from "../src/agent/durable-state.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
-import { OutboxDoc } from "../src/agent/durable-state.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 

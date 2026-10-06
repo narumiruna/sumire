@@ -1,4 +1,4 @@
-import { Context, type Bot } from "grammy"
+import { type Bot, Context } from "grammy"
 
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { createTelegramDelivery } from "./delivery.js"

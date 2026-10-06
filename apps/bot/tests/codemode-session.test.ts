@@ -2,9 +2,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
-import type { DurableSession } from "../src/agent/durable-session.js"
 import { reconstructProgress } from "@narumitw/sumire-progress"
 import { afterEach, describe, expect, it } from "vitest"
+import type { DurableSession } from "../src/agent/durable-session.js"
 
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"

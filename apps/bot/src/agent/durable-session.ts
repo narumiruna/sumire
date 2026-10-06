@@ -4,9 +4,9 @@ import type { AttachedReplicatedState } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import {
+  type Api,
   clampThinkingLevel,
   getSupportedThinkingLevels,
-  type Api,
   type ImageContent,
   type Message,
   type Model,

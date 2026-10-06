@@ -3,11 +3,10 @@ import { cp, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-
-import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import type { DurableSession } from "../src/agent/durable-session.js"
+import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { DurableSession } from "../src/agent/durable-session.js"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"

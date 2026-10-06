@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 
 import type { JsonValue } from "@earendil-works/chord"
-import { defineDoc, type ConversationId, type EntryId } from "@earendil-works/pi-durable"
+import { type ConversationId, defineDoc, type EntryId } from "@earendil-works/pi-durable"
 
 export const BotSessionDoc = defineDoc({
   kind: "sumire.session",

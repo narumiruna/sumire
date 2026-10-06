@@ -45,8 +45,8 @@ import {
 } from "./messages.js"
 import { registerTelegramModelCommands } from "./model-commands.js"
 import { runTelegramPolling } from "./polling.js"
-import { recoverTelegramResponses } from "./recovery.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
+import { recoverTelegramResponses } from "./recovery.js"
 
 export interface TelegramAgentBot {
   bot: Bot
