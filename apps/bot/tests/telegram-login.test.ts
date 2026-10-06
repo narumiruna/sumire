@@ -75,7 +75,6 @@ function setup(
     client?: OAuthLoginClient | null
     adminId?: string
     whitelist?: string
-    baseUrl?: string
     fail?: Parameters<typeof apiMock>[1]
   } = {},
 ) {
@@ -83,8 +82,6 @@ function setup(
     BOT_TOKEN: "1:test",
     BOT_WHITELIST: options.whitelist ?? "7,8,-100",
     BOT_ADMIN_ID: options.adminId ?? "7",
-    OPENAI_BASE_URL: options.baseUrl ?? "https://api.openai.com/v1",
-    OPENAI_API_KEY: "fixture-key",
   })
   const bot = new Bot(settings.botToken, { botInfo })
   const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -155,22 +152,10 @@ describe("Telegram OAuth login", () => {
 
   it.each([
     {
-      name: "custom endpoint with an allowlisted admin",
-      options: { baseUrl: "https://proxy.example.test/v1?key=fixture-secret" },
-      expected: ["自訂 OPENAI_BASE_URL", "https://api.openai.com/v1", "OPENAI_API_KEY"],
-      unexpected: ["BOT_WHITELIST", "登入服務未啟用"],
-    },
-    {
       name: "admin missing from the explicit whitelist",
       options: { whitelist: "8,-100" },
       expected: ["執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID", "群組 ID 不算"],
       unexpected: ["OPENAI_BASE_URL", "登入服務未啟用"],
-    },
-    {
-      name: "custom endpoint and missing allowlisted admin",
-      options: { baseUrl: "https://proxy.example.test/v1", whitelist: "8,-100" },
-      expected: ["自訂 OPENAI_BASE_URL", "執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID"],
-      unexpected: ["登入服務未啟用"],
     },
     {
       name: "eligible settings with no login client",
@@ -179,8 +164,8 @@ describe("Telegram OAuth login", () => {
       unexpected: ["請使用官方", "明確加入白名單", "重新部署"],
     },
     {
-      name: "eligible settings with duplicate IDs, whitespace, and a trailing endpoint slash",
-      options: { whitelist: "7, -100,7", baseUrl: "https://api.openai.com/v1/" },
+      name: "eligible settings with duplicate IDs and whitespace",
+      options: { whitelist: "7, -100,7" },
       expected: ["設定符合 /login 條件", "登入服務未啟用"],
       unexpected: ["自訂 OPENAI_BASE_URL", "明確加入白名單", "重新部署"],
     },
@@ -389,7 +374,6 @@ describe("Telegram OAuth login", () => {
         BOT_TOKEN: "1:test",
         BOT_WHITELIST: "7",
         BOT_ADMIN_ID: "7",
-        OPENAI_API_KEY: "fixture-key",
       })
       const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
       const app = createTelegramAgentBot(settings, {} as ChatSessionRegistry, logger, {
@@ -408,7 +392,6 @@ describe("Telegram OAuth login", () => {
       BOT_TOKEN: "1:test",
       BOT_WHITELIST: "7",
       BOT_ADMIN_ID: "7",
-      OPENAI_API_KEY: "fixture-key",
     })
     const submit = vi.fn()
     const appendPassiveContext = vi.fn()

@@ -43,19 +43,25 @@ describe("bot model authentication", () => {
     expect(modelRuntime.getProvider("openai")?.auth.oauth).toBeDefined()
   })
 
-  it("uses a configured API key before login without requiring an admin", async () => {
+  it("leaves credential resolution to Pi instead of applying bot OpenAI settings", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-env-key")
     const { settings, agentDir } = await setup({
-      OPENAI_API_KEY: "fixture-settings-key",
+      OPENAI_API_KEY: "ignored-settings-key",
+      OPENAI_BASE_URL: "not-a-url",
+      OPENAI_MODEL: "not-a-real-model",
       BOT_ADMIN_ID: "",
     })
     const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
-    expect(model).toMatchObject({ provider: "openai", api: "openai-responses" })
+    expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-5.6-luna" })
     expect(login).toBeUndefined()
+    expect(modelRuntime.getRegisteredProviderConfig("openai")).toBeUndefined()
+    expect(modelRuntime.getProvider("telegramagent-openai")).toBeUndefined()
     expect(await modelRuntime.checkAuth("openai")).toMatchObject({ type: "api_key" })
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
-      auth: { apiKey: "fixture-settings-key" },
+      auth: { apiKey: "fixture-env-key" },
+      source: "OPENAI_API_KEY",
     })
+    expect(process.env.OPENAI_API_KEY).toBe("fixture-env-key")
   })
 
   it("retains Pi's environment API-key authentication", async () => {
@@ -81,7 +87,8 @@ describe("bot model authentication", () => {
   it.each([{ BOT_ADMIN_ID: "" }, { BOT_WHITELIST: "8" }, { BOT_WHITELIST: "-100" }])(
     "disables login without blocking API-key requests: %j",
     async (environment) => {
-      const { settings, agentDir } = await setup({ OPENAI_API_KEY: "fixture-key", ...environment })
+      vi.stubEnv("OPENAI_API_KEY", "fixture-key")
+      const { settings, agentDir } = await setup(environment)
       const { modelRuntime, login } = await createBotModelRuntime(settings, agentDir)
       expect(login).toBeUndefined()
       expect(await modelRuntime.checkAuth("openai")).toMatchObject({ type: "api_key" })
@@ -99,8 +106,9 @@ describe("bot model authentication", () => {
     })
   })
 
-  it("preserves stored API-key priority over the configured key", async () => {
-    const { settings, agentDir } = await setup({ OPENAI_API_KEY: "fixture-key" })
+  it("leaves stored credential priority over ambient keys to Pi", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "fixture-key")
+    const { settings, agentDir } = await setup()
     await storeCredential(agentDir, { type: "api_key", key: "fixture-stored-key" })
     const { modelRuntime } = await createBotModelRuntime(settings, agentDir)
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
@@ -108,38 +116,30 @@ describe("bot model authentication", () => {
     })
   })
 
-  it("reports unsupported native models", async () => {
-    const { settings, agentDir } = await setup({ OPENAI_MODEL: "not-a-real-model" })
-    await expect(createBotModelRuntime(settings, agentDir)).rejects.toThrow(
-      "Pi model not found: openai/not-a-real-model",
-    )
-  })
-
-  it("keeps custom endpoints API-key-only even with stored native OAuth", async () => {
+  it("keeps Telegram login and stored Pi credentials independent of ignored endpoint settings", async () => {
     const { settings, agentDir } = await setup({
-      OPENAI_API_KEY: "fixture-key",
+      OPENAI_API_KEY: "ignored-key",
       OPENAI_BASE_URL: "https://proxy.example.test/v1",
       OPENAI_MODEL: "custom-model",
     })
     await storeCredential(agentDir, credential)
     const runtime = await createBotModelRuntime(settings, agentDir)
-    expect(runtime.login).toBeUndefined()
+    expect(runtime.login).toBeDefined()
     expect(runtime.model).toMatchObject({
-      provider: "telegramagent-openai",
-      api: "openai-completions",
-      id: "custom-model",
+      provider: "openai",
+      api: "openai-responses",
+      id: "gpt-5.6-luna",
     })
+    expect(runtime.modelRuntime.getProvider("telegramagent-openai")).toBeUndefined()
     expect(await runtime.modelRuntime.getAuth(runtime.model)).toMatchObject({
-      auth: { apiKey: "fixture-key" },
+      auth: { apiKey: "fixture-access" },
+      source: "OAuth",
     })
-    expect(runtime.modelRuntime.getProvider(runtime.model.provider)?.auth.oauth).toBeUndefined()
-    await expect(
-      createBotModelRuntime({ ...settings, openaiApiKey: undefined }, agentDir),
-    ).rejects.toThrow("OPENAI_API_KEY is required for a custom OPENAI_BASE_URL")
   })
 
-  it("prefers OAuth after login and restart, then returns to the key after logout", async () => {
-    const { settings, agentDir } = await setup({ OPENAI_API_KEY: "fixture-key" })
+  it("lets Pi prefer OAuth after login and restart, then return to ambient credentials after logout", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "fixture-key")
+    const { settings, agentDir } = await setup()
     const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
     const provider = modelRuntime.getProvider("openai")
     if (!provider?.auth.oauth || !login) throw new Error("Missing OAuth provider")
@@ -170,7 +170,7 @@ describe("bot model authentication", () => {
 
   it("does not fall back to a key when stored OAuth refresh fails", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-env-key")
-    const { settings, agentDir } = await setup({ OPENAI_API_KEY: "fixture-key" })
+    const { settings, agentDir } = await setup()
     await storeCredential(agentDir, { ...credential, expires: 0 })
     const { modelRuntime, model } = await createBotModelRuntime(settings, agentDir)
     const provider = modelRuntime.getProvider("openai")

@@ -5,6 +5,7 @@ import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
+  type ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
@@ -34,6 +35,7 @@ export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
+  modelRuntimeOverride?: ModelRuntime,
 ): Promise<PiSessionFactory> {
   if (settings.botWhitelist.size === 0) {
     throw new Error(
@@ -42,7 +44,11 @@ export async function createPiSessionFactory(
   }
 
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
-  const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
+  const { modelRuntime, model, login } = await createBotModelRuntime(
+    settings,
+    agentDir,
+    modelRuntimeOverride,
+  )
 
   const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
@@ -96,7 +102,7 @@ export async function createPiSessionFactory(
       const selectedModel =
         savedModel && (await modelRuntime.checkAuth(savedModel.provider)) ? savedModel : model
       if (!(await modelRuntime.checkAuth(selectedModel.provider))) {
-        throw new Error("尚未設定 OpenAI 驗證，請設定 OPENAI_API_KEY 或請管理員在私聊使用 /login。")
+        throw new Error("尚未設定 Pi 驗證，請管理員在私聊使用 /login。")
       }
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.botWorkdir,

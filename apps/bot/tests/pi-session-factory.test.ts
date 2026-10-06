@@ -38,10 +38,11 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
-  beforeEach(() => vi.stubEnv("OPENAI_API_KEY", ""))
+  beforeEach(() => vi.stubEnv("OPENAI_API_KEY", "fixture-key"))
   afterEach(() => vi.unstubAllEnvs())
 
   it("bootstraps OAuth without a key and shares stored native auth across chat sessions", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "")
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-oauth-"))
     await installInstructions(root)
     const settings = loadSettings(
@@ -81,13 +82,10 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("uses a key before login and switches existing sessions to shared OAuth after login", async () => {
+  it("uses Pi-owned credentials before login and switches existing sessions to shared OAuth after login", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-auth-"))
     await installInstructions(root)
-    const settings = loadSettings(
-      { BOT_WHITELIST: "7", BOT_ADMIN_ID: "7", OPENAI_API_KEY: "fixture-key" },
-      root,
-    )
+    const settings = loadSettings({ BOT_WHITELIST: "7", BOT_ADMIN_ID: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     try {
@@ -135,7 +133,7 @@ describe("createPiSessionFactory", () => {
   it("restores a chat's model and thinking after restart without changing defaults in other chats", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-persistence-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7", OPENAI_API_KEY: "fixture-key" }, root)
+    const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     const defaultModel = first.model
@@ -187,10 +185,10 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("falls back to the configured model when a saved model is no longer available", async () => {
+  it("falls back to the initial model when a saved model is no longer available", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-fallback-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7", OPENAI_API_KEY: "fixture-key" }, root)
+    const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     try {
@@ -205,7 +203,7 @@ describe("createPiSessionFactory", () => {
     }
     const resumed = await factory.create(7)
     try {
-      expect(resumed.model).toMatchObject({ provider: "openai", id: settings.openaiModel })
+      expect(resumed.model).toMatchObject({ provider: "openai", id: "gpt-5.6-luna" })
       expect(resumed.messages).toContainEqual(expect.objectContaining({ role: "user" }))
     } finally {
       resumed.dispose()
@@ -213,7 +211,7 @@ describe("createPiSessionFactory", () => {
   })
 
   it("rejects an empty whitelist before enabling coding tools", async () => {
-    const settings = loadSettings({ OPENAI_API_KEY: "test-key" })
+    const settings = loadSettings({})
 
     await expect(createPiSessionFactory(settings, logger)).rejects.toThrow(
       "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
@@ -226,7 +224,7 @@ describe("createPiSessionFactory", () => {
       const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-startup-"))
       await installInstructions(root)
       const factory = await createPiSessionFactory(
-        loadSettings({ OPENAI_API_KEY: "test-key", BOT_WHITELIST: "123" }, root),
+        loadSettings({ BOT_WHITELIST: "123" }, root),
         logger,
       )
       const dispose = vi.spyOn(AgentSession.prototype, "dispose")
@@ -266,9 +264,6 @@ describe("createPiSessionFactory", () => {
     await installInstructions(root)
     const settings = loadSettings(
       {
-        OPENAI_API_KEY: "test-key",
-        OPENAI_BASE_URL: "https://api.example.test/v1",
-        OPENAI_MODEL: "test-model",
         BOT_URL_ALLOWED_SCHEMES: "https",
         BOT_WHITELIST: "123",
       },
@@ -296,10 +291,9 @@ describe("createPiSessionFactory", () => {
 
     try {
       expect(session.model).toMatchObject({
-        provider: "telegramagent-openai",
-        id: "test-model",
-        contextWindow: 100_000,
-        maxTokens: 20_000,
+        provider: "openai",
+        id: "gpt-5.6-luna",
+        api: "openai-responses",
       })
       expect(session.sessionFile).toContain(path.join(".telegramagent", "sessions", "123", "pi"))
       expect(session.getActiveToolNames()).toEqual([
@@ -374,7 +368,6 @@ describe("createPiSessionFactory", () => {
     ]) {
       const settings = loadSettings(
         {
-          OPENAI_API_KEY: "test-key",
           BOT_WHITELIST: "123,-100",
           BOT_CHANNEL_IMAGE_INPUT_ENABLED: String(channelEnabled),
           BOT_IMAGE_INPUT_ENABLED: String(imageEnabled),
@@ -410,9 +403,6 @@ describe("createPiSessionFactory", () => {
     const settings = loadSettings(
       {
         BOT_WORKDIR: "workdir",
-        OPENAI_API_KEY: "test-key",
-        OPENAI_BASE_URL: "https://api.example.test/v1",
-        OPENAI_MODEL: "test-model",
         BOT_WHITELIST: "123",
       },
       root,
@@ -512,10 +502,7 @@ describe("createPiSessionFactory", () => {
     })
     const oldFile = oldSession.getSessionFile()
 
-    const settings = loadSettings(
-      { BOT_WORKDIR: workdir, BOT_WHITELIST: "123", OPENAI_API_KEY: "test-key" },
-      root,
-    )
+    const settings = loadSettings({ BOT_WORKDIR: workdir, BOT_WHITELIST: "123" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const session = await factory.create(123)
     try {
