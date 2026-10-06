@@ -38,7 +38,10 @@ async function installOtterSkill(projectRoot: string): Promise<void> {
 }
 
 describe("createPiSessionFactory", () => {
-  beforeEach(() => vi.stubEnv("OPENAI_API_KEY", "fixture-key"))
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "fixture-key")
+    vi.stubEnv("HF_TOKEN", "")
+  })
   afterEach(() => vi.unstubAllEnvs())
 
   it("bootstraps OAuth without a key and shares stored native auth across chat sessions", async () => {
@@ -79,6 +82,55 @@ describe("createPiSessionFactory", () => {
     } finally {
       first.dispose()
       second.dispose()
+    }
+  })
+
+  it.each(["", "7"])("bootstraps non-OpenAI Pi credentials with admin=%s", async (adminId) => {
+    vi.stubEnv("OPENAI_API_KEY", "")
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-provider-fallback-"))
+    await installInstructions(root)
+    const settings = loadSettings({ BOT_WHITELIST: "7", BOT_ADMIN_ID: adminId }, root)
+    const authPath = path.join(settings.botSessionLogDir, ".pi-agent/auth.json")
+    await mkdir(path.dirname(authPath), { recursive: true })
+    await writeFile(
+      authPath,
+      JSON.stringify({ anthropic: { type: "api_key", key: "fixture-key" } }),
+      {
+        mode: 0o600,
+      },
+    )
+    const factory = await createPiSessionFactory(settings, logger)
+    const registry = new ChatSessionRegistry(
+      asSessionCreator(factory),
+      settings.botSessionLogDir,
+      logger,
+    )
+    try {
+      const choices = await registry.getModelSettings(7)
+      expect(choices.currentModel).toMatch(/^anthropic\//u)
+      expect(choices.models.length).toBeGreaterThan(1)
+      expect(choices.models.every((reference) => reference.startsWith("anthropic/"))).toBe(true)
+      const alternative = choices.models.find((reference) => reference !== choices.currentModel)
+      if (!alternative) throw new Error("Missing alternative Anthropic model")
+      await expect(registry.setModel(7, alternative)).resolves.toMatchObject({
+        currentModel: alternative,
+      })
+      await registry.reset(7)
+      await expect(registry.getModelSettings(7)).resolves.toMatchObject({
+        currentModel: choices.currentModel,
+      })
+
+      // Pi discovering OpenAI credentials later restores the preferred default for new chats.
+      vi.stubEnv("OPENAI_API_KEY", "fixture-openai-key")
+      await expect(registry.getModelSettings(8)).resolves.toMatchObject({
+        currentModel: "openai/gpt-5.6-luna",
+        thinkingLevel: "off",
+      })
+      await expect(registry.setModel(7, "openai/gpt-5.6-luna")).resolves.toMatchObject({
+        currentModel: "openai/gpt-5.6-luna",
+      })
+    } finally {
+      await registry.dispose()
     }
   })
 

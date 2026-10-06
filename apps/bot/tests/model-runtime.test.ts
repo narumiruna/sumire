@@ -30,7 +30,10 @@ async function storeCredential(agentDir: string, credential: Credential) {
 }
 
 describe("bot model authentication", () => {
-  beforeEach(() => vi.stubEnv("OPENAI_API_KEY", ""))
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "")
+    vi.stubEnv("HF_TOKEN", "")
+  })
   afterEach(() => vi.unstubAllEnvs())
 
   it("allows OAuth bootstrap without a key and uses the native Responses model", async () => {

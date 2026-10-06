@@ -47,6 +47,9 @@ export interface SessionHandle extends SessionModelSettings {
     getLeafId(): string | null
     getEntry(id: string): unknown
     getBranch(): SessionEntry[]
+    buildSessionContext: AgentSession["sessionManager"]["buildSessionContext"]
+    appendModelChange: AgentSession["sessionManager"]["appendModelChange"]
+    appendThinkingLevelChange: AgentSession["sessionManager"]["appendThinkingLevelChange"]
   }
   subscribe(listener: AgentSessionEventListener): () => void
   prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>
@@ -78,6 +81,7 @@ export class ChatSessionRegistry {
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
   readonly #branchNavigations = new Map<number, Promise<void>>()
   readonly #modelMutations = new Map<number, Promise<void>>()
+  readonly #resets = new Map<number, Promise<void>>()
   readonly #pendingReplyCheckpoints = new Map<number, Map<number, SubmissionCheckpoint>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
@@ -276,9 +280,9 @@ export class ChatSessionRegistry {
     return this.#mutateModelSettings(chatId, async (session, assertCurrent) => {
       const models = await session.modelRuntime.getAvailable()
       assertCurrent()
-      const matches = models.filter(
-        (model) => `${model.provider}/${model.id}` === reference || model.id === reference,
-      )
+      const exactMatches = models.filter((model) => `${model.provider}/${model.id}` === reference)
+      const matches =
+        exactMatches.length > 0 ? exactMatches : models.filter((model) => model.id === reference)
       const model = matches.length === 1 ? matches[0] : undefined
       if (!model) {
         throw new ModelSettingsError(
@@ -311,10 +315,13 @@ export class ChatSessionRegistry {
     chatId: number,
     change: (session: SessionHandle, assertCurrent: () => void) => Promise<ChatModelState>,
   ): Promise<ChatModelState> {
+    const generation = this.#generations.get(chatId) ?? 0
+    const reset = this.#resets.get(chatId)
+    if (reset) await reset
+    this.#assertCurrentGeneration(chatId, generation)
     if (this.#modelMutations.has(chatId)) {
       throw new ModelSettingsError("正在切換設定，請稍後再試。")
     }
-    const generation = this.#generations.get(chatId) ?? 0
     const mutation = (async () => {
       const session = await this.#getOrCreate(chatId)
       const assertCurrent = () => {
@@ -368,23 +375,36 @@ export class ChatSessionRegistry {
   }
 
   async reset(chatId: number): Promise<void> {
+    const ongoing = this.#resets.get(chatId)
+    if (ongoing) return ongoing
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
-    await this.#modelMutations.get(chatId)
-    const session = this.#sessions.get(chatId)
-    if (session) {
-      if (session.isStreaming) {
-        session.clearQueue()
-        await session.abort()
+    const reset = (async () => {
+      await this.#modelMutations.get(chatId)
+      const session = this.#sessions.get(chatId)
+      if (session) {
+        if (session.isStreaming) {
+          session.clearQueue()
+          await session.abort()
+        }
+        session.dispose()
+        this.#sessions.delete(chatId)
       }
-      session.dispose()
-      this.#sessions.delete(chatId)
+      this.#creating.delete(chatId)
+      const cleanup = await Promise.allSettled([
+        rm(path.join(this.sessionRoot, String(chatId), "pi"), { force: true, recursive: true }),
+        this.#replyIndex.clear(chatId),
+      ])
+      for (const result of cleanup) {
+        if (result.status === "rejected") throw result.reason
+      }
+    })()
+    this.#resets.set(chatId, reset)
+    try {
+      await reset
+    } finally {
+      if (this.#resets.get(chatId) === reset) this.#resets.delete(chatId)
     }
-    this.#creating.delete(chatId)
-    await Promise.all([
-      rm(path.join(this.sessionRoot, String(chatId), "pi"), { force: true, recursive: true }),
-      this.#replyIndex.clear(chatId),
-    ])
   }
 
   async dispose(): Promise<void> {
@@ -392,6 +412,7 @@ export class ChatSessionRegistry {
     for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     }
+    await Promise.all(this.#resets.values())
     await Promise.all(this.#modelMutations.values())
     await Promise.all(
       [...this.#sessions.values()].map(async (session) => {
@@ -461,6 +482,20 @@ export class ChatSessionRegistry {
       if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
       try {
         assertCurrent()
+        // Pi navigation preserves live selections, but the destination transcript
+        // can still contain older ones. Record only differences so restart uses
+        // the same chat settings, without a separate preference store.
+        const context = session.sessionManager.buildSessionContext()
+        const model = session.model
+        if (
+          model &&
+          (context.model?.provider !== model.provider || context.model?.modelId !== model.id)
+        ) {
+          session.sessionManager.appendModelChange(model.provider, model.id)
+        }
+        if (context.thinkingLevel !== session.thinkingLevel) {
+          session.sessionManager.appendThinkingLevelChange(session.thinkingLevel)
+        }
         for (const content of recentPassiveContexts) {
           await session.sendCustomMessage(
             { customType: "telegram-passive-context", content, display: false },
@@ -498,6 +533,8 @@ export class ChatSessionRegistry {
   }
 
   async #getOrCreate(chatId: number): Promise<SessionHandle> {
+    const reset = this.#resets.get(chatId)
+    if (reset) await reset
     const existing = this.#sessions.get(chatId)
     if (existing) return existing
 

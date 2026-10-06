@@ -99,9 +99,14 @@ export async function createPiSessionFactory(
       const savedModel = savedContext.model
         ? modelRuntime.getModel(savedContext.model.provider, savedContext.model.modelId)
         : undefined
+      const restoredModel =
+        savedModel && (await modelRuntime.checkAuth(savedModel.provider)) ? savedModel : undefined
       const selectedModel =
-        savedModel && (await modelRuntime.checkAuth(savedModel.provider)) ? savedModel : model
-      if (!(await modelRuntime.checkAuth(selectedModel.provider))) {
+        restoredModel ??
+        ((await modelRuntime.checkAuth(model.provider))
+          ? model
+          : (await modelRuntime.getAvailable())[0])
+      if (!selectedModel) {
         throw new Error("尚未設定 Pi 驗證，請管理員在私聊使用 /login。")
       }
       const resourceLoader = new DefaultResourceLoader({
