@@ -104,7 +104,7 @@ export function createTelegramAgentBot(
       maxChars: settings.botUrlMaxExtractedChars,
       timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
       urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
-      firecrawlFallback: settings.botUrlFirecrawlFallbackEnabled,
+      firecrawlFallback: true,
     })
   const audioTranscriber =
     dependencies.audioTranscriber ??

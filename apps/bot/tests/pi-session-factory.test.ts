@@ -5,12 +5,15 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent"
+import { createUrlExtension } from "@narumitw/sumire-url-tool"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
+
+vi.mock("@narumitw/sumire-url-tool", { spy: true })
 
 const logger: Logger = {
   debug: vi.fn(),
@@ -204,6 +207,9 @@ describe("createPiSessionFactory", () => {
       },
     }
     const factory = await createPiSessionFactory(settings, tracedLogger)
+    expect(createUrlExtension).toHaveBeenLastCalledWith(
+      expect.objectContaining({ firecrawlFallback: true }),
+    )
     const session = await factory.create(123)
     const otherSession = await factory.create(456)
 

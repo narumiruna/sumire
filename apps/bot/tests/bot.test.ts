@@ -4,7 +4,7 @@ import path from "node:path"
 
 import type { ProgressStep } from "@narumitw/sumire-progress"
 import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
-import type { LoadedUrl } from "@narumitw/sumire-url-tool"
+import { createPublicUrlLoader, type LoadedUrl } from "@narumitw/sumire-url-tool"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
@@ -18,6 +18,8 @@ import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
+
+vi.mock("@narumitw/sumire-url-tool", { spy: true })
 
 const botInfo: UserFromGetMe = {
   id: 999,
@@ -443,6 +445,19 @@ describe("Telegram bot update routing", () => {
       allow_sending_without_reply: true,
     })
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100])
+  })
+
+  it("enables Firecrawl fallback for the default /f URL loader", () => {
+    createTelegramAgentBot(
+      loadSettings({ BOT_TOKEN: "test-token", BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "false" }),
+      createSessions(),
+      logger,
+      { botInfo },
+    )
+
+    expect(createPublicUrlLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ firecrawlFallback: true }),
+    )
   })
 
   it("loads /f URLs with fractional timeout configuration", async () => {

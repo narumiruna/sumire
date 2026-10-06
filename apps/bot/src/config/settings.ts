@@ -86,7 +86,6 @@ const environmentSchema = z.object({
   BOT_REPLY_TREE_MAX_INDEX_BYTES: envInteger(1_000_000, 1_024, 100_000_000),
   BOT_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
   BOT_URL_CONTENT_TIMEOUT_SECONDS: envNumber(180, 0.1, 3_600),
-  BOT_URL_FIRECRAWL_FALLBACK_ENABLED: envBoolean(false),
   BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
   BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
   BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
@@ -131,7 +130,6 @@ export interface Settings {
   botReplyTreeMaxIndexBytes: number
   botUrlTimeoutSeconds: number
   botUrlContentTimeoutSeconds: number
-  botUrlFirecrawlFallbackEnabled: boolean
   botUrlMaxExtractedChars: number
   botUrlAllowedSchemes: ReadonlySet<string>
   botSessionLogDir: string
@@ -192,7 +190,6 @@ export function loadSettings(
     botReplyTreeMaxIndexBytes: parsed.BOT_REPLY_TREE_MAX_INDEX_BYTES,
     botUrlTimeoutSeconds: parsed.BOT_URL_TIMEOUT_SECONDS,
     botUrlContentTimeoutSeconds: parsed.BOT_URL_CONTENT_TIMEOUT_SECONDS,
-    botUrlFirecrawlFallbackEnabled: parsed.BOT_URL_FIRECRAWL_FALLBACK_ENABLED,
     botUrlMaxExtractedChars: parsed.BOT_URL_MAX_EXTRACTED_CHARS,
     botUrlAllowedSchemes: parsed.BOT_URL_ALLOWED_SCHEMES,
     botSessionLogDir: path.resolve(root, ".telegramagent/sessions"),

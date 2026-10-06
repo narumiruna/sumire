@@ -31,10 +31,6 @@ describe("loadSettings", () => {
     expect(settings.botReplyTreeEnabled).toBe(true)
     expect(settings.botUrlTimeoutSeconds).toBe(15)
     expect(settings.botUrlContentTimeoutSeconds).toBe(180)
-    expect(settings.botUrlFirecrawlFallbackEnabled).toBe(false)
-    expect(loadSettings({ FIRECRAWL_API_KEY: "test-key" }).botUrlFirecrawlFallbackEnabled).toBe(
-      false,
-    )
     expect(settings.botUrlMaxExtractedChars).toBe(12_000)
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
     expect(settings.openaiApiKey).toBeUndefined()
@@ -69,7 +65,6 @@ describe("loadSettings", () => {
       BOT_REPLY_TREE_MAX_INDEX_BYTES: "2048",
       BOT_URL_TIMEOUT_SECONDS: "2.5",
       BOT_URL_CONTENT_TIMEOUT_SECONDS: "60",
-      BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "true",
       BOT_URL_MAX_EXTRACTED_CHARS: "4000",
       BOT_URL_ALLOWED_SCHEMES: "https",
     })
@@ -99,7 +94,6 @@ describe("loadSettings", () => {
     expect(settings.botReplyTreeMaxIndexBytes).toBe(2048)
     expect(settings.botUrlTimeoutSeconds).toBe(2.5)
     expect(settings.botUrlContentTimeoutSeconds).toBe(60)
-    expect(settings.botUrlFirecrawlFallbackEnabled).toBe(true)
     expect(settings.botUrlMaxExtractedChars).toBe(4000)
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["https"]))
   })
@@ -115,6 +109,13 @@ describe("loadSettings", () => {
     }
     expect(() => loadSettings({ BOT_CODEMODE_ENABLED: "yes" })).toThrow(ZodError)
     expect(loadSettings({ BOT_CODEMODE_ENABLED: "false" }).botCodemodeEnabled).toBe(false)
+  })
+
+  it("ignores the removed Firecrawl fallback environment switch", () => {
+    const settings = loadSettings({ BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "false" })
+
+    expect(settings).toEqual(loadSettings({}))
+    expect(settings).not.toHaveProperty("botUrlFirecrawlFallbackEnabled")
   })
 
   it("rejects invalid supported settings", () => {
