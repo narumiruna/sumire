@@ -43,6 +43,7 @@ import { jsonValue, type NativeTool } from "./durable-tools.js"
 import type { SessionHandle } from "./session-registry.js"
 
 export type DurableAnswer = { text: string; entryId?: string; requestId?: string }
+export const NO_RESPONSE_TEXT = "模型沒有回覆內容，請稍後再試。"
 
 /** Transport adapter only: Harness owns every model turn and tool task. */
 export class DurableSession implements SessionHandle {
@@ -54,7 +55,6 @@ export class DurableSession implements SessionHandle {
   #closing?: Promise<void>
   #prompting = 0
   #epoch = 0
-  readonly #passiveWrites = new Set<Promise<void>>()
   #lastEntries: readonly EntryRecord[] = []
   sessionId = ""
   #model: Model<Api>
@@ -287,7 +287,6 @@ export class DurableSession implements SessionHandle {
       const settled = await submission.wait(context)
       if (this.#closing) return { text: "" }
       await this.#conversation.waitForIdle(context)
-      await Promise.all([...this.#passiveWrites])
       await this.refresh()
       if (settled.status !== "done" || settled.type !== "input") {
         await this.acknowledge(requestId)
@@ -297,8 +296,8 @@ export class DurableSession implements SessionHandle {
         entry.model?.some((message) => message.role === "assistant"),
       )
       const text = assistantText(answer)
-      if (!text) await this.acknowledge(requestId)
-      else if (pending && answer) await this.captureAnswer(requestId, answer.id)
+      // An empty answer still needs its Telegram fallback delivered and acknowledged.
+      if (pending && answer) await this.captureAnswer(requestId, answer.id)
       return {
         text,
         ...(answer ? { entryId: checkpointId(answer) } : {}),
@@ -333,27 +332,11 @@ export class DurableSession implements SessionHandle {
       data: { content: message.content },
       model: [{ role: "user" as const, content: message.content, timestamp: Date.now() }],
     }
-    // Passive input must follow an unfinished answer, never interrupt it at a tool boundary.
-    if (this.isStreaming) {
-      const conversation = this.#conversation
-      const epoch = this.#epoch
-      const write = conversation
-        .waitForIdle(context)
-        .then(async () => {
-          if (this.#closing || epoch !== this.#epoch) return
-          await conversation.submit({ type: "write", entry }, context)
-          if (conversation === this.#conversation) await this.refresh()
-        })
-        .catch((error) => {
-          if (!this.#closing) this.logger.warn("Durable passive context failed", error)
-        })
-      this.#passiveWrites.add(write)
-      void write.finally(() => this.#passiveWrites.delete(write))
-    } else {
-      await this.configureInput()
-      await this.#conversation.submit({ type: "write", entry }, context)
-      await this.refresh()
-    }
+    // Writes are durably queued while busy, without starting or steering a turn.
+    // Harness places them at the next boundary before subsequent addressed inputs.
+    await this.configureInput()
+    await this.#conversation.submit({ type: "write", entry }, context)
+    await this.refresh()
   }
 
   async navigateTree(id: string): Promise<{ cancelled: boolean }> {
@@ -415,6 +398,10 @@ export class DurableSession implements SessionHandle {
     }, context)
   }
 
+  async hasPendingResponses(): Promise<boolean> {
+    return Boolean((await this.harness.snapshot(OutboxDoc, context))?.pending.length)
+  }
+
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
@@ -450,13 +437,14 @@ export class DurableSession implements SessionHandle {
       if (!current?.pending.some((item) => item.requestId === pending.requestId)) continue
 
       await this.refresh()
+      const text = assistantText(entry)
       await deliver(
         {
-          text: assistantText(entry) || "AI 服務暫時無法使用，請稍後再試。",
+          text: text || (entry ? NO_RESPONSE_TEXT : "AI 服務暫時無法使用，請稍後再試。"),
           requestId: pending.requestId,
           ...(entry ? { entryId: checkpointId(entry) } : {}),
         },
-        pending.delivery,
+        text ? pending.delivery : { ...pending.delivery, mode: "default" },
       )
     }
   }

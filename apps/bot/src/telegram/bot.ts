@@ -1033,7 +1033,11 @@ export function createTelegramAgentBot(
         return
       }
       clearPendingReply()
-      if (deliveryResult === "delivered" && status && result.kind === "completed") {
+      if (
+        deliveryResult === "delivered" &&
+        status &&
+        (result.kind === "completed" || (result.kind === "no_response" && result.checkpoint))
+      ) {
         await sessions.recordDelivery(
           chatId,
           result.checkpoint,
@@ -1161,6 +1165,7 @@ export function createTelegramAgentBot(
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
       if (dependencies.recoverChats)
         await recoverTelegramResponses(bot, sessions, delivery, await dependencies.recoverChats())
+      if (stopping) return
       runner = runTelegramPolling(
         bot,
         logger,

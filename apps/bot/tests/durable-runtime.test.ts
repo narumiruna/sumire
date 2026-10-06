@@ -272,6 +272,37 @@ describe("durable bot runtime", () => {
     },
   )
 
+  it("keeps an empty answer pending and recovers its fallback without another model request", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const registry = new ChatSessionRegistry(
+      async () => session,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+    )
+    fixture.enqueueAnswer("")
+    const result = await registry.submit(123, "question", {
+      delivery: { sourceMessageId: 95, statusMessageId: 96, mode: "publish" },
+    })
+    expect(result.kind).toBe("no_response")
+    expect((await session.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
+    expect(result).toMatchObject({ checkpoint: { requestId: expect.any(String) } })
+    await registry.dispose()
+    const reopened = await fixture.createSession()
+    const deliver = vi.fn(async (_answer: { requestId?: string }, _delivery: unknown) => {})
+    await reopened.recoverPending(deliver)
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ text: result.text, requestId: expect.any(String) }),
+      { sourceMessageId: 95, statusMessageId: 96, mode: "default" },
+    )
+    expect(fixture.requests).toHaveLength(1)
+    expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
+    const requestId = deliver.mock.calls[0]?.[0].requestId
+    if (!requestId) throw new Error("Missing recovered request ID")
+    await reopened.acknowledge(requestId)
+    expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toEqual([])
+  })
+
   it("does not mix two completed pending deliveries after restart", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()
@@ -311,6 +342,46 @@ describe("durable bot runtime", () => {
       expect((await session.harness.snapshot(OutboxDoc, context))?.pending).toEqual([])
     } finally {
       record.mockRestore()
+      await registry.dispose()
+    }
+  })
+
+  it("closes idle historical databases and lazily restores their transcript on new input", async () => {
+    const fixture = await setup()
+    const ids = new Map<number, string>()
+    for (const chatId of [123, 456]) {
+      const session = await fixture.createSession(chatId)
+      ids.set(chatId, session.sessionId)
+      fixture.enqueueAnswer(`Historical answer ${chatId}`)
+      await session.prompt(`Historical question ${chatId}`)
+      await session.dispose()
+    }
+    const closed: ReturnType<typeof vi.spyOn>[] = []
+    const create = vi.fn(async (chatId: number) => {
+      const session = await fixture.createSession(chatId)
+      closed.push(vi.spyOn(session, "dispose"))
+      expect(session.sessionId).toBe(ids.get(chatId))
+      return session
+    })
+    const registry = new ChatSessionRegistry(
+      create,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+    )
+    try {
+      const deliver = vi.fn(async () => true)
+      await registry.recover(await fixture.factory.listChats(), deliver)
+      expect(create).toHaveBeenCalledTimes(2)
+      for (const dispose of closed) expect(dispose).toHaveBeenCalledOnce()
+      expect(deliver).not.toHaveBeenCalled()
+      fixture.enqueueAnswer("New answer")
+      await registry.submit(123, "New question")
+      expect(create).toHaveBeenCalledTimes(3)
+      expect(JSON.stringify(fixture.requests.at(-1)?.messages)).toContain("Historical answer 123")
+      expect(JSON.stringify(fixture.requests.at(-1)?.messages)).not.toContain(
+        "Historical answer 456",
+      )
+    } finally {
       await registry.dispose()
     }
   })

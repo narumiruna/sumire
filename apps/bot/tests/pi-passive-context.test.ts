@@ -48,6 +48,79 @@ describe("durable passive-context behavior", () => {
     }
   })
 
+  it.each(["steer", "followUp"] as const)(
+    "admits passive context before a later %s input during an active turn",
+    async (intent) => {
+      const fixture = await setup()
+      const session = await fixture.createSession()
+      const registry = new ChatSessionRegistry(
+        async () => session,
+        fixture.settings.botSessionLogDir,
+        fixture.logger,
+      )
+      const release = fixture.pauseNextRequest()
+      fixture.enqueueAnswer("First answer")
+      fixture.enqueueAnswer("Answer with background")
+      const running = registry.submit(123, "first question")
+      try {
+        await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+        await registry.appendPassiveContext(123, "intervening group context")
+        await registry.submit(123, "question about the group context", { intent })
+        release()
+        await running
+        expect(fixture.requests).toHaveLength(2)
+        const context = JSON.stringify(fixture.requests[1]?.messages)
+        expect(context).toContain("intervening group context")
+        expect(context.indexOf("intervening group context")).toBeLessThan(
+          context.lastIndexOf("question about the group context"),
+        )
+        expect(JSON.stringify(fixture.requests[0]?.messages)).not.toContain(
+          "intervening group context",
+        )
+      } finally {
+        release()
+        await registry.dispose()
+      }
+    },
+  )
+
+  it("retains passive context admitted during an active turn across restart", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const registry = new ChatSessionRegistry(
+      async () => session,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+    )
+    const release = fixture.pauseNextRequest()
+    fixture.enqueueAnswer("Recovered first answer")
+    const running = registry
+      .submit(123, "first question", {
+        delivery: { sourceMessageId: 1, mode: "default" },
+      })
+      .catch(() => undefined)
+    try {
+      await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+      await registry.appendPassiveContext(123, "persisted group context")
+      await registry.dispose()
+      await running
+      await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
+      release()
+      const reopened = await fixture.createSession()
+      await reopened.recoverPending(async () => {})
+      fixture.enqueueAnswer("Next answer")
+      await reopened.prompt("next addressed question")
+      const context = JSON.stringify(fixture.requests.at(-1)?.messages)
+      expect(context).toContain("persisted group context")
+      expect(context.indexOf("persisted group context")).toBeLessThan(
+        context.lastIndexOf("next addressed question"),
+      )
+    } finally {
+      release()
+      await registry.dispose()
+    }
+  })
+
   it("does not steer an unfinished model request with passive group input", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()

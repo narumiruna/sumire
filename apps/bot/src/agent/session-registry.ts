@@ -16,7 +16,7 @@ import {
 } from "@narumitw/sumire-progress"
 
 import type { Logger } from "../logging.js"
-import type { DurableAnswer } from "./durable-session.js"
+import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"
 import type { ResponseDelivery } from "./durable-state.js"
 import {
   type ChatModelSettings,
@@ -34,7 +34,7 @@ export interface SubmissionCheckpoint extends PiReplyCheckpoint {
 
 export type SubmissionResult =
   | { kind: "completed"; text: string; checkpoint?: SubmissionCheckpoint }
-  | { kind: "no_response"; text: string }
+  | { kind: "no_response"; text: string; checkpoint?: SubmissionCheckpoint }
   | { kind: "steered"; text: string }
   | { kind: "followed_up"; text: string }
 
@@ -72,6 +72,7 @@ export interface SessionHandle extends SessionModelSettings {
   abort(): Promise<void>
   dispose(): void | Promise<void>
   acknowledge?(requestId: string): Promise<void>
+  hasPendingResponses?(): Promise<boolean>
   recoverPending?(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void>
@@ -88,6 +89,8 @@ interface ChatSessionRegistryOptions {
 export class ChatSessionRegistry {
   readonly #sessions = new Map<number, SessionHandle>()
   readonly #recoveries = new Set<Promise<void>>()
+  readonly #recoveryOnly = new Set<SessionHandle>()
+  readonly #evicting = new Map<number, Promise<void>>()
   #closed = false
 
   readonly #creating = new Map<number, Promise<SessionHandle>>()
@@ -213,12 +216,11 @@ export class ChatSessionRegistry {
       const text = answer
         ? answer.text
         : lastAssistantText(session.messages.slice(previousMessageCount))
-      if (!text) return { kind: "no_response", text: "模型沒有回覆內容，請稍後再試。" }
       const entryId = answer?.entryId ?? session.sessionManager.getLeafId()
       return {
-        kind: "completed",
-        text,
-        ...(entryId
+        kind: text ? "completed" : "no_response",
+        text: text || NO_RESPONSE_TEXT,
+        ...(entryId && (text || answer?.requestId)
           ? {
               checkpoint: {
                 sessionId: session.sessionId,
@@ -312,14 +314,18 @@ export class ChatSessionRegistry {
     ) => Promise<boolean>,
   ): Promise<void> {
     for (const chatId of chatIds) {
+      if (this.#closed) break
       const generation = this.#generations.get(chatId) ?? 0
       let session: SessionHandle
       try {
-        session = await this.#getOrCreate(chatId)
+        session = await this.#getOrCreate(chatId, true)
+        // Close idle historical databases before opening the next one.
+        if (await this.#releaseRecoverySession(chatId, session)) continue
       } catch (error) {
         this.logger.warn(`Durable recovery could not open chat_id=${chatId}`, error)
         continue
       }
+      if (this.#closed) break
       const isCurrent = () =>
         !this.#closed &&
         (this.#generations.get(chatId) ?? 0) === generation &&
@@ -339,6 +345,7 @@ export class ChatSessionRegistry {
             if (answer.requestId && isCurrent()) await session.acknowledge?.(answer.requestId)
           }
         })
+        .finally(() => this.#releaseRecoverySession(chatId, session))
         .catch((error) => {
           if (isCurrent()) this.logger.warn(`Durable recovery failed for chat_id=${chatId}`, error)
         })
@@ -347,6 +354,32 @@ export class ChatSessionRegistry {
         void recovery.finally(() => this.#recoveries.delete(recovery))
       }
     }
+  }
+
+  async #releaseRecoverySession(chatId: number, session: SessionHandle): Promise<boolean> {
+    if (this.#closed || !this.#recoveryOnly.has(session)) return false
+    const pending = await session.hasPendingResponses?.()
+    if (
+      pending !== false ||
+      !session.isIdle ||
+      this.#closed ||
+      this.#resets.has(chatId) ||
+      !this.#recoveryOnly.has(session) ||
+      this.#sessions.get(chatId) !== session
+    )
+      return false
+
+    this.#sessions.delete(chatId)
+    this.#recoveryOnly.delete(session)
+    // A live caller must wait for storage close before becoming its new owner.
+    const closing = Promise.resolve().then(() => session.dispose())
+    this.#evicting.set(chatId, closing)
+    try {
+      await closing
+    } finally {
+      if (this.#evicting.get(chatId) === closing) this.#evicting.delete(chatId)
+    }
+    return true
   }
 
   async getModelSettings(chatId: number): Promise<ChatModelSettings> {
@@ -442,9 +475,8 @@ export class ChatSessionRegistry {
     this.#assertCurrentGeneration(chatId, generation)
     await session.sendCustomMessage(
       { customType: "telegram-passive-context", content: text, display: false },
-      // Pi inserts nextTurn messages *after* the next user prompt, where they can
-      // become the question the model answers. Context-only messages append now
-      // when idle, or at the end of the active turn when streaming.
+      // Context-only writes do not trigger a turn. Harness queues them while busy
+      // and places them at a boundary before later addressed inputs.
       { triggerTurn: false },
     )
   }
@@ -482,6 +514,7 @@ export class ChatSessionRegistry {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
     await this.#modelMutations.get(chatId)
+    await this.#evicting.get(chatId)
     await this.#creating.get(chatId)?.catch(() => undefined)
     const session = this.#sessions.get(chatId)
     if (session) {
@@ -492,6 +525,7 @@ export class ChatSessionRegistry {
       if (session.handlesAcceptance) await this.#activePromptCaptures.get(chatId)?.done
       await session.dispose()
       this.#sessions.delete(chatId)
+      this.#recoveryOnly.delete(session)
     }
     this.#creating.delete(chatId)
     const cleanup = await Promise.allSettled([
@@ -518,10 +552,13 @@ export class ChatSessionRegistry {
       }),
       ...[...this.#creating.values()].map((creation) => creation.catch(() => undefined)),
       ...this.#recoveries,
+      ...this.#evicting.values(),
       ...[...this.#resets.values()].map((resetting) => resetting.catch(() => undefined)),
     ])
     this.#sessions.clear()
     this.#creating.clear()
+    this.#recoveryOnly.clear()
+    this.#evicting.clear()
   }
 
   #assertCurrentGeneration(chatId: number, generation: number): void {
@@ -630,15 +667,24 @@ export class ChatSessionRegistry {
     }
   }
 
-  async #getOrCreate(chatId: number): Promise<SessionHandle> {
+  async #getOrCreate(chatId: number, forRecovery = false): Promise<SessionHandle> {
+    const evicting = this.#evicting.get(chatId)
+    if (evicting) await evicting
     const resetting = this.#resets.get(chatId)
     if (resetting) await resetting
     if (this.#closed) throw new Error("Pi session registry is closed")
     const existing = this.#sessions.get(chatId)
-    if (existing) return existing
+    if (existing) {
+      if (!forRecovery) this.#recoveryOnly.delete(existing)
+      return existing
+    }
 
     const inflight = this.#creating.get(chatId)
-    if (inflight) return inflight
+    if (inflight) {
+      const session = await inflight
+      if (!forRecovery) this.#recoveryOnly.delete(session)
+      return session
+    }
 
     const generation = this.#generations.get(chatId) ?? 0
     const creation = this.createSession(chatId).then(async (session) => {
@@ -647,6 +693,7 @@ export class ChatSessionRegistry {
         throw new Error("Pi session creation was invalidated by reset")
       }
       this.#sessions.set(chatId, session)
+      if (forRecovery) this.#recoveryOnly.add(session)
       this.logger.debug(`Created Pi session for chat_id=${chatId}`)
       return session
     })

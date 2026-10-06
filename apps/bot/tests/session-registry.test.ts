@@ -1358,6 +1358,175 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve }
 }
 
+describe("recovery-only session ownership", () => {
+  it("closes idle historical chats before opening the next database and reopens on demand", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-recovery-"))
+    let opened = 0
+    let peak = 0
+    const create = vi.fn(async (id: number) => {
+      opened++
+      peak = Math.max(peak, opened)
+      const session = Object.assign(new FakeSession(`chat-${id}`), {
+        hasPendingResponses: async () => false,
+        recoverPending: vi.fn(async () => {}),
+      })
+      vi.spyOn(session, "dispose").mockImplementation(() => {
+        opened--
+      })
+      return session
+    })
+    const registry = new ChatSessionRegistry(create, root, logger)
+    try {
+      await registry.recover([1, 2, 3, 4, 5], async () => true)
+      expect(opened).toBe(0)
+      expect(peak).toBe(1)
+      await registry.submit(1, "new question")
+      expect(create).toHaveBeenCalledTimes(6)
+      expect(opened).toBe(1)
+    } finally {
+      await registry.dispose()
+    }
+  })
+
+  it.each([true, false])(
+    "evicts only after successful recovery delivery (success=%s)",
+    async (success) => {
+      const root = await mkdtemp(path.join(tmpdir(), "sumire-recovery-"))
+      let pending = true
+      const session = Object.assign(new FakeSession(), {
+        hasPendingResponses: async () => pending,
+        acknowledge: vi.fn(async () => {
+          pending = false
+        }),
+        recoverPending: async (
+          deliver: (
+            answer: { text: string; requestId: string },
+            delivery: { sourceMessageId: number; mode: "default" },
+          ) => Promise<void>,
+        ) => {
+          await deliver(
+            { text: "Recovered", requestId: "request" },
+            { sourceMessageId: 1, mode: "default" },
+          )
+        },
+      })
+      const create = vi.fn(async () => session)
+      const deliver = vi.fn(async () => success)
+      const registry = new ChatSessionRegistry(create, root, logger)
+      try {
+        await registry.recover([1], deliver)
+        if (success) {
+          await vi.waitFor(() => expect(session.disposed).toBe(true))
+          expect(session.acknowledge).toHaveBeenCalledExactlyOnceWith("request")
+        } else {
+          await vi.waitFor(() => expect(deliver).toHaveBeenCalledOnce())
+          await registry.getModelSettings(1)
+          expect(session.disposed).toBe(false)
+          expect(session.acknowledge).not.toHaveBeenCalled()
+          expect(create).toHaveBeenCalledOnce()
+        }
+      } finally {
+        await registry.dispose()
+      }
+    },
+  )
+
+  it("does not evict a recovery session adopted by a live caller", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-recovery-"))
+    const gate = deferred()
+    const session = Object.assign(new FakeSession(), {
+      hasPendingResponses: vi.fn(async () => {
+        await gate.promise
+        return false
+      }),
+      recoverPending: async () => {},
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const recovering = registry.recover([1], async () => true)
+    try {
+      await vi.waitFor(() => expect(session.hasPendingResponses).toHaveBeenCalled())
+      await registry.getModelSettings(1)
+      gate.resolve()
+      await recovering
+      expect(session.disposed).toBe(false)
+    } finally {
+      gate.resolve()
+      await recovering
+      await registry.dispose()
+    }
+  })
+
+  it("leaves concurrent reset in charge of closing storage before cleanup", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-recovery-"))
+    const checking = deferred()
+    const closing = deferred()
+    const session = Object.assign(new FakeSession(), {
+      hasPendingResponses: vi.fn(async () => {
+        await checking.promise
+        return false
+      }),
+      recoverPending: async () => {},
+    })
+    const dispose = vi.spyOn(session, "dispose").mockImplementation(async () => {
+      await closing.promise
+    })
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const recovering = registry.recover([1], async () => true)
+    let resetting: Promise<void> | undefined
+    try {
+      await vi.waitFor(() => expect(session.hasPendingResponses).toHaveBeenCalled())
+      let resetFinished = false
+      resetting = registry.reset(1).then(() => {
+        resetFinished = true
+      })
+      checking.resolve()
+      await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+      expect(resetFinished).toBe(false)
+      closing.resolve()
+      await Promise.all([recovering, resetting])
+      expect(resetFinished).toBe(true)
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      checking.resolve()
+      closing.resolve()
+      await Promise.all([recovering, resetting])
+      await registry.dispose()
+    }
+  })
+
+  it("waits for recovery eviction to close storage before reacquiring the chat", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-recovery-"))
+    const gate = deferred()
+    const first = Object.assign(new FakeSession("first"), {
+      hasPendingResponses: async () => false,
+      recoverPending: async () => {},
+    })
+    const dispose = vi.spyOn(first, "dispose").mockImplementation(async () => {
+      await gate.promise
+    })
+    const second = new FakeSession("second")
+    let calls = 0
+    const create = vi.fn(async () => (++calls === 1 ? first : second))
+    const registry = new ChatSessionRegistry(create, root, logger)
+    const recovering = registry.recover([1], async () => true)
+    try {
+      await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+      const submission = registry.submit(1, "new request")
+      await Promise.resolve()
+      expect(create).toHaveBeenCalledOnce()
+      gate.resolve()
+      await recovering
+      await submission
+      expect(create).toHaveBeenCalledTimes(2)
+      expect(second.prompts).toEqual(["new request"])
+    } finally {
+      gate.resolve()
+      await recovering
+      await registry.dispose()
+    }
+  })
+})
+
 function assistant(text: string): AgentMessage {
   return {
     role: "assistant",
