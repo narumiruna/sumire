@@ -65,6 +65,7 @@ async function setup(overrides: Record<string, string> = {}) {
 describe("read_image Pi tool", () => {
   it("lists only allowlisted channel metadata and downloads only a requested indexed image", async () => {
     const { tool, getFile, fetchImplementation } = await setup()
+    expect(tool.exposure).toBe("model-only")
     const listing = await tool.execute("list", {}, undefined, undefined, undefined as never)
     expect(listing.content[0]).toMatchObject({
       type: "text",

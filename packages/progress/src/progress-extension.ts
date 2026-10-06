@@ -20,6 +20,8 @@ export default function progressExtension(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: PROGRESS_TOOL_NAME,
+    // Nested results have no independent transcript entry for branch-aware restoration.
+    exposure: "model-only",
     label: "Progress",
     description:
       "Replace the current session progress state with the complete supplied steps. Call update_progress whenever actual step state changes; keep at most one step in_progress, require a reason for each blocked step, and send an empty steps array to clear it.",
