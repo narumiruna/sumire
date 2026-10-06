@@ -289,8 +289,8 @@ export class DurableSession implements SessionHandle {
       await this.#conversation.waitForIdle(context)
       await this.refresh()
       if (settled.status !== "done" || settled.type !== "input") {
-        await this.acknowledge(requestId)
-        return { text: "" }
+        // Terminal failures still need their transport fallback delivered and acknowledged.
+        return { text: "", ...(pending ? { requestId } : {}) }
       }
       const answer = this.#lastEntries.findLast((entry) =>
         entry.model?.some((message) => message.role === "assistant"),

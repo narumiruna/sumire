@@ -76,9 +76,14 @@ describe("Telegram durable recovery delivery", () => {
     },
   )
 
-  it.each([false, true])(
-    "acknowledges an empty-answer fallback only after successful delivery (failure=%s)",
-    async (failDelivery) => {
+  it.each([
+    { outcome: "empty", failDelivery: false },
+    { outcome: "empty", failDelivery: true },
+    { outcome: "failed", failDelivery: false },
+    { outcome: "failed", failDelivery: true },
+  ])(
+    "acknowledges a $outcome fallback only after successful delivery (failure=$failDelivery)",
+    async ({ outcome, failDelivery }) => {
       const fixture = await createPiFixture()
       let session: DurableSession | undefined
       const sessions = new ChatSessionRegistry(
@@ -90,11 +95,12 @@ describe("Telegram durable recovery delivery", () => {
         logger,
       )
       const recordDelivery = vi.spyOn(sessions, "recordDelivery")
+      const publish = vi.fn(async () => `https://morsel.test/s/${"a".repeat(43)}`)
       const telegram = createTelegramAgentBot(
         { ...fixture.settings, botToken: "test-token" },
         sessions,
         logger,
-        { botInfo },
+        { botInfo, morselPublisher: { isConfigured: true, publish } },
       )
       const texts: unknown[] = []
       telegram.bot.api.config.use(async (_previous, _method, payload) => {
@@ -106,7 +112,8 @@ describe("Telegram durable recovery delivery", () => {
           result: { message_id: 100, date: 0, chat: { id: 123, type: "private" } },
         } as never
       })
-      fixture.enqueueAnswer("")
+      if (outcome === "failed") fixture.enqueueFailure()
+      else fixture.enqueueAnswer("")
       try {
         const handling = telegram.bot.handleUpdate({
           update_id: 1,
@@ -115,13 +122,14 @@ describe("Telegram durable recovery delivery", () => {
             date: 0,
             chat: { id: 123, type: "private", first_name: "Offline" },
             from: { id: 123, is_bot: false, first_name: "Offline" },
-            text: "question",
+            text: outcome === "failed" ? "/f question" : "question",
           },
         })
         if (failDelivery) await expect(handling).rejects.toThrow("Offline delivery failure")
         else await handling
         if (!session) throw new Error("Missing session")
         expect(texts).toContain("模型沒有回覆內容，請稍後再試。")
+        expect(publish).not.toHaveBeenCalled()
         const pending = (await session.harness.snapshot(OutboxDoc, context))?.pending
         expect(pending).toHaveLength(failDelivery ? 1 : 0)
         if (failDelivery) expect(recordDelivery).not.toHaveBeenCalled()

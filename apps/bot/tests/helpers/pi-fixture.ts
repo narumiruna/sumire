@@ -18,7 +18,7 @@ interface CompletionRequest {
   messages: Array<{ role: string; content: unknown }>
 }
 
-type Reply = { tool: string; args: unknown } | { text: string }
+type Reply = { tool: string; args: unknown } | { text: string } | { error: string }
 
 /** A local fixture speaks the real Chat Completions wire contract, without calling a model. */
 export async function createPiFixture(environment: Record<string, string> = {}) {
@@ -50,6 +50,13 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
       if (response.destroyed) return
       const reply = replies.shift()
       assert.ok(reply, "Unexpected model request")
+      if ("error" in reply) {
+        response.writeHead(400, { "content-type": "application/json" })
+        response.end(
+          JSON.stringify({ error: { message: reply.error, type: "invalid_request_error" } }),
+        )
+        return
+      }
       const id = `fixture-${++callId}`
       const chunk = (delta: unknown, finishReason: string | null = null) => ({
         id,
@@ -158,6 +165,9 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
       enqueue,
       enqueueAnswer: (text = "Recovered answer.") => {
         replies.push({ text })
+      },
+      enqueueFailure: () => {
+        replies.push({ error: "Offline provider failure" })
       },
       get disconnectedRequests() {
         return disconnectedRequests

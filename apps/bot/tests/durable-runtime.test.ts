@@ -303,6 +303,87 @@ describe("durable bot runtime", () => {
     expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toEqual([])
   })
 
+  it.each(["default", "publish"] as const)(
+    "keeps a failed turn pending and recovers its %s delivery without retrying the model",
+    async (mode) => {
+      const fixture = await setup()
+      const session = await fixture.createSession()
+      const registry = new ChatSessionRegistry(
+        async () => session,
+        fixture.settings.botSessionLogDir,
+        fixture.logger,
+      )
+      try {
+        fixture.enqueueFailure()
+        const result = await registry.submit(123, "failing question", {
+          delivery: { sourceMessageId: 105, statusMessageId: 106, mode },
+        })
+        expect(result.kind).toBe("no_response")
+        expect(session.messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "error" })
+        const pending = (await session.harness.snapshot(OutboxDoc, context))?.pending
+        expect(pending).toHaveLength(1)
+        const failed = pending?.[0]
+        if (!failed) throw new Error("Missing failed-turn delivery intent")
+        const terminal = await session.harness.commit(
+          (tx) => tx.submissionByRequest(failed.conversationId, failed.requestId),
+          context,
+        )
+        expect(terminal).toMatchObject({ status: "unanswered", reason: "model_error" })
+        expect(result).toMatchObject({ checkpoint: { requestId: failed.requestId } })
+        await registry.dispose()
+        const reopened = await fixture.createSession()
+        const deliver = vi.fn(async (_answer: { requestId?: string }, _delivery: unknown) => {})
+        await reopened.recoverPending(deliver)
+        expect(deliver).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: "AI 服務暫時無法使用，請稍後再試。",
+            requestId: pending?.[0]?.requestId,
+          }),
+          { sourceMessageId: 105, statusMessageId: 106, mode: "default" },
+        )
+        expect(fixture.requests).toHaveLength(1)
+        expect(reopened.messages.filter((message) => message.role === "user")).toHaveLength(1)
+        expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
+        const requestId = deliver.mock.calls[0]?.[0].requestId
+        if (!requestId) throw new Error("Missing failed-turn request ID")
+        await reopened.acknowledge(requestId)
+        expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toEqual([])
+      } finally {
+        await registry.dispose()
+      }
+    },
+  )
+
+  it.each(["cancel", "reset"] as const)(
+    "withdraws failed-turn delivery through explicit %s",
+    async (command) => {
+      const fixture = await setup()
+      const session = await fixture.createSession()
+      const registry = new ChatSessionRegistry(
+        async () => session,
+        fixture.settings.botSessionLogDir,
+        fixture.logger,
+      )
+      try {
+        fixture.enqueueFailure()
+        await registry.submit(123, "failing question", {
+          delivery: { sourceMessageId: 107, mode: "default" },
+        })
+        expect(await session.hasPendingResponses()).toBe(true)
+        await registry[command](123)
+        await registry.dispose()
+        const reopened = await fixture.createSession()
+        const deliver = vi.fn(async () => {})
+        await reopened.recoverPending(deliver)
+        expect(deliver).not.toHaveBeenCalled()
+        expect(await reopened.hasPendingResponses()).toBe(false)
+        expect(fixture.requests).toHaveLength(1)
+      } finally {
+        await registry.dispose()
+      }
+    },
+  )
+
   it("does not mix two completed pending deliveries after restart", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()
