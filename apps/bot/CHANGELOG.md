@@ -1,5 +1,21 @@
 # @narumitw/sumire
 
+## 0.6.0
+
+### Minor Changes
+
+- 4d9818f: Add per-chat Telegram /model and /thinking commands with paginated inline model selection, supported thinking levels, direct arguments, and Pi session restoration. Prefer exact provider/model references over colliding bare IDs and preserve current choices across reply-tree branches and restart, wait for reset cleanup before replacement-session operations, and allow authenticated non-OpenAI models to bootstrap chats. Remove Sumire-owned OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL settings in favor of Telegram /login and /model, while leaving Pi-native credential and environment discovery unchanged.
+- 41638e1: Remove OPENAI_AUTH_MODE and support API keys and shared OAuth credentials together through Pi's native OpenAI Responses provider on the official endpoint. Prefer stored credentials over the configured key, enable admin-only private /login alongside API-key use, and keep custom OpenAI-compatible endpoints API-key-only. Preserve Pi-owned persistence and refresh without silent key fallback after OAuth failure.
+
+### Patch Changes
+
+- a55f74f: Add opt-in native Pi codemode with a host-owned script deadline while preserving existing tool permissions, cancellation, and branch-aware state. Initialize SDK extensions before delivering a session, and keep progress and channel image reads model-only so nested orchestration cannot lose their state or image blocks.
+- 5d65e55: Enable the final generic Firecrawl fallback by default for URL tool and /f source loading, and remove BOT_URL_FIRECRAWL_FALLBACK_ENABLED. The fallback still skips requests without FIRECRAWL_API_KEY or enough remaining time.
+- 35ef553: Bundle checksum-verified libcurl-impersonate in the Docker image and verify Chrome fingerprint compatibility offline so URL loading no longer uses unsupported system libcurl impersonation.
+- 7d2c960: Explain only the unmet Telegram /login conditions in the running bot's settings. Distinguish custom endpoints, missing explicit admin whitelist entries, and an unavailable login service despite eligible settings without exposing endpoint values or credentials.
+- Updated dependencies [a55f74f]
+  - @narumitw/sumire-progress@0.1.3
+
 ## 0.5.0
 
 ### Minor Changes
