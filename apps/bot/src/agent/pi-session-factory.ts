@@ -5,6 +5,7 @@ import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
+  type ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent"
@@ -34,6 +35,7 @@ export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
+  modelRuntimeOverride?: ModelRuntime,
 ): Promise<PiSessionFactory> {
   if (settings.botWhitelist.size === 0) {
     throw new Error(
@@ -42,7 +44,11 @@ export async function createPiSessionFactory(
   }
 
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
-  const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
+  const { modelRuntime, model, login } = await createBotModelRuntime(
+    settings,
+    agentDir,
+    modelRuntimeOverride,
+  )
 
   const systemPrompt = await buildSystemPrompt(settings)
   const piSettings = SettingsManager.inMemory({
@@ -87,8 +93,21 @@ export async function createPiSessionFactory(
   return {
     login,
     async create(chatId: number) {
-      if (!(await modelRuntime.checkAuth(model.provider))) {
-        throw new Error("尚未設定 OpenAI 驗證，請設定 OPENAI_API_KEY 或請管理員在私聊使用 /login。")
+      const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
+      const sessionManager = SessionManager.continueRecent(settings.botWorkdir, sessionDirectory)
+      const savedContext = sessionManager.buildSessionContext()
+      const savedModel = savedContext.model
+        ? modelRuntime.getModel(savedContext.model.provider, savedContext.model.modelId)
+        : undefined
+      const restoredModel =
+        savedModel && (await modelRuntime.checkAuth(savedModel.provider)) ? savedModel : undefined
+      const selectedModel =
+        restoredModel ??
+        ((await modelRuntime.checkAuth(model.provider))
+          ? model
+          : (await modelRuntime.getAvailable())[0])
+      if (!selectedModel) {
+        throw new Error("尚未設定 Pi 驗證，請管理員在私聊使用 /login。")
       }
       const resourceLoader = new DefaultResourceLoader({
         cwd: settings.botWorkdir,
@@ -137,16 +156,15 @@ export async function createPiSessionFactory(
         logger.warn(`Pi extension diagnostic for chat_id=${chatId}: ${error.path}: ${error.error}`)
       }
 
-      const sessionDirectory = path.join(settings.botSessionLogDir, String(chatId), "pi")
       const { session, modelFallbackMessage } = await createAgentSession({
         cwd: settings.botWorkdir,
         agentDir,
-        model,
-        thinkingLevel: "off",
+        model: selectedModel,
+        thinkingLevel: savedContext.messages.length > 0 ? undefined : "off",
         modelRuntime,
         customTools,
         resourceLoader,
-        sessionManager: SessionManager.continueRecent(settings.botWorkdir, sessionDirectory),
+        sessionManager,
         settingsManager: piSettings,
       })
       if (modelFallbackMessage)

@@ -33,8 +33,6 @@ describe("loadSettings", () => {
     expect(settings.botUrlContentTimeoutSeconds).toBe(180)
     expect(settings.botUrlMaxExtractedChars).toBe(12_000)
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
-    expect(settings.openaiApiKey).toBeUndefined()
-    expect(settings.openaiBaseUrl).toBe("https://api.openai.com/v1")
     expect(settings.morselLongReplyThreshold).toBe(1_000)
   })
 
@@ -47,8 +45,6 @@ describe("loadSettings", () => {
       BOT_CODEMODE_TIMEOUT_SECONDS: "2.5",
       LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
-      OPENAI_API_KEY: "fixture-key",
-      OPENAI_BASE_URL: "https://example.test/v1/",
       BOT_DOCUMENT_INPUT_ENABLED: "false",
       BOT_DOCUMENT_MAX_BYTES: "1234",
       BOT_DOCUMENT_MAX_MARKDOWN_CHARS: "4321",
@@ -76,8 +72,6 @@ describe("loadSettings", () => {
     expect(settings.botCodemodeTimeoutSeconds).toBe(2.5)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
-    expect(settings.openaiApiKey).toBe("fixture-key")
-    expect(settings.openaiBaseUrl).toBe("https://example.test/v1")
     expect(settings.botDocumentInputEnabled).toBe(false)
     expect(settings.botDocumentMaxBytes).toBe(1234)
     expect(settings.botDocumentMaxMarkdownChars).toBe(4321)
@@ -109,6 +103,21 @@ describe("loadSettings", () => {
     }
     expect(() => loadSettings({ BOT_CODEMODE_ENABLED: "yes" })).toThrow(ZodError)
     expect(loadSettings({ BOT_CODEMODE_ENABLED: "false" }).botCodemodeEnabled).toBe(false)
+  })
+
+  it.each([
+    {
+      OPENAI_MODEL: "not-a-real-model",
+      OPENAI_BASE_URL: "not-a-url",
+      OPENAI_API_KEY: "ignored-key",
+    },
+    { OPENAI_MODEL: "", OPENAI_BASE_URL: "", OPENAI_API_KEY: "" },
+  ])("does not parse OpenAI configuration owned by Pi: %j", (environment) => {
+    const settings = loadSettings(environment)
+    expect(settings).toEqual(loadSettings({}))
+    for (const property of ["openaiModel", "openaiBaseUrl", "openaiApiKey"]) {
+      expect(settings).not.toHaveProperty(property)
+    }
   })
 
   it("ignores the removed Firecrawl fallback environment switch", () => {

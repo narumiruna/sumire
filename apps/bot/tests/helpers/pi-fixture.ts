@@ -5,13 +5,14 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import type { AgentSession } from "@earendil-works/pi-coding-agent"
+import { type AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent"
 
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import { loadSettings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
 
 interface CompletionRequest {
+  model: string
   tools: Array<{ type: string; function: { name: string; parameters: Record<string, unknown> } }>
   messages: Array<{ role: string; content: unknown }>
 }
@@ -34,7 +35,8 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
       assert.equal(request.url, "/v1/chat/completions")
       let body = ""
       for await (const chunk of request) body += chunk
-      requests.push(JSON.parse(body) as CompletionRequest)
+      const payload = JSON.parse(body) as CompletionRequest
+      requests.push(payload)
       const reply = replies.shift()
       assert.ok(reply, "Unexpected model request")
       const id = `fixture-${++callId}`
@@ -42,7 +44,7 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
         id,
         object: "chat.completion.chunk",
         created: 1,
-        model: "fixture-model",
+        model: payload.model,
         choices: [{ index: 0, delta, finish_reason: finishReason }],
       })
       response.writeHead(200, { "content-type": "text/event-stream" })
@@ -79,9 +81,6 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
   const settings = {
     ...loadSettings(
       {
-        OPENAI_API_KEY: "offline-fixture-key",
-        OPENAI_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
-        OPENAI_MODEL: "fixture-model",
         BOT_WHITELIST: "123,456,-100",
         BOT_CODEMODE_ENABLED: "true",
         BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
@@ -94,7 +93,30 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
   const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} }
   const sessions = new Set<AgentSession>()
   try {
-    const factory = await createPiSessionFactory(settings, logger)
+    const modelRuntime = await ModelRuntime.create({
+      authPath: path.join(root, "fixture-auth.json"),
+      modelsPath: null,
+      modelsStorePath: path.join(root, "fixture-models-store.json"),
+      refreshOnCreate: false,
+    })
+    modelRuntime.registerProvider("openai", {
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      api: "openai-completions",
+      apiKey: "offline-fixture-key",
+      models: [
+        {
+          id: "gpt-5.6-luna",
+          name: "Offline fixture",
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          reasoning: false,
+          input: ["text", "image"],
+          contextWindow: 100_000,
+          maxTokens: 20_000,
+          compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
+        },
+      ],
+    })
+    const factory = await createPiSessionFactory(settings, logger, undefined, modelRuntime)
     const createSession = async (chatId = 123) => {
       const session = await factory.create(chatId)
       sessions.add(session)
@@ -122,7 +144,12 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
       enqueue,
       createSession,
       createFactory: (enabled: boolean) =>
-        createPiSessionFactory({ ...settings, botCodemodeEnabled: enabled }, logger),
+        createPiSessionFactory(
+          { ...settings, botCodemodeEnabled: enabled },
+          logger,
+          undefined,
+          modelRuntime,
+        ),
       call,
       script: (session: AgentSession, code: string) => call(session, "codemode", { code }),
       async cleanup() {

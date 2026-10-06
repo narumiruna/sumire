@@ -92,11 +92,6 @@ export function registerTelegramLogin(
     }
     if (!login) {
       const reasons: string[] = []
-      if (settings.openaiBaseUrl !== "https://api.openai.com/v1") {
-        reasons.push(
-          "目前使用自訂 OPENAI_BASE_URL；若要使用 /login，請改用 https://api.openai.com/v1。自訂網址請使用 OPENAI_API_KEY。",
-        )
-      }
       if (!settings.botWhitelist.has(context.from.id)) {
         reasons.push(
           "執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID 的使用者 ID；群組 ID 不算，請將該使用者 ID 明確加入白名單。",

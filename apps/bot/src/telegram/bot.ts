@@ -43,6 +43,7 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
+import { registerTelegramModelCommands } from "./model-commands.js"
 import { runTelegramPolling } from "./polling.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
 
@@ -140,6 +141,7 @@ export function createTelegramAgentBot(
   })
 
   const loginBridge = registerTelegramLogin(bot, settings, logger, dependencies.login)
+  registerTelegramModelCommands(bot, sessions, logger)
 
   bot.on("channel_post", async (context) => {
     const message = context.channelPost as unknown as TelegramMessageLike
@@ -171,7 +173,9 @@ export function createTelegramAgentBot(
         "/ask <問題> — 詢問 AI 助理",
         "/f <內容> — 將內容或回覆的訊息整理成台灣繁體中文文章",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
-        "/reset — 清除目前 chat 的 Pi session",
+        "/model — 選擇這個 chat 的 model（或 /model <provider/model>）",
+        "/thinking — 選擇 thinking level（或 /thinking <level>）",
+        "/reset — 清除目前 chat 的 Pi session 與 model/thinking 設定",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
         ...(dependencies.login ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"] : []),
@@ -1121,6 +1125,25 @@ export function createTelegramAgentBot(
     bot,
     async start() {
       await bot.init()
+      try {
+        await bot.api.setMyCommands([
+          { command: "start", description: "開始使用助理" },
+          { command: "help", description: "查看可用指令" },
+          { command: "ask", description: "詢問 AI 助理" },
+          { command: "f", description: "將內容整理成文章" },
+          { command: "t", description: "查詢股票、虛擬貨幣或匯率" },
+          { command: "model", description: "選擇這個 chat 的 model" },
+          { command: "thinking", description: "選擇 thinking level" },
+          { command: "reset", description: "清除這個 chat 的 session 與設定" },
+          { command: "cancel", description: "取消目前任務" },
+          { command: "id", description: "顯示 chat ID 與 user ID" },
+          ...(dependencies.login
+            ? [{ command: "login", description: "管理員在私聊登入 OpenAI" }]
+            : []),
+        ])
+      } catch (error) {
+        logger.warn("Could not register Telegram command menu", error)
+      }
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
       runner = runTelegramPolling(
         bot,

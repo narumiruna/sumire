@@ -21,7 +21,36 @@ const logger: Logger = {
   error: vi.fn(),
 }
 
+const reasoningModel: NonNullable<SessionHandle["model"]> = {
+  id: "reasoner",
+  name: "Reasoner",
+  provider: "test",
+  api: "openai-responses",
+  baseUrl: "https://api.example.test/v1",
+  reasoning: true,
+  input: ["text", "image"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 100_000,
+  maxTokens: 10_000,
+}
+const plainModel = { ...reasoningModel, id: "plain", reasoning: false }
+
 class FakeSession implements SessionHandle {
+  model = reasoningModel
+  thinkingLevel: SessionHandle["thinkingLevel"] = "off"
+  readonly modelRuntime = {
+    getAvailable: vi.fn(async () => [plainModel, reasoningModel]),
+  }
+  getAvailableThinkingLevels(): ReturnType<SessionHandle["getAvailableThinkingLevels"]> {
+    return this.model.reasoning ? ["off", "low", "medium", "high"] : ["off"]
+  }
+  setModel = vi.fn(async (model: NonNullable<SessionHandle["model"]>) => {
+    this.model = model
+    if (!model.reasoning) this.thinkingLevel = "off"
+  })
+  setThinkingLevel = vi.fn((level: SessionHandle["thinkingLevel"]) => {
+    this.thinkingLevel = level
+  })
   isStreaming = false
   readonly sessionId: string
   leafId: string | null = null
@@ -32,6 +61,13 @@ class FakeSession implements SessionHandle {
     getLeafId: () => this.leafId,
     getEntry: (id: string) => (this.entries.has(id) ? { id } : undefined),
     getBranch: () => this.branchEntries,
+    buildSessionContext: () => ({
+      messages: this.messages,
+      model: { provider: this.model.provider, modelId: this.model.id },
+      thinkingLevel: this.thinkingLevel,
+    }),
+    appendModelChange: vi.fn((_provider: string, _modelId: string) => "model-change"),
+    appendThinkingLevelChange: vi.fn((_level: SessionHandle["thinkingLevel"]) => "thinking-change"),
   }
   messages: AgentMessage[] = []
   readonly prompts: string[] = []
@@ -114,6 +150,245 @@ class FakeSession implements SessionHandle {
     this.disposed = true
   }
 }
+
+describe("chat model settings", () => {
+  async function setup(session = new FakeSession()) {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-model-settings-"))
+    const create = vi.fn(async () => session)
+    return { session, create, registry: new ChatSessionRegistry(create, root, logger) }
+  }
+
+  it("lazily creates a session and lists authenticated models and supported levels without prompting", async () => {
+    const { registry, session, create } = await setup()
+    await expect(registry.getModelSettings(7)).resolves.toEqual({
+      currentModel: "test/reasoner",
+      thinkingLevel: "off",
+      thinkingLevels: ["off", "low", "medium", "high"],
+      models: ["test/plain", "test/reasoner"],
+    })
+    await registry.getModelSettings(7)
+    expect(create).toHaveBeenCalledOnce()
+    expect(session.prompts).toEqual([])
+  })
+
+  it("changes only the requested chat and delegates model capability clamping to Pi", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-model-isolation-"))
+    const first = new FakeSession("first")
+    const second = new FakeSession("second")
+    const registry = new ChatSessionRegistry(
+      async (id) => (id === 7 ? first : second),
+      root,
+      logger,
+    )
+    await registry.setThinkingLevel(7, "high")
+    await expect(registry.setModel(7, "test/plain")).resolves.toMatchObject({
+      currentModel: "test/plain",
+      thinkingLevel: "off",
+      thinkingLevels: ["off"],
+    })
+    expect(first.setModel).toHaveBeenCalledExactlyOnceWith(plainModel)
+    expect(first.setThinkingLevel).toHaveBeenCalledExactlyOnceWith("high")
+    await expect(registry.getModelSettings(8)).resolves.toMatchObject({
+      currentModel: "test/reasoner",
+      thinkingLevel: "off",
+    })
+    expect(second.setModel).not.toHaveBeenCalled()
+    expect(first.prompts).toEqual([])
+  })
+
+  it("accepts an unambiguous model ID but rejects unavailable and ambiguous choices", async () => {
+    const { registry, session } = await setup()
+    await registry.setModel(7, "plain")
+    await expect(registry.setModel(7, "unknown")).rejects.toThrow("找不到可用")
+    session.modelRuntime.getAvailable.mockResolvedValue([
+      reasoningModel,
+      { ...reasoningModel, provider: "other" },
+    ])
+    await expect(registry.setModel(7, "reasoner")).rejects.toThrow("名稱不唯一")
+    expect(session.setModel).toHaveBeenCalledOnce()
+  })
+
+  it("prioritizes exact provider/model references over colliding bare IDs", async () => {
+    const { registry, session } = await setup()
+    const native = { ...reasoningModel, provider: "anthropic", id: "claude-sonnet-4" }
+    const routed = { ...reasoningModel, provider: "openrouter", id: "anthropic/claude-sonnet-4" }
+    session.modelRuntime.getAvailable.mockResolvedValue([native, routed])
+    await registry.setModel(7, "anthropic/claude-sonnet-4")
+    expect(session.setModel).toHaveBeenLastCalledWith(native)
+    await registry.setModel(7, "openrouter/anthropic/claude-sonnet-4")
+    expect(session.setModel).toHaveBeenLastCalledWith(routed)
+    await registry.setModel(7, "claude-sonnet-4")
+    expect(session.setModel).toHaveBeenLastCalledWith(native)
+  })
+
+  it("rejects unsupported thinking levels rather than silently clamping", async () => {
+    const { registry, session } = await setup()
+    await registry.setModel(7, "plain")
+    for (const level of ["high", "invalid", "HIGH", "max"]) {
+      await expect(registry.setThinkingLevel(7, level)).rejects.toThrow("不支援")
+    }
+    expect(session.setThinkingLevel).not.toHaveBeenCalled()
+    await expect(registry.setThinkingLevel(7, "off")).resolves.toMatchObject({
+      thinkingLevel: "off",
+    })
+  })
+
+  it("rejects changes while the session is busy", async () => {
+    const { registry, session } = await setup()
+    session.isStreaming = true
+    await expect(registry.setModel(7, "plain")).rejects.toThrow("任務執行中")
+    await expect(registry.setThinkingLevel(7, "high")).rejects.toThrow("任務執行中")
+    expect(session.setModel).not.toHaveBeenCalled()
+    expect(session.setThinkingLevel).not.toHaveBeenCalled()
+  })
+
+  it("invalidates an availability result that finishes after reset", async () => {
+    const { registry, session } = await setup()
+    let finish = () => {}
+    session.modelRuntime.getAvailable.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve([reasoningModel])
+        }),
+    )
+    const pending = registry.getModelSettings(7)
+    const outcome = expect(pending).rejects.toThrow("invalidated by reset")
+    await vi.waitFor(() => expect(session.modelRuntime.getAvailable).toHaveBeenCalledOnce())
+    await registry.reset(7)
+    finish()
+    await outcome
+    expect(session.setModel).not.toHaveBeenCalled()
+  })
+
+  it("waits for an accepted model change before prompting and rejects overlapping changes", async () => {
+    const { registry, session } = await setup()
+    let finish = () => {}
+    session.setModel.mockImplementationOnce(
+      (model) =>
+        new Promise((resolve) => {
+          finish = () => {
+            session.model = model
+            resolve()
+          }
+        }),
+    )
+    const selection = registry.setModel(7, "plain")
+    await vi.waitFor(() => expect(session.setModel).toHaveBeenCalledOnce())
+    const submission = registry.submit(7, "next question")
+    await expect(registry.setThinkingLevel(7, "high")).rejects.toThrow("正在切換")
+    expect(session.prompts).toEqual([])
+    finish()
+    await selection
+    await submission
+    expect(session.prompts).toEqual(["next question"])
+  })
+
+  it.each(["read", "model", "thinking", "submit", "passive"] as const)(
+    "waits for reset to finish before new %s operations",
+    async (operation) => {
+      const root = await mkdtemp(path.join(tmpdir(), "sumire-reset-settings-"))
+      const first = new FakeSession("first")
+      const replacement = new FakeSession("replacement")
+      const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValue(replacement)
+      const registry = new ChatSessionRegistry(create, root, logger)
+      await registry.getModelSettings(7)
+      const clearing = deferred()
+      const finish = deferred()
+      const clear = vi
+        .spyOn(TelegramReplyIndex.prototype, "clear")
+        .mockImplementationOnce(async () => {
+          clearing.resolve()
+          await finish.promise
+        })
+      try {
+        const reset = registry.reset(7)
+        await clearing.promise
+        expect(first.disposed).toBe(true)
+        const concurrentReset = registry.reset(7)
+        const pending =
+          operation === "read"
+            ? registry.getModelSettings(7)
+            : operation === "model"
+              ? registry.setModel(7, "plain")
+              : operation === "thinking"
+                ? registry.setThinkingLevel(7, "high")
+                : operation === "submit"
+                  ? registry.submit(7, "fresh")
+                  : registry.appendPassiveContext(7, "new context")
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(create).toHaveBeenCalledOnce()
+        expect(replacement.setModel).not.toHaveBeenCalled()
+        expect(replacement.setThinkingLevel).not.toHaveBeenCalled()
+        finish.resolve()
+        await Promise.all([reset, concurrentReset])
+        expect(clear).toHaveBeenCalledOnce()
+        await pending
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(replacement.disposed).toBe(false)
+      } finally {
+        finish.resolve()
+        clear.mockRestore()
+        await registry.dispose()
+      }
+    },
+  )
+
+  it("rejects commands waiting on failed reset cleanup and releases the reset lock", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-failed-reset-settings-"))
+    const first = new FakeSession("first")
+    const replacement = new FakeSession("replacement")
+    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValue(replacement)
+    const registry = new ChatSessionRegistry(create, root, logger)
+    await registry.getModelSettings(7)
+    const clearing = deferred()
+    const finish = deferred()
+    const clear = vi
+      .spyOn(TelegramReplyIndex.prototype, "clear")
+      .mockImplementationOnce(async () => {
+        clearing.resolve()
+        await finish.promise
+        throw new Error("fixture cleanup failed")
+      })
+    try {
+      const reset = registry.reset(7)
+      const resetOutcome = expect(reset).rejects.toThrow("fixture cleanup failed")
+      await clearing.promise
+      const read = registry.getModelSettings(7)
+      const readOutcome = expect(read).rejects.toThrow("fixture cleanup failed")
+      finish.resolve()
+      await Promise.all([resetOutcome, readOutcome])
+      expect(create).toHaveBeenCalledOnce()
+      await expect(registry.getModelSettings(7)).resolves.toMatchObject({
+        currentModel: "test/reasoner",
+      })
+      expect(create).toHaveBeenCalledTimes(2)
+    } finally {
+      finish.resolve()
+      clear.mockRestore()
+      await registry.dispose()
+    }
+  })
+
+  it("waits for model mutation to settle before disposing on reset", async () => {
+    const { registry, session } = await setup()
+    let finish = () => {}
+    session.setModel.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const selection = registry.setModel(7, "plain")
+    const outcome = expect(selection).rejects.toThrow("invalidated by reset")
+    await vi.waitFor(() => expect(session.setModel).toHaveBeenCalledOnce())
+    const reset = registry.reset(7)
+    expect(session.disposed).toBe(false)
+    finish()
+    await outcome
+    await reset
+    expect(session.disposed).toBe(true)
+  })
+})
 
 describe("ChatSessionRegistry", () => {
   it("reuses one Pi session per chat and isolates different chats", async () => {

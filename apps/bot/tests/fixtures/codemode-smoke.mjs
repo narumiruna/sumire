@@ -19,6 +19,9 @@ const { createPiSessionFactory } = await import(
   pathToFileURL(path.join(appRoot, "dist/agent/pi-session-factory.js"))
 )
 const { loadSettings } = await import(pathToFileURL(path.join(appRoot, "dist/config/settings.js")))
+const { createBotModelRuntime } = await import(
+  pathToFileURL(path.join(appRoot, "dist/agent/model-runtime.js"))
+)
 const root = await mkdtemp(path.join(tmpdir(), "sumire-codemode-smoke-"))
 const replies = []
 let callId = 0
@@ -39,7 +42,7 @@ const server = createServer(async (request, response) => {
           id,
           object: "chat.completion.chunk",
           created: 1,
-          model: "smoke-model",
+          model: payload.model,
           choices: [{ index: 0, delta, finish_reason: finishReason }],
         })}\n\n`,
       )
@@ -79,9 +82,6 @@ try {
   const settings = {
     ...loadSettings(
       {
-        OPENAI_API_KEY: "offline-smoke-key",
-        OPENAI_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
-        OPENAI_MODEL: "smoke-model",
         BOT_WHITELIST: "123",
         BOT_CODEMODE_ENABLED: "true",
         BOT_CODEMODE_TIMEOUT_SECONDS: "1",
@@ -91,7 +91,28 @@ try {
     botAgentMaxAttempts: 1,
   }
   const logger = { debug() {}, info() {}, warn() {}, error() {} }
-  const factory = await createPiSessionFactory(settings, logger)
+  const { modelRuntime } = await createBotModelRuntime(
+    { ...settings, botAdminId: 123 },
+    path.join(settings.botSessionLogDir, ".pi-agent"),
+  )
+  modelRuntime.registerProvider("openai", {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    api: "openai-completions",
+    apiKey: "offline-smoke-key",
+    models: [
+      {
+        id: "gpt-5.6-luna",
+        name: "Offline smoke",
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        reasoning: false,
+        input: ["text", "image"],
+        contextWindow: 100_000,
+        maxTokens: 20_000,
+        compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
+      },
+    ],
+  })
+  const factory = await createPiSessionFactory(settings, logger, undefined, modelRuntime)
   session = await factory.create(123)
   const call = async (tool, args) => {
     replies.push({ tool, args }, { text: true })
