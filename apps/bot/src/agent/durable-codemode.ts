@@ -24,11 +24,10 @@ export async function createDurableCodemode(
   timeoutMs: number,
   getHarness: () => Harness,
   emit: (event: AgentSessionEvent) => void,
+  ready: (signal?: AbortSignal) => Promise<void> = () => Promise.resolve(),
 ) {
-  const callable = nativeTools.filter(
-    (tool) => !("exposure" in tool) || tool.exposure !== "model-only",
-  )
-  const byName = new Map(callable.map((tool) => [tool.name, tool]))
+  const callableTools = () =>
+    nativeTools.filter((tool) => tool.exposure !== "model-only" && tool.exposure !== "hidden")
   type NestedInput = { name: string; args: JsonValue; callId: string; parentCallId: string }
   type NestedPhase = { phase: "call" } | { phase: "interrupted" }
   type NestedResult = {
@@ -53,7 +52,7 @@ export async function createDurableCodemode(
           context,
         )
         let result: NestedResult
-        const tool = byName.get(task.input.name)
+        const tool = callableTools().find((tool) => tool.name === task.input.name)
         emit({
           type: "tool_execution_start",
           toolCallId: task.input.callId,
@@ -104,14 +103,14 @@ export async function createDurableCodemode(
   if (!metadata) throw new Error("Codemode was not registered")
   const loadout = metadata.prepareLoadout?.({
     declared: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
-    callable: callable as unknown as ExtensionToolContext["tools"],
+    callable: callableTools() as unknown as ExtensionToolContext["tools"],
     registered: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
     getExposure: (name) =>
       name === "codemode"
         ? "model-only"
         : ((nativeTools.find((tool) => tool.name === name) as ToolDefinition | undefined)
             ?.exposure ?? "direct"),
-    getNamespace: () => undefined,
+    getNamespace: (name) => nativeTools.find((tool) => tool.name === name)?.namespace,
   })
   const tool = defineTool({
     name: metadata.name,
@@ -121,6 +120,12 @@ export async function createDurableCodemode(
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
+      const deadline = AbortSignal.timeout(timeoutMs)
+      const executionSignal = context.abortSignal
+        ? AbortSignal.any([context.abortSignal, deadline])
+        : deadline
+      await ready(executionSignal)
+      executionSignal.throwIfAborted()
       const state = await api.snapshot(CodemodeStoreDoc, api.conversationId, context)
       const writes: Array<{ set: Record<string, JsonValue>; delete: string[] }> = []
       let definition: ToolDefinition | undefined
@@ -140,7 +145,7 @@ export async function createDurableCodemode(
       if (!definition) throw new Error("Codemode was not registered")
       let sequence = 0
       const ctx = {
-        tools: callable,
+        tools: callableTools(),
         sessionManager: {
           getBranch: () => [
             {
@@ -155,6 +160,8 @@ export async function createDurableCodemode(
           nestedArgs: unknown,
           options: { signal?: AbortSignal } = {},
         ) => {
+          options.signal?.throwIfAborted()
+          executionSignal.throwIfAborted()
           const callId = `${api.callId}/${++sequence}`
           const toolCall = {
             type: "toolCall" as const,
@@ -169,7 +176,7 @@ export async function createDurableCodemode(
             context,
           )
           const harness = getHarness()
-          const signal = options.signal ?? context.abortSignal
+          const signal = options.signal ?? executionSignal
           const cancel = () => {
             void harness.abortTask(taskId, withoutAbortSignal(context)).catch(() => {})
           }
@@ -190,7 +197,16 @@ export async function createDurableCodemode(
           }
         },
       } as unknown as ExtensionToolContext
-      const result = await definition.execute(api.callId, args, context.abortSignal, undefined, ctx)
+      let result = await definition.execute(api.callId, args, executionSignal, undefined, ctx)
+      if (deadline.aborted)
+        result = {
+          ...result,
+          isError: true,
+          content: [
+            ...result.content,
+            { type: "text", text: `Codemode exceeded its ${timeoutMs}ms host deadline.` },
+          ],
+        }
       if (!result.isError && writes.length) {
         await api.commit(async (tx) => {
           const store = await tx.doc(CodemodeStoreDoc, api.conversationId)

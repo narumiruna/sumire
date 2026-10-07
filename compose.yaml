@@ -14,6 +14,7 @@ services:
       - workdir:/workdir
       - ./instructions:/app/instructions:ro
       - ./skills:/app/skills:ro
+      - ./mcp.json:/app/mcp.json:ro
       - events:/app/.events
       - state:/app/.telegramagent
       - whisper-cache:/app/.cache/whisper

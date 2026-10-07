@@ -169,7 +169,7 @@ The bot registers `/model` and `/thinking` in Telegram's command menu at startup
 
 ## Codemode (opt-in)
 
-Set `BOT_CODEMODE_ENABLED=true` in the ignored root `.env` and restart to let Pi use its native `codemode` tool. It is disabled by default. No MCP server is required. Sumire uses `mode: "on"`, so existing tools remain directly available; it does not enable `tool_search`, MCP, classifier models, or image generation. The script's `models` namespace is unavailable.
+Set `BOT_CODEMODE_ENABLED=true` in the ignored root `.env` and restart to let Pi use its native `codemode` tool. It is disabled by default. No MCP server is required. Sumire uses `mode: "on"`, so existing tools remain directly available; the codemode flag alone does not enable MCP, `tool_search`, classifier models, or image generation. The script's `models` namespace is unavailable.
 
 Scripts run in Pi's QuickJS sandbox with no Node APIs, filesystem, network, or timers. They can reach registered callable tools through `tools.<name>(args)`, use `Promise.allSettled()` for independent calls, and filter results before returning them to the model. Only output explicitly returned or emitted by the script reaches the model; nested results are not independent transcript messages. Do not run dependent writes or publication operations in parallel. `store()` holds small JSON values on the current Pi branch and survives session reload; chat stores are isolated, but coding-tool filesystem access still uses the shared Bot workdir.
 
@@ -181,7 +181,7 @@ Pi's existing bounds remain in place: a 256 MB VM heap, output truncation with a
 
 Codemode does not grant new permissions or make `bash` safe for untrusted users. The existing non-empty `BOT_WHITELIST` remains required, and all callable tools retain validation and durable task ownership. Nested URL loads still reject credentials, local/private/link-local/metadata targets and unsafe redirects, with their existing byte, time and output limits. Tool output and fetched content remain untrusted data, not authorization.
 
-To roll back, set `BOT_CODEMODE_ENABLED=false` and restart. Existing sessions can resume without codemode; direct tools, progress and image access remain available. Keep the state volumes and do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification before enabling this opt-in feature.
+To roll back codemode, set both `BOT_CODEMODE_ENABLED=false` and `BOT_MCP_ENABLED=false` and restart. Existing sessions can resume without codemode; direct tools, progress and image access remain available. Keep the state volumes and do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification before enabling this opt-in feature.
 
 Run the isolated Linux x86_64 production-runtime smoke from the repository root:
 
@@ -191,6 +191,52 @@ docker compose -p sumire-codemode-smoke -f compose.codemode-smoke.yaml down
 ```
 
 This uses a separate image, no `.env` or state volumes, and disabled container networking. Its loopback Chat Completions fixture verifies the pruned production worker/WASM, native tools, direct progress, persistence, host deadline and recovery without provider charges or Telegram polling. It does not replace a live endpoint/Telegram test.
+
+## MCP servers (opt-in)
+
+Set `BOT_MCP_ENABLED=true` in the ignored root `.env` and restart. MCP is off by default; when off, Sumire does not read the MCP file, start MCP subprocesses or make MCP requests. Enabling MCP also enables codemode discovery even when `BOT_CODEMODE_ENABLED=false`.
+
+`BOT_MCP_CONFIG_PATH` defaults to `<application root>/mcp.json`, independently of `BOT_WORKDIR`. Compose mounts the root `mcp.json` read-only at `/app/mcp.json`. Only this administrator-selected file is loaded: Sumire does not merge home or workdir MCP configuration or discover arbitrary extensions. Missing/unreadable files, oversized configuration (over 1 MB), invalid JSON and invalid top-level shape fail startup. Invalid individual servers, missing environment variables and failed connections are skipped without disabling healthy servers. Diagnostics omit values and server stderr to avoid leaking secrets. Correct configuration and restart to reload; there is no Telegram `/mcp` UI.
+
+The tracked configuration contains:
+
+- `chrome-devtools`: `npx -y chrome-devtools-mcp@latest` over stdio. This requires npm network access and an installed Chrome. `@latest` is deliberately unpinned as requested; production deployments can choose a separately configured pinned version.
+- `firecrawl`: `https://mcp.firecrawl.dev/v2/mcp` over Streamable HTTP, with `Authorization: Bearer ${FIRECRAWL_API_KEY}`. Set `FIRECRAWL_API_KEY` in the ignored `.env`, not JSON. Missing variables disable that server; placeholders are never sent literally.
+
+Servers support `command`/`args`/`cwd`/`env` for stdio, or `url`/`headers` for HTTP, plus `description`, `enabled`, `timeout`, `exposure` and `toolExposure`. Legacy SSE, OAuth, credential `!command` expansion, unknown fields and `deferred` exposure are rejected. `${NAME}` interpolation applies to `env` and `headers`. Use `codemode` (default), `direct` or `hidden` exposure; `toolExposure` supports exact names and ordered `*` patterns, with exact matches taking precedence. This release does not expose MCP resources, resource templates, prompts, sampling or tasks.
+
+The Pi-owned `Harness` remains the only agent runtime. Sumire uses the public `@earendil-works/pi-mcp` client as a tool capability, without private Pi imports, another model loop or a session storage migration. Codemode tools are not declared directly or enumerated in the codemode description. Scripts discover them using asynchronous `searchTools()`, `describeTool()` and `describeNamespace()`, or `ALL_TOOLS`:
+
+```javascript
+text(await searchTools("scrape", { namespace: "firecrawl" }))
+text(await describeNamespace("firecrawl"))
+```
+
+Tool names follow `mcp__<server>__<tool>` normalization and deterministic hash suffixes for collisions/long names. Tool-list changes update the next discovery and model request; stale dispatches are rejected. Each chat owns separate connections, subprocess homes and Chrome profiles. Stdio processes inherit only essential system variables and explicitly configured server `env`, not bot tokens or unrelated API keys. Explicit remote browser connections or fixed `--userDataDir` arguments can bypass profile isolation: do not configure them for multiple chats. The existing workdir and filesystem permissions are still shared, not sandboxed.
+
+Startup/discovery waits up to 10 seconds; connections may complete in the background. Initialization is bounded by the lesser of the server timeout and 60 seconds, and tool discovery by 10 seconds, 1,024 tools and 8 MB of metadata. A disconnected connection reconnects on the next codemode discovery. Each call has an absolute `timeout` (default 60 seconds, maximum 3,600), combined with `/cancel` and the codemode host deadline. Requests are not resent after failure or process restart: all MCP executions are replay-unsafe durable tasks. Interrupted calls require inspecting external side effects before explicitly retrying. Shutdown closes connections and terminates stdio process groups, including descendants after an unexpected leader exit.
+
+Codemode receives a bounded MCP result with `content`, optional `structuredContent` and `isError`; `_meta` is omitted. Scripts must inspect `isError` because error results resolve rather than throw. Direct calls are marked as failed. Text reaches the model with a 20 KB per-block preview; full text is saved privately beneath the chat's `durable/mcp/results/` directory. Raw script results and HTTP JSON bodies/SSE events/stdio messages are limited to 8 MB; individual image and embedded binary blocks are limited to 2 MB. Audio and resource links appear as text placeholders to the model but remain in the raw script result. Configured credential values are redacted from metadata and results before persistence; this cannot prevent secrets supplied directly in user/model inputs or accessed through existing coding tools. Result files and session storage require normal disk monitoring and private backups.
+
+### Chrome in Docker and live verification
+
+The requested root configuration is a desktop example, not a headless Docker browser configuration. For Docker, use a separate administrator config to add `--headless`, `--isolated`, `--executablePath <installed Chromium path>` and optionally `--no-usage-statistics`/`--no-performance-crux`. The executable path varies by Playwright version and architecture; the smoke script locates it. Do not disable Chrome's sandbox, enable privileged containers or connect to a personal browser to make a smoke pass.
+
+Run from the repository root with `FIRECRAWL_API_KEY` exported in the shell:
+
+```bash
+docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml build mcp-smoke
+docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml run --rm mcp-smoke
+# Independently verify one low-cost Firecrawl search if Chrome cannot start:
+docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml run --rm mcp-smoke --firecrawl-only
+docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml down
+```
+
+This uses the production image with separate ephemeral state and no Telegram polling. The full smoke opens `https://example.com`, reads a snapshot, captures an image and performs one Firecrawl search (`limit=1`, may consume credits). Do not print credentials or search content as evidence. On the current Linux ARM64 Docker environment, the image builds and Firecrawl smoke passes, but Chromium reports `No usable sandbox`; the full Chrome smoke remains blocked pending a sandbox-capable deployment. No sandbox bypass is configured.
+
+MCP is additional administrator-authorized capability, not a replacement for `load_public_url` or its public-target/redirect/byte-limit checks. Chrome and other servers can reach files and network services available inside their execution environment. Restrict whitelist membership, credentials, mounts and network access; MCP annotations and fetched content do not grant permission. The browser server may collect usage statistics unless explicitly disabled in its configuration.
+
+To roll back MCP, set `BOT_MCP_ENABLED=false` and restart. Set `BOT_CODEMODE_ENABLED=false` too if codemode should be disabled. Keep session/state volumes; do not run `docker compose down -v`. Existing SQLite data is unchanged, and interrupted side effects must not be automatically retried.
 
 ## OpenAI login from Telegram
 

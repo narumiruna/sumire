@@ -22,6 +22,8 @@ import { createDurableCodemode } from "./durable-codemode.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
 import { adaptTool, codingTools, collectTools } from "./durable-tools.js"
+import { McpCapability } from "./mcp-capability.js"
+import { loadMcpConfig } from "./mcp-config.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
 
@@ -45,6 +47,7 @@ export async function createPiSessionFactory(
       "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
     )
   }
+  const mcpConfig = await loadMcpConfig(settings, logger)
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
 
   const { modelRuntime, model, login } = await createBotModelRuntime(
@@ -91,7 +94,7 @@ export async function createPiSessionFactory(
         traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
     },
   )
-  const nativeTools = [
+  const baseTools = [
     ...codingTools(settings.botWorkdir),
     urlTool,
     ...buildMorselTools(createMorselPublisher(settings), settings.morselMode, logger),
@@ -134,6 +137,26 @@ export async function createPiSessionFactory(
       await chmod(directory, 0o700)
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
+      const nativeTools = [...baseTools]
+      const mcp: McpCapability | undefined = settings.botMcpEnabled
+        ? new McpCapability(
+            mcpConfig,
+            settings.botWorkdir,
+            path.join(directory, "mcp"),
+            logger,
+            () => {
+              if (!mcp) return
+              nativeTools.splice(baseTools.length, nativeTools.length, ...mcp.tools)
+              registry.install(
+                defineExtension({
+                  name: "sumire-mcp",
+                  tools: mcp.tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
+                  sections: [section("mcp_servers", () => mcp?.summary())],
+                }),
+              )
+            },
+          )
+        : undefined
       registry.install(
         defineExtension({
           name: "sumire",
@@ -144,7 +167,7 @@ export async function createPiSessionFactory(
       registry.install(createProgressExtension())
       let harness: Harness | undefined
       let session: DurableSession | undefined
-      if (settings.botCodemodeEnabled)
+      if (settings.botCodemodeEnabled || settings.botMcpEnabled)
         registry.install(
           await createDurableCodemode(
             nativeTools,
@@ -154,11 +177,13 @@ export async function createPiSessionFactory(
               return harness
             },
             (event) => session?.emit(event),
+            (signal) => mcp?.ready(signal) ?? Promise.resolve(),
           ),
         )
       const storage = await openNodeSqliteStorage(sessionFile)
       try {
         await chmod(sessionFile, 0o600)
+        await mcp?.ready()
         harness = await Harness.open(
           storage,
           {
@@ -207,11 +232,16 @@ export async function createPiSessionFactory(
           nativeTools,
           logger,
           trustKey: JSON.stringify([...settings.botWhitelist].sort((a, b) => a - b)),
+          cleanup: () => mcp?.close() ?? Promise.resolve(),
         })
         return session
       } catch (error) {
-        if (harness) await harness.close(context)
-        else await storage.close(context)
+        try {
+          if (harness) await harness.close(context)
+          else await storage.close(context)
+        } finally {
+          await mcp?.close()
+        }
         logger.error(`Durable session initialization failed for chat_id=${chatId}`, error)
         throw error
       }

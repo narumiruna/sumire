@@ -3,7 +3,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.ts"
 import { loadSettings } from "../../src/config/settings.ts"
 
-const [root, endpoint] = process.argv.slice(2)
+const [root, endpoint, mcpConfig] = process.argv.slice(2)
 const settings = loadSettings(
   {
     OPENAI_API_KEY: "offline-crash-fixture-key",
@@ -11,6 +11,7 @@ const settings = loadSettings(
     OPENAI_MODEL: "fixture-model",
     BOT_WHITELIST: "123,456,-100",
     BOT_CODEMODE_ENABLED: "true",
+    ...(mcpConfig ? { BOT_MCP_ENABLED: "true", BOT_MCP_CONFIG_PATH: mcpConfig } : {}),
   },
   root,
 )
@@ -40,7 +41,17 @@ modelRuntime.registerProvider("openai", {
 })
 const factory = await createPiSessionFactory(settings, logger, undefined, modelRuntime)
 const session = await factory.create(123)
-await session.prompt("process crash input", {
-  delivery: { sourceMessageId: 71, statusMessageId: 72, mode: "default" },
-})
-throw new Error("Crash fixture must be killed while the request is in progress")
+let stopping
+if (mcpConfig)
+  process.once("SIGTERM", () => {
+    stopping = session.dispose().then(() => process.exit(0))
+  })
+await session
+  .prompt("process crash input", {
+    delivery: { sourceMessageId: 71, statusMessageId: 72, mode: "default" },
+  })
+  .catch((error) => {
+    if (!stopping) throw error
+  })
+if (stopping) await stopping
+else throw new Error("Crash fixture must be killed while the request is in progress")
