@@ -4,7 +4,7 @@
 
 讓 Sumire bot 從根目錄 `mcp.json` 載入 MCP servers，支援 stdio 的 Chrome DevTools 與 Streamable HTTP 的 Firecrawl。模型能探索並呼叫 MCP tools；呼叫沿用 Pi 的工具執行管線、Telegram 的授權與取消機制，不新增 agent loop。
 
-實作已完成核心整合、測試、文件與 Firecrawl live smoke；目前仍有 Chrome sandbox 部署阻礙，不能宣告計畫 end-to-end 完成。計畫保留。PR 尚未建立：GitHub 拒絕 push，恢復後將以 draft 交付。
+實作已完成核心整合、測試、文件與 Firecrawl live smoke；目前仍有 Chrome sandbox 部署阻礙，不能宣告計畫 end-to-end 完成。計畫保留。GitHub push 已成功，依使用者要求建立非 Draft [PR #77](https://github.com/narumiruna/sumire/pull/77)，Chrome 驗收仍未完成。
 
 ## Context
 
@@ -80,7 +80,7 @@ flowchart LR
 - Root `format:check`, `lint`, `typecheck`, `test` and `build` passed; the latest full suite has 946 tests. `npx biome check mcp.json`, `git diff --check` and `npx changeset status` passed. The changeset bumps only private `@narumitw/sumire` (minor).
 - Docker Compose production-image build passed on Linux ARM64, Node 24.21.0, Playwright Chromium 1243. Firecrawl live smoke passed using runtime credentials and one search with `limit=1`; no credentials or response data were printed.
 - Chrome DevTools MCP `@latest` resolved to 1.10.1. The smoke uses `--headless --isolated --executablePath <detected Chromium> --no-page-id-routing --no-usage-statistics --no-performance-crux`. Its MCP connection and tool discovery succeed, but starting Chromium fails; direct non-root Chromium diagnostics report `No usable sandbox` under the current Docker restrictions.
-- **Publication blocked:** repeated SSH and HTTPS pushes returned GitHub's `Internal Server Error`; repository permissions report push access, but the remote branch/commit is not available. Signed implementation commit `fef305e` remains on local branch `narumi/feat/mcp-support`. No PR was created. Retry publication after GitHub accepts the branch write; keep the PR draft until Chrome validation passes.
+- **Publication resolved:** earlier SSH and HTTPS pushes returned GitHub's `Internal Server Error`. A subsequent push succeeded, and [PR #77](https://github.com/narumiruna/sumire/pull/77) was opened against `main` as a non-draft PR at the user's request. The PR explicitly retains the unresolved Chrome acceptance blocker; opening it does not mark the plan complete.
 - **Blocked:** run the full Chrome public-page snapshot/screenshot smoke in a sandbox-capable Docker deployment, or separately authorize a reviewed sandbox-compatible deployment change. No `--no-sandbox`, privileged mode, extra capabilities or relaxed seccomp policy was added. Do not mark the deployment task or full completion checklist complete until the smoke succeeds.
 
 ## Non-Goals
@@ -112,5 +112,5 @@ flowchart LR
 - [x] 工具探索、exposure、動態更新與 MCP error/content 語意測試通過。
 - [x] 雙 chat 隔離、timeout、abort、shutdown、restart 與不重播副作用測試通過。
 - [x] MCP 關閉回歸與完整根目錄 checks 通過，部署/安全限制已記錄。
-- [ ] 實作 PR 含 affected package changeset，文件與 rollback 步驟經 review。
+- [x] 實作 PR 含 affected package changeset，文件與 rollback 步驟經 review。
 - [ ] 所有 tasks 完成後刪除此計畫檔並在交付摘要記錄其路徑。
