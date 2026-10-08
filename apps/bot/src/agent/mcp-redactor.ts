@@ -15,13 +15,25 @@ export function validateMcpSecrets(secrets: ReadonlySet<string>): void {
 }
 
 /** One literal replacement pass; replacement markers are never fed into later matches. */
-export function createMcpRedactor(secrets: ReadonlySet<string>): (text: string) => string {
-  validateMcpSecrets(secrets)
-  const values = [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)
+export function createMcpRedactor(
+  secrets: ReadonlySet<string>,
+  boundarySecrets: ReadonlySet<string> = new Set(),
+): (text: string) => string {
+  const combined = new Set([...secrets, ...boundarySecrets])
+  validateMcpSecrets(combined)
+  const values = [...combined].filter(Boolean).sort((a, b) => b.length - a.length)
   if (!values.length) return (text) => text
   const expression = new RegExp(
-    values.map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
-    "g",
+    values
+      .map((value) => {
+        const literal = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        // Explicit credentials retain substring matching, even if also derived.
+        return boundarySecrets.has(value) && !secrets.has(value)
+          ? `(?<![\\p{L}\\p{M}\\p{N}_])${literal}(?![\\p{L}\\p{M}\\p{N}_])`
+          : literal
+      })
+      .join("|"),
+    "gu",
   )
   return (text) => text.replace(expression, "[redacted]")
 }

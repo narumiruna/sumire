@@ -144,6 +144,79 @@ describe("MCP configuration", () => {
     )
   })
 
+  it.each([
+    ["Authorization", "Basic", "user:pass"],
+    ["Proxy-Authorization", "bAsIc", "operator:pass:with:colons"],
+    ["X-Auth", "BASIC", "名前:秘密"],
+    ["Authorization", "Basic", ":password-only"],
+    ["Authorization", "Basic", "username-only:"],
+  ])("redacts decoded Basic credentials from %s", async (header, scheme, decoded) => {
+    const payload = Buffer.from(decoded).toString("base64")
+    const value = `  ${scheme}\t  ${payload}  `
+    const result = await config({
+      mcpServers: { remote: { url: "https://example.com/mcp", headers: { [header]: value } } },
+    })
+    expect(result.servers[0]?.headers[header]).toBe(value)
+    for (const secret of [
+      value,
+      payload,
+      decoded,
+      decoded.slice(0, decoded.indexOf(":")),
+      decoded.slice(decoded.indexOf(":") + 1),
+    ])
+      if (secret) expect(result.redact(secret)).toBe("[redacted]")
+    expect(result.logger.warn).not.toHaveBeenCalled()
+  })
+
+  it("redacts short Basic components only at boundaries and retains explicit-secret precedence", async () => {
+    const remote = { url: "https://example.com/mcp", headers: { Authorization: "Basic YTpi" } }
+    const result = await config({ mcpServers: { remote } })
+    expect(result.redact("a b a:b object banana")).toBe(
+      "[redacted] [redacted] [redacted] object banana",
+    )
+    const explicit = await config({
+      mcpServers: { remote, local: { command: "node", env: { TOKEN: "b" } } },
+    })
+    expect(explicit.redact("object")).toBe("o[redacted]ject")
+  })
+
+  it.each(["not-base64", "dXNlcg==", "/zpzZWNyZXQ=", "dXNlcjpwYXNz!"])(
+    "does not derive secrets from malformed Basic payload %s",
+    async (payload) => {
+      const result = await config({
+        mcpServers: {
+          remote: {
+            url: "https://example.com/mcp",
+            headers: { Authorization: `Basic ${payload}` },
+          },
+        },
+      })
+      expect(result.servers).toHaveLength(1)
+      expect(result.redact("user secret pass")).toBe("user secret pass")
+      expect(result.redact(payload)).toBe("[redacted]")
+    },
+  )
+
+  it("bounds derived Basic secrets and isolates skipped entries", async () => {
+    const headers = Object.fromEntries(
+      Array.from({ length: 40 }, (_, i) => [
+        `X-Auth-${i}`,
+        `Basic ${Buffer.from(`user-${i}:password-${i}`).toString("base64")}`,
+      ]),
+    )
+    const result = await config({
+      mcpServers: {
+        excessive: { url: "https://example.com/mcp", headers },
+        healthy: { command: "node", env: { TOKEN: "healthy-secret" } },
+      },
+    })
+    expect(result.servers.map((server) => server.name)).toEqual(["healthy"])
+    expect(result.redact("user-0 password-0 healthy-secret")).toBe("user-0 password-0 [redacted]")
+    expect(result.logger.warn).toHaveBeenCalledExactlyOnceWith(
+      "An MCP server was skipped: invalid configuration or missing environment",
+    )
+  })
+
   it.each(["X-Auth", "x-auth", "Authentication", "XAuth"])(
     "redacts literal credentials from %s",
     async (header) => {

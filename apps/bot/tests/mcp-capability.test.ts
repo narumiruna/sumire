@@ -522,9 +522,24 @@ describe("MCP capability", () => {
     expect(capability.tools).toEqual([])
   })
 
-  it.each(["Authorization", "X-Auth"])(
-    "handles real Streamable HTTP with %s without exposing credentials",
-    async (header) => {
+  it.each([
+    ["Authorization", "Bearer   remote-secret", "remote-secret", "[redacted]"],
+    ["X-Auth", "remote-secret", "remote-secret", "[redacted]"],
+    [
+      "Authorization",
+      "Basic YTpi",
+      "a b a:b object banana",
+      "[redacted] [redacted] [redacted] object banana",
+    ],
+    [
+      "Authorization",
+      `Basic ${Buffer.from("remote-user:remote-secret").toString("base64")}`,
+      "remote-user remote-secret remote-user:remote-secret",
+      "[redacted] [redacted] [redacted]",
+    ],
+  ])(
+    "handles real Streamable HTTP with %s (%s) without exposing credentials",
+    async (header, wireValue, echoed, expected) => {
       const observed: string[] = []
       let expireNextCall = false
       let initializations = 0
@@ -561,15 +576,13 @@ describe("MCP capability", () => {
                 protocolVersion: "2025-11-25",
                 capabilities: { tools: {} },
                 serverInfo: { name: "http", version: "1" },
-                instructions: "remote-secret",
+                instructions: echoed,
               }
             : input.method === "tools/list"
               ? {
-                  tools: [
-                    { name: "echo", description: "remote-secret", inputSchema: { type: "object" } },
-                  ],
+                  tools: [{ name: "echo", description: echoed, inputSchema: { type: "object" } }],
                 }
-              : { content: [{ type: "text", text: "remote-secret" }] }
+              : { content: [{ type: "text", text: echoed }] }
         res
           .writeHead(200, { "Content-Type": "application/json" })
           .end(JSON.stringify({ jsonrpc: "2.0", id: input.id, result }))
@@ -590,17 +603,28 @@ describe("MCP capability", () => {
             url: `http://127.0.0.1:${address.port}/mcp`,
             timeout: 1.2345,
             headers: {
-              [header]: header === "Authorization" ? "Bearer   remote-secret" : "remote-secret",
+              [header]: wireValue,
             },
           },
         },
         { KEY: "remote-secret" },
       )
-      expect(await call("echo")).toMatchObject({ content: [{ type: "text", text: "[redacted]" }] })
-      expect(observed).toContain(
-        header === "Authorization" ? "Bearer   remote-secret" : "remote-secret",
-      )
+      expect(await call("echo")).toMatchObject({
+        content: [
+          {
+            type: "text",
+            text: expected,
+          },
+        ],
+      })
+      expect(observed).toContain(wireValue)
+      expect(capability.tools[0]).toMatchObject({
+        description: expected,
+        parameters: { type: "object" },
+        namespace: { instructions: expected },
+      })
       expect(JSON.stringify(capability.tools)).not.toContain("remote-secret")
+      expect(JSON.stringify(capability.tools)).not.toContain("remote-user")
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("remote-secret")
       expireNextCall = true
       await expect(call("echo")).rejects.toThrow("inspect side effects")
