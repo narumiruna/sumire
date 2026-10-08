@@ -128,7 +128,9 @@ describe("durable bot runtime", () => {
           expect(child.exitCode, stderr).toBeNull()
           expect(fixture.requests).toHaveLength(1)
         },
-        { timeout: 4_000 },
+        // Process imports compete with the expanded real-transport suite on CI workers.
+        // This bounds startup only; the committed-input/recovery assertions below are unchanged.
+        { timeout: 10_000 },
       )
       child.kill("SIGKILL")
       await exited

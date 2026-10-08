@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { JsonValue } from "@earendil-works/chord"
 import { withoutAbortSignal } from "@earendil-works/chord/context"
 import type { AgentToolCallOutcome } from "@earendil-works/pi-agent-core"
@@ -24,12 +25,26 @@ export async function createDurableCodemode(
   timeoutMs: number,
   getHarness: () => Harness,
   emit: (event: AgentSessionEvent) => void,
+  ready: (signal?: AbortSignal) => Promise<void> = () => Promise.resolve(),
 ) {
-  const callable = nativeTools.filter(
-    (tool) => !("exposure" in tool) || tool.exposure !== "model-only",
-  )
-  const byName = new Map(callable.map((tool) => [tool.name, tool]))
-  type NestedInput = { name: string; args: JsonValue; callId: string; parentCallId: string }
+  const callableTools = () =>
+    nativeTools.filter((tool) => tool.exposure !== "model-only" && tool.exposure !== "hidden")
+  const generations = new WeakMap<NativeTool, string>()
+  const generationOf = (tool: NativeTool) => {
+    let generation = generations.get(tool)
+    if (!generation) {
+      generation = randomUUID()
+      generations.set(tool, generation)
+    }
+    return generation
+  }
+  type NestedInput = {
+    name: string
+    generation?: string
+    args: JsonValue
+    callId: string
+    parentCallId: string
+  }
   type NestedPhase = { phase: "call" } | { phase: "interrupted" }
   type NestedResult = {
     content: AgentToolCallOutcome["result"]["content"]
@@ -53,7 +68,7 @@ export async function createDurableCodemode(
           context,
         )
         let result: NestedResult
-        const tool = byName.get(task.input.name)
+        const tool = callableTools().find((tool) => tool.name === task.input.name)
         emit({
           type: "tool_execution_start",
           toolCallId: task.input.callId,
@@ -63,6 +78,8 @@ export async function createDurableCodemode(
         })
         try {
           if (!tool) throw new Error(`Tool is not callable: ${task.input.name}`)
+          if (!task.input.generation || generationOf(tool) !== task.input.generation)
+            throw new Error("Tool selection is stale; discover tools again")
           result = jsonValue(
             await executeNative(tool, task.input.args, task.input.callId, context),
           ) as NestedResult
@@ -104,14 +121,14 @@ export async function createDurableCodemode(
   if (!metadata) throw new Error("Codemode was not registered")
   const loadout = metadata.prepareLoadout?.({
     declared: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
-    callable: callable as unknown as ExtensionToolContext["tools"],
+    callable: callableTools() as unknown as ExtensionToolContext["tools"],
     registered: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
     getExposure: (name) =>
       name === "codemode"
         ? "model-only"
         : ((nativeTools.find((tool) => tool.name === name) as ToolDefinition | undefined)
             ?.exposure ?? "direct"),
-    getNamespace: () => undefined,
+    getNamespace: (name) => nativeTools.find((tool) => tool.name === name)?.namespace,
   })
   const tool = defineTool({
     name: metadata.name,
@@ -121,6 +138,12 @@ export async function createDurableCodemode(
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
+      const deadline = AbortSignal.timeout(timeoutMs)
+      const executionSignal = context.abortSignal
+        ? AbortSignal.any([context.abortSignal, deadline])
+        : deadline
+      await ready(executionSignal)
+      executionSignal.throwIfAborted()
       const state = await api.snapshot(CodemodeStoreDoc, api.conversationId, context)
       const writes: Array<{ set: Record<string, JsonValue>; delete: string[] }> = []
       let definition: ToolDefinition | undefined
@@ -139,8 +162,10 @@ export async function createDurableCodemode(
       } as unknown as ExtensionAPI)
       if (!definition) throw new Error("Codemode was not registered")
       let sequence = 0
+      const snapshot = callableTools()
+      const selectedTools = new Map(snapshot.map((tool) => [tool.name, tool]))
       const ctx = {
-        tools: callable,
+        tools: snapshot,
         sessionManager: {
           getBranch: () => [
             {
@@ -155,6 +180,10 @@ export async function createDurableCodemode(
           nestedArgs: unknown,
           options: { signal?: AbortSignal } = {},
         ) => {
+          options.signal?.throwIfAborted()
+          executionSignal.throwIfAborted()
+          const selected = selectedTools.get(name)
+          if (!selected) throw new Error(`Tool is not callable: ${name}`)
           const callId = `${api.callId}/${++sequence}`
           const toolCall = {
             type: "toolCall" as const,
@@ -164,12 +193,18 @@ export async function createDurableCodemode(
           }
           const taskId = await api.createTask(
             nestedTask,
-            { name, args: jsonValue(nestedArgs), callId, parentCallId: api.callId },
+            {
+              name,
+              generation: generationOf(selected),
+              args: jsonValue(nestedArgs),
+              callId,
+              parentCallId: api.callId,
+            },
             { ownership: { kind: "task", taskId: api.taskId } },
             context,
           )
           const harness = getHarness()
-          const signal = options.signal ?? context.abortSignal
+          const signal = options.signal ?? executionSignal
           const cancel = () => {
             void harness.abortTask(taskId, withoutAbortSignal(context)).catch(() => {})
           }
@@ -190,7 +225,16 @@ export async function createDurableCodemode(
           }
         },
       } as unknown as ExtensionToolContext
-      const result = await definition.execute(api.callId, args, context.abortSignal, undefined, ctx)
+      let result = await definition.execute(api.callId, args, executionSignal, undefined, ctx)
+      if (deadline.aborted)
+        result = {
+          ...result,
+          isError: true,
+          content: [
+            ...result.content,
+            { type: "text", text: `Codemode exceeded its ${timeoutMs}ms host deadline.` },
+          ],
+        }
       if (!result.isError && writes.length) {
         await api.commit(async (tx) => {
           const store = await tx.doc(CodemodeStoreDoc, api.conversationId)

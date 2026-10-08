@@ -32,6 +32,7 @@
     "@earendil-works/pi-ai": "1.0.2",
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-durable": "1.0.2",
+    "@earendil-works/pi-mcp": "1.0.2",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/otter-cli": "0.3.1",

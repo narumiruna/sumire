@@ -83,6 +83,7 @@ export class DurableSession implements SessionHandle {
     readonly systemPrompt: string,
     readonly nativeTools: NativeTool[],
     private readonly logger: Logger,
+    private readonly cleanup: () => Promise<void>,
   ) {
     this.#conversation = conversation
     this.#model = model
@@ -99,6 +100,7 @@ export class DurableSession implements SessionHandle {
     nativeTools: NativeTool[]
     trustKey: string
     logger: Logger
+    cleanup?: () => Promise<void>
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -146,6 +148,7 @@ export class DurableSession implements SessionHandle {
       options.systemPrompt,
       options.nativeTools,
       options.logger,
+      options.cleanup ?? (() => Promise.resolve()),
     )
     session.sessionId = saved.sessionId
     session.#thinkingLevel = clampThinkingLevel(selected, agent.thinkingLevel ?? "off")
@@ -382,10 +385,20 @@ export class DurableSession implements SessionHandle {
 
   dispose(): Promise<void> {
     this.#closing ??= (async () => {
-      await this.#events?.stop()
-      this.#view?.dispose()
-      await this.harness.close(context)
-      this.#listeners.clear()
+      try {
+        await this.#events?.stop()
+        this.#view?.dispose()
+      } finally {
+        try {
+          await this.harness.close(context)
+        } finally {
+          try {
+            await this.cleanup()
+          } finally {
+            this.#listeners.clear()
+          }
+        }
+      }
     })()
     return this.#closing
   }
