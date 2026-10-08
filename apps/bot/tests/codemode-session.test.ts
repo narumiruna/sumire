@@ -166,7 +166,7 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
     ).toContain("null")
   })
 
-  it("restores store and direct progress across reply-tree navigation and restart, isolates chats, and resumes when disabled", async () => {
+  it("restores store and direct progress across reply-tree navigation and factory restart, and isolates chats", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()
     const registry = new ChatSessionRegistry(
@@ -221,21 +221,25 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
       text: "1",
     })
     await resumed.dispose()
-    const disabledFactory = await fixture.createFactory(false)
-    const disabled = await disabledFactory.create(123)
+    const restartedFactory = await fixture.createFactory()
+    const reopened = await restartedFactory.create(123)
     try {
-      expect(disabled.getActiveToolNames()).not.toContain("codemode")
-      expect((await fixture.call(disabled, "update_progress", { steps: [] })).isError).toBe(false)
+      expect(reopened.getActiveToolNames()).toContain("codemode")
+      expect((await fixture.script(reopened, "return load('marker')")).content).toContainEqual({
+        type: "text",
+        text: "1",
+      })
+      expect((await fixture.call(reopened, "update_progress", { steps: [] })).isError).toBe(false)
       expect(
         (
-          await fixture.call(disabled, "bash", {
-            command: "printf disabled-session-ok",
+          await fixture.call(reopened, "bash", {
+            command: "printf reopened-session-ok",
             timeout: 5,
           })
         ).isError,
       ).toBe(false)
     } finally {
-      await disabled.dispose()
+      await reopened.dispose()
     }
   })
 

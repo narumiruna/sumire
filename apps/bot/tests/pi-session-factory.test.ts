@@ -346,8 +346,9 @@ describe("createPiSessionFactory", () => {
         "write",
         "load_public_url",
         "update_progress",
+        "codemode",
       ])
-      expect(session.getActiveToolNames()).not.toContain("codemode")
+      expect(session.getActiveToolNames()).toContain("codemode")
       const urlTool = session.nativeTools.find((tool) => tool.name === "load_public_url")
       expect(urlTool).toBeDefined()
       if (!urlTool) throw new Error("load_public_url was not registered")
@@ -465,6 +466,7 @@ describe("createPiSessionFactory", () => {
         "write",
         "load_public_url",
         "update_progress",
+        "codemode",
       ])
       for (const name of ["read", "bash", "edit", "write"]) {
         expect(session.nativeTools.find((tool) => tool.name === name)).toBeDefined()

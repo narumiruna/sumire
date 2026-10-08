@@ -168,19 +168,18 @@ export async function createPiSessionFactory(
       registry.install(createProgressExtension())
       let harness: Harness | undefined
       let session: DurableSession | undefined
-      if (settings.botCodemodeEnabled || mcpConfig.servers.length > 0)
-        registry.install(
-          await createDurableCodemode(
-            nativeTools,
-            Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
-            () => {
-              if (!harness) throw new Error("Durable harness is not open")
-              return harness
-            },
-            (event) => session?.emit(event),
-            (signal) => mcp?.ready(signal) ?? Promise.resolve(),
-          ),
-        )
+      registry.install(
+        await createDurableCodemode(
+          nativeTools,
+          Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
+          () => {
+            if (!harness) throw new Error("Durable harness is not open")
+            return harness
+          },
+          (event) => session?.emit(event),
+          (signal) => mcp?.ready(signal) ?? Promise.resolve(),
+        ),
+      )
       const storage = await openNodeSqliteStorage(sessionFile)
       try {
         await chmod(sessionFile, 0o600)

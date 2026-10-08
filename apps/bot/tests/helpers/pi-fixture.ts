@@ -101,7 +101,6 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
     ...loadSettings(
       {
         BOT_WHITELIST: "123,456,-100",
-        BOT_CODEMODE_ENABLED: "true",
         BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
         ...environment,
       },
@@ -181,13 +180,7 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
         return release
       },
       createSession,
-      createFactory: (enabled: boolean) =>
-        createPiSessionFactory(
-          { ...settings, botCodemodeEnabled: enabled },
-          logger,
-          undefined,
-          modelRuntime,
-        ),
+      createFactory: () => createPiSessionFactory(settings, logger, undefined, modelRuntime),
       call,
       script: (session: DurableSession, code: string) => call(session, "codemode", { code }),
       async cleanup() {
