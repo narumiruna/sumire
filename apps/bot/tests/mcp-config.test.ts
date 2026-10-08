@@ -140,9 +140,9 @@ describe("MCP configuration", () => {
   })
 
   it.each([
-    { entry: { command: "node", enabled: false, env: { TOKEN: "${UNSET}" } }, warnings: 0 },
+    { entry: { command: "node", enabled: false, env: { TOKEN: `\${UNSET}` } }, warnings: 0 },
     { entry: { command: "node", timeout: 0 }, warnings: 1 },
-    { entry: { command: "node", env: { TOKEN: "${UNSET}" } }, warnings: 1 },
+    { entry: { command: "node", env: { TOKEN: `\${UNSET}` } }, warnings: 1 },
   ])(
     "does not let skipped colliding entries suppress valid servers: %j",
     async ({ entry, warnings }) => {
