@@ -5,6 +5,7 @@ import { type Bot, type Context, InlineKeyboard } from "grammy"
 import { type ChatModelState, ModelSettingsError } from "../agent/model-settings.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { Logger } from "../logging.js"
+import { createModelSettingsUi } from "./model-settings-ui.js"
 
 const modelsPerPage = 8
 
@@ -22,16 +23,19 @@ export function registerTelegramModelCommands(
   sessions: ChatSessionRegistry,
   logger: Logger,
 ): void {
+  const ui = createModelSettingsUi(logger)
+
   async function handle(context: Context, action: (chatId: number) => Promise<void>) {
     const chatId = context.chat?.id
-    if (chatId === undefined) return
+    if (chatId === undefined || ui.coolingDown()) return
     try {
       await action(chatId)
     } catch (error) {
       if (!(error instanceof ModelSettingsError)) {
-        logger.warn(`Telegram model settings failed for chat_id=${chatId}`, error)
+        logger.warn("Telegram model settings operation failed", { chat_id: chatId })
       }
-      await context.reply(
+      await ui.reply(
+        context,
         error instanceof ModelSettingsError
           ? error.message
           : "無法讀取或切換設定，請確認已設定驗證並稍後再試。",
@@ -63,8 +67,8 @@ export function registerTelegramModelCommands(
     if (page > 0) keyboard.text("上一頁", `model:page:${page - 1}`)
     if (page + 1 < pages) keyboard.text("下一頁", `model:page:${page + 1}`)
     const text = `${currentSettings(settings)}\n\n請選擇這個 chat 的 model（${page + 1}/${pages}）。\n也可使用 /model <provider/model>。`
-    if (context.callbackQuery) await context.editMessageText(text, { reply_markup: keyboard })
-    else await context.reply(text, { reply_markup: keyboard })
+    if (context.callbackQuery) await ui.edit(context, text, keyboard)
+    else await ui.reply(context, text, keyboard)
   }
 
   bot.command("model", (context) =>
@@ -72,7 +76,7 @@ export function registerTelegramModelCommands(
       const reference = context.match.trim()
       if (!reference) return showModels(context, chatId)
       const settings = await sessions.setModel(chatId, reference)
-      await context.reply(`已更新這個 chat 的設定。\n${currentSettings(settings)}`)
+      await ui.reply(context, `已更新這個 chat 的設定。\n${currentSettings(settings)}`)
     }),
   )
 
@@ -81,7 +85,7 @@ export function registerTelegramModelCommands(
       const level = context.match.trim()
       if (level) {
         const settings = await sessions.setThinkingLevel(chatId, level)
-        await context.reply(`已更新這個 chat 的設定。\n${currentSettings(settings)}`)
+        await ui.reply(context, `已更新這個 chat 的設定。\n${currentSettings(settings)}`)
         return
       }
       const settings = await sessions.getModelSettings(chatId)
@@ -94,41 +98,41 @@ export function registerTelegramModelCommands(
           )
           .row()
       }
-      await context.reply(
+      await ui.reply(
+        context,
         `${currentSettings(settings)}\n\n${settings.thinkingLevels.length === 1 && settings.thinkingLevels[0] === "off" ? "目前 model 不支援 thinking，僅可使用 off。" : "請選擇這個 chat 的 thinking level。"}\n也可使用 /thinking <level>。`,
-        { reply_markup: keyboard },
+        keyboard,
       )
     }),
   )
 
-  bot.callbackQuery(/^model:page:(\d{1,6})$/u, async (context) => {
-    await context.answerCallbackQuery()
-    await handle(context, (chatId) => showModels(context, chatId, Number(context.match[1])))
-  })
+  bot.callbackQuery(/^model:page:(\d{1,6})$/u, (context) =>
+    ui.callback(context, () =>
+      handle(context, (chatId) => showModels(context, chatId, Number(context.match[1]))),
+    ),
+  )
 
-  bot.callbackQuery(/^model:select:([A-Za-z0-9_-]{22})$/u, async (context) => {
-    await context.answerCallbackQuery()
-    await handle(context, async (chatId) => {
-      const options = await sessions.getModelSettings(chatId)
-      const reference = options.models.find(
-        (reference) => modelToken(reference) === context.match[1],
-      )
-      if (!reference)
-        throw new ModelSettingsError("這個 model 已無法使用，請重新使用 /model 選擇。")
-      const settings = await sessions.setModel(chatId, reference)
-      await context.editMessageText(`已更新這個 chat 的設定。\n${currentSettings(settings)}`, {
-        reply_markup: { inline_keyboard: [] },
-      })
-    })
-  })
+  bot.callbackQuery(/^model:select:([A-Za-z0-9_-]{22})$/u, (context) =>
+    ui.callback(context, () =>
+      handle(context, async (chatId) => {
+        const options = await sessions.getModelSettings(chatId)
+        const reference = options.models.find(
+          (reference) => modelToken(reference) === context.match[1],
+        )
+        if (!reference)
+          throw new ModelSettingsError("這個 model 已無法使用，請重新使用 /model 選擇。")
+        const settings = await sessions.setModel(chatId, reference)
+        await ui.edit(context, `已更新這個 chat 的設定。\n${currentSettings(settings)}`)
+      }),
+    ),
+  )
 
-  bot.callbackQuery(/^thinking:select:([a-z]+)$/u, async (context) => {
-    await context.answerCallbackQuery()
-    await handle(context, async (chatId) => {
-      const settings = await sessions.setThinkingLevel(chatId, context.match[1] ?? "")
-      await context.editMessageText(`已更新這個 chat 的設定。\n${currentSettings(settings)}`, {
-        reply_markup: { inline_keyboard: [] },
-      })
-    })
-  })
+  bot.callbackQuery(/^thinking:select:([a-z]+)$/u, (context) =>
+    ui.callback(context, () =>
+      handle(context, async (chatId) => {
+        const settings = await sessions.setThinkingLevel(chatId, context.match[1] ?? "")
+        await ui.edit(context, `已更新這個 chat 的設定。\n${currentSettings(settings)}`)
+      }),
+    ),
+  )
 }

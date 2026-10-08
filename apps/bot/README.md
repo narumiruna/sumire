@@ -165,6 +165,10 @@ Both commands use the existing `BOT_WHITELIST` rules, including for button callb
 
 The bot registers `/model` and `/thinking` in Telegram's command menu at startup and subscribes to `callback_query` updates in addition to message updates. Menu-registration failures are logged without stopping polling.
 
+Settings buttons allow one in-flight operation per chat/message. Extra clicks are acknowledged and ignored; click again after the operation finishes if needed. Identical text and keyboards are not edited again. Successful settings UI sends/edits retain at most 256 message snapshots for five minutes, with lazy cleanup and no background retries. A Telegram 429 pauses all settings UI commands, button mutations and acknowledgements for the supplied `retry_after` interval (one second if that interval is missing or invalid); try again after the cooldown. Other bot features have separate delivery handling and may still hit Telegram limits. Settings validation errors remain visible, while Telegram delivery failures log only operation/error-code metadata, not raw payloads or a misleading authentication warning. If a setting succeeds but its confirmation fails, the setting remains applied; use `/model` or `/thinking` after the cooldown to confirm it.
+
+After deployment, rapidly click model page buttons and verify that no repeated settings/authentication warnings appear. In Logfire, inspect `Telegram model settings delivery failed` operation, error code and retry interval without recording message contents. Roll back to the previous bot image if necessary, preserving session/settings volumes; do not delete runtime state. This transport change requires no data migration.
+
 ## Codemode
 
 Pi's native `codemode` tool is enabled in every session, with or without MCP servers. No enable environment variable is required. Sumire uses `mode: "on"`, so existing tools remain directly available. Codemode does not enable `tool_search`, classifier models, or image generation. The script's `models` namespace is unavailable.
