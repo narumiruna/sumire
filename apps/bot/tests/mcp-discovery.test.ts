@@ -22,6 +22,26 @@ describe("bounded MCP pagination", () => {
       { signal: expect.any(AbortSignal) },
     ])
   })
+  it("passes an empty opaque cursor to the next page instead of stopping", async () => {
+    const { client, request } = fixture([
+      { tools: [tool("first")], nextCursor: "" },
+      { tools: [tool("second")] },
+    ])
+    expect((await listBoundedMcpTools(client)).map((t) => t.name)).toEqual(["first", "second"])
+    expect(request.mock.calls[1]).toMatchObject([
+      "tools/list",
+      { cursor: "" },
+      { signal: expect.any(AbortSignal) },
+    ])
+  })
+  it("rejects repeated empty cursors rather than looping", async () => {
+    const { client, request } = fixture([
+      { tools: [], nextCursor: "" },
+      { tools: [], nextCursor: "" },
+    ])
+    await expect(listBoundedMcpTools(client)).rejects.toThrow("repeated cursor")
+    expect(request).toHaveBeenCalledTimes(2)
+  })
   it("stops at the cumulative tool limit before requesting another page", async () => {
     const pages = [0, 1, 2].map((page) => ({
       tools: Array.from({ length: 600 }, (_, i) => tool(`${page}_${i}`)),

@@ -45,6 +45,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       send({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "Unknown tool" } })
       return
     }
+    if (name === "a_b" && sideEffects) appendFileSync(sideEffects, "replacement\n")
     if (name === "hold") {
       if (sideEffects) appendFileSync(sideEffects, "called\n")
       return

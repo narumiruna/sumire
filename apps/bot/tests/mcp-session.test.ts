@@ -10,7 +10,7 @@ const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
-async function setup(exposure = "codemode") {
+async function setup(exposure = "codemode", environment: Record<string, string> = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-session-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
   const config = path.join(directory, "mcp.json")
@@ -23,7 +23,7 @@ async function setup(exposure = "codemode") {
           command: process.execPath,
           args: [new URL("./fixtures/mcp-server.mjs", import.meta.url).pathname, effects],
           exposure,
-          env: { SECRET_KEY: "session-secret" },
+          env: { SECRET_KEY: "session-secret", ...environment },
         },
       },
     }),
@@ -80,6 +80,20 @@ describe("MCP through durable sessions", () => {
     )
     expect(toolResultText(result)).toContain("mcp__fake__new_tool")
     expect(JSON.stringify(fixture.requests)).not.toContain("session-secret")
+  })
+
+  it("rejects a retained codemode handle after a same-name raw replacement", async () => {
+    const { fixture, effects } = await setup("codemode", { MCP_TEST_TOOLS: "a-b,change_tools" })
+    const session = await fixture.createSession()
+    const result = await fixture.script(
+      session,
+      'const old = tools.mcp__fake__a_b; await tools.mcp__fake__change_tools({ names: ["a_b", "change_tools"] }); try { await old({}); text("unexpected success"); } catch (error) { text(error.message); }',
+    )
+    expect(toolResultText(result)).toContain("Tool selection is stale")
+    await expect(readFile(effects, "utf8")).rejects.toMatchObject({ code: "ENOENT" })
+    const fresh = await fixture.script(session, "text(await tools.mcp__fake__a_b({}));")
+    expect(fresh).toMatchObject({ isError: false })
+    expect(await readFile(effects, "utf8")).toBe("replacement\n")
   })
 
   it("keeps MCP resources unavailable and respects hidden exposure", async () => {

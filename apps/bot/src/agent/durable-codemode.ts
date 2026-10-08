@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { JsonValue } from "@earendil-works/chord"
 import { withoutAbortSignal } from "@earendil-works/chord/context"
 import type { AgentToolCallOutcome } from "@earendil-works/pi-agent-core"
@@ -28,7 +29,22 @@ export async function createDurableCodemode(
 ) {
   const callableTools = () =>
     nativeTools.filter((tool) => tool.exposure !== "model-only" && tool.exposure !== "hidden")
-  type NestedInput = { name: string; args: JsonValue; callId: string; parentCallId: string }
+  const generations = new WeakMap<NativeTool, string>()
+  const generationOf = (tool: NativeTool) => {
+    let generation = generations.get(tool)
+    if (!generation) {
+      generation = randomUUID()
+      generations.set(tool, generation)
+    }
+    return generation
+  }
+  type NestedInput = {
+    name: string
+    generation?: string
+    args: JsonValue
+    callId: string
+    parentCallId: string
+  }
   type NestedPhase = { phase: "call" } | { phase: "interrupted" }
   type NestedResult = {
     content: AgentToolCallOutcome["result"]["content"]
@@ -62,6 +78,8 @@ export async function createDurableCodemode(
         })
         try {
           if (!tool) throw new Error(`Tool is not callable: ${task.input.name}`)
+          if (!task.input.generation || generationOf(tool) !== task.input.generation)
+            throw new Error("Tool selection is stale; discover tools again")
           result = jsonValue(
             await executeNative(tool, task.input.args, task.input.callId, context),
           ) as NestedResult
@@ -144,8 +162,10 @@ export async function createDurableCodemode(
       } as unknown as ExtensionAPI)
       if (!definition) throw new Error("Codemode was not registered")
       let sequence = 0
+      const snapshot = callableTools()
+      const selectedTools = new Map(snapshot.map((tool) => [tool.name, tool]))
       const ctx = {
-        tools: callableTools(),
+        tools: snapshot,
         sessionManager: {
           getBranch: () => [
             {
@@ -162,6 +182,8 @@ export async function createDurableCodemode(
         ) => {
           options.signal?.throwIfAborted()
           executionSignal.throwIfAborted()
+          const selected = selectedTools.get(name)
+          if (!selected) throw new Error(`Tool is not callable: ${name}`)
           const callId = `${api.callId}/${++sequence}`
           const toolCall = {
             type: "toolCall" as const,
@@ -171,7 +193,13 @@ export async function createDurableCodemode(
           }
           const taskId = await api.createTask(
             nestedTask,
-            { name, args: jsonValue(nestedArgs), callId, parentCallId: api.callId },
+            {
+              name,
+              generation: generationOf(selected),
+              args: jsonValue(nestedArgs),
+              callId,
+              parentCallId: api.callId,
+            },
             { ownership: { kind: "task", taskId: api.taskId } },
             context,
           )

@@ -50,7 +50,7 @@ export async function listBoundedMcpTools(
       names.add(tool.name)
       tools.push(tool as Tool)
     }
-    if (!page.nextCursor) return tools
+    if (page.nextCursor === undefined || page.nextCursor === null) return tools
     if (cursors.has(page.nextCursor))
       throw new Error("MCP tool directory contains a repeated cursor")
     cursors.add(page.nextCursor)
