@@ -33,7 +33,7 @@ Available now:
 - isolated Pi Durable SQLite storage per Telegram chat, with restart recovery
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - Pi's native `read`, `bash`, `edit`, and `write` coding tools in every chat session
-- opt-in Pi codemode for JavaScript tool orchestration with a host-owned deadline
+- default Pi codemode for JavaScript tool orchestration with a host-owned deadline
 - `instructions/SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
 - bounded Telegram image, document, and locally transcribed voice/audio input
 - durable conversation forks when users reply to earlier completed bot output
@@ -167,9 +167,9 @@ Both commands use the existing `BOT_WHITELIST` rules, including for button callb
 
 The bot registers `/model` and `/thinking` in Telegram's command menu at startup and subscribes to `callback_query` updates in addition to message updates. Menu-registration failures are logged without stopping polling.
 
-## Codemode (opt-in)
+## Codemode
 
-Set `BOT_CODEMODE_ENABLED=true` in the ignored root `.env` and restart to let Pi use its native `codemode` tool. Without accepted MCP servers, codemode is disabled by default. Accepted MCP servers enable codemode discovery regardless of this flag. No MCP server is required to enable codemode explicitly. Sumire uses `mode: "on"`, so existing tools remain directly available; the codemode flag does not control MCP loading or enable `tool_search`, classifier models, or image generation. The script's `models` namespace is unavailable.
+Pi's native `codemode` tool is enabled in every session, with or without MCP servers. No enable environment variable is required; the removed `BOT_CODEMODE_ENABLED` setting is ignored. Sumire uses `mode: "on"`, so existing tools remain directly available. Codemode does not enable `tool_search`, classifier models, or image generation. The script's `models` namespace is unavailable.
 
 Scripts run in Pi's QuickJS sandbox with no Node APIs, filesystem, network, or timers. They can reach registered callable tools through `tools.<name>(args)`, use `Promise.allSettled()` for independent calls, and filter results before returning them to the model. Only output explicitly returned or emitted by the script reaches the model; nested results are not independent transcript messages. Do not run dependent writes or publication operations in parallel. `store()` holds small JSON values on the current Pi branch and survives session reload; chat stores are isolated, but coding-tool filesystem access still uses the shared Bot workdir.
 
@@ -181,7 +181,7 @@ Pi's existing bounds remain in place: a 256 MB VM heap, output truncation with a
 
 Codemode does not grant new permissions or make `bash` safe for untrusted users. The existing non-empty `BOT_WHITELIST` remains required, and all callable tools retain validation and durable task ownership. Nested URL loads still reject credentials, local/private/link-local/metadata targets and unsafe redirects, with their existing byte, time and output limits. Tool output and fetched content remain untrusted data, not authorization.
 
-To roll back codemode, set `BOT_CODEMODE_ENABLED=false`, disable all servers in `mcp.json` (or use `{"mcpServers": {}}`), and restart. Existing sessions can resume without codemode; direct tools, progress and image access remain available. Keep the state volumes and do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification before enabling this opt-in feature.
+Codemode has no runtime disable switch. To roll back this change, restore the previous bot image and configuration while keeping the state volumes; do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification.
 
 Run the isolated Linux x86_64 production-runtime smoke from the repository root:
 
@@ -194,7 +194,7 @@ This uses a separate image, no `.env` or state volumes, and disabled container n
 
 ## MCP servers
 
-MCP is enabled by default: Sumire always loads the administrator-owned `mcp.json` at startup. No enable environment variable is required. Accepted MCP servers also enable codemode discovery even when `BOT_CODEMODE_ENABLED=false`. Set `enabled: false` on individual servers to disable them; use `{"mcpServers": {}}` to disable all MCP connections and subprocesses. Restart after configuration changes.
+MCP is enabled by default: Sumire always loads the administrator-owned `mcp.json` at startup. No enable environment variable is required. Codemode is available independently of MCP configuration. Set `enabled: false` on individual servers to disable them; use `{"mcpServers": {}}` to disable all MCP connections and subprocesses. Restart after configuration changes.
 
 `BOT_MCP_CONFIG_PATH` defaults to `<application root>/mcp.json`, independently of `BOT_WORKDIR`. Compose mounts the root `mcp.json` read-only at `/app/mcp.json`. Configurations support at most 16 total server entries (including disabled entries); exceeding this limit fails before expansion or connections. Server names must contain 1–64 ASCII letters, digits, underscores or hyphens; oversized names are skipped. Each server supports at most 64 combined environment/header fields and 64 exposure patterns of up to 128 characters; excess entries are skipped. Each derived credential is limited to 4,096 UTF-8 bytes. Per-entry credential overflow skips that entry; more than 128 distinct credentials or 32,768 credential bytes across accepted servers fails startup. Redaction compiles bounded literal alternatives once and replaces matches in one pass without rescanning replacement markers. Wildcards use cached literal segments, not regular expressions. Only this administrator-selected file is loaded: Sumire does not merge home or workdir MCP configuration or discover arbitrary extensions. The loader requires a regular file and reads at most 1 MB plus one overflow byte, including files that grow during reading. Missing/unreadable files, oversized configuration (over 1 MB), invalid JSON and invalid top-level shape fail startup. Invalid individual servers, missing environment variables and failed connections are skipped without disabling healthy servers. Diagnostics omit values and server stderr to avoid leaking secrets. Opening remains pending through initial discovery, even if transport initialization has finished. Its initialization timer is cleared on successful connection; directory discovery retains its separate ten-second request budget. Continuous tool-change notifications are limited to eight consecutive refreshes; exceeding the limit closes that connection without background retries. Before creating process homes, the chat's single process owner removes abandoned reserved `process-*` directories once; persisted results and active in-process homes are preserved. Correct configuration and restart to reload; there is no Telegram `/mcp` UI.
 
@@ -236,7 +236,7 @@ This uses the production image with separate ephemeral state and no Telegram pol
 
 MCP is additional administrator-authorized capability, not a replacement for `load_public_url` or its public-target/redirect/byte-limit checks. Chrome and other servers can reach files and network services available inside their execution environment. Restrict whitelist membership, credentials, mounts and network access; MCP annotations and fetched content do not grant permission. The browser server may collect usage statistics unless explicitly disabled in its configuration.
 
-To disable MCP connections and subprocesses, set every server to `enabled: false` or use `{"mcpServers": {}}`, then restart. Set `BOT_CODEMODE_ENABLED=false` too if codemode should be disabled. Keep session/state volumes; do not run `docker compose down -v`. Existing SQLite data is unchanged, and interrupted side effects must not be automatically retried.
+To disable MCP connections and subprocesses, set every server to `enabled: false` or use `{"mcpServers": {}}`, then restart. Codemode remains available for non-MCP tools. Keep session/state volumes; do not run `docker compose down -v`. Existing SQLite data is unchanged, and interrupted side effects must not be automatically retried.
 
 ## OpenAI login from Telegram
 
@@ -340,4 +340,4 @@ The production image bundles checksum-verified libcurl-impersonate v2.2.2 for Li
 
 ## Feature controls
 
-The root [`.env.example`](../../.env.example) lists codemode, document, reply-tree, and image flags plus tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.
+The root [`.env.example`](../../.env.example) lists document, reply-tree, and image flags plus codemode and other tool limits. Document input, reply-tree routing, and image input can be disabled independently without disabling ordinary Pi chat or `load_public_url`. Reply indexes use bounded durable retention per chat.

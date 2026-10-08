@@ -13,7 +13,6 @@ describe("loadSettings", () => {
     expect(settings.botGroupPassiveContextEnabled).toBe(true)
     expect(settings.botWhitelist).toEqual(new Set())
     expect(settings.botAdminId).toBeUndefined()
-    expect(settings.botCodemodeEnabled).toBe(false)
     expect(settings.botCodemodeTimeoutSeconds).toBe(300)
     expect(settings.botSessionLogDir).toBe(
       path.resolve("/workspace/project/.telegramagent/sessions"),
@@ -41,7 +40,6 @@ describe("loadSettings", () => {
       BOT_WORKDIR: "notes",
       BOT_WHITELIST: "123, -456,123",
       BOT_ADMIN_ID: "123",
-      BOT_CODEMODE_ENABLED: "true",
       BOT_CODEMODE_TIMEOUT_SECONDS: "2.5",
       LOGFIRE_TOKEN: "logfire-token",
       MORSEL_URL: "https://morsel.example/",
@@ -68,7 +66,6 @@ describe("loadSettings", () => {
     expect(settings.botWorkdir).toBe(path.resolve(process.cwd(), "notes"))
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
     expect(settings.botAdminId).toBe(123)
-    expect(settings.botCodemodeEnabled).toBe(true)
     expect(settings.botCodemodeTimeoutSeconds).toBe(2.5)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselUrl).toBe("https://morsel.example/")
@@ -92,7 +89,7 @@ describe("loadSettings", () => {
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["https"]))
   })
 
-  it("validates codemode flags and deadline boundaries even when disabled", () => {
+  it("validates codemode deadline boundaries", () => {
     for (const value of ["0.1", "3600"]) {
       expect(loadSettings({ BOT_CODEMODE_TIMEOUT_SECONDS: value }).botCodemodeTimeoutSeconds).toBe(
         Number(value),
@@ -101,8 +98,6 @@ describe("loadSettings", () => {
     for (const value of ["", "0", "-1", "0.09", "3600.01", "NaN", "Infinity", "invalid"]) {
       expect(() => loadSettings({ BOT_CODEMODE_TIMEOUT_SECONDS: value })).toThrow(ZodError)
     }
-    expect(() => loadSettings({ BOT_CODEMODE_ENABLED: "yes" })).toThrow(ZodError)
-    expect(loadSettings({ BOT_CODEMODE_ENABLED: "false" }).botCodemodeEnabled).toBe(false)
   })
 
   it.each([
@@ -118,6 +113,13 @@ describe("loadSettings", () => {
     for (const property of ["openaiModel", "openaiBaseUrl", "openaiApiKey"]) {
       expect(settings).not.toHaveProperty(property)
     }
+  })
+
+  it.each(["true", "false", "yes"])("ignores the removed codemode enable switch: %s", (value) => {
+    const settings = loadSettings({ BOT_CODEMODE_ENABLED: value })
+
+    expect(settings).toEqual(loadSettings({}))
+    expect(settings).not.toHaveProperty("botCodemodeEnabled")
   })
 
   it("ignores the removed Firecrawl fallback environment switch", () => {

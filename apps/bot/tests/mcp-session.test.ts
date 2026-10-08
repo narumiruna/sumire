@@ -30,14 +30,13 @@ async function setup(exposure = "codemode", environment: Record<string, string> 
   )
   const fixture = await createPiFixture({
     BOT_MCP_CONFIG_PATH: config,
-    BOT_CODEMODE_ENABLED: "false",
   })
   cleanups.push(() => fixture.cleanup())
   return { fixture, config, effects }
 }
 
 describe("MCP through durable sessions", () => {
-  it("activates codemode for MCP, discovers tools and namespaces, and keeps model-only tools out of scripts", async () => {
+  it("discovers MCP tools and namespaces through default codemode and keeps model-only tools out of scripts", async () => {
     const { fixture } = await setup()
     const session = await fixture.createSession()
     expect(session.getActiveToolNames()).toContain("codemode")

@@ -10,7 +10,6 @@ const settings = loadSettings(
     OPENAI_BASE_URL: endpoint,
     OPENAI_MODEL: "fixture-model",
     BOT_WHITELIST: "123,456,-100",
-    BOT_CODEMODE_ENABLED: "true",
     ...(mcpConfig ? { BOT_MCP_CONFIG_PATH: mcpConfig } : {}),
   },
   root,

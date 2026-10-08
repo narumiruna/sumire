@@ -84,7 +84,6 @@ try {
     ...loadSettings(
       {
         BOT_WHITELIST: "123",
-        BOT_CODEMODE_ENABLED: "true",
         BOT_CODEMODE_TIMEOUT_SECONDS: "1",
       },
       root,
