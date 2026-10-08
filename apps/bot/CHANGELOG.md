@@ -1,5 +1,23 @@
 # @narumitw/sumire
 
+## 0.8.0
+
+### Minor Changes
+
+- a04c93d: Enable administrator-configured MCP servers by default and remove BOT_MCP_ENABLED. Disable servers through mcp.json instead; MCP configuration is now always required at startup.
+- 47cedbf: Limit Bot environment configuration to BOT_TOKEN, BOT_WHITELIST, BOT_ADMIN_ID, FIRECRAWL_API_KEY, OTTER_TOKEN, LOGFIRE_TOKEN, and MORSEL_API_KEY. Ignore former runtime switches and limits in favor of fixed defaults, enable channel image input by default while preserving explicit channel authorization, and retain Docker workdir/state separation without BOT_WORKDIR. Run npm startup scripts from the repository root with only its .env file.
+- fef305e: Add opt-in administrator-configured MCP tools through Pi's public MCP client, with codemode discovery, per-chat connection and process lifecycle, bounded/redacted results, and replay-unsafe durable execution. Document desktop and container Chrome requirements and provide a live production-image smoke. Enforce discovery budgets while consuming pages, reject stale wrapper generations, redact custom auth headers, and keep raw protocol definitions separate from credential-safe presentation. Bind nested tasks to selected wrapper generations, preserve result envelopes during redaction, and support empty opaque pagination cursors. Exclude skipped configurations from server-name collisions and recognize SSE media types case-insensitively while preserving per-event and non-SSE body limits. Keep notification SSE GET bodies transport-owned with bounded header waits, and normalize fractional server timeouts once to positive integer milliseconds. Release finite-response deadlines and reader locks promptly, bound configuration reads before allocation, and commit per-server redaction credentials only after full acceptance. Match credential names without arbitrary substrings, reject query credentials, and cap server names/counts to prevent metadata and connection amplification. Synchronize stale-handle regression coverage with replacement publication. Trim authorization payloads, bound and cache wildcard exposure matching, await initial discovery, enforce post-redaction metadata limits, clean abandoned process homes on recovery, and stop continuous tool-list refreshes. Bound credential counts/bytes and use a single-pass literal redactor, separate initialization from discovery deadlines, and retain cancellation through result shaping and private file writes.
+
+### Patch Changes
+
+- 63ec69f: Support Pi 1.1.0 tool guidelines in the durable codemode loadout and update codemode test doubles.
+- 87518ea: Enable native Pi codemode in every chat session, with or without MCP servers. Remove the BOT_CODEMODE_ENABLED switch while preserving host-owned timeouts, cancellation, and model-only tool boundaries.
+- 205038b: Change the default bot model to openai/gpt-6.1-sol.
+- 0cbda8e: Align Docker Chromium installation with the locked Playwright version and launch Chrome MCP through an explicit headless container configuration. Use Playwright's recommended non-root Docker seccomp profile to retain Chromium's sandbox, and verify both browser paths without smoke-only argument overrides. Smoke checks select only configured default targets, tolerate customized server sets, and fail clearly for missing, disabled or invalid requested servers.
+- 2536bdf: Redact decoded Basic-auth credential pairs, usernames and passwords from MCP metadata and results while preserving wire headers and enforcing existing credential budgets. Match short derived components at Unicode boundaries so unrelated schema vocabulary and result words remain intact; explicit credentials retain substring matching.
+- 70fb7b4: Prevent settings UI warning floods by ignoring concurrent button clicks, skipping identical edits, honoring Telegram rate-limit cooldowns, and separating settings failures from delivery errors with metadata-only logging.
+- 187c5ab: Remove the Telegram /ask command. Use mentions or replies in groups and direct messages in private chats instead.
+
 ## 0.7.0
 
 ### Minor Changes
