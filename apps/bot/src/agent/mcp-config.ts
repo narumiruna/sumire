@@ -2,6 +2,10 @@ import { z } from "zod"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { readMcpConfigFile } from "./mcp-config-file.js"
+import { mcpCredentialKind } from "./mcp-credentials.js"
+
+export const MCP_MAX_SERVERS = 16
+export const MCP_MAX_SERVER_NAME_LENGTH = 64
 
 const exposure = z.enum(["codemode", "direct", "hidden"])
 const strings = z.record(z.string(), z.string())
@@ -28,7 +32,12 @@ const serverSchema = z
   .refine((s) => {
     if (!s.url) return true
     const u = new URL(s.url)
-    return ["http:", "https:"].includes(u.protocol) && !u.username && !u.password
+    return (
+      ["http:", "https:"].includes(u.protocol) &&
+      !u.username &&
+      !u.password &&
+      ![...u.searchParams.keys()].some((name) => mcpCredentialKind(name))
+    )
   })
 
 export type McpServer = z.infer<typeof serverSchema> & { name: string; timeoutMs: number }
@@ -53,6 +62,8 @@ export async function loadMcpConfig(
     .strict()
     .safeParse(input)
   if (!top.success) throw new Error("MCP configuration must contain an mcpServers object")
+  if (Object.keys(top.data.mcpServers).length > MCP_MAX_SERVERS)
+    throw new Error(`MCP configuration supports at most ${MCP_MAX_SERVERS} server entries`)
   const secrets = new Set<string>()
   const expand = (value: string, entrySecrets: Set<string>) => {
     if (value.trimStart().startsWith("!")) throw new Error("Credential commands are not supported")
@@ -70,7 +81,8 @@ export async function loadMcpConfig(
   for (const [name, raw] of Object.entries(top.data.mcpServers)) {
     // Do not include unvalidated names, values, schema errors or credentials in diagnostics.
     try {
-      if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Invalid or colliding server name")
+      if (name.length > MCP_MAX_SERVER_NAME_LENGTH || !/^[A-Za-z0-9_-]+$/.test(name))
+        throw new Error("Invalid or colliding server name")
       const server = serverSchema.parse(raw)
       if (!server.enabled) continue
       const entrySecrets = new Set<string>()
@@ -84,11 +96,12 @@ export async function loadMcpConfig(
         ...Object.entries(server.env),
         ...Object.entries(server.headers),
       ]) {
-        if (/auth|cookie|token|secret|password|key/i.test(key)) {
+        const kind = mcpCredentialKind(key)
+        if (kind) {
           entrySecrets.add(value)
-          if (/auth/i.test(key) && value.includes(" "))
+          if (kind === "auth" && value.includes(" "))
             entrySecrets.add(value.slice(value.indexOf(" ") + 1))
-          if (/cookie/i.test(key))
+          if (kind === "cookie")
             for (const cookie of value.split(";")) {
               const equals = cookie.indexOf("=")
               if (equals >= 0) entrySecrets.add(cookie.slice(equals + 1).trim())

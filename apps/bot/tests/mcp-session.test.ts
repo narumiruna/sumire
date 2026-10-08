@@ -83,12 +83,25 @@ describe("MCP through durable sessions", () => {
   })
 
   it("rejects a retained codemode handle after a same-name raw replacement", async () => {
-    const { fixture, effects } = await setup("codemode", { MCP_TEST_TOOLS: "a-b,change_tools" })
+    const { fixture, effects } = await setup("direct", { MCP_TEST_TOOLS: "a-b,change_tools" })
     const session = await fixture.createSession()
-    const result = await fixture.script(
+    const gate = path.join(path.dirname(effects), "registry-ready")
+    const command = `while [ ! -f '${gate.replaceAll("'", "'\\''")}' ]; do sleep 0.01; done`
+    const running = fixture.script(
       session,
-      'const old = tools.mcp__fake__a_b; await tools.mcp__fake__change_tools({ names: ["a_b", "change_tools"] }); try { await old({}); text("unexpected success"); } catch (error) { text(error.message); }',
+      `const old = tools.mcp__fake__a_b; await tools.mcp__fake__change_tools({ names: ["a_b", "change_tools", "ready"] }); await tools.bash(${JSON.stringify({ command })}); try { await old({}); text("unexpected success"); } catch (error) { text(error.message); }`,
     )
+    let result: Awaited<typeof running>
+    try {
+      await vi.waitFor(() => expect(session.getActiveToolNames()).toContain("mcp__fake__ready"), {
+        timeout: 5000,
+      })
+      await writeFile(gate, "ready")
+      result = await running
+    } finally {
+      await writeFile(gate, "ready")
+      await running.catch(() => {})
+    }
     expect(toolResultText(result)).toContain("Tool selection is stale")
     await expect(readFile(effects, "utf8")).rejects.toMatchObject({ code: "ENOENT" })
     const fresh = await fixture.script(session, "text(await tools.mcp__fake__a_b({}));")

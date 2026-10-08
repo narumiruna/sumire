@@ -242,6 +242,20 @@ describe("MCP capability", () => {
     expect(await second.call("echo")).toMatchObject({ isError: false })
   })
 
+  it("does not classify MONKEY or AUTHOR literals as credentials across real healthy servers", async () => {
+    const { capability, call } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        env: { MONKEY: "object", AUTHOR: "echo" },
+      },
+      other: { command: process.execPath, args: [fixturePath] },
+    })
+    expect(capability.tools.map((tool) => tool.name)).toContain("mcp__fake__echo")
+    expect(capability.tools.map((tool) => tool.name)).toContain("mcp__other__echo")
+    expect(await call("echo")).toMatchObject({ isError: false })
+  })
+
   it("honors absolute deadline even without progress and never retries a side effect", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-side-effect-"))
     cleanup.push(() => rm(directory, { recursive: true, force: true }))

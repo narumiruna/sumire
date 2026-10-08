@@ -2,7 +2,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { loadMcpConfig, toolExposure } from "../src/agent/mcp-config.js"
+import {
+  loadMcpConfig,
+  MCP_MAX_SERVER_NAME_LENGTH,
+  MCP_MAX_SERVERS,
+  toolExposure,
+} from "../src/agent/mcp-config.js"
 import { MCP_MAX_CONFIG_BYTES } from "../src/agent/mcp-config-file.js"
 import { loadSettings } from "../src/config/settings.js"
 
@@ -216,6 +221,77 @@ describe("MCP configuration", () => {
       expect(() => AbortSignal.timeout(result.servers[0]?.timeoutMs as number)).not.toThrow()
     },
   )
+
+  it("keeps ordinary literal values out of redaction but honors explicit environment interpolation", async () => {
+    const result = await config(
+      {
+        mcpServers: {
+          local: { command: "node", env: { MONKEY: "object", AUTHOR: "echo" } },
+          remote: {
+            url: "https://example.com/mcp?author=writer&project=public",
+            headers: { AUTHOR: "writer", "X-Auth": "active-secret" },
+          },
+          explicit: { command: "node", env: { ORDINARY: `\${EXPLICIT}` } },
+        },
+      },
+      { EXPLICIT: "explicit-secret" },
+    )
+    expect(result.servers).toHaveLength(3)
+    expect(result.redact("object echo writer active-secret explicit-secret")).toBe(
+      "object echo writer [redacted] [redacted]",
+    )
+  })
+
+  it.each(["api_key", "apiKey", "APIKEY", "access_token", "password", "signature", "%61pi_key"])(
+    "rejects query credential %s without exposing its URL or value",
+    async (key) => {
+      const result = await config({
+        mcpServers: {
+          bad: { url: `https://example.com/mcp?${key}=query-secret` },
+          good: { command: "node" },
+        },
+      })
+      expect(result.servers.map((server) => server.name)).toEqual(["good"])
+      expect(result.logger.warn).toHaveBeenCalledOnce()
+      expect(JSON.stringify(result.logger.warn.mock.calls)).not.toContain("query-secret")
+    },
+  )
+
+  it("bounds server names before credential expansion and leaves healthy entries available", async () => {
+    const max = "a".repeat(MCP_MAX_SERVER_NAME_LENGTH)
+    const result = await config({
+      mcpServers: {
+        [max]: { command: "node" },
+        [`${max}a`]: { command: "node", env: { TOKEN: `\${MISSING}` } },
+        ["b".repeat(500_000)]: { command: "node" },
+      },
+    })
+    expect(result.servers.map((server) => server.name)).toEqual([max])
+    expect(result.logger.warn).toHaveBeenCalledTimes(2)
+  })
+
+  it("accepts the server-count boundary and fails before expanding over-limit entries", async () => {
+    const entries = Object.fromEntries(
+      Array.from({ length: MCP_MAX_SERVERS }, (_, i) => [`server_${i}`, { command: "node" }]),
+    )
+    expect((await config({ mcpServers: entries })).servers).toHaveLength(MCP_MAX_SERVERS)
+    const environment = {
+      get MUST_NOT_READ(): string {
+        throw new Error("Expansion must not occur")
+      },
+    }
+    await expect(
+      config(
+        {
+          mcpServers: {
+            ...entries,
+            extra: { command: "node", env: { TOKEN: `\${MUST_NOT_READ}` } },
+          },
+        },
+        environment,
+      ),
+    ).rejects.toThrow("at most 16 server entries")
+  })
 
   it("applies exact tool exposure before wildcard patterns", async () => {
     const result = await config({
