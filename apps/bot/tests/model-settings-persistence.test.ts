@@ -60,7 +60,7 @@ describe("durable chat model settings persistence", () => {
     { name: "model and high thinking", changeModel: true, thinkingLevel: "high" },
     { name: "thinking only", changeModel: false, thinkingLevel: "high" },
     { name: "model and explicit off", changeModel: true, thinkingLevel: "off" },
-    { name: "unchanged settings", changeModel: false, thinkingLevel: "off" },
+    { name: "unchanged settings", changeModel: false, thinkingLevel: "low" },
   ] as const)(
     "keeps $name across older replies and restart",
     async ({ changeModel, thinkingLevel }) => {
@@ -76,7 +76,7 @@ describe("durable chat model settings persistence", () => {
       if (!initialModel || !alternative) throw new Error("Missing fixture models")
       try {
         // Make the destination branch disagree except in the unchanged-settings case.
-        const initialThinking = thinkingLevel === "off" && changeModel ? "high" : "off"
+        const initialThinking = thinkingLevel === "off" && changeModel ? "high" : "low"
         if (initialThinking === "high") await registry.setThinkingLevel(7, "high")
         await appendMessage(session, {
           role: "user",
@@ -159,7 +159,7 @@ describe("durable chat model settings persistence", () => {
       expect(session.thinkingLevel).toBe("high")
       expect(await (await currentConversation(session)).agent(context)).toMatchObject({
         model: { provider: initialModel.provider, modelId: initialModel.id },
-        thinkingLevel: "off",
+        thinkingLevel: "low",
       })
       expect(existsSync(session.sessionFile)).toBe(true)
       await registry.dispose()
@@ -168,7 +168,7 @@ describe("durable chat model settings persistence", () => {
       const fresh = await restartedFactory.create(7)
       try {
         expect(fresh.model).toMatchObject({ provider: initialModel.provider, id: initialModel.id })
-        expect(fresh.thinkingLevel).toBe("off")
+        expect(fresh.thinkingLevel).toBe("low")
       } finally {
         await fresh.dispose()
       }

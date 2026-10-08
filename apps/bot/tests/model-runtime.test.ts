@@ -39,7 +39,7 @@ describe("bot model authentication", () => {
   it("allows OAuth bootstrap without a key and uses the native Responses model", async () => {
     const { settings, agentDir } = await setup()
     const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
-    expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-5.6-luna" })
+    expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-6.1-sol" })
     expect(login).toBeDefined()
     expect(await modelRuntime.checkAuth("openai")).toBeUndefined()
     expect(modelRuntime.getProvider("openai")?.auth.apiKey).toBeDefined()
@@ -55,7 +55,7 @@ describe("bot model authentication", () => {
       BOT_ADMIN_ID: "",
     })
     const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
-    expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-5.6-luna" })
+    expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-6.1-sol" })
     expect(login).toBeUndefined()
     expect(modelRuntime.getRegisteredProviderConfig("openai")).toBeUndefined()
     expect(modelRuntime.getProvider("telegramagent-openai")).toBeUndefined()
@@ -131,7 +131,7 @@ describe("bot model authentication", () => {
     expect(runtime.model).toMatchObject({
       provider: "openai",
       api: "openai-responses",
-      id: "gpt-5.6-luna",
+      id: "gpt-6.1-sol",
     })
     expect(runtime.modelRuntime.getProvider("telegramagent-openai")).toBeUndefined()
     expect(await runtime.modelRuntime.getAuth(runtime.model)).toMatchObject({
