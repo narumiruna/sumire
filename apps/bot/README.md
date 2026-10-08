@@ -181,15 +181,6 @@ Codemode does not grant new permissions or make `bash` safe for untrusted users.
 
 Codemode has no runtime disable switch. To roll back this change, restore the previous bot image and configuration while keeping the state volumes; do not use `docker compose down -v`. Endpoint/model support and real Telegram delivery require deployment-specific verification.
 
-Run the isolated Linux x86_64 production-runtime smoke from the repository root:
-
-```bash
-docker compose -p sumire-codemode-smoke -f compose.codemode-smoke.yaml run --build --rm sumire
-docker compose -p sumire-codemode-smoke -f compose.codemode-smoke.yaml down
-```
-
-This uses a separate image, no `.env` or state volumes, and disabled container networking. Its loopback Chat Completions fixture verifies the pruned production worker/WASM, native tools, direct progress, persistence, host deadline and recovery without provider charges or Telegram polling. It does not replace a live endpoint/Telegram test.
-
 ## MCP servers
 
 MCP is enabled by default: Sumire always loads the administrator-owned `mcp.json` at startup. No enable environment variable is required. Codemode is available independently of MCP configuration. Set `enabled: false` on individual servers to disable them; use `{"mcpServers": {}}` to disable all MCP connections and subprocesses. Restart after configuration changes.
@@ -219,18 +210,6 @@ Codemode receives a bounded MCP result with `content`, optional `structuredConte
 ### Chrome in Docker and live verification
 
 The requested root configuration is a desktop example, not a headless Docker browser configuration. For Docker, use a separate administrator config to add `--headless`, `--isolated`, `--executablePath <installed Chromium path>` and optionally `--no-usage-statistics`/`--no-performance-crux`. The executable path varies by Playwright version and architecture; the smoke script locates it. Do not disable Chrome's sandbox, enable privileged containers or connect to a personal browser to make a smoke pass.
-
-Run from the repository root with `FIRECRAWL_API_KEY` exported in the shell:
-
-```bash
-docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml build mcp-smoke
-docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml run --rm mcp-smoke
-# Independently verify one low-cost Firecrawl search if Chrome cannot start:
-docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml run --rm mcp-smoke --firecrawl-only
-docker compose -p sumire-mcp-validation -f compose.mcp-smoke.yaml down
-```
-
-This uses the production image with separate ephemeral state and no Telegram polling. The full smoke opens `https://example.com`, reads a snapshot, captures an image and performs one Firecrawl search (`limit=1`, may consume credits). Do not print credentials or search content as evidence. On the current Linux ARM64 Docker environment, the image builds and Firecrawl smoke passes, but Chromium reports `No usable sandbox`; the full Chrome smoke remains blocked pending a sandbox-capable deployment. No sandbox bypass is configured.
 
 MCP is additional administrator-authorized capability, not a replacement for `load_public_url` or its public-target/redirect/byte-limit checks. Chrome and other servers can reach files and network services available inside their execution environment. Restrict whitelist membership, credentials, mounts and network access; MCP annotations and fetched content do not grant permission. The browser server may collect usage statistics unless explicitly disabled in its configuration.
 
