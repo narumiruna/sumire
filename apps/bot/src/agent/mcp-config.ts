@@ -68,16 +68,10 @@ export async function loadMcpConfig(
     return expanded
   }
   const servers: McpServer[] = []
-  const counts = new Map<string, number>()
-  for (const name of Object.keys(top.data.mcpServers)) {
-    const normalized = name.replaceAll("-", "_")
-    counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
-  }
   for (const [name, raw] of Object.entries(top.data.mcpServers)) {
     // Do not include unvalidated names, values, schema errors or credentials in diagnostics.
     try {
-      if (!/^[A-Za-z0-9_-]+$/.test(name) || counts.get(name.replaceAll("-", "_")) !== 1)
-        throw new Error("Invalid or colliding server name")
+      if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Invalid or colliding server name")
       const server = serverSchema.parse(raw)
       if (!server.enabled) continue
       server.env = Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, expand(v)]))
@@ -104,9 +98,19 @@ export async function loadMcpConfig(
       logger.warn("An MCP server was skipped: invalid configuration or missing environment")
     }
   }
+  const counts = new Map<string, number>()
+  for (const { name } of servers) {
+    const normalized = name.replaceAll("-", "_")
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+  }
+  const uniqueServers = servers.filter(({ name }) => {
+    if (counts.get(name.replaceAll("-", "_")) === 1) return true
+    logger.warn("An MCP server was skipped: invalid configuration or missing environment")
+    return false
+  })
   const values = [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)
   return {
-    servers,
+    servers: uniqueServers,
     redact: (text) => values.reduce((safe, secret) => safe.replaceAll(secret, "[redacted]"), text),
   }
 }

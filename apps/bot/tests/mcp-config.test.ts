@@ -139,6 +139,28 @@ describe("MCP configuration", () => {
     expect(result.logger.warn).toHaveBeenCalledTimes(3)
   })
 
+  it.each([
+    { entry: { command: "node", enabled: false, env: { TOKEN: "${UNSET}" } }, warnings: 0 },
+    { entry: { command: "node", timeout: 0 }, warnings: 1 },
+    { entry: { command: "node", env: { TOKEN: "${UNSET}" } }, warnings: 1 },
+  ])(
+    "does not let skipped colliding entries suppress valid servers: %j",
+    async ({ entry, warnings }) => {
+      for (const reverse of [false, true]) {
+        const entries = [
+          ["a-b", { command: "node" }],
+          ["a_b", entry],
+        ] as const
+        const result = await config({
+          mcpServers: Object.fromEntries(reverse ? [...entries].reverse() : entries),
+        })
+        expect(result.servers.map((server) => server.name)).toEqual(["a-b"])
+        expect(result.logger.warn).toHaveBeenCalledTimes(warnings)
+        expect(JSON.stringify(result.logger.warn.mock.calls)).not.toContain("UNSET")
+      }
+    },
+  )
+
   it("applies exact tool exposure before wildcard patterns", async () => {
     const result = await config({
       mcpServers: {

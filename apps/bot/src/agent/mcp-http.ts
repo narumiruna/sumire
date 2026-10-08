@@ -7,8 +7,8 @@ export function boundedMcpFetch(timeoutMs: number, request: McpFetch = fetch): M
     const deadline = AbortSignal.timeout(timeoutMs)
     const signal = init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline
     const response = await request(url, { ...init, signal, redirect: "error" })
-    if (!response.body || response.headers.get("content-type")?.includes("text/event-stream"))
-      return response
+    const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase()
+    if (!response.body || mediaType === "text/event-stream") return response
     let bytes = 0
     const body = response.body.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
