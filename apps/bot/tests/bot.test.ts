@@ -118,8 +118,8 @@ function commandMessage(updateId: number, text: string, userId = 7): Update {
   return update
 }
 
-function repliedDocumentCommand(updateId: number, text = "/ask 請摘要"): Update {
-  const update = commandMessage(updateId, text)
+function repliedDocumentMention(updateId: number, text = "@test_bot 請摘要"): Update {
+  const update = privateMessage(updateId, text)
   if (update.message) {
     update.message.reply_to_message = {
       message_id: 50,
@@ -256,7 +256,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
 
-    await telegram.bot.handleUpdate(commandMessage(8, "/ask 看看頻道圖片"))
+    await telegram.bot.handleUpdate(privateMessage(8, "看看頻道圖片"))
     expect(sessions.submit).toHaveBeenCalledOnce()
     expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
     expect(calls[0]?.payload.chat_id).toBe(7) // output stays in the requesting chat
@@ -331,6 +331,8 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(commandMessage(1, "/help"))
 
+    expect(calls[0]?.payload.text).not.toContain("/ask")
+    expect(calls[0]?.payload.text).toContain("@mention")
     expect(calls[0]?.payload.text).toContain("/f <內容>")
     expect(calls[0]?.payload.text).toContain("/t <代碼>")
     expect(calls[0]?.payload.text).toContain("read、bash、edit、write")
@@ -379,9 +381,9 @@ describe("Telegram bot update routing", () => {
     expect(calls[0]?.payload.text).toBe("chat_id=-100\nuser_id=7\nis_admin=true")
     expect(calls[1]?.payload.text).toBe("chat_id=-100\nuser_id=8\nis_admin=false")
 
-    await telegram.bot.handleUpdate(inGroup(commandMessage(13, "/ask 你好", 7)))
-    await telegram.bot.handleUpdate(inGroup(commandMessage(14, "/ask 我是管理員", 8)))
-    const anonymous = inGroup(commandMessage(15, "/ask 你好", 7))
+    await telegram.bot.handleUpdate(inGroup(privateMessage(13, "@test_bot 你好", 7)))
+    await telegram.bot.handleUpdate(inGroup(privateMessage(14, "@test_bot 我是管理員", 8)))
+    const anonymous = inGroup(privateMessage(15, "@test_bot 你好", 7))
     if (anonymous.message) {
       anonymous.message.sender_chat = { id: -101, type: "channel", title: "Anonymous" }
     }
@@ -711,7 +713,7 @@ describe("Telegram bot update routing", () => {
     installApiMock(telegram.bot)
     const pending = telegram.bot.handleUpdate(commandMessage(30, "/f https://example.com/article"))
     await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
-    const clarification = commandMessage(31, "/ask 請簡短回答")
+    const clarification = privateMessage(31, "請簡短回答")
     if (clarification.message)
       clarification.message.reply_to_message = {
         message_id: 100,
@@ -3266,7 +3268,7 @@ describe("Telegram bot update routing", () => {
   })
 
   it.each(["private", "group", "bot-reply"])(
-    "converts replied documents for /ask in %s context",
+    "converts replied documents for mentions in %s context",
     async (kind) => {
       const sessions = createSessions()
       const run = vi.fn(async () => ({
@@ -3292,7 +3294,7 @@ describe("Telegram bot update routing", () => {
         },
       )
       installApiMock(telegram.bot)
-      const update = repliedDocumentCommand(400, "/ask@test_bot 請摘要")
+      const update = repliedDocumentMention(400)
       const message = update.message
       if (message?.reply_to_message) {
         if (kind === "group") {
@@ -3310,7 +3312,6 @@ describe("Telegram bot update routing", () => {
       expect(prompt).toContain("請摘要")
       expect(prompt).toContain("# Converted document")
       expect(prompt).toContain('trust="untrusted"')
-      expect(prompt).not.toContain("/ask")
       expect(options?.images).toEqual([])
       expect(options?.replyToBotMessageId).toBe(kind === "bot-reply" ? 50 : undefined)
     },
@@ -3321,7 +3322,7 @@ describe("Telegram bot update routing", () => {
     ["unavailable", "文件轉換服務目前無法使用。"],
     ["oversized", "文件超過允許的大小，無法處理。"],
     ["conversion", "這份 PDF 需要 OCR，目前只支援含可擷取文字的 PDF。"],
-  ])("reports /ask document %s failures without invoking Pi", async (failure, expected) => {
+  ])("reports mentioned document %s failures without invoking Pi", async (failure, expected) => {
     const sessions = createSessions()
     const fetchDocument = vi.fn(async () => new Response("bytes"))
     const run = vi.fn(async () => ({ ok: false as const, code: "needsOcr", message: "OCR needed" }))
@@ -3348,7 +3349,7 @@ describe("Telegram bot update routing", () => {
       },
     )
     const calls = installApiMock(telegram.bot)
-    await telegram.bot.handleUpdate(repliedDocumentCommand(401))
+    await telegram.bot.handleUpdate(repliedDocumentMention(401))
 
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(calls.at(-1)?.payload.text).toBe(expected)
@@ -3356,7 +3357,7 @@ describe("Telegram bot update routing", () => {
     expect(fetchDocument).toHaveBeenCalledTimes(failure === "conversion" ? 1 : 0)
   })
 
-  it("preserves /ask usage when no question is provided", async () => {
+  it("does not route /ask as a command in groups", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_TOKEN: "test-token" }),
@@ -3365,10 +3366,13 @@ describe("Telegram bot update routing", () => {
       { botInfo },
     )
     const calls = installApiMock(telegram.bot)
-    await telegram.bot.handleUpdate(repliedDocumentCommand(402, "/ask"))
+    for (const text of ["/ask", "/ask 請摘要"]) {
+      const update = commandMessage(402, text)
+      if (update.message) update.message.chat = { id: -100, type: "supergroup", title: "Group" }
+      await telegram.bot.handleUpdate(update)
+    }
     expect(sessions.submit).not.toHaveBeenCalled()
-    expect(calls).toHaveLength(1)
-    expect(calls[0]?.payload.text).toBe("請使用 /ask <問題>。")
+    expect(calls).toHaveLength(0)
   })
 
   it("converts current and replied documents with captions and a captionless default", async () => {
@@ -3692,7 +3696,7 @@ describe("Telegram bot update routing", () => {
   })
 
   it.each(
-    (["message", "ask"] as const).flatMap((input) =>
+    (["message", "mention"] as const).flatMap((input) =>
       (
         [
           ["queued", false],
@@ -3750,7 +3754,7 @@ describe("Telegram bot update routing", () => {
         { botInfo, documentConverter: converter, imageFetchImplementation: fetchDocument },
       )
       const calls = installApiMock(telegram.bot)
-      const document = input === "ask" ? repliedDocumentCommand(300) : privateMessage(300, "")
+      const document = input === "mention" ? repliedDocumentMention(300) : privateMessage(300, "")
       if (input === "message" && document.message) {
         delete document.message.text
         document.message.document = {

@@ -76,7 +76,7 @@ export function registerTelegramLogin(
       }
       return
     }
-    // Drop callbacks even after cancellation/timeout/restart, in groups, or inside /ask/replies.
+    // Drop callbacks even after cancellation/timeout/restart, in groups, or inside mentions/replies.
     if (hasCallback) {
       await deleteCallback(context)
       await safeReply(context, "授權回覆未送給模型。請管理員在私聊使用 /login 重新登入。")

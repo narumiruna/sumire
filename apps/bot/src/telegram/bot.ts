@@ -173,7 +173,7 @@ export function createTelegramAgentBot(
     await delivery.reply(
       context,
       [
-        "/ask <問題> — 詢問 AI 助理",
+        "在群組中 @mention 我或回覆我的訊息即可提問；私聊可直接傳送訊息。",
         "/f <內容> — 將內容或回覆的訊息整理成台灣繁體中文文章",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
         "/model — 選擇這個 chat 的 model（或 /model <provider/model>）",
@@ -220,18 +220,6 @@ export function createTelegramAgentBot(
       context,
       cancelled || pending ? "已取消目前任務。" : "目前沒有執行中的任務。",
       replyOptions(context),
-    )
-  })
-  bot.command("ask", async (context) => {
-    const prompt = context.match.trim()
-    if (!prompt) {
-      await delivery.reply(context, "請使用 /ask <問題>。", replyOptions(context))
-      return
-    }
-    const message = context.message as unknown as TelegramMessageLike
-    const replyToPendingStatus = isPendingBotReply(context.chat.id, message, context.me.id)
-    await inSubmissionOrder(context.chat.id, (release, isCurrent) =>
-      submitInput(context, message, prompt, release, isCurrent, { replyToPendingStatus }),
     )
   })
   bot.command("f", (context) => submitArticle(context, context.match.trim()))
@@ -1147,7 +1135,6 @@ export function createTelegramAgentBot(
         await bot.api.setMyCommands([
           { command: "start", description: "開始使用助理" },
           { command: "help", description: "查看可用指令" },
-          { command: "ask", description: "詢問 AI 助理" },
           { command: "f", description: "將內容整理成文章" },
           { command: "t", description: "查詢股票、虛擬貨幣或匯率" },
           { command: "model", description: "選擇這個 chat 的 model" },

@@ -26,7 +26,7 @@ Available now:
 - private chat and group mention/reply routing
 - opt-in, on-demand reading of newly indexed images from allowlisted Telegram channels via Pi's `read_image` tool
 - allowlist and bot-loop limits
-- `/start`, `/help`, `/id`, `/ask`, `/f`, `/model`, `/thinking`, `/cancel`, and `/reset`
+- `/start`, `/help`, `/id`, `/f`, `/model`, `/thinking`, `/cancel`, and `/reset`
 - admin-only private `/login` for a shared OpenAI subscription account, with credentials resolved by Pi
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes
@@ -295,7 +295,7 @@ When `BOT_DOCUMENT_INPUT_ENABLED=true`, current and replied Word, PowerPoint, Ex
 
 `/cancel` invalidates pending input in that chat before invoking Pi's native cancellation. Queued document loaders are skipped, late results/errors do not reach Pi or produce stale replies, and new messages can proceed. Downloads or native conversions already in flight retain their slot and drain to completion or their existing timeout; cancellation does not claim to terminate these operations immediately.
 
-Replying to a document with `/ask <question>` uses the same bounded media-input pipeline as an addressed message, including feature flags, direct failures, cancellation, and reply-tree restoration. An empty `/ask` still returns usage without processing attachments.
+Replying to a document while mentioning the bot uses the bounded media-input pipeline, including feature flags, direct failures, cancellation, and reply-tree restoration. In private chats, send the question directly; in groups, mention the bot or reply to its message.
 
 The production image currently qualifies the AnyDoc native adapter on Linux x86_64 glibc. Other architectures are not release-qualified even if upstream optional packages exist. Disable `BOT_DOCUMENT_INPUT_ENABLED` if the native adapter is unavailable.
 
