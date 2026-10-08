@@ -7,12 +7,14 @@ services:
     env_file:
       - .env
     init: true
+    security_opt:
+      - seccomp=./apps/bot/resources/chromium/seccomp-profile.json
     restart: unless-stopped
     volumes:
       - workdir:/workdir
       - ./instructions:/app/instructions:ro
       - ./skills:/app/skills:ro
-      - ./mcp.json:/app/mcp.json:ro
+      - ./mcp.docker.json:/app/mcp.json:ro
       - events:/app/.events
       - state:/app/.telegramagent
       - whisper-cache:/app/.cache/whisper

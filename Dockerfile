@@ -1,7 +1,5 @@
 # syntax=docker/dockerfile:1
 
-ARG PLAYWRIGHT_VERSION=1.63.0
-
 # Match the libcurl release pinned by impers 0.1.2; verify each platform's archive.
 FROM node:24-bookworm-slim AS curl-impersonate
 
@@ -104,12 +102,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/audio/bin/pip install openai-whisper==20250625 yt-dlp==2026.8.19
 
-FROM node:24-bookworm-slim AS browser-download
+FROM dependencies AS browser-download
 
-ARG PLAYWRIGHT_VERSION
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN --mount=type=cache,target=/root/.npm \
-    npx --yes playwright@${PLAYWRIGHT_VERSION} install chromium
+# Use the npm-ci installation, including its locked browser revisions and headless shell.
+RUN node node_modules/playwright/cli.js install chromium
 
 FROM node:24-bookworm-slim AS runtime-dependencies
 
@@ -120,11 +117,11 @@ RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=
     apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ffmpeg libcurl4
 
-ARG PLAYWRIGHT_VERSION
-RUN --mount=type=cache,target=/root/.npm \
+# Resolve OS dependencies with the exact same locked CLI as the browser download.
+RUN --mount=type=bind,from=dependencies,source=/build/node_modules,target=/build/node_modules \
     --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
-    npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium
+    node /build/node_modules/playwright/cli.js install-deps chromium
 
 FROM runtime-dependencies AS runtime
 
@@ -163,6 +160,7 @@ COPY --chown=app:app packages/url-content/skills/ /app/packages/url-content/skil
 COPY --chown=app:app packages/url-tool/skills/ /app/packages/url-tool/skills/
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
+COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/
 
 # Fail the build if production pruning removed a module needed at startup.
 RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
@@ -170,8 +168,10 @@ RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 ENV HOME=/workdir
 USER app
 
+# Verify both locked browser binaries and a real offline headless launch as the runtime user.
+RUN --network=none node /app/apps/bot/scripts/check-browser.mjs
+
 # Check Chrome fingerprint compatibility offline, using the runtime user's library.
-COPY --chown=app:app apps/bot/scripts/check-curl-impersonate.mjs /app/apps/bot/scripts/check-curl-impersonate.mjs
 RUN --network=none node /app/apps/bot/scripts/check-curl-impersonate.mjs
 
 # Fail the build if Git or SSH tools are unavailable to the bot user.
