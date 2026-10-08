@@ -171,6 +171,19 @@ describe("chat model settings", () => {
     expect(session.prompts).toEqual([])
   })
 
+  it("refreshes model choices and rejects models no longer available to the credentials", async () => {
+    const { registry, session } = await setup()
+    await expect(registry.getModelSettings(7)).resolves.toMatchObject({
+      models: ["test/plain", "test/reasoner"],
+    })
+    session.modelRuntime.getAvailable.mockResolvedValue([reasoningModel])
+    await expect(registry.getModelSettings(7)).resolves.toMatchObject({
+      models: ["test/reasoner"],
+    })
+    await expect(registry.setModel(7, "test/plain")).rejects.toThrow("找不到可用")
+    expect(session.setModel).not.toHaveBeenCalled()
+  })
+
   it("changes only the requested chat and delegates model capability clamping to Pi", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-model-isolation-"))
     const first = new FakeSession("first")

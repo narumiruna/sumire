@@ -5,7 +5,7 @@ import { createOAuthLogin } from "@narumitw/sumire-login"
 
 import type { Settings } from "../config/settings.js"
 
-const initialModelId = "gpt-5.6-luna"
+const initialModelId = "gpt-6.1-sol"
 
 export async function createBotModelRuntime(
   settings: Settings,

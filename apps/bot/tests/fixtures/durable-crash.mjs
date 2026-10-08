@@ -21,7 +21,7 @@ modelRuntime.registerProvider("openai", {
   apiKey: "offline-crash-fixture-key",
   models: [
     {
-      id: "gpt-5.6-luna",
+      id: "gpt-6.1-sol",
       name: "Offline crash fixture",
       reasoning: false,
       input: ["text", "image"],

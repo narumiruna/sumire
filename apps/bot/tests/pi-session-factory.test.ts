@@ -127,11 +127,11 @@ describe("createPiSessionFactory", () => {
       // Pi discovering OpenAI credentials later restores the preferred default for new chats.
       vi.stubEnv("OPENAI_API_KEY", "fixture-openai-key")
       await expect(registry.getModelSettings(8)).resolves.toMatchObject({
-        currentModel: "openai/gpt-5.6-luna",
-        thinkingLevel: "off",
+        currentModel: "openai/gpt-6.1-sol",
+        thinkingLevel: "low",
       })
-      await expect(registry.setModel(7, "openai/gpt-5.6-luna")).resolves.toMatchObject({
-        currentModel: "openai/gpt-5.6-luna",
+      await expect(registry.setModel(7, "openai/gpt-6.1-sol")).resolves.toMatchObject({
+        currentModel: "openai/gpt-6.1-sol",
       })
     } finally {
       await registry.dispose()
@@ -219,7 +219,7 @@ describe("createPiSessionFactory", () => {
         expect.objectContaining({ role: "user", content: "fixture conversation" }),
       )
       expect(other.model).toMatchObject({ provider: defaultModel?.provider, id: defaultModel?.id })
-      expect(other.thinkingLevel).toBe("off")
+      expect(other.thinkingLevel).toBe("low")
       expect(other.messages).toEqual([])
     } finally {
       await resumed.dispose()
@@ -234,7 +234,7 @@ describe("createPiSessionFactory", () => {
       await registry.reset(7)
       await expect(registry.getModelSettings(7)).resolves.toMatchObject({
         currentModel: `${defaultModel?.provider}/${defaultModel?.id}`,
-        thinkingLevel: "off",
+        thinkingLevel: "low",
       })
     } finally {
       await registry.dispose()
@@ -262,7 +262,7 @@ describe("createPiSessionFactory", () => {
     }
     const resumed = await factory.create(7)
     try {
-      expect(resumed.model).toMatchObject({ provider: "openai", id: "gpt-5.6-luna" })
+      expect(resumed.model).toMatchObject({ provider: "openai", id: "gpt-6.1-sol" })
       expect(resumed.messages).toContainEqual(expect.objectContaining({ role: "user" }))
     } finally {
       await resumed.dispose()
@@ -330,7 +330,7 @@ describe("createPiSessionFactory", () => {
     try {
       expect(session.model).toMatchObject({
         provider: "openai",
-        id: "gpt-5.6-luna",
+        id: "gpt-6.1-sol",
         api: "openai-responses",
       })
       expect(session.sessionFile).toContain(
