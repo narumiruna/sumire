@@ -138,25 +138,26 @@ export async function createPiSessionFactory(
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
       const nativeTools = [...baseTools]
-      const mcp: McpCapability | undefined = settings.botMcpEnabled
-        ? new McpCapability(
-            mcpConfig,
-            settings.botWorkdir,
-            path.join(directory, "mcp"),
-            logger,
-            () => {
-              if (!mcp) return
-              nativeTools.splice(baseTools.length, nativeTools.length, ...mcp.tools)
-              registry.install(
-                defineExtension({
-                  name: "sumire-mcp",
-                  tools: mcp.tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
-                  sections: [section("mcp_servers", () => mcp?.summary())],
-                }),
-              )
-            },
-          )
-        : undefined
+      const mcp: McpCapability | undefined =
+        mcpConfig.servers.length > 0
+          ? new McpCapability(
+              mcpConfig,
+              settings.botWorkdir,
+              path.join(directory, "mcp"),
+              logger,
+              () => {
+                if (!mcp) return
+                nativeTools.splice(baseTools.length, nativeTools.length, ...mcp.tools)
+                registry.install(
+                  defineExtension({
+                    name: "sumire-mcp",
+                    tools: mcp.tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
+                    sections: [section("mcp_servers", () => mcp?.summary())],
+                  }),
+                )
+              },
+            )
+          : undefined
       registry.install(
         defineExtension({
           name: "sumire",
@@ -167,7 +168,7 @@ export async function createPiSessionFactory(
       registry.install(createProgressExtension())
       let harness: Harness | undefined
       let session: DurableSession | undefined
-      if (settings.botCodemodeEnabled || settings.botMcpEnabled)
+      if (settings.botCodemodeEnabled || mcpConfig.servers.length > 0)
         registry.install(
           await createDurableCodemode(
             nativeTools,

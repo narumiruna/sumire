@@ -23,28 +23,32 @@ async function config(input: unknown, environment: NodeJS.ProcessEnv = {}) {
   await writeFile(file, typeof input === "string" ? input : JSON.stringify(input))
   const logger = { warn: vi.fn() }
   return {
-    ...(await loadMcpConfig({ botMcpEnabled: true, botMcpConfigPath: file }, logger, environment)),
+    ...(await loadMcpConfig({ botMcpConfigPath: file }, logger, environment)),
     logger,
   }
 }
 
 describe("MCP configuration", () => {
-  it("defaults off and resolves config against the application root, not workdir", async () => {
+  it("resolves config against the application root, not workdir", () => {
     const settings = loadSettings({ BOT_WORKDIR: "/workdir" }, "/app")
-    expect(settings.botMcpEnabled).toBe(false)
     expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
     expect(loadSettings({ BOT_MCP_CONFIG_PATH: "private/mcp.json" }, "/app").botMcpConfigPath).toBe(
       "/app/private/mcp.json",
     )
-    expect(
-      await loadMcpConfig({ ...settings, botMcpConfigPath: "/missing" }, { warn: vi.fn() }),
-    ).toMatchObject({ servers: [] })
+  })
+
+  it("loads MCP configuration without an enable flag", async () => {
+    const result = await config({ mcpServers: { local: { command: "node" } } })
+    expect(result.servers.map((server) => server.name)).toEqual(["local"])
+  })
+
+  it("accepts an empty configuration to disable all MCP servers", async () => {
+    expect((await config({ mcpServers: {} })).servers).toEqual([])
   })
 
   it("loads the requested tracked Chrome and Firecrawl config without changing its args", async () => {
     const result = await loadMcpConfig(
       {
-        botMcpEnabled: true,
         botMcpConfigPath: new URL("../../../mcp.json", import.meta.url).pathname,
       },
       { warn: vi.fn() },
@@ -57,7 +61,7 @@ describe("MCP configuration", () => {
 
   it("fails safely for a missing file, invalid JSON or invalid top-level shape", async () => {
     await expect(
-      loadMcpConfig({ botMcpEnabled: true, botMcpConfigPath: "/missing" }, { warn: vi.fn() }),
+      loadMcpConfig({ botMcpConfigPath: "/missing" }, { warn: vi.fn() }),
     ).rejects.toThrow("bounded JSON")
     await expect(config("secret invalid JSON")).rejects.toThrow("bounded JSON")
     await expect(config({ mcpServers: [] })).rejects.toThrow("mcpServers object")

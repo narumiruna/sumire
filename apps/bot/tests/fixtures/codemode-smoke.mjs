@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { existsSync } from "node:fs"
-import { cp, mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -76,6 +76,7 @@ try {
   await cp(path.join(projectRoot, "instructions"), path.join(root, "instructions"), {
     recursive: true,
   })
+  await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
   const address = server.address()
   assert.ok(address && typeof address !== "string")

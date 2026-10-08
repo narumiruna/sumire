@@ -32,11 +32,7 @@ async function setup(
     }),
   )
   const logger = { warn: vi.fn() }
-  const config = await loadMcpConfig(
-    { botMcpEnabled: true, botMcpConfigPath: file },
-    logger,
-    environment,
-  )
+  const config = await loadMcpConfig({ botMcpConfigPath: file }, logger, environment)
   const changed = vi.fn()
   const capability = new McpCapability(
     config,

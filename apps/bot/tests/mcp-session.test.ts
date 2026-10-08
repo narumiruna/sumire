@@ -29,7 +29,6 @@ async function setup(exposure = "codemode", environment: Record<string, string> 
     }),
   )
   const fixture = await createPiFixture({
-    BOT_MCP_ENABLED: "true",
     BOT_MCP_CONFIG_PATH: config,
     BOT_CODEMODE_ENABLED: "false",
   })

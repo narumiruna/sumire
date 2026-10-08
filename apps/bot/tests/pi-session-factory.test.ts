@@ -32,6 +32,7 @@ const otterSkillSource = path.join(repositoryRoot, "skills/otter-manage-expenses
 
 async function installInstructions(projectRoot: string): Promise<void> {
   await cp(instructionsSource, path.join(projectRoot, "instructions"), { recursive: true })
+  await writeFile(path.join(projectRoot, "mcp.json"), JSON.stringify({ mcpServers: {} }))
 }
 
 async function installOtterSkill(projectRoot: string): Promise<void> {

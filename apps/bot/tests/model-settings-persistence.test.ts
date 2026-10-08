@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { cp, mkdtemp } from "node:fs/promises"
+import { cp, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -41,6 +41,7 @@ function assistant(session: DurableSession): Extract<AgentMessage, { role: "assi
 async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-settings-persistence-"))
   await cp(instructions, path.join(root, "instructions"), { recursive: true })
+  await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
   const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
   const factory = await createPiSessionFactory(settings, logger)
   const session = await factory.create(7)

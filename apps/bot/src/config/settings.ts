@@ -74,7 +74,6 @@ const environmentSchema = z.object({
   BOT_WORKDIR: optionalString,
   BOT_WHITELIST: csvIntegers,
   BOT_ADMIN_ID: optionalTelegramUserId,
-  BOT_MCP_ENABLED: envBoolean(false),
   BOT_MCP_CONFIG_PATH: optionalString,
   BOT_CODEMODE_ENABLED: envBoolean(false),
   BOT_CODEMODE_TIMEOUT_SECONDS: envNumber(300, 0.1, 3_600),
@@ -109,7 +108,6 @@ export interface Settings {
   botToken: string
   botWhitelist: ReadonlySet<number>
   botAdminId?: number
-  botMcpEnabled: boolean
   botMcpConfigPath: string
   botCodemodeEnabled: boolean
   botCodemodeTimeoutSeconds: number
@@ -167,7 +165,6 @@ export function loadSettings(
     botWorkdir: path.resolve(root, parsed.BOT_WORKDIR ?? "."),
     botToken: parsed.BOT_TOKEN,
     botWhitelist: parsed.BOT_WHITELIST,
-    botMcpEnabled: parsed.BOT_MCP_ENABLED,
     botMcpConfigPath: path.resolve(root, parsed.BOT_MCP_CONFIG_PATH ?? "mcp.json"),
     botCodemodeEnabled: parsed.BOT_CODEMODE_ENABLED,
     botCodemodeTimeoutSeconds: parsed.BOT_CODEMODE_TIMEOUT_SECONDS,
