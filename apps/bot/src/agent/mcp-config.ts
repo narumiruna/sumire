@@ -3,11 +3,13 @@ import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { readMcpConfigFile } from "./mcp-config-file.js"
 import { mcpCredentialKind } from "./mcp-credentials.js"
+import { createMcpRedactor, validateMcpSecrets } from "./mcp-redactor.js"
 
 export const MCP_MAX_SERVERS = 16
 export const MCP_MAX_SERVER_NAME_LENGTH = 64
 export const MCP_MAX_EXPOSURE_PATTERNS = 64
 export const MCP_MAX_EXPOSURE_PATTERN_LENGTH = 128
+export const MCP_MAX_ENV_HEADER_FIELDS = 64
 
 const exposure = z.enum(["codemode", "direct", "hidden"])
 const strings = z.record(z.string(), z.string())
@@ -30,6 +32,9 @@ const serverSchema = z
       .default({}),
   })
   .strict()
+  .refine(
+    (s) => Object.keys(s.env).length + Object.keys(s.headers).length <= MCP_MAX_ENV_HEADER_FIELDS,
+  )
   .refine((s) => Boolean(s.command) !== Boolean(s.url))
   .refine((s) => !s.type || (s.command ? s.type === "stdio" : s.type !== "stdio"))
   .refine((s) => !s.command || Object.keys(s.headers).length === 0)
@@ -70,13 +75,18 @@ export async function loadMcpConfig(
   if (Object.keys(top.data.mcpServers).length > MCP_MAX_SERVERS)
     throw new Error(`MCP configuration supports at most ${MCP_MAX_SERVERS} server entries`)
   const secrets = new Set<string>()
+  const record = (value: string, entrySecrets: Set<string>) => {
+    if (!value) return
+    entrySecrets.add(value)
+    validateMcpSecrets(entrySecrets)
+  }
   const expand = (value: string, entrySecrets: Set<string>) => {
     if (value.trimStart().startsWith("!")) throw new Error("Credential commands are not supported")
     const expanded = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
       const replacement = Object.hasOwn(environment, name) ? environment[name] : undefined
       if (typeof replacement !== "string" || !replacement)
         throw new Error("Missing MCP environment variable")
-      entrySecrets.add(replacement)
+      record(replacement, entrySecrets)
       return replacement
     })
     if (expanded.includes("${")) throw new Error("Invalid MCP environment placeholder")
@@ -103,12 +113,12 @@ export async function loadMcpConfig(
       ]) {
         const kind = mcpCredentialKind(key)
         if (kind) {
-          entrySecrets.add(value)
-          if (kind === "auth") entrySecrets.add(value.trim().replace(/^\S+\s+/, ""))
+          record(value, entrySecrets)
+          if (kind === "auth") record(value.trim().replace(/^\S+\s+/, ""), entrySecrets)
           if (kind === "cookie")
             for (const cookie of value.split(";")) {
               const equals = cookie.indexOf("=")
-              if (equals >= 0) entrySecrets.add(cookie.slice(equals + 1).trim())
+              if (equals >= 0) record(cookie.slice(equals + 1).trim(), entrySecrets)
             }
         }
       }
@@ -138,11 +148,7 @@ export async function loadMcpConfig(
       for (const secret of entrySecrets) secrets.add(secret)
       return server
     })
-  const values = [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)
-  return {
-    servers: uniqueServers,
-    redact: (text) => values.reduce((safe, secret) => safe.replaceAll(secret, "[redacted]"), text),
-  }
+  return { servers: uniqueServers, redact: createMcpRedactor(secrets) }
 }
 
 const exposurePatterns = new WeakMap<

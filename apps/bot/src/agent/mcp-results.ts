@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, open, rm } from "node:fs/promises"
 import path from "node:path"
 import type { JsonValue } from "@earendil-works/pi-ai"
 import { type CallToolResult, type ContentBlock, toLlmContent } from "@earendil-works/pi-mcp"
@@ -103,7 +103,9 @@ export async function shapeMcpResult(
   raw: CallToolResult,
   directory: string,
   redact: (text: string) => string,
+  signal?: AbortSignal,
 ) {
+  signal?.throwIfAborted()
   if (raw.isError !== undefined && typeof raw.isError !== "boolean")
     throw new Error("Invalid MCP result error flag")
   const safe: CallToolResult = {
@@ -136,13 +138,31 @@ export async function shapeMcpResult(
         throw new Error("MCP embedded binary exceeds the binary byte limit")
     }
   }
+  signal?.throwIfAborted()
   const content = toLlmContent(safe)
-  for (const block of content) {
-    if (block.type !== "text" || Buffer.byteLength(block.text) <= MAX_TEXT_BYTES) continue
-    await mkdir(directory, { recursive: true, mode: 0o700 })
-    const file = path.join(directory, `${randomUUID()}.txt`)
-    await writeFile(file, block.text, { mode: 0o600, flag: "wx" })
-    block.text = `${Buffer.from(block.text).subarray(0, MAX_TEXT_BYTES).toString("utf8")}\n[truncated; full MCP text: ${file}]`
+  const files: string[] = []
+  try {
+    for (const block of content) {
+      signal?.throwIfAborted()
+      if (block.type !== "text" || Buffer.byteLength(block.text) <= MAX_TEXT_BYTES) continue
+      await mkdir(directory, { recursive: true, mode: 0o700 })
+      signal?.throwIfAborted()
+      const file = path.join(directory, `${randomUUID()}.txt`)
+      const handle = await open(file, "wx", 0o600)
+      files.push(file)
+      try {
+        signal?.throwIfAborted()
+        await handle.writeFile(block.text, { signal })
+      } finally {
+        await handle.close()
+      }
+      signal?.throwIfAborted()
+      block.text = `${Buffer.from(block.text).subarray(0, MAX_TEXT_BYTES).toString("utf8")}\n[truncated; full MCP text: ${file}]`
+    }
+    signal?.throwIfAborted()
+  } catch (error) {
+    await Promise.all(files.map((file) => rm(file, { force: true })))
+    throw error
   }
   return {
     content,

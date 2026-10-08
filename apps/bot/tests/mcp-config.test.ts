@@ -341,6 +341,45 @@ describe("MCP configuration", () => {
     expect(toolExposure(server, name)).toBe(matches ? "hidden" : "codemode")
   })
 
+  it("bounds env/header field counts and derived credentials without suppressing healthy entries", async () => {
+    const fields = Object.fromEntries(
+      Array.from({ length: 64 }, (_, i) => [`FIELD_${i}`, "ordinary"]),
+    )
+    const result = await config({
+      mcpServers: {
+        boundary: { command: "node", env: fields },
+        excess: { command: "node", env: { ...fields, EXTRA: "ordinary" } },
+        oversized: { command: "node", env: { TOKEN: "private".repeat(1000) } },
+        cookies: {
+          url: "https://example.com/mcp",
+          headers: { Cookie: Array.from({ length: 128 }, (_, i) => `key${i}=value${i}`).join(";") },
+        },
+      },
+    })
+    expect(result.servers.map((server) => server.name)).toEqual(["boundary"])
+    expect(JSON.stringify(result.logger.warn.mock.calls)).not.toContain("private")
+  })
+
+  it("bounds the global accepted credential set before creating its redactor", async () => {
+    const entries = Object.fromEntries(
+      Array.from({ length: 2 }, (_, server) => [
+        `s${server}`,
+        {
+          command: "node",
+          env: Object.fromEntries(
+            Array.from({ length: 64 }, (_, i) => [`TOKEN_${i}`, `credential-${server}-${i}`]),
+          ),
+        },
+      ]),
+    )
+    expect((await config({ mcpServers: entries })).servers).toHaveLength(2)
+    await expect(
+      config({
+        mcpServers: { ...entries, extra: { command: "node", env: { TOKEN: "extra-credential" } } },
+      }),
+    ).rejects.toThrow("credential count")
+  })
+
   it("applies exact tool exposure before wildcard patterns", async () => {
     const result = await config({
       mcpServers: {

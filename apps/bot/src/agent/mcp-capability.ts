@@ -204,6 +204,8 @@ export class McpCapability {
         Math.min(60_000, connection.config.timeoutMs),
       )
       await current.connect(this.transportFactory(connection.config, this.cwd, connection.home))
+      clearTimeout(timer)
+      timer = undefined
       await this.refresh(connection, current)
     } catch {
       connection.listed = []
@@ -375,11 +377,14 @@ export class McpCapability {
             timeoutMs: connection.config.timeoutMs,
           })
           callSignal.throwIfAborted()
-          return await shapeMcpResult(
+          const result = await shapeMcpResult(
             raw,
             path.join(thisCapability.directory, "results"),
             thisCapability.config.redact,
+            callSignal,
           )
+          callSignal.throwIfAborted()
+          return result
         } catch (error) {
           if (
             !callSignal.aborted &&

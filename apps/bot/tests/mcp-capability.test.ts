@@ -53,7 +53,7 @@ async function setup(
     if (!tool) throw new Error(`Missing ${name}`)
     return tool.execute("test-call", args, signal, undefined, undefined as never)
   }
-  return { capability, call, directory, logger, changed }
+  return { capability, call, directory, logger, changed, config }
 }
 
 describe("MCP capability", () => {
@@ -247,6 +247,33 @@ describe("MCP capability", () => {
     )
   })
 
+  it("gives initial discovery its separate budget after initialization succeeds", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-init-budget-"))
+    cleanup.push(() => rm(directory, { recursive: true, force: true }))
+    const trace = path.join(directory, "requests")
+    const gate = path.join(directory, "release")
+    await setup(
+      {
+        fake: {
+          command: process.execPath,
+          args: [fixturePath],
+          timeout: 1,
+          env: { MCP_TEST_LIST_GATE: gate, MCP_TEST_LIST_TRACE: trace },
+        },
+      },
+      {},
+      async (capability) => {
+        const opening = capability.ready()
+        await vi.waitFor(async () => expect(await readFile(trace, "utf8")).toContain("list"))
+        await new Promise((resolve) => setTimeout(resolve, 1100))
+        expect(capability.tools).toEqual([])
+        await writeFile(gate, "ready")
+        await opening
+        expect(capability.tools.length).toBeGreaterThan(0)
+      },
+    )
+  })
+
   it("shares bounded namespace presentation and discards annotations expanded beyond their bound", async () => {
     const { capability } = await setup({
       fake: {
@@ -375,6 +402,21 @@ describe("MCP capability", () => {
     })
     await expect(call("hold")).rejects.toThrow("inspect side effects")
     expect(await readFile(file, "utf8")).toBe("called\n")
+  })
+
+  it("rechecks caller cancellation after shaping resolves but before delivery", async () => {
+    const { call, config } = await setup()
+    const abort = new AbortController()
+    const original = config.redact
+    config.redact = (text) => {
+      if (text.includes("abort-after-shape"))
+        queueMicrotask(() => abort.abort(new Error("cancelled")))
+      return original(text)
+    }
+    await expect(call("echo", { value: "abort-after-shape" }, abort.signal)).rejects.toThrow(
+      "inspect side effects",
+    )
+    expect(abort.signal.aborted).toBe(true)
   })
 
   it("cancels calls and refuses new work after closure", async () => {
