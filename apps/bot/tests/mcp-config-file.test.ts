@@ -1,4 +1,4 @@
-import { open, type FileHandle } from "node:fs/promises"
+import { type FileHandle, open } from "node:fs/promises"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MCP_MAX_CONFIG_BYTES, readMcpConfigFile } from "../src/agent/mcp-config-file.js"
 
