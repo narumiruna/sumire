@@ -114,7 +114,27 @@ export async function loadMcpConfig(
         const kind = mcpCredentialKind(key)
         if (kind) {
           record(value, entrySecrets)
-          if (kind === "auth") record(value.trim().replace(/^\S+\s+/, ""), entrySecrets)
+          if (kind === "auth") {
+            const trimmed = value.trim()
+            const payload = trimmed.replace(/^\S+\s+/, "")
+            record(payload, entrySecrets)
+            if (/^Basic\s+/i.test(trimmed) && /^[A-Za-z0-9+/]+={0,2}$/.test(payload)) {
+              // The header has already passed the credential byte bound. Decode only
+              // canonical Base64/UTF-8; never rewrite the configured wire value.
+              const bytes = Buffer.from(payload, "base64")
+              const decoded = bytes.toString("utf8")
+              const colon = decoded.indexOf(":")
+              if (
+                bytes.toString("base64").replace(/=+$/, "") === payload.replace(/=+$/, "") &&
+                Buffer.from(decoded).equals(bytes) &&
+                colon >= 0
+              ) {
+                record(decoded, entrySecrets)
+                record(decoded.slice(0, colon), entrySecrets)
+                record(decoded.slice(colon + 1), entrySecrets)
+              }
+            }
+          }
           if (kind === "cookie")
             for (const cookie of value.split(";")) {
               const equals = cookie.indexOf("=")
