@@ -29,7 +29,7 @@ async function setup(exposure = "codemode", environment: Record<string, string> 
     }),
   )
   const fixture = await createPiFixture({
-    BOT_MCP_CONFIG_PATH: config,
+    botMcpConfigPath: config,
   })
   cleanups.push(() => fixture.cleanup())
   return { fixture, config, effects }

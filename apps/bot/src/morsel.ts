@@ -186,7 +186,7 @@ function validateMorselOrigin(value: string): URL {
     url.hash
   ) {
     throw new Error(
-      "MORSEL_URL must be a secure HTTP(S) origin without credentials, path, query, or fragment",
+      "Morsel URL must be a secure HTTP(S) origin without credentials, path, query, or fragment",
     )
   }
   return url

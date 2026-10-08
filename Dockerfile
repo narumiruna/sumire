@@ -130,7 +130,6 @@ FROM runtime-dependencies AS runtime
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV XDG_CACHE_HOME=/app/.cache
-ENV BOT_WORKDIR=/workdir
 ENV IMPER_DOWNLOAD_LIBCURL=0
 ENV LIBCURL_PATH=/opt/curl-impersonate/libcurl-impersonate.so
 

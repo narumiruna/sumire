@@ -30,11 +30,9 @@ async function config(input: unknown, environment: NodeJS.ProcessEnv = {}) {
 
 describe("MCP configuration", () => {
   it("resolves config against the application root, not workdir", () => {
-    const settings = loadSettings({ BOT_WORKDIR: "/workdir" }, "/app")
+    const settings = loadSettings({}, "/app", "/workdir")
+    expect(settings.botWorkdir).toBe("/workdir")
     expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
-    expect(loadSettings({ BOT_MCP_CONFIG_PATH: "private/mcp.json" }, "/app").botMcpConfigPath).toBe(
-      "/app/private/mcp.json",
-    )
   })
 
   it("loads MCP configuration without an enable flag", async () => {

@@ -10,8 +10,8 @@ import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
-async function setup(environment: Record<string, string> = {}) {
-  const fixture = await createPiFixture(environment)
+async function setup(overrides: Parameters<typeof createPiFixture>[0] = {}) {
+  const fixture = await createPiFixture(overrides)
   fixtures.push(fixture)
   return fixture
 }
@@ -112,7 +112,7 @@ text(results.map(result => result.status === 'fulfilled' ? { status: result.stat
   })
 
   it("caps nested Bash, keeps partial output and completed side effects, and recovers on the next request", async () => {
-    const fixture = await setup({ BOT_CODEMODE_TIMEOUT_SECONDS: "1" })
+    const fixture = await setup({ botCodemodeTimeoutSeconds: 1 })
     const session = await fixture.createSession()
     const events: AgentSessionEvent[] = []
     session.subscribe((event) => events.push(event))

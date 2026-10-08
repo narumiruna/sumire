@@ -10,7 +10,7 @@ import { ChannelImageIndex } from "./telegram/channel-images.js"
 
 export async function startApplication(): Promise<void> {
   const defaultProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
-  const settings = loadSettings(process.env, defaultProjectRoot)
+  const settings = loadSettings(process.env, defaultProjectRoot, process.cwd())
   if (!settings.botToken) throw new Error("BOT_TOKEN is required")
 
   const logger = createLogger(
@@ -84,7 +84,7 @@ export async function createConfiguredDocumentConverter(
     })
   } catch (error) {
     throw new Error(
-      "Document input is enabled, but the @firecrawl/anydoc native adapter could not load; install the package for this platform or set BOT_DOCUMENT_INPUT_ENABLED=false",
+      "Document input is enabled, but the @firecrawl/anydoc native adapter could not load; install the package for this platform or use a supported deployment platform",
       { cause: error },
     )
   }

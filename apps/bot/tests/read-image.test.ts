@@ -7,23 +7,18 @@ import type { Api } from "grammy"
 import { describe, expect, it, vi } from "vitest"
 
 import { createReadImageExtension } from "../src/agent/read-image.js"
-import { loadSettings } from "../src/config/settings.js"
+import { loadSettings, type Settings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 
 const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
-async function setup(overrides: Record<string, string> = {}) {
+async function setup(overrides: Partial<Settings> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "read-image-"))
-  const settings = loadSettings(
-    {
-      BOT_TOKEN: "test-token",
-      BOT_WHITELIST: "7,-100",
-      BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
-      ...overrides,
-    },
-    root,
-  )
+  const settings = {
+    ...loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7,-100" }, root),
+    ...overrides,
+  }
   const index = new ChannelImageIndex(root, logger)
   for (const channelChatId of [-100, -101]) {
     await index.record({
@@ -112,7 +107,7 @@ describe("read_image Pi tool", () => {
   })
 
   it("rejects oversized post metadata before contacting Telegram", async () => {
-    const { tool, index, getFile, fetchImplementation } = await setup({ BOT_IMAGE_MAX_BYTES: "4" })
+    const { tool, index, getFile, fetchImplementation } = await setup({ botImageMaxBytes: 4 })
     await expect(
       tool.execute(
         "large",
@@ -128,7 +123,7 @@ describe("read_image Pi tool", () => {
   })
 
   it("reports oversized, streamed-overflow, transport failures and cancellation without returning image content", async () => {
-    const { tool, getFile, fetchImplementation } = await setup({ BOT_IMAGE_MAX_BYTES: "5" })
+    const { tool, getFile, fetchImplementation } = await setup({ botImageMaxBytes: 5 })
     getFile.mockResolvedValueOnce({
       file_id: "image",
       file_unique_id: "unique",

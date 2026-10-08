@@ -19,18 +19,6 @@ const optionalTelegramUserId = z.preprocess(
     .optional(),
 )
 
-const envBoolean = (defaultValue: boolean) =>
-  z
-    .enum(["true", "false"])
-    .default(String(defaultValue) as "true" | "false")
-    .transform((value) => value === "true")
-
-const envInteger = (defaultValue: number, minimum: number, maximum = Number.MAX_SAFE_INTEGER) =>
-  z.coerce.number().int().min(minimum).max(maximum).default(defaultValue)
-
-const envNumber = (defaultValue: number, minimum: number, maximum = Number.MAX_VALUE) =>
-  z.coerce.number().min(minimum).max(maximum).default(defaultValue)
-
 const csvIntegers = z
   .string()
   .optional()
@@ -52,52 +40,11 @@ const csvIntegers = z
     return values
   })
 
-const allowedSchemes = z
-  .string()
-  .default("http,https")
-  .transform((value, context) => {
-    const schemes = new Set(
-      value
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean),
-    )
-    if (schemes.size === 0 || [...schemes].some((scheme) => !["http", "https"].includes(scheme))) {
-      context.addIssue({ code: "custom", message: "Only http and https URL schemes are allowed" })
-      return z.NEVER
-    }
-    return schemes
-  })
-
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
-  BOT_WORKDIR: optionalString,
   BOT_WHITELIST: csvIntegers,
   BOT_ADMIN_ID: optionalTelegramUserId,
-  BOT_MCP_CONFIG_PATH: optionalString,
-  BOT_CODEMODE_TIMEOUT_SECONDS: envNumber(300, 0.1, 3_600),
-  BOT_DOCUMENT_INPUT_ENABLED: envBoolean(true),
-  BOT_DOCUMENT_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
-  BOT_DOCUMENT_MAX_MARKDOWN_CHARS: envInteger(50_000, 1, 1_000_000),
-  BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: envNumber(30, 0.1, 600),
-  BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: envInteger(2, 1, 16),
-  BOT_REPLY_TREE_ENABLED: envBoolean(true),
-  BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: envInteger(1_000, 1, 100_000),
-  BOT_REPLY_TREE_MAX_INDEX_BYTES: envInteger(1_000_000, 1_024, 100_000_000),
-  BOT_URL_TIMEOUT_SECONDS: envNumber(15, 0.1, 600),
-  BOT_URL_CONTENT_TIMEOUT_SECONDS: envNumber(180, 0.1, 3_600),
-  BOT_URL_MAX_EXTRACTED_CHARS: envInteger(12_000, 1, 1_000_000),
-  BOT_URL_ALLOWED_SCHEMES: allowedSchemes,
-  BOT_IMAGE_INPUT_ENABLED: envBoolean(true),
-  BOT_CHANNEL_IMAGE_INPUT_ENABLED: envBoolean(false),
-  BOT_IMAGE_MAX_BYTES: envInteger(8_000_000, 1, 100_000_000),
-  BOT_AUDIO_INPUT_ENABLED: envBoolean(true),
-  BOT_AUDIO_MAX_BYTES: envInteger(20_000_000, 1, 100_000_000),
-  BOT_AUDIO_MAX_DURATION_SECONDS: envInteger(600, 1, 3_600),
-  BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS: envNumber(180, 1, 3_600),
-  BOT_AUDIO_MAX_TRANSCRIPT_CHARS: envInteger(12_000, 1, 100_000),
   LOGFIRE_TOKEN: optionalString,
-  MORSEL_URL: z.url().default("https://morsel.narumi.dev/"),
   MORSEL_API_KEY: optionalString,
 })
 
@@ -155,16 +102,17 @@ export interface Settings {
 export function loadSettings(
   environment: NodeJS.ProcessEnv = process.env,
   projectRoot = process.cwd(),
+  workdir = projectRoot,
 ): Settings {
   const parsed = environmentSchema.parse(environment)
   const root = path.resolve(projectRoot)
   return {
     projectRoot: root,
-    botWorkdir: path.resolve(root, parsed.BOT_WORKDIR ?? "."),
+    botWorkdir: path.resolve(workdir),
     botToken: parsed.BOT_TOKEN,
     botWhitelist: parsed.BOT_WHITELIST,
-    botMcpConfigPath: path.resolve(root, parsed.BOT_MCP_CONFIG_PATH ?? "mcp.json"),
-    botCodemodeTimeoutSeconds: parsed.BOT_CODEMODE_TIMEOUT_SECONDS,
+    botMcpConfigPath: path.join(root, "mcp.json"),
+    botCodemodeTimeoutSeconds: 300,
     ...(parsed.BOT_ADMIN_ID !== undefined ? { botAdminId: parsed.BOT_ADMIN_ID } : {}),
     botMaxConsecutiveRepliesToBots: 1,
     botGroupPassiveContextEnabled: true,
@@ -174,33 +122,33 @@ export function loadSettings(
     botSoulPath: path.resolve(root, "instructions/SOUL.md"),
     botSoulRequired: false,
     botSoulMaxChars: 8_000,
-    botDocumentInputEnabled: parsed.BOT_DOCUMENT_INPUT_ENABLED,
-    botDocumentMaxBytes: parsed.BOT_DOCUMENT_MAX_BYTES,
-    botDocumentMaxMarkdownChars: parsed.BOT_DOCUMENT_MAX_MARKDOWN_CHARS,
-    botDocumentConversionTimeoutSeconds: parsed.BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS,
-    botDocumentMaxConcurrentConversions: parsed.BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS,
-    botReplyTreeEnabled: parsed.BOT_REPLY_TREE_ENABLED,
-    botReplyTreeMaxRecordsPerChat: parsed.BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT,
-    botReplyTreeMaxIndexBytes: parsed.BOT_REPLY_TREE_MAX_INDEX_BYTES,
-    botUrlTimeoutSeconds: parsed.BOT_URL_TIMEOUT_SECONDS,
-    botUrlContentTimeoutSeconds: parsed.BOT_URL_CONTENT_TIMEOUT_SECONDS,
-    botUrlMaxExtractedChars: parsed.BOT_URL_MAX_EXTRACTED_CHARS,
-    botUrlAllowedSchemes: parsed.BOT_URL_ALLOWED_SCHEMES,
+    botDocumentInputEnabled: true,
+    botDocumentMaxBytes: 20_000_000,
+    botDocumentMaxMarkdownChars: 50_000,
+    botDocumentConversionTimeoutSeconds: 30,
+    botDocumentMaxConcurrentConversions: 2,
+    botReplyTreeEnabled: true,
+    botReplyTreeMaxRecordsPerChat: 1_000,
+    botReplyTreeMaxIndexBytes: 1_000_000,
+    botUrlTimeoutSeconds: 15,
+    botUrlContentTimeoutSeconds: 180,
+    botUrlMaxExtractedChars: 12_000,
+    botUrlAllowedSchemes: new Set(["http", "https"]),
     botSessionLogDir: path.resolve(root, ".telegramagent/sessions"),
     botAgentMaxAttempts: 3,
     botAgentRetryBaseDelaySeconds: 1,
     botAgentContextTokenBudget: 100_000,
     botAgentCompactionTriggerRatio: 0.8,
-    botImageInputEnabled: parsed.BOT_IMAGE_INPUT_ENABLED,
-    botChannelImageInputEnabled: parsed.BOT_CHANNEL_IMAGE_INPUT_ENABLED,
-    botImageMaxBytes: parsed.BOT_IMAGE_MAX_BYTES,
-    botAudioInputEnabled: parsed.BOT_AUDIO_INPUT_ENABLED,
-    botAudioMaxBytes: parsed.BOT_AUDIO_MAX_BYTES,
-    botAudioMaxDurationSeconds: parsed.BOT_AUDIO_MAX_DURATION_SECONDS,
-    botAudioTranscriptionTimeoutSeconds: parsed.BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS,
-    botAudioMaxTranscriptChars: parsed.BOT_AUDIO_MAX_TRANSCRIPT_CHARS,
+    botImageInputEnabled: true,
+    botChannelImageInputEnabled: true,
+    botImageMaxBytes: 8_000_000,
+    botAudioInputEnabled: true,
+    botAudioMaxBytes: 20_000_000,
+    botAudioMaxDurationSeconds: 600,
+    botAudioTranscriptionTimeoutSeconds: 180,
+    botAudioMaxTranscriptChars: 12_000,
     ...(parsed.LOGFIRE_TOKEN ? { logfireToken: parsed.LOGFIRE_TOKEN } : {}),
-    morselUrl: parsed.MORSEL_URL,
+    morselUrl: "https://morsel.narumi.dev/",
     ...(parsed.MORSEL_API_KEY ? { morselApiKey: parsed.MORSEL_API_KEY } : {}),
     morselMode: "smart",
     morselLongReplyThreshold: 1_000,

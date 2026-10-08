@@ -18,7 +18,7 @@ Bot-owned shared runtime resources stay at the repository root:
 - `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
 - `skills/`: Bot-owned Agent Skills; package-specific Pi skills live in their owning package's `skills/` directory.
 - `.events` and `.telegramagent`: ignored runtime state.
-- `.env`: ignored deployment and local configuration; copy it from `.env.example` for the TypeScript bot.
+- `.env`: ignored credentials and Telegram authorization; copy it from `.env.example`. Only `BOT_TOKEN`, `BOT_WHITELIST`, `BOT_ADMIN_ID`, `FIRECRAWL_API_KEY`, `OTTER_TOKEN`, `LOGFIRE_TOKEN`, and `MORSEL_API_KEY` are supported Bot environment configuration. Runtime policies use fixed defaults, including enabled channel image input for explicitly allowlisted channels.
 
 ## TypeScript bot
 
