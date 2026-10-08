@@ -303,13 +303,10 @@ describe("createPiSessionFactory", () => {
   it("creates isolated persistent Durable sessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
-    const settings = loadSettings(
-      {
-        BOT_URL_ALLOWED_SCHEMES: "https",
-        BOT_WHITELIST: "123",
-      },
-      root,
-    )
+    const settings = {
+      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      botUrlAllowedSchemes: new Set(["https"]),
+    }
     const spans: Array<{ name: string; attributes: SpanAttributes }> = []
     const tracedLogger: Logger = {
       ...logger,
@@ -345,6 +342,7 @@ describe("createPiSessionFactory", () => {
         "edit",
         "write",
         "load_public_url",
+        "read_image",
         "update_progress",
         "codemode",
       ])
@@ -412,15 +410,12 @@ describe("createPiSessionFactory", () => {
       [true, true],
       [true, false],
       [false, true],
-    ]) {
-      const settings = loadSettings(
-        {
-          BOT_WHITELIST: "123,-100",
-          BOT_CHANNEL_IMAGE_INPUT_ENABLED: String(channelEnabled),
-          BOT_IMAGE_INPUT_ENABLED: String(imageEnabled),
-        },
-        root,
-      )
+    ] as const) {
+      const settings = {
+        ...loadSettings({ BOT_WHITELIST: "123,-100" }, root),
+        botChannelImageInputEnabled: channelEnabled,
+        botImageInputEnabled: imageEnabled,
+      }
       const factory = await createPiSessionFactory(settings, logger)
       const session = await factory.create(123)
       try {
@@ -447,13 +442,10 @@ describe("createPiSessionFactory", () => {
     await mkdir(workdir)
     await installInstructions(root)
     await installOtterSkill(root)
-    const settings = loadSettings(
-      {
-        BOT_WORKDIR: "workdir",
-        BOT_WHITELIST: "123",
-      },
-      root,
-    )
+    const settings = {
+      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      botWorkdir: path.resolve(root, "workdir"),
+    }
     const factory = await createPiSessionFactory(settings, logger)
     const session = await factory.create(123)
 
@@ -465,6 +457,7 @@ describe("createPiSessionFactory", () => {
         "edit",
         "write",
         "load_public_url",
+        "read_image",
         "update_progress",
         "codemode",
       ])
@@ -548,7 +541,10 @@ describe("createPiSessionFactory", () => {
     })
     const oldFile = oldSession.getSessionFile()
 
-    const settings = loadSettings({ BOT_WORKDIR: workdir, BOT_WHITELIST: "123" }, root)
+    const settings = {
+      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      botWorkdir: path.resolve(root, workdir),
+    }
     const factory = await createPiSessionFactory(settings, logger)
     const session = await factory.create(123)
     try {

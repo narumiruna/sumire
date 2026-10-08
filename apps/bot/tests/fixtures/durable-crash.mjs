@@ -4,16 +4,10 @@ import { createPiSessionFactory } from "../../src/agent/pi-session-factory.ts"
 import { loadSettings } from "../../src/config/settings.ts"
 
 const [root, endpoint, mcpConfig] = process.argv.slice(2)
-const settings = loadSettings(
-  {
-    OPENAI_API_KEY: "offline-crash-fixture-key",
-    OPENAI_BASE_URL: endpoint,
-    OPENAI_MODEL: "fixture-model",
-    BOT_WHITELIST: "123,456,-100",
-    ...(mcpConfig ? { BOT_MCP_CONFIG_PATH: mcpConfig } : {}),
-  },
-  root,
-)
+const settings = {
+  ...loadSettings({ BOT_WHITELIST: "123,456,-100" }, root),
+  ...(mcpConfig ? { botMcpConfigPath: mcpConfig } : {}),
+}
 const logger = { debug() {}, info() {}, warn() {}, error() {} }
 const modelRuntime = await ModelRuntime.create({
   authPath: path.join(root, "crash-auth.json"),

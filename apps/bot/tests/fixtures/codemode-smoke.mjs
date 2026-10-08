@@ -81,13 +81,7 @@ try {
   const address = server.address()
   assert.ok(address && typeof address !== "string")
   const settings = {
-    ...loadSettings(
-      {
-        BOT_WHITELIST: "123",
-        BOT_CODEMODE_TIMEOUT_SECONDS: "1",
-      },
-      root,
-    ),
+    ...{ ...loadSettings({ BOT_WHITELIST: "123" }, root), botCodemodeTimeoutSeconds: 1 },
     botAgentMaxAttempts: 1,
   }
   const logger = { debug() {}, info() {}, warn() {}, error() {} }

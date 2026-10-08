@@ -9,8 +9,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:dependencies": "npm run build --workspace @narumitw/sumire-url-tool && npm run build --workspace @narumitw/sumire-progress && npm run build --workspace @narumitw/sumire-login",
-    "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=.env --import tsx src/index.ts",
-    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/index.js",
+    "dev": "cd ../.. && node --env-file-if-exists=.env --import tsx apps/bot/src/index.ts",
+    "start": "cd ../.. && node --env-file-if-exists=.env apps/bot/dist/index.js",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",

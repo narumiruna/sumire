@@ -9,7 +9,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { DurableSession } from "../../src/agent/durable-session.js"
 
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
-import { loadSettings } from "../../src/config/settings.js"
+import { loadSettings, type Settings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
 
 interface CompletionRequest {
@@ -21,7 +21,7 @@ interface CompletionRequest {
 type Reply = { tool: string; args: unknown } | { text: string } | { error: string }
 
 /** A local fixture speaks the real Chat Completions wire contract, without calling a model. */
-export async function createPiFixture(environment: Record<string, string> = {}) {
+export async function createPiFixture(overrides: Partial<Settings> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-codemode-test-"))
   const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..")
   await cp(path.join(repositoryRoot, "instructions"), path.join(root, "instructions"), {
@@ -98,15 +98,9 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
   const address = server.address()
   assert.ok(address && typeof address !== "string")
   const settings = {
-    ...loadSettings(
-      {
-        BOT_WHITELIST: "123,456,-100",
-        BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
-        ...environment,
-      },
-      root,
-    ),
+    ...loadSettings({ BOT_WHITELIST: "123,456,-100" }, root),
     botAgentMaxAttempts: 1,
+    ...overrides,
   }
   const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} }
   const sessions = new Set<DurableSession>()

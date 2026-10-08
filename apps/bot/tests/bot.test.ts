@@ -186,11 +186,7 @@ describe("Telegram bot update routing", () => {
     const index = new ChannelImageIndex(root, logger)
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        BOT_WHITELIST: "7,-100",
-        BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
-      }),
+      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7,-100" }),
       sessions,
       logger,
       { botInfo, channelImages: index },
@@ -275,11 +271,7 @@ describe("Telegram bot update routing", () => {
     const record = vi.spyOn(index, "record").mockRejectedValue(new Error("storage unavailable"))
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        BOT_WHITELIST: "-100",
-        BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
-      }),
+      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100" }),
       sessions,
       logger,
       { botInfo, channelImages: index },
@@ -297,8 +289,8 @@ describe("Telegram bot update routing", () => {
 
   it("keeps channel updates inert when channel input or general image input is disabled", async () => {
     for (const flags of [
-      { BOT_CHANNEL_IMAGE_INPUT_ENABLED: "false", BOT_IMAGE_INPUT_ENABLED: "true" },
-      { BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true", BOT_IMAGE_INPUT_ENABLED: "false" },
+      { botChannelImageInputEnabled: false, botImageInputEnabled: true },
+      { botChannelImageInputEnabled: true, botImageInputEnabled: false },
     ]) {
       const index = new ChannelImageIndex(
         await mkdtemp(path.join(tmpdir(), "channel-off-")),
@@ -306,7 +298,7 @@ describe("Telegram bot update routing", () => {
       )
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100", ...flags }),
+        { ...loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100" }), ...flags },
         sessions,
         logger,
         { botInfo, channelImages: index },
@@ -474,12 +466,11 @@ describe("Telegram bot update routing", () => {
       truncated: false,
     }))
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        MORSEL_API_KEY: "secret",
-        BOT_URL_TIMEOUT_SECONDS: "1.2345",
-        BOT_URL_CONTENT_TIMEOUT_SECONDS: "1.2345",
-      }),
+      {
+        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        botUrlTimeoutSeconds: 1.2345,
+        botUrlContentTimeoutSeconds: 1.2345,
+      },
       sessions,
       logger,
       { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
@@ -500,11 +491,10 @@ describe("Telegram bot update routing", () => {
     const timeout = vi.spyOn(AbortSignal, "timeout")
     try {
       const telegram = createTelegramAgentBot(
-        loadSettings({
-          BOT_TOKEN: "test-token",
-          MORSEL_API_KEY: "secret",
-          BOT_URL_CONTENT_TIMEOUT_SECONDS: "60",
-        }),
+        {
+          ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+          botUrlContentTimeoutSeconds: 60,
+        },
         sessions,
         logger,
         {
@@ -562,11 +552,10 @@ describe("Telegram bot update routing", () => {
         }),
     )
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        MORSEL_API_KEY: "secret",
-        BOT_URL_CONTENT_TIMEOUT_SECONDS: "0.1",
-      }),
+      {
+        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        botUrlContentTimeoutSeconds: 0.1,
+      },
       sessions,
       logger,
       {
@@ -626,11 +615,10 @@ describe("Telegram bot update routing", () => {
     }))
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        MORSEL_API_KEY: "secret",
-        BOT_URL_MAX_EXTRACTED_CHARS: "1",
-      }),
+      {
+        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        botUrlMaxExtractedChars: 1,
+      },
       sessions,
       logger,
       { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
@@ -644,7 +632,7 @@ describe("Telegram bot update routing", () => {
     expect(load).not.toHaveBeenCalled()
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[1]?.payload.text).toContain("BOT_URL_MAX_EXTRACTED_CHARS")
+    expect(calls[1]?.payload.text).toContain("網址內容長度上限不足")
     expect(calls[1]?.payload.text).not.toContain("最多可處理 4 個網址")
   })
 
@@ -2534,17 +2522,13 @@ describe("Telegram bot update routing", () => {
 
   it("rejects disabled, over-duration, and oversized Telegram audio without invoking Pi", async () => {
     for (const [settings, voice, expected] of [
-      [{ BOT_AUDIO_INPUT_ENABLED: "false" }, { duration: 1 }, "目前未啟用音訊輸入。"],
-      [{ BOT_AUDIO_MAX_DURATION_SECONDS: "10" }, { duration: 11 }, "音訊長度超過允許的限制。"],
-      [
-        { BOT_AUDIO_MAX_BYTES: "4" },
-        { duration: 1, file_size: 5 },
-        "音訊超過允許的大小，無法處理。",
-      ],
+      [{ botAudioInputEnabled: false }, { duration: 1 }, "目前未啟用音訊輸入。"],
+      [{ botAudioMaxDurationSeconds: 10 }, { duration: 11 }, "音訊長度超過允許的限制。"],
+      [{ botAudioMaxBytes: 4 }, { duration: 1, file_size: 5 }, "音訊超過允許的大小，無法處理。"],
     ] as const) {
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", ...settings }),
+        { ...loadSettings({ BOT_TOKEN: "test-token" }), ...settings },
         sessions,
         logger,
         { botInfo },
@@ -3327,11 +3311,11 @@ describe("Telegram bot update routing", () => {
     const fetchDocument = vi.fn(async () => new Response("bytes"))
     const run = vi.fn(async () => ({ ok: false as const, code: "needsOcr", message: "OCR needed" }))
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        BOT_DOCUMENT_INPUT_ENABLED: failure === "disabled" ? "false" : "true",
-        BOT_DOCUMENT_MAX_BYTES: failure === "oversized" ? "4" : "100",
-      }),
+      {
+        ...loadSettings({ BOT_TOKEN: "test-token" }),
+        botDocumentInputEnabled: failure !== "disabled",
+        botDocumentMaxBytes: failure === "oversized" ? 4 : 100,
+      },
       sessions,
       logger,
       {
@@ -3663,7 +3647,7 @@ describe("Telegram bot update routing", () => {
       run,
     })
     const disabled = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_DOCUMENT_INPUT_ENABLED: "false" }),
+      { ...loadSettings({ BOT_TOKEN: "test-token" }), botDocumentInputEnabled: false },
       sessions,
       logger,
       { botInfo, documentConverter },
@@ -3683,7 +3667,7 @@ describe("Telegram bot update routing", () => {
     expect(disabledCalls[0]?.payload.text).toBe("目前未啟用文件輸入。")
 
     const oversized = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_DOCUMENT_MAX_BYTES: "20" }),
+      { ...loadSettings({ BOT_TOKEN: "test-token" }), botDocumentMaxBytes: 20 },
       sessions,
       logger,
       { botInfo, documentConverter },

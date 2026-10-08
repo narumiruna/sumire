@@ -6,8 +6,6 @@ services:
     image: sumire:local
     env_file:
       - .env
-    environment:
-      BOT_WORKDIR: /workdir
     init: true
     restart: unless-stopped
     volumes:

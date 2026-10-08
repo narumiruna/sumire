@@ -619,7 +619,7 @@ export function createTelegramAgentBot(
           error instanceof TooManyArticleUrlsError
             ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
             : error instanceof ArticleUrlBudgetError
-              ? "網址內容長度上限不足，請提高 BOT_URL_MAX_EXTRACTED_CHARS 後再試。"
+              ? "網址內容長度上限不足，請減少來源網址後再試。"
               : "無法載入文章來源網址，請確認網址可公開存取後再試。"
         if (preparedStatus)
           await delivery.editOrReply(

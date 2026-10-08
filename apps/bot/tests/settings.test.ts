@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import path from "node:path"
 
 import { describe, expect, it } from "vitest"
@@ -8,96 +9,119 @@ import { loadSettings } from "../src/config/settings.js"
 describe("loadSettings", () => {
   it("loads fixed runtime defaults and resolves repository paths", () => {
     const settings = loadSettings({}, "/workspace/project")
-
-    expect(settings.botWorkdir).toBe(path.resolve("/workspace/project"))
-    expect(settings.botGroupPassiveContextEnabled).toBe(true)
+    expect(settings).toMatchObject({
+      projectRoot: "/workspace/project",
+      botWorkdir: "/workspace/project",
+      botMcpConfigPath: "/workspace/project/mcp.json",
+      botCodemodeTimeoutSeconds: 300,
+      botGroupPassiveContextEnabled: true,
+      botDocumentInputEnabled: true,
+      botDocumentMaxBytes: 20_000_000,
+      botDocumentMaxMarkdownChars: 50_000,
+      botDocumentConversionTimeoutSeconds: 30,
+      botDocumentMaxConcurrentConversions: 2,
+      botReplyTreeEnabled: true,
+      botReplyTreeMaxRecordsPerChat: 1_000,
+      botReplyTreeMaxIndexBytes: 1_000_000,
+      botUrlTimeoutSeconds: 15,
+      botUrlContentTimeoutSeconds: 180,
+      botUrlMaxExtractedChars: 12_000,
+      botImageInputEnabled: true,
+      botChannelImageInputEnabled: true,
+      botImageMaxBytes: 8_000_000,
+      botAudioInputEnabled: true,
+      botAudioMaxBytes: 20_000_000,
+      botAudioMaxDurationSeconds: 600,
+      botAudioTranscriptionTimeoutSeconds: 180,
+      botAudioMaxTranscriptChars: 12_000,
+      morselUrl: "https://morsel.narumi.dev/",
+      morselLongReplyThreshold: 1_000,
+    })
     expect(settings.botWhitelist).toEqual(new Set())
     expect(settings.botAdminId).toBeUndefined()
-    expect(settings.botCodemodeTimeoutSeconds).toBe(300)
-    expect(settings.botSessionLogDir).toBe(
-      path.resolve("/workspace/project/.telegramagent/sessions"),
-    )
-    expect(settings.botSkillsDir).toBe(path.resolve("/workspace/project/skills"))
-    expect(settings.botSystemPromptPath).toBe(
-      path.resolve("/workspace/project/instructions/SYSTEM.md"),
-    )
-    expect(settings.botSoulPath).toBe(path.resolve("/workspace/project/instructions/SOUL.md"))
-    expect(settings.botDocumentMaxBytes).toBe(20_000_000)
-    expect(settings.botChannelImageInputEnabled).toBe(false)
-    expect(settings.botAudioInputEnabled).toBe(true)
-    expect(settings.botAudioMaxBytes).toBe(20_000_000)
-    expect(settings.botAudioMaxDurationSeconds).toBe(600)
-    expect(settings.botReplyTreeEnabled).toBe(true)
-    expect(settings.botUrlTimeoutSeconds).toBe(15)
-    expect(settings.botUrlContentTimeoutSeconds).toBe(180)
-    expect(settings.botUrlMaxExtractedChars).toBe(12_000)
+    expect(settings.botSessionLogDir).toBe("/workspace/project/.telegramagent/sessions")
+    expect(settings.botSkillsDir).toBe("/workspace/project/skills")
+    expect(settings.botSystemPromptPath).toBe("/workspace/project/instructions/SYSTEM.md")
+    expect(settings.botSoulPath).toBe("/workspace/project/instructions/SOUL.md")
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
-    expect(settings.morselLongReplyThreshold).toBe(1_000)
   })
 
-  it("parses the supported environment configuration", () => {
+  it("parses retained credentials and Telegram authorization", () => {
     const settings = loadSettings({
-      BOT_WORKDIR: "notes",
+      BOT_TOKEN: "test-token",
       BOT_WHITELIST: "123, -456,123",
       BOT_ADMIN_ID: "123",
-      BOT_CODEMODE_TIMEOUT_SECONDS: "2.5",
-      LOGFIRE_TOKEN: "logfire-token",
-      MORSEL_URL: "https://morsel.example/",
-      BOT_DOCUMENT_INPUT_ENABLED: "false",
-      BOT_DOCUMENT_MAX_BYTES: "1234",
-      BOT_DOCUMENT_MAX_MARKDOWN_CHARS: "4321",
-      BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS: "2.5",
-      BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "3",
-      BOT_CHANNEL_IMAGE_INPUT_ENABLED: "true",
-      BOT_AUDIO_INPUT_ENABLED: "false",
-      BOT_AUDIO_MAX_BYTES: "1234",
-      BOT_AUDIO_MAX_DURATION_SECONDS: "120",
-      BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS: "42",
-      BOT_AUDIO_MAX_TRANSCRIPT_CHARS: "789",
-      BOT_REPLY_TREE_ENABLED: "false",
-      BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT: "20",
-      BOT_REPLY_TREE_MAX_INDEX_BYTES: "2048",
-      BOT_URL_TIMEOUT_SECONDS: "2.5",
-      BOT_URL_CONTENT_TIMEOUT_SECONDS: "60",
-      BOT_URL_MAX_EXTRACTED_CHARS: "4000",
-      BOT_URL_ALLOWED_SCHEMES: "https",
+      FIRECRAWL_API_KEY: "firecrawl-key",
+      OTTER_TOKEN: "otter-token",
+      LOGFIRE_TOKEN: " logfire-token ",
+      MORSEL_API_KEY: " morsel-key ",
     })
-
-    expect(settings.botWorkdir).toBe(path.resolve(process.cwd(), "notes"))
+    expect(settings.botToken).toBe("test-token")
     expect(settings.botWhitelist).toEqual(new Set([123, -456]))
     expect(settings.botAdminId).toBe(123)
-    expect(settings.botCodemodeTimeoutSeconds).toBe(2.5)
     expect(settings.logfireToken).toBe("logfire-token")
-    expect(settings.morselUrl).toBe("https://morsel.example/")
-    expect(settings.botDocumentInputEnabled).toBe(false)
-    expect(settings.botDocumentMaxBytes).toBe(1234)
-    expect(settings.botDocumentMaxMarkdownChars).toBe(4321)
-    expect(settings.botDocumentConversionTimeoutSeconds).toBe(2.5)
-    expect(settings.botDocumentMaxConcurrentConversions).toBe(3)
-    expect(settings.botChannelImageInputEnabled).toBe(true)
-    expect(settings.botAudioInputEnabled).toBe(false)
-    expect(settings.botAudioMaxBytes).toBe(1234)
-    expect(settings.botAudioMaxDurationSeconds).toBe(120)
-    expect(settings.botAudioTranscriptionTimeoutSeconds).toBe(42)
-    expect(settings.botAudioMaxTranscriptChars).toBe(789)
-    expect(settings.botReplyTreeEnabled).toBe(false)
-    expect(settings.botReplyTreeMaxRecordsPerChat).toBe(20)
-    expect(settings.botReplyTreeMaxIndexBytes).toBe(2048)
-    expect(settings.botUrlTimeoutSeconds).toBe(2.5)
-    expect(settings.botUrlContentTimeoutSeconds).toBe(60)
-    expect(settings.botUrlMaxExtractedChars).toBe(4000)
-    expect(settings.botUrlAllowedSchemes).toEqual(new Set(["https"]))
+    expect(settings.morselApiKey).toBe("morsel-key")
+    // Firecrawl and Otter read their credentials directly, not through Bot settings.
+    expect(settings).not.toHaveProperty("firecrawlApiKey")
+    expect(settings).not.toHaveProperty("otterToken")
   })
 
-  it("validates codemode deadline boundaries", () => {
-    for (const value of ["0.1", "3600"]) {
-      expect(loadSettings({ BOT_CODEMODE_TIMEOUT_SECONDS: value }).botCodemodeTimeoutSeconds).toBe(
-        Number(value),
-      )
+  it.each([
+    "BOT_WORKDIR",
+    "BOT_MCP_CONFIG_PATH",
+    "BOT_CODEMODE_ENABLED",
+    "BOT_CODEMODE_TIMEOUT_SECONDS",
+    "BOT_DOCUMENT_INPUT_ENABLED",
+    "BOT_DOCUMENT_MAX_BYTES",
+    "BOT_DOCUMENT_MAX_MARKDOWN_CHARS",
+    "BOT_DOCUMENT_CONVERSION_TIMEOUT_SECONDS",
+    "BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS",
+    "BOT_REPLY_TREE_ENABLED",
+    "BOT_REPLY_TREE_MAX_RECORDS_PER_CHAT",
+    "BOT_REPLY_TREE_MAX_INDEX_BYTES",
+    "BOT_URL_TIMEOUT_SECONDS",
+    "BOT_URL_CONTENT_TIMEOUT_SECONDS",
+    "BOT_URL_MAX_EXTRACTED_CHARS",
+    "BOT_URL_ALLOWED_SCHEMES",
+    "BOT_IMAGE_INPUT_ENABLED",
+    "BOT_CHANNEL_IMAGE_INPUT_ENABLED",
+    "BOT_IMAGE_MAX_BYTES",
+    "BOT_AUDIO_INPUT_ENABLED",
+    "BOT_AUDIO_MAX_BYTES",
+    "BOT_AUDIO_MAX_DURATION_SECONDS",
+    "BOT_AUDIO_TRANSCRIPTION_TIMEOUT_SECONDS",
+    "BOT_AUDIO_MAX_TRANSCRIPT_CHARS",
+    "MORSEL_URL",
+    "BOT_URL_FIRECRAWL_FALLBACK_ENABLED",
+  ])("ignores removed environment setting %s", (name) => {
+    for (const value of ["false", "invalid", "0", "/other/path"]) {
+      expect(loadSettings({ [name]: value })).toEqual(loadSettings({}))
     }
-    for (const value of ["", "0", "-1", "0.09", "3600.01", "NaN", "Infinity", "invalid"]) {
-      expect(() => loadSettings({ BOT_CODEMODE_TIMEOUT_SECONDS: value })).toThrow(ZodError)
-    }
+  })
+
+  it("keeps Docker workdir separate from application-owned resources", () => {
+    const settings = loadSettings({}, "/app", "/workdir")
+    expect(settings.botWorkdir).toBe("/workdir")
+    expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
+    expect(settings.botSessionLogDir).toBe("/app/.telegramagent/sessions")
+    expect(settings.botSystemPromptPath).toBe("/app/instructions/SYSTEM.md")
+  })
+
+  it("lists only the seven retained variables in .env.example", async () => {
+    const example = await readFile(new URL("../../../.env.example", import.meta.url), "utf8")
+    const names = example
+      .split("\n")
+      .filter((line) => /^[A-Z_]+=/.test(line))
+      .map((line) => line.split("=")[0])
+    expect(names).toEqual([
+      "BOT_TOKEN",
+      "BOT_WHITELIST",
+      "BOT_ADMIN_ID",
+      "FIRECRAWL_API_KEY",
+      "OTTER_TOKEN",
+      "LOGFIRE_TOKEN",
+      "MORSEL_API_KEY",
+    ])
   })
 
   it.each([
@@ -108,25 +132,7 @@ describe("loadSettings", () => {
     },
     { OPENAI_MODEL: "", OPENAI_BASE_URL: "", OPENAI_API_KEY: "" },
   ])("does not parse OpenAI configuration owned by Pi: %j", (environment) => {
-    const settings = loadSettings(environment)
-    expect(settings).toEqual(loadSettings({}))
-    for (const property of ["openaiModel", "openaiBaseUrl", "openaiApiKey"]) {
-      expect(settings).not.toHaveProperty(property)
-    }
-  })
-
-  it.each(["true", "false", "yes"])("ignores the removed codemode enable switch: %s", (value) => {
-    const settings = loadSettings({ BOT_CODEMODE_ENABLED: value })
-
-    expect(settings).toEqual(loadSettings({}))
-    expect(settings).not.toHaveProperty("botCodemodeEnabled")
-  })
-
-  it("ignores the removed Firecrawl fallback environment switch", () => {
-    const settings = loadSettings({ BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "false" })
-
-    expect(settings).toEqual(loadSettings({}))
-    expect(settings).not.toHaveProperty("botUrlFirecrawlFallbackEnabled")
+    expect(loadSettings(environment)).toEqual(loadSettings({}))
   })
 
   it("rejects invalid supported settings", () => {
@@ -136,24 +142,8 @@ describe("loadSettings", () => {
     }
     expect(loadSettings({ BOT_ADMIN_ID: "" }).botAdminId).toBeUndefined()
     expect(loadSettings({ BOT_ADMIN_ID: "  " }).botAdminId).toBeUndefined()
-    expect(loadSettings({ BOT_WORKDIR: "  " }, "/workspace/project").botWorkdir).toBe(
-      path.resolve("/workspace/project"),
-    )
-    expect(loadSettings({ BOT_WORKDIR: "/workdir" }, "/workspace/project").botWorkdir).toBe(
-      "/workdir",
-    )
-    expect(() => loadSettings({ MORSEL_URL: "not-a-url" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_DOCUMENT_INPUT_ENABLED: "yes" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_DOCUMENT_MAX_BYTES: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_CHANNEL_IMAGE_INPUT_ENABLED: "yes" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_AUDIO_INPUT_ENABLED: "yes" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_AUDIO_MAX_BYTES: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_AUDIO_MAX_DURATION_SECONDS: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_DOCUMENT_MAX_CONCURRENT_CONVERSIONS: "17" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_REPLY_TREE_MAX_INDEX_BYTES: "100" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_URL_TIMEOUT_SECONDS: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_URL_CONTENT_TIMEOUT_SECONDS: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_URL_MAX_EXTRACTED_CHARS: "0" })).toThrow(ZodError)
-    expect(() => loadSettings({ BOT_URL_ALLOWED_SCHEMES: "file" })).toThrow(ZodError)
+    expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).logfireToken).toBeUndefined()
+    expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).morselApiKey).toBeUndefined()
+    expect(loadSettings({}, "relative").projectRoot).toBe(path.resolve("relative"))
   })
 })
