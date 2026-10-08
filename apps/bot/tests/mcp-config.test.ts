@@ -164,6 +164,18 @@ describe("MCP configuration", () => {
     expect(result.logger.warn).not.toHaveBeenCalled()
   })
 
+  it("redacts short Basic components only at boundaries and retains explicit-secret precedence", async () => {
+    const remote = { url: "https://example.com/mcp", headers: { Authorization: "Basic YTpi" } }
+    const result = await config({ mcpServers: { remote } })
+    expect(result.redact("a b a:b object banana")).toBe(
+      "[redacted] [redacted] [redacted] object banana",
+    )
+    const explicit = await config({
+      mcpServers: { remote, local: { command: "node", env: { TOKEN: "b" } } },
+    })
+    expect(explicit.redact("object")).toBe("o[redacted]ject")
+  })
+
   it.each(["not-base64", "dXNlcg==", "/zpzZWNyZXQ=", "dXNlcjpwYXNz!"])(
     "does not derive secrets from malformed Basic payload %s",
     async (payload) => {

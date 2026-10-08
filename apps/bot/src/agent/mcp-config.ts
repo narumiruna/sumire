@@ -75,6 +75,7 @@ export async function loadMcpConfig(
   if (Object.keys(top.data.mcpServers).length > MCP_MAX_SERVERS)
     throw new Error(`MCP configuration supports at most ${MCP_MAX_SERVERS} server entries`)
   const secrets = new Set<string>()
+  const boundarySecrets = new Set<string>()
   const record = (value: string, entrySecrets: Set<string>) => {
     if (!value) return
     entrySecrets.add(value)
@@ -92,7 +93,11 @@ export async function loadMcpConfig(
     if (expanded.includes("${")) throw new Error("Invalid MCP environment placeholder")
     return expanded
   }
-  const candidates: Array<{ server: McpServer; secrets: Set<string> }> = []
+  const candidates: Array<{
+    server: McpServer
+    secrets: Set<string>
+    boundarySecrets: Set<string>
+  }> = []
   for (const [name, raw] of Object.entries(top.data.mcpServers)) {
     // Do not include unvalidated names, values, schema errors or credentials in diagnostics.
     try {
@@ -101,6 +106,14 @@ export async function loadMcpConfig(
       const server = serverSchema.parse(raw)
       if (!server.enabled) continue
       const entrySecrets = new Set<string>()
+      const entryBoundarySecrets = new Set<string>()
+      const recordComponent = (value: string) => {
+        if (!value) return
+        // Up to three Unicode code points: redact standalone echoes, not schema
+        // vocabulary or unrelated words containing a short username/password.
+        record(value, [...value].length <= 3 ? entryBoundarySecrets : entrySecrets)
+        validateMcpSecrets(new Set([...entrySecrets, ...entryBoundarySecrets]))
+      }
       server.env = Object.fromEntries(
         Object.entries(server.env).map(([k, v]) => [k, expand(v, entrySecrets)]),
       )
@@ -130,8 +143,8 @@ export async function loadMcpConfig(
                 colon >= 0
               ) {
                 record(decoded, entrySecrets)
-                record(decoded.slice(0, colon), entrySecrets)
-                record(decoded.slice(colon + 1), entrySecrets)
+                recordComponent(decoded.slice(0, colon))
+                recordComponent(decoded.slice(colon + 1))
               }
             }
           }
@@ -142,10 +155,12 @@ export async function loadMcpConfig(
             }
         }
       }
+      validateMcpSecrets(new Set([...entrySecrets, ...entryBoundarySecrets]))
       // Round up once: retain positive sub-millisecond values without shortening a deadline.
       candidates.push({
         server: { ...server, name, timeoutMs: Math.max(1, Math.ceil(server.timeout * 1000)) },
         secrets: entrySecrets,
+        boundarySecrets: entryBoundarySecrets,
       })
     } catch {
       logger.warn("An MCP server was skipped: invalid configuration or missing environment")
@@ -164,11 +179,12 @@ export async function loadMcpConfig(
       logger.warn("An MCP server was skipped: invalid configuration or missing environment")
       return false
     })
-    .map(({ server, secrets: entrySecrets }) => {
+    .map(({ server, secrets: entrySecrets, boundarySecrets: entryBoundarySecrets }) => {
       for (const secret of entrySecrets) secrets.add(secret)
+      for (const secret of entryBoundarySecrets) boundarySecrets.add(secret)
       return server
     })
-  return { servers: uniqueServers, redact: createMcpRedactor(secrets) }
+  return { servers: uniqueServers, redact: createMcpRedactor(secrets, boundarySecrets) }
 }
 
 const exposurePatterns = new WeakMap<

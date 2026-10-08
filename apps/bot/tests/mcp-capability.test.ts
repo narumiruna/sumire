@@ -527,16 +527,23 @@ describe("MCP capability", () => {
   })
 
   it.each([
-    ["Authorization", "Bearer   remote-secret", "remote-secret"],
-    ["X-Auth", "remote-secret", "remote-secret"],
+    ["Authorization", "Bearer   remote-secret", "remote-secret", "[redacted]"],
+    ["X-Auth", "remote-secret", "remote-secret", "[redacted]"],
+    [
+      "Authorization",
+      "Basic YTpi",
+      "a b a:b object banana",
+      "[redacted] [redacted] [redacted] object banana",
+    ],
     [
       "Authorization",
       `Basic ${Buffer.from("remote-user:remote-secret").toString("base64")}`,
       "remote-user remote-secret remote-user:remote-secret",
+      "[redacted] [redacted] [redacted]",
     ],
   ])(
     "handles real Streamable HTTP with %s (%s) without exposing credentials",
-    async (header, wireValue, echoed) => {
+    async (header, wireValue, echoed, expected) => {
       const observed: string[] = []
       let expireNextCall = false
       let initializations = 0
@@ -610,11 +617,16 @@ describe("MCP capability", () => {
         content: [
           {
             type: "text",
-            text: echoed.includes(" ") ? "[redacted] [redacted] [redacted]" : "[redacted]",
+            text: expected,
           },
         ],
       })
       expect(observed).toContain(wireValue)
+      expect(capability.tools[0]).toMatchObject({
+        description: expected,
+        parameters: { type: "object" },
+        namespace: { instructions: expected },
+      })
       expect(JSON.stringify(capability.tools)).not.toContain("remote-secret")
       expect(JSON.stringify(capability.tools)).not.toContain("remote-user")
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("remote-secret")

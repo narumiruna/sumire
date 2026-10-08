@@ -30,6 +30,24 @@ describe("bounded MCP redaction", () => {
     secrets.add("extra")
     expect(() => createMcpRedactor(secrets)).toThrow("total byte limit")
   })
+  it("matches derived short credentials at Unicode boundaries without rescanning", () => {
+    const redact = createMcpRedactor(new Set(["a:b"]), new Set(["a", "b", "名", "x.y"]))
+    expect(redact("a b a:b 'a' [b] 名 x.y")).toBe(
+      "[redacted] [redacted] [redacted] '[redacted]' [[redacted]] [redacted] [redacted]",
+    )
+    expect(redact("object banana a_b 名称 éa a\u0301 1b x.yz")).toBe(
+      "object banana a_b 名称 éa a\u0301 1b x.yz",
+    )
+    expect(redact("banana".repeat(100_000))).toHaveLength(600_000)
+  })
+  it("keeps explicit substring matching and budgets shared across both match classes", () => {
+    expect(createMcpRedactor(new Set(["a"]), new Set(["a"]))("banana")).toBe(
+      "b[redacted]n[redacted]n[redacted]",
+    )
+    const secrets = new Set(Array.from({ length: MCP_MAX_CREDENTIALS }, (_, i) => `private-${i}`))
+    expect(() => createMcpRedactor(secrets, new Set(["extra"]))).toThrow("count")
+    expect(() => createMcpRedactor(secrets, new Set(["private-0"]))).not.toThrow()
+  })
   it("leaves input unchanged when no nonempty credentials exist", () => {
     expect(createMcpRedactor(new Set([""]))("text")).toBe("text")
   })
