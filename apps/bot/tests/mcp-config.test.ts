@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { loadMcpConfig, toolExposure } from "../src/agent/mcp-config.js"
+import { MCP_MAX_CONFIG_BYTES } from "../src/agent/mcp-config-file.js"
 import { loadSettings } from "../src/config/settings.js"
 
 const directories: string[] = []
@@ -56,6 +57,46 @@ describe("MCP configuration", () => {
     await expect(config("secret invalid JSON")).rejects.toThrow("bounded JSON")
     await expect(config({ mcpServers: [] })).rejects.toThrow("mcpServers object")
   })
+
+  it("accepts the exact config byte limit and safely rejects one byte more", async () => {
+    const input = '{"mcpServers":{}}'
+    expect((await config(input.padEnd(MCP_MAX_CONFIG_BYTES, " "))).servers).toEqual([])
+    await expect(config(input.padEnd(MCP_MAX_CONFIG_BYTES + 1, " "))).rejects.toThrow(
+      "bounded JSON",
+    )
+  })
+
+  it.each(["environment", "headers", "collision", "disabled"])(
+    "does not commit secrets from skipped %s entries",
+    async (mode) => {
+      const bad =
+        mode === "headers"
+          ? {
+              url: "https://example.com/mcp",
+              headers: { First: `\${UNUSED}`, Last: `\${MISSING}` },
+            }
+          : {
+              command: "node",
+              enabled: mode !== "disabled",
+              env: {
+                First: `\${UNUSED}`,
+                ...(mode === "environment" ? { Last: `\${MISSING}` } : {}),
+              },
+            }
+      const entries: Record<string, unknown> = {
+        b_ad: bad,
+        healthy: { command: "node", env: { TOKEN: `\${ACTIVE}` } },
+      }
+      if (mode === "collision") entries["b-ad"] = { command: "node" }
+      const result = await config(
+        { mcpServers: entries },
+        { UNUSED: "object", ACTIVE: "active-secret" },
+      )
+      expect(result.servers.map((server) => server.name)).toEqual(["healthy"])
+      expect(result.redact("object active-secret")).toBe("object [redacted]")
+      expect(JSON.stringify(result.logger.warn.mock.calls)).not.toContain("object")
+    },
+  )
 
   it("expands credentials, redacts raw token and skips entries with missing credentials", async () => {
     const result = await config(

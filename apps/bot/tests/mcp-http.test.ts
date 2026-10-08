@@ -1,9 +1,83 @@
+import { getEventListeners } from "node:events"
 import { StreamableHttpTransport } from "@earendil-works/pi-mcp"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { boundedMcpFetch } from "../src/agent/mcp-http.js"
 import { MCP_MAX_MESSAGE_BYTES } from "../src/agent/mcp-results.js"
 
+afterEach(() => vi.useRealTimers())
+
 describe("MCP HTTP bounds", () => {
+  it.each([
+    "bodyless",
+    "json",
+    "http-error",
+    "post-sse",
+    "read-error",
+    "cancel",
+    "overflow",
+    "fetch-error",
+  ])("releases deadline state after %s", async (mode) => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const cancel = vi.fn()
+    const source =
+      mode === "read-error"
+        ? new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("read failed"))
+            },
+          })
+        : mode === "cancel"
+          ? new ReadableStream<Uint8Array>({ cancel })
+          : undefined
+    const request = boundedMcpFetch(3_600_000, async (_url, init) => {
+      signal = init?.signal ?? undefined
+      if (mode === "fetch-error") throw new Error("fetch failed")
+      if (mode === "bodyless") return new Response(null, { status: 204 })
+      return new Response(
+        source ?? (mode === "overflow" ? new Uint8Array(MCP_MAX_MESSAGE_BYTES + 1) : "{}"),
+        {
+          status: mode === "http-error" ? 500 : 200,
+          headers: {
+            "content-type": mode === "post-sse" ? "text/event-stream" : "application/json",
+          },
+        },
+      )
+    })
+    if (mode === "fetch-error")
+      await expect(request("https://example.com/mcp", { method: "POST" })).rejects.toThrow(
+        "fetch failed",
+      )
+    else {
+      const response = await request("https://example.com/mcp", { method: "POST" })
+      if (mode === "cancel") {
+        await response.body?.cancel("cancel reason")
+        expect(cancel).toHaveBeenCalledWith("cancel reason")
+      } else if (mode === "read-error" || mode === "overflow")
+        await expect(response.text()).rejects.toThrow()
+      else await response.text()
+    }
+    expect(vi.getTimerCount()).toBe(0)
+    if (signal) expect(getEventListeners(signal, "abort")).toHaveLength(0)
+    if (source) expect(source.locked).toBe(false)
+    await vi.advanceTimersByTimeAsync(3_600_000)
+    expect(signal?.aborted).toBe(false)
+  })
+
+  it("keeps a deadline until an active finite body completes or is cancelled", async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const request = boundedMcpFetch(100, async (_url, init) => {
+      signal = init?.signal ?? undefined
+      return new Response(new ReadableStream<Uint8Array>())
+    })
+    const response = await request("https://example.com/mcp", { method: "POST" })
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(signal?.aborted).toBe(true)
+    await response.body?.cancel()
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it("enforces streamed JSON and error limits without trusting content-length", async () => {
     let cancelled = false
     const request = boundedMcpFetch(

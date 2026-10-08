@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises"
 import { z } from "zod"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
+import { readMcpConfigFile } from "./mcp-config-file.js"
 
 const exposure = z.enum(["codemode", "direct", "hidden"])
 const strings = z.record(z.string(), z.string())
@@ -43,8 +43,7 @@ export async function loadMcpConfig(
   if (!settings.botMcpEnabled) return { servers: [], redact: (text) => text }
   let input: unknown
   try {
-    const text = await readFile(settings.botMcpConfigPath, "utf8")
-    if (Buffer.byteLength(text) > 1_000_000) throw new Error("oversized")
+    const text = await readMcpConfigFile(settings.botMcpConfigPath)
     input = JSON.parse(text)
   } catch {
     throw new Error("MCP configuration could not be read as bounded JSON")
@@ -55,60 +54,73 @@ export async function loadMcpConfig(
     .safeParse(input)
   if (!top.success) throw new Error("MCP configuration must contain an mcpServers object")
   const secrets = new Set<string>()
-  const expand = (value: string) => {
+  const expand = (value: string, entrySecrets: Set<string>) => {
     if (value.trimStart().startsWith("!")) throw new Error("Credential commands are not supported")
     const expanded = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
       const replacement = Object.hasOwn(environment, name) ? environment[name] : undefined
       if (typeof replacement !== "string" || !replacement)
         throw new Error("Missing MCP environment variable")
-      secrets.add(replacement)
+      entrySecrets.add(replacement)
       return replacement
     })
     if (expanded.includes("${")) throw new Error("Invalid MCP environment placeholder")
     return expanded
   }
-  const servers: McpServer[] = []
+  const candidates: Array<{ server: McpServer; secrets: Set<string> }> = []
   for (const [name, raw] of Object.entries(top.data.mcpServers)) {
     // Do not include unvalidated names, values, schema errors or credentials in diagnostics.
     try {
       if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Invalid or colliding server name")
       const server = serverSchema.parse(raw)
       if (!server.enabled) continue
-      server.env = Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, expand(v)]))
+      const entrySecrets = new Set<string>()
+      server.env = Object.fromEntries(
+        Object.entries(server.env).map(([k, v]) => [k, expand(v, entrySecrets)]),
+      )
       server.headers = Object.fromEntries(
-        Object.entries(server.headers).map(([k, v]) => [k, expand(v)]),
+        Object.entries(server.headers).map(([k, v]) => [k, expand(v, entrySecrets)]),
       )
       for (const [key, value] of [
         ...Object.entries(server.env),
         ...Object.entries(server.headers),
       ]) {
         if (/auth|cookie|token|secret|password|key/i.test(key)) {
-          secrets.add(value)
+          entrySecrets.add(value)
           if (/auth/i.test(key) && value.includes(" "))
-            secrets.add(value.slice(value.indexOf(" ") + 1))
+            entrySecrets.add(value.slice(value.indexOf(" ") + 1))
           if (/cookie/i.test(key))
             for (const cookie of value.split(";")) {
               const equals = cookie.indexOf("=")
-              if (equals >= 0) secrets.add(cookie.slice(equals + 1).trim())
+              if (equals >= 0) entrySecrets.add(cookie.slice(equals + 1).trim())
             }
         }
       }
       // Round up once: retain positive sub-millisecond values without shortening a deadline.
-      servers.push({ ...server, name, timeoutMs: Math.max(1, Math.ceil(server.timeout * 1000)) })
+      candidates.push({
+        server: { ...server, name, timeoutMs: Math.max(1, Math.ceil(server.timeout * 1000)) },
+        secrets: entrySecrets,
+      })
     } catch {
       logger.warn("An MCP server was skipped: invalid configuration or missing environment")
     }
   }
   const counts = new Map<string, number>()
-  for (const { name } of servers) {
+  for (const {
+    server: { name },
+  } of candidates) {
     const normalized = name.replaceAll("-", "_")
     counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
   }
-  const uniqueServers = servers.filter(({ name }) => {
-    if (counts.get(name.replaceAll("-", "_")) === 1) return true
-    logger.warn("An MCP server was skipped: invalid configuration or missing environment")
-    return false
-  })
+  const uniqueServers = candidates
+    .filter(({ server: { name } }) => {
+      if (counts.get(name.replaceAll("-", "_")) === 1) return true
+      logger.warn("An MCP server was skipped: invalid configuration or missing environment")
+      return false
+    })
+    .map(({ server, secrets: entrySecrets }) => {
+      for (const secret of entrySecrets) secrets.add(secret)
+      return server
+    })
   const values = [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)
   return {
     servers: uniqueServers,
