@@ -1,6 +1,6 @@
 import type { Tool } from "@earendil-works/pi-mcp"
 import { describe, expect, it } from "vitest"
-import { mcpPresentationSchema } from "../src/agent/mcp-metadata.js"
+import { boundedMcpAnnotations, mcpPresentationSchema } from "../src/agent/mcp-metadata.js"
 
 const redact = (text: string) => text.replaceAll("fixture-secret", "[redacted]")
 
@@ -30,6 +30,18 @@ describe("MCP schema presentation", () => {
     })
     expect(JSON.stringify(schema)).toBe(original)
   })
+  it("bounds expanded schema prose and annotations after redaction", () => {
+    const expand = (text: string) => text.replaceAll("x", "[redacted]")
+    const schema = mcpPresentationSchema({ type: "object", description: "x".repeat(4096) }, expand)
+    expect(schema?.description).toHaveLength(4096)
+    expect(boundedMcpAnnotations({ title: "x".repeat(3500) }, expand)).toBeUndefined()
+    expect(boundedMcpAnnotations({ title: "x", readOnlyHint: true }, expand)).toEqual({
+      title: "[redacted]",
+      readOnlyHint: true,
+    })
+    expect(boundedMcpAnnotations({ title: "large".repeat(2000) }, expand)).toBeUndefined()
+  })
+
   it.each([
     { properties: { "fixture-secret": { type: "string" } } },
     { properties: { value: { enum: ["fixture-secret"] } } },

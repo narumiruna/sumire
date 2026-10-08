@@ -293,6 +293,54 @@ describe("MCP configuration", () => {
     ).rejects.toThrow("at most 16 server entries")
   })
 
+  it.each(["Authorization", "X-Auth", "XAuth", "Authentication"])(
+    "trims scheme payloads for %s without modifying wire credentials",
+    async (header) => {
+      const value = "  Bearer\t   payload-secret  "
+      const result = await config({
+        mcpServers: { remote: { url: "https://example.com/mcp", headers: { [header]: value } } },
+      })
+      expect(result.servers[0]?.headers[header]).toBe(value)
+      expect(result.redact("payload-secret")).toBe("[redacted]")
+    },
+  )
+
+  it("bounds exposure maps and pattern lengths while preserving healthy servers", async () => {
+    const patterns = Object.fromEntries(
+      Array.from({ length: 64 }, (_, i) => [`tool_${i}*`, "hidden"]),
+    )
+    const result = await config({
+      mcpServers: {
+        good: { command: "node", toolExposure: { ...patterns, ["a".repeat(128)]: "direct" } },
+        boundary: { command: "node", toolExposure: patterns },
+        tooLong: { command: "node", toolExposure: { ["a".repeat(129)]: "hidden" } },
+        lengthBoundary: { command: "node", toolExposure: { ["a".repeat(128)]: "direct" } },
+      },
+    })
+    expect(result.servers.map((server) => server.name)).toEqual(["boundary", "lengthBoundary"])
+  })
+
+  it.each([
+    ["a*b*c", "abbbc", true],
+    ["a*b*c", "ac", false],
+    ["*a*a", "a", false],
+    ["*a*a", "aa", true],
+    ["**", "anything", true],
+    ["a*", "ba", false],
+    ["*c", "cd", false],
+    ["a.+*", "a.+tail", true],
+    ["a.+*", "abc", false],
+    ["a*b", "a\nb", true],
+  ] as const)("matches literal wildcard %s against %s", async (pattern, name, matches) => {
+    const result = await config({
+      mcpServers: { local: { command: "node", toolExposure: { [pattern]: "hidden" } } },
+    })
+    const server = result.servers[0]
+    if (!server) throw new Error("Missing server")
+    expect(toolExposure(server, name)).toBe(matches ? "hidden" : "codemode")
+    expect(toolExposure(server, name)).toBe(matches ? "hidden" : "codemode")
+  })
+
   it("applies exact tool exposure before wildcard patterns", async () => {
     const result = await config({
       mcpServers: {

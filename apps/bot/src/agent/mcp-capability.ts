@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { type TSchema, Type } from "@earendil-works/pi-ai"
 import {
@@ -15,11 +14,13 @@ import type { NativeTool } from "./durable-tools.js"
 import { type McpConfig, type McpServer, toolExposure } from "./mcp-config.js"
 import { listBoundedMcpTools } from "./mcp-discovery.js"
 import { boundedMcpFetch } from "./mcp-http.js"
-import { mcpPresentationSchema } from "./mcp-metadata.js"
-import { MCP_MAX_MESSAGE_BYTES, redactMcpData, shapeMcpResult } from "./mcp-results.js"
+import { boundedMcpAnnotations, mcpPresentationSchema } from "./mcp-metadata.js"
+import { McpProcessHomes } from "./mcp-process-homes.js"
+import { MCP_MAX_MESSAGE_BYTES, shapeMcpResult } from "./mcp-results.js"
 import { ManagedStdioTransport } from "./mcp-stdio.js"
 
 const STARTUP_MS = 10_000
+const MAX_CONSECUTIVE_REFRESHES = 8
 const SYSTEM_ENV = [
   "PATH",
   "HOME",
@@ -104,6 +105,7 @@ type Connection = {
 /** MCP is a capability only. Harness retains all generation, persistence and scheduling. */
 export class McpCapability {
   readonly #connections: Connection[]
+  readonly #homes: McpProcessHomes
   #closed = false
   #closing?: Promise<void>
 
@@ -116,6 +118,7 @@ export class McpCapability {
     private readonly transportFactory: McpTransportFactory = createMcpTransport,
   ) {
     this.#connections = config.servers.map((config) => ({ config, tools: [], listed: [] }))
+    this.#homes = new McpProcessHomes(directory)
   }
 
   get tools(): NativeTool[] {
@@ -162,8 +165,9 @@ export class McpCapability {
   }
 
   private open(connection: Connection): Promise<void> {
-    if (this.#closed || connection.client?.connectionState === "connected") return Promise.resolve()
+    if (this.#closed) return Promise.resolve()
     if (connection.opening) return connection.opening
+    if (connection.client?.connectionState === "connected") return Promise.resolve()
     connection.opening = this.connect(connection).finally(() => {
       connection.opening = undefined
     })
@@ -174,8 +178,7 @@ export class McpCapability {
     let client: McpClient | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      await mkdir(this.directory, { recursive: true, mode: 0o700 })
-      connection.home ??= await mkdtemp(path.join(this.directory, "process-"))
+      connection.home ??= await this.#homes.create()
       if (this.#closed) return
       client = new McpClient({
         name: "sumire",
@@ -219,7 +222,16 @@ export class McpCapability {
     connection.dirty = true
     if (connection.refreshing) return connection.refreshing
     const refresh = (async () => {
+      let passes = 0
       do {
+        if (++passes > MAX_CONSECUTIVE_REFRESHES) {
+          connection.dirty = false
+          this.logger.warn(
+            "MCP continuous tool changes exceeded the refresh limit; connection closed",
+          )
+          await client.close().catch(() => {})
+          break
+        }
         connection.dirty = false
         const current = connection.client
         if (current?.connectionState !== "connected") break
@@ -265,6 +277,12 @@ export class McpCapability {
         (name) => (counts.get(name) ?? 0) > 1,
         this.config.redact,
       )
+      const namespace = {
+        name: mcpNamespace(c.config.name, this.config.redact),
+        description: this.config.redact(c.config.description ?? "MCP server").slice(0, 4096),
+        instructions: this.config.redact(c.client?.instructions ?? "").slice(0, 4096),
+      }
+      let bytes = Buffer.byteLength(JSON.stringify(namespace))
       c.tools = this.#closed
         ? []
         : c.listed
@@ -275,7 +293,24 @@ export class McpCapability {
                 this.logger.warn("An MCP tool was withheld because its schema contains credentials")
                 return []
               }
-              return [this.wrap(c, tool, names.get(tool.name) as string, schema)]
+              const wrapper = this.wrap(c, tool, names.get(tool.name) as string, schema, namespace)
+              const toolBytes = Buffer.byteLength(
+                JSON.stringify({
+                  name: wrapper.name,
+                  description: wrapper.description,
+                  parameters: wrapper.parameters,
+                  namespace: wrapper.namespace,
+                  annotations: wrapper.annotations,
+                }),
+              )
+              if (bytes + toolBytes > MCP_MAX_MESSAGE_BYTES) {
+                this.logger.warn(
+                  "An MCP tool was withheld because redacted metadata exceeds the byte limit",
+                )
+                return []
+              }
+              bytes += toolBytes
+              return [wrapper]
             })
     }
     const published = this.#connections.flatMap((c) => c.tools.map((tool) => tool.name))
@@ -298,6 +333,7 @@ export class McpCapability {
     tool: Tool,
     name: string,
     schema: Tool["inputSchema"],
+    namespace: NativeTool["namespace"],
   ): NativeTool {
     const exposure = toolExposure(connection.config, tool.name)
     const thisCapability = this
@@ -318,12 +354,8 @@ export class McpCapability {
       }),
       // Like Pi's MCP extension, codemode tools are discoverable but absent from its description.
       exposure: exposure === "codemode" ? "deferred" : "direct",
-      namespace: {
-        name: mcpNamespace(connection.config.name, this.config.redact),
-        description: this.config.redact(connection.config.description ?? "MCP server"),
-        instructions: this.config.redact(connection.client?.instructions ?? "").slice(0, 4096),
-      },
-      annotations: redactMcpData(tool.annotations, this.config.redact) as Tool["annotations"],
+      namespace,
+      annotations: boundedMcpAnnotations(tool.annotations, this.config.redact),
       async execute(_callId, args, signal) {
         signal?.throwIfAborted()
         // Registry snapshots and already prepared scripts cannot reach withdrawn tools.
@@ -372,7 +404,7 @@ export class McpCapability {
           await c.client?.close().catch(() => {})
           await c.opening
           await c.refreshing
-          if (c.home) await rm(c.home, { recursive: true, force: true })
+          if (c.home) await this.#homes.remove(c.home)
         }),
       )
       this.changed()

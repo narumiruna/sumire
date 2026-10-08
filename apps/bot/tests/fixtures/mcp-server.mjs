@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { appendFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { createInterface } from "node:readline"
 
 const tools = ["echo", "change_tools", "hold", "environment", "error", "large", "image", "binary"]
@@ -25,12 +25,22 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       instructions: "Use echo for testing",
     }
   }
-  if (request.method === "tools/list") listRequests++
+  if (request.method === "tools/list") {
+    listRequests++
+    if (process.env.MCP_TEST_LIST_TRACE) appendFileSync(process.env.MCP_TEST_LIST_TRACE, "list\n")
+    while (process.env.MCP_TEST_LIST_GATE && !existsSync(process.env.MCP_TEST_LIST_GATE))
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    if (process.env.MCP_TEST_CONTINUOUS)
+      send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })
+  }
   if (request.method === "tools/list")
     result = {
       tools: names.map((name) => ({
         name,
         description: `Test ${name}`,
+        annotations: process.env.MCP_TEST_ANNOTATIONS
+          ? JSON.parse(process.env.MCP_TEST_ANNOTATIONS)
+          : undefined,
         inputSchema: process.env.MCP_TEST_SCHEMA
           ? JSON.parse(process.env.MCP_TEST_SCHEMA)
           : {

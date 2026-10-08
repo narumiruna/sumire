@@ -6,6 +6,8 @@ import { mcpCredentialKind } from "./mcp-credentials.js"
 
 export const MCP_MAX_SERVERS = 16
 export const MCP_MAX_SERVER_NAME_LENGTH = 64
+export const MCP_MAX_EXPOSURE_PATTERNS = 64
+export const MCP_MAX_EXPOSURE_PATTERN_LENGTH = 128
 
 const exposure = z.enum(["codemode", "direct", "hidden"])
 const strings = z.record(z.string(), z.string())
@@ -22,7 +24,10 @@ const serverSchema = z
     enabled: z.boolean().default(true),
     timeout: z.number().finite().positive().max(3600).default(60),
     exposure: exposure.default("codemode"),
-    toolExposure: z.record(z.string(), exposure).default({}),
+    toolExposure: z
+      .record(z.string().max(MCP_MAX_EXPOSURE_PATTERN_LENGTH), exposure)
+      .refine((patterns) => Object.keys(patterns).length <= MCP_MAX_EXPOSURE_PATTERNS)
+      .default({}),
   })
   .strict()
   .refine((s) => Boolean(s.command) !== Boolean(s.url))
@@ -99,8 +104,7 @@ export async function loadMcpConfig(
         const kind = mcpCredentialKind(key)
         if (kind) {
           entrySecrets.add(value)
-          if (kind === "auth" && value.includes(" "))
-            entrySecrets.add(value.slice(value.indexOf(" ") + 1))
+          if (kind === "auth") entrySecrets.add(value.trim().replace(/^\S+\s+/, ""))
           if (kind === "cookie")
             for (const cookie of value.split(";")) {
               const equals = cookie.indexOf("=")
@@ -141,15 +145,37 @@ export async function loadMcpConfig(
   }
 }
 
+const exposurePatterns = new WeakMap<
+  McpServer,
+  Array<{ parts: string[]; value: McpServer["exposure"] }>
+>()
+
 export function toolExposure(server: McpServer, name: string) {
   const exact = Object.hasOwn(server.toolExposure, name) ? server.toolExposure[name] : undefined
   if (exact) return exact
-  for (const [pattern, value] of Object.entries(server.toolExposure)) {
-    const expression = pattern
-      .split("*")
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join(".*")
-    if (new RegExp(`^${expression}$`).test(name)) return value
+  let patterns = exposurePatterns.get(server)
+  if (!patterns) {
+    patterns = Object.entries(server.toolExposure).map(([pattern, value]) => ({
+      parts: pattern.split("*"),
+      value,
+    }))
+    exposurePatterns.set(server, patterns)
+  }
+  for (const { parts, value } of patterns) {
+    const first = parts[0] ?? ""
+    if (parts.length === 1 || !name.startsWith(first)) continue
+    let offset = first.length
+    let matches = true
+    for (const part of parts.slice(1, -1)) {
+      const index = name.indexOf(part, offset)
+      if (index < 0) {
+        matches = false
+        break
+      }
+      offset = index + part.length
+    }
+    const last = parts.at(-1) ?? ""
+    if (matches && name.endsWith(last) && name.length - last.length >= offset) return value
   }
   return server.exposure
 }

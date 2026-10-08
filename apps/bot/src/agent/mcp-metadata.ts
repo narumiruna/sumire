@@ -1,5 +1,15 @@
 import type { Tool } from "@earendil-works/pi-mcp"
-import { redactMcpData } from "./mcp-results.js"
+import { MCP_MAX_MESSAGE_BYTES, redactMcpData } from "./mcp-results.js"
+
+export function boundedMcpAnnotations(
+  annotations: Tool["annotations"],
+  redact: (text: string) => string,
+): Tool["annotations"] {
+  if (annotations === undefined || Buffer.byteLength(JSON.stringify(annotations)) > 4096)
+    return undefined
+  const safe = redactMcpData(annotations, redact) as Tool["annotations"]
+  return Buffer.byteLength(JSON.stringify(safe)) <= 4096 ? safe : undefined
+}
 
 const schemaMaps = new Set([
   "properties",
@@ -34,7 +44,7 @@ export function mcpPresentationSchema(
     return Object.fromEntries(
       Object.entries(value).flatMap(([key, item]) => {
         if (["title", "description", "$comment"].includes(key) && typeof item === "string")
-          return [[key, redact(item)]]
+          return [[key, redact(item).slice(0, 4096)]]
         if (
           ["default", "examples"].includes(key) &&
           JSON.stringify(item) !== JSON.stringify(redactMcpData(item, redact))
@@ -55,7 +65,8 @@ export function mcpPresentationSchema(
     )
   }
   const candidate = clean(schema) as Tool["inputSchema"]
-  return JSON.stringify(candidate) === JSON.stringify(redactMcpData(candidate, redact))
+  return Buffer.byteLength(JSON.stringify(candidate)) <= MCP_MAX_MESSAGE_BYTES &&
+    JSON.stringify(candidate) === JSON.stringify(redactMcpData(candidate, redact))
     ? candidate
     : undefined
 }

@@ -17,7 +17,11 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 const fixturePath = new URL("./fixtures/mcp-server.mjs", import.meta.url).pathname
-async function setup(entries?: Record<string, unknown>, environment: NodeJS.ProcessEnv = {}) {
+async function setup(
+  entries?: Record<string, unknown>,
+  environment: NodeJS.ProcessEnv = {},
+  beforeReady?: (capability: McpCapability) => Promise<void>,
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-"))
   cleanup.push(() => rm(directory, { recursive: true, force: true }))
   const file = path.join(directory, "mcp.json")
@@ -42,6 +46,7 @@ async function setup(entries?: Record<string, unknown>, environment: NodeJS.Proc
     changed,
   )
   cleanup.push(() => capability.close())
+  await beforeReady?.(capability)
   await capability.ready()
   const call = async (name: string, args: Record<string, unknown> = {}, signal?: AbortSignal) => {
     const tool = capability.tools.find((tool) => tool.name.endsWith(`__${name}`))
@@ -190,6 +195,111 @@ describe("MCP capability", () => {
     const result = await call("environment")
     const raw = result.structuredContent as { structuredContent: { listRequests: number } }
     expect(raw.structuredContent.listRequests).toBeLessThan(10)
+  })
+
+  it("bounds continuous list-change refreshes and closes without automatic reconnect", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-continuous-"))
+    cleanup.push(() => rm(directory, { recursive: true, force: true }))
+    const trace = path.join(directory, "requests")
+    const { capability, logger } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        env: { MCP_TEST_CONTINUOUS: "1", MCP_TEST_LIST_TRACE: trace },
+      },
+    })
+    expect(capability.tools).toEqual([])
+    expect((await readFile(trace, "utf8")).trim().split("\n")).toHaveLength(8)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect((await readFile(trace, "utf8")).trim().split("\n")).toHaveLength(8)
+    expect(logger.warn).toHaveBeenCalledWith(
+      "MCP continuous tool changes exceeded the refresh limit; connection closed",
+    )
+  })
+
+  it("awaits initial discovery even after connected initialization and a cancelled startup waiter", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-opening-"))
+    cleanup.push(() => rm(directory, { recursive: true, force: true }))
+    const trace = path.join(directory, "requests")
+    await setup(
+      {
+        fake: {
+          command: process.execPath,
+          args: [fixturePath],
+          env: { MCP_TEST_LIST_GATE: path.join(directory, "release"), MCP_TEST_LIST_TRACE: trace },
+        },
+      },
+      {},
+      async (capability) => {
+        await expect(capability.ready(AbortSignal.timeout(10))).rejects.toThrow()
+        await vi.waitFor(async () => expect(await readFile(trace, "utf8")).toContain("list"))
+        let complete = false
+        const second = capability.ready().then(() => {
+          complete = true
+        })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(complete).toBe(false)
+        expect(capability.tools).toEqual([])
+        await writeFile(path.join(directory, "release"), "ready")
+        await second
+        expect(capability.tools.length).toBeGreaterThan(0)
+      },
+    )
+  })
+
+  it("shares bounded namespace presentation and discards annotations expanded beyond their bound", async () => {
+    const { capability } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        description: "x".repeat(4096),
+        env: {
+          SECRET_KEY: "x",
+          MCP_TEST_TOOLS: "alpha,beta",
+          MCP_TEST_ANNOTATIONS: JSON.stringify({ title: "x".repeat(3500) }),
+        },
+      },
+    })
+    expect(capability.tools).toHaveLength(2)
+    expect(capability.tools[0]?.namespace).toBe(capability.tools[1]?.namespace)
+    expect(capability.tools[0]?.namespace?.description?.length).toBe(4096)
+    expect(capability.tools.every((tool) => tool.annotations === undefined)).toBe(true)
+    expect(JSON.stringify(capability.tools)).not.toContain("xxx")
+  })
+
+  it("reapplies the cumulative publication byte limit after redaction expansion", async () => {
+    const { capability, logger } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        description: "x".repeat(4096),
+        env: {
+          SECRET_KEY: "x",
+          MCP_TEST_TOOLS: Array.from({ length: 1024 }, (_, i) => `t${i}`).join(","),
+          MCP_TEST_SCHEMA: JSON.stringify({ type: "object", description: "x".repeat(2000) }),
+        },
+      },
+    })
+    expect(capability.tools.length).toBeGreaterThan(0)
+    expect(capability.tools.length).toBeLessThan(1024)
+    const bytes = capability.tools.reduce(
+      (total, tool) =>
+        total +
+        Buffer.byteLength(
+          JSON.stringify({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+            namespace: tool.namespace,
+            annotations: tool.annotations,
+          }),
+        ),
+      0,
+    )
+    expect(bytes).toBeLessThanOrEqual(MCP_MAX_MESSAGE_BYTES)
+    expect(logger.warn).toHaveBeenCalledWith(
+      "An MCP tool was withheld because redacted metadata exceeds the byte limit",
+    )
   })
 
   it("hashes both sides of a cross-server separator collision", async () => {
@@ -441,14 +551,16 @@ describe("MCP capability", () => {
           remote: {
             url: `http://127.0.0.1:${address.port}/mcp`,
             timeout: 1.2345,
-            headers: { [header]: header === "Authorization" ? `Bearer \${KEY}` : "remote-secret" },
+            headers: {
+              [header]: header === "Authorization" ? "Bearer   remote-secret" : "remote-secret",
+            },
           },
         },
         { KEY: "remote-secret" },
       )
       expect(await call("echo")).toMatchObject({ content: [{ type: "text", text: "[redacted]" }] })
       expect(observed).toContain(
-        header === "Authorization" ? "Bearer remote-secret" : "remote-secret",
+        header === "Authorization" ? "Bearer   remote-secret" : "remote-secret",
       )
       expect(JSON.stringify(capability.tools)).not.toContain("remote-secret")
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("remote-secret")

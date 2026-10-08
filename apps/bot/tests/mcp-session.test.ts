@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -169,10 +169,20 @@ describe("MCP through durable sessions", () => {
           },
           { timeout: 5000 },
         )
+        const mcpDirectory = path.join(fixture.settings.botSessionLogDir, "123", "durable", "mcp")
+        const oldHomes = (await readdir(mcpDirectory)).filter((name) => name.startsWith("process-"))
+        expect(oldHomes).toHaveLength(1)
+        const results = path.join(mcpDirectory, "results")
+        await mkdir(results, { recursive: true })
+        await writeFile(path.join(results, "preserved.txt"), "preserved result")
         child.kill(signal)
         await exited
         if (signal === "SIGTERM") expect(child.exitCode, stderr).toBe(0)
         const session = await fixture.createSession()
+        const homes = (await readdir(mcpDirectory)).filter((name) => name.startsWith("process-"))
+        expect(homes).toHaveLength(1)
+        expect(homes).not.toContain(oldHomes[0])
+        expect(await readFile(path.join(results, "preserved.txt"), "utf8")).toBe("preserved result")
         const delivered = vi.fn(async () => {})
         await session.recoverPending(delivered)
         expect(delivered).toHaveBeenCalledOnce()
