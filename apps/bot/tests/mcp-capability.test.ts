@@ -107,6 +107,73 @@ describe("MCP capability", () => {
     ).rejects.toThrow("no longer available")
   })
 
+  it("rejects old wrappers when a replacement reuses the normalized public name", async () => {
+    const { capability, call } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        env: { MCP_TEST_TOOLS: "a-b,change_tools" },
+      },
+    })
+    const old = capability.tools.find((tool) => tool.name === "mcp__fake__a_b")
+    if (!old) throw new Error("Missing initial wrapper")
+    await call("change_tools", { names: ["a_b", "change_tools"] })
+    await vi.waitFor(() =>
+      expect(capability.tools.find((tool) => tool.name === old.name)).not.toBe(old),
+    )
+    await expect(
+      old.execute("stale", {}, undefined, undefined, undefined as never),
+    ).rejects.toThrow("no longer available")
+    const replacement = capability.tools.find((tool) => tool.name === old.name)
+    expect(
+      await replacement?.execute("new", {}, undefined, undefined, undefined as never),
+    ).toMatchObject({ isError: false })
+  })
+
+  it("uses an opaque public alias but dispatches the unchanged credential-colliding raw name", async () => {
+    const { capability } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        exposure: "hidden",
+        toolExposure: { echo: "direct" },
+        env: { SECRET_KEY: "echo" },
+      },
+    })
+    expect(capability.tools).toHaveLength(1)
+    const tool = capability.tools[0]
+    if (!tool) throw new Error("Missing alias")
+    expect(tool.name).toMatch(/^mcp__fake__tool_[a-f0-9]{8}$/)
+    expect(JSON.stringify(capability.tools)).not.toContain("echo")
+    expect(
+      await tool.execute("alias", { value: "hello" }, undefined, undefined, undefined as never),
+    ).toMatchObject({
+      isError: false,
+      structuredContent: { structuredContent: { args: { value: "hello" } } },
+    })
+  })
+
+  it("withholds credential-bearing structural schemas without exposing or changing them", async () => {
+    const { capability, logger } = await setup({
+      fake: {
+        command: process.execPath,
+        args: [fixturePath],
+        env: {
+          SECRET_KEY: "schema-secret",
+          MCP_TEST_SCHEMA: JSON.stringify({
+            type: "object",
+            properties: { value: { enum: ["schema-secret"] } },
+          }),
+        },
+      },
+    })
+    expect(capability.tools).toEqual([])
+    expect(logger.warn).toHaveBeenCalledWith(
+      "An MCP tool was withheld because its schema contains credentials",
+    )
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("schema-secret")
+  })
+
   it("coalesces tool-list notification bursts without dropping the final directory", async () => {
     const { capability, call } = await setup()
     await call("change_tools", { burst: true })
@@ -263,81 +330,92 @@ describe("MCP capability", () => {
     expect(capability.tools).toEqual([])
   })
 
-  it("handles real Streamable HTTP with headers without exposing credentials in results", async () => {
-    const observed: string[] = []
-    let expireNextCall = false
-    let initializations = 0
-    let calls = 0
-    const server = createServer(async (req, res) => {
-      if (req.method === "GET") {
-        res.writeHead(405).end()
-        return
-      }
-      if (req.method === "DELETE") {
-        res.writeHead(200).end()
-        return
-      }
-      const chunks: Buffer[] = []
-      for await (const chunk of req) chunks.push(chunk)
-      const input = JSON.parse(Buffer.concat(chunks).toString())
-      observed.push(req.headers.authorization ?? "")
-      if (!input.id) {
-        res.writeHead(202).end()
-        return
-      }
-      if (input.method === "initialize") initializations++
-      if (input.method === "tools/call") {
-        calls++
-        if (expireNextCall) {
-          expireNextCall = false
-          res.writeHead(404).end("remote-secret")
+  it.each(["Authorization", "X-Auth"])(
+    "handles real Streamable HTTP with %s without exposing credentials",
+    async (header) => {
+      const observed: string[] = []
+      let expireNextCall = false
+      let initializations = 0
+      let calls = 0
+      const server = createServer(async (req, res) => {
+        if (req.method === "GET") {
+          res.writeHead(405).end()
           return
         }
-      }
-      const result =
-        input.method === "initialize"
-          ? {
-              protocolVersion: "2025-11-25",
-              capabilities: { tools: {} },
-              serverInfo: { name: "http", version: "1" },
-            }
-          : input.method === "tools/list"
-            ? { tools: [{ name: "echo", inputSchema: { type: "object" } }] }
-            : { content: [{ type: "text", text: "remote-secret" }] }
-      res
-        .writeHead(200, { "Content-Type": "application/json" })
-        .end(JSON.stringify({ jsonrpc: "2.0", id: input.id, result }))
-    })
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-    cleanup.push(
-      () =>
-        new Promise<void>((resolve) => {
-          server.closeAllConnections()
-          server.close(() => resolve())
-        }),
-    )
-    const address = server.address()
-    if (!address || typeof address === "string") throw new Error("Missing test server")
-    const { call, logger, capability } = await setup(
-      {
-        remote: {
-          url: `http://127.0.0.1:${address.port}/mcp`,
-          headers: { Authorization: `Bearer \${KEY}` },
+        if (req.method === "DELETE") {
+          res.writeHead(200).end()
+          return
+        }
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(chunk)
+        const input = JSON.parse(Buffer.concat(chunks).toString())
+        observed.push(String(req.headers[header.toLowerCase()] ?? ""))
+        if (!input.id) {
+          res.writeHead(202).end()
+          return
+        }
+        if (input.method === "initialize") initializations++
+        if (input.method === "tools/call") {
+          calls++
+          if (expireNextCall) {
+            expireNextCall = false
+            res.writeHead(404).end("remote-secret")
+            return
+          }
+        }
+        const result =
+          input.method === "initialize"
+            ? {
+                protocolVersion: "2025-11-25",
+                capabilities: { tools: {} },
+                serverInfo: { name: "http", version: "1" },
+                instructions: "remote-secret",
+              }
+            : input.method === "tools/list"
+              ? {
+                  tools: [
+                    { name: "echo", description: "remote-secret", inputSchema: { type: "object" } },
+                  ],
+                }
+              : { content: [{ type: "text", text: "remote-secret" }] }
+        res
+          .writeHead(200, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ jsonrpc: "2.0", id: input.id, result }))
+      })
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+      cleanup.push(
+        () =>
+          new Promise<void>((resolve) => {
+            server.closeAllConnections()
+            server.close(() => resolve())
+          }),
+      )
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("Missing test server")
+      const { call, logger, capability } = await setup(
+        {
+          remote: {
+            url: `http://127.0.0.1:${address.port}/mcp`,
+            headers: { [header]: header === "Authorization" ? `Bearer \${KEY}` : "remote-secret" },
+          },
         },
-      },
-      { KEY: "remote-secret" },
-    )
-    expect(await call("echo")).toMatchObject({ content: [{ type: "text", text: "[redacted]" }] })
-    expect(observed).toContain("Bearer remote-secret")
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("remote-secret")
-    expireNextCall = true
-    await expect(call("echo")).rejects.toThrow("inspect side effects")
-    expect(capability.tools).toEqual([])
-    await capability.ready()
-    expect(initializations).toBe(2)
-    expect(calls).toBe(2) // Reconnection never resends the failed invocation.
-    expect(await call("echo")).toMatchObject({ isError: false })
-  })
+        { KEY: "remote-secret" },
+      )
+      expect(await call("echo")).toMatchObject({ content: [{ type: "text", text: "[redacted]" }] })
+      expect(observed).toContain(
+        header === "Authorization" ? "Bearer remote-secret" : "remote-secret",
+      )
+      expect(JSON.stringify(capability.tools)).not.toContain("remote-secret")
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("remote-secret")
+      expireNextCall = true
+      await expect(call("echo")).rejects.toThrow("inspect side effects")
+      expect(capability.tools).toEqual([])
+      await capability.ready()
+      expect(initializations).toBe(2)
+      expect(calls).toBe(2) // Reconnection never resends the failed invocation.
+      expect(await call("echo")).toMatchObject({ isError: false })
+    },
+  )
 
   it("uses hash suffixes for every normalized collision and bounds long tool names", () => {
     const tools = ["a-b", "a_b", "a".repeat(100)].map(
@@ -348,6 +426,14 @@ describe("MCP capability", () => {
     expect(names.every((name) => name.length <= 64)).toBe(true)
     expect(names[0]).not.toBe("mcp__chrome_devtools__a_b")
     expect(names[1]).not.toBe("mcp__chrome_devtools__a_b")
+    const alias = mcpToolNames(
+      "s".repeat(100),
+      [{ name: "echo", inputSchema: { type: "object" } }],
+      () => false,
+      (text) => text.replaceAll("echo", "[redacted]"),
+    ).get("echo")
+    expect(alias?.length).toBeLessThanOrEqual(64)
+    expect(alias).not.toContain("echo")
   })
 
   it("bounds model text and images while retaining raw text for scripts and private full-output files", async () => {

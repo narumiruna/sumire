@@ -88,9 +88,9 @@ export async function loadMcpConfig(
         ...Object.entries(server.env),
         ...Object.entries(server.headers),
       ]) {
-        if (/authorization|cookie|token|secret|password|key/i.test(key)) {
+        if (/auth|cookie|token|secret|password|key/i.test(key)) {
           secrets.add(value)
-          if (/authorization/i.test(key) && value.includes(" "))
+          if (/auth/i.test(key) && value.includes(" "))
             secrets.add(value.slice(value.indexOf(" ") + 1))
           if (/cookie/i.test(key))
             for (const cookie of value.split(";")) {

@@ -31,20 +31,26 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       tools: names.map((name) => ({
         name,
         description: `Test ${name}`,
-        inputSchema: {
-          type: "object",
-          properties: { value: { type: "string", default: process.env.SECRET_KEY } },
-        },
+        inputSchema: process.env.MCP_TEST_SCHEMA
+          ? JSON.parse(process.env.MCP_TEST_SCHEMA)
+          : {
+              type: "object",
+              properties: { value: { type: "string", default: process.env.SECRET_KEY } },
+            },
       })),
     }
   if (request.method === "tools/call") {
     const { name, arguments: args } = request.params
+    if (!names.includes(name)) {
+      send({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "Unknown tool" } })
+      return
+    }
     if (name === "hold") {
       if (sideEffects) appendFileSync(sideEffects, "called\n")
       return
     }
     if (name === "change_tools") {
-      names = ["new_tool", ...tools.filter((name) => name !== "echo")]
+      names = args?.names ?? ["new_tool", ...tools.filter((name) => name !== "echo")]
       for (let i = 0; i < (args?.burst ? 100 : 1); i++)
         send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })
     }

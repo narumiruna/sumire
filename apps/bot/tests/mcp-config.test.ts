@@ -94,6 +94,19 @@ describe("MCP configuration", () => {
     )
   })
 
+  it.each(["X-Auth", "x-auth", "Authentication", "XAuth"])(
+    "redacts literal credentials from %s",
+    async (header) => {
+      const result = await config({
+        mcpServers: {
+          remote: { url: "https://example.com/mcp", headers: { [header]: "custom-auth-secret" } },
+        },
+      })
+      expect(result.redact("custom-auth-secret")).toBe("[redacted]")
+      expect(result.servers[0]?.headers[header]).toBe("custom-auth-secret")
+    },
+  )
+
   it.each([
     { command: "node", url: "https://example.com/mcp" },
     { command: "node", type: "http" },

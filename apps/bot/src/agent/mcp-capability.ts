@@ -13,7 +13,9 @@ import {
 import type { Logger } from "../logging.js"
 import type { NativeTool } from "./durable-tools.js"
 import { type McpConfig, type McpServer, toolExposure } from "./mcp-config.js"
+import { listBoundedMcpTools } from "./mcp-discovery.js"
 import { boundedMcpFetch } from "./mcp-http.js"
+import { mcpPresentationSchema } from "./mcp-metadata.js"
 import { MCP_MAX_MESSAGE_BYTES, redactMcpData, shapeMcpResult } from "./mcp-results.js"
 import { ManagedStdioTransport } from "./mcp-stdio.js"
 
@@ -58,6 +60,7 @@ export function mcpToolNames(
   server: string,
   tools: readonly Tool[],
   collides: (name: string) => boolean = () => false,
+  redact: (text: string) => string = (text) => text,
 ): Map<string, string> {
   const base = (name: string) => `mcp__${server}__${name}`.replace(/[^A-Za-z0-9_]/g, "_")
   const counts = new Map<string, number>()
@@ -66,6 +69,8 @@ export function mcpToolNames(
     tools.map((tool) => {
       const name = base(tool.name)
       const hash = createHash("sha256").update(`${server}\0${tool.name}`).digest("hex").slice(0, 8)
+      if (redact(name) !== name)
+        return [tool.name, `${mcpNamespace(server, redact).slice(0, 49)}__tool_${hash}`]
       return [
         tool.name,
         name.length > 64 || counts.get(name) !== 1 || collides(name)
@@ -74,6 +79,15 @@ export function mcpToolNames(
       ]
     }),
   )
+}
+
+function mcpNamespace(server: string, redact: (text: string) => string): string {
+  const name = server.replaceAll("-", "_")
+  const safe =
+    redact(name) === name
+      ? name
+      : `server_${createHash("sha256").update(server).digest("hex").slice(0, 8)}`
+  return `mcp__${safe}`
 }
 
 type Connection = {
@@ -136,7 +150,7 @@ export class McpCapability {
     return this.#connections
       .filter((c) => c.config.exposure !== "hidden" || c.tools.length)
       .map((c) => {
-        const namespace = `mcp__${c.config.name.replaceAll("-", "_")}`
+        const namespace = mcpNamespace(c.config.name, this.config.redact)
         const description = this.config
           .redact(c.config.description ?? "MCP tools")
           .split("\n")[0]
@@ -210,7 +224,7 @@ export class McpCapability {
         const current = connection.client
         if (current?.connectionState !== "connected") break
         try {
-          const listed = await current.listTools({
+          const listed = await listBoundedMcpTools(current, {
             timeoutMs: STARTUP_MS,
             signal: AbortSignal.timeout(STARTUP_MS),
           })
@@ -220,13 +234,7 @@ export class McpCapability {
             continue
           }
           if (current.connectionState !== "connected") break
-          if (
-            listed.length > 1024 ||
-            new Set(listed.map((tool) => tool.name)).size !== listed.length ||
-            Buffer.byteLength(JSON.stringify(listed)) > MCP_MAX_MESSAGE_BYTES
-          )
-            throw new Error("MCP tool directory exceeds its bounds or contains duplicate names")
-          connection.listed = redactMcpData(listed, this.config.redact) as Tool[]
+          connection.listed = listed
           this.publish()
         } catch {
           if (connection.client === current) {
@@ -251,12 +259,24 @@ export class McpCapability {
         counts.set(name, (counts.get(name) ?? 0) + 1)
       }
     for (const c of this.#connections) {
-      const names = mcpToolNames(c.config.name, c.listed, (name) => (counts.get(name) ?? 0) > 1)
+      const names = mcpToolNames(
+        c.config.name,
+        c.listed,
+        (name) => (counts.get(name) ?? 0) > 1,
+        this.config.redact,
+      )
       c.tools = this.#closed
         ? []
         : c.listed
             .filter((tool) => toolExposure(c.config, tool.name) !== "hidden")
-            .map((tool) => this.wrap(c, tool, names.get(tool.name) as string))
+            .flatMap((tool) => {
+              const schema = mcpPresentationSchema(tool.inputSchema, this.config.redact)
+              if (!schema) {
+                this.logger.warn("An MCP tool was withheld because its schema contains credentials")
+                return []
+              }
+              return [this.wrap(c, tool, names.get(tool.name) as string, schema)]
+            })
     }
     const published = this.#connections.flatMap((c) => c.tools.map((tool) => tool.name))
     const seen = new Set<string>()
@@ -273,17 +293,23 @@ export class McpCapability {
     this.changed()
   }
 
-  private wrap(connection: Connection, tool: Tool, name: string): NativeTool {
+  private wrap(
+    connection: Connection,
+    tool: Tool,
+    name: string,
+    schema: Tool["inputSchema"],
+  ): NativeTool {
     const exposure = toolExposure(connection.config, tool.name)
     const thisCapability = this
-    return {
+    const clientAtPublication = connection.client
+    const wrapper: NativeTool = {
       name,
       label: name,
       description: this.config.redact(tool.description ?? tool.name).slice(0, 4096),
       parameters: Type.Unsafe({
-        ...tool.inputSchema,
+        ...schema,
         type: "object",
-        properties: tool.inputSchema.properties ?? {},
+        properties: schema.properties ?? {},
       }) as TSchema,
       outputSchema: Type.Object({
         content: Type.Array(Type.Object({})),
@@ -293,17 +319,18 @@ export class McpCapability {
       // Like Pi's MCP extension, codemode tools are discoverable but absent from its description.
       exposure: exposure === "codemode" ? "deferred" : "direct",
       namespace: {
-        name: `mcp__${connection.config.name.replaceAll("-", "_")}`,
+        name: mcpNamespace(connection.config.name, this.config.redact),
         description: this.config.redact(connection.config.description ?? "MCP server"),
         instructions: this.config.redact(connection.client?.instructions ?? "").slice(0, 4096),
       },
-      annotations: tool.annotations,
+      annotations: redactMcpData(tool.annotations, this.config.redact) as Tool["annotations"],
       async execute(_callId, args, signal) {
         signal?.throwIfAborted()
         // Registry snapshots and already prepared scripts cannot reach withdrawn tools.
         const client = connection.client
         if (
-          !connection.tools.some((current) => current.name === name) ||
+          !connection.tools.includes(wrapper) ||
+          client !== clientAtPublication ||
           !client ||
           client.connectionState !== "connected"
         )
@@ -333,6 +360,7 @@ export class McpCapability {
         }
       },
     }
+    return wrapper
   }
 
   close(): Promise<void> {
