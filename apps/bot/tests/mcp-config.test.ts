@@ -161,6 +161,21 @@ describe("MCP configuration", () => {
     },
   )
 
+  it.each([
+    [1.2345, 1235],
+    [1.001, 1001],
+    [0.0001, 1],
+    [60, 60_000],
+    [3600, 3_600_000],
+  ])(
+    "normalizes %s seconds once to %s positive integer milliseconds",
+    async (timeout, timeoutMs) => {
+      const result = await config({ mcpServers: { fake: { command: "node", timeout } } })
+      expect(result.servers[0]).toMatchObject({ timeout, timeoutMs })
+      expect(() => AbortSignal.timeout(result.servers[0]?.timeoutMs as number)).not.toThrow()
+    },
+  )
+
   it("applies exact tool exposure before wildcard patterns", async () => {
     const result = await config({
       mcpServers: {

@@ -31,7 +31,7 @@ const serverSchema = z
     return ["http:", "https:"].includes(u.protocol) && !u.username && !u.password
   })
 
-export type McpServer = z.infer<typeof serverSchema> & { name: string }
+export type McpServer = z.infer<typeof serverSchema> & { name: string; timeoutMs: number }
 export type McpConfig = { servers: McpServer[]; redact: (text: string) => string }
 
 /** Configuration is administrator-owned; never discover servers from the writable workdir. */
@@ -93,7 +93,8 @@ export async function loadMcpConfig(
             }
         }
       }
-      servers.push({ ...server, name })
+      // Round up once: retain positive sub-millisecond values without shortening a deadline.
+      servers.push({ ...server, name, timeoutMs: Math.max(1, Math.ceil(server.timeout * 1000)) })
     } catch {
       logger.warn("An MCP server was skipped: invalid configuration or missing environment")
     }

@@ -76,6 +76,13 @@ describe("MCP capability", () => {
     })
   })
 
+  it("dispatches real stdio tools with fractional-second deadlines", async () => {
+    const { call } = await setup({
+      fake: { command: process.execPath, args: [fixturePath], timeout: 1.2345 },
+    })
+    expect(await call("echo")).toMatchObject({ isError: false })
+  })
+
   it("isolates process homes per chat and does not inherit bot credentials", async () => {
     vi.stubEnv("BOT_TOKEN", "must-not-inherit")
     try {
@@ -270,6 +277,7 @@ describe("MCP capability", () => {
             headers: {},
             enabled: true,
             timeout: 2,
+            timeoutMs: 2000,
             exposure: "codemode",
             toolExposure: {},
           },
@@ -303,6 +311,7 @@ describe("MCP capability", () => {
             headers: {},
             enabled: true,
             timeout: 1,
+            timeoutMs: 1000,
             exposure: "codemode",
             toolExposure: {},
           },
@@ -396,6 +405,7 @@ describe("MCP capability", () => {
         {
           remote: {
             url: `http://127.0.0.1:${address.port}/mcp`,
+            timeout: 1.2345,
             headers: { [header]: header === "Authorization" ? `Bearer \${KEY}` : "remote-secret" },
           },
         },

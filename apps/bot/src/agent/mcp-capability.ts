@@ -39,7 +39,7 @@ export function createMcpTransport(server: McpServer, cwd: string, home: string)
       headers: server.headers,
       maxMessageBytes: MCP_MAX_MESSAGE_BYTES,
       // Never follow redirects with administrator credentials to another endpoint.
-      fetch: boundedMcpFetch(server.timeout * 1000),
+      fetch: boundedMcpFetch(server.timeoutMs),
     })
   const env = Object.fromEntries(
     SYSTEM_ENV.flatMap((key) => (process.env[key] ? [[key, process.env[key] as string]] : [])),
@@ -180,7 +180,7 @@ export class McpCapability {
       client = new McpClient({
         name: "sumire",
         version: "1.0.0",
-        requestTimeoutMs: Math.min(60_000, connection.config.timeout * 1000),
+        requestTimeoutMs: Math.min(60_000, connection.config.timeoutMs),
       })
       connection.client = client
       const current = client
@@ -198,7 +198,7 @@ export class McpCapability {
       })
       timer = setTimeout(
         () => void current.close().catch(() => {}),
-        Math.min(60_000, connection.config.timeout * 1000),
+        Math.min(60_000, connection.config.timeoutMs),
       )
       await current.connect(this.transportFactory(connection.config, this.cwd, connection.home))
       await this.refresh(connection, current)
@@ -335,12 +335,12 @@ export class McpCapability {
           client.connectionState !== "connected"
         )
           throw new Error("MCP tool is no longer available; discover tools again")
-        const deadline = AbortSignal.timeout(connection.config.timeout * 1000)
+        const deadline = AbortSignal.timeout(connection.config.timeoutMs)
         const callSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
         try {
           const raw = await client.callTool(tool.name, args as Record<string, unknown>, {
             signal: callSignal,
-            timeoutMs: connection.config.timeout * 1000,
+            timeoutMs: connection.config.timeoutMs,
           })
           callSignal.throwIfAborted()
           return await shapeMcpResult(
