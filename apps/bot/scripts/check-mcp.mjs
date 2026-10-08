@@ -35,7 +35,7 @@ try {
   const file = path.join(directory, "mcp.json")
   await writeFile(file, JSON.stringify(input), { mode: 0o600 })
   const config = await loadMcpConfig(
-    { botMcpEnabled: true, botMcpConfigPath: file },
+    { botMcpConfigPath: file },
     { warn: (text) => console.error(text) },
   )
   assert.equal(config.servers.length, firecrawlOnly ? 1 : 2)

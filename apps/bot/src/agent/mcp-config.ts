@@ -55,11 +55,10 @@ export type McpConfig = { servers: McpServer[]; redact: (text: string) => string
 
 /** Configuration is administrator-owned; never discover servers from the writable workdir. */
 export async function loadMcpConfig(
-  settings: Pick<Settings, "botMcpEnabled" | "botMcpConfigPath">,
+  settings: Pick<Settings, "botMcpConfigPath">,
   logger: Pick<Logger, "warn">,
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<McpConfig> {
-  if (!settings.botMcpEnabled) return { servers: [], redact: (text) => text }
   let input: unknown
   try {
     const text = await readMcpConfigFile(settings.botMcpConfigPath)

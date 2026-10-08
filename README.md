@@ -13,7 +13,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 
 Bot-owned shared runtime resources stay at the repository root:
 
-- `mcp.json`: optional administrator-owned MCP servers (Chrome DevTools and Firecrawl); disabled by default. See [MCP setup and deployment limits](apps/bot/README.md#mcp-servers-opt-in).
+- `mcp.json`: administrator-owned MCP servers (Chrome DevTools and Firecrawl); enabled by default. See [MCP setup and deployment limits](apps/bot/README.md#mcp-servers).
 - `instructions/SYSTEM.md`: bot system prompt template.
 - `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
 - `skills/`: Bot-owned Agent Skills; package-specific Pi skills live in their owning package's `skills/` directory.

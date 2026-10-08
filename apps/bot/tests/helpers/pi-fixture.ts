@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { cp, mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -27,6 +27,7 @@ export async function createPiFixture(environment: Record<string, string> = {}) 
   await cp(path.join(repositoryRoot, "instructions"), path.join(root, "instructions"), {
     recursive: true,
   })
+  await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
   const replies: Reply[] = []
   const requests: CompletionRequest[] = []
   const requestErrors: unknown[] = []
