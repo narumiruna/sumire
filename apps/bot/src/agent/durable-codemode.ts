@@ -129,6 +129,8 @@ export async function createDurableCodemode(
         : ((nativeTools.find((tool) => tool.name === name) as ToolDefinition | undefined)
             ?.exposure ?? "direct"),
     getNamespace: (name) => nativeTools.find((tool) => tool.name === name)?.namespace,
+    getPromptGuidelines: (name) =>
+      nativeTools.find((tool) => tool.name === name)?.promptGuidelines ?? [],
   })
   const tool = defineTool({
     name: metadata.name,

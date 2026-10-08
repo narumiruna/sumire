@@ -13,10 +13,11 @@ async function registeredTool(factory: ExtensionFactory): Promise<ToolDefinition
   let tool: ToolDefinition | undefined
   await factory({
     getSettings: () => ({}),
+    getAllTools: () => [],
     registerTool: (definition: ToolDefinition) => {
       tool = definition
     },
-  } as ExtensionAPI)
+  } as unknown as ExtensionAPI)
   if (!tool) throw new Error("codemode was not registered")
   return tool
 }
@@ -47,6 +48,7 @@ describe("Bot codemode policy", () => {
       registered: [],
       getExposure: () => "direct",
       getNamespace: () => undefined,
+      getPromptGuidelines: () => [],
     }
     expect(boundedLoadout?.(emptyLoadout)).toEqual(nativeLoadout?.(emptyLoadout))
     expect(bounded.defaultActive).toBe(false)
