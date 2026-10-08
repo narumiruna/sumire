@@ -42,6 +42,7 @@
     "@narumitw/sumire-url-tool": "0.3.3",
     "@pydantic/logfire-node": "0.18.27",
     "grammy": "1.46.0",
+    "playwright": "1.64.0",
     "taiwan-exchange-rates": "0.2.1",
     "zod": "4.6.5"
   },
