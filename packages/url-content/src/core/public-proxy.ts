@@ -9,6 +9,7 @@ export interface PublicProxy {
 }
 
 interface PublicProxyOptions {
+  allowedSchemes?: ReadonlySet<string>
   resolve?: PublicUrlResolver
 }
 
@@ -37,7 +38,10 @@ export async function startPublicProxy(options: PublicProxyOptions = {}): Promis
     void (async () => {
       const target = new URL(request.url ?? "")
       if (target.protocol !== "http:") throw new TypeError("Proxy only accepts HTTP targets")
-      const { addresses } = await assertPublicUrl(target, { resolve: options.resolve })
+      const { addresses } = await assertPublicUrl(target, {
+        allowedSchemes: options.allowedSchemes,
+        resolve: options.resolve,
+      })
       const address = addresses[0]
       if (!address) throw new TypeError("Proxy target did not resolve to an address")
       const headers: Record<string, string | string[] | undefined> = {
@@ -76,6 +80,7 @@ export async function startPublicProxy(options: PublicProxyOptions = {}): Promis
       if (!Number.isInteger(port) || port <= 0 || port > 65_535)
         throw new TypeError("Proxy target port is invalid")
       const { addresses } = await assertPublicUrl(new URL(`https://${target.hostname}/`), {
+        allowedSchemes: options.allowedSchemes,
         resolve: options.resolve,
       })
       const address = addresses[0]

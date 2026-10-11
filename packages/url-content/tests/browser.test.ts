@@ -1,6 +1,7 @@
 import type { Browser, Page, Route, WebSocketRoute } from "playwright"
 import { describe, expect, it, vi } from "vitest"
 
+import { UrlContentClient } from "../src/client.js"
 import { LoaderContentError, LoaderTimeoutError } from "../src/core/errors.js"
 import type { ResourceProvider } from "../src/core/resources.js"
 import { fetchBrowserHtmlResponse } from "../src/loaders/browser.js"
@@ -61,6 +62,7 @@ function browserHarness(content: string, evaluate = async () => Buffer.byteLengt
     fulfillRequest,
     gotoPage,
     newContext,
+    request,
   }
 }
 
@@ -92,6 +94,33 @@ describe("browser transport safety", () => {
     expect(harness.continueRequest).not.toHaveBeenCalled()
     expect(harness.abortRequest).not.toHaveBeenCalled()
     expect(harness.closeWebSocket).toHaveBeenCalledOnce()
+    expect(harness.closeContext).toHaveBeenCalledOnce()
+  })
+
+  it("rejects redirected HTTP browser navigation under an HTTPS-only policy", async () => {
+    const harness = browserHarness("<main>rendered</main>")
+    const routeRequest = harness.gotoPage.getMockImplementation()
+    if (!routeRequest) throw new Error("Expected browser route harness")
+    harness.gotoPage.mockImplementation(async () => {
+      await routeRequest()
+      harness.request.url = () => "http://example.com/final"
+      return routeRequest()
+    })
+    const fetchImplementation = vi.fn(
+      async () =>
+        new Response(null, { status: 302, headers: { location: "http://example.com/final" } }),
+    )
+    await using client = new UrlContentClient({
+      allowedSchemes: new Set(["https"]),
+      resolve: async () => [{ address: "8.8.8.8", family: 4 }],
+      fetchImplementation,
+    }).start()
+    vi.spyOn(client, "browser").mockResolvedValue(harness.browser)
+    await expect(
+      new PlaywrightLoader({ resources: client }).load("https://example.com/page"),
+    ).rejects.toThrow("URL scheme is not allowed: http")
+    expect(fetchImplementation).toHaveBeenCalledTimes(1)
+    expect(harness.abortRequest).toHaveBeenCalledOnce()
     expect(harness.closeContext).toHaveBeenCalledOnce()
   })
 

@@ -73,6 +73,77 @@ describe("network safety", () => {
     expect(fetchImplementation).toHaveBeenCalledTimes(1)
   })
 
+  it.each([301, 302, 303, 307, 308])(
+    "rejects a public HTTP redirect before issuing a downgraded request (status %s)",
+    async (status) => {
+      const fetchImplementation = vi.fn(async (input: string | URL) =>
+        new URL(input).protocol === "https:"
+          ? new Response(null, { status, headers: { location: "http://public.example/final" } })
+          : new Response("downgraded content"),
+      )
+      const resolve = vi.fn(resolverFor([{ address: "93.184.216.34", family: 4 }]))
+      await expect(
+        safeFetch(
+          "https://public.example/start",
+          {},
+          {
+            allowedSchemes: new Set(["https"]),
+            fetchImplementation,
+            resolve,
+          },
+        ),
+      ).rejects.toThrow("URL scheme is not allowed: http")
+      expect(fetchImplementation).toHaveBeenCalledTimes(1)
+      expect(resolve).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("allows relative HTTPS redirects under an HTTPS-only policy", async () => {
+    const fetchImplementation = vi.fn(async (input: string | URL) =>
+      new URL(input).pathname === "/start"
+        ? new Response(null, { status: 302, headers: { location: "/final" } })
+        : new Response("secure content"),
+    )
+    const response = await safeFetch(
+      "https://public.example/start",
+      {},
+      {
+        allowedSchemes: new Set(["https"]),
+        fetchImplementation,
+        resolve: resolverFor([{ address: "93.184.216.34", family: 4 }]),
+      },
+    )
+    expect(await response.text()).toBe("secure content")
+    expect(fetchImplementation).toHaveBeenCalledTimes(2)
+    expect(String(fetchImplementation.mock.calls[1]?.[0])).toBe("https://public.example/final")
+  })
+
+  it("continues to allow public HTTP redirects under the default policy", async () => {
+    const fetchImplementation = vi.fn(async (input: string | URL) =>
+      new URL(input).protocol === "https:"
+        ? new Response(null, { status: 302, headers: { location: "http://public.example/final" } })
+        : new Response("public content"),
+    )
+    const response = await safeFetch(
+      "https://public.example/start",
+      {},
+      {
+        fetchImplementation,
+        resolve: resolverFor([{ address: "93.184.216.34", family: 4 }]),
+      },
+    )
+    expect(await response.text()).toBe("public content")
+    expect(fetchImplementation).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not permit non-HTTP schemes even when the caller includes them", async () => {
+    await expect(
+      assertPublicUrl("ftp://8.8.8.8/file", {
+        allowedSchemes: new Set(["ftp"]),
+      }),
+    ).rejects.toThrow("scheme")
+  })
+
   it("stops reading a streamed response at the byte limit", async () => {
     const response = new Response(
       new ReadableStream<Uint8Array>({

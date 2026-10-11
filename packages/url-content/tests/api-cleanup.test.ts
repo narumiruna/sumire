@@ -15,6 +15,15 @@ afterEach(() => {
 })
 
 describe("one-shot client cleanup", () => {
+  it("passes the scheme policy to the one-shot client before loading", async () => {
+    await expect(
+      loadUrlDetailed("http://8.8.8.8/article", {
+        allowedSchemes: new Set(["https"]),
+        loaderNames: ["httpx"],
+      }),
+    ).rejects.toThrow("URL scheme is not allowed: http")
+  })
+
   it("does not replace the original interruption with a cleanup error", async () => {
     const reason = new DOMException("cancelled", "AbortError")
     vi.spyOn(UrlContentClient.prototype, "loadUrlDetailed").mockRejectedValue(reason)

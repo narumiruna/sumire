@@ -50,6 +50,8 @@ console.log(explicit.loaderId); // httpx
 
 The TypeScript API is async-only because JavaScript has no safe synchronous equivalent. `loaderNames` supplies an exact ordered chain: only those loaders are attempted, in order, and failure does not return to automatic planning. Unknown and empty lists are rejected. Prefer automatic planning unless a trusted caller needs a controlled override.
 
+The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict network targets to HTTPS. The same option is available on the `UrlContentClient` constructor. The default permits public HTTP and HTTPS; the option can restrict that set, not permit other protocols. The client copies the set and applies it to initial targets, local fetch redirects, browser requests, curl redirect validation and proxy forwarding, and reported Firecrawl final targets. Firecrawl intermediate redirects and navigation inside third-party transcript/media tools are not independently inspected by this policy.
+
 ## Reusable client
 
 A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.
@@ -124,7 +126,7 @@ Set `FIRECRAWL_API_KEY` for OpenAI web pages or explicit `firecrawl` loading:
 export FIRECRAWL_API_KEY=...
 ```
 
-The loader calls Firecrawl's v1 scrape endpoint and requests Markdown. An HTTP error is reported as an error from the Firecrawl API, not from the target website. Responses are streamed with a 10 MiB cap, empty/challenge results are rejected, and reported final URLs are validated as public targets. Firecrawl performs remote navigation; intermediate redirects inside that service cannot be independently inspected by this package.
+The loader calls Firecrawl's v1 scrape endpoint and requests Markdown. An HTTP error is reported as an error from the Firecrawl API, not from the target website. Responses are streamed with a 10 MiB cap, empty/challenge results are rejected, and reported final URLs are validated as public targets under the client's scheme policy. Firecrawl performs remote navigation; intermediate redirects inside that service cannot be independently inspected by this package.
 
 For ordinary HTML pages, opt in with `loadUrlDetailed(url, { firecrawlFallback: true })` or `client.loadUrlDetailed(url, { firecrawlFallback: true })`. This adds Firecrawl after all local generic alternatives. The default is `false`, even when an API key exists: opting in sends the target URL (including its query) to an external service and may incur charges. Missing keys skip this alternative; less than one second of remaining time also skips it. Explicit Firecrawl selection and the existing OpenAI web pipeline are unchanged. Source-required document and social pipelines never gain generic fallback.
 

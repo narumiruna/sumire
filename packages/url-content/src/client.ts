@@ -80,6 +80,7 @@ class Semaphore {
 }
 
 export interface UrlContentClientOptions {
+  allowedSchemes?: ReadonlySet<string>
   deadlineSeconds?: number
   requestLimit?: number
   browserLimit?: number
@@ -101,6 +102,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   private readonly workerSlots: Semaphore
   private readonly fetchImplementation?: FetchImplementation
   private readonly resolve?: PublicUrlResolver
+  private readonly allowedSchemes: ReadonlySet<string>
   private active = false
   private impersPromise?: Promise<ImpersSession>
   private proxyPromise?: Promise<PublicProxy>
@@ -122,6 +124,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     this.workerSlots = new Semaphore(workerLimit)
     this.fetchImplementation = options.fetchImplementation
     this.resolve = options.resolve
+    this.allowedSchemes = new Set(options.allowedSchemes ?? ["http", "https"])
   }
 
   start(): this {
@@ -135,13 +138,20 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
 
   async validateUrl(input: string | URL, signal?: AbortSignal): Promise<URL> {
     this.checkActive()
-    return (await assertPublicUrl(input, { resolve: this.resolve, signal })).url
+    return (
+      await assertPublicUrl(input, {
+        allowedSchemes: this.allowedSchemes,
+        resolve: this.resolve,
+        signal,
+      })
+    ).url
   }
 
   fetch(input: string | URL, init?: RequestInit): Promise<Response> {
     this.checkActive()
     return safeFetch(input, init, {
       ...(this.fetchImplementation ? { fetchImplementation: this.fetchImplementation } : {}),
+      allowedSchemes: this.allowedSchemes,
       resolve: this.resolve,
       signal: init?.signal ?? undefined,
     })
@@ -159,7 +169,11 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
 
   async impersProxy(): Promise<string> {
     this.checkActive()
-    if (!this.proxyPromise) this.proxyPromise = startPublicProxy({ resolve: this.resolve })
+    if (!this.proxyPromise)
+      this.proxyPromise = startPublicProxy({
+        allowedSchemes: this.allowedSchemes,
+        resolve: this.resolve,
+      })
     return (await this.proxyPromise).url
   }
 
@@ -244,7 +258,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
         options.signal && timeoutSignal
           ? AbortSignal.any([options.signal, timeoutSignal])
           : (options.signal ?? timeoutSignal)
-      await validateTarget(url, this.resolve, validationSignal)
+      await validateTarget(url, this.allowedSchemes, this.resolve, validationSignal)
       const chain =
         explicitChain ??
         resolveLoadChain(url, { ...chainOptions, firecrawlFallback: options.firecrawlFallback })
@@ -309,6 +323,7 @@ function admissionSignal(): AbortSignal | undefined {
 
 async function validateTarget(
   target: string,
+  allowedSchemes: ReadonlySet<string>,
   resolve?: PublicUrlResolver,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -320,7 +335,7 @@ async function validateTarget(
   }
   if (isPdfTarget(target) && !isRemote) return
   try {
-    await assertPublicUrl(target, { resolve, signal })
+    await assertPublicUrl(target, { allowedSchemes, resolve, signal })
   } catch (error) {
     if (error instanceof TypeError && error.message === "URL is invalid")
       throw new TypeError(INVALID_TARGET)

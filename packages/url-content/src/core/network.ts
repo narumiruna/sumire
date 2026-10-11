@@ -19,6 +19,7 @@ const defaultResolver: PublicUrlResolver = (hostname, options) => lookup(hostnam
 const resolverDispatchers = new WeakMap<PublicUrlResolver, Agent>()
 
 interface PublicUrlOptions {
+  allowedSchemes?: ReadonlySet<string>
   resolve?: PublicUrlResolver
   signal?: AbortSignal
 }
@@ -84,7 +85,10 @@ export async function assertPublicUrl(
   } catch {
     throw new TypeError("URL is invalid")
   }
-  if (!new Set(["http:", "https:"]).has(url.protocol)) {
+  if (
+    !new Set(["http:", "https:"]).has(url.protocol) ||
+    (options.allowedSchemes && !options.allowedSchemes.has(url.protocol.slice(0, -1)))
+  ) {
     throw new TypeError(`URL scheme is not allowed: ${url.protocol.replace(/:$/u, "")}`)
   }
   if (url.username || url.password) throw new TypeError("URL credentials are not allowed")
@@ -130,7 +134,11 @@ export async function safeFetch(
   const headers = new Headers(init.headers)
 
   for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
-    await assertPublicUrl(current, { resolve: options.resolve, signal })
+    await assertPublicUrl(current, {
+      allowedSchemes: options.allowedSchemes,
+      resolve: options.resolve,
+      signal,
+    })
     const requestInit = {
       ...init,
       method,

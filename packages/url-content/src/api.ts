@@ -5,6 +5,7 @@ import { explainLoadChain } from "./load-chain.js"
 import { listLoaderNames } from "./loader-registry.js"
 
 export interface LoadUrlOptions {
+  allowedSchemes?: ReadonlySet<string>
   deadlineSeconds?: number
   firecrawlFallback?: boolean
   loaderNames?: readonly string[]
@@ -15,7 +16,10 @@ export async function loadUrlDetailed(
   url: string,
   options: LoadUrlOptions = {},
 ): Promise<LoadResult> {
-  const client = new UrlContentClient({ deadlineSeconds: options.deadlineSeconds }).start()
+  const client = new UrlContentClient({
+    allowedSchemes: options.allowedSchemes,
+    deadlineSeconds: options.deadlineSeconds,
+  }).start()
   // Cleanup continues cooperatively, but cannot indefinitely delay the result.
   const close = () => runBounded(() => client.close(), 5_000)
   let result: LoadResult

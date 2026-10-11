@@ -1,6 +1,10 @@
 import type { lookup } from "node:dns/promises"
 
-import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
+import {
+  LoaderContentError,
+  resolveLoadChain,
+  UrlContentClient,
+} from "@narumitw/sumire-url-content"
 import { htmlToMarkdown } from "@narumitw/sumire-url-content/loaders"
 import { describe, expect, it, vi } from "vitest"
 import {
@@ -169,151 +173,117 @@ describe("public URL loading", () => {
     ).rejects.toThrow("Private")
   })
 
-  it("returns a successful built-in result without invoking the URL content loader", async () => {
-    const fetchImplementation = vi.fn(async () => {
-      return new Response("plain content", { headers: { "content-type": "text/plain" } })
-    })
-    const urlContentLoadImplementation = vi.fn(async () => {
-      throw new Error("URL content loader should not be called")
-    })
-
+  it.each([
+    "https://8.8.8.8/article",
+    "http://8.8.8.8/plain.txt",
+    "https://example.com/short-page",
+    "https://wallhop.io/https://www.wsj.com/world/article?mod=hp_lead_pos1",
+    "https://notwallhop.io/article",
+  ])("delegates automatic loading to url-content without a built-in request: %s", async (url) => {
+    const fetchImplementation = vi.fn(
+      async () =>
+        new Response(
+          "<html><title>wsj.com</title><body>Please enable JS and disable any ad blocker</body></html>",
+          { headers: { "content-type": "text/html" } },
+        ),
+    )
+    const source = vi.fn(async (_url: string, _options: { loaderNames?: readonly string[] }) => ({
+      content: "Readable article body",
+      loaderId: "curl-cffi",
+      contentType: "generic_web",
+      downgraded: false,
+      attempts: [{ loaderId: "curl-cffi", status: "success" as const, elapsedSeconds: 1 }],
+    }))
+    const signal = new AbortController().signal
     await expect(
-      loadPublicUrl("https://8.8.8.8/page", {
+      loadPublicUrl(url, {
         ...options,
+        signal,
+        resolve: (async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
         fetchImplementation,
         urlContentTimeoutSeconds: 12,
-        urlContentLoadImplementation,
+        urlContentLoadImplementation: source,
       }),
     ).resolves.toMatchObject({
-      source: "built-in",
-      text: "plain content",
-      status: 200,
+      url,
+      finalUrl: url,
+      source: "url-content",
+      loaderId: "curl-cffi",
+      text: "Readable article body",
+      attempts: [{ loaderId: "curl-cffi", status: "success", elapsedSeconds: 1 }],
     })
-    expect(urlContentLoadImplementation).not.toHaveBeenCalled()
+    expect(fetchImplementation).not.toHaveBeenCalled()
+    expect(source).toHaveBeenCalledExactlyOnceWith(url, {
+      allowedSchemes: options.allowedSchemes,
+      deadlineSeconds: expect.any(Number),
+      signal: expect.any(AbortSignal),
+    })
+    expect(source.mock.calls[0]?.[1]).not.toHaveProperty("loaderNames")
   })
 
-  it.each(["wallhop.io", "WALLHOP.IO", "wallhop.io."])(
-    "routes %s directly to source-aware loading instead of accepting an HTTP 200 challenge",
-    async (host) => {
-      const url = `https://${host}/https://www.wsj.com/world/article?mod=hp_lead_pos1`
-      const fetchImplementation = vi.fn(
-        async () =>
-          new Response(
-            "<html><title>wsj.com</title><body>Please enable JS and disable any ad blocker</body></html>",
-            { headers: { "content-type": "text/html" } },
-          ),
+  it.each([undefined, "httpx"])(
+    "preserves HTTPS-only policy across delegated redirects (loader=%s)",
+    async (loader) => {
+      const transport = vi.fn(async (input: string | URL) =>
+        new URL(input).protocol === "https:"
+          ? new Response(null, { status: 302, headers: { location: "http://8.8.8.8/final" } })
+          : new Response("downgraded content", { headers: { "content-type": "text/plain" } }),
       )
-      const source = vi.fn(async (_url: string, _options: { loaderNames?: readonly string[] }) => ({
-        content: "Readable article body",
-        loaderId: "curl-cffi",
-        contentType: "generic_web",
-        downgraded: false,
-        attempts: [{ loaderId: "curl-cffi", status: "success" as const, elapsedSeconds: 1 }],
-      }))
-      const signal = new AbortController().signal
+      const fetchImplementation = vi.fn()
+      const allowedSchemes = new Set(["https"])
       await expect(
-        loadPublicUrl(url, {
+        loadPublicUrl("https://8.8.8.8/start", {
           ...options,
-          signal,
-          resolve: vi.fn(async () => [
-            { address: "8.8.8.8", family: 4 },
-          ]) as unknown as typeof lookup,
+          allowedSchemes,
+          loader,
           fetchImplementation,
           urlContentTimeoutSeconds: 12,
-          urlContentLoadImplementation: source,
+          urlContentLoadImplementation: async (url, sourceOptions) => {
+            expect(sourceOptions.allowedSchemes).toEqual(allowedSchemes)
+            await using client = new UrlContentClient({
+              allowedSchemes: sourceOptions.allowedSchemes,
+              deadlineSeconds: sourceOptions.deadlineSeconds,
+              fetchImplementation: transport,
+            }).start()
+            return await client.loadUrlDetailed(url, {
+              loaderNames: sourceOptions.loaderNames ?? ["httpx"],
+              signal: sourceOptions.signal,
+            })
+          },
         }),
-      ).resolves.toMatchObject({
-        source: "url-content",
-        loaderId: "curl-cffi",
-        text: "Readable article body",
-        attempts: [{ loaderId: "curl-cffi", status: "success" }],
-      })
+      ).rejects.toThrow("Failed to load URL")
+      expect(transport).toHaveBeenCalledTimes(1)
       expect(fetchImplementation).not.toHaveBeenCalled()
-      expect(source).toHaveBeenCalledExactlyOnceWith(
-        url,
-        expect.objectContaining({
-          deadlineSeconds: expect.any(Number),
-          signal: expect.any(AbortSignal),
-        }),
-      )
-      expect(source.mock.calls[0]?.[1]).not.toHaveProperty("loaderNames")
     },
   )
 
-  it.each(["wallhop.io.example.com", "notwallhop.io"])(
-    "keeps the built-in path for unrelated host %s",
-    async (host) => {
-      const source = vi.fn()
-      await expect(
-        loadPublicUrl(`https://${host}/article`, {
-          ...options,
-          resolve: vi.fn(async () => [
-            { address: "8.8.8.8", family: 4 },
-          ]) as unknown as typeof lookup,
-          fetchImplementation: async () =>
-            new Response("plain content", { headers: { "content-type": "text/plain" } }),
-          urlContentTimeoutSeconds: 12,
-          urlContentLoadImplementation: source,
+  it("preserves source-aware plain text without HTML conversion", async () => {
+    const fetchImplementation = vi.fn()
+    await expect(
+      loadPublicUrl("https://8.8.8.8/plain.txt", {
+        ...options,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: async () => ({
+          content: "Use <tag> & keep\nline breaks.",
+          loaderId: "httpx",
+          contentType: "generic_web",
+          downgraded: false,
+          attempts: [],
         }),
-      ).resolves.toMatchObject({ source: "built-in", text: "plain content" })
-      expect(source).not.toHaveBeenCalled()
-    },
-  )
-
-  it("preserves an explicit built-in override for WallHop", async () => {
-    const source = vi.fn()
-    await expect(
-      loadPublicUrl("https://wallhop.io/https://example.com/article", {
-        ...options,
-        loader: "built-in",
-        resolve: vi.fn(async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
-        fetchImplementation: async () =>
-          new Response("plain content", { headers: { "content-type": "text/plain" } }),
-        urlContentTimeoutSeconds: 12,
-        urlContentLoadImplementation: source,
       }),
-    ).resolves.toMatchObject({ source: "built-in", text: "plain content" })
-    expect(source).not.toHaveBeenCalled()
-  })
-
-  it("does not bypass public-target validation for WallHop", async () => {
-    const source = vi.fn()
-    const fetchImplementation = vi.fn()
-    await expect(
-      loadPublicUrl("https://wallhop.io/https://example.com/article", {
-        ...options,
-        resolve: vi.fn(async () => [
-          { address: "127.0.0.1", family: 4 },
-        ]) as unknown as typeof lookup,
-        fetchImplementation,
-        urlContentTimeoutSeconds: 12,
-        urlContentLoadImplementation: source,
-      }),
-    ).rejects.toThrow("private or non-routable")
-    expect(source).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({
+      source: "url-content",
+      text: "Use <tag> & keep\nline breaks.",
+      truncated: false,
+    })
     expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
-  it("propagates WallHop source failures without returning a built-in challenge", async () => {
-    const failure = new Error("Source loading failed")
-    const fetchImplementation = vi.fn()
-    await expect(
-      loadPublicUrl("https://wallhop.io/https://example.com/article", {
-        ...options,
-        resolve: vi.fn(async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
-        fetchImplementation,
-        urlContentTimeoutSeconds: 12,
-        urlContentLoadImplementation: async () => {
-          throw failure
-        },
-      }),
-    ).rejects.toBe(failure)
-    expect(fetchImplementation).not.toHaveBeenCalled()
-  })
-
-  it("automatically reaches a fast browser on the first tool call after transport failure", async () => {
+  it("automatically reaches a fast browser on the first tool call after source transport failure", async () => {
     const url = "https://8.8.8.8/article"
     const built: string[] = []
+    const fetchImplementation = vi.fn()
     const tool = createUrlTool({
       load: (target, request) =>
         loadPublicUrl(target, {
@@ -321,7 +291,7 @@ describe("public URL loading", () => {
           maxChars: 1_000,
           urlContentTimeoutSeconds: 2,
           signal: request?.signal,
-          fetchImplementation: async () => new Response(null, { status: 403 }),
+          fetchImplementation,
           urlContentLoadImplementation: async (_target, sourceOptions) =>
             resolveLoadChain(target, {
               getFactory: (name) => () => {
@@ -340,13 +310,19 @@ describe("public URL loading", () => {
     })
     const result = await tool.execute("call", { url }, undefined, undefined, undefined as never)
     expect(result.details).toMatchObject({
+      source: "url-content",
       loaderId: "playwright-fast",
       text: "Readable article body",
+      attempts: [
+        { loaderId: "curl-cffi", status: "failed" },
+        { loaderId: "playwright-fast", status: "success" },
+      ],
     })
     expect(built).toEqual(["curl-cffi", "playwright-fast"])
+    expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
-  it("includes built-in time in the source fallback's remaining deadline and forwards opt-in", async () => {
+  it("includes validation time in the source deadline and forwards Firecrawl opt-in", async () => {
     const source = vi.fn(async () => ({
       content: "article",
       loaderId: "httpx",
@@ -354,18 +330,18 @@ describe("public URL loading", () => {
       downgraded: false,
       attempts: [],
     }))
-    await loadPublicUrl("https://8.8.8.8/article", {
+    await loadPublicUrl("https://example.com/article", {
       ...options,
       urlContentTimeoutSeconds: 1,
       firecrawlFallback: true,
-      fetchImplementation: async () => {
+      resolve: (async () => {
         await new Promise((resolve) => setTimeout(resolve, 20))
-        return new Response(null, { status: 403 })
-      },
+        return [{ address: "8.8.8.8", family: 4 }]
+      }) as unknown as typeof lookup,
       urlContentLoadImplementation: source,
     })
     expect(source).toHaveBeenCalledWith(
-      "https://8.8.8.8/article",
+      "https://example.com/article",
       expect.objectContaining({
         deadlineSeconds: expect.any(Number),
         firecrawlFallback: true,
@@ -378,43 +354,116 @@ describe("public URL loading", () => {
     expect(budget).toBeLessThan(0.99)
   })
 
-  it("does not start fallback when the total deadline expires during built-in loading", async () => {
+  it("does not start source loading when the total deadline expires during validation", async () => {
     const source = vi.fn()
     await expect(
-      loadPublicUrl("https://8.8.8.8/article", {
+      loadPublicUrl("https://pending.example/article", {
         ...options,
         urlContentTimeoutSeconds: 0.01,
-        fetchImplementation: async (_url, init) =>
-          new Promise<Response>((_, reject) =>
-            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
-              once: true,
-            }),
-          ),
+        resolve: (() => new Promise<never>(() => {})) as unknown as typeof lookup,
         urlContentLoadImplementation: source,
       }),
     ).rejects.toMatchObject({ name: "TimeoutError" })
     expect(source).not.toHaveBeenCalled()
   })
 
-  it.each([undefined, "built-in"])(
-    "rejects a late successful built-in result (loader=%s)",
-    async (loader) => {
-      const source = vi.fn()
-      await expect(
-        loadPublicUrl("https://8.8.8.8/article", {
-          ...options,
-          urlContentTimeoutSeconds: 0.01,
-          loader,
-          fetchImplementation: async () => {
-            await new Promise((resolve) => setTimeout(resolve, 20))
-            return new Response("late article", { headers: { "content-type": "text/plain" } })
-          },
-          urlContentLoadImplementation: source,
-        }),
-      ).rejects.toMatchObject({ name: "TimeoutError" })
-      expect(source).not.toHaveBeenCalled()
-    },
-  )
+  it("forwards caller cancellation to source loading and preserves its reason", async () => {
+    const controller = new AbortController()
+    const reason = new Error("Caller cancelled")
+    const fetchImplementation = vi.fn()
+    await expect(
+      loadPublicUrl("https://8.8.8.8/article", {
+        ...options,
+        signal: controller.signal,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: async (_url, sourceOptions) => {
+          controller.abort(reason)
+          sourceOptions.signal?.throwIfAborted()
+          throw new Error("Expected the forwarded signal to be aborted")
+        },
+      }),
+    ).rejects.toBe(reason)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
+  it("rejects a late successful source result after the total deadline", async () => {
+    await expect(
+      loadPublicUrl("https://8.8.8.8/article", {
+        ...options,
+        urlContentTimeoutSeconds: 0.01,
+        urlContentLoadImplementation: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          return {
+            content: "late article",
+            loaderId: "httpx",
+            contentType: "generic_web",
+            downgraded: false,
+            attempts: [],
+          }
+        },
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" })
+  })
+
+  it("rejects a late successful explicit built-in result", async () => {
+    const source = vi.fn()
+    await expect(
+      loadPublicUrl("https://8.8.8.8/article", {
+        ...options,
+        urlContentTimeoutSeconds: 0.01,
+        loader: "built-in",
+        fetchImplementation: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          return new Response("late article", { headers: { "content-type": "text/plain" } })
+        },
+        urlContentLoadImplementation: source,
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" })
+    expect(source).not.toHaveBeenCalled()
+  })
+
+  it("preserves automatic source errors and never falls back to built-in extraction", async () => {
+    const cause = new AggregateError(
+      [new LoaderContentError("CurlCffiLoader", "https://8.8.8.8/article", "transport failed")],
+      "Source chain failed",
+    )
+    const fetchImplementation = vi.fn()
+    const source = vi.fn(async () => {
+      throw cause
+    })
+    await expect(
+      loadPublicUrl("https://8.8.8.8/article", {
+        ...options,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: source,
+      }),
+    ).rejects.toBe(cause)
+    expect(source).toHaveBeenCalledOnce()
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "http://127.0.0.1/private",
+    "file:///etc/passwd",
+    "https://user:pass@8.8.8.8/",
+    "https://unsafe.example/article",
+  ])("rejects unsafe automatic targets before invoking url-content: %s", async (url) => {
+    const source = vi.fn()
+    const fetchImplementation = vi.fn()
+    await expect(
+      loadPublicUrl(url, {
+        ...options,
+        resolve: (async () => [{ address: "10.0.0.1", family: 4 }]) as unknown as typeof lookup,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: source,
+      }),
+    ).rejects.toThrow()
+    expect(source).not.toHaveBeenCalled()
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
 
   it("runs only the explicitly selected built-in loader", async () => {
     const fetchImplementation = vi.fn(
@@ -466,6 +515,7 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/page", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       loaderNames: ["httpx"],
       signal: expect.any(AbortSignal),
@@ -489,7 +539,6 @@ describe("public URL loading", () => {
     const result = await loadPublicUrl("https://8.8.8.8/guide", {
       ...options,
       maxChars,
-      loader: "curl-cffi",
       urlContentTimeoutSeconds: 12,
       urlContentLoadImplementation,
     })
@@ -502,8 +551,8 @@ describe("public URL loading", () => {
       `${content.slice(0, maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${maxChars} chars]`,
     )
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/guide", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
-      loaderNames: ["curl-cffi"],
       signal: expect.any(AbortSignal),
     })
   })
@@ -528,7 +577,7 @@ describe("public URL loading", () => {
     expect(urlContentLoadImplementation).toHaveBeenCalledOnce()
   })
 
-  it("falls back to bounded URL content output with the configured deadline", async () => {
+  it("delegates PDF extraction with bounded output and the configured deadline", async () => {
     const fetchImplementation = vi.fn(async () => {
       return new Response("%PDF", { headers: { "content-type": "application/pdf" } })
     })
@@ -555,7 +604,9 @@ describe("public URL loading", () => {
       text: "abc\n\n[truncated by telegramagent: 6 -> 3 chars]",
       truncated: true,
     })
+    expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledWith("https://8.8.8.8/file.pdf", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -572,8 +623,8 @@ describe("public URL loading", () => {
     })
     const urlContentLoadImplementation = vi.fn(async () => ({
       content: "video transcript",
-      loaderId: "youtube-transcript",
-      contentType: "transcript",
+      loaderId: "youtube",
+      contentType: "youtube_video",
       downgraded: false,
       attempts: [],
     }))
@@ -588,9 +639,10 @@ describe("public URL loading", () => {
       }),
     ).resolves.toMatchObject({
       source: "url-content",
-      loaderId: "youtube-transcript",
+      loaderId: "youtube",
       text: "video transcript",
     })
+    expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
   it("routes Threads posts directly to source-aware metadata extraction", async () => {
@@ -623,6 +675,7 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -652,6 +705,7 @@ describe("public URL loading", () => {
     ).resolves.toMatchObject({ loaderId: "threads", contentType: "social_post" })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(verified).toHaveBeenCalledWith(url, {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -735,6 +789,7 @@ describe("public URL loading", () => {
       })
       expect(fetchImplementation).not.toHaveBeenCalled()
       expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+        allowedSchemes: options.allowedSchemes,
         deadlineSeconds: expect.any(Number),
         signal: expect.any(AbortSignal),
       })
