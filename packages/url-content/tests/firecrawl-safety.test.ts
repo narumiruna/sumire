@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { UrlContentClient } from "../src/client.js"
 import { LoaderTimeoutError } from "../src/core/errors.js"
 import type { ResourceProvider } from "../src/core/resources.js"
 import { FirecrawlLoader, MAX_FIRECRAWL_BYTES } from "../src/loaders/firecrawl.js"
@@ -73,6 +74,23 @@ describe("Firecrawl result safety", () => {
       data: { markdown: "Article", metadata: { url: "http://127.0.0.1/private" } },
     })
     await expect(loader(response).load("https://example.com")).rejects.toThrow("Private URL target")
+  })
+
+  it("rejects a reported HTTP final target under an HTTPS-only client policy", async () => {
+    await using client = new UrlContentClient({
+      allowedSchemes: new Set(["https"]),
+      resolve: async () => [{ address: "8.8.8.8", family: 4 }],
+      fetchImplementation: async () =>
+        Response.json({
+          success: true,
+          data: { markdown: "Article", metadata: { url: "http://8.8.8.8/final" } },
+        }),
+    }).start()
+    await expect(
+      new FirecrawlLoader({ apiKey: "test-key", resources: client }).load(
+        "https://example.com/start",
+      ),
+    ).rejects.toThrow("URL scheme is not allowed: http")
   })
 
   it("rejects challenge headings rather than accepting nonempty error pages", async () => {

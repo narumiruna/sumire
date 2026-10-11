@@ -101,6 +101,7 @@ interface FetchPublicUrlOptions {
 type UrlContentLoadImplementation = (
   url: string,
   options: {
+    allowedSchemes?: ReadonlySet<string>
     deadlineSeconds?: number
     firecrawlFallback?: boolean
     loaderNames?: readonly string[]
@@ -194,6 +195,7 @@ async function loadSourceUrl(
       : Math.max(0, options.deadlineAt - performance.now()) / 1_000
   if (remaining <= 0) throw new DOMException("Deadline expired", "TimeoutError")
   const result = await load(urlValue, {
+    allowedSchemes: options.allowedSchemes,
     deadlineSeconds: remaining,
     ...(options.firecrawlFallback ? { firecrawlFallback: true } : {}),
     ...(loaderNames ? { loaderNames } : {}),

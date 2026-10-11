@@ -73,6 +73,41 @@ describe("UrlContentClient", () => {
     }
   })
 
+  it("enforces the configured scheme policy in validation and HTTP redirects", async () => {
+    const fetchImplementation = vi.fn(async (input: string | URL) =>
+      new URL(input).protocol === "https:"
+        ? new Response(null, { status: 302, headers: { location: "http://example.com/final" } })
+        : new Response("downgraded content", { headers: { "content-type": "text/plain" } }),
+    )
+    const client = new UrlContentClient({
+      allowedSchemes: new Set(["https"]),
+      fetchImplementation,
+      resolve: async () => [{ address: "8.8.8.8", family: 4 }],
+    }).start()
+    try {
+      await expect(client.validateUrl("http://example.com/final")).rejects.toThrow("scheme")
+      await expect(client.fetch("https://example.com/start")).rejects.toThrow("scheme")
+      expect(fetchImplementation).toHaveBeenCalledTimes(1)
+      fetchImplementation.mockClear()
+      await expect(
+        client.loadUrlDetailed("https://example.com/start", {
+          loaderNames: ["httpx"],
+        }),
+      ).rejects.toThrow("Failed to load URL")
+      expect(fetchImplementation).toHaveBeenCalledTimes(1)
+    } finally {
+      await client.close()
+    }
+  })
+
+  it("copies the scheme policy so later caller mutation cannot permit HTTP", async () => {
+    const allowedSchemes = new Set(["https"])
+    await using client = new UrlContentClient({ allowedSchemes }).start()
+    allowedSchemes.add("http")
+    await expect(client.validateUrl("http://8.8.8.8/article")).rejects.toThrow("scheme")
+    await expect(client.validateUrl("https://8.8.8.8/article")).resolves.toBeInstanceOf(URL)
+  })
+
   it("preserves registry content types for explicit source loaders", async () => {
     const fetchImplementation = vi.fn(
       async () =>

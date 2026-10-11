@@ -1,6 +1,10 @@
 import type { lookup } from "node:dns/promises"
 
-import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
+import {
+  LoaderContentError,
+  resolveLoadChain,
+  UrlContentClient,
+} from "@narumitw/sumire-url-content"
 import { htmlToMarkdown } from "@narumitw/sumire-url-content/loaders"
 import { describe, expect, it, vi } from "vitest"
 import {
@@ -210,11 +214,48 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(source).toHaveBeenCalledExactlyOnceWith(url, {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
     expect(source.mock.calls[0]?.[1]).not.toHaveProperty("loaderNames")
   })
+
+  it.each([undefined, "httpx"])(
+    "preserves HTTPS-only policy across delegated redirects (loader=%s)",
+    async (loader) => {
+      const transport = vi.fn(async (input: string | URL) =>
+        new URL(input).protocol === "https:"
+          ? new Response(null, { status: 302, headers: { location: "http://8.8.8.8/final" } })
+          : new Response("downgraded content", { headers: { "content-type": "text/plain" } }),
+      )
+      const fetchImplementation = vi.fn()
+      const allowedSchemes = new Set(["https"])
+      await expect(
+        loadPublicUrl("https://8.8.8.8/start", {
+          ...options,
+          allowedSchemes,
+          loader,
+          fetchImplementation,
+          urlContentTimeoutSeconds: 12,
+          urlContentLoadImplementation: async (url, sourceOptions) => {
+            expect(sourceOptions.allowedSchemes).toEqual(allowedSchemes)
+            await using client = new UrlContentClient({
+              allowedSchemes: sourceOptions.allowedSchemes,
+              deadlineSeconds: sourceOptions.deadlineSeconds,
+              fetchImplementation: transport,
+            }).start()
+            return await client.loadUrlDetailed(url, {
+              loaderNames: sourceOptions.loaderNames ?? ["httpx"],
+              signal: sourceOptions.signal,
+            })
+          },
+        }),
+      ).rejects.toThrow("Failed to load URL")
+      expect(transport).toHaveBeenCalledTimes(1)
+      expect(fetchImplementation).not.toHaveBeenCalled()
+    },
+  )
 
   it("preserves source-aware plain text without HTML conversion", async () => {
     const fetchImplementation = vi.fn()
@@ -474,6 +515,7 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/page", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       loaderNames: ["httpx"],
       signal: expect.any(AbortSignal),
@@ -509,6 +551,7 @@ describe("public URL loading", () => {
       `${content.slice(0, maxChars)}\n\n[truncated by telegramagent: ${content.length} -> ${maxChars} chars]`,
     )
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith("https://8.8.8.8/guide", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -563,6 +606,7 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledWith("https://8.8.8.8/file.pdf", {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -631,6 +675,7 @@ describe("public URL loading", () => {
     })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -660,6 +705,7 @@ describe("public URL loading", () => {
     ).resolves.toMatchObject({ loaderId: "threads", contentType: "social_post" })
     expect(fetchImplementation).not.toHaveBeenCalled()
     expect(verified).toHaveBeenCalledWith(url, {
+      allowedSchemes: options.allowedSchemes,
       deadlineSeconds: expect.any(Number),
       signal: expect.any(AbortSignal),
     })
@@ -743,6 +789,7 @@ describe("public URL loading", () => {
       })
       expect(fetchImplementation).not.toHaveBeenCalled()
       expect(urlContentLoadImplementation).toHaveBeenCalledExactlyOnceWith(url, {
+        allowedSchemes: options.allowedSchemes,
         deadlineSeconds: expect.any(Number),
         signal: expect.any(AbortSignal),
       })

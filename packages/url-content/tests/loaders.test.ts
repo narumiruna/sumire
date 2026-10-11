@@ -1,6 +1,7 @@
 import type { Page } from "playwright"
 import { describe, expect, it, vi } from "vitest"
 
+import { UrlContentClient } from "../src/client.js"
 import { LoaderContentError, LoaderTimeoutError } from "../src/core/errors.js"
 import type { ImpersSession, ResourceProvider } from "../src/core/resources.js"
 import { FirecrawlLoader } from "../src/loaders/firecrawl.js"
@@ -138,6 +139,23 @@ describe("source loaders", () => {
     await expect(
       new CurlCffiLoader({ resources }).load("https://example.com/image"),
     ).rejects.toThrow("Expected textual content")
+  })
+
+  it("rejects a curl-cffi HTTP downgrade before the redirected request", async () => {
+    const close = vi.fn(async () => undefined)
+    const get = vi.fn(async () => ({
+      status: 302,
+      headers: new Headers({ location: "http://8.8.8.8/final" }),
+      close,
+    }))
+    await using client = new UrlContentClient({ allowedSchemes: new Set(["https"]) }).start()
+    vi.spyOn(client, "impersSession").mockResolvedValue({ get } as unknown as ImpersSession)
+    vi.spyOn(client, "impersProxy").mockResolvedValue("http://127.0.0.1:8080")
+    await expect(
+      new CurlCffiLoader({ resources: client }).load("https://8.8.8.8/start"),
+    ).rejects.toThrow("URL scheme is not allowed: http")
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledOnce()
   })
 
   it("strips sensitive impers headers on cross-origin redirects", async () => {
