@@ -174,7 +174,9 @@ export async function loadPublicUrl(
   if (options.loader) return loadSourceUrl(urlValue, options, [options.loader])
 
   // These sources expose an application shell or raw document bytes to generic HTML extraction.
+  // WallHop can return an HTTP 200 challenge to the built-in HTTP client.
   if (
+    normalizeHostname(new URL(urlValue).hostname) === "wallhop.io" ||
     isGoogleDocsUrl(urlValue) ||
     isAnyDocUrl(urlValue) ||
     isThreadsPostUrl(urlValue) ||

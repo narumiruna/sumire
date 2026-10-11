@@ -40,6 +40,8 @@ Failures, including unknown, disallowed, inapplicable, or unavailable explicit l
 
 Threads post and `/share/<id>` links and Google Docs document links bypass the built-in HTML loader after public-target validation and use dedicated source loaders. Threads share links require matching post URLs in Open Graph and canonical metadata; error pages and title-only responses fail rather than accepting a JavaScript application shell. Explicit generic loader overrides on share links still run exactly that loader but cannot return an unverified generic-web result as a post; `built-in` is rejected without fetching. Open Graph text may be an excerpt rather than the full post. Google Docs requests a plain-text export instead of downloading the editor application. Known document filename extensions also go directly to source-aware loading: Office, OpenDocument, RTF, EPUB, and CSV links use local `anydoc` conversion unless an existing source-specific plan takes precedence; PDF links keep their existing PDF loader. No hosted OCR is enabled. Document failures retain their source error details and do not fall back to generic HTML; the normal output character limit still applies.
 
+WallHop (`wallhop.io`) URLs also bypass the built-in loader after public-target validation and use the existing automatic source-aware chain, starting with `curl-cffi`. The built-in HTTP client can receive an HTTP 200 JavaScript challenge instead of the article. Routing uses the hostname, not warning text. Explicit loader overrides retain their exact-loader behavior.
+
 ```mermaid
 flowchart LR
     Agent[Pi agent] --> Tool[load_public_url]
