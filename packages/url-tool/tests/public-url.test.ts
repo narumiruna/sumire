@@ -192,6 +192,125 @@ describe("public URL loading", () => {
     expect(urlContentLoadImplementation).not.toHaveBeenCalled()
   })
 
+  it.each(["wallhop.io", "WALLHOP.IO", "wallhop.io."])(
+    "routes %s directly to source-aware loading instead of accepting an HTTP 200 challenge",
+    async (host) => {
+      const url = `https://${host}/https://www.wsj.com/world/article?mod=hp_lead_pos1`
+      const fetchImplementation = vi.fn(
+        async () =>
+          new Response(
+            "<html><title>wsj.com</title><body>Please enable JS and disable any ad blocker</body></html>",
+            { headers: { "content-type": "text/html" } },
+          ),
+      )
+      const source = vi.fn(async (_url: string, _options: { loaderNames?: readonly string[] }) => ({
+        content: "Readable article body",
+        loaderId: "curl-cffi",
+        contentType: "generic_web",
+        downgraded: false,
+        attempts: [{ loaderId: "curl-cffi", status: "success" as const, elapsedSeconds: 1 }],
+      }))
+      const signal = new AbortController().signal
+      await expect(
+        loadPublicUrl(url, {
+          ...options,
+          signal,
+          resolve: vi.fn(async () => [
+            { address: "8.8.8.8", family: 4 },
+          ]) as unknown as typeof lookup,
+          fetchImplementation,
+          urlContentTimeoutSeconds: 12,
+          urlContentLoadImplementation: source,
+        }),
+      ).resolves.toMatchObject({
+        source: "url-content",
+        loaderId: "curl-cffi",
+        text: "Readable article body",
+        attempts: [{ loaderId: "curl-cffi", status: "success" }],
+      })
+      expect(fetchImplementation).not.toHaveBeenCalled()
+      expect(source).toHaveBeenCalledExactlyOnceWith(
+        url,
+        expect.objectContaining({
+          deadlineSeconds: expect.any(Number),
+          signal: expect.any(AbortSignal),
+        }),
+      )
+      expect(source.mock.calls[0]?.[1]).not.toHaveProperty("loaderNames")
+    },
+  )
+
+  it.each(["wallhop.io.example.com", "notwallhop.io"])(
+    "keeps the built-in path for unrelated host %s",
+    async (host) => {
+      const source = vi.fn()
+      await expect(
+        loadPublicUrl(`https://${host}/article`, {
+          ...options,
+          resolve: vi.fn(async () => [
+            { address: "8.8.8.8", family: 4 },
+          ]) as unknown as typeof lookup,
+          fetchImplementation: async () =>
+            new Response("plain content", { headers: { "content-type": "text/plain" } }),
+          urlContentTimeoutSeconds: 12,
+          urlContentLoadImplementation: source,
+        }),
+      ).resolves.toMatchObject({ source: "built-in", text: "plain content" })
+      expect(source).not.toHaveBeenCalled()
+    },
+  )
+
+  it("preserves an explicit built-in override for WallHop", async () => {
+    const source = vi.fn()
+    await expect(
+      loadPublicUrl("https://wallhop.io/https://example.com/article", {
+        ...options,
+        loader: "built-in",
+        resolve: vi.fn(async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
+        fetchImplementation: async () =>
+          new Response("plain content", { headers: { "content-type": "text/plain" } }),
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: source,
+      }),
+    ).resolves.toMatchObject({ source: "built-in", text: "plain content" })
+    expect(source).not.toHaveBeenCalled()
+  })
+
+  it("does not bypass public-target validation for WallHop", async () => {
+    const source = vi.fn()
+    const fetchImplementation = vi.fn()
+    await expect(
+      loadPublicUrl("https://wallhop.io/https://example.com/article", {
+        ...options,
+        resolve: vi.fn(async () => [
+          { address: "127.0.0.1", family: 4 },
+        ]) as unknown as typeof lookup,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: source,
+      }),
+    ).rejects.toThrow("private or non-routable")
+    expect(source).not.toHaveBeenCalled()
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
+  it("propagates WallHop source failures without returning a built-in challenge", async () => {
+    const failure = new Error("Source loading failed")
+    const fetchImplementation = vi.fn()
+    await expect(
+      loadPublicUrl("https://wallhop.io/https://example.com/article", {
+        ...options,
+        resolve: vi.fn(async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof lookup,
+        fetchImplementation,
+        urlContentTimeoutSeconds: 12,
+        urlContentLoadImplementation: async () => {
+          throw failure
+        },
+      }),
+    ).rejects.toBe(failure)
+    expect(fetchImplementation).not.toHaveBeenCalled()
+  })
+
   it("automatically reaches a fast browser on the first tool call after transport failure", async () => {
     const url = "https://8.8.8.8/article"
     const built: string[] = []
