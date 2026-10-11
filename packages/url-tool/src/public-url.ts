@@ -5,12 +5,7 @@ import { isIP, type LookupFunction } from "node:net"
 import {
   type AttemptRecord,
   getLoaderDef,
-  isAnyDocUrl,
-  isGoogleDocsUrl,
-  isThreadsPostUrl,
   isThreadsShareUrl,
-  isTwitterStatusUrl,
-  isYouTubeVideoUrl,
   LoaderContentError,
   loadUrlDetailed,
   type LoadResult as UrlContentLoadResult,
@@ -25,14 +20,6 @@ const acceptedContentTypes = [
   "application/xml",
   "application/xhtml+xml",
 ]
-const blockerPhrases = [
-  "javascript is not available",
-  "javascript is disabled in this browser",
-  "please wait for verification",
-  "verify you are a human",
-  "verify you're a human",
-]
-
 export const BUILT_IN_URL_LOADER = "built-in"
 
 export function assertUrlLoaderName(loader: string): void {
@@ -171,40 +158,7 @@ export async function loadPublicUrl(
     assertWithinBudget(options)
     return loadedBuiltInUrl(result)
   }
-  if (options.loader) return loadSourceUrl(urlValue, options, [options.loader])
-
-  // These sources expose an application shell or raw document bytes to generic HTML extraction.
-  // WallHop can return an HTTP 200 challenge to the built-in HTTP client.
-  if (
-    normalizeHostname(new URL(urlValue).hostname) === "wallhop.io" ||
-    isGoogleDocsUrl(urlValue) ||
-    isAnyDocUrl(urlValue) ||
-    isThreadsPostUrl(urlValue) ||
-    isThreadsShareUrl(urlValue)
-  ) {
-    return loadSourceUrl(urlValue, options)
-  }
-
-  let builtInError: unknown
-  try {
-    const result = await fetchPublicUrl(urlValue, options)
-    assertWithinBudget(options)
-    if (!requiresUrlContentLoader(urlValue, result)) return loadedBuiltInUrl(result)
-    builtInError = new Error("The built-in loader did not extract source-specific content")
-  } catch (error) {
-    assertWithinBudget(options)
-    builtInError = error
-  }
-
-  try {
-    return await loadSourceUrl(urlValue, options)
-  } catch (urlContentError) {
-    assertWithinBudget(options)
-    throw new AggregateError(
-      [builtInError, urlContentError],
-      "Built-in and source-aware URL loading both failed",
-    )
-  }
+  return loadSourceUrl(urlValue, options, options.loader ? [options.loader] : undefined)
 }
 
 function assertWithinBudget(options: LoadPublicUrlOptions): void {
@@ -342,20 +296,6 @@ export async function fetchPublicUrl(
     }
   }
   throw new Error("URL loader ended unexpectedly")
-}
-
-function requiresUrlContentLoader(urlValue: string, result: FetchedUrl): boolean {
-  if (!result.title && !result.text.trim()) return true
-  if (
-    isYouTubeVideoUrl(urlValue) ||
-    isYouTubeVideoUrl(result.finalUrl) ||
-    isTwitterStatusUrl(urlValue) ||
-    isTwitterStatusUrl(result.finalUrl)
-  ) {
-    return true
-  }
-  const content = `${result.title ?? ""} ${result.text}`.toLowerCase()
-  return blockerPhrases.some((phrase) => content.includes(phrase))
 }
 
 export async function assertPublicUrl(
