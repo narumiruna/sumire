@@ -325,6 +325,9 @@ describe("Telegram bot update routing", () => {
 
     expect(calls[0]?.payload.text).not.toContain("/ask")
     expect(calls[0]?.payload.text).toContain("@mention")
+    expect(calls[0]?.payload.text).toContain(
+      "Sumire 專案原始碼與說明：https://github.com/narumiruna/sumire",
+    )
     expect(calls[0]?.payload.text).toContain("/f <內容>")
     expect(calls[0]?.payload.text).toContain("/t <代碼>")
     expect(calls[0]?.payload.text).toContain("read、bash、edit、write")
