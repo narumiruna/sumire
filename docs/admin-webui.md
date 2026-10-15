@@ -101,7 +101,19 @@ Telegram `/model` and `/thinking` use the same persisted chat selection as the W
 
 ## Model providers
 
-Use **Model Providers** to select built-in providers or configure a public compatible endpoint. Custom endpoints require an API type and explicit chat model metadata. Supported custom API types are OpenAI Completions, OpenAI Responses, Anthropic Messages, and Google Generative AI. Administration policies select physical chat models, not virtual routers, classifiers, or image-generation models. Model IDs may contain slashes; provider IDs cannot.
+Use **Model Providers** for this flow:
+
+1. Search for a provider. Built-in providers do not require endpoint IDs, URLs, or model metadata.
+2. Select **Configure authentication**. A single supported method opens directly. If both methods are supported, choose account sign-in or an API key. Providers that use host credentials show setup guidance instead.
+3. Search for a model. The page shows reasoning and image support. Thinking choices contain only supported levels.
+4. Optionally select **Use as the bot default**. This changes the model and thinking defaults for chats that inherit them. Chat overrides stay unchanged. Each chat must allow the new model.
+5. Select **Save model and apply**, then confirm. This adds only the selected model to global availability. It does not grant the full provider catalog or change tool, MCP, or user access. Check the saved and applied revisions above the page.
+
+Model selection stays in the browser until confirmation. Credential changes are saved separately. Authentication refresh retains the selected model; an unavailable model stays visible and cannot be saved. Save or discard other unsaved policy edits before changing credentials or applying a model. Revision conflicts retain the model selection and report an error. Reload the latest revision before retrying.
+
+For a public compatible endpoint, open **Custom endpoint**. Enter its provider ID, base URL, and model ID. Open the advanced controls only to change the protocol or model metadata. The initial values are OpenAI Completions, text-only input, no reasoning, a 128,000-token context window, and an 8,192-token output limit. These are editable configuration values, not discovered capabilities. Confirm them against the endpoint documentation. Use **Add / update model** for multiple models, then **Set provider configuration** and the shared **Save settings** confirmation. Authenticate the endpoint after its saved revision is applied.
+
+Supported custom API types are OpenAI Completions, OpenAI Responses, Anthropic Messages, and Google Generative AI. Administration policies select physical chat models, not virtual routers, classifiers, or image-generation models. Model IDs may contain slashes; provider IDs cannot. **Manage model availability** lists only approved models. Add other models through the provider flow, not by granting a catalog.
 
 - Save provider configuration before authenticating it.
 - API keys are literal secrets, not Pi command or environment expressions. Existing keys are never returned to the frontend.

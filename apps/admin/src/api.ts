@@ -10,7 +10,7 @@ export interface Inventory {
     configured: boolean
     apiKey: boolean
     oauth: boolean
-    models: { id: string; name: string; thinking: string[] }[]
+    models: { id: string; name: string; thinking: string[]; reasoning: boolean; image: boolean }[]
   }[]
   mcp: {
     name: string

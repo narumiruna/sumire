@@ -14,7 +14,13 @@ function setup() {
   directories.push(directory)
   const store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([42]), 42)
   stores.push(store)
-  const model = { id: "test", provider: "fixture", reasoning: false, api: "openai-completions" }
+  const model = {
+    id: "test",
+    provider: "fixture",
+    reasoning: false,
+    input: ["text"],
+    api: "openai-completions",
+  }
   const runtime = {
     getProviders: () => [
       { id: "fixture", name: "Fixture", auth: { oauth: {}, apiKey: { login: true } } },
@@ -106,6 +112,9 @@ describe("Pi model administration contracts", () => {
       input: ["text", "image"],
       contextWindow: 64000,
     })
+    expect(admin.inventory().find((p) => p.id === "compatible")?.models).toEqual([
+      expect.objectContaining({ id: "custom/model", reasoning: true, image: true }),
+    ])
     const restored = await ModelRuntime.create({
       authPath,
       modelsPath: null,
@@ -175,7 +184,7 @@ describe("Pi model administration contracts", () => {
     expect(admin.inventory()[0]).toMatchObject({
       id: "fixture",
       configured: true,
-      models: [{ id: "test", thinking: ["off"] }],
+      models: [{ id: "test", thinking: ["off"], reasoning: false, image: false }],
     })
     expect(JSON.stringify(admin.inventory())).not.toContain("credential")
   })

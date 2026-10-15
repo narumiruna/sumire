@@ -16,6 +16,29 @@ const policy = {
   chats: {},
   providers: [],
 }
+const inventory = {
+  tools: ["load_public_url", "bash"],
+  providers: [
+    {
+      id: "fixture",
+      name: "Fixture",
+      configured: true,
+      apiKey: true,
+      oauth: true,
+      models: [
+        { id: "test", name: "Test", thinking: ["off", "low"], reasoning: true, image: true },
+        {
+          id: "other",
+          name: "Other model",
+          thinking: ["off"],
+          reasoning: false,
+          image: false,
+        },
+      ],
+    },
+  ],
+  mcp: [],
+}
 async function setup(page: Page, signedIn = true) {
   let revision = 1
   let saved: unknown = structuredClone(policy)
@@ -35,21 +58,7 @@ async function setup(page: Page, signedIn = true) {
         revision++
       }
       data = { revision, applied: revision, status: "applied", policy: saved }
-    } else if (url.pathname === "/api/inventory")
-      data = {
-        tools: ["load_public_url", "bash"],
-        providers: [
-          {
-            id: "fixture",
-            name: "Fixture",
-            configured: true,
-            apiKey: true,
-            oauth: true,
-            models: [{ id: "test", name: "Test", thinking: ["off", "low"] }],
-          },
-        ],
-        mcp: [],
-      }
+    } else if (url.pathname === "/api/inventory") data = inventory
     else if (url.pathname === "/api/chats")
       data = [
         {
@@ -60,9 +69,24 @@ async function setup(page: Page, signedIn = true) {
         },
       ]
     else if (url.pathname === "/api/audit") data = []
+    else if (url.pathname === "/api/providers/fixture/credential") {
+      expect(route.request().postDataJSON().revision).toBe(revision)
+      expect(route.request().headers()["x-csrf-token"]).toBe("browser-fixture")
+      revision++
+    }
     await route.fulfill({ json: data })
   })
   await page.goto("/")
+}
+async function chooseProvider(page: Page) {
+  await page.getByRole("button", { name: "Provider", exact: true }).click()
+  await page.getByRole("combobox", { name: "Search provider" }).fill("fixt")
+  await page.getByRole("combobox", { name: "Search provider" }).press("Enter")
+}
+async function chooseModel(page: Page, query = "Other") {
+  await page.getByRole("button", { name: "Model", exact: true }).click()
+  await page.getByRole("combobox", { name: "Search model" }).fill(query)
+  await page.getByRole("combobox", { name: "Search model" }).press("Enter")
 }
 test("unauthorized visitor sees only passkey sign-in", async ({ page }) => {
   await setup(page, false)
@@ -155,14 +179,308 @@ test("shows inherited chat settings and supported thinking levels", async ({ pag
   await page.getByRole("option", { name: "low", exact: true }).click()
   await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
 })
+test("searches built-in catalogs and adds only the selected model", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await expect(page.getByLabel("Provider ID", { exact: true })).not.toBeVisible()
+  await chooseModel(page)
+  await expect(page.getByText("No reasoning", { exact: true })).toBeVisible()
+  await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Save model and apply" }).click()
+  const saving = page.waitForRequest(
+    (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
+  )
+  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  expect((await saving).postDataJSON()).toEqual({
+    revision: 1,
+    policy: { ...policy, models: ["fixture/test", "fixture/other"] },
+  })
+  await expect(page.getByText("Saved 2 · Applied 2 · applied")).toBeVisible()
+})
+
+test("sets a bot default only after explicit selection and confirmation", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page, "Test")
+  await expect(page.getByText("Image input", { exact: true })).toBeVisible()
+  await page.getByRole("combobox", { name: "Thinking level" }).click()
+  await expect(page.getByRole("option", { name: "high", exact: true })).toHaveCount(0)
+  await page.getByRole("option", { name: "low", exact: true }).click()
+  await page.getByRole("checkbox", { name: "Use as the bot default" }).check()
+  await page.getByRole("button", { name: "Save model and apply" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText("thinking low")
+  const saving = page.waitForRequest(
+    (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
+  )
+  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  expect((await saving).postDataJSON().policy).toEqual({
+    ...policy,
+    defaults: { ...policy.defaults, thinking: "low" },
+  })
+})
+
+test("opens a single API-key method directly and preserves model selection after refresh", async ({
+  page,
+}) => {
+  await setup(page)
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: { ...inventory, providers: [{ ...inventory.providers[0], oauth: false }] },
+    }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await expect(page.getByRole("button", { name: "Sign in with account" })).toHaveCount(0)
+  await page.getByLabel("API key", { exact: true }).fill("fixture-secret")
+  const saving = page.waitForRequest((r) => r.url().endsWith("/api/providers/fixture/credential"))
+  await page.getByRole("button", { name: "Save API key", exact: true }).click()
+  expect((await saving).postDataJSON()).toEqual({ key: "fixture-secret", revision: 1 })
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+  await expect(page.getByText("Saved 2 · Applied 2 · applied")).toBeVisible()
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await expect(page.getByLabel("API key", { exact: true })).toHaveValue("")
+})
+
+test("blocks credential and model saves while other policy edits are unsaved", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+  await page.getByRole("checkbox", { name: "bash", exact: true }).check()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page)
+  await expect(page.getByRole("button", { name: "Configure authentication" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeDisabled()
+  await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+  await expect(page.getByRole("checkbox", { name: "bash", exact: true })).toBeChecked()
+})
+
+test("retains the selected model after a revision conflict", async ({ page }) => {
+  await setup(page)
+  await page.route("**/api/settings", (route) =>
+    route.request().method() === "PUT"
+      ? route.fulfill({ status: 409, json: { error: "Settings changed; reload before saving" } })
+      : route.fallback(),
+  )
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page)
+  await page.getByRole("button", { name: "Save model and apply" }).click()
+  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Settings changed")
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+})
+
+test("opens account-only authentication directly and cancels it on Escape", async ({ page }) => {
+  await setup(page)
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: { ...inventory, providers: [{ ...inventory.providers[0], apiKey: false }] },
+    }),
+  )
+  const id = "c".repeat(43)
+  let cancelled = false
+  await page.route("**/api/settings", (route) =>
+    cancelled
+      ? route.fulfill({ json: { revision: 2, applied: 2, status: "applied", policy } })
+      : route.fallback(),
+  )
+  await page.route("**/api/providers/fixture/oauth", (route) => route.fulfill({ json: { id } }))
+  await page.route(`**/api/oauth/${id}`, (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().postDataJSON()).toEqual({ cancel: true })
+      cancelled = true
+    }
+    return route.fulfill({
+      json: {
+        status: "pending",
+        event: { type: "auth", verificationUri: "https://example.test/device", userCode: "ABCD" },
+      },
+    })
+  })
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await expect(page.getByRole("link", { name: "Open provider sign-in" })).toHaveAttribute(
+    "href",
+    "https://example.test/device",
+  )
+  await expect(page.getByText("Verification code:")).toContainText("ABCD")
+  await expect(page.getByRole("button", { name: "Use API key" })).toHaveCount(0)
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  expect(cancelled).toBe(true)
+  await expect(page.getByText("Saved 2 · Applied 2 · applied")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Configure authentication" })).toBeFocused()
+})
+
+test("keeps a failed login cancellation open until the server accepts it", async ({ page }) => {
+  await setup(page)
+  const id = "d".repeat(43)
+  let rejectCancel = true
+  await page.route("**/api/providers/fixture/oauth", (route) => route.fulfill({ json: { id } }))
+  await page.route(`**/api/oauth/${id}`, (route) =>
+    route.fulfill(
+      route.request().method() === "POST" && rejectCancel
+        ? { status: 500, json: { error: "Cancellation failed" } }
+        : { json: { status: "pending" } },
+    ),
+  )
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByRole("button", { name: "Sign in with account" }).click()
+  await page.getByRole("button", { name: "Cancel provider login" }).click()
+  await expect(page.getByRole("dialog")).toBeVisible()
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Cancellation failed")
+  rejectCancel = false
+  await page.getByRole("button", { name: "Cancel provider login" }).click()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+})
+
+test("shows host setup instead of unsupported login methods", async ({ page }) => {
+  await setup(page)
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: {
+        ...inventory,
+        providers: [{ ...inventory.providers[0], apiKey: false, oauth: false, configured: false }],
+      },
+    }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await expect(
+    page.getByText("This provider uses host credentials.", { exact: false }),
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "Configure authentication" })).toHaveCount(0)
+})
+
+test("keeps unavailable model selections visible instead of selecting a fallback", async ({
+  page,
+}) => {
+  await setup(page)
+  let removed = false
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: {
+        ...inventory,
+        providers: [
+          {
+            ...inventory.providers[0],
+            oauth: false,
+            models: removed ? [] : (inventory.providers[0]?.models ?? []),
+          },
+        ],
+      },
+    }),
+  )
+  await page.route("**/api/providers/fixture/credential", (route) => {
+    removed = true
+    return route.fulfill({ json: { ok: true } })
+  })
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByLabel("API key", { exact: true }).fill("fixture-secret")
+  await page.getByRole("button", { name: "Save API key", exact: true }).click()
+  await expect(
+    page.getByText("The selected model is no longer in the catalog.", { exact: false }),
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/other/)
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toHaveCount(0)
+})
+
+test("keeps removed approved models available to undo an unsaved edit", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await page.getByText("Manage model availability", { exact: true }).click()
+  const approved = page.getByRole("checkbox", { name: "fixture/test", exact: true })
+  await approved.uncheck()
+  await expect(approved).not.toBeChecked()
+  await approved.check()
+  await expect(approved).toBeChecked()
+  await expect(page.getByRole("checkbox", { name: "fixture/other", exact: true })).toHaveCount(0)
+})
+
+test("requires an explicit supported thinking choice after catalog changes", async ({ page }) => {
+  await setup(page)
+  let changed = false
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: {
+        ...inventory,
+        providers: [
+          {
+            ...inventory.providers[0],
+            oauth: false,
+            models: inventory.providers[0]?.models.map((m) => ({
+              ...m,
+              thinking: changed ? ["off"] : m.thinking,
+            })),
+          },
+        ],
+      },
+    }),
+  )
+  await page.route("**/api/providers/fixture/credential", (route) => {
+    changed = true
+    return route.fulfill({ json: { ok: true } })
+  })
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await chooseModel(page, "Test")
+  await page.getByRole("combobox", { name: "Thinking level" }).click()
+  await page.getByRole("option", { name: "low", exact: true }).click()
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByLabel("API key", { exact: true }).fill("fixture-secret")
+  await page.getByRole("button", { name: "Save API key", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeDisabled()
+  await expect(
+    page.getByText("The selected thinking level is unavailable.", { exact: false }),
+  ).toBeVisible()
+  await page.getByRole("combobox", { name: "Thinking level" }).click()
+  await page.getByRole("option", { name: "off", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeEnabled()
+})
+
+test("provider search works with the keyboard on narrow screens", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseProvider(page)
+  await page.getByRole("button", { name: "Model", exact: true }).click()
+  const search = page.getByRole("combobox", { name: "Search model" })
+  await search.fill("no-such-model")
+  await expect(page.getByText("No matches.")).toBeVisible()
+  await search.fill("")
+  await search.press("ArrowDown")
+  await search.press("Enter")
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+})
+
 test("secret input is masked and credential removal needs confirmation", async ({ page }) => {
   await setup(page)
   await page.getByRole("button", { name: "Model Providers", exact: true }).click()
-  await page.getByLabel("Provider authentication").click()
-  await page.getByRole("option", { name: "Fixture · configured" }).click()
-  await expect(
-    page.getByLabel("Replacement API key (existing key is never displayed)"),
-  ).toHaveAttribute("type", "password")
+  await chooseProvider(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByRole("button", { name: "Use API key" }).click()
+  await expect(page.getByLabel("API key", { exact: true })).toHaveAttribute("type", "password")
+  await page.getByRole("button", { name: "Close", exact: true }).click()
   await page.getByRole("button", { name: "Remove credential", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText(
     "Ambient environment credentials are not removed",
@@ -171,10 +489,9 @@ test("secret input is masked and credential removal needs confirmation", async (
 test("configures multiple custom models without exposing an existing key", async ({ page }) => {
   await setup(page)
   await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await page.getByText("Custom endpoint", { exact: true }).click()
   await page.getByLabel("Provider ID", { exact: true }).fill("custom")
-  await page
-    .getByLabel("API base URL (leave empty for built-in)")
-    .fill("https://models.example.test/v1")
+  await page.getByLabel("API base URL", { exact: true }).fill("https://models.example.test/v1")
   await page.getByLabel("Model ID (required for custom endpoint)").fill("one")
   await page.getByRole("button", { name: "Add / update model" }).click()
   await page.getByLabel("Model ID (required for custom endpoint)").fill("two")
@@ -228,20 +545,33 @@ test("completes a browser-initiated provider interaction with a masked response"
         json: {
           status,
           ...(status === "pending"
-            ? { prompt: { type: "manual_code", message: "Enter fixture code" } }
+            ? {
+                event: {
+                  type: "auth",
+                  url: "https://example.test/login",
+                  userCode: "fixture-code",
+                },
+                prompt: { type: "manual_code", message: "Enter fixture code" },
+              }
             : {}),
         },
       })
   })
   await page.getByRole("button", { name: "Model Providers", exact: true }).click()
-  await page.getByLabel("Provider authentication").click()
-  await page.getByRole("option", { name: "Fixture · configured" }).click()
-  await page.getByRole("button", { name: "Start provider OAuth" }).click()
+  await chooseProvider(page)
+  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByRole("button", { name: "Sign in with account" }).click()
+  await expect(page.getByRole("link", { name: "Open provider sign-in" })).toHaveAttribute(
+    "href",
+    "https://example.test/login",
+  )
   const response = page.getByLabel("Provider login response")
   await expect(response).toHaveAttribute("type", "password")
   await response.fill("approved-fixture")
   await page.getByRole("button", { name: "Submit response" }).click()
-  await expect(page.getByText("Provider login: completed")).toBeVisible()
+  await expect(
+    page.getByText("Provider authenticated. Your model selection is retained."),
+  ).toBeVisible()
   await expect(page.getByLabel("Provider login response")).toHaveCount(0)
 })
 

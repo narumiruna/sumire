@@ -29,8 +29,8 @@ import {
   type Selection,
   type Snapshot,
 } from "./api.js"
-
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
+import { Providers } from "./providers.js"
 
 const initialSetup = captureSetupLink(window.location, window.history)
 const inherit: Selection = { tools: null, servers: null, models: null, model: null, thinking: null }
@@ -157,6 +157,24 @@ function List({
         ))}
       {value?.length === 0 && <Text size="2">Explicit empty list: none allowed.</Text>}
     </fieldset>
+  )
+}
+function ModelAvailability({
+  value,
+  onChange,
+}: {
+  value: string[]
+  onChange(value: string[]): void
+}) {
+  // Keep removed rows until this saved revision changes, so an unchecked model can be restored.
+  const [approved] = useState(value)
+  return (
+    <List
+      label="Globally available models"
+      options={[...new Set([...approved, ...value])]}
+      value={value}
+      onChange={(v) => onChange(v ?? [])}
+    />
   )
 }
 function Choices({
@@ -307,25 +325,28 @@ function ProviderEditor({
     <fieldset>
       <legend>{initial ? "Edit provider configuration" : "Add provider configuration"}</legend>
       <Field label="Provider ID" value={id} onChange={setId} />
-      <Field label="API base URL (leave empty for built-in)" value={url} onChange={setUrl} />
-      <label htmlFor="provider-api">
-        API
-        <Select.Root value={api} onValueChange={(v) => setApi(v as ProviderSettings["api"])}>
-          <Select.Trigger id="provider-api" />
-          <Select.Content>
-            {[
-              "openai-completions",
-              "openai-responses",
-              "anthropic-messages",
-              "google-generative-ai",
-            ].map((v) => (
-              <Select.Item key={v} value={v}>
-                {v}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </label>
+      <Field label="API base URL" value={url} onChange={setUrl} />
+      <details className="provider-advanced">
+        <summary>Advanced protocol</summary>
+        <label htmlFor="provider-api">
+          API
+          <Select.Root value={api} onValueChange={(v) => setApi(v as ProviderSettings["api"])}>
+            <Select.Trigger id="provider-api" />
+            <Select.Content>
+              {[
+                "openai-completions",
+                "openai-responses",
+                "anthropic-messages",
+                "google-generative-ai",
+              ].map((v) => (
+                <Select.Item key={v} value={v}>
+                  {v}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </label>
+      </details>
       {models.map((m) => (
         <Card key={m.id}>
           <Text>
@@ -362,11 +383,14 @@ function ProviderEditor({
         </Card>
       ))}
       <Field label="Model ID (required for custom endpoint)" value={model} onChange={setModel} />
-      <Field label="Model display name" value={name} onChange={setName} />
-      <Check label="Reasoning supported" checked={reasoning} onChange={setReasoning} />
-      <Check label="Image input supported" checked={image} onChange={setImage} />
-      <Field label="Context window tokens" value={context} onChange={setContext} />
-      <Field label="Maximum output tokens" value={output} onChange={setOutput} />
+      <details className="provider-advanced">
+        <summary>Advanced model metadata</summary>
+        <Field label="Model display name" value={name} onChange={setName} />
+        <Check label="Reasoning supported" checked={reasoning} onChange={setReasoning} />
+        <Check label="Image input supported" checked={image} onChange={setImage} />
+        <Field label="Context window tokens" value={context} onChange={setContext} />
+        <Field label="Maximum output tokens" value={output} onChange={setOutput} />
+      </details>
       <Flex gap="2" wrap="wrap">
         <Button
           variant="soft"
@@ -416,25 +440,9 @@ function App() {
   const [imports, setImports] = useState<unknown>()
   const [auditOffset, setAuditOffset] = useState(0)
   const [chatOffset, setChatOffset] = useState(0)
-  const [provider, setProvider] = useState("")
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
-  const [key, setKey] = useState("")
   const [toolName, setToolName] = useState("")
-  const [result, setResult] = useState<unknown>()
-  const [oauth, setOauth] = useState("")
-  const [oauthState, setOauthState] = useState<{
-    status: string
-    event?: {
-      type: string
-      url?: string
-      verificationUri?: string
-      userCode?: string
-      message?: string
-    }
-    prompt?: { message: string; type: string; options?: { id: string; label: string }[] }
-  }>()
   const [setup, setSetup] = useState(initialSetup)
-  const [answer, setAnswer] = useState("")
   const [mcpName, setMcpName] = useState("")
   const [mcpSecrets, setMcpSecrets] = useState<{
     env: Record<string, string>
@@ -451,8 +459,6 @@ function App() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         setSession(null)
-        setKey("")
-        setAnswer("")
         setMcpSecrets({ env: {}, headers: {} })
         setMcpConfig("{}")
       }
@@ -486,41 +492,6 @@ function App() {
   useEffect(() => {
     if (session) void run(load)
   }, [session, run, load])
-  useEffect(() => {
-    if (!oauth) return
-    let stopped = false
-    const poll = () => {
-      void request<NonNullable<typeof oauthState>>(`oauth/${oauth}`).then(
-        (state) => {
-          if (!stopped) {
-            setOauthState(state)
-            if (state.status !== "pending") {
-              setOauth("")
-              if (state.status === "completed") {
-                if (dirty)
-                  setError(
-                    "Provider authenticated. Reload the latest settings before saving your edits.",
-                  )
-                else void run(load)
-              }
-            }
-          }
-        },
-        () => {
-          if (!stopped) {
-            setOauth("")
-            setError("Provider login expired or failed")
-          }
-        },
-      )
-    }
-    poll()
-    const timer = setInterval(poll, 1500)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-    }
-  }, [oauth, run, load, dirty])
   const update = (policy: Policy) => {
     if (snapshot) {
       setSnapshot({ ...snapshot, policy })
@@ -577,7 +548,6 @@ function App() {
     )
   const policy = snapshot.policy
   const selected = policy.chats[chat]
-  const allModels = inventory.providers.flatMap((p) => p.models.map((m) => `${p.id}/${m.id}`))
   return (
     <main aria-busy={busy}>
       <Flex justify="between" align="center" wrap="wrap" gap="3">
@@ -594,10 +564,6 @@ function App() {
             onClick={() =>
               void run(async () => {
                 await request("logout", session.csrf)
-                setKey("")
-                setAnswer("")
-                setOauth("")
-                setOauthState(undefined)
                 setMcpSecrets({ env: {}, headers: {} })
                 setMcpConfig("{}")
                 setSession(null)
@@ -931,14 +897,23 @@ function App() {
           </Button>
         </>
       )}
-      {page === "Model Providers" && (
-        <>
-          <List
-            label="Globally available models"
-            options={[...new Set([...allModels, ...policy.models])]}
-            value={policy.models}
-            onChange={(v) => update({ ...policy, models: v ?? [] })}
-          />
+      <section hidden={page !== "Model Providers"}>
+        <Providers
+          snapshot={snapshot}
+          inventory={inventory}
+          csrf={session.csrf}
+          dirty={dirty}
+          busy={busy}
+          run={run}
+          refresh={load}
+          error={error}
+        />
+        <details className="provider-advanced">
+          <summary>Custom endpoint</summary>
+          <Text as="p" size="2">
+            Use this only for a compatible endpoint that is not in the provider catalog. Save its
+            configuration above before authentication. Costs are unknown, not verified zero-cost.
+          </Text>
           {policy.providers.map((p) => (
             <Card key={p.id}>
               <Check
@@ -953,21 +928,23 @@ function App() {
                   })
                 }
               />
-              <Button
-                variant="soft"
-                color="red"
-                onClick={() =>
-                  update({
-                    ...policy,
-                    providers: policy.providers.filter((row) => row.id !== p.id),
-                  })
-                }
-              >
-                Remove configuration
-              </Button>
-              <Button variant="soft" onClick={() => setEditingProvider(p)}>
-                Edit configuration {p.id}
-              </Button>
+              <Flex gap="2" wrap="wrap">
+                <Button variant="soft" onClick={() => setEditingProvider(p)}>
+                  Edit configuration {p.id}
+                </Button>
+                <Button
+                  variant="soft"
+                  color="red"
+                  onClick={() =>
+                    update({
+                      ...policy,
+                      providers: policy.providers.filter((row) => row.id !== p.id),
+                    })
+                  }
+                >
+                  Remove configuration
+                </Button>
+              </Flex>
             </Card>
           ))}
           <ProviderEditor
@@ -981,196 +958,20 @@ function App() {
               setEditingProvider(undefined)
             }}
           />
-          <label htmlFor="provider-auth">
-            Provider authentication
-            <Select.Root
-              value={provider || "none"}
-              onValueChange={(v) => {
-                setProvider(v === "none" ? "" : v)
-                setKey("")
-                setResult(undefined)
-              }}
-            >
-              <Select.Trigger id="provider-auth" />
-              <Select.Content>
-                <Select.Item value="none">Choose provider</Select.Item>
-                {inventory.providers.map((p) => (
-                  <Select.Item key={p.id} value={p.id}>
-                    {p.name} · {p.configured ? "configured" : "not configured"}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
-          {provider && (
-            <>
-              <Field
-                label="Replacement API key (existing key is never displayed)"
-                value={key}
-                onChange={setKey}
-                secret
-              />
-              <Flex gap="2" wrap="wrap">
-                <Button
-                  disabled={
-                    busy ||
-                    dirty ||
-                    !key ||
-                    !inventory.providers.find((p) => p.id === provider)?.apiKey
-                  }
-                  onClick={() =>
-                    void run(async () => {
-                      await request(`providers/${provider}/credential`, session.csrf, {
-                        key,
-                        revision: snapshot.revision,
-                      })
-                      setKey("")
-                      await load()
-                    })
-                  }
-                >
-                  Replace API key
-                </Button>
-                <Button
-                  disabled={busy || dirty}
-                  onClick={() =>
-                    void run(async () => {
-                      setResult(await request(`providers/${provider}/test`, session.csrf))
-                    })
-                  }
-                >
-                  Check configured authentication
-                </Button>
-                <Button
-                  disabled={busy || dirty}
-                  onClick={() =>
-                    void run(async () => {
-                      setResult(await request(`providers/${provider}/discover`, session.csrf))
-                    })
-                  }
-                >
-                  Discover custom models
-                </Button>
-                <Button
-                  disabled={
-                    busy ||
-                    dirty ||
-                    Boolean(oauth) ||
-                    !inventory.providers.find((p) => p.id === provider)?.oauth
-                  }
-                  onClick={() =>
-                    void run(async () => {
-                      const state = await request<{ id: string }>(
-                        `providers/${provider}/oauth`,
-                        session.csrf,
-                        { revision: snapshot.revision },
-                      )
-                      setOauth(state.id)
-                    })
-                  }
-                >
-                  Start provider OAuth
-                </Button>
-                <AlertDialog.Root>
-                  <AlertDialog.Trigger>
-                    <Button color="red" disabled={busy || dirty}>
-                      Remove credential
-                    </Button>
-                  </AlertDialog.Trigger>
-                  <AlertDialog.Content>
-                    <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
-                    <AlertDialog.Description>
-                      Replace model references first. Ambient environment credentials are not
-                      removed.
-                    </AlertDialog.Description>
-                    <Flex gap="3" mt="4">
-                      <AlertDialog.Cancel>
-                        <Button variant="soft">Cancel</Button>
-                      </AlertDialog.Cancel>
-                      <AlertDialog.Action>
-                        <Button
-                          color="red"
-                          onClick={() =>
-                            void run(async () => {
-                              await request(`providers/${provider}/credential`, session.csrf, {
-                                key: null,
-                                revision: snapshot.revision,
-                              })
-                              await load()
-                            })
-                          }
-                        >
-                          Remove
-                        </Button>
-                      </AlertDialog.Action>
-                    </Flex>
-                  </AlertDialog.Content>
-                </AlertDialog.Root>
-              </Flex>
-            </>
-          )}
+        </details>
+        <details className="provider-advanced">
+          <summary>Manage model availability</summary>
           <Text as="p" size="2">
-            Authentication checks do not generate tokens. A configured credential does not prove
-            that a remote provider will accept it.
+            Add models with the provider flow above. Remove references from defaults and chats
+            before removing a model. Selecting a provider never grants its full catalog.
           </Text>
-          {result !== undefined && <pre>{JSON.stringify(result, null, 2)}</pre>}
-          {oauthState && (
-            <Card>
-              <Text>Provider login: {oauthState.status}</Text>
-              {oauthState.event && <pre>{JSON.stringify(oauthState.event, null, 2)}</pre>}
-              {oauth && oauthState.prompt && (
-                <>
-                  <Text as="p">{oauthState.prompt.message}</Text>
-                  {oauthState.prompt.options ? (
-                    <label htmlFor="login-option">
-                      Login option
-                      <Select.Root value={answer} onValueChange={setAnswer}>
-                        <Select.Trigger id="login-option" />{" "}
-                        <Select.Content>
-                          {oauthState.prompt.options.map((v) => (
-                            <Select.Item key={v.id} value={v.id}>
-                              {v.label}
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Root>
-                    </label>
-                  ) : (
-                    <Field
-                      label="Provider login response"
-                      value={answer}
-                      onChange={setAnswer}
-                      secret
-                    />
-                  )}
-                  <Button
-                    onClick={() =>
-                      void run(async () => {
-                        await request(`oauth/${oauth}`, session.csrf, { answer })
-                        setAnswer("")
-                      })
-                    }
-                  >
-                    Submit response
-                  </Button>
-                </>
-              )}
-              {oauth && (
-                <Button
-                  variant="soft"
-                  onClick={() =>
-                    void run(async () => {
-                      await request(`oauth/${oauth}`, session.csrf, { cancel: true })
-                    })
-                  }
-                >
-                  Cancel provider login
-                </Button>
-              )}
-            </Card>
-          )}
-        </>
-      )}
+          <ModelAvailability
+            key={snapshot.revision}
+            value={policy.models}
+            onChange={(models) => update({ ...policy, models })}
+          />
+        </details>
+      </section>
       {page === "Audit" && (
         <>
           <Text as="p">

@@ -137,7 +137,13 @@ export class ProviderAdmin {
       models: this.runtime
         .getModels(p.id)
         .filter((m) => this.runtime.getPhysicalModel(m.provider, m.id))
-        .map((m) => ({ id: m.id, name: m.name, thinking: getSupportedThinkingLevels(m) })),
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          thinking: getSupportedThinkingLevels(m),
+          reasoning: m.reasoning,
+          image: m.input.includes("image"),
+        })),
     }))
   }
   assertUnused(id: string) {
