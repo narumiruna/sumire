@@ -34,7 +34,7 @@ docker compose down
 
 ### Administration WebUI
 
-See [WebUI setup, Telegram login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use the optional `compose.admin.yaml` behind an existing HTTPS reverse proxy; it does not claim port 443.
+See [WebUI setup, Telegram login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build` behind an existing HTTPS reverse proxy; `compose.yaml` publishes only loopback port `17465`, not port 443.
 
 ### Build cache
 

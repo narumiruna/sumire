@@ -39,13 +39,13 @@ listenr
 
 The default backend port is **17465**. It was available when selected. The development frontend uses **17466** with strict port checking. Recheck both on the deployment host. Do not stop another service to free a port.
 
-Use the root Compose files:
+Use the root `compose.yaml`:
 
 ```sh
-docker compose -f compose.yaml -f compose.admin.yaml up -d --build
+docker compose up -d --build
 ```
 
-The administration override binds `127.0.0.1:17465` on the host and listens on all container interfaces. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
+Compose binds `127.0.0.1:17465` on the host and listens on all container interfaces when the WebUI is enabled. The port mapping remains reserved when the WebUI is disabled; in that case, the healthcheck succeeds without making an HTTP request. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
 
 ```caddyfile
 sumire.example.com {

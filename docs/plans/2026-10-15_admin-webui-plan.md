@@ -123,7 +123,7 @@ flowchart LR
 ### 7. Deploy, document, and release
 
 - [x] Integrate HTTP startup and shutdown with `apps/bot/src/startup.ts`; keep authentication setup reachable when no model provider is authenticated. Test graceful shutdown of HTTP requests, sessions, MCP processes, and pending login interactions.
-- [ ] Update deployment and verify public ingress on the registered domain. Dockerfile and the optional `compose.admin.yaml` are complete; image build and offline Compose HTTPS smoke passed without real credentials, persistent mounts, external networking, or published ports. Public ingress and production restart acceptance require the deployment domain and administrator.
+- [ ] Update deployment and verify public ingress on the registered domain. Dockerfile and the shared `compose.yaml` are complete; image build and offline Compose HTTPS smoke passed without real credentials, persistent mounts, external networking, or published ports. Public ingress and production restart acceptance require the deployment domain and administrator.
 - [x] Document Telegram domain setup, administrator bootstrap, provider credentials, permissions, shell-tool trust limits, migration review, backup, session revocation, and recovery. Include required deployment values in `.env.example` without secrets.
 - [x] Add release changesets for every affected package, including private packages. Run focused checks during implementation and all required root checks before release; record results and any unavailable deployment checks.
 
