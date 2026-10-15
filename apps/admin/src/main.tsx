@@ -19,6 +19,8 @@ import { useCallback, useEffect, useId, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
+import { AccessApproval, AccessReconciliation } from "./access.js"
+import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import {
   ApiError,
   type Inventory,
@@ -29,8 +31,6 @@ import {
   type Selection,
   type Snapshot,
 } from "./api.js"
-import { AccessApproval, AccessReconciliation } from "./access.js"
-import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { Providers } from "./providers.js"
 

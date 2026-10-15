@@ -65,6 +65,12 @@ Implementation and automated verification are complete on `narumi/feat/chat-allo
 - Diff review covers transaction correctness, hash-only storage, authentication and CSRF boundaries, UI request lifecycle, schema compatibility, legacy-mode preservation, and scope. No production state, credentials, model/provider calls, or Stage 2 sources were changed.
 - Existing dependency risk: `npm ci` / `npm audit` reports one critical transitive `handlebars` dependency. This change adds no dependencies and does not repair that unrelated advisory. The build also reports upstream Radix `use client` bundling warnings without failing.
 
+## Publication
+
+- Draft pull request: <https://github.com/narumiruna/sumire/pull/95>, based on `main`.
+- The implementation is pushed on `narumi/feat/chat-allow-links`. The draft status records the deployment acceptance blockers below; it does not mark those checks complete.
+- The unrelated Stage 2 plan and original documentation-only changeset remain unchanged outside this PR.
+
 ## Blocked deployment acceptance
 
 - A deployment operator must stop and back up the actual state, retain the matching image, deploy Stage 1 through the repository-root Compose workflow, and record rollback readiness. No production backup or deployment was performed by this implementation.
