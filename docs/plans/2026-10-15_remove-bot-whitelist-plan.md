@@ -74,6 +74,13 @@ Today the administration store is created only when WebUI administration is enab
 - Complete diff review covered authorization correctness, authentication/CSRF preservation, asynchronous session/image lifecycle, schema and bootstrap compatibility, retired behavior versus retained regression coverage, and scope. All 11 changed production JavaScript module hashes match the deployed image.
 - Existing dependency audit still reports a critical transitive `handlebars` advisory; this change adds no dependencies. Upstream Radix bundling warnings are non-fatal.
 
+## Publication
+
+- Draft pull request: <https://github.com/narumiruna/sumire/pull/96>, based on `main`.
+- Implementation commit: `9f3168d` on `narumi/refactor/database-only-chat-access`.
+- The original documentation-only changeset remains unchanged outside this PR. No package publication, version tag, or release workflow was initiated.
+- The draft records the post-upgrade operator acceptance still required below; it does not waive that condition.
+
 ## Stage 2 deployment evidence and remaining acceptance
 
 - The Stage 1 image was archived and gzip-checked under private access controls. A stopped-service checkpoint captured administration state, events, and working files immediately before upgrade; original runtime environment and mount configuration were retained for rollback. No backup path, token, private URL, or personal chat ID is committed.
