@@ -26,7 +26,7 @@ import { createDurableCodemode } from "./durable-codemode.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
 import { adaptTool, codingTools, collectTools } from "./durable-tools.js"
-import { McpCapability } from "./mcp-capability.js"
+import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { loadMcpConfig } from "./mcp-config.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -212,7 +212,12 @@ export async function createPiSessionFactory(
                   }),
                 )
               },
-              undefined,
+              (server, cwd, home) => {
+                control?.store.assertChat(chatId)
+                if (control && control.store.snapshot().epoch !== state?.epoch)
+                  throw new Error("Chat policy changed before MCP startup")
+                return createMcpTransport(server, cwd, home)
+              },
               (server, tool) => !control || control.store.allowsTool(chatId, tool, server),
             )
           : undefined
@@ -249,7 +254,9 @@ export async function createPiSessionFactory(
       const storage = await openNodeSqliteStorage(sessionFile)
       try {
         await chmod(sessionFile, 0o600)
+        control?.store.assertChat(chatId, state?.revision)
         await mcp?.ready()
+        control?.store.assertChat(chatId, state?.revision)
         harness = await Harness.open(
           storage,
           {

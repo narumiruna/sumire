@@ -48,7 +48,7 @@ const environmentSchema = z.object({
   LOGFIRE_TOKEN: optionalString,
   MORSEL_API_KEY: optionalString,
   ADMIN_ORIGIN: optionalString,
-  ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(17465),
+  ADMIN_PORT: z.unknown().optional(),
   ADMIN_HOST: optionalString.transform((value) => value ?? "127.0.0.1"),
 })
 
@@ -124,7 +124,7 @@ export function loadSettings(
       throw new Error("Admin requires an HTTPS origin and BOT_ADMIN_ID")
     admin = {
       origin: origin.origin,
-      port: parsed.ADMIN_PORT,
+      port: z.coerce.number().int().min(1).max(65535).default(17465).parse(parsed.ADMIN_PORT),
       host: parsed.ADMIN_HOST,
       assets: path.join(root, "apps/admin/dist"),
     }

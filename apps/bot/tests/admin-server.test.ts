@@ -30,7 +30,17 @@ function call(url: string, method = "GET", data?: unknown, headers: Record<strin
           port: (server.server.address() as AddressInfo).port,
           path: url,
           method,
-          headers: { host: "admin.example.test", ...headers },
+          headers: {
+            host: "admin.example.test",
+            ...(data === undefined
+              ? {}
+              : {
+                  "content-length": String(
+                    Buffer.byteLength(typeof data === "string" ? data : JSON.stringify(data)),
+                  ),
+                }),
+            ...headers,
+          },
         },
         (res) => {
           const chunks: Buffer[] = []
@@ -120,6 +130,53 @@ describe("admin HTTP security", () => {
     expect(JSON.stringify(store.listAudit(0))).not.toContain("replacement-fixture")
     expect(store.listAudit(0)).toContainEqual(
       expect.objectContaining({ target: "provider:fixture" }),
+    )
+  })
+  it("authenticates, revision-checks, audits, and applies MCP deletion", async () => {
+    const route = "/api/mcp/fixture"
+    expect(
+      (
+        await call(
+          route,
+          "PUT",
+          {
+            revision: 1,
+            config: { command: "node", enabled: false, env: { KEY: "delete-secret" } },
+          },
+          auth(),
+        )
+      ).status,
+    ).toBe(200)
+    apply.mockClear()
+    const before = store.snapshot()
+    expect((await call(route, "DELETE", { revision: 2 })).status).toBe(401)
+    expect((await call(route, "DELETE", { revision: 2 }, { cookie: auth().cookie })).status).toBe(
+      403,
+    )
+    expect(
+      (
+        await call(
+          route,
+          "DELETE",
+          { revision: 2 },
+          { ...auth(), origin: "https://attacker.invalid" },
+        )
+      ).status,
+    ).toBe(403)
+    expect((await call(route, "DELETE", { revision: 1 }, auth())).status).toBe(409)
+    expect((await call(route, "DELETE", {}, auth())).status).toBe(400)
+    expect(store.snapshot()).toEqual(before)
+    expect(apply).not.toHaveBeenCalled()
+    const result = await call(route, "DELETE", { revision: 2 }, auth())
+    expect(result.status).toBe(200)
+    expect(result.body).not.toContain("delete-secret")
+    expect(apply).toHaveBeenCalledOnce()
+    expect(store.snapshot()).toMatchObject({ revision: 3, applied: 3, status: "applied" })
+    expect(JSON.parse((await call("/api/inventory", "GET", undefined, auth())).body).mcp).toEqual(
+      [],
+    )
+    expect(store.listAudit(0)).toContainEqual(
+      expect.objectContaining({ operation: "mcp.delete", target: "mcp:fixture" }),
     )
   })
   it("bounds login starts and total requests without trusting forwarded client addresses", async () => {

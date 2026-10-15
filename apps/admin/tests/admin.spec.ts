@@ -159,6 +159,59 @@ test("registers and signs in with a browser passkey without Telegram Web Login",
   expect(authentications).toBe(1)
 })
 
+test("confirms MCP deletion, sends the saved revision, and refreshes inventory", async ({
+  page,
+}) => {
+  await setup(page)
+  let deleted = false
+  let attempts = 0
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: {
+        ...inventory,
+        mcp: deleted
+          ? []
+          : [
+              {
+                name: "obsolete",
+                enabled: false,
+                connection: "not tested",
+                tools: [],
+                env: { TOKEN: null },
+                headers: {},
+              },
+            ],
+      },
+    }),
+  )
+  await page.route("**/api/mcp/obsolete", async (route) => {
+    attempts++
+    expect(route.request().method()).toBe("DELETE")
+    expect(route.request().headers()["x-csrf-token"]).toBe("browser-fixture")
+    expect(route.request().postDataJSON()).toEqual({ revision: 1 })
+    if (attempts === 1) {
+      await route.fulfill({ status: 409, json: { error: "Settings changed; reload" } })
+      return
+    }
+    deleted = true
+    await route.fulfill({ json: { ok: true } })
+  })
+  await page.reload()
+  await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await expect(page.getByRole("alertdialog")).toContainText("stored secrets")
+  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  expect(attempts).toBe(0)
+  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
+  await expect(page.getByText("Settings changed; reload", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toHaveCount(0)
+  expect(attempts).toBe(2)
+})
+
 test("edits private access and saves with a confirmation", async ({ page }) => {
   await setup(page)
   await page.getByRole("button", { name: "Access", exact: true }).click()

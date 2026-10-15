@@ -819,6 +819,49 @@ function App() {
               >
                 Test and discover {m.name}
               </Button>
+              <AlertDialog.Root>
+                <AlertDialog.Trigger>
+                  <Button color="red" variant="soft" disabled={busy || dirty}>
+                    Delete {m.name}
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Content>
+                  <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
+                  <AlertDialog.Description>
+                    This deletes its configuration and stored secrets. Remove it from global,
+                    default, and chat selections first. Application cancels active work and retains
+                    transcripts.
+                  </AlertDialog.Description>
+                  <Flex gap="3" justify="end" mt="4">
+                    <AlertDialog.Cancel>
+                      <Button variant="soft">Cancel</Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button
+                        color="red"
+                        onClick={() =>
+                          void run(async () => {
+                            await request(
+                              `mcp/${encodeURIComponent(m.name)}`,
+                              session.csrf,
+                              { revision: snapshot.revision },
+                              "DELETE",
+                            )
+                            if (mcpName === m.name) {
+                              setMcpName("")
+                              setMcpConfig("{}")
+                              setMcpSecrets({ env: {}, headers: {} })
+                            }
+                            await load()
+                          })
+                        }
+                      >
+                        Delete server and apply
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
               <Text as="p" size="2">
                 Secret fields:{" "}
                 {[...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") || "none"}

@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto"
+import { existsSync } from "node:fs"
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { importLegacyModels, readLegacySelection } from "../src/admin/import.js"
 import { McpAdmin } from "../src/admin/mcp.js"
+import { ProviderAdmin } from "../src/admin/providers.js"
 import { AdminStore } from "../src/admin/store.js"
+import { McpProcessHomes } from "../src/agent/mcp-process-homes.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
@@ -14,6 +17,7 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const roots: string[] = []
 afterEach(async () => {
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 async function setup() {
@@ -23,6 +27,14 @@ async function setup() {
   await cp(path.resolve("../../instructions"), path.join(root, "instructions"), { recursive: true })
   await writeFile(path.join(root, "mcp.json"), '{"mcpServers":{}}')
   return { root, settings: loadSettings({ BOT_WHITELIST: "42", BOT_ADMIN_ID: "42" }, root, root) }
+}
+
+function deferred() {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 
 describe("admin durable runtime integration", () => {
@@ -89,6 +101,111 @@ describe("admin durable runtime integration", () => {
       store.close()
     }
   })
+  it("reports unsupported legacy thinking without poisoning the shared policy", async () => {
+    const { root, settings } = await setup()
+    const factory = await createPiSessionFactory(settings, logger)
+    for (const id of [42, 43]) {
+      const session = await factory.create(id)
+      await session.sendCustomMessage({
+        customType: "fixture",
+        content: "No model turn",
+        display: false,
+      })
+      await session.setThinkingLevel(id === 42 ? "low" : "high")
+      await session.dispose()
+    }
+    const runtime = factory.modelRuntime as NonNullable<typeof factory.modelRuntime>
+    const physical = runtime.getPhysicalModel.bind(runtime)
+    vi.spyOn(runtime, "getPhysicalModel").mockImplementation((provider, id) => {
+      const model = physical(provider, id)
+      return model
+        ? { ...model, thinkingLevelMap: { ...model.thinkingLevelMap, low: null } }
+        : undefined
+    })
+    const store = new AdminStore(path.join(root, "admin.sqlite"), new Set([42]), 42)
+    try {
+      await importLegacyModels(store, settings.botSessionLogDir, runtime)
+      const state = store.snapshot()
+      expect(state.policy.models).toEqual(["openai/gpt-6.1-sol"])
+      expect(Object.keys(state.policy.chats)).toEqual(["43"])
+      expect(state.policy.chats["43"]).toMatchObject({ thinking: "high" })
+      await expect(
+        new ProviderAdmin(runtime, store).validate(state.policy),
+      ).resolves.toBeUndefined()
+      const row = store.db.prepare("SELECT report FROM imports WHERE name='models'").get() as {
+        report: string
+      }
+      expect(JSON.parse(row.report)).toMatchObject({ imported: 1, failedChatIds: [42] })
+      store.applied(state.revision, true)
+      expect(store.allows(42)).toBe(true)
+      await importLegacyModels(store, settings.botSessionLogDir, runtime)
+      expect(store.snapshot().policy).toEqual(state.policy)
+    } finally {
+      store.close()
+    }
+  })
+
+  it.each(["chat", "server", "configuration"])(
+    "does not start stale MCP commands when %s permission changes during creation",
+    async (revoked) => {
+      const { root, settings } = await setup()
+      const store = new AdminStore(path.join(root, "admin.sqlite"), settings.botWhitelist, 42)
+      const mcp = new McpAdmin(store, root)
+      const marker = path.join(root, "started")
+      mcp.save(
+        "fixture",
+        {
+          command: process.execPath,
+          args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "started")`],
+        },
+        1,
+        "42",
+      )
+      const policy = store.snapshot().policy
+      policy.models = ["openai/gpt-6.1-sol"]
+      policy.defaults.models = [...policy.models]
+      policy.defaults.model = policy.models[0] as string
+      policy.servers = ["fixture"]
+      policy.defaults.servers = ["fixture"]
+      store.save(policy, 2, "42")
+      store.applied(3, true)
+      const factory = await createPiSessionFactory(settings, logger, undefined, undefined, {
+        store,
+        mcp,
+      })
+      const entered = deferred()
+      const release = deferred()
+      const createHome = McpProcessHomes.prototype.create
+      vi.spyOn(McpProcessHomes.prototype, "create").mockImplementation(async function (
+        this: McpProcessHomes,
+      ) {
+        entered.resolve()
+        await release.promise
+        return createHome.call(this)
+      })
+      const creation = factory.create(42)
+      const rejected = expect(creation).rejects.toThrow("policy")
+      try {
+        await entered.promise
+        const changed = store.snapshot().policy
+        if (revoked === "chat") changed.privateUsers = []
+        else if (revoked === "server") {
+          changed.servers = []
+          changed.defaults.servers = []
+        }
+        if (revoked === "configuration") mcp.save("fixture", { enabled: false }, 3, "42")
+        else store.save(changed, 3, "42")
+        store.applied(4, true)
+      } finally {
+        release.resolve()
+        await rejected
+        expect(existsSync(marker)).toBe(false)
+        await mcp.close()
+        store.close()
+      }
+    },
+  )
+
   it("guards saved tool references after revocation and preserves chat settings on reset", async () => {
     const { root, settings } = await setup()
     const store = new AdminStore(

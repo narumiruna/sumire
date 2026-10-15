@@ -152,6 +152,35 @@ export class McpAdmin {
   async close() {
     await Promise.all([...this.probes].map((probe) => probe.close()))
   }
+  remove(name: string, revision: number, actor: string) {
+    if (this.probes.size) throw new AdminError(409, "Wait for the MCP connection test to finish")
+    const state = this.store.snapshot()
+    if (state.revision !== revision) throw new AdminError(409, "Settings changed; reload")
+    if (!Object.hasOwn(this.raw(), name)) throw new AdminError(404, "MCP server not found")
+    if (
+      state.policy.servers.includes(name) ||
+      [state.policy.defaults, ...Object.values(state.policy.chats)].some((s) =>
+        s.servers?.includes(name),
+      )
+    )
+      throw new AdminError(409, "Remove the server from global, default, and chat selections first")
+    this.store.db.exec("BEGIN IMMEDIATE")
+    try {
+      const changed = this.store.db
+        .prepare(
+          "UPDATE settings SET revision=revision+1,epoch=epoch+1,status='pending' WHERE id=1 AND revision=?",
+        )
+        .run(revision)
+      if (!changed.changes) throw new AdminError(409, "Settings changed; reload")
+      this.store.db.prepare("DELETE FROM mcp WHERE name=?").run(name)
+      this.store.audit(actor, "mcp.delete", revision + 1, "deleted", `mcp:${name}`)
+      this.store.db.exec("COMMIT")
+      this.discovered.delete(name)
+    } catch (error) {
+      this.store.db.exec("ROLLBACK")
+      throw error
+    }
+  }
   save(name: string, input: unknown, revision: number, actor: string) {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) throw new AdminError(400, "Invalid MCP name")
     if (this.probes.size) throw new AdminError(409, "Wait for the MCP connection test to finish")
@@ -191,7 +220,7 @@ export class McpAdmin {
     }
     const names = [...new Set([...Object.keys(this.raw()), name])]
     if (
-      names.length > 16 ||
+      names.length > MCP_MAX_SERVERS ||
       names.some(
         (other) => other !== name && other.replaceAll("-", "_") === name.replaceAll("-", "_"),
       )

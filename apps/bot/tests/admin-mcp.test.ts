@@ -2,6 +2,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import os from "node:os"
 import path from "node:path"
 import { expect, it } from "vitest"
+import { MCP_MAX_SERVERS } from "../src/agent/mcp-config.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { AdminStore } from "../src/admin/store.js"
 
@@ -38,6 +39,66 @@ it("imports MCP once, replaces secret fields explicitly, and never echoes their 
     expect(JSON.stringify(store.listAudit(0))).not.toContain("fixture-secret")
     expect(JSON.stringify(store.listAudit(0))).not.toContain("replacement-fixture")
     expect(() => mcp.save("bad-name!", { command: "fixture" }, 4, "42")).toThrow("Invalid MCP name")
+  } finally {
+    await mcp.close()
+    store.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+it("deletes unreferenced MCP entries with revision, probe, and reference checks and reclaims capacity", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-delete-"))
+  const file = path.join(directory, "admin.sqlite")
+  let store = new AdminStore(file, new Set([42]), 42)
+  let mcp = new McpAdmin(store, directory)
+  try {
+    for (let i = 0; i < MCP_MAX_SERVERS; i++)
+      mcp.save(
+        `fixture${i}`,
+        { command: "node", enabled: false, env: { TOKEN: "delete-secret" } },
+        i + 1,
+        "42",
+      )
+    expect(() => mcp.save("replacement", { command: "node" }, 17, "42")).toThrow("limit")
+    mcp.discovered.set("fixture0", { status: "connected", tools: ["fixture-tool"] })
+    const before = store.snapshot()
+    expect(() => mcp.remove("fixture0", 1, "42")).toThrow("Settings changed")
+    expect(() => mcp.remove("missing", 17, "42")).toThrow("not found")
+    expect(store.snapshot()).toEqual(before)
+    for (const scope of ["global", "default", "chat"]) {
+      const policy = store.snapshot().policy
+      // Write directly to isolate reference checks, including legacy inconsistent references.
+      if (scope === "global") policy.servers = ["fixture0"]
+      if (scope === "default") policy.defaults.servers = ["fixture0"]
+      if (scope === "chat")
+        policy.chats["42"] = { ...policy.defaults, enabled: true, servers: ["fixture0"] }
+      store.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(JSON.stringify(policy))
+      expect(() => mcp.remove("fixture0", 17, "42")).toThrow("selections first")
+      store.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(JSON.stringify(before.policy))
+    }
+    const probe = {} as never
+    mcp.probes.add(probe)
+    expect(() => mcp.remove("fixture0", 17, "42")).toThrow("connection test")
+    mcp.probes.delete(probe)
+    mcp.remove("fixture0", 17, "42")
+    expect(store.snapshot()).toMatchObject({
+      revision: 18,
+      epoch: before.epoch + 1,
+      status: "pending",
+    })
+    expect(mcp.raw().fixture0).toBeUndefined()
+    expect(mcp.discovered.has("fixture0")).toBe(false)
+    expect(store.listAudit(0)).toContainEqual(
+      expect.objectContaining({ operation: "mcp.delete", target: "mcp:fixture0", revision: 18 }),
+    )
+    expect(JSON.stringify(store.listAudit(0))).not.toContain("delete-secret")
+    mcp.save("replacement", { command: "node" }, 18, "42")
+    expect(Object.keys(mcp.raw())).toHaveLength(MCP_MAX_SERVERS)
+    store.close()
+    store = new AdminStore(file, new Set([42]), 42)
+    mcp = new McpAdmin(store, directory)
+    expect(mcp.raw().fixture0).toBeUndefined()
+    expect(mcp.raw().replacement).toBeDefined()
   } finally {
     await mcp.close()
     store.close()

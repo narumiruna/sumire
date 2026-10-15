@@ -163,6 +163,21 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ ...bootstrap, ADMIN_PORT: "0" })).toThrow()
   })
 
+  it.each(["", " ", "invalid", "0", "65536"])(
+    "ignores an unused admin port %j but validates it when enabled",
+    (port) => {
+      expect(loadSettings({ ADMIN_PORT: port }).admin).toBeUndefined()
+      expect(loadSettings({ ADMIN_ORIGIN: " ", ADMIN_PORT: port }).admin).toBeUndefined()
+      expect(() =>
+        loadSettings({
+          BOT_ADMIN_ID: "42",
+          ADMIN_ORIGIN: "https://admin.example.test",
+          ADMIN_PORT: port,
+        }),
+      ).toThrow()
+    },
+  )
+
   it("rejects invalid supported settings", () => {
     expect(() => loadSettings({ BOT_WHITELIST: "123,nope" })).toThrow(ZodError)
     for (const id of ["0", "-123", "1.5", "1e3", "abc", "9007199254740992"]) {

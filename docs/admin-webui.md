@@ -16,7 +16,7 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
    - Use the real administrator's numeric Bot API user ID.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
    - `ADMIN_ORIGIN` must be an HTTPS origin with no trailing slash, path, query, or fragment.
-   - Leaving `ADMIN_ORIGIN` unset disables the WebUI.
+   - Leaving `ADMIN_ORIGIN` unset disables the WebUI. `ADMIN_PORT` is ignored while disabled; an enabled WebUI requires an integer port from 1 to 65535.
    - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only inside a private container network. Keep the published host port private.
    - Telegram Web Login, BotFather domain registration, and `TELEGRAM_LOGIN_CLIENT_ID` / `TELEGRAM_LOGIN_CLIENT_SECRET` are not required. Remove unused login credentials from the deployment.
 2. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
@@ -64,7 +64,7 @@ For a reverse proxy in another container, use a private Docker network and the `
 
 The backend does not trust `Forwarded` or `X-Forwarded-*` headers. It uses the configured HTTPS origin and checks the Host header. Rate limits use the socket peer, so a proxy shares the login budget across users. This is suitable for the single-administrator service. Configure matching body and request limits at the ingress. `/healthz` is a liveness check, not proof of valid providers or applied settings.
 
-Cookies are host-only, Secure, HttpOnly, and SameSite=Lax. Administrator sessions expire after 30 idle minutes or eight hours total. Mutations require the session's CSRF token and the exact Origin. Logout revokes the server-side session and cancels provider login interactions owned by it.
+Cookies are host-only, Secure, HttpOnly, and SameSite=Strict. Administrator sessions expire after 30 idle minutes or eight hours total. Mutations require the session's CSRF token and the exact Origin. Logout revokes the server-side session and cancels provider login interactions owned by it.
 
 ## First-start import
 
@@ -74,6 +74,7 @@ The database is `.telegramagent/admin.sqlite`, separate from Pi's session databa
 - This narrows old sender-based group authorization: an approved private user no longer authorizes an otherwise unapproved group.
 - Valid `mcp.json` entries are copied once into protected administration state. Invalid entries are skipped. The import report records accepted and skipped counts without rejected names or values. The source remains unchanged. After import, restart does not read the source again. The read-only Docker mount remains an import source, not the active editable configuration after import.
 - Provider credentials remain in Pi's existing credential store. Provider metadata references and existing per-chat model selections are imported without copying credentials into settings.
+- Model selections with missing models or unsupported thinking levels are skipped and listed as failed chat IDs. Valid selections still import. No fallback changes a saved selection.
 - Session model import reads a consistent temporary SQLite backup through Pi's storage API. It does not run a conversation, change the source database, or delete transcripts.
 - New capabilities are not automatically approved. Shell and file tools start unavailable in the new global policy, including for imported chats.
 - Import reports appear on the Audit page and at the authenticated `/api/imports` endpoint. Partial model imports list chat IDs and unscanned directory entries that need review. The importer scans at most 1,000 entries, stops starting new copies after 60 seconds, and limits each session copy to 1 GB and 30 seconds. Imports do not overwrite later WebUI edits on restart.
@@ -131,6 +132,10 @@ Supported custom API types are OpenAI Completions, OpenAI Responses, Anthropic M
 ## MCP configuration and secrets
 
 Only the administrator can change MCP commands, endpoints, environment fields, headers, timeouts, and exposure rules. Starting a configured stdio server executes administrator-supplied code. Connection tests can therefore have startup effects even though they do not invoke tools. Stdio connection tests use the bot working directory, including as the base for a relative server `cwd`.
+
+Use **Delete** beside an obsolete MCP entry to remove its configuration and stored secrets, then apply the change. First remove that server from global availability, defaults, and explicit chat selections. Deletion checks the saved revision, records an audit event, and frees one of the 16 server slots. A running connection test blocks deletion. Transcript files remain unchanged.
+
+Session creation checks the saved revision before MCP discovery. Each transport start also checks the current authorization epoch, including after asynchronous process-home setup. A revoked chat, server, or configuration cannot start a stale MCP command.
 
 MCP configuration supports the existing transport fields. An update preserves omitted fields. For `env` and `headers`, null preserves a named value, a literal replaces it, and an empty object clears the map. Use these maps for secrets; do not put secrets in commands, arguments, descriptions, names, or URLs. Ordinary inventory responses show configured markers and field names, not existing secret values.
 

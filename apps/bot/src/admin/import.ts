@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { backup, DatabaseSync } from "node:sqlite"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
@@ -90,7 +91,11 @@ export async function importLegacyModels(store: AdminStore, root: string, runtim
     try {
       const value = await readLegacySelection(path.join(root, name, "durable/session.sqlite"))
       const split = value.model.indexOf("/")
-      if (!runtime.getPhysicalModel(value.model.slice(0, split), value.model.slice(split + 1))) {
+      const model = runtime.getPhysicalModel(
+        value.model.slice(0, split),
+        value.model.slice(split + 1),
+      )
+      if (!model || !getSupportedThinkingLevels(model).includes(value.thinking)) {
         failures.push(id)
         continue
       }

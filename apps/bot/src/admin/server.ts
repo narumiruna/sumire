@@ -105,7 +105,8 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     const method = req.method ?? "GET"
     if (url.origin !== config.origin || req.headers.host !== new URL(config.origin).host)
       throw new AdminError(400, "Invalid host")
-    if (!["GET", "POST", "PUT"].includes(method)) throw new AdminError(405, "Method not allowed")
+    if (!["GET", "POST", "PUT", "DELETE"].includes(method))
+      throw new AdminError(405, "Method not allowed")
     limited(`all:${req.socket.remoteAddress}`, 240)
     if (url.pathname === "/healthz" && method === "GET") {
       reply(res, 200, { ok: true })
@@ -293,6 +294,16 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       return
     }
     const mcpRoute = /^\/api\/mcp\/([A-Za-z0-9_-]{1,64})$/.exec(url.pathname)
+    if (mcpRoute && method === "DELETE") {
+      const input = z
+        .object({ revision: z.number().int().positive() })
+        .strict()
+        .parse(await body(req))
+      mcp.remove(mcpRoute[1] as string, input.revision, session.actor)
+      await services.apply()
+      reply(res, 200, { ok: true })
+      return
+    }
     if (mcpRoute && method === "PUT") {
       const input = z
         .object({ revision: z.number().int().positive(), config: z.unknown() })
