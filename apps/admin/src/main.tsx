@@ -21,6 +21,7 @@ import "@radix-ui/themes/styles.css"
 import "./styles.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
+import { Activity, type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
 import {
   ApiError,
   type Inventory,
@@ -33,7 +34,6 @@ import {
 } from "./api.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { Providers, SearchChoice } from "./providers.js"
-import { Activity, type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
