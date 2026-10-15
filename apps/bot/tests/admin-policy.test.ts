@@ -78,7 +78,7 @@ describe("admin policy and persistence", () => {
       expect(
         migrated.db.prepare("SELECT name FROM sqlite_master WHERE name='login'").get(),
       ).toBeUndefined()
-      expect(migrated.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 2 })
+      expect(migrated.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 3 })
       const current = migrated.createSession("42")
       const reopened = new AdminStore(file, new Set(), 42)
       try {
@@ -94,7 +94,7 @@ describe("admin policy and persistence", () => {
     const { file } = store()
     const future = `${file}.future`
     const db = new DatabaseSync(future)
-    db.exec("PRAGMA user_version=3")
+    db.exec("PRAGMA user_version=4")
     db.close()
     expect(() => new AdminStore(future, new Set(), 42)).toThrow("newer")
   })

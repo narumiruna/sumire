@@ -36,6 +36,8 @@ docker compose down
 
 See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build`, then send `/admin` to get the local passkey setup URL. For remote access, set `ADMIN_ORIGIN` and use an existing HTTPS reverse proxy. `compose.yaml` publishes only loopback port `17465`, not port 443.
 
+Send `/allow` in a private chat or group to request access. The administrator opens the returned link, signs in with a Passkey, and explicitly approves the displayed chat. Localhost links must open on the Sumire host. Before the later removal of `BOT_WHITELIST`, review existing environment IDs on the WebUI **Access** page; missing IDs are never merged automatically.
+
 ### Build cache
 
 ```bash

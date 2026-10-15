@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { chromium } from "playwright"
+import { ChatAccess } from "../dist/admin/access.js"
 import { createPasskeySetup } from "../dist/admin/auth.js"
 import { McpAdmin } from "../dist/admin/mcp.js"
 import { ProviderAdmin } from "../dist/admin/providers.js"
@@ -22,7 +23,7 @@ try {
   ).admin
   assert.equal(config.origin, "http://localhost:17465")
   config.port = 0
-  store = new AdminStore(path.join(directory, "admin.sqlite"), new Set(), 42)
+  store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([99]), 42)
   store.applied(1, true)
   const runtime = { getProviders: () => [], getModels: () => [] }
   admin = createAdminServer(config, {
@@ -67,12 +68,38 @@ try {
   await page.getByRole("button", { name: "Sign out" }).click()
   await page.getByRole("button", { name: "Sign in with passkey" }).waitFor()
   assert.equal(await page.evaluate(async () => (await fetch("/api/session")).status), 401)
-  await page.getByRole("button", { name: "Sign in with passkey" }).click()
-  await page.getByRole("button", { name: "Sign out" }).waitFor()
+  const policy = store.snapshot().policy
+  policy.privateUsers = []
+  store.save(policy, 1, "42")
+  store.applied(2, true)
+  const link = new ChatAccess(store).issue(
+    { id: -100, type: "supergroup", name: "Approval fixture" },
+    config.origin,
+  )
+  assert.equal(link.approved, false)
+  await page.goto(link.url)
+  await page.getByRole("button", { name: "Sign in with passkey" }).waitFor()
+  assert.equal(new URL(page.url()).hash, "")
   await page.reload()
-  await page.getByRole("button", { name: "Sign out" }).waitFor()
+  await page.getByRole("button", { name: "Sign in with passkey" }).click()
+  await page.getByRole("button", { name: "Approve chat", exact: true }).waitFor()
+  assert.equal(store.allows(-100), false)
+  await page.getByRole("button", { name: "Approve chat", exact: true }).click()
+  await page.getByText("Saved 3 · Applied 3 · applied").waitFor()
+  assert.equal(store.allows(-100), true)
+  assert.equal(store.allowsTool(-100, "bash"), false)
+  assert.equal(await page.evaluate(() => sessionStorage.length), 0)
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("checkbox", { name: "Import 99" }).check()
+  await page.getByRole("button", { name: "Confirm environment review" }).click()
+  await page.getByText(/Environment review completed/).waitFor()
+  assert.equal(store.allows(99), true)
+  await page.reload()
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByText(/Environment review completed/).waitFor()
+  assert.ok(new ChatAccess(store).reconciliation().review)
   console.log(
-    "Local HTTP browser smoke passed: passkey registration, Secure cookies, CSRF enforcement, logout, sign-in, and reload. No live Telegram or provider requests were made.",
+    "Local HTTP browser smoke passed: passkey registration, Secure cookies, CSRF enforcement, logout, sign-in, chat approval after reload, and environment reconciliation. No live Telegram or provider requests were made.",
   )
 } finally {
   await browser?.close()

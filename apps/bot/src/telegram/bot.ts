@@ -3,7 +3,9 @@ import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
+import { ChatAccess } from "../admin/access.js"
 import { createPasskeySetup } from "../admin/auth.js"
+import { AdminError } from "../admin/store.js"
 import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
 import { buildBlogPostPrompt } from "../blog-post/prompt.js"
 import {
@@ -121,6 +123,58 @@ export function createTelegramAgentBot(
         onError: (provider, error) => logger.warn(`${provider} market-data query failed`, error),
       }))
 
+  bot.command("allow", async (context) => {
+    const chat = context.chat
+    if (!["private", "group", "supergroup"].includes(chat.type)) return
+    if (chat.type === "private" && context.from?.id !== chat.id) return
+    if (context.match.trim()) {
+      await context.reply("Use /allow without arguments in the chat you want to approve.")
+      return
+    }
+    if (!settings.admin || !dependencies.control) {
+      await context.reply(
+        "Administration WebUI is not available. Ask the operator to configure BOT_ADMIN_ID and restart the bot.",
+      )
+      return
+    }
+    try {
+      const result = new ChatAccess(dependencies.control).issue(
+        {
+          id: chat.id,
+          type: chat.type,
+          name: ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
+        },
+        settings.admin.origin,
+      )
+      if (result.approved) {
+        await context.reply(
+          "This chat is already approved. Runtime access still requires an applied policy.",
+        )
+        return
+      }
+      const text =
+        "Ask the administrator to open this link, sign in with a passkey, and confirm this chat. The link expires in 15 minutes. Only the newest link works."
+      await context.reply(
+        new URL(settings.admin.origin).protocol === "http:"
+          ? `${text}\nOpen this URL in a browser on the computer that runs Sumire, not inside Telegram:\n${result.url}`
+          : text,
+        {
+          link_preview_options: { is_disabled: true },
+          ...(new URL(settings.admin.origin).protocol === "https:"
+            ? {
+                reply_markup: {
+                  inline_keyboard: [[{ text: "Review chat access", url: result.url }]],
+                },
+              }
+            : {}),
+        },
+      )
+    } catch (error) {
+      if (!(error instanceof AdminError)) throw error
+      await context.reply(error.message)
+    }
+  })
+
   // Bootstrap access to administration must not depend on chat policy or model credentials.
   bot.command("admin", async (context) => {
     if (
@@ -232,6 +286,7 @@ export function createTelegramAgentBot(
         "/reset — 清除目前 chat 的對話狀態",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
+        "/allow — Request administrator approval for this chat",
         ...(context.chat.type === "private" && isAdminSender(context, settings.botAdminId)
           ? ["/admin — Open the administration WebUI"]
           : []),
@@ -1194,6 +1249,7 @@ export function createTelegramAgentBot(
           { command: "reset", description: "清除這個 chat 的對話狀態" },
           { command: "cancel", description: "取消目前任務" },
           { command: "id", description: "顯示 chat ID 與 user ID" },
+          { command: "allow", description: "Request chat access approval" },
         ]
         await bot.api.setMyCommands(commands)
         if (settings.botAdminId !== undefined)

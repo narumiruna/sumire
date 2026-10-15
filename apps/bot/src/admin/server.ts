@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
 import { z } from "zod"
+import { accessTokenPattern, ChatAccess } from "./access.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import type { McpAdmin } from "./mcp.js"
 import { effectivePolicy, policySchema } from "./policy.js"
@@ -55,6 +56,7 @@ const reply = (res: ServerResponse, status: number, value: unknown) => {
 export function createAdminServer(config: AdminConfig, services: AdminServices) {
   const { store, providers, mcp } = services
   const login = new PasskeyAdminLogin(config, store)
+  const access = new ChatAccess(store)
   const buckets = new Map<string, { start: number; count: number }>()
   const limited = (key: string, max: number) => {
     const now = Date.now()
@@ -217,6 +219,47 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       await providers.cancelOwner(owner)
       res.setHeader("set-cookie", cookie("__Host-sumire-session", "", 0))
       reply(res, 200, { ok: true })
+      return
+    }
+    if (url.pathname === "/api/access/reconciliation" && method === "GET") {
+      reply(res, 200, access.reconciliation())
+      return
+    }
+    if (url.pathname === "/api/access/reconciliation" && method === "POST") {
+      const input = z
+        .object({
+          fingerprint: z.string().regex(accessTokenPattern),
+          selected: z.array(z.number().int().safe()).max(2000),
+          revision: z.number().int().positive(),
+        })
+        .strict()
+        .parse(await body(req))
+      access.reconcile(input.fingerprint, input.selected, input.revision, session.actor)
+      await services.apply()
+      reply(res, 200, store.snapshot())
+      return
+    }
+    if (
+      ["/api/access/resolve", "/api/access/approve"].includes(url.pathname) &&
+      method === "POST"
+    ) {
+      const approving = url.pathname === "/api/access/approve"
+      const schema = z.object({ token: z.string().regex(accessTokenPattern) })
+      if (approving) {
+        const input = schema
+          .extend({ revision: z.number().int().positive() })
+          .strict()
+          .parse(await body(req, 4096))
+        access.approve(input.token, config.origin, input.revision, session.actor)
+        await services.apply()
+        reply(res, 200, store.snapshot())
+      } else {
+        const input = schema.strict().parse(await body(req, 4096))
+        reply(res, 200, {
+          ...access.resolve(input.token, config.origin),
+          revision: store.snapshot().revision,
+        })
+      }
       return
     }
     if (url.pathname === "/api/settings" && method === "GET") {

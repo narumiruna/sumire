@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { ChatAccess } from "../src/admin/access.js"
 import { createPasskeySetup } from "../src/admin/auth.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
@@ -107,6 +108,127 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("requires authenticated same-origin CSRF-protected review and approval of the stored chat", async () => {
+    const access = new ChatAccess(store)
+    const link = access.issue(
+      { id: -100, type: "group", name: "<target>" },
+      "https://admin.example.test",
+    )
+    if (link.approved) throw new Error("Expected request")
+    const token = new URLSearchParams(new URL(link.url).hash.slice(1)).get("allow")
+    const route = "/api/access/resolve"
+    expect((await call(route, "POST", { token })).status).toBe(401)
+    expect(
+      (await call(route, "POST", { token }, { ...auth(), "x-csrf-token": "wrong" })).status,
+    ).toBe(403)
+    expect(
+      (await call(route, "POST", { token }, { ...auth(), origin: "https://other.test" })).status,
+    ).toBe(403)
+    expect((await call(route, "POST", { token }, { ...auth(), host: "other.test" })).status).toBe(
+      400,
+    )
+    expect((await call(route, "GET", undefined, auth())).status).toBe(404)
+    expect((await call(route, "POST", { token, chatid: -200 }, auth())).status).toBe(400)
+    expect((await call(route, "POST", { token: "a".repeat(64) }, auth())).status).toBe(410)
+    expect((await call(route, "POST", { token: "bad" }, auth())).status).toBe(400)
+    expect((await call(route, "POST", "x".repeat(4097), auth())).status).toBe(413)
+    const resolved = await call(route, "POST", { token }, auth())
+    expect(JSON.parse(resolved.body)).toMatchObject({
+      id: -100,
+      type: "group",
+      name: "<target>",
+      revision: 1,
+    })
+    expect(store.snapshot().revision).toBe(1)
+    expect(apply).not.toHaveBeenCalled()
+    const approve = "/api/access/approve"
+    expect((await call(approve, "POST", { token, revision: 1 })).status).toBe(401)
+    expect(
+      (await call(approve, "POST", { token, revision: 1 }, { ...auth(), "x-csrf-token": "wrong" }))
+        .status,
+    ).toBe(403)
+    expect((await call(approve, "POST", { token, revision: 2 }, auth())).status).toBe(409)
+    expect((await call(approve, "POST", { token, revision: 1, chatid: -200 }, auth())).status).toBe(
+      400,
+    )
+    expect((await call(approve, "POST", { token, revision: 1 }, auth())).status).toBe(200)
+    expect(apply).toHaveBeenCalledOnce()
+    expect(store.allows(-100)).toBe(true)
+    expect(store.allows(-200)).toBe(false)
+    expect((await call(approve, "POST", { token, revision: 2 }, auth())).status).toBe(410)
+    expect(store.snapshot().revision).toBe(2)
+    expect(JSON.stringify(store.listAudit(0))).not.toContain(token)
+  })
+  it("rejects expired, replaced, and wrong-origin links without policy mutations", async () => {
+    const audit = store.listAudit(0)
+    const access = new ChatAccess(store)
+    const issue = (origin = "https://admin.example.test") => {
+      const link = access.issue({ id: -100, type: "group", name: "Target" }, origin)
+      if (link.approved) throw new Error("Expected request")
+      return new URLSearchParams(new URL(link.url).hash.slice(1)).get("allow")
+    }
+    const expired = issue()
+    store.db.exec("UPDATE chat_access_requests SET expires=0")
+    for (const route of ["resolve", "approve"]) {
+      const data = { token: expired, ...(route === "approve" ? { revision: 1 } : {}) }
+      expect((await call(`/api/access/${route}`, "POST", data, auth())).status).toBe(410)
+    }
+    const replaced = issue()
+    store.db.exec("UPDATE chat_access_requests SET created=created-60000")
+    const wrongOrigin = issue("https://other.example.test")
+    expect((await call("/api/access/resolve", "POST", { token: replaced }, auth())).status).toBe(
+      410,
+    )
+    expect(
+      (await call("/api/access/approve", "POST", { token: wrongOrigin, revision: 1 }, auth()))
+        .status,
+    ).toBe(410)
+    expect(store.snapshot().revision).toBe(1)
+    expect(store.listAudit(0)).toEqual(audit)
+    expect(apply).not.toHaveBeenCalled()
+  })
+  it("keeps committed approval failed-closed and consumed when runtime application fails", async () => {
+    const link = new ChatAccess(store).issue(
+      { id: -100, type: "group", name: "Target" },
+      "https://admin.example.test",
+    )
+    if (link.approved) throw new Error("Expected request")
+    const token = new URLSearchParams(new URL(link.url).hash.slice(1)).get("allow")
+    apply.mockImplementationOnce(async () => {
+      store.applied(store.snapshot().revision, false)
+      throw new Error("fixture")
+    })
+    expect((await call("/api/access/approve", "POST", { token, revision: 1 }, auth())).status).toBe(
+      500,
+    )
+    expect(store.snapshot().status).toBe("failed")
+    expect(store.allows(-100)).toBe(false)
+    expect((await call("/api/access/approve", "POST", { token, revision: 2 }, auth())).status).toBe(
+      410,
+    )
+    expect((await call("/api/apply", "POST", {}, auth())).status).toBe(200)
+    expect(store.allows(-100)).toBe(true)
+  })
+  it("authenticates and revision-checks environment reconciliation without regranting denied IDs", async () => {
+    const policy = store.snapshot().policy
+    policy.privateUsers = []
+    store.save(policy, 1, "42")
+    const route = "/api/access/reconciliation"
+    expect((await call(route)).status).toBe(401)
+    const report = JSON.parse((await call(route, "GET", undefined, auth())).body)
+    const input = { fingerprint: report.fingerprint, revision: 2, selected: [] }
+    expect((await call(route, "POST", input, { ...auth(), "x-csrf-token": "wrong" })).status).toBe(
+      403,
+    )
+    expect((await call(route, "POST", { ...input, revision: 1 }, auth())).status).toBe(409)
+    expect((await call(route, "POST", { ...input, selected: [999] }, auth())).status).toBe(400)
+    expect((await call(route, "POST", input, auth())).status).toBe(200)
+    expect(store.snapshot().policy.privateUsers).toEqual([])
+    expect(apply).toHaveBeenCalledOnce()
+    expect(JSON.parse((await call(route, "GET", undefined, auth())).body).review).toMatchObject({
+      revision: 3,
+    })
+  })
   it("revision-checks credential writes and reports upstream failures without secrets", async () => {
     const route = "/api/providers/fixture/credential"
     const success = await call(route, "POST", { key: "literal-fixture", revision: 1 }, auth())
