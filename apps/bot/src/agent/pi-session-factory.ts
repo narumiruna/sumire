@@ -11,7 +11,7 @@ import { createRegistry, defineExtension, Harness, section } from "@earendil-wor
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import { urlContentSkillsPath } from "@narumitw/sumire-url-content/resources"
-import { createPublicUrlLoader, createUrlTool, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
+import { createUrlTool, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 import type { McpAdmin } from "../admin/mcp.js"
 import { effectivePolicy } from "../admin/policy.js"
 import { chatModelRuntime } from "../admin/providers.js"
@@ -21,6 +21,7 @@ import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { ChannelImageIndex } from "../telegram/channel-images.js"
+import { createBotUrlLoader } from "../url-loader.js"
 import { traceUrlLoad } from "../url-telemetry.js"
 import { createDurableCodemode } from "./durable-codemode.js"
 import { createProgressExtension } from "./durable-progress.js"
@@ -87,20 +88,11 @@ export async function createPiSessionFactory(
   ]
     .filter(Boolean)
     .join("\n\n")
-  const urlTool = createUrlTool(
-    createPublicUrlLoader({
-      allowedSchemes: settings.botUrlAllowedSchemes,
-      maxChars: settings.botUrlMaxExtractedChars,
-      timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
-      urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
-      firecrawlFallback: true,
-    }),
-    {
-      selectableLoaders: selectableUrlLoaders,
-      traceLoad: (url, requestedLoader, toolCallId, load) =>
-        traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
-    },
-  )
+  const urlTool = createUrlTool(createBotUrlLoader(settings), {
+    selectableLoaders: selectableUrlLoaders,
+    traceLoad: (url, requestedLoader, toolCallId, load) =>
+      traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
+  })
   const baseTools = [
     ...codingTools(settings.botWorkdir, control ? adminShellEnvironment(process.env) : undefined),
     urlTool,

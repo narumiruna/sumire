@@ -1,5 +1,5 @@
 import type { RunnerHandle } from "@grammyjs/runner"
-import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-url-tool"
+import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
@@ -18,6 +18,7 @@ import { promptWithDocumentContext } from "../documents/prompt.js"
 import { type Logger, withLogSpan } from "../logging.js"
 import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
+import { createBotUrlLoader } from "../url-loader.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { ChannelImageIndex } from "./channel-images.js"
@@ -100,15 +101,7 @@ export function createTelegramAgentBot(
   let runner: RunnerHandle | undefined
   let stopping = false
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
-  const articleUrlLoader =
-    dependencies.articleUrlLoader ??
-    createPublicUrlLoader({
-      allowedSchemes: settings.botUrlAllowedSchemes,
-      maxChars: settings.botUrlMaxExtractedChars,
-      timeoutMs: Math.round(settings.botUrlTimeoutSeconds * 1_000),
-      urlContentTimeoutSeconds: settings.botUrlContentTimeoutSeconds,
-      firecrawlFallback: true,
-    })
+  const articleUrlLoader = dependencies.articleUrlLoader ?? createBotUrlLoader(settings)
   const audioTranscriber =
     dependencies.audioTranscriber ??
     new TelegramAudioTranscriber({

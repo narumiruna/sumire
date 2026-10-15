@@ -39,7 +39,7 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
     name: "load_public_url",
     label: "Load public URL",
     description:
-      "Load readable text or Markdown from a public HTTP(S) URL. Google Docs links use plain-text export; Threads post and share links require verified post metadata; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Automatic loading delegates directly to url-content source selection and fallback; built-in extraction runs only when explicitly selected. Private, local, oversized, and unsafe redirect targets are rejected.",
+      "Load readable text or Markdown from a public HTTP(S) URL. Use this tool to read, summarize, or inspect a supplied URL before answering from its content. YouTube watch, Shorts, and youtu.be links use caption extraction first, with audio transcription fallback; call with only url for automatic selection. A video URL is not a reason to assume captions are unavailable. Google Docs links use plain-text export; Threads post and share links require verified post metadata; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Automatic loading delegates directly to url-content source selection and fallback; built-in extraction runs only when explicitly selected. Private, local, oversized, and unsafe redirect targets are rejected.",
     parameters,
     execute: async (toolCallId, toolParameters, signal) => {
       const rawLoader = "loader" in toolParameters ? toolParameters.loader : undefined
