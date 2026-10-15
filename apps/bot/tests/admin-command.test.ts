@@ -159,14 +159,15 @@ it("returns only the ordinary WebUI link after passkey registration", async () =
   })
   expect(store.db.prepare("SELECT * FROM passkey_setup").all()).toEqual([])
 })
-it("tells the owner when the WebUI is disabled without starting a model turn", async () => {
+it("sends a local setup URL when ADMIN_ORIGIN is missing without starting a model turn", async () => {
   const { telegram, calls, sessions } = await setup(false)
   await telegram.bot.handleUpdate(command())
   expect(calls).toEqual([
     {
       method: "sendMessage",
       payload: expect.objectContaining({
-        text: expect.stringContaining("Administration WebUI is not enabled"),
+        text: expect.stringMatching(/http:\/\/localhost:17465\/#setup=[A-Za-z0-9_-]{43}/),
+        link_preview_options: { is_disabled: true },
       }),
     },
   ])

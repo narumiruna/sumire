@@ -138,7 +138,23 @@ describe("loadSettings", () => {
     expect(loadSettings(environment)).toEqual(loadSettings({}))
   })
 
-  it("enables the WebUI only with explicit HTTPS and Telegram bootstrap settings", () => {
+  it("uses localhost for WebUI setup when only BOT_ADMIN_ID is set", () => {
+    for (const origin of [undefined, "", "   "]) {
+      const settings = loadSettings({ BOT_ADMIN_ID: "42", ADMIN_ORIGIN: origin })
+      expect(settings.admin).toMatchObject({
+        host: "127.0.0.1",
+        port: 17465,
+        origin: "http://localhost:17465",
+      })
+    }
+    expect(loadSettings({ BOT_ADMIN_ID: "42", ADMIN_PORT: "17467" }).admin).toMatchObject({
+      port: 17467,
+      origin: "http://localhost:17467",
+    })
+    expect(() => loadSettings({ BOT_ADMIN_ID: "42", ADMIN_PORT: "invalid" })).toThrow()
+  })
+
+  it("accepts an explicit HTTPS origin with Telegram bootstrap settings", () => {
     const bootstrap = {
       BOT_ADMIN_ID: "42",
       ADMIN_ORIGIN: "https://admin.example.test",

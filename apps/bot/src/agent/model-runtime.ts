@@ -26,10 +26,8 @@ export async function createBotModelRuntime(
   const model = modelRuntime.getModel("openai", initialModelId)
   if (!model) throw new Error(`Pi model not found: openai/${initialModelId}`)
 
-  if (!settings.admin && !canLogin && (await modelRuntime.getAvailable()).length === 0) {
-    throw new Error(
-      "Pi requires credentials for an available chat model or BOT_ADMIN_ID explicitly listed in BOT_WHITELIST for credential setup",
-    )
+  if (!settings.admin && (await modelRuntime.getAvailable()).length === 0) {
+    throw new Error("Pi requires model credentials or BOT_ADMIN_ID to enable Web UI setup")
   }
 
   const authSettings = SettingsManager.create(settings.botWorkdir, agentDir, {

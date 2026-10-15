@@ -8,29 +8,30 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
 
    ```dotenv
    BOT_ADMIN_ID=123456789
-   ADMIN_ORIGIN=https://sumire.example.com
    ADMIN_HOST=127.0.0.1
    ADMIN_PORT=17465
    ```
 
    - Use the real administrator's numeric Bot API user ID.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
-   - `ADMIN_ORIGIN` must be an HTTPS origin with no trailing slash, path, query, or fragment.
-   - Leaving `ADMIN_ORIGIN` unset disables the WebUI. `ADMIN_PORT` is ignored while disabled; an enabled WebUI requires an integer port from 1 to 65535.
+   - `BOT_ADMIN_ID` enables the WebUI. Without `ADMIN_ORIGIN`, the browser URL is `http://localhost:17465`. A custom `ADMIN_PORT` changes this URL too.
+   - Local passkeys require a browser that supports WebAuthn and Secure cookies on `localhost`. Open the URL on the computer that runs Sumire. Do not replace `localhost` with a LAN address or open it inside Telegram.
+   - For remote access, set `ADMIN_ORIGIN=https://sumire.example.com`. An explicit origin must use HTTPS with no trailing slash, path, query, or fragment.
+   - Without `BOT_ADMIN_ID`, the WebUI remains disabled and startup requires existing model credentials. `ADMIN_PORT` is ignored while disabled; an enabled WebUI requires an integer port from 1 to 65535.
    - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only inside a private container network. Keep the published host port private.
    - Telegram Web Login, BotFather domain registration, and `TELEGRAM_LOGIN_CLIENT_ID` / `TELEGRAM_LOGIN_CLIENT_SECRET` are not required. Remove unused login credentials from the deployment.
-2. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
+2. For remote HTTPS access only, route the configured origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface. Local access needs no reverse proxy.
 3. Rebuild and restart with `docker compose up -d --build sumire`.
 4. Send `/admin` in a private chat with Sumire. Only `BOT_ADMIN_ID` receives the setup link. This command works before chat approval and while policies are pending or failed. It does not start a model turn or grant bot access.
-5. Open **Register passkey** in your system browser. Complete the device fingerprint, face, or PIN check.
+5. For local access, copy the private setup URL into a browser on the computer that runs Sumire. For HTTPS access, open **Register passkey** in your system browser. Complete the device fingerprint, face, or PIN check.
    - The setup link expires after five minutes. Only the newest link works. Do not forward it or share it. Telegram bot chats are not end-to-end encrypted.
    - The token is in the URL fragment, not an HTTP query. The page removes the fragment before registration requests. The server stores only its hash.
    - Registration requires the private setup token and a one-use browser-bound challenge. Public visitors cannot claim an unconfigured account.
-6. Later visits use **Sign in with passkey**. You can open `ADMIN_ORIGIN` directly or use `/admin` again. Once a passkey exists, `/admin` sends only the ordinary WebUI link. It cannot add or replace a credential.
+6. Later visits use **Sign in with passkey**. Open `http://localhost:17465`, the configured `ADMIN_ORIGIN`, or use `/admin` again. Once a passkey exists, `/admin` sends only the ordinary WebUI link. It cannot add or replace a credential.
 
 The server uses SimpleWebAuthn to check the challenge, exact origin, RP ID, user verification, signature, credential owner, and authenticator counter. Synced passkeys with zero counters are supported. Session cookies remain Secure and HttpOnly. Mutation requests require Origin and CSRF checks.
 
-The initial credential can be synced through your device's passkey provider. Another device can also use the browser's supported cross-device passkey flow. The passkey belongs to the configured domain. A domain change can require recovery and new enrollment.
+The initial credential can be synced through your device's passkey provider. Another device can also use the browser's supported cross-device passkey flow. The passkey belongs to the configured domain. A domain change can require recovery and new enrollment. This includes a move from `localhost` to a public domain. Local setup does not add a password fallback or let public visitors create an account.
 
 Reference: <https://simplewebauthn.dev/docs/packages/server>.
 
@@ -62,7 +63,7 @@ sumire.example.com {
 
 For a reverse proxy in another container, use a private Docker network and the `sumire:17465` service address instead of host loopback. Do not publish the backend on `0.0.0.0` on the host. Configure TLS, ingress access logs, and the public domain outside Sumire. Ingress logs must not record request bodies. Passkey setup tokens are sent only in same-origin JSON bodies, not URL queries.
 
-The backend does not trust `Forwarded` or `X-Forwarded-*` headers. It uses the configured HTTPS origin and checks the Host header. Rate limits use the socket peer, so a proxy shares the login budget across users. This is suitable for the single-administrator service. Configure matching body and request limits at the ingress. `/healthz` is a liveness check, not proof of valid providers or applied settings.
+The backend does not trust `Forwarded` or `X-Forwarded-*` headers. It uses the exact configured origin, or the default localhost origin, and checks the Host header. It sends HSTS only for an HTTPS origin. Rate limits use the socket peer, so a proxy shares the login budget across users. This is suitable for the single-administrator service. Configure matching body and request limits at the ingress. `/healthz` is a liveness check, not proof of valid providers or applied settings.
 
 Cookies are host-only, Secure, HttpOnly, and SameSite=Strict. Administrator sessions expire after 30 idle minutes or eight hours total. Mutations require the session's CSRF token and the exact Origin. Logout revokes the server-side session and cancels provider login interactions owned by it.
 
@@ -188,8 +189,10 @@ npm run build
 npm run test:browser --workspace @narumitw/sumire-admin
 ```
 
-After building, `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
+After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, and reload. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
 
-The browser suite uses API fixtures and a strict-port development server. It includes a Chromium virtual-authenticator registration and sign-in flow. It does not prove real device enrollment, real provider OAuth, or public TLS. For an authenticated local browser session, serve the production build behind the configured HTTPS origin. Do not disable Secure cookies or add an authentication bypass for development.
+`node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
+
+The browser suite uses API fixtures and a strict-port development server. It includes a Chromium virtual-authenticator registration and sign-in flow. It does not prove real device enrollment, real provider OAuth, or public TLS. For a local authenticated session, use the production build at the default localhost origin. For remote access, use the configured HTTPS origin. Keep Secure cookies and all authentication checks enabled.
 
 Before production acceptance, verify real device registration and passkey sign-in on the configured domain, rejection of unauthorized setup and login, provider authentication with the selected providers, revocation during active work, restart persistence, backup restoration, and HTTPS ingress behavior. Real device and provider tests require the administrator and deployment access; do not substitute fixtures for this evidence.

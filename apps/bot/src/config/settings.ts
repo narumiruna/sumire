@@ -112,19 +112,20 @@ export function loadSettings(
   const parsed = environmentSchema.parse(environment)
   const root = path.resolve(projectRoot)
   let admin: AdminConfig | undefined
-  if (parsed.ADMIN_ORIGIN) {
-    const origin = new URL(parsed.ADMIN_ORIGIN)
+  if (parsed.ADMIN_ORIGIN || parsed.BOT_ADMIN_ID) {
+    if (!parsed.BOT_ADMIN_ID) throw new Error("Admin requires BOT_ADMIN_ID")
+    const port = z.coerce.number().int().min(1).max(65535).default(17465).parse(parsed.ADMIN_PORT)
+    const origin = new URL(parsed.ADMIN_ORIGIN ?? `http://localhost:${port}`)
     if (
-      origin.protocol !== "https:" ||
-      origin.origin !== parsed.ADMIN_ORIGIN ||
+      (parsed.ADMIN_ORIGIN &&
+        (origin.protocol !== "https:" || origin.origin !== parsed.ADMIN_ORIGIN)) ||
       origin.username ||
-      origin.password ||
-      !parsed.BOT_ADMIN_ID
+      origin.password
     )
-      throw new Error("Admin requires an HTTPS origin and BOT_ADMIN_ID")
+      throw new Error("ADMIN_ORIGIN must be an HTTPS origin without a trailing slash")
     admin = {
       origin: origin.origin,
-      port: z.coerce.number().int().min(1).max(65535).default(17465).parse(parsed.ADMIN_PORT),
+      port,
       host: parsed.ADMIN_HOST,
       assets: path.join(root, "apps/admin/dist"),
     }

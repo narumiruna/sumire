@@ -284,6 +284,59 @@ describe("admin HTTP security", () => {
       200,
     )
   })
+  it("keeps passkey, Host, Origin, and session checks on the local HTTP origin", async () => {
+    await server.stop()
+    const origin = "http://localhost:17465"
+    server = createAdminServer(
+      { origin, host: "127.0.0.1", port: 0, assets: directory },
+      {
+        store,
+        providers: new ProviderAdmin(runtime, store),
+        mcp: new McpAdmin(store, directory),
+        apply,
+        tools: () => [],
+      },
+    )
+    await server.start()
+    const headers = { ...auth(), host: "localhost:17465", origin }
+    const health = await call("/healthz", "GET", undefined, headers)
+    expect(health.status).toBe(200)
+    expect(health.headers["strict-transport-security"]).toBeUndefined()
+    expect((await call("/healthz")).status).toBe(400)
+    expect((await call("/api/settings", "GET", undefined, { host: headers.host })).status).toBe(401)
+    expect(
+      (
+        await call(
+          "/auth/passkey/authenticate/options",
+          "POST",
+          {},
+          { ...headers, origin: "http://attacker.invalid" },
+        )
+      ).status,
+    ).toBe(403)
+    const link = createPasskeySetup(store, origin) as string
+    const setup = new URLSearchParams(new URL(link).hash.slice(1)).get("setup")
+    const started = await call("/auth/passkey/register/options", "POST", { setup }, headers)
+    expect(started.status).toBe(200)
+    expect(JSON.parse(started.body).rp.id).toBe("localhost")
+    expect(String(started.headers["set-cookie"])).toContain("HttpOnly; Secure; SameSite=Strict")
+    const response = createPasskeyFixture().registration(JSON.parse(started.body).challenge, {
+      origin,
+      rpID: "localhost",
+    })
+    const registered = await call(
+      "/auth/passkey/register/verify",
+      "POST",
+      { response },
+      {
+        ...headers,
+        cookie: String(started.headers["set-cookie"]).split(";")[0] as string,
+      },
+    )
+    expect(registered.status).toBe(200)
+    expect(JSON.parse(registered.body).actor).toBe("42")
+  })
+
   it("rejects cross-origin, unbound, oversized, and legacy login requests", async () => {
     expect((await call("/auth/telegram")).status).toBe(404)
     expect((await call("/auth/callback?code=fixture")).status).toBe(404)

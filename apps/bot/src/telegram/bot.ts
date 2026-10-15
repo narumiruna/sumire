@@ -138,13 +138,20 @@ export function createTelegramAgentBot(
       return
     if (!settings.admin) {
       await context.reply(
-        "Administration WebUI is not enabled. Configure ADMIN_ORIGIN and BOT_ADMIN_ID, then restart the bot.",
+        "Administration WebUI is not enabled. Configure BOT_ADMIN_ID, then restart the bot.",
       )
       return
     }
     const setup = dependencies.control
       ? createPasskeySetup(dependencies.control, settings.admin.origin)
       : undefined
+    if (new URL(settings.admin.origin).protocol === "http:") {
+      await context.reply(
+        `${setup ? "Register your administrator passkey. This private setup link expires in five minutes. Do not share it. Only the newest setup link works." : "Sign in with your passkey."}\nOpen this URL in a browser on the computer that runs Sumire, not inside Telegram:\n${setup ?? settings.admin.origin}`,
+        { link_preview_options: { is_disabled: true } },
+      )
+      return
+    }
     await context.reply(
       setup
         ? "Register your administrator passkey in your system browser. This private setup link expires in five minutes. Do not share it. Only the newest setup link works."
