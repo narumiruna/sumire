@@ -3,8 +3,8 @@ import os from "node:os"
 import path from "node:path"
 import { expect, it } from "vitest"
 import { McpAdmin } from "../src/admin/mcp.js"
-import { AdminStore } from "../src/admin/store.js"
 import { MCP_MAX_SERVERS } from "../src/agent/mcp-config.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 it("imports MCP once, replaces secret fields explicitly, and never echoes their values", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-mcp-"))

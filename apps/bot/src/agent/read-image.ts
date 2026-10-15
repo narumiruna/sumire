@@ -2,6 +2,7 @@ import { Type } from "@earendil-works/pi-ai"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { Api } from "grammy"
 
+import type { AdminStore } from "../admin/store.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import type { ChannelImageIndex } from "../telegram/channel-images.js"
@@ -11,9 +12,9 @@ export function createReadImageExtension(
   settings: Settings,
   index: ChannelImageIndex,
   logger: Logger,
+  store: AdminStore,
   api: Api = new Api(settings.botToken),
   fetchImplementation?: typeof fetch,
-  allowedChats: () => ReadonlySet<number> = () => settings.botWhitelist,
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
     pi.registerTool({
@@ -31,7 +32,7 @@ export function createReadImageExtension(
       }),
       async execute(_toolCallId, params, signal) {
         const { channel_chat_id: chatId, message_id: messageId } = params
-        const whitelist = allowedChats()
+        const whitelist = new Set(store.snapshot().policy.groups.filter((id) => store.allows(id)))
         if (messageId !== undefined && chatId === undefined) {
           throw new Error("channel_chat_id is required when message_id is provided")
         }
@@ -40,7 +41,9 @@ export function createReadImageExtension(
         }
         if (chatId === undefined || messageId === undefined) {
           const allowed = chatId === undefined ? whitelist : new Set([chatId])
-          const recent = await index.recent(allowed)
+          const recent = (await index.recent(allowed)).filter((record) =>
+            store.allows(record.channelChatId),
+          )
           return {
             content: [
               {
@@ -68,6 +71,7 @@ export function createReadImageExtension(
         const record = await index.find(chatId, messageId)
         if (!record) throw new Error("Channel image is not indexed or has expired")
         if (signal?.aborted) throw new Error("Channel image request was cancelled")
+        if (!store.allows(chatId)) throw new Error("Channel is not allowlisted")
         try {
           const image = await downloadTelegramImage(
             api,
@@ -77,6 +81,7 @@ export function createReadImageExtension(
             fetchImplementation,
             signal,
           )
+          if (!store.allows(chatId)) throw new Error("Channel access was revoked")
           return {
             content: [
               {

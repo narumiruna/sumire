@@ -5,18 +5,18 @@ import path from "node:path"
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent"
 import type { Api } from "grammy"
 import { describe, expect, it, vi } from "vitest"
-
 import { createReadImageExtension } from "../src/agent/read-image.js"
 import { loadSettings, type Settings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
+import { approvedStore } from "./helpers/admin-store.js"
 
 const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
 async function setup(overrides: Partial<Settings> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "read-image-"))
   const settings = {
-    ...loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7,-100" }, root),
+    ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }, root),
     ...overrides,
   }
   const index = new ChannelImageIndex(root, logger)
@@ -42,10 +42,12 @@ async function setup(overrides: Partial<Settings> = {}) {
   }))
   const fetchImplementation = vi.fn<typeof fetch>(async () => new Response("hello"))
   let tool: ToolDefinition | undefined
+  const store = approvedStore([-100])
   createReadImageExtension(
     settings,
     index,
     logger,
+    store,
     { getFile } as unknown as Api,
     fetchImplementation,
   )({
@@ -54,10 +56,48 @@ async function setup(overrides: Partial<Settings> = {}) {
     },
   } as ExtensionAPI)
   if (!tool) throw new Error("read_image tool was not registered")
-  return { tool, index, getFile, fetchImplementation }
+  return { tool, index, getFile, fetchImplementation, store }
 }
 
 describe("read_image Pi tool", () => {
+  it("rechecks database source-chat access after index reads and streamed downloads", async () => {
+    const first = await setup()
+    const find = first.index.find.bind(first.index)
+    vi.spyOn(first.index, "find").mockImplementationOnce(async (...args) => {
+      const record = await find(...args)
+      const state = first.store.snapshot()
+      state.policy.groups = []
+      first.store.save(state.policy, state.revision, "7")
+      first.store.applied(state.revision + 1, true)
+      return record
+    })
+    await expect(
+      first.tool.execute(
+        "read",
+        { channel_chat_id: -100, message_id: 1 },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("not allowlisted")
+    expect(first.getFile).not.toHaveBeenCalled()
+    const second = await setup()
+    second.fetchImplementation.mockImplementationOnce(async () => {
+      const state = second.store.snapshot()
+      second.store.applied(state.revision, false)
+      return new Response("hello")
+    })
+    await expect(
+      second.tool.execute(
+        "read",
+        { channel_chat_id: -100, message_id: 1 },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("Unable to download")
+  })
+
   it("lists only allowlisted channel metadata and downloads only a requested indexed image", async () => {
     const { tool, getFile, fetchImplementation } = await setup()
     expect(tool.exposure).toBe("model-only")

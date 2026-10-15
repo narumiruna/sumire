@@ -5,7 +5,7 @@ import path from "node:path"
 import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { chatModelRuntime, ProviderAdmin, providerFetch } from "../src/admin/providers.js"
-import { AdminStore } from "../src/admin/store.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 const directories: string[] = []
 const stores: AdminStore[] = []

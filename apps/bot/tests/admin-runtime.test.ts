@@ -7,11 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { importLegacyModels, readLegacySelection } from "../src/admin/import.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
-import { AdminStore } from "../src/admin/store.js"
 import { McpProcessHomes } from "../src/agent/mcp-process-homes.js"
-import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const roots: string[] = []
@@ -26,7 +26,7 @@ async function setup() {
   roots.push(root)
   await cp(path.resolve("../../instructions"), path.join(root, "instructions"), { recursive: true })
   await writeFile(path.join(root, "mcp.json"), '{"mcpServers":{}}')
-  return { root, settings: loadSettings({ BOT_WHITELIST: "42", BOT_ADMIN_ID: "42" }, root, root) }
+  return { root, settings: loadSettings({ BOT_ADMIN_ID: "42" }, root, root) }
 }
 
 function deferred() {
@@ -40,7 +40,7 @@ function deferred() {
 describe("admin durable runtime integration", () => {
   it.each(["corrupt", "missing"])("ignores a %s legacy MCP source after import", async (state) => {
     const { root, settings } = await setup()
-    const store = new AdminStore(path.join(root, "admin.sqlite"), settings.botWhitelist, 42)
+    const store = new AdminStore(path.join(root, "admin.sqlite"), new Set([42]), 42)
     const mcp = new McpAdmin(store, settings.botWorkdir)
     try {
       await mcp.import(settings.botMcpConfigPath)
@@ -73,11 +73,7 @@ describe("admin durable runtime integration", () => {
       model: "openai/gpt-6.1-sol",
       thinking: "low",
     })
-    const store = new AdminStore(
-      path.join(root, ".telegramagent/admin.sqlite"),
-      settings.botWhitelist,
-      42,
-    )
+    const store = new AdminStore(path.join(root, ".telegramagent/admin.sqlite"), new Set([42]), 42)
     try {
       await importLegacyModels(
         store,
@@ -149,7 +145,7 @@ describe("admin durable runtime integration", () => {
     "does not start stale MCP commands when %s permission changes during creation",
     async (revoked) => {
       const { root, settings } = await setup()
-      const store = new AdminStore(path.join(root, "admin.sqlite"), settings.botWhitelist, 42)
+      const store = new AdminStore(path.join(root, "admin.sqlite"), new Set([42]), 42)
       const mcp = new McpAdmin(store, root)
       const marker = path.join(root, "started")
       mcp.save(
@@ -208,11 +204,7 @@ describe("admin durable runtime integration", () => {
 
   it("guards saved tool references after revocation and preserves chat settings on reset", async () => {
     const { root, settings } = await setup()
-    const store = new AdminStore(
-      path.join(root, ".telegramagent/admin.sqlite"),
-      settings.botWhitelist,
-      42,
-    )
+    const store = new AdminStore(path.join(root, ".telegramagent/admin.sqlite"), new Set([42]), 42)
     const mcp = new McpAdmin(store, settings.botWorkdir)
     const policy = store.snapshot().policy
     policy.models = ["openai/gpt-6.1-sol"]

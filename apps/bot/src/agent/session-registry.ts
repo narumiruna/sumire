@@ -82,7 +82,7 @@ export interface SessionHandle extends SessionModelSettings {
 export type SessionCreator = (chatId: number) => Promise<SessionHandle>
 
 interface ChatSessionRegistryOptions {
-  control?: AdminStore
+  control: AdminStore
   replyTreeEnabled?: boolean
   replyTreeMaxRecordsPerChat?: number
   replyTreeMaxIndexBytes?: number
@@ -110,8 +110,9 @@ export class ChatSessionRegistry {
     private readonly createSession: SessionCreator,
     private readonly sessionRoot: string,
     private readonly logger: Logger,
-    private readonly options: ChatSessionRegistryOptions = {},
+    private readonly options: ChatSessionRegistryOptions,
   ) {
+    if (!options?.control) throw new Error("Database authorization is required")
     this.#replyTreeEnabled = options.replyTreeEnabled ?? false
     this.#replyIndex = new TelegramReplyIndex(
       sessionRoot,
@@ -458,26 +459,24 @@ export class ChatSessionRegistry {
       assertCurrent()
       const state = await change(session, assertCurrent)
       const control = this.options.control
-      if (control) {
-        const saved = control.snapshot()
-        control.assertChat(chatId)
-        const policy = saved.policy
-        policy.chats[String(chatId)] = {
-          ...inherited,
-          enabled: true,
-          ...policy.chats[String(chatId)],
-          model: state.currentModel ?? null,
-          thinking: state.thinkingLevel,
-        }
-        const changed = control.save(
-          policy,
-          saved.revision,
-          `chat:${chatId}`,
-          "chat.model.update",
-          `chat:${chatId}`,
-        )
-        control.applied(changed.revision, true)
+      const saved = control.snapshot()
+      control.assertChat(chatId)
+      const policy = saved.policy
+      policy.chats[String(chatId)] = {
+        ...inherited,
+        enabled: true,
+        ...policy.chats[String(chatId)],
+        model: state.currentModel ?? null,
+        thinking: state.thinkingLevel,
       }
+      const changed = control.save(
+        policy,
+        saved.revision,
+        `chat:${chatId}`,
+        "chat.model.update",
+        `chat:${chatId}`,
+      )
+      control.applied(changed.revision, true)
       return state
     })()
     const settled = mutation.then(
@@ -726,11 +725,12 @@ export class ChatSessionRegistry {
   }
 
   async #getOrCreate(chatId: number, forRecovery = false): Promise<SessionHandle> {
-    this.options.control?.assertChat(chatId)
+    this.options.control.assertChat(chatId)
     const evicting = this.#evicting.get(chatId)
     if (evicting) await evicting
     const resetting = this.#resets.get(chatId)
     if (resetting) await resetting
+    this.options.control.assertChat(chatId)
     if (this.#closed) throw new Error("Pi session registry is closed")
     const existing = this.#sessions.get(chatId)
     if (existing) {
@@ -741,15 +741,20 @@ export class ChatSessionRegistry {
     const inflight = this.#creating.get(chatId)
     if (inflight) {
       const session = await inflight
+      this.options.control.assertChat(chatId)
       if (!forRecovery) this.#recoveryOnly.delete(session)
       return session
     }
 
     const generation = this.#generations.get(chatId) ?? 0
     const creation = this.createSession(chatId).then(async (session) => {
-      if (this.#closed || (this.#generations.get(chatId) ?? 0) !== generation) {
+      try {
+        if (this.#closed || (this.#generations.get(chatId) ?? 0) !== generation)
+          throw new Error("Pi session creation was invalidated by reset")
+        this.options.control.assertChat(chatId)
+      } catch (error) {
         await session.dispose()
-        throw new Error("Pi session creation was invalidated by reset")
+        throw error
       }
       this.#sessions.set(chatId, session)
       if (forRecovery) this.#recoveryOnly.add(session)

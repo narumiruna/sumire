@@ -10,7 +10,8 @@ import { createPasskeySetup } from "../src/admin/auth.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { createAdminServer } from "../src/admin/server.js"
-import { AdminStore } from "../src/admin/store.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
+
 import { createPasskeyFixture } from "./helpers/passkey-fixture.js"
 
 let directory: string
@@ -108,6 +109,31 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("withdraws reconciliation mutations but retains authenticated historical reports", async () => {
+    store.db
+      .prepare("INSERT INTO access_reviews VALUES (?,?,?,?,?)")
+      .run("fixture-review", 1, "42", 1, '[{"id":-100,"decision":"retain-denial"}]')
+    const before = store.snapshot()
+    expect((await call("/api/access/reconciliation", "GET", undefined, auth())).status).toBe(404)
+    expect(
+      (await call("/api/access/reconciliation", "POST", { selected: [99], revision: 1 }, auth()))
+        .status,
+    ).toBe(404)
+    expect((await call("/api/imports")).status).toBe(401)
+    const reports = await call("/api/imports", "GET", undefined, auth())
+    expect(JSON.parse(reports.body)).toContainEqual({
+      name: "environment-access:1",
+      report: {
+        revision: 1,
+        actor: "42",
+        reviewed: 1,
+        decisions: [{ id: -100, decision: "retain-denial" }],
+      },
+    })
+    expect(store.snapshot()).toEqual(before)
+    expect(apply).not.toHaveBeenCalled()
+  })
+
   it("requires authenticated same-origin CSRF-protected review and approval of the stored chat", async () => {
     const access = new ChatAccess(store)
     const link = access.issue(
@@ -208,26 +234,6 @@ describe("admin HTTP security", () => {
     )
     expect((await call("/api/apply", "POST", {}, auth())).status).toBe(200)
     expect(store.allows(-100)).toBe(true)
-  })
-  it("authenticates and revision-checks environment reconciliation without regranting denied IDs", async () => {
-    const policy = store.snapshot().policy
-    policy.privateUsers = []
-    store.save(policy, 1, "42")
-    const route = "/api/access/reconciliation"
-    expect((await call(route)).status).toBe(401)
-    const report = JSON.parse((await call(route, "GET", undefined, auth())).body)
-    const input = { fingerprint: report.fingerprint, revision: 2, selected: [] }
-    expect((await call(route, "POST", input, { ...auth(), "x-csrf-token": "wrong" })).status).toBe(
-      403,
-    )
-    expect((await call(route, "POST", { ...input, revision: 1 }, auth())).status).toBe(409)
-    expect((await call(route, "POST", { ...input, selected: [999] }, auth())).status).toBe(400)
-    expect((await call(route, "POST", input, auth())).status).toBe(200)
-    expect(store.snapshot().policy.privateUsers).toEqual([])
-    expect(apply).toHaveBeenCalledOnce()
-    expect(JSON.parse((await call(route, "GET", undefined, auth())).body).review).toMatchObject({
-      revision: 3,
-    })
   })
   it("revision-checks credential writes and reports upstream failures without secrets", async () => {
     const route = "/api/providers/fixture/credential"

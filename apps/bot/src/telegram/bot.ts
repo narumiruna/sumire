@@ -57,7 +57,7 @@ export interface TelegramAgentBot {
 }
 
 interface TelegramBotDependencies {
-  control?: import("../admin/store.js").AdminStore
+  control: import("../admin/store.js").AdminStore
   recoverChats?: () => Promise<number[]>
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
@@ -82,8 +82,9 @@ export function createTelegramAgentBot(
   settings: Settings,
   sessions: ChatSessionRegistry,
   logger: Logger,
-  dependencies: TelegramBotDependencies = {},
+  dependencies: TelegramBotDependencies,
 ): TelegramAgentBot {
+  if (!dependencies?.control) throw new Error("Database authorization is required")
   const bot = new Bot(
     settings.botToken,
     dependencies.botInfo ? { botInfo: dependencies.botInfo } : {},
@@ -129,12 +130,6 @@ export function createTelegramAgentBot(
     if (chat.type === "private" && context.from?.id !== chat.id) return
     if (context.match.trim()) {
       await context.reply("Use /allow without arguments in the chat you want to approve.")
-      return
-    }
-    if (!settings.admin || !dependencies.control) {
-      await context.reply(
-        "Administration WebUI is not available. Ask the operator to configure BOT_ADMIN_ID and restart the bot.",
-      )
       return
     }
     try {
@@ -183,15 +178,7 @@ export function createTelegramAgentBot(
       !isAdminSender(context, settings.botAdminId)
     )
       return
-    if (!settings.admin) {
-      await context.reply(
-        "Administration WebUI is not enabled. Configure BOT_ADMIN_ID, then restart the bot.",
-      )
-      return
-    }
-    const setup = dependencies.control
-      ? createPasskeySetup(dependencies.control, settings.admin.origin)
-      : undefined
+    const setup = createPasskeySetup(dependencies.control, settings.admin.origin)
     if (new URL(settings.admin.origin).protocol === "http:") {
       await context.reply(
         `${setup ? "Register your administrator passkey. This private setup link expires in five minutes. Do not share it. Only the newest setup link works." : "Sign in with your passkey."}\nOpen this URL in a browser on the computer that runs Sumire, not inside Telegram:\n${setup ?? settings.admin.origin}`,
@@ -219,34 +206,19 @@ export function createTelegramAgentBot(
   })
 
   bot.use(async (context, next) => {
-    if (dependencies.control) {
-      const chat = context.chat
-      if (!chat) return
-      dependencies.control.observe(
-        chat.id,
-        chat.type,
-        ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
-      )
-      if (!dependencies.control.allows(chat.id)) return
-      // A private user allowlist must not authorize the same sender in another group.
-      if (chat.type === "private" && context.from?.id !== chat.id) return
-      if (
-        chat.type === "channel" &&
-        (!settings.botChannelImageInputEnabled || !settings.botImageInputEnabled)
-      )
-        return
-      await next()
-      return
-    }
-    if (context.update.channel_post) {
-      if (
-        !settings.botChannelImageInputEnabled ||
-        !settings.botImageInputEnabled ||
-        context.update.channel_post.chat.type !== "channel" ||
-        !settings.botWhitelist.has(context.update.channel_post.chat.id)
-      )
-        return
-    } else if (context.chat?.type === "channel" || !isAllowed(context, settings.botWhitelist))
+    const chat = context.chat
+    if (!chat || Boolean(context.update.channel_post) !== (chat.type === "channel")) return
+    dependencies.control.observe(
+      chat.id,
+      chat.type,
+      ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
+    )
+    if (!dependencies.control.allows(chat.id)) return
+    if (chat.type === "private" && context.from?.id !== chat.id) return
+    if (
+      chat.type === "channel" &&
+      (!settings.botChannelImageInputEnabled || !settings.botImageInputEnabled)
+    )
       return
     await next()
   })
@@ -1266,9 +1238,7 @@ export function createTelegramAgentBot(
           bot,
           sessions,
           delivery,
-          (await dependencies.recoverChats()).filter(
-            (id) => !dependencies.control || dependencies.control.allows(id),
-          ),
+          (await dependencies.recoverChats()).filter((id) => dependencies.control.allows(id)),
         )
       if (stopping) return
       runner = runTelegramPolling(
@@ -1314,14 +1284,6 @@ function isAdminSender(context: Context, adminId: number | undefined): boolean {
     adminId !== undefined &&
     context.message?.sender_chat === undefined &&
     context.from?.id === adminId
-  )
-}
-
-function isAllowed(context: Context, whitelist: ReadonlySet<number>): boolean {
-  return (
-    whitelist.size === 0 ||
-    whitelist.has(context.chat?.id ?? Number.NaN) ||
-    whitelist.has(context.from?.id ?? Number.NaN)
   )
 }
 

@@ -2,14 +2,14 @@ import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
-
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { OutboxDoc } from "../src/agent/durable-state.js"
-import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
 const setup = async () => {
@@ -55,6 +55,7 @@ describe("durable bot runtime", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     try {
       fixture.enqueueAnswer("Answer")
@@ -206,7 +207,7 @@ describe("durable bot runtime", () => {
     },
   )
 
-  it("cancels persisted work before resuming when the whitelist changes", async () => {
+  it("cancels persisted work before resuming when the authorization epoch changes", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()
     const release = fixture.pauseNextRequest()
@@ -220,8 +221,11 @@ describe("durable bot runtime", () => {
       await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
       await session.dispose()
       await pending
+      const state = fixture.factory.control.snapshot()
+      fixture.factory.control.save(state.policy, state.revision, "123")
+      fixture.factory.control.applied(state.revision + 1, true)
       const changed = await createPiSessionFactory(
-        { ...fixture.settings, botWhitelist: new Set([999]) },
+        fixture.settings,
         fixture.logger,
         undefined,
         fixture.modelRuntime,
@@ -281,6 +285,7 @@ describe("durable bot runtime", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     fixture.enqueueAnswer("")
     const result = await registry.submit(123, "question", {
@@ -314,6 +319,7 @@ describe("durable bot runtime", () => {
         async () => session,
         fixture.settings.botSessionLogDir,
         fixture.logger,
+        { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
       )
       try {
         fixture.enqueueFailure()
@@ -365,6 +371,7 @@ describe("durable bot runtime", () => {
         async () => session,
         fixture.settings.botSessionLogDir,
         fixture.logger,
+        { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
       )
       try {
         fixture.enqueueFailure()
@@ -410,7 +417,7 @@ describe("durable bot runtime", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     const record = vi
       .spyOn(TelegramReplyIndex.prototype, "record")
@@ -450,6 +457,7 @@ describe("durable bot runtime", () => {
       create,
       fixture.settings.botSessionLogDir,
       fixture.logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     try {
       const deliver = vi.fn(async () => true)
@@ -479,7 +487,7 @@ describe("durable bot runtime", () => {
       asSessionCreator(fixture.factory),
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     const deliver = vi.fn(async (_chatId, answer, _saved, checkpoint) => {
       await registry.recordDelivery(123, checkpoint, [62])

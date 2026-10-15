@@ -4,17 +4,17 @@ import path from "node:path"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { afterEach, expect, it, vi } from "vitest"
 import { createPasskeySetup, PasskeyAdminLogin } from "../src/admin/auth.js"
-import { AdminStore } from "../src/admin/store.js"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 import { createPasskeyFixture } from "./helpers/passkey-fixture.js"
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
-async function setup(enabled = true, administrator = true, control = true) {
+async function setup(enabled = true, administrator = true) {
   const root = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-command-"))
   const store = new AdminStore(path.join(root, "admin.sqlite"), new Set(), 42)
   const sessions = {
@@ -24,8 +24,9 @@ async function setup(enabled = true, administrator = true, control = true) {
   const telegram = createTelegramAgentBot(
     loadSettings(
       {
+        BOT_ADMIN_ID: "7",
         BOT_TOKEN: "fixture",
-        BOT_WHITELIST: "42,43,-100",
+
         ...(administrator ? { BOT_ADMIN_ID: "42" } : {}),
         ...(enabled
           ? {
@@ -44,7 +45,7 @@ async function setup(enabled = true, administrator = true, control = true) {
         username: "fixture_bot",
         first_name: "Fixture",
       } as UserFromGetMe,
-      control: control ? store : undefined,
+      control: store,
     },
   )
   cleanup.push(async () => {
@@ -174,10 +175,8 @@ it("sends a local setup URL when ADMIN_ORIGIN is missing without starting a mode
   expect(calls[0]?.payload).not.toHaveProperty("reply_markup")
   expect(sessions.submit).not.toHaveBeenCalled()
 })
-it("does not authorize an owner when BOT_ADMIN_ID is missing", async () => {
-  const { telegram, calls } = await setup(false, false)
-  await telegram.bot.handleUpdate(command())
-  expect(calls).toEqual([])
+it("rejects startup settings when BOT_ADMIN_ID is missing", () => {
+  expect(() => loadSettings({ BOT_TOKEN: "fixture" })).toThrow("BOT_ADMIN_ID is required")
 })
 it.each(["private", "group", "supergroup"])(
   "issues /allow links in denied %s chats without model work",
@@ -235,17 +234,11 @@ it("handles /allow arguments, sender mismatch, ordinary denied input, and channe
   expect(sessions.submit).not.toHaveBeenCalled()
   expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
 })
-it("uses localhost links and gives setup guidance when administration or its store is unavailable", async () => {
+it("uses localhost links when no remote origin is configured", async () => {
   const local = await setup(false)
   await local.telegram.bot.handleUpdate(command("/allow"))
   expect(local.calls[0]?.payload.text).toMatch(/http:\/\/localhost:17465\/#allow=[a-f0-9]{64}/)
   expect(local.calls[0]?.payload).not.toHaveProperty("reply_markup")
-  const disabled = await setup(false, false)
-  await disabled.telegram.bot.handleUpdate(command("/allow"))
-  expect(disabled.calls[0]?.payload.text).toContain("not available")
-  const missing = await setup(true, true, false)
-  await missing.telegram.bot.handleUpdate(command("/allow"))
-  expect(missing.calls[0]?.payload.text).toContain("not available")
 })
 it("returns approved status without a link even while application is pending", async () => {
   const { telegram, store, calls } = await setup()

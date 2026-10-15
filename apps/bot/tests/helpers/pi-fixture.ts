@@ -7,10 +7,9 @@ import { fileURLToPath } from "node:url"
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { DurableSession } from "../../src/agent/durable-session.js"
-
-import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import { loadSettings, type Settings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./session-factory.js"
 
 interface CompletionRequest {
   model: string
@@ -98,7 +97,7 @@ export async function createPiFixture(overrides: Partial<Settings> = {}) {
   const address = server.address()
   assert.ok(address && typeof address !== "string")
   const settings = {
-    ...loadSettings({ BOT_WHITELIST: "123,456,-100" }, root),
+    ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
     botAgentMaxAttempts: 1,
     ...overrides,
   }

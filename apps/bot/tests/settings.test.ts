@@ -4,7 +4,10 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 import { ZodError } from "zod"
 
-import { loadSettings } from "../src/config/settings.js"
+import { loadSettings as parseSettings } from "../src/config/settings.js"
+
+const loadSettings = (environment: NodeJS.ProcessEnv = {}, root?: string, workdir?: string) =>
+  parseSettings({ BOT_ADMIN_ID: "7", ...environment }, root, workdir)
 
 describe("loadSettings", () => {
   it("loads fixed runtime defaults and resolves repository paths", () => {
@@ -37,8 +40,8 @@ describe("loadSettings", () => {
       morselUrl: "https://morsel.narumi.dev/",
       morselLongReplyThreshold: 1_000,
     })
-    expect(settings.botWhitelist).toEqual(new Set())
-    expect(settings.botAdminId).toBeUndefined()
+    expect(settings).not.toHaveProperty("botWhitelist")
+    expect(settings.botAdminId).toBe(7)
     expect(settings.botSessionLogDir).toBe("/workspace/project/.telegramagent/sessions")
     expect(settings.botSkillsDir).toBe("/workspace/project/skills")
     expect(settings.botSystemPromptPath).toBe("/workspace/project/instructions/SYSTEM.md")
@@ -57,7 +60,7 @@ describe("loadSettings", () => {
       MORSEL_API_KEY: " morsel-key ",
     })
     expect(settings.botToken).toBe("test-token")
-    expect(settings.botWhitelist).toEqual(new Set([123, -456]))
+    expect(settings).not.toHaveProperty("botWhitelist")
     expect(settings.botAdminId).toBe(123)
     expect(settings.logfireToken).toBe("logfire-token")
     expect(settings.morselApiKey).toBe("morsel-key")
@@ -67,6 +70,7 @@ describe("loadSettings", () => {
   })
 
   it.each([
+    "BOT_WHITELIST",
     "BOT_WORKDIR",
     "BOT_MCP_CONFIG_PATH",
     "BOT_CODEMODE_ENABLED",
@@ -115,7 +119,6 @@ describe("loadSettings", () => {
       .map((line) => line.split("=")[0])
     expect(names).toEqual([
       "BOT_TOKEN",
-      "BOT_WHITELIST",
       "BOT_ADMIN_ID",
       "ADMIN_ORIGIN",
       "ADMIN_HOST",
@@ -168,7 +171,7 @@ describe("loadSettings", () => {
       expect(loadSettings({ ...bootstrap, ADMIN_HOST: host }).admin?.host).toBe("127.0.0.1")
     for (const host of ["0.0.0.0", "::1", "localhost"])
       expect(loadSettings({ ...bootstrap, ADMIN_HOST: ` ${host} ` }).admin?.host).toBe(host)
-    expect(loadSettings({}).admin).toBeUndefined()
+    expect(loadSettings({}).admin.origin).toBe("http://localhost:17465")
     for (const origin of [
       "http://admin.example.test",
       "https://admin.example.test/",
@@ -179,28 +182,26 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ ...bootstrap, ADMIN_PORT: "0" })).toThrow()
   })
 
-  it.each(["", " ", "invalid", "0", "65536"])(
-    "ignores an unused admin port %j but validates it when enabled",
-    (port) => {
-      expect(loadSettings({ ADMIN_PORT: port }).admin).toBeUndefined()
-      expect(loadSettings({ ADMIN_ORIGIN: " ", ADMIN_PORT: port }).admin).toBeUndefined()
-      expect(() =>
-        loadSettings({
-          BOT_ADMIN_ID: "42",
-          ADMIN_ORIGIN: "https://admin.example.test",
-          ADMIN_PORT: port,
-        }),
-      ).toThrow()
+  it.each(["", " ", "invalid", "0", "65536"])("rejects invalid admin port %j", (port) => {
+    expect(() => loadSettings({ ADMIN_PORT: port })).toThrow()
+  })
+
+  it.each([undefined, "", "  "])(
+    "requires an administrator even with obsolete access settings: %j",
+    (id) => {
+      expect(() => parseSettings({ BOT_ADMIN_ID: id, BOT_WHITELIST: "7,-100" })).toThrow(
+        "BOT_ADMIN_ID is required",
+      )
     },
   )
 
   it("rejects invalid supported settings", () => {
-    expect(() => loadSettings({ BOT_WHITELIST: "123,nope" })).toThrow(ZodError)
+    expect(loadSettings({ BOT_WHITELIST: "123,nope" })).toEqual(loadSettings({}))
     for (const id of ["0", "-123", "1.5", "1e3", "abc", "9007199254740992"]) {
       expect(() => loadSettings({ BOT_ADMIN_ID: id })).toThrow(ZodError)
     }
-    expect(loadSettings({ BOT_ADMIN_ID: "" }).botAdminId).toBeUndefined()
-    expect(loadSettings({ BOT_ADMIN_ID: "  " }).botAdminId).toBeUndefined()
+    expect(() => loadSettings({ BOT_ADMIN_ID: "" })).toThrow("BOT_ADMIN_ID is required")
+    expect(() => loadSettings({ BOT_ADMIN_ID: "  " })).toThrow("BOT_ADMIN_ID is required")
     expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).logfireToken).toBeUndefined()
     expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).morselApiKey).toBeUndefined()
     expect(loadSettings({}, "relative").projectRoot).toBe(path.resolve("relative"))

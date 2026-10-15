@@ -7,12 +7,11 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
-
-import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
 import { appendMessage, currentConversation } from "./helpers/durable-session.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const instructions = fileURLToPath(new URL("../../../instructions", import.meta.url))
@@ -42,10 +41,12 @@ async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-settings-persistence-"))
   await cp(instructions, path.join(root, "instructions"), { recursive: true })
   await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
-  const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
+  const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
   const factory = await createPiSessionFactory(settings, logger)
   const session = await factory.create(7)
   const registry = new ChatSessionRegistry(async () => session, settings.botSessionLogDir, logger, {
+    control: factory.control,
+
     replyTreeEnabled: true,
   })
   await registry.getModelSettings(7)
@@ -143,7 +144,7 @@ describe("durable chat model settings persistence", () => {
     },
   )
 
-  it("leaves setup-only changes in Pi memory until the first conversation message", async () => {
+  it("persists setup-only choices in administration policy before the first conversation message", async () => {
     const { settings, registry, session } = await setup()
     const initialModel = session.model
     const alternative = session.modelRuntime
@@ -167,8 +168,8 @@ describe("durable chat model settings persistence", () => {
       const restartedFactory = await createPiSessionFactory(settings, logger)
       const fresh = await restartedFactory.create(7)
       try {
-        expect(fresh.model).toMatchObject({ provider: initialModel.provider, id: initialModel.id })
-        expect(fresh.thinkingLevel).toBe("low")
+        expect(fresh.model).toMatchObject({ provider: alternative.provider, id: alternative.id })
+        expect(fresh.thinkingLevel).toBe("high")
       } finally {
         await fresh.dispose()
       }

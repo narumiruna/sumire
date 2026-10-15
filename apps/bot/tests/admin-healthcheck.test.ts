@@ -52,12 +52,15 @@ describe("Compose admin healthcheck", () => {
     { BOT_ADMIN_ID: "   " },
     { ADMIN_ORIGIN: "   " },
     { BOT_ADMIN_ID: " \t ", ADMIN_ORIGIN: " \t " },
-  ])("skips the probe when settings disable the Web UI: %j", async (environment) => {
-    expect(loadSettings(environment).admin).toBeUndefined()
-    const { target, received } = await endpoint("localhost:17465")
-    await expect(probe(environment, target)).resolves.toMatchObject({ stdout: "", stderr: "" })
-    expect(received).toEqual([])
-  })
+  ])(
+    "fails the probe when required administrator configuration is missing: %j",
+    async (environment) => {
+      expect(() => loadSettings(environment)).toThrow()
+      const { target, received } = await endpoint("localhost:17465")
+      await expect(probe(environment, target)).rejects.toMatchObject({ code: 1 })
+      expect(received).toEqual([])
+    },
+  )
 
   it.each([
     { BOT_ADMIN_ID: "42" },

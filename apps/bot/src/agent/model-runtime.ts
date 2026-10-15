@@ -12,9 +12,6 @@ export async function createBotModelRuntime(
   agentDir: string,
   suppliedModelRuntime?: ModelRuntime,
 ) {
-  const canLogin =
-    settings.botAdminId !== undefined &&
-    (settings.admin !== undefined || settings.botWhitelist.has(settings.botAdminId))
   const modelRuntime =
     suppliedModelRuntime ??
     (await ModelRuntime.create({
@@ -26,17 +23,11 @@ export async function createBotModelRuntime(
   const model = modelRuntime.getModel("openai", initialModelId)
   if (!model) throw new Error(`Pi model not found: openai/${initialModelId}`)
 
-  if (!settings.admin && (await modelRuntime.getAvailable()).length === 0) {
-    throw new Error("Pi requires model credentials or BOT_ADMIN_ID to enable Web UI setup")
-  }
-
   const authSettings = SettingsManager.create(settings.botWorkdir, agentDir, {
     projectTrusted: false,
   })
-  const login = canLogin
-    ? createOAuthLogin(modelRuntime, {
-        getDeviceId: () => authSettings.getOrCreateDeviceId(),
-      })
-    : undefined
+  const login = createOAuthLogin(modelRuntime, {
+    getDeviceId: () => authSettings.getOrCreateDeviceId(),
+  })
   return { modelRuntime, model, login }
 }

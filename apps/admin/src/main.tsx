@@ -19,7 +19,7 @@ import { useCallback, useEffect, useId, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
-import { AccessApproval, AccessReconciliation } from "./access.js"
+import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import {
   ApiError,
@@ -770,13 +770,6 @@ function App() {
       )}
       {page === "Access" && (
         <>
-          <AccessReconciliation
-            csrf={session.csrf}
-            snapshot={snapshot}
-            disabled={busy || dirty}
-            run={run}
-            refresh={load}
-          />
           <Text as="p">Private-message approval does not grant access in any group.</Text>
           <IdList
             key={`${snapshot.revision}:users`}

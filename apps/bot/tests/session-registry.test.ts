@@ -1,7 +1,6 @@
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type {
   AgentSessionEvent,
@@ -9,10 +8,10 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
-
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
 import { ChatSessionRegistry, type SessionHandle } from "../src/agent/session-registry.js"
 import type { Logger } from "../src/logging.js"
+import { approvedStore } from "./helpers/admin-store.js"
 
 const logger: Logger = {
   debug: vi.fn(),
@@ -155,7 +154,13 @@ describe("chat model settings", () => {
   async function setup(session = new FakeSession()) {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-model-settings-"))
     const create = vi.fn(async () => session)
-    return { session, create, registry: new ChatSessionRegistry(create, root, logger) }
+    return {
+      session,
+      create,
+      registry: new ChatSessionRegistry(create, root, logger, {
+        control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+      }),
+    }
   }
 
   it("lazily creates a session and lists authenticated models and supported levels without prompting", async () => {
@@ -192,6 +197,7 @@ describe("chat model settings", () => {
       async (id) => (id === 7 ? first : second),
       root,
       logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     await registry.setThinkingLevel(7, "high")
     await expect(registry.setModel(7, "test/plain")).resolves.toMatchObject({
@@ -303,7 +309,9 @@ describe("chat model settings", () => {
       const first = new FakeSession("first")
       const replacement = new FakeSession("replacement")
       const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValue(replacement)
-      const registry = new ChatSessionRegistry(create, root, logger)
+      const registry = new ChatSessionRegistry(create, root, logger, {
+        control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+      })
       await registry.getModelSettings(7)
       const clearing = deferred()
       const finish = deferred()
@@ -351,7 +359,9 @@ describe("chat model settings", () => {
     const first = new FakeSession("first")
     const replacement = new FakeSession("replacement")
     const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValue(replacement)
-    const registry = new ChatSessionRegistry(create, root, logger)
+    const registry = new ChatSessionRegistry(create, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     await registry.getModelSettings(7)
     const clearing = deferred()
     const finish = deferred()
@@ -415,6 +425,7 @@ describe("ChatSessionRegistry", () => {
       },
       root,
       logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
 
     await expect(registry.submit(1, "one")).resolves.toMatchObject({
@@ -446,7 +457,9 @@ describe("ChatSessionRegistry", () => {
       session.leafId = "entry-1"
       session.entries.add("entry-1")
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
 
     await expect(registry.submit(1, "silent")).resolves.toEqual({
       kind: "no_response",
@@ -465,7 +478,9 @@ describe("ChatSessionRegistry", () => {
     const createSession = vi.fn(async () =>
       createSession.mock.calls.length === 1 ? pendingCreation : replacementSession,
     )
-    const registry = new ChatSessionRegistry(createSession, root, logger)
+    const registry = new ChatSessionRegistry(createSession, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
 
     const staleSubmission = registry.submit(1, "stale")
     const concurrentStaleSubmission = registry.submit(1, "also stale")
@@ -498,7 +513,9 @@ describe("ChatSessionRegistry", () => {
       finishCreation = resolve
     })
     const createSession = vi.fn(async () => pendingCreation)
-    const registry = new ChatSessionRegistry(createSession, root, logger)
+    const registry = new ChatSessionRegistry(createSession, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     const onAccepted = vi.fn()
     let current = true
 
@@ -521,6 +538,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await registry.submit(1, "first")
@@ -564,6 +583,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await registry.submit(1, "first")
@@ -618,7 +639,9 @@ describe("ChatSessionRegistry", () => {
   it("rejects access to an existing session when reset wins the acceptance race", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     await registry.submit(1, "initial")
 
     const staleSubmission = registry.submit(1, "stale")
@@ -636,7 +659,10 @@ describe("ChatSessionRegistry", () => {
       const session = new FakeSession()
       const replacement = new FakeSession("replacement")
       const create = vi.fn().mockResolvedValueOnce(session).mockResolvedValue(replacement)
-      const registry = new ChatSessionRegistry(create, root, logger, { replyTreeEnabled })
+      const registry = new ChatSessionRegistry(create, root, logger, {
+        control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+        replyTreeEnabled,
+      })
       await registry.submit(1, "initial")
 
       const onAccepted = vi.fn()
@@ -673,6 +699,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     await registry.submit(1, "initial")
@@ -738,7 +766,9 @@ describe("ChatSessionRegistry", () => {
       })
       session.messages.push(assistant(`AI: ${text}`))
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
 
     await registry.submit(1, "開始", { onActivity: (activity) => activities.push(activity) })
     session.emit({ type: "agent_start" })
@@ -780,7 +810,9 @@ describe("ChatSessionRegistry", () => {
       })
       session.messages.push(assistant(`AI: ${text}`))
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
 
     await registry.submit(1, "開始", { onProgress: (steps) => updates.push(steps) })
     session.emit({
@@ -830,7 +862,9 @@ describe("ChatSessionRegistry", () => {
       session.emit({ type: "message_end", message: assistant("private content") })
       await prompt(text)
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     vi.mocked(logger.info).mockClear()
 
     await registry.submit(1, "request")
@@ -864,7 +898,9 @@ describe("ChatSessionRegistry", () => {
   it("delegates steering, follow-up, passive context, cancellation, and reset to Pi sessions", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
 
     await registry.appendPassiveContext(1, "旁聽內容")
     session.isStreaming = true
@@ -890,6 +926,7 @@ describe("ChatSessionRegistry", () => {
       async () => (created++ === 0 ? first : second),
       root,
       logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
 
     first.isStreaming = true
@@ -906,7 +943,9 @@ describe("ChatSessionRegistry", () => {
   it("waits for an active response capture before starting a separate new turn", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     const runningAccepted = deferred()
     const agentFinished = deferred()
     const idle = deferred()
@@ -954,6 +993,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
       replyTreeMaxRecordsPerChat: 10,
       replyTreeMaxIndexBytes: 10_000,
@@ -984,6 +1025,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await registry.submit(1, "first")
@@ -1044,6 +1087,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await registry.submit(1, "first")
@@ -1094,6 +1139,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
 
@@ -1122,6 +1169,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     let session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
 
@@ -1148,6 +1197,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
 
@@ -1170,6 +1221,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await registry.submit(1, "first")
@@ -1201,6 +1254,8 @@ describe("ChatSessionRegistry", () => {
       const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
       const session = new FakeSession()
       const registry = new ChatSessionRegistry(async () => session, root, logger, {
+        control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
         replyTreeEnabled: true,
       })
       const first = await registry.submit(1, "first")
@@ -1310,6 +1365,8 @@ describe("ChatSessionRegistry", () => {
       error: vi.fn(),
     }
     const registry = new ChatSessionRegistry(async () => session, root, localLogger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
       replyTreeMaxIndexBytes: 1,
     })
@@ -1332,6 +1389,8 @@ describe("ChatSessionRegistry", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const firstSession = new FakeSession("first-session")
     const firstRegistry = new ChatSessionRegistry(async () => firstSession, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     const first = await firstRegistry.submit(1, "first")
@@ -1348,6 +1407,8 @@ describe("ChatSessionRegistry", () => {
     await firstRegistry.dispose()
     const replacement = new FakeSession("replacement-session")
     const replacementRegistry = new ChatSessionRegistry(async () => replacement, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     await replacementRegistry.submit(1, "stale", { replyToBotMessageId: 100 })
@@ -1356,6 +1417,8 @@ describe("ChatSessionRegistry", () => {
 
     const afterReset = new FakeSession("replacement-session")
     const afterResetRegistry = new ChatSessionRegistry(async () => afterReset, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+
       replyTreeEnabled: true,
     })
     await afterResetRegistry.submit(1, "after reset", { replyToBotMessageId: 100 })
@@ -1388,7 +1451,9 @@ describe("recovery-only session ownership", () => {
       })
       return session
     })
-    const registry = new ChatSessionRegistry(create, root, logger)
+    const registry = new ChatSessionRegistry(create, root, logger, {
+      control: approvedStore([1, 2, 3, 4, 5]),
+    })
     try {
       await registry.recover([1, 2, 3, 4, 5], async () => true)
       expect(opened).toBe(0)
@@ -1425,7 +1490,9 @@ describe("recovery-only session ownership", () => {
       })
       const create = vi.fn(async () => session)
       const deliver = vi.fn(async () => success)
-      const registry = new ChatSessionRegistry(create, root, logger)
+      const registry = new ChatSessionRegistry(create, root, logger, {
+        control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+      })
       try {
         await registry.recover([1], deliver)
         if (success) {
@@ -1454,7 +1521,9 @@ describe("recovery-only session ownership", () => {
       }),
       recoverPending: async () => {},
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     const recovering = registry.recover([1], async () => true)
     try {
       await vi.waitFor(() => expect(session.hasPendingResponses).toHaveBeenCalled())
@@ -1483,7 +1552,9 @@ describe("recovery-only session ownership", () => {
     const dispose = vi.spyOn(session, "dispose").mockImplementation(async () => {
       await closing.promise
     })
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     const recovering = registry.recover([1], async () => true)
     let resetting: Promise<void> | undefined
     try {
@@ -1520,7 +1591,9 @@ describe("recovery-only session ownership", () => {
     const second = new FakeSession("second")
     let calls = 0
     const create = vi.fn(async () => (++calls === 1 ? first : second))
-    const registry = new ChatSessionRegistry(create, root, logger)
+    const registry = new ChatSessionRegistry(create, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     const recovering = registry.recover([1], async () => true)
     try {
       await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
@@ -1544,7 +1617,9 @@ describe("administration policy invalidation", () => {
   it("closes cached sessions without deleting their durable directories", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-registry-"))
     const session = new FakeSession()
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     await registry.getModelSettings(7)
     await registry.invalidatePolicies()
     expect(session.aborted).toBe(true)
@@ -1565,6 +1640,7 @@ describe("administration policy invalidation", () => {
       },
       root,
       logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     const opening = registry.getModelSettings(7)
     const rejected = expect(opening).rejects.toThrow("invalidated")
@@ -1583,7 +1659,9 @@ describe("administration policy invalidation", () => {
     session.abort = async () => {
       throw new Error("Fixture cancellation failure")
     }
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     await registry.getModelSettings(7)
     await expect(registry.invalidatePolicies()).rejects.toThrow("could not apply")
     expect(session.disposed).toBe(false)
@@ -1594,7 +1672,9 @@ describe("administration policy invalidation", () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-shutdown-"))
     const session = new FakeSession()
     const dispose = vi.spyOn(session, "dispose")
-    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    const registry = new ChatSessionRegistry(async () => session, root, logger, {
+      control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
+    })
     await registry.getModelSettings(7)
     await Promise.all([registry.dispose(), registry.dispose()])
     expect(dispose).toHaveBeenCalledTimes(1)

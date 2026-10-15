@@ -3,11 +3,11 @@ import os from "node:os"
 import path from "node:path"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { expect, it, vi } from "vitest"
-import { AdminStore } from "../src/admin/store.js"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { DocumentConverter } from "../src/documents/converter.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 it("rejects unapproved chats before attachments, commands, callbacks, or passive context", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-telegram-"))
@@ -22,7 +22,7 @@ it("rejects unapproved chats before attachments, commands, callbacks, or passive
   const converter = { convert: vi.fn() } as unknown as DocumentConverter
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const telegram = createTelegramAgentBot(
-    loadSettings({ BOT_TOKEN: "fixture" }, root),
+    loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "fixture" }, root),
     sessions,
     logger,
     {

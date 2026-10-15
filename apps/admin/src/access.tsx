@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Flex, Heading, Text } from "@radix-ui/themes"
+import { Button, Card, Flex, Heading, Text } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request, type Snapshot } from "./api.js"
 
@@ -10,12 +10,6 @@ type Props = {
   refresh: () => Promise<void>
 }
 type Pending = { id: number; type: string; name: string; expires: number; revision: number }
-type Report = {
-  fingerprint: string
-  revision: number
-  entries: { id: number; status: "present" | "missing" | "disabled" }[]
-  review: { revision: number; actor: string; reviewed: number; decisions: unknown } | null
-}
 
 export function AccessApproval({
   token,
@@ -111,93 +105,6 @@ export function AccessApproval({
           Dismiss request
         </Button>
       </Flex>
-    </Card>
-  )
-}
-
-export function AccessReconciliation({ csrf, snapshot, disabled, run, refresh }: Props) {
-  const [report, setReport] = useState<Report>()
-  const [selected, setSelected] = useState<number[]>([])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: A new saved revision invalidates the server-side reconciliation report.
-  useEffect(() => {
-    let active = true
-    setReport(undefined)
-    setSelected([])
-    void request<Report>("access/reconciliation").then(
-      (next) => {
-        if (active) setReport(next)
-      },
-      (error: unknown) => {
-        if (active)
-          void run(async () => {
-            throw error
-          })
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [snapshot.revision, run])
-  if (!report?.entries?.length) return null
-  return (
-    <Card>
-      <Heading size="4">Review environment access</Heading>
-      <Text as="p">
-        BOT_WHITELIST is not merged automatically. Missing IDs can be revoked chats. Select only
-        missing IDs you intend to approve; all other denials remain unchanged.
-      </Text>
-      {report.entries.map((entry) => (
-        <Flex key={entry.id} gap="2" align="center">
-          {entry.status === "missing" && !report.review ? (
-            <label htmlFor={`import-chat-${entry.id}`}>
-              <Checkbox
-                id={`import-chat-${entry.id}`}
-                aria-label={`Import ${entry.id}`}
-                disabled={disabled}
-                checked={selected.includes(entry.id)}
-                onCheckedChange={(checked) =>
-                  setSelected((previous) =>
-                    checked === true
-                      ? [...previous, entry.id]
-                      : previous.filter((id) => id !== entry.id),
-                  )
-                }
-              />
-              {entry.id} · missing
-            </label>
-          ) : (
-            <Text>
-              {entry.id} · {entry.status}
-            </Text>
-          )}
-        </Flex>
-      ))}
-      {report.review ? (
-        <Text as="p">
-          Environment review completed at revision {report.review.revision}. Later WebUI revocations
-          remain authoritative.
-        </Text>
-      ) : (
-        <Button
-          mt="3"
-          disabled={disabled}
-          onClick={() =>
-            void run(async () => {
-              try {
-                await request("access/reconciliation", csrf, {
-                  fingerprint: report.fingerprint,
-                  revision: report.revision,
-                  selected,
-                })
-              } finally {
-                await refresh()
-              }
-            })
-          }
-        >
-          Confirm environment review
-        </Button>
-      )}
     </Card>
   )
 }

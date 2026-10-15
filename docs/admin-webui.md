@@ -14,10 +14,10 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
 
    - Use the real administrator's numeric Bot API user ID.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
-   - `BOT_ADMIN_ID` enables the WebUI. Without `ADMIN_ORIGIN`, the browser URL is `http://localhost:17465`. Outside the supplied Compose configuration, a custom `ADMIN_PORT` changes this URL too. The supplied `compose.yaml` fixes the backend and published port at `17465`; an `ADMIN_PORT` value in `.env` does not override it.
+   - `BOT_ADMIN_ID` is required. It configures the always-on WebUI but does not grant bot chat access. Without `ADMIN_ORIGIN`, the browser URL is `http://localhost:17465`. Outside the supplied Compose configuration, a custom `ADMIN_PORT` changes this URL too. The supplied `compose.yaml` fixes the backend and published port at `17465`; an `ADMIN_PORT` value in `.env` does not override it.
    - Local passkeys require a browser that supports WebAuthn and Secure cookies on `localhost`. Open the URL on the computer that runs Sumire. Do not replace `localhost` with a LAN address or open it inside Telegram.
    - For remote access, set `ADMIN_ORIGIN=https://sumire.example.com`. An explicit origin must use HTTPS with no trailing slash, path, query, or fragment.
-   - Without `BOT_ADMIN_ID`, the WebUI remains disabled and startup requires existing model credentials. `ADMIN_PORT` is ignored while disabled; an enabled WebUI requires an integer port from 1 to 65535.
+   - Missing or blank `BOT_ADMIN_ID` stops startup, even when model credentials already exist. `ADMIN_PORT` must be an integer from 1 to 65535.
    - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only inside a private container network. Keep the published host port private.
    - Telegram Web Login, BotFather domain registration, and `TELEGRAM_LOGIN_CLIENT_ID` / `TELEGRAM_LOGIN_CLIENT_SECRET` are not required. Remove unused login credentials from the deployment.
 2. For remote HTTPS access only, route the configured origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface. Local access needs no reverse proxy.
@@ -51,7 +51,7 @@ Use the root `compose.yaml`:
 docker compose up -d --build
 ```
 
-Compose binds `127.0.0.1:17465` on the host and listens on all container interfaces when the WebUI is enabled. To change that port in Compose, update its `environment`, `ports`, and healthcheck together; changing `.env` alone has no effect. The port mapping remains reserved when the WebUI is disabled; in that case, the healthcheck succeeds without making an HTTP request. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
+Compose binds `127.0.0.1:17465` on the host and listens on all container interfaces when the WebUI is enabled. To change that port in Compose, update its `environment`, `ports`, and healthcheck together; changing `.env` alone has no effect. The healthcheck fails when the required administrator ID is missing; otherwise it checks the WebUI with the configured Host header. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
 
 ```caddyfile
 sumire.example.com {
@@ -71,8 +71,8 @@ Cookies are host-only, Secure, HttpOnly, and SameSite=Strict. Administrator sess
 
 The database is `.telegramagent/admin.sqlite`, separate from Pi's session databases.
 
-- Positive `BOT_WHITELIST` IDs become private-message users. Negative IDs become group or channel IDs.
-- This narrows old sender-based group authorization: an approved private user no longer authorizes an otherwise unapproved group.
+- New databases start with empty private-user and group/channel access lists. Neither the administrator ID nor obsolete environment access values seed chat grants.
+- Existing database grants and disabled chat overrides remain unchanged. An approved private user never authorizes an otherwise unapproved group.
 - Valid `mcp.json` entries are copied once into protected administration state. Invalid entries are skipped. The import report records accepted and skipped counts without rejected names or values. The source remains unchanged. After import, restart does not read the source again. The read-only Docker mount remains an import source, not the active editable configuration after import.
 - Provider credentials remain in Pi's existing credential store. Provider metadata references and existing per-chat model selections are imported without copying credentials into settings.
 - Model selections with missing models or unsupported thinking levels are skipped and listed as failed chat IDs. Valid selections still import. No fallback changes a saved selection.
@@ -94,19 +94,17 @@ The server generates a 32-byte random hex token and stores only its SHA-256 hash
 
 Resolution and approval require an administrator session, exact Origin, CSRF token, and same-origin JSON POST. Approval atomically consumes the request, changes only that chat's access, and records an audit event and policy revision. A disabled override is enabled without changing its other selections. Revision conflicts leave the request usable; reload and review before confirming again. A consumed link cannot restore later-revoked access. Do not log HTTP request bodies at ingress: resolution and approval bodies contain request tokens.
 
-## Review existing environment access
+## Upgrade to database-only access
 
-This stage retains `BOT_WHITELIST`. New databases still import it once. Existing databases do not automatically merge later environment changes because a missing ID can be an intentional WebUI revocation.
+This is a breaking bootstrap change: `BOT_ADMIN_ID` is now required, and the WebUI and SQLite administration policy are always used. `BOT_WHITELIST` has been removed; old values are ignored, including malformed values. There is no environment-based fallback for unavailable storage, denied chats, or pending/failed policy.
 
-Before removing the environment variable in a later release:
+1. Before upgrading, run Stage 1 and review every configured environment ID on its **Access → Review environment access** page. Confirm intended grants and retained denials. Verify real Passkey sign-in, private/group `/allow`, and restart persistence.
+2. Stop the bot and back up the state, runtime bootstrap configuration, and matching Stage 1 image reference under private access controls. Never commit credentials or backup contents.
+3. Keep the same SQLite state volume and `BOT_ADMIN_ID`. Remove the obsolete environment variable from deployment settings, then rebuild and restart through the root Compose workflow.
+4. Verify the saved/applied revision, existing allowed and denied chats, `/admin`, and `/allow` after restart. A new installation has no grants; use the administrator's private `/admin` setup path and then `/allow` for the chat to approve.
+5. If needed, roll back to the Stage 1 image with compatible state and administration enabled. Review permissions before restoring a snapshot, because an older snapshot can restore revoked access. Do not disable administration or introduce an allow-all fallback.
 
-1. Back up the administration state with the bot stopped.
-2. Open **Access → Review environment access**. The authenticated report lists up to 1,000 positive and 1,000 negative IDs in numeric order as present, missing, or explicitly disabled.
-3. Select only missing IDs that must be imported. Nothing is selected by default. Explicitly disabled IDs cannot be imported through this review; manage those separately in the normal access controls when intended.
-4. Select **Confirm environment review**, even if no missing IDs should be imported. This records imported IDs, retained approvals, and retained denials together with a policy revision and audit record. Check application status before proceeding.
-5. Restart and verify the intended approved and denied chats. Review completion persists in SQLite; later WebUI revocations are not undone. Changes to the configured ID set require another review. The Audit import reports for MCP and models remain separate from this access review.
-
-The report is available at authenticated `GET /api/access/reconciliation`; its confirmation is a revision-checked, CSRF-protected POST. Reviews are keyed by the hash of the sorted environment ID set and are retained in `access_reviews`. The UI shows review status for the current set. Do not start Stage 2 until the administrator has checked every deployment ID and accepted restart persistence plus the real Telegram and Passkey flow.
+The upgrade retains the existing schema version 3, database path, policy revisions, Passkeys, sessions, audit records, and `access_reviews`. The versioned migration from older supported schemas still runs, but never reads environment access IDs. Reconciliation GET/POST entry points and UI confirmation controls are removed. Historical reviews are read-only on **Audit → Import reports** and authenticated `GET /api/imports`; the API returns the latest 10 access review records.
 
 ## Policy behavior
 
@@ -172,7 +170,7 @@ MCP may depend on private Docker endpoints. Existing MCP HTTP protections remain
 
 Tools are capabilities, not an OS sandbox. Pi, shell tools, and stdio MCP processes run with the container user's permissions. A working directory does not confine file access. A shell or file tool can read process-readable state, modify policy or credential files, and reach the network without using another named tool. Administrator-supplied MCP code has the same trust requirement.
 
-For WebUI-managed chats, shell tools receive a restricted environment: system and runtime paths, locale fields, and the existing Otter and Firecrawl skill credentials. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. Deployments without the WebUI retain the existing shell environment behavior. MCP retains its existing explicit environment policy.
+Shell tools receive a restricted environment: system and runtime paths, locale fields, and the existing Otter and Firecrawl skill credentials. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. MCP retains its existing explicit environment policy.
 
 Sumire does not inject stored model provider credentials into tool or MCP environments, but same-user file access is not isolated. Do not enable shell or unrestricted file tools for untrusted chats. Do not claim credential isolation when these capabilities are enabled. Use a separate tested OS or VM boundary if that isolation is required. This release does not add such a boundary.
 
@@ -215,7 +213,7 @@ npm run build
 npm run test:browser --workspace @narumitw/sumire-admin
 ```
 
-After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and persisted environment review. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
+After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and database-only access. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
 
 `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
 

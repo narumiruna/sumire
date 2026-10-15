@@ -3,7 +3,8 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, expect, it } from "vitest"
 import { createPasskeySetup, PasskeyAdminLogin } from "../src/admin/auth.js"
-import { AdminStore } from "../src/admin/store.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
+
 import { createPasskeyFixture, passkeyOrigin } from "./helpers/passkey-fixture.js"
 
 const cleanup: (() => Promise<void>)[] = []

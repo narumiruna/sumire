@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
@@ -22,7 +22,7 @@ describe("durable passive-context behavior", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     try {
       fixture.enqueueAnswer("First answer")
@@ -57,6 +57,7 @@ describe("durable passive-context behavior", () => {
         async () => session,
         fixture.settings.botSessionLogDir,
         fixture.logger,
+        { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
       )
       const release = fixture.pauseNextRequest()
       fixture.enqueueAnswer("First answer")
@@ -91,6 +92,7 @@ describe("durable passive-context behavior", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     const release = fixture.pauseNextRequest()
     fixture.enqueueAnswer("Recovered first answer")
@@ -128,6 +130,7 @@ describe("durable passive-context behavior", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
     )
     const release = fixture.pauseNextRequest()
     fixture.enqueueAnswer("First answer")

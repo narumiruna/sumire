@@ -4,7 +4,7 @@ import path from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { ChatAccess } from "../src/admin/access.js"
 import { inherited } from "../src/admin/policy.js"
-import { AdminStore } from "../src/admin/store.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 const origin = "https://admin.example.test"
 const cleanup: (() => void)[] = []
@@ -157,17 +157,6 @@ it("creates new tables on version 2 state without changing credentials or policy
     reopened.close()
   }
 })
-it("rolls back the reconciliation policy and audit when its review record cannot commit", () => {
-  const { store, access } = fixture()
-  const report = access.reconciliation()
-  store.db.exec(
-    "CREATE TRIGGER fail_review BEFORE INSERT ON access_reviews BEGIN SELECT RAISE(ABORT, 'fixture failure'); END",
-  )
-  expect(() => access.reconcile(report.fingerprint, [], 1, "42")).toThrow("fixture failure")
-  expect(store.snapshot().revision).toBe(1)
-  expect(store.listAudit(0)).toHaveLength(0)
-  expect(access.reconciliation().review).toBeNull()
-})
 it("does not consume requests when policy limits fail", () => {
   const { store, access } = fixture()
   const policy = store.snapshot().policy
@@ -177,61 +166,4 @@ it("does not consume requests when policy limits fail", () => {
   expect(() => access.approve(token, origin, 2, "42")).toThrow()
   expect(access.resolve(token, origin).id).toBe(-100)
   expect(store.snapshot().revision).toBe(2)
-})
-it("reconciles only explicitly selected missing IDs and preserves denials, history, and restart state", () => {
-  const { store, file } = fixture([42, -100, 99])
-  const policy = store.snapshot().policy
-  policy.privateUsers = [42]
-  policy.groups = []
-  policy.chats["-100"] = { ...inherited, enabled: false }
-  store.save(policy, 1, "42")
-  const access = new ChatAccess(store)
-  const report = access.reconciliation()
-  expect(report.entries).toEqual([
-    { id: -100, status: "disabled" },
-    { id: 42, status: "present" },
-    { id: 99, status: "missing" },
-  ])
-  expect(() => access.reconcile(report.fingerprint, [-100], 2, "42")).toThrow("missing")
-  expect(() => access.reconcile(report.fingerprint, [99, 99], 2, "42")).toThrow("missing")
-  expect(() => access.reconcile(report.fingerprint, [99], 1, "42")).toThrow("Settings changed")
-  expect(access.reconciliation().review).toBeNull()
-  access.reconcile(report.fingerprint, [99], 2, "42")
-  const next = store.snapshot().policy
-  expect(next.privateUsers).toEqual([42, 99])
-  expect(next.groups).toEqual([])
-  expect(next.chats).toEqual(policy.chats)
-  next.privateUsers = [42]
-  store.save(next, 3, "42")
-  const reopened = new AdminStore(file, new Set([99, 42, -100]), 42)
-  try {
-    expect(new ChatAccess(reopened).reconciliation().review).toMatchObject({ revision: 3 })
-    expect(() => new ChatAccess(reopened).reconcile(report.fingerprint, [99], 4, "42")).toThrow(
-      "already been reviewed",
-    )
-    expect(reopened.snapshot().policy.privateUsers).toEqual([42])
-  } finally {
-    reopened.close()
-  }
-  const changed = new AdminStore(file, new Set([42, -100, 99, 100]), 42)
-  try {
-    const latest = new ChatAccess(changed)
-    expect(latest.reconciliation().review).toBeNull()
-    expect(() => latest.reconcile(report.fingerprint, [100], 4, "42")).toThrow(
-      "Environment IDs changed",
-    )
-  } finally {
-    changed.close()
-  }
-})
-it("records retained missing denials and new database imports without automatic grants", () => {
-  const { store, access } = fixture([42, -100])
-  expect(access.reconciliation().entries.every((e) => e.status === "present")).toBe(true)
-  const policy = store.snapshot().policy
-  policy.groups = []
-  store.save(policy, 1, "42")
-  const report = access.reconciliation()
-  access.reconcile(report.fingerprint, [], 2, "42")
-  expect(JSON.stringify(access.reconciliation().review)).toContain("retain-denial")
-  expect(store.snapshot().policy.groups).toEqual([])
 })

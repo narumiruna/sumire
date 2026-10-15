@@ -2,11 +2,11 @@ import { readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { expect, it, vi } from "vitest"
 import { McpAdmin } from "../src/admin/mcp.js"
-import { AdminStore } from "../src/admin/store.js"
 import type { DurableSession } from "../src/agent/durable-session.js"
-import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 it("cancels an active Pi tool, denies new work, and does not replay it after restart", async () => {
   const fixture = await createPiFixture()
