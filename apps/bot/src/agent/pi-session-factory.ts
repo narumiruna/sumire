@@ -192,7 +192,22 @@ export async function createPiSessionFactory(
         defineExtension({
           name: "sumire",
           tools: nativeTools.map(adaptTool),
-          sections: [section("system", () => systemPrompt, { tag: false })],
+          sections: [
+            section("system", () => systemPrompt, { tag: false }),
+            section("tool_access", ({ agent }) => {
+              const direct = agent.tools.map((tool) => tool.name)
+              const indirect = direct.includes("codemode")
+                ? nativeTools.map((tool) => tool.name).filter((name) => !direct.includes(name))
+                : []
+              return [
+                "This chat's current tool access is listed below. Skills and conversation history describe capabilities, not tool authorization.",
+                `Direct tools: ${direct.join(", ") || "none"}.`,
+                `Additional tools through codemode: ${indirect.join(", ") || "none"}.`,
+                "When asked to list tools, report only this chat's current tools. A skill or MCP server is not itself a callable tool.",
+                "Use an available tool for the request before claiming it cannot run. If the required tool is absent, explain that it is not enabled for this chat and ask the administrator to authorize it in the Web UI. Do not ask the user to supply a tool result or infer that the source cannot be read.",
+              ].join("\n")
+            }),
+          ],
         }),
       )
       const assertTool = (name: string) => {
@@ -275,6 +290,12 @@ export async function createPiSessionFactory(
         })
         await session.setModel(selectedModel)
         await session.setThinkingLevel(policy.thinking)
+        logger.info(`Pi chat tool access chat_id=${chatId}`, {
+          tools: session.getActiveToolNames(),
+          codemodeTools: control.store.allowsTool(chatId, "codemode")
+            ? nativeTools.map((tool) => tool.name)
+            : [],
+        })
         return session
       } catch (error) {
         try {
