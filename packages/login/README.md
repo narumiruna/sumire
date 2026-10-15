@@ -38,4 +38,4 @@ The host supplies UI callbacks implementing Pi AI's `AuthInteraction`. Honor eac
 
 Hosts must enforce authorization, serialize login attempts, keep authentication input out of model prompts and telemetry, and stop pending interactions on shutdown. Do not publish authentication URLs or inputs to a public content service. Storage must remain writable so Pi can rotate refresh tokens.
 
-Sumire's Telegram adapter lives in `apps/bot/src/telegram/login.ts`. It exposes admin-only `/login` in private chats; the resulting account is shared by the whole bot. See `apps/bot/README.md` for deployment and privacy limits.
+Sumire uses `/admin` and the administration Web UI to configure provider credentials. Telegram `/login` no longer starts login. Its retired command guard discards arguments before model input. See [Web UI setup and provider login](../../docs/admin-webui.md) for deployment and privacy limits.

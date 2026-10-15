@@ -8,7 +8,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | --- | --- |
 | [`apps/admin`](docs/admin-webui.md) | Passkey-authenticated Radix administration frontend, served by the bot. |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
-| [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension, with a Telegram admin bridge. |
+| [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
 | [`packages/url-content`](packages/url-content/README.md) | URL-content CLI and library with a bundled Pi skill. |
 
@@ -19,7 +19,7 @@ Bot-owned shared runtime resources stay at the repository root:
 - `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
 - `skills/`: Bot-owned Agent Skills; package-specific Pi skills live in their owning package's `skills/` directory.
 - `.events` and `.telegramagent`: ignored runtime state.
-- `.env`: ignored credentials and Telegram authorization; copy it from `.env.example`. Bot credentials and Telegram authorization remain bootstrap settings. The optional `ADMIN_ORIGIN`, `ADMIN_HOST`, and `ADMIN_PORT` enable the [administration WebUI](docs/admin-webui.md). When enabled, persisted policies replace the initial whitelist and model defaults; other runtime limits remain fixed.
+- `.env`: ignored credentials and Telegram authorization; copy it from `.env.example`. Bot credentials and Telegram authorization remain bootstrap settings. `BOT_ADMIN_ID` enables the [administration WebUI](docs/admin-webui.md) at `http://localhost:17465`. `ADMIN_ORIGIN` selects an HTTPS origin for remote access; `ADMIN_HOST` and `ADMIN_PORT` change the backend binding. When enabled, persisted policies replace the initial whitelist and model defaults; other runtime limits remain fixed.
 
 ## TypeScript bot
 
@@ -34,7 +34,7 @@ docker compose down
 
 ### Administration WebUI
 
-See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build` behind an existing HTTPS reverse proxy; `compose.yaml` publishes only loopback port `17465`, not port 443.
+See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build`, then send `/admin` to get the local passkey setup URL. For remote access, set `ADMIN_ORIGIN` and use an existing HTTPS reverse proxy. `compose.yaml` publishes only loopback port `17465`, not port 443.
 
 ### Build cache
 

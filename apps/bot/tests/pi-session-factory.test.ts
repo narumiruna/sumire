@@ -61,7 +61,7 @@ describe("createPiSessionFactory", () => {
     )
     const factory = await createPiSessionFactory(settings, logger)
     expect(factory.login).toBeDefined()
-    await expect(factory.create(7)).rejects.toThrow("請管理員在私聊使用 /login")
+    await expect(factory.create(7)).rejects.toThrow("請管理員在 Web UI 設定 provider")
     const authPath = path.join(settings.botSessionLogDir, ".pi-agent/auth.json")
     await mkdir(path.dirname(authPath), { recursive: true })
     await writeFile(

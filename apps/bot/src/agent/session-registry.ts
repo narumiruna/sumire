@@ -408,8 +408,8 @@ export class ChatSessionRegistry {
       if (!model) {
         throw new ModelSettingsError(
           matches.length > 1
-            ? "Model 名稱不唯一，請使用 /model <provider/model>。"
-            : "找不到可用的 model，請使用 /model 查看已驗證的模型。",
+            ? "Model 名稱不唯一，請在 Web UI 使用完整的 provider/model。"
+            : "找不到可用的 model，請在 Web UI 查看並設定模型。",
         )
       }
       await session.setModel(model)

@@ -17,7 +17,7 @@ services:
         - node
         - --input-type=module
         - -e
-        - "if(!process.env.ADMIN_ORIGIN)process.exit(0);const r=await fetch('http://127.0.0.1:17465/healthz',{headers:{host:new URL(process.env.ADMIN_ORIGIN).host},signal:AbortSignal.timeout(3000)});process.exit(r.ok?0:1)"
+        - "const adminId=process.env.BOT_ADMIN_ID?.trim();const configuredOrigin=process.env.ADMIN_ORIGIN?.trim();if(!adminId&&!configuredOrigin)process.exit(0);const origin=configuredOrigin||'http://localhost:17465';const {request}=await import('node:http');const req=request('http://127.0.0.1:17465/healthz',{headers:{host:new URL(origin).host},signal:AbortSignal.timeout(3000)},res=>{res.resume();process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end()"
       interval: 30s
       timeout: 5s
       start_period: 60s

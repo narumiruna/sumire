@@ -36,8 +36,9 @@ describe("bot model authentication", () => {
   })
   afterEach(() => vi.unstubAllEnvs())
 
-  it("allows OAuth bootstrap without a key and uses the native Responses model", async () => {
+  it("allows local WebUI bootstrap without a key and uses the native Responses model", async () => {
     const { settings, agentDir } = await setup()
+    expect(settings.admin?.origin).toBe("http://localhost:17465")
     const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
     expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-6.1-sol" })
     expect(login).toBeDefined()
@@ -77,18 +78,27 @@ describe("bot model authentication", () => {
     })
   })
 
-  it.each([{ BOT_ADMIN_ID: "" }, { BOT_WHITELIST: "8" }, { BOT_WHITELIST: "-100" }])(
-    "requires an explicitly allowlisted admin to bootstrap without credentials: %j",
+  it.each([{ BOT_ADMIN_ID: "" }, { BOT_WHITELIST: "7" }, { BOT_WHITELIST: "-100" }])(
+    "requires credentials when the WebUI is unavailable: %j",
     async (environment) => {
       const { settings, agentDir } = await setup(environment)
+      delete settings.admin
       await expect(createBotModelRuntime(settings, agentDir)).rejects.toThrow(
-        "BOT_ADMIN_ID explicitly listed",
+        "Pi requires model credentials",
       )
     },
   )
 
-  it.each([{ BOT_ADMIN_ID: "" }, { BOT_WHITELIST: "8" }, { BOT_WHITELIST: "-100" }])(
-    "disables login without blocking API-key requests: %j",
+  it.each(["8", "-100", ""])(
+    "allows local WebUI setup independently of the bot allowlist: %j",
+    async (whitelist) => {
+      const { settings, agentDir } = await setup({ BOT_WHITELIST: whitelist })
+      await expect(createBotModelRuntime(settings, agentDir)).resolves.toHaveProperty("model")
+    },
+  )
+
+  it.each([{ BOT_ADMIN_ID: "" }])(
+    "does not require WebUI setup for existing API-key credentials: %j",
     async (environment) => {
       vi.stubEnv("OPENAI_API_KEY", "fixture-key")
       const { settings, agentDir } = await setup(environment)

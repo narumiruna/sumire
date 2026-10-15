@@ -26,9 +26,8 @@ Available now:
 - private chat and group mention/reply routing
 - default, on-demand reading of newly indexed images from allowlisted Telegram channels via Pi's `read_image` tool
 - allowlist and bot-loop limits
-- `/start`, `/help`, `/id`, `/f`, `/model`, `/thinking`, `/cancel`, and `/reset`
+- `/start`, `/help`, `/id`, `/f`, `/cancel`, and `/reset`
 - admin-only private `/admin` to open the administration WebUI, without requiring chat approval or model credentials
-- admin-only private `/login` for a shared OpenAI subscription account, with credentials resolved by Pi
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes
 - isolated Pi Durable SQLite storage per Telegram chat, with restart recovery
@@ -49,7 +48,7 @@ Available now:
 - Node.js 22.19 or newer
 - Linux x86_64 with glibc for the production AnyDoc native adapter
 - Telegram bot token
-- OpenAI subscription login through Telegram `/login`, or credentials already available to Pi
+- Provider credentials configured through `/admin` and the Web UI, or credentials already available to Pi
 - Playwright Chromium for source-aware browser fallbacks
 - Git and OpenSSH client tools (`ssh`, `ssh-keygen`) for repository cloning and SSH key generation outside Docker
 
@@ -146,9 +145,9 @@ The durable API is experimental and pinned to 1.0.2 alongside the other Pi packa
 
 ## Model configuration
 
-`.env.example` lists Sumire's supported environment configuration. Sumire does not parse or apply `OPENAI_BASE_URL`, `OPENAI_API_KEY`, or `OPENAI_MODEL`, and does not register an environment-configured OpenAI-compatible provider. Use Telegram `/login` for the shared OpenAI account and `/model` for each chat's model. New chats prefer Pi's native `openai/gpt-6.1-sol` model when authenticated, otherwise use an authenticated Pi chat model; existing chats restore their saved choice when available.
+`.env.example` lists Sumire's supported environment configuration. Sumire does not parse or apply `OPENAI_BASE_URL`, `OPENAI_API_KEY`, or `OPENAI_MODEL`, and does not register an environment-configured OpenAI-compatible provider. Use the administration Web UI to configure providers, credentials, and each chat's model. New chats prefer Pi's native `openai/gpt-6.1-sol` model when authenticated, otherwise use an authenticated Pi chat model; existing chats restore their saved choice when available.
 
-Explicitly listing `BOT_ADMIN_ID` in `BOT_WHITELIST` enables admin-only private `/login` and lets the bot start before first login. Without an authorized login admin, startup requires credentials available to Pi. Pi owns credential discovery, precedence, and refresh. Sumire neither overrides nor removes process environment values: credentials or provider environment settings independently consumed by Pi remain Pi's responsibility. Pi's stored OAuth credentials take priority over ambient API keys, and refresh failure does not silently fall back to a key.
+Setting `BOT_ADMIN_ID` enables the Web UI at `http://localhost:17465`, even without `ADMIN_ORIGIN` or model credentials. Send `/admin` in a private chat and open the setup URL on the computer that runs Sumire. Use `ADMIN_ORIGIN` for remote HTTPS access. Without the Web UI, startup requires credentials available to Pi. Pi owns credential discovery, precedence, and refresh. Sumire neither overrides nor removes process environment values: credentials or provider environment settings independently consumed by Pi remain Pi's responsibility. Pi's stored OAuth credentials take priority over ambient API keys, and refresh failure does not silently fall back to a key.
 
 The bounded public URL loader and structured progress tool are always enabled. Pi's native `read`, `bash`, `edit`, and `write` coding tools are enabled for every session, alongside the progress and URL extension tools. Set a non-empty `BOT_WHITELIST=<trusted Telegram user ID>` in the ignored root `.env`, then restart the bot (`docker compose up -d --build sumire` for Compose). Startup fails if the whitelist is empty. A group chat ID allows anyone who can address the bot in that group to use the tools, so prefer trusted user IDs. Optionally set `BOT_ADMIN_ID=<Telegram user ID>` (find it with `/id`): `/id` then reports `is_admin`, and Pi receives a per-message sender role based on Telegram's `from.id`, not the chat ID or user-supplied text. Anonymous group messages are not treated as admin. This is identity context, **not** an access-control boundary: `BOT_WHITELIST` still controls who can use the bot's existing tools. A future GitHub PR capability must enforce admin-only access in code against the authenticated sender ID; the role text in the prompt cannot authorize actions, and allowlisted users currently have access to `bash`. Morsel is enabled when `MORSEL_API_KEY` is configured and is required for `/f` article publication and replies over 1,000 characters. After input preparation, the bot sends a `處理中…` reply before submitting to Pi; `/f` URL preloading instead creates its status before fetching and reuses it for the model turn. Pi execution events update the reply with model/tool activity even when the model does not call `update_progress`; generic activity edits are limited to one every two seconds, with the latest status retained. Non-empty `update_progress` snapshots show every reported step in order, including completed steps, instead of generic activity; clearing progress restores `處理中…` while the model works. After a completed answer, the last successfully displayed non-empty snapshot from that submission remains visible in the original reply, with a separate final answer; if a later update fails, the bot restores the earlier snapshot (reusing its Morsel link if necessary). If the model cleared progress, the retained snapshot is labeled `最後回報的進度（已清除）` unless that label alone would exceed the Telegram inline limit; in that case the full snapshot is kept without the label. Neither version implies every step finished. The bot does not invent steps or completion statuses. If no progress was successfully displayed, or the turn is cancelled or fails, the status is replaced by the result as before. After successful delivery, replies to either retained progress or the final answer restore the same answer branch. If editing the status or sending the final answer fails, the bot uses its existing fallback or error handling. Replies to an in-flight status do not quote its synthetic content to Pi, even if the status completes while their attachments are being prepared. Replies to an already displayed final answer retain their reply-tree context even before Telegram acknowledges the edit. Input validation, downloads, and transcription happen before the model pending reply; article-source loading has its own early status as described above.
 
@@ -156,19 +155,11 @@ The coding tools run with the bot process's filesystem permissions and Pi's conf
 
 The repository vendors the reviewed `otter-manage-expenses` skill from [narumiruna/otter](https://github.com/narumiruna/otter) and installs `@narumitw/otter-cli` as a pinned runtime dependency. The production image adds its npm binary directory to `PATH`; Compose passes `OTTER_TOKEN` from the ignored root `.env` without copying it into the image.
 
-## Model and thinking commands
+## Model and thinking settings
 
-`/model` shows the current model and a paginated inline picker of authenticated Pi chat models. Select a button or send `/model <provider/model>`; an unambiguous model ID also works. The picker reloads Pi's available chat models and credential checks on each request; selection also rechecks availability. It excludes unauthenticated providers and models excluded by the provider's credential filters. Pi's OpenAI provider does not expose subscription-specific chat model entitlements, so this list is not a guarantee that the account can call every listed model. Selecting a model does not invoke a model turn.
+Use the administration Web UI to configure providers, credentials, chat models, and thinking levels. Telegram does not provide `/model`, `/provider`, `/login`, or `/thinking` commands. Old model and thinking picker buttons cannot change settings.
 
-`/thinking` shows the current thinking level and only the levels supported by the selected model. Select a button or send `/thinking <level>` (for example, `/thinking high`). Unsupported levels are rejected rather than silently clamped. Models without reasoning support offer only `off`; Pi adjusts the thinking level to the new model's capabilities when switching models.
-
-Both commands use the existing `BOT_WHITELIST` rules, including for button callbacks. Choices apply to the **chat**, not individual users in a group, and do not change defaults for other chats. Changes are rejected while Pi is busy; wait for completion or use `/cancel` first. Commands received during `/reset` wait until its cleanup finishes before creating or changing the replacement session. Pi records choices on the current session branch and restores them after restart once that session contains a conversation message. Replying to an older bot message carries the current model and thinking choices onto the restored branch, so they also survive restart. Before the first conversation message, Pi keeps setup-only changes in memory. `/reset` clears the chat's conversation and choices, returning to the authenticated startup model and its supported equivalent of `off`. If a saved model is missing or no longer authenticated, `openai/gpt-6.1-sol` is preferred when authenticated, otherwise another authenticated Pi chat model is used.
-
-The bot registers `/model` and `/thinking` in Telegram's command menu at startup and subscribes to `callback_query` updates in addition to message updates. Menu-registration failures are logged without stopping polling.
-
-Settings buttons allow one in-flight operation per chat/message. Extra clicks are acknowledged and ignored; click again after the operation finishes if needed. Identical text and keyboards are not edited again. Successful settings UI sends/edits retain at most 256 message snapshots for five minutes, with lazy cleanup and no background retries. A Telegram 429 pauses all settings UI commands, button mutations and acknowledgements for the supplied `retry_after` interval (one second if that interval is missing or invalid); try again after the cooldown. Other bot features have separate delivery handling and may still hit Telegram limits. Settings validation errors remain visible, while Telegram delivery failures log only operation/error-code metadata, not raw payloads or a misleading authentication warning. If a setting succeeds but its confirmation fails, the setting remains applied; use `/model` or `/thinking` after the cooldown to confirm it.
-
-After deployment, rapidly click model page buttons and verify that no repeated settings/authentication warnings appear. In Logfire, inspect `Telegram model settings delivery failed` operation, error code and retry interval without recording message contents. Roll back to the previous bot image if necessary, preserving session/settings volumes; do not delete runtime state. This transport change requires no data migration.
+The bot updates its Telegram command menu at startup. Menu-registration failures are logged without stopping polling. `/reset` removes conversation state but preserves administrator-owned chat settings.
 
 ## Codemode
 
@@ -239,26 +230,13 @@ MCP is additional administrator-authorized capability, not a replacement for `lo
 
 To disable MCP connections and subprocesses, set every server to `enabled: false` or use `{"mcpServers": {}}`, then restart. Codemode remains available for non-MCP tools. Keep session/state volumes; do not run `docker compose down -v`. Existing SQLite data is unchanged, and interrupted side effects must not be automatically retried.
 
-## OpenAI login from Telegram
+## Provider login
 
-Configure the ignored root `.env`:
+Use the administration Web UI to configure provider credentials and OAuth login. Do not send API keys, tokens, or authorization callback URLs to Telegram. Retired `/login` commands and known callback URLs are blocked before model input and deleted when Telegram permits. The bot discards command arguments and directs the user to `/admin`; it does not start login.
 
-```dotenv
-BOT_ADMIN_ID=<your Telegram user ID>
-BOT_WHITELIST=<your Telegram user ID>,<other trusted user IDs>
-```
+Keep credential storage private, writable, and out of Git. Trusted bot users have coding tools and can access files with the bot process's permissions; provider login is not a filesystem sandbox.
 
-Rebuild/restart with `docker compose up -d --build sumire`, then send `/login` in a private chat with the bot. Only the authenticated, explicitly allowlisted admin sender can start login; group and anonymous messages cannot authorize it. Open **Login to OpenAI** in a browser. Complete the ChatGPT sign-in, then paste the full `http://127.0.0.1:1455/auth/callback?...` URL back into the same private chat if the callback does not finish automatically. In Docker or on a remote host, the browser may show a connection error at that address; copy the URL from its address bar anyway. Pi validates the OAuth state and exchanges the code. Do not send API keys or access/refresh tokens to Telegram.
-
-After login, all bot chats share the account immediately, without a restart. Only one login runs at a time. `/cancel` in the login chat cancels that login instead of a model task; it does not log out or revoke already saved credentials. The flow expires after five minutes. Shutdown cancels pending interaction, and a new `/login` can retry. Authentication messages use bounded direct Telegram delivery, never Morsel. Callback input is intercepted before ordinary commands, model context, session persistence, or request telemetry; callback messages are deleted when Telegram permits. Known callback URLs pasted after cancellation, timeout, or restart, including command arguments and quoted replies, are also intercepted. Other chats remain usable during login when a previous credential exists.
-
-If `/login` is unavailable, its reply reports when the admin user ID is missing from the explicit whitelist. If the settings qualify but the login service is absent, the reply directs the admin to check the deployed version and startup logs instead of changing valid settings. Redeploy after environment changes so the running bot loads them.
-
-Pi stores the shared credential at `.telegramagent/sessions/.pi-agent/auth.json` and the stable installation ID in that directory's `settings.json`. Compose persists both in the existing `state` volume. Keep the directory private, writable, and out of Git; Pi needs write access to refresh tokens. No Telegram callback port needs publishing when using the manual URL flow. There is no Telegram logout command or Sumire-owned endpoint/API-key setting. Provision or remove credentials through Pi's supported mechanisms if needed; do not delete unrelated session state.
-
-Telegram bot chats are **not end-to-end encrypted**. The callback contains a short-lived authorization code and is sent through Telegram; best-effort deletion does not guarantee removal from Telegram or client history. Browser authorization links also remain chat data. Prefer local Pi login and securely provision the bot's credential storage if this privacy tradeoff is unacceptable. Account/model availability and usage limits depend on OpenAI's grant and subscription. `/login` authorization is not a filesystem sandbox: existing trusted users have `read`, `write`, and `bash` and can access bot credentials with the process's permissions. Restrict the whitelist accordingly.
-
-The reusable package is `packages/login/`. Its standalone Pi command is `/provider-login` because `/login` is already reserved by Pi's built-in UI. Telegram `/login` uses the same package client through a bot-owned transport adapter, not a model prompt or a separate agent loop.
+The reusable Pi login client and `/provider-login` extension remain in `packages/login/`.
 
 ## Telegram message length and Morsel
 
@@ -347,13 +325,13 @@ The root [`.env.example`](../../.env.example) lists bot credentials and optional
 | --- | --- |
 | `BOT_TOKEN` | Required Telegram bot credential. |
 | `BOT_WHITELIST` | Required trusted user/chat IDs; channel IDs authorize image access explicitly. |
-| `BOT_ADMIN_ID` | Optional explicitly allowlisted user ID for private `/login` and admin context. |
+| `BOT_ADMIN_ID` | Administrator user ID for private `/admin` setup, Web UI access, and admin context. |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl fallback and MCP credential. |
 | `OTTER_TOKEN` | Credential for the Otter expense skill. |
 | `LOGFIRE_TOKEN` | Optional redacted telemetry export. |
 | `MORSEL_API_KEY` | Credential for publication to the fixed `https://morsel.narumi.dev/` service. |
 
-The optional WebUI uses `ADMIN_ORIGIN`, `ADMIN_HOST`, and `ADMIN_PORT`. It defaults to loopback port `17465`. When enabled, the database owns access rules, tools, MCP configuration, and model selections after the first import; Telegram commands share those selections. The configured `BOT_ADMIN_ID` can request the first passkey setup link with `/admin` in a private chat. Later sign-ins use the passkey. Telegram Web Login and BotFather login credentials are not required.
+Setting `BOT_ADMIN_ID` enables the WebUI. It defaults to `http://localhost:17465`; no `ADMIN_ORIGIN` is required for local access. `ADMIN_HOST` and `ADMIN_PORT` set the backend binding. Set an HTTPS `ADMIN_ORIGIN` for remote access. When enabled, the database owns access rules, tools, MCP configuration, and model selections after the first import. The configured `BOT_ADMIN_ID` can request the first passkey setup link with `/admin` in a private chat. Later sign-ins use the passkey. Telegram Web Login and BotFather login credentials are not required.
 
 Without the WebUI, the following legacy fixed-policy behavior applies. Other former Bot environment settings remain ignored, including feature flags, limits, working-directory overrides, MCP config-path overrides, and the Morsel URL override. Documents, images, channel images, audio, reply-tree routing, and codemode are enabled by default. Runtime policy and limits are fixed in `apps/bot/src/config/settings.ts`; changing them requires a source change and deployment, not an environment override. MCP servers remain administrator-configured in the root `mcp.json` for desktop startup or `mcp.docker.json` for Compose. Pi and external tools still own their credential discovery and essential system environment.
 

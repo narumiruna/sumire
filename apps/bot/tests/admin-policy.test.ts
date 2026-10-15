@@ -200,7 +200,15 @@ describe("admin policy and persistence", () => {
   })
   it("bounds known chat inventory and does not grant access from observation", () => {
     const { s } = store()
-    for (let n = 1; n <= 1005; n++) s.observe(n, "private", "x".repeat(200))
+    // Test the inventory limit without a disk commit for each observed chat.
+    s.db.exec("BEGIN IMMEDIATE")
+    try {
+      for (let n = 1; n <= 1005; n++) s.observe(n, "private", "x".repeat(200))
+      s.db.exec("COMMIT")
+    } catch (error) {
+      s.db.exec("ROLLBACK")
+      throw error
+    }
     expect(s.listChats(0)).toHaveLength(100)
     expect(s.listChats(900)).toHaveLength(100)
     expect(s.listChats(1000)).toHaveLength(0)
