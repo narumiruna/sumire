@@ -72,6 +72,53 @@ describe("MCP through durable sessions", () => {
     },
   )
 
+  it.each([false, true])(
+    "keeps direct MCP access distinct from codemode access (startup failure: %s)",
+    async (startupFailure) => {
+      const { fixture } = await setup("direct")
+      const store = fixture.factory.control
+      const state = store.snapshot()
+      state.policy.tools = state.policy.tools.filter((name) => name !== "codemode")
+      state.policy.defaults.tools =
+        state.policy.defaults.tools?.filter((name) => name !== "codemode") ?? []
+      store.save(state.policy, state.revision, "7")
+      store.applied(state.revision + 1, true)
+      const policy = store.snapshot().policy
+      expect(store.allowsTool(123, "mcp__fake__echo", "fake")).toBe(true)
+      expect(store.allowsTool(123, "codemode")).toBe(false)
+      const createHome = startupFailure
+        ? vi
+            .spyOn(McpProcessHomes.prototype, "create")
+            .mockRejectedValueOnce(new Error("Offline fixture startup failure"))
+        : undefined
+      const session = await fixture.createSession().finally(() => createHome?.mockRestore())
+      expect(session.getActiveToolNames()).not.toContain("codemode")
+      expect(session.getActiveToolNames().includes("mcp__fake__echo")).toBe(!startupFailure)
+      fixture.enqueueAnswer("MCP access checked")
+      await session.prompt("Find the MCP echo tool")
+      const messages = JSON.stringify(fixture.requests[0]?.messages)
+      expect(messages).toContain("MCP server access is authorized for this chat.")
+      expect(messages).toContain("Codemode is not enabled for this chat.")
+      expect(messages).toContain("ask the administrator to check the connection and tool policy")
+      expect(messages).not.toContain("use codemode searchTools/describeNamespace once")
+      expect(messages).not.toContain(
+        "If the required tool is absent, explain that it is not enabled",
+      )
+      expect(fixture.requests[0]?.tools.some((tool) => tool.function.name === "codemode")).toBe(
+        false,
+      )
+
+      await session.dispose()
+      const reopened = await fixture.createSession()
+      expect(await fixture.call(reopened, "mcp__fake__echo", { value: "available" })).toMatchObject(
+        {
+          isError: false,
+        },
+      )
+      expect(store.snapshot().policy).toEqual(policy)
+    },
+  )
+
   it("discovers MCP tools and namespaces through default codemode and keeps model-only tools out of scripts", async () => {
     const { fixture } = await setup()
     const session = await fixture.createSession()
