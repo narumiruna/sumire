@@ -88,7 +88,7 @@ Review imported access, model selections, and MCP entries before enabling capabi
 2. Give the returned link to the administrator. With HTTPS, use **Review chat access**. With the default localhost origin, copy the URL into a browser on the computer that runs Sumire, not Telegram's embedded browser. A phone's `localhost` is not the Sumire host. Remote access requires an HTTPS `ADMIN_ORIGIN` and a Passkey registered for that domain.
 3. Sign in with the existing administrator Passkey. The page removes the token fragment before network requests and retains the pending request in browser-tab session storage through sign-in and reload. Storage-disabled browsers cannot retain it through reload. Success, invalidation, expiry, dismissal, or sign-out clears the intent.
 4. Check the displayed chat name, type, and numeric ID, then select **Approve chat**. Opening the URL and signing in do not grant access. Chat names are untrusted labels; verify the ID before approval. A link cannot enroll a Passkey or authorize a non-administrator.
-5. Check the saved and applied revision badge. Approval cancels active work through the normal policy application worker. Pending or failed application denies new work; use **Retry application** after correcting any configuration failure. Approval does not enable additional tools, MCP servers, or models.
+5. Check the application status and expandable revision details. Approval cancels active work through the normal policy application worker. Pending or failed application denies new work; use **Retry application** after correcting any configuration failure. Approval does not enable additional tools, MCP servers, or models.
 
 The server generates a 32-byte random hex token and stores only its SHA-256 hash with the Telegram-supplied chat metadata and configured origin. Links expire after 15 minutes. A new request replaces the previous link for that chat after a one-minute cooldown. At most 1,000 unexpired requests exist. Restart retains pending requests until expiry. Changing origin invalidates them. The URL does not accept a caller-supplied target chat ID.
 
@@ -108,7 +108,7 @@ The upgrade retains the existing schema version 3, database path, policy revisio
 
 ## Policy behavior
 
-Global lists are availability ceilings. Global defaults select from those lists. Chat overrides can narrow or select within the ceiling, not exceed it. `Inherit default` and an explicit empty list have different meanings. An empty list allows nothing. The Chats page displays effective saved values and their sources.
+Global lists are availability ceilings. Global defaults select from those lists. Chat overrides can narrow or select within the ceiling, not exceed it. `Inherit default` and an explicit empty list have different meanings. An empty list allows nothing. The Chats page shows inherited or customized values and their effective pending selections. Expand **Saved effective settings** to inspect the last loaded server state.
 
 MCP server permission and individual tool permission are both required. `direct`, `codemode`, and `hidden` control exposure, not authorization. Discover a server's tools before approving their exact names. New server tools remain denied until approved.
 
@@ -124,6 +124,23 @@ Saving settings writes a revision and an audit record together. Runtime applicat
 | External action already started | Cancellation cannot reverse an external effect. |
 
 Configure providers, credentials, chat models, and thinking levels in the WebUI. Telegram does not provide `/model`, `/provider`, `/login`, or `/thinking`. `/reset` removes conversation state but not administrator-owned chat settings. Model requests, compaction, native tools, codemode's native tool calls, and MCP calls check current authorization.
+
+## Editing scope and status
+
+- **Save settings** submits all pending policy edits across Chats, Access, Defaults, global capability lists, and custom endpoint configuration. Adding an ID or staging endpoint metadata does not save it immediately.
+- **Save model and apply** submits the selected model and optional shared model/thinking defaults. **Model Providers** is the canonical shared default-model editor; Defaults links to it. Chat model overrides stay on Chats.
+- **Save MCP configuration and apply** submits only the named connection and staged secret replacements. Credential actions save authentication separately. These operations are not one atomic transaction.
+- The status shows whether saved settings are applied, waiting, or failed. Revision numbers remain under **Revision details**. Pending policy, MCP, and provider drafts have separate notices. Inputs are disabled during an operation to prevent concurrent local edits from being overwritten.
+- Section navigation retains editor drafts. Reload and pagination are blocked when they would discard unfinished policy inputs. Provider previews, MCP connection drafts, and staged MCP secrets survive a saved-state reload. Use **Reload** after a failed MCP save or deletion to inspect the saved revision and application status without discarding the draft. A failed response can follow a committed change. Browser reload or closing the tab warns about pending edits; sign-out requires confirmation. A browser warning cannot preserve drafts after the tab is closed.
+- Use the explicit discard action only when the pending edits are no longer needed. A failed save can leave a saved but unapplied revision. Reload the saved state, inspect its status, and use **Retry application** when available.
+
+### Current API limits
+
+- Chat search covers the loaded page of up to 100 observed chats, not the full database. Pagination keeps the existing discovery order. Direct ID configuration is a separate expandable form and does not grant access.
+- Access history is read-only. The current API has no environment reconciliation or missing-ID approval workflow. Historical imports never approve IDs or restore revoked access. Access rows edit only the current explicit private-user or group/channel lists.
+- Audit activity uses server offset pages of up to 100 records. The server retains at most 10,000 audit records and returns the latest 10 environment access reviews. There are no server-side audit filters or exhaustive client-side search.
+- MCP inventory returns masked markers, not editable command, URL, or argument values. **Edit fields** starts with an empty JSON update; enter only fields to change. Omitted fields are preserved. Connection tests and discovered tools are not execution authorization.
+- Provider authentication availability is not remote verification. No remote check, authentication interaction, or billable model request starts automatically. Real device enrollment and provider acceptance require separate administrator checks.
 
 ## Model providers
 
