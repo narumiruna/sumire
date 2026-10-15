@@ -201,6 +201,42 @@ test("removes environment import controls and shows retained read-only history o
   expect(reconciliationRequests).toBe(0)
 })
 
+test("shows known chat names beside access IDs and keeps unnamed IDs usable", async ({ page }) => {
+  await fixture(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        policy: { ...policy, privateUsers: [42, 43], groups: [-100, -200] },
+      },
+    }),
+  )
+  await page.route("**/api/chats?*", (route) =>
+    route.fulfill({
+      json: [
+        { id: 42, type: "private", name: "Alice" },
+        { id: -100, type: "supergroup", name: "<img src=x onerror=alert(1)>" },
+        { id: -200, type: "group", name: "-200" },
+      ],
+    }),
+  )
+  await page.goto("/")
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  const users = page.getByRole("group", { name: "Private-message access", exact: true })
+  await expect(users.getByRole("listitem").filter({ hasText: "Alice" })).toContainText("42")
+  await expect(users.getByRole("listitem").filter({ hasText: "43" })).toHaveText("43Remove")
+  const groups = page.getByRole("group", { name: "Group and channel access", exact: true })
+  await expect(groups.getByRole("listitem").filter({ hasText: "-100" })).toContainText(
+    "<img src=x onerror=alert(1)>",
+  )
+  await expect(groups.getByRole("listitem").filter({ hasText: "-200" })).toHaveText("-200Remove")
+  await expect(page.locator("img")).toHaveCount(0)
+  await users.getByRole("button", { name: "Remove ID 42", exact: true }).click()
+  await expect(users.getByText("Alice", { exact: true })).toHaveCount(0)
+})
+
 test("captures links opened in an existing WebUI tab without a document reload", async ({
   page,
 }) => {
