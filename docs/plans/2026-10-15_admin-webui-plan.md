@@ -1,5 +1,7 @@
 # Sumire Admin WebUI Plan
 
+Authentication update: the administrator requested passkeys instead of Telegram Web Login. The Telegram Web Login design, fixture evidence, and acceptance checks below describe the earlier implementation and are superseded. Use [the current administration guide](../admin-webui.md) for passkey setup, schema migration, and recovery. Real passkey device enrollment and sign-in replace the old live Telegram login acceptance checks. BotFather login registration is no longer required.
+
 ## Goal
 
 Add a public HTTPS administration interface for Sumire. Use Telegram login for the single administrator identified by `BOT_ADMIN_ID`. Support global defaults, per-chat access and capabilities, private-message access, model selection, thinking levels, and model provider management.

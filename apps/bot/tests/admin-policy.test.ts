@@ -64,11 +64,37 @@ describe("admin policy and persistence", () => {
       restored.close()
     }
   })
+  it("migrates Telegram state without changing policy and revokes only old sessions", () => {
+    const { s, file } = store()
+    const before = s.snapshot()
+    const old = s.createSession("42")
+    s.db.exec(
+      "CREATE TABLE login(hash TEXT); INSERT INTO login VALUES ('old'); PRAGMA user_version=1",
+    )
+    const migrated = new AdminStore(file, new Set([99]), 42)
+    try {
+      expect(migrated.snapshot()).toEqual(before)
+      expect(migrated.session(old.value)).toBeUndefined()
+      expect(
+        migrated.db.prepare("SELECT name FROM sqlite_master WHERE name='login'").get(),
+      ).toBeUndefined()
+      expect(migrated.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 2 })
+      const current = migrated.createSession("42")
+      const reopened = new AdminStore(file, new Set(), 42)
+      try {
+        expect(reopened.session(current.value)).toBeDefined()
+      } finally {
+        reopened.close()
+      }
+    } finally {
+      migrated.close()
+    }
+  })
   it("refuses a newer database schema instead of downgrading it", () => {
     const { file } = store()
     const future = `${file}.future`
     const db = new DatabaseSync(future)
-    db.exec("PRAGMA user_version=2")
+    db.exec("PRAGMA user_version=3")
     db.close()
     expect(() => new AdminStore(future, new Set(), 42)).toThrow("newer")
   })

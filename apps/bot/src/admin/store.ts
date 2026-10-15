@@ -40,7 +40,7 @@ export class AdminStore {
     this.db = new DatabaseSync(file)
     chmodSync(file, 0o600)
     const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number }
-    if (version.user_version > 1) {
+    if (version.user_version > 2) {
       this.db.close()
       throw new Error("Admin database schema is newer than this application")
     }
@@ -52,9 +52,13 @@ export class AdminStore {
       CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, actor TEXT NOT NULL, time INTEGER NOT NULL, operation TEXT NOT NULL, revision INTEGER NOT NULL, outcome TEXT NOT NULL, target TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, actor TEXT NOT NULL, created INTEGER NOT NULL, touched INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS login (hash TEXT PRIMARY KEY, state TEXT NOT NULL, nonce TEXT NOT NULL, verifier TEXT NOT NULL, created INTEGER NOT NULL);
-      PRAGMA user_version = 1;
+      CREATE TABLE IF NOT EXISTS passkeys (actor TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, public_key BLOB NOT NULL, counter INTEGER NOT NULL, user_handle TEXT NOT NULL, device_type TEXT NOT NULL, backed_up INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS passkey_setup (actor TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, origin TEXT NOT NULL, created INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS passkey_challenges (hash TEXT PRIMARY KEY, actor TEXT NOT NULL, kind TEXT NOT NULL, challenge TEXT NOT NULL, setup_hash TEXT NOT NULL, user_handle TEXT NOT NULL, created INTEGER NOT NULL);
+      DROP TABLE IF EXISTS login;
+      PRAGMA user_version = 2;
     `)
+      if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
         .run(JSON.stringify(initialPolicy(whitelist)))
@@ -204,7 +208,8 @@ export class AdminStore {
     this.db
       .prepare("DELETE FROM sessions WHERE created<=? OR touched<=?")
       .run(now - 8 * 3600_000, now - 30 * 60_000)
-    this.db.prepare("DELETE FROM login WHERE created<=?").run(now - 5 * 60_000)
+    this.db.prepare("DELETE FROM passkey_setup WHERE created<=?").run(now - 5 * 60_000)
+    this.db.prepare("DELETE FROM passkey_challenges WHERE created<=?").run(now - 5 * 60_000)
   }
   close() {
     this.db.close()

@@ -118,8 +118,6 @@ describe("loadSettings", () => {
       "BOT_WHITELIST",
       "BOT_ADMIN_ID",
       "ADMIN_ORIGIN",
-      "TELEGRAM_LOGIN_CLIENT_ID",
-      "TELEGRAM_LOGIN_CLIENT_SECRET",
       "ADMIN_HOST",
       "ADMIN_PORT",
       "FIRECRAWL_API_KEY",
@@ -144,8 +142,6 @@ describe("loadSettings", () => {
     const bootstrap = {
       BOT_ADMIN_ID: "42",
       ADMIN_ORIGIN: "https://admin.example.test",
-      TELEGRAM_LOGIN_CLIENT_ID: "fixture",
-      TELEGRAM_LOGIN_CLIENT_SECRET: "fixture",
     }
     expect(loadSettings(bootstrap).admin).toMatchObject({
       host: "127.0.0.1",
@@ -164,7 +160,6 @@ describe("loadSettings", () => {
     ])
       expect(() => loadSettings({ ...bootstrap, ADMIN_ORIGIN: origin })).toThrow()
     expect(() => loadSettings({ ...bootstrap, BOT_ADMIN_ID: "" })).toThrow()
-    expect(() => loadSettings({ ...bootstrap, TELEGRAM_LOGIN_CLIENT_SECRET: "" })).toThrow()
     expect(() => loadSettings({ ...bootstrap, ADMIN_PORT: "0" })).toThrow()
   })
 

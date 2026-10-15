@@ -341,7 +341,7 @@ The production image bundles checksum-verified libcurl-impersonate v2.2.2 for Li
 
 ## Environment configuration
 
-The root [`.env.example`](../../.env.example) lists bot credentials and optional WebUI bootstrap settings. For Telegram login, persisted chat policies, provider management, and recovery, see the [administration guide](../../docs/admin-webui.md).
+The root [`.env.example`](../../.env.example) lists bot credentials and optional WebUI bootstrap settings. For passkey login, persisted chat policies, provider management, and recovery, see the [administration guide](../../docs/admin-webui.md).
 
 | Variable | Purpose |
 | --- | --- |
@@ -353,7 +353,7 @@ The root [`.env.example`](../../.env.example) lists bot credentials and optional
 | `LOGFIRE_TOKEN` | Optional redacted telemetry export. |
 | `MORSEL_API_KEY` | Credential for publication to the fixed `https://morsel.narumi.dev/` service. |
 
-The optional WebUI uses `ADMIN_ORIGIN`, `TELEGRAM_LOGIN_CLIENT_ID`, `TELEGRAM_LOGIN_CLIENT_SECRET`, `ADMIN_HOST`, and `ADMIN_PORT`. It defaults to loopback port `17465`. When enabled, the database owns access rules, tools, MCP configuration, and model selections after the first import; Telegram commands share those selections. The administrator login identity remains bootstrap-only.
+The optional WebUI uses `ADMIN_ORIGIN`, `ADMIN_HOST`, and `ADMIN_PORT`. It defaults to loopback port `17465`. When enabled, the database owns access rules, tools, MCP configuration, and model selections after the first import; Telegram commands share those selections. The configured `BOT_ADMIN_ID` can request the first passkey setup link with `/admin` in a private chat. Later sign-ins use the passkey. Telegram Web Login and BotFather login credentials are not required.
 
 Without the WebUI, the following legacy fixed-policy behavior applies. Other former Bot environment settings remain ignored, including feature flags, limits, working-directory overrides, MCP config-path overrides, and the Morsel URL override. Documents, images, channel images, audio, reply-tree routing, and codemode are enabled by default. Runtime policy and limits are fixed in `apps/bot/src/config/settings.ts`; changing them requires a source change and deployment, not an environment override. MCP servers remain administrator-configured in the root `mcp.json` for desktop startup or `mcp.docker.json` for Compose. Pi and external tools still own their credential discovery and essential system environment.
 

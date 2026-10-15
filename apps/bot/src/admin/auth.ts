@@ -1,117 +1,205 @@
-import { createHash } from "node:crypto"
-import { readResponseText } from "@narumitw/sumire-url-content/network"
-import { createRemoteJWKSet, type JWTVerifyGetKey, jwtVerify } from "jose"
+import {
+  type AuthenticationResponseJSON,
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  type RegistrationResponseJSON,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server"
 import { AdminError, type AdminStore, digest, token } from "./store.js"
 
 export interface AdminConfig {
   origin: string
-  clientId: string
-  clientSecret: string
   port: number
   host: string
   assets: string
 }
-const issuer = "https://oauth.telegram.org"
-const keys = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`), {
-  timeoutDuration: 5000,
-})
 
-export async function verifyTelegramToken(
-  jwt: string,
-  clientId: string,
-  nonce: string,
-  adminId: number | undefined,
-  key: JWTVerifyGetKey = keys,
-) {
-  const { payload } = await jwtVerify(jwt, key, {
-    algorithms: ["RS256"],
-    issuer,
-    audience: clientId,
-    maxTokenAge: "5m",
-    requiredClaims: ["sub", "iat", "exp", "nonce", "id"],
-  })
-  if (
-    payload.nonce !== nonce ||
-    typeof payload.sub !== "string" ||
-    !payload.sub ||
-    !adminId ||
-    payload.id !== adminId
-  )
-    throw new AdminError(403, "Administrator access denied")
-  return String(adminId)
+type Pending = {
+  actor: string
+  kind: string
+  challenge: string
+  setup_hash: string
+  user_handle: string
+}
+type Credential = {
+  id: string
+  public_key: Uint8Array
+  counter: number
+  user_handle: string
+}
+const denied = () => new AdminError(403, "Passkey verification failed or expired")
+
+/** Called only after the Telegram transport verifies the private bootstrap administrator. */
+export function createPasskeySetup(store: AdminStore, origin: string) {
+  if (!store.adminId) throw denied()
+  const actor = String(store.adminId)
+  if (store.db.prepare("SELECT id FROM passkeys WHERE actor=?").get(actor)) return undefined
+  store.prune()
+  const value = token()
+  store.db
+    .prepare(
+      "INSERT INTO passkey_setup VALUES (?,?,?,?) ON CONFLICT(actor) DO UPDATE SET hash=excluded.hash,origin=excluded.origin,created=excluded.created",
+    )
+    .run(actor, digest(value), origin, Date.now())
+  return `${origin}/#setup=${value}`
 }
 
-export class TelegramAdminLogin {
+export class PasskeyAdminLogin {
+  private readonly rpID: string
   constructor(
     readonly config: AdminConfig,
     readonly store: AdminStore,
-  ) {}
-  begin() {
-    if (!this.store.adminId) throw new AdminError(503, "Administrator login is not configured")
+  ) {
+    this.rpID = new URL(config.origin).hostname
+  }
+  private actor() {
+    if (!this.store.adminId) throw denied()
+    return String(this.store.adminId)
+  }
+  private setup(hash: string) {
     this.store.prune()
-    const count = this.store.db.prepare("SELECT COUNT(*) AS n FROM login").get() as { n: number }
+    if (
+      this.store.db.prepare("SELECT id FROM passkeys WHERE actor=?").get(this.actor()) ||
+      !this.store.db
+        .prepare("SELECT actor FROM passkey_setup WHERE actor=? AND hash=? AND origin=?")
+        .get(this.actor(), hash, this.config.origin)
+    )
+      throw denied()
+  }
+  private pending(kind: string, challenge: string, setupHash = "", userHandle = "") {
+    this.store.prune()
+    const count = this.store.db.prepare("SELECT COUNT(*) AS n FROM passkey_challenges").get() as {
+      n: number
+    }
     if (count.n >= 64) throw new AdminError(429, "Too many pending logins")
     const browser = token()
-    const state = token()
-    const nonce = token()
-    const verifier = token()
     this.store.db
-      .prepare("INSERT INTO login VALUES (?,?,?,?,?)")
-      .run(digest(browser), state, nonce, verifier, Date.now())
-    const url = new URL(`${issuer}/auth`)
-    url.search = new URLSearchParams({
-      client_id: this.config.clientId,
-      redirect_uri: `${this.config.origin}/auth/callback`,
-      response_type: "code",
-      scope: "openid profile",
-      state,
-      nonce,
-      code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-      code_challenge_method: "S256",
-    }).toString()
-    return { browser, url: url.href }
+      .prepare("INSERT INTO passkey_challenges VALUES (?,?,?,?,?,?,?)")
+      .run(digest(browser), this.actor(), kind, challenge, setupHash, userHandle, Date.now())
+    return browser
   }
-  async finish(browser: string, code: string, state: string) {
+  private take(browser: string, kind: string): Pending {
     this.store.prune()
     const pending = this.store.db
-      .prepare("DELETE FROM login WHERE hash=? RETURNING *")
-      .get(digest(browser)) as { state: string; nonce: string; verifier: string } | undefined
-    if (!pending || pending.state !== state || !code || code.length > 4096)
-      throw new AdminError(403, "Invalid or expired login")
-    const signal = AbortSignal.timeout(10_000)
-    const response = await fetch(`${issuer}/token`, {
-      method: "POST",
-      redirect: "error",
-      signal,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        authorization: `Basic ${Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`).toString("base64")}`,
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: `${this.config.origin}/auth/callback`,
-        client_id: this.config.clientId,
-        code_verifier: pending.verifier,
-      }),
+      .prepare("DELETE FROM passkey_challenges WHERE hash=? RETURNING *")
+      .get(digest(browser)) as Pending | undefined
+    if (!pending || pending.actor !== this.actor() || pending.kind !== kind) throw denied()
+    return pending
+  }
+  async beginRegistration(setupToken: string) {
+    const setupHash = digest(setupToken)
+    this.setup(setupHash)
+    const options = await generateRegistrationOptions({
+      rpName: "Sumire administration",
+      rpID: this.rpID,
+      userName: "Administrator",
+      attestationType: "none",
+      timeout: 60_000,
+      authenticatorSelection: { residentKey: "required", userVerification: "required" },
     })
-    if (!response.ok) {
-      await response.body?.cancel()
-      throw new AdminError(403, "Telegram login failed")
+    this.setup(setupHash)
+    return {
+      options,
+      browser: this.pending("register", options.challenge, setupHash, options.user.id),
     }
-    const input: unknown = JSON.parse(await readResponseText(response, 65536, signal))
-    if (
-      !input ||
-      typeof input !== "object" ||
-      !("id_token" in input) ||
-      typeof input.id_token !== "string"
-    )
-      throw new AdminError(403, "Telegram login failed")
-    return verifyTelegramToken(
-      input.id_token,
-      this.config.clientId,
-      pending.nonce,
-      this.store.adminId,
-    )
+  }
+  async finishRegistration(browser: string, response: RegistrationResponseJSON) {
+    const pending = this.take(browser, "register")
+    this.setup(pending.setup_hash)
+    let result: Awaited<ReturnType<typeof verifyRegistrationResponse>>
+    try {
+      result = await verifyRegistrationResponse({
+        response,
+        expectedChallenge: pending.challenge,
+        expectedOrigin: this.config.origin,
+        expectedRPID: this.rpID,
+        requireUserVerification: true,
+      })
+    } catch {
+      throw denied()
+    }
+    if (!result.verified) throw denied()
+    const info = result.registrationInfo
+    this.store.db.exec("BEGIN IMMEDIATE")
+    try {
+      this.setup(pending.setup_hash)
+      this.store.db
+        .prepare("INSERT INTO passkeys VALUES (?,?,?,?,?,?,?)")
+        .run(
+          pending.actor,
+          info.credential.id,
+          info.credential.publicKey,
+          info.credential.counter,
+          pending.user_handle,
+          info.credentialDeviceType,
+          Number(info.credentialBackedUp),
+        )
+      this.store.db.prepare("DELETE FROM passkey_setup WHERE actor=?").run(pending.actor)
+      this.store.db.prepare("DELETE FROM passkey_challenges WHERE actor=?").run(pending.actor)
+      this.store.audit(
+        pending.actor,
+        "admin.passkey.register",
+        this.store.snapshot().revision,
+        "completed",
+        "administrator",
+      )
+      this.store.db.exec("COMMIT")
+    } catch (error) {
+      this.store.db.exec("ROLLBACK")
+      throw error
+    }
+    return pending.actor
+  }
+  async beginAuthentication() {
+    const options = await generateAuthenticationOptions({
+      rpID: this.rpID,
+      userVerification: "required",
+      timeout: 60_000,
+    })
+    return { options, browser: this.pending("authenticate", options.challenge) }
+  }
+  async finishAuthentication(browser: string, response: AuthenticationResponseJSON) {
+    const pending = this.take(browser, "authenticate")
+    const credential = this.store.db
+      .prepare("SELECT * FROM passkeys WHERE actor=? AND id=?")
+      .get(pending.actor, typeof response?.id === "string" ? response.id : "") as
+      | Credential
+      | undefined
+    if (!credential || response.response?.userHandle !== credential.user_handle) throw denied()
+    let result: Awaited<ReturnType<typeof verifyAuthenticationResponse>>
+    try {
+      result = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: pending.challenge,
+        expectedOrigin: this.config.origin,
+        expectedRPID: this.rpID,
+        requireUserVerification: true,
+        credential: {
+          id: credential.id,
+          publicKey: new Uint8Array(credential.public_key),
+          counter: credential.counter,
+        },
+      })
+    } catch {
+      throw denied()
+    }
+    if (!result.verified) throw denied()
+    const info = result.authenticationInfo
+    const changed = this.store.db
+      .prepare(
+        "UPDATE passkeys SET counter=?,device_type=?,backed_up=? WHERE actor=? AND id=? AND counter=? AND public_key=?",
+      )
+      .run(
+        info.newCounter,
+        info.credentialDeviceType,
+        Number(info.credentialBackedUp),
+        pending.actor,
+        credential.id,
+        credential.counter,
+        credential.public_key,
+      )
+    if (!changed.changes) throw denied()
+    return pending.actor
   }
 }

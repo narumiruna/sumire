@@ -3,10 +3,12 @@ import os from "node:os"
 import path from "node:path"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { afterEach, expect, it, vi } from "vitest"
+import { createPasskeySetup, PasskeyAdminLogin } from "../src/admin/auth.js"
 import { AdminStore } from "../src/admin/store.js"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
+import { createPasskeyFixture } from "./helpers/passkey-fixture.js"
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -28,8 +30,6 @@ async function setup(enabled = true, administrator = true) {
         ...(enabled
           ? {
               ADMIN_ORIGIN: "https://admin.example.test",
-              TELEGRAM_LOGIN_CLIENT_ID: "fixture",
-              TELEGRAM_LOGIN_CLIENT_SECRET: "fixture",
             }
           : {}),
       },
@@ -101,7 +101,16 @@ it.each([
         payload: expect.objectContaining({
           chat_id: 42,
           reply_markup: {
-            inline_keyboard: [[{ text: "Open administration", url: "https://admin.example.test" }]],
+            inline_keyboard: [
+              [
+                {
+                  text: "Register passkey",
+                  url: expect.stringMatching(
+                    /^https:\/\/admin\.example\.test\/#setup=[A-Za-z0-9_-]{43}$/,
+                  ),
+                },
+              ],
+            ],
           },
         }),
       },
@@ -128,10 +137,28 @@ it.each(["other-user", "group", "anonymous-group", "mismatched-private"])(
       update.message.chat = { id: 43, type: "private", first_name: "Fixture" }
     await telegram.bot.handleUpdate(update)
     expect(calls).toEqual([])
+    expect(store.db.prepare("SELECT * FROM passkey_setup").all()).toEqual([])
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
   },
 )
+it("returns only the ordinary WebUI link after passkey registration", async () => {
+  const { telegram, store, calls } = await setup()
+  const origin = "https://admin.example.test"
+  const link = createPasskeySetup(store, origin) as string
+  const secret = new URLSearchParams(new URL(link).hash.slice(1)).get("setup") as string
+  const login = new PasskeyAdminLogin({ origin, host: "127.0.0.1", port: 0, assets: "" }, store)
+  const start = await login.beginRegistration(secret)
+  await login.finishRegistration(
+    start.browser,
+    createPasskeyFixture().registration(start.options.challenge),
+  )
+  await telegram.bot.handleUpdate(command())
+  expect(calls[0]?.payload).toMatchObject({
+    reply_markup: { inline_keyboard: [[{ text: "Open administration", url: origin }]] },
+  })
+  expect(store.db.prepare("SELECT * FROM passkey_setup").all()).toEqual([])
+})
 it("tells the owner when the WebUI is disabled without starting a model turn", async () => {
   const { telegram, calls, sessions } = await setup(false)
   await telegram.bot.handleUpdate(command())

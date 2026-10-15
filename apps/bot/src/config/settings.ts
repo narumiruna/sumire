@@ -48,8 +48,6 @@ const environmentSchema = z.object({
   LOGFIRE_TOKEN: optionalString,
   MORSEL_API_KEY: optionalString,
   ADMIN_ORIGIN: optionalString,
-  TELEGRAM_LOGIN_CLIENT_ID: optionalString,
-  TELEGRAM_LOGIN_CLIENT_SECRET: optionalString,
   ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(17465),
   ADMIN_HOST: optionalString.transform((value) => value ?? "127.0.0.1"),
 })
@@ -121,17 +119,11 @@ export function loadSettings(
       origin.origin !== parsed.ADMIN_ORIGIN ||
       origin.username ||
       origin.password ||
-      !parsed.BOT_ADMIN_ID ||
-      !parsed.TELEGRAM_LOGIN_CLIENT_ID ||
-      !parsed.TELEGRAM_LOGIN_CLIENT_SECRET
+      !parsed.BOT_ADMIN_ID
     )
-      throw new Error(
-        "Admin requires an HTTPS origin, BOT_ADMIN_ID and Telegram login client credentials",
-      )
+      throw new Error("Admin requires an HTTPS origin and BOT_ADMIN_ID")
     admin = {
       origin: origin.origin,
-      clientId: parsed.TELEGRAM_LOGIN_CLIENT_ID,
-      clientSecret: parsed.TELEGRAM_LOGIN_CLIENT_SECRET,
       port: parsed.ADMIN_PORT,
       host: parsed.ADMIN_HOST,
       assets: path.join(root, "apps/admin/dist"),

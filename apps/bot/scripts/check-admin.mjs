@@ -51,8 +51,6 @@ try {
   admin = createAdminServer(
     {
       origin,
-      clientId: "fixture",
-      clientSecret: "fixture",
       host: "127.0.0.1",
       port: 0,
       assets: path.resolve(import.meta.dirname, "../../admin/dist"),
@@ -134,6 +132,11 @@ try {
     "content-type": "application/json",
   }
   assert.equal((await call("/api/session", "GET", undefined, auth)).status, 200)
+  const passkeyStart = await call("/auth/passkey/authenticate/options", "POST", {}, auth)
+  assert.equal(passkeyStart.status, 200)
+  assert.equal(JSON.parse(passkeyStart.body).userVerification, "required")
+  assert.match(String(passkeyStart.headers["set-cookie"]), /HttpOnly; Secure; SameSite=Strict/)
+  assert.equal((await call("/auth/telegram")).status, 404)
   assert.equal(
     (await call("/api/apply", "POST", {}, { ...auth, origin: "https://attacker.invalid" })).status,
     403,
@@ -151,7 +154,7 @@ try {
   store = new AdminStore(file, new Set(), 42)
   assert.deepEqual(store.snapshot().policy.privateUsers, [42, 43])
   console.log(
-    "Admin offline HTTPS smoke passed: assets, sessions, CSRF, logout, and restart persistence. Same-user file access confirmed: coding tools are not credential-isolated. Live Telegram and providers were not tested.",
+    "Admin offline HTTPS smoke passed: assets, passkey challenge creation, sessions, CSRF, logout, and restart persistence. Same-user file access confirmed: coding tools are not credential-isolated. Live Telegram and providers were not tested.",
   )
 } finally {
   await admin?.stop()

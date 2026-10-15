@@ -64,14 +64,77 @@ async function setup(page: Page, signedIn = true) {
   })
   await page.goto("/")
 }
-test("unauthorized visitor sees only Telegram sign-in", async ({ page }) => {
+test("unauthorized visitor sees only passkey sign-in", async ({ page }) => {
   await setup(page, false)
-  await expect(page.getByRole("link", { name: "Sign in with Telegram" })).toHaveAttribute(
-    "href",
-    "/auth/telegram",
-  )
+  await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Save settings", exact: true })).toHaveCount(0)
 })
+test("registers and signs in with a browser passkey without Telegram Web Login", async ({
+  page,
+  context,
+}) => {
+  await setup(page, false)
+  const client = await context.newCDPSession(page)
+  await client.send("WebAuthn.enable")
+  await client.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  })
+  const challenge = Buffer.from("registration-challenge-fixture-32").toString("base64url")
+  const user = Buffer.from("administrator-fixture").toString("base64url")
+  let registrations = 0
+  let authentications = 0
+  await page.route("**/auth/passkey/**", async (route) => {
+    const path = new URL(route.request().url()).pathname
+    expect(route.request().method()).toBe("POST")
+    expect(route.request().headers().origin).toBe("http://localhost:17466")
+    if (path === "/auth/passkey/register/options") {
+      expect(route.request().postDataJSON()).toEqual({ setup: "s".repeat(43) })
+      await route.fulfill({
+        json: {
+          challenge,
+          rp: { id: "localhost", name: "Sumire" },
+          user: { id: user, name: "Administrator", displayName: "Administrator" },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { residentKey: "required", userVerification: "required" },
+          attestation: "none",
+        },
+      })
+    } else if (path === "/auth/passkey/authenticate/options")
+      await route.fulfill({ json: { challenge, rpId: "localhost", userVerification: "required" } })
+    else {
+      const response = route.request().postDataJSON().response
+      expect(response.type).toBe("public-key")
+      expect(response.id).toBeTruthy()
+      if (path === "/auth/passkey/register/verify") {
+        registrations++
+        expect(response.response.attestationObject).toBeTruthy()
+      } else {
+        authentications++
+        expect(response.response.signature).toBeTruthy()
+        expect(response.response.userHandle).toBe(user)
+      }
+      await route.fulfill({ json: { csrf: "browser-fixture", actor: "42" } })
+    }
+  })
+  await page.goto(`http://localhost:17466/#setup=${"s".repeat(43)}`)
+  await expect(page.getByRole("button", { name: "Register passkey" })).toBeVisible()
+  await expect(page).toHaveURL("http://localhost:17466/")
+  await page.getByRole("button", { name: "Register passkey" }).click()
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
+  await page.getByRole("button", { name: "Sign out" }).click()
+  await page.getByRole("button", { name: "Sign in with passkey" }).click()
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
+  expect(registrations).toBe(1)
+  expect(authentications).toBe(1)
+})
+
 test("edits private access and saves with a confirmation", async ({ page }) => {
   await setup(page)
   await page.getByRole("button", { name: "Access", exact: true }).click()

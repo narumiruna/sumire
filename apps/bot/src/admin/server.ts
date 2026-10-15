@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
 import { z } from "zod"
-import { type AdminConfig, TelegramAdminLogin } from "./auth.js"
+import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import type { McpAdmin } from "./mcp.js"
 import { effectivePolicy, policySchema } from "./policy.js"
 import type { ProviderAdmin } from "./providers.js"
@@ -16,7 +16,7 @@ interface AdminServices {
   tools(): string[]
 }
 const cookie = (name: string, value: string, seconds: number) =>
-  `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${seconds}`
+  `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`
 const readCookie = (req: IncomingMessage, name: string) =>
   req.headers.cookie
     ?.split(";")
@@ -31,14 +31,14 @@ const offset = (url: URL) =>
     .max(10000)
     .parse(url.searchParams.get("offset") ?? 0)
 
-async function body(req: IncomingMessage) {
+async function body(req: IncomingMessage, limit = 262144) {
   if (req.headers["content-type"]?.split(";")[0] !== "application/json")
     throw new AdminError(415, "JSON is required")
   const chunks: Buffer[] = []
   let bytes = 0
   for await (const chunk of req) {
     bytes += chunk.length
-    if (bytes > 262144) throw new AdminError(413, "Request is too large")
+    if (bytes > limit) throw new AdminError(413, "Request is too large")
     chunks.push(Buffer.from(chunk))
   }
   try {
@@ -54,7 +54,7 @@ const reply = (res: ServerResponse, status: number, value: unknown) => {
 
 export function createAdminServer(config: AdminConfig, services: AdminServices) {
   const { store, providers, mcp } = services
-  const login = new TelegramAdminLogin(config, store)
+  const login = new PasskeyAdminLogin(config, store)
   const buckets = new Map<string, { start: number; count: number }>()
   const limited = (key: string, max: number) => {
     const now = Date.now()
@@ -111,23 +111,45 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       reply(res, 200, { ok: true })
       return
     }
-    if (url.pathname === "/auth/telegram" && method === "GET") {
-      if (req.headers["sec-fetch-site"] === "cross-site")
-        throw new AdminError(403, "Cross-site login rejected")
-      limited(`login:${req.socket.remoteAddress}`, 10)
-      const start = login.begin()
-      res.setHeader("set-cookie", cookie("__Host-sumire-login", start.browser, 300))
-      res.writeHead(302, { location: start.url })
-      res.end()
-      return
-    }
-    if (url.pathname === "/auth/callback" && method === "GET") {
-      limited(`callback:${req.socket.remoteAddress}`, 20)
-      const actor = await login.finish(
-        readCookie(req, "__Host-sumire-login"),
-        url.searchParams.get("code") ?? "",
-        url.searchParams.get("state") ?? "",
-      )
+    const passkeyRoute = /^\/auth\/passkey\/(register|authenticate)\/(options|verify)$/.exec(
+      url.pathname,
+    )
+    if (passkeyRoute) {
+      if (method !== "POST") throw new AdminError(405, "Method not allowed")
+      if (req.headers.origin !== config.origin || req.headers["sec-fetch-site"] === "cross-site")
+        throw new AdminError(403, "Request verification failed")
+      const starting = passkeyRoute[2] === "options"
+      limited(`${starting ? "login" : "verify"}:${req.socket.remoteAddress}`, starting ? 10 : 20)
+      const input = await body(req, 32768)
+      const registering = passkeyRoute[1] === "register"
+      if (starting) {
+        if (!registering) z.object({}).strict().parse(input)
+        const start = registering
+          ? await login.beginRegistration(
+              z
+                .object({ setup: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
+                .strict()
+                .parse(input).setup,
+            )
+          : await login.beginAuthentication()
+        res.setHeader("set-cookie", cookie("__Host-sumire-passkey", start.browser, 300))
+        reply(res, 200, start.options)
+        return
+      }
+      const response = z
+        .object({ response: z.record(z.string(), z.unknown()) })
+        .strict()
+        .parse(input).response
+      const browser = readCookie(req, "__Host-sumire-passkey")
+      const actor = registering
+        ? await login.finishRegistration(
+            browser,
+            response as unknown as import("@simplewebauthn/server").RegistrationResponseJSON,
+          )
+        : await login.finishAuthentication(
+            browser,
+            response as unknown as import("@simplewebauthn/server").AuthenticationResponseJSON,
+          )
       const old = readCookie(req, "__Host-sumire-session")
       store.revoke(old)
       await providers.cancelOwner(digest(old))
@@ -135,10 +157,9 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       store.audit(actor, "admin.login", store.snapshot().revision, "completed", "administrator")
       res.setHeader("set-cookie", [
         cookie("__Host-sumire-session", session.value, 8 * 3600),
-        cookie("__Host-sumire-login", "", 0),
+        cookie("__Host-sumire-passkey", "", 0),
       ])
-      res.writeHead(303, { location: "/" })
-      res.end()
+      reply(res, 200, { csrf: session.csrf, actor })
       return
     }
     if (!url.pathname.startsWith("/api/")) {
@@ -170,7 +191,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     const session = store.session(sessionToken)
     if (!session) {
       await providers.cancelOwner(digest(sessionToken))
-      throw new AdminError(401, "Sign in with Telegram")
+      throw new AdminError(401, "Sign in with a passkey")
     }
     const owner = digest(sessionToken)
     if (method !== "GET") {

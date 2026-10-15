@@ -30,6 +30,9 @@ import {
   type Snapshot,
 } from "./api.js"
 
+import { captureSetupLink, signInWithPasskey } from "./passkey.js"
+
+const initialSetup = captureSetupLink(window.location, window.history)
 const inherit: Selection = { tools: null, servers: null, models: null, model: null, thinking: null }
 const pages = ["Chats", "Access", "Defaults", "Tools / MCP", "Model Providers", "Audit"] as const
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
@@ -430,6 +433,7 @@ function App() {
     }
     prompt?: { message: string; type: string; options?: { id: string; label: string }[] }
   }>()
+  const [setup, setSetup] = useState(initialSetup)
   const [answer, setAnswer] = useState("")
   const [mcpName, setMcpName] = useState("")
   const [mcpSecrets, setMcpSecrets] = useState<{
@@ -534,10 +538,32 @@ function App() {
       <main>
         <Card>
           <Heading>Sumire administration</Heading>
-          <Text as="p">Only the configured Telegram administrator can sign in.</Text>
-          {error && <Text color="red">{error}</Text>}
-          <Button asChild>
-            <a href="/auth/telegram">Sign in with Telegram</a>
+          <Text as="p">
+            {setup
+              ? "Register your administrator passkey with your device."
+              : "Use your administrator passkey to sign in."}
+          </Text>
+          {!setup && (
+            <Text as="p">
+              First visit? Send /admin in a private chat with Sumire to get a setup link.
+            </Text>
+          )}
+          {error && (
+            <Text role="alert" color="red">
+              {error}
+            </Text>
+          )}
+          <Button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const next = await signInWithPasskey(setup)
+                setSetup("")
+                setSession(next)
+              })
+            }
+          >
+            {setup ? "Register passkey" : "Sign in with passkey"}
           </Button>
         </Card>
       </main>

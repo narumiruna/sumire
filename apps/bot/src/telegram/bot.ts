@@ -4,6 +4,7 @@ import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-ur
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
+import { createPasskeySetup } from "../admin/auth.js"
 import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
 import { buildBlogPostPrompt } from "../blog-post/prompt.js"
 import {
@@ -140,15 +141,30 @@ export function createTelegramAgentBot(
       return
     if (!settings.admin) {
       await context.reply(
-        "Administration WebUI is not enabled. Configure ADMIN_ORIGIN and Telegram login client credentials, then restart the bot.",
+        "Administration WebUI is not enabled. Configure ADMIN_ORIGIN and BOT_ADMIN_ID, then restart the bot.",
       )
       return
     }
-    await context.reply("Open Sumire administration. Sign in with Telegram in your browser.", {
-      reply_markup: {
-        inline_keyboard: [[{ text: "Open administration", url: settings.admin.origin }]],
+    const setup = dependencies.control
+      ? createPasskeySetup(dependencies.control, settings.admin.origin)
+      : undefined
+    await context.reply(
+      setup
+        ? "Register your administrator passkey in your system browser. This private setup link expires in five minutes. Do not share it. Only the newest setup link works."
+        : "Open Sumire administration. Sign in with your passkey.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: setup ? "Register passkey" : "Open administration",
+                url: setup ?? settings.admin.origin,
+              },
+            ],
+          ],
+        },
       },
-    })
+    )
   })
 
   bot.use(async (context, next) => {

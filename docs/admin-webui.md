@@ -2,34 +2,37 @@
 
 The WebUI manages chat access, tools, MCP servers, models, thinking levels, and model providers. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
 
-## Enable Telegram login
+## Enable passkey login
 
-1. Select the bot in BotFather. Open **Bot Settings > Web Login**.
-2. Register the public HTTPS origin and its exact callback URL, for example `https://sumire.example.com` and `https://sumire.example.com/auth/callback`.
-3. Set these bootstrap values in the root `.env`:
+1. Set the bootstrap values in the root `.env`:
 
    ```dotenv
    BOT_ADMIN_ID=123456789
    ADMIN_ORIGIN=https://sumire.example.com
-   TELEGRAM_LOGIN_CLIENT_ID=your-client-id
-   TELEGRAM_LOGIN_CLIENT_SECRET=your-client-secret
    ADMIN_HOST=127.0.0.1
    ADMIN_PORT=17465
    ```
 
-   - Use the real administrator's numeric Bot API user ID, not a username or an OIDC subject.
-   - The login client credentials come from BotFather. They are not the bot token.
-   - `ADMIN_ORIGIN` must have no trailing slash, path, query, or fragment.
+   - Use the real administrator's numeric Bot API user ID.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
-   - Leaving `ADMIN_ORIGIN` unset preserves the deployment without the WebUI.
-   - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only when the container or network requires it. Keep the host port private.
-4. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
-5. Send `/admin` in a private chat with Sumire. The bot returns an **Open administration** button only to `BOT_ADMIN_ID`. This command works before chat access is approved and while policies are pending or failed. If the WebUI is disabled, it returns a setup notice instead. The command does not start a model turn or grant bot access.
-6. Open the button and sign in with Telegram. Other Telegram users cannot obtain an administrator session. Bot access does not grant administrator access. You can also open `ADMIN_ORIGIN` directly in a browser.
+   - `ADMIN_ORIGIN` must be an HTTPS origin with no trailing slash, path, query, or fragment.
+   - Leaving `ADMIN_ORIGIN` unset disables the WebUI.
+   - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only inside a private container network. Keep the published host port private.
+   - Telegram Web Login, BotFather domain registration, and `TELEGRAM_LOGIN_CLIENT_ID` / `TELEGRAM_LOGIN_CLIENT_SECRET` are not required. Remove unused login credentials from the deployment.
+2. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
+3. Rebuild and restart with `docker compose up -d --build sumire`.
+4. Send `/admin` in a private chat with Sumire. Only `BOT_ADMIN_ID` receives the setup link. This command works before chat approval and while policies are pending or failed. It does not start a model turn or grant bot access.
+5. Open **Register passkey** in your system browser. Complete the device fingerprint, face, or PIN check.
+   - The setup link expires after five minutes. Only the newest link works. Do not forward it or share it. Telegram bot chats are not end-to-end encrypted.
+   - The token is in the URL fragment, not an HTTP query. The page removes the fragment before registration requests. The server stores only its hash.
+   - Registration requires the private setup token and a one-use browser-bound challenge. Public visitors cannot claim an unconfigured account.
+6. Later visits use **Sign in with passkey**. You can open `ADMIN_ORIGIN` directly or use `/admin` again. Once a passkey exists, `/admin` sends only the ordinary WebUI link. It cannot add or replace a credential.
 
-Sumire uses Telegram's current official Authorization Code flow with PKCE, a browser-bound one-use transaction, and a nonce. It verifies RS256 ID tokens against Telegram's JWKS, issuer, audience, issue time, expiration, and nonce. Authorization uses the signed `profile.id` claim. The OIDC `sub` is a different identifier. Sumire requests `openid profile`, not a phone number or bot messaging permission.
+The server uses SimpleWebAuthn to check the challenge, exact origin, RP ID, user verification, signature, credential owner, and authenticator counter. Synced passkeys with zero counters are supported. Session cookies remain Secure and HttpOnly. Mutation requests require Origin and CSRF checks.
 
-Reference: <https://core.telegram.org/bots/telegram-login>.
+The initial credential can be synced through your device's passkey provider. Another device can also use the browser's supported cross-device passkey flow. The passkey belongs to the configured domain. A domain change can require recovery and new enrollment.
+
+Reference: <https://simplewebauthn.dev/docs/packages/server>.
 
 ## HTTPS deployment
 
@@ -57,7 +60,7 @@ sumire.example.com {
 }
 ```
 
-For a reverse proxy in another container, use a private Docker network and the `sumire:17465` service address instead of host loopback. Do not publish the backend on `0.0.0.0` on the host. Configure TLS, ingress access logs, and the public domain outside Sumire. Ingress logs must omit callback query strings: they contain short-lived authorization codes.
+For a reverse proxy in another container, use a private Docker network and the `sumire:17465` service address instead of host loopback. Do not publish the backend on `0.0.0.0` on the host. Configure TLS, ingress access logs, and the public domain outside Sumire. Ingress logs must not record request bodies. Passkey setup tokens are sent only in same-origin JSON bodies, not URL queries.
 
 The backend does not trust `Forwarded` or `X-Forwarded-*` headers. It uses the configured HTTPS origin and checks the Host header. Rate limits use the socket peer, so a proxy shares the login budget across users. This is suitable for the single-administrator service. Configure matching body and request limits at the ingress. `/healthz` is a liveness check, not proof of valid providers or applied settings.
 
@@ -123,7 +126,7 @@ MCP may depend on private Docker endpoints. Existing MCP HTTP protections remain
 
 Tools are capabilities, not an OS sandbox. Pi, shell tools, and stdio MCP processes run with the container user's permissions. A working directory does not confine file access. A shell or file tool can read process-readable state, modify policy or credential files, and reach the network without using another named tool. Administrator-supplied MCP code has the same trust requirement.
 
-For WebUI-managed chats, shell tools receive a restricted environment: system and runtime paths, locale fields, and the existing Otter and Firecrawl skill credentials. They do not directly inherit bot tokens, Telegram login secrets, or ambient model provider keys. Deployments without the WebUI retain the existing shell environment behavior. MCP retains its existing explicit environment policy.
+For WebUI-managed chats, shell tools receive a restricted environment: system and runtime paths, locale fields, and the existing Otter and Firecrawl skill credentials. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. Deployments without the WebUI retain the existing shell environment behavior. MCP retains its existing explicit environment policy.
 
 Sumire does not inject stored model provider credentials into tool or MCP environments, but same-user file access is not isolated. Do not enable shell or unrestricted file tools for untrusted chats. Do not claim credential isolation when these capabilities are enabled. Use a separate tested OS or VM boundary if that isolation is required. This release does not add such a boundary.
 
@@ -135,7 +138,20 @@ Before enabling the WebUI or changing versions:
 2. Back up the state volume, source MCP configuration, and bootstrap secrets with restricted access. Include Pi's `auth.json`, model store, and all session SQLite files and their SQLite sidecar files. Never commit this backup.
 3. Start the selected application version, inspect the import report and effective policies, then reopen ingress.
 
-Use a consistent SQLite backup or a stopped-service volume snapshot, not an unsynchronized copy of a running database. To recover from lockout, use trusted host access to correct `BOT_ADMIN_ID` or login client settings. To revoke all administrator sessions while stopped, delete rows from the administration database's `sessions` table using a trusted SQLite tool. Do not delete the database to log out: that would discard policies and trigger import again.
+Use a consistent SQLite backup or a stopped-service volume snapshot, not an unsynchronized copy of a running database. To recover from an incorrect administrator ID, use trusted host access to correct `BOT_ADMIN_ID`. The migration to schema version 2 preserves policy and transcript state, drops pending Telegram login transactions, and revokes old Telegram sessions. Older binaries refuse this schema; rollback requires the matching database backup. To revoke all administrator sessions while stopped, delete rows from the administration database's `sessions` table using a trusted SQLite tool. Do not delete the database to log out: that would discard policies and trigger import again.
+
+If all copies of the passkey are lost, stop the bot and back up state. Use a trusted SQLite tool to run this transaction on `admin.sqlite`:
+
+```sql
+BEGIN IMMEDIATE;
+DELETE FROM passkeys;
+DELETE FROM passkey_setup;
+DELETE FROM passkey_challenges;
+DELETE FROM sessions;
+COMMIT;
+```
+
+Restart the bot, then send `/admin` from the configured administrator's private chat to register a new passkey. This removes all administrator credentials and sessions, but retains policies, provider settings, audit records, and transcripts. Do not edit the live database while the bot is running.
 
 For rollback, restore the compatible image and matching state backup together while the bot and ingress are stopped. Review access before restart: old whitelist behavior can broaden group access. Revoke administrator sessions before reopening HTTPS. Failed settings application does not restore revoked permissions automatically.
 
@@ -155,6 +171,6 @@ npm run test:browser --workspace @narumitw/sumire-admin
 
 After building, `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
 
-The browser suite uses API fixtures and a strict-port development server. It does not prove live Telegram login, real provider OAuth, or public TLS. For an authenticated local browser session, serve the production build behind the configured HTTPS origin. Do not disable Secure cookies or add an authentication bypass for development.
+The browser suite uses API fixtures and a strict-port development server. It includes a Chromium virtual-authenticator registration and sign-in flow. It does not prove real device enrollment, real provider OAuth, or public TLS. For an authenticated local browser session, serve the production build behind the configured HTTPS origin. Do not disable Secure cookies or add an authentication bypass for development.
 
-Before production acceptance, verify real Telegram login and unauthorized-user rejection on the registered domain, provider authentication with the selected providers, revocation during active work, restart persistence, backup restoration, and HTTPS ingress behavior. Live identity and provider tests require the administrator and deployment credentials; do not substitute unit fixtures for this evidence.
+Before production acceptance, verify real device registration and passkey sign-in on the configured domain, rejection of unauthorized setup and login, provider authentication with the selected providers, revocation during active work, restart persistence, backup restoration, and HTTPS ingress behavior. Real device and provider tests require the administrator and deployment access; do not substitute fixtures for this evidence.
