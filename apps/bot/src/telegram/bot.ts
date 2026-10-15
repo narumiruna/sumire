@@ -55,6 +55,7 @@ export interface TelegramAgentBot {
 }
 
 interface TelegramBotDependencies {
+  control?: import("../admin/store.js").AdminStore
   login?: OAuthLoginClient
   recoverChats?: () => Promise<number[]>
   botInfo?: UserFromGetMe
@@ -130,6 +131,25 @@ export function createTelegramAgentBot(
       }))
 
   bot.use(async (context, next) => {
+    if (dependencies.control) {
+      const chat = context.chat
+      if (!chat) return
+      dependencies.control.observe(
+        chat.id,
+        chat.type,
+        ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
+      )
+      if (!dependencies.control.allows(chat.id)) return
+      // A private user allowlist must not authorize the same sender in another group.
+      if (chat.type === "private" && context.from?.id !== chat.id) return
+      if (
+        chat.type === "channel" &&
+        (!settings.botChannelImageInputEnabled || !settings.botImageInputEnabled)
+      )
+        return
+      await next()
+      return
+    }
     if (context.update.channel_post) {
       if (
         !settings.botChannelImageInputEnabled ||
@@ -1151,7 +1171,14 @@ export function createTelegramAgentBot(
       }
       logger.info(`Telegram bot started as @${bot.botInfo.username}`)
       if (dependencies.recoverChats)
-        await recoverTelegramResponses(bot, sessions, delivery, await dependencies.recoverChats())
+        await recoverTelegramResponses(
+          bot,
+          sessions,
+          delivery,
+          (await dependencies.recoverChats()).filter(
+            (id) => !dependencies.control || dependencies.control.allows(id),
+          ),
+        )
       if (stopping) return
       runner = runTelegramPolling(
         bot,

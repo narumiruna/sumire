@@ -1,5 +1,8 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { startAdmin } from "./admin/application.js"
+import { McpAdmin } from "./admin/mcp.js"
+import { AdminStore } from "./admin/store.js"
 import { createPiSessionFactory } from "./agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "./agent/session-registry.js"
 import { loadSettings } from "./config/settings.js"
@@ -17,23 +20,47 @@ export async function startApplication(): Promise<void> {
     process.argv.includes("--verbose") || process.argv.includes("-v"),
     settings.logfireToken,
   )
+  let control: { store: AdminStore; mcp: McpAdmin } | undefined
+  let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
+  let sessions: ChatSessionRegistry | undefined
   try {
+    if (settings.admin) {
+      const store = new AdminStore(
+        path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
+        settings.botWhitelist,
+        settings.botAdminId,
+      )
+      const mcp = new McpAdmin(store)
+      control = { store, mcp }
+      await mcp.import(settings.botMcpConfigPath)
+    }
     const documentConverter = await createConfiguredDocumentConverter(settings)
     const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
-    const piFactory = await createPiSessionFactory(settings, logger, channelImages)
-    const sessions = new ChatSessionRegistry(
+    const piFactory = await createPiSessionFactory(
+      settings,
+      logger,
+      channelImages,
+      undefined,
+      control,
+    )
+    const registry = new ChatSessionRegistry(
       asSessionCreator(piFactory),
       settings.botSessionLogDir,
       logger,
       {
+        control: control?.store,
         replyTreeEnabled: settings.botReplyTreeEnabled,
         replyTreeMaxRecordsPerChat: settings.botReplyTreeMaxRecordsPerChat,
         replyTreeMaxIndexBytes: settings.botReplyTreeMaxIndexBytes,
       },
     )
-    const telegram = createTelegramAgentBot(settings, sessions, logger, {
+    sessions = registry
+    if (settings.admin && control)
+      adminServer = await startAdmin(settings.admin, control, piFactory, registry)
+    const telegram = createTelegramAgentBot(settings, registry, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
+      control: control?.store,
       login: piFactory.login,
       recoverChats: () => piFactory.listChats(),
     })
@@ -43,20 +70,48 @@ export async function startApplication(): Promise<void> {
       if (stopping) return
       stopping = true
       logger.info(`Received ${signal}; stopping Telegram bot`)
-      await Promise.all([telegram.stop(), sessions.dispose()])
+      await telegram.stop()
+      await adminServer?.stop()
+      adminServer = undefined
+      await registry.dispose()
     }
-    process.once("SIGINT", () => void stop("SIGINT"))
-    process.once("SIGTERM", () => void stop("SIGTERM"))
+    process.once(
+      "SIGINT",
+      () => void stop("SIGINT").catch(() => logger.warn("Application shutdown failed")),
+    )
+    process.once(
+      "SIGTERM",
+      () => void stop("SIGTERM").catch(() => logger.warn("Application shutdown failed")),
+    )
 
     try {
       await telegram.start()
     } finally {
       await telegram.stop()
-      await sessions.dispose()
+      await adminServer?.stop()
+      await registry.dispose()
     }
   } finally {
-    await logger.shutdown?.()
+    await closeApplicationResources([
+      () => adminServer?.stop(),
+      () => sessions?.dispose(),
+      () => control?.mcp.close(),
+      () => control?.store.close(),
+      () => logger.shutdown?.(),
+    ])
   }
+}
+
+export async function closeApplicationResources(closers: Array<() => void | Promise<void>>) {
+  let failed = false
+  for (const close of closers) {
+    try {
+      await close()
+    } catch {
+      failed = true
+    }
+  }
+  if (failed) throw new Error("Application cleanup failed")
 }
 
 type DocumentConverterFactory = (options: {

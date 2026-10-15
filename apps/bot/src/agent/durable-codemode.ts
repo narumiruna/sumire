@@ -26,6 +26,7 @@ export async function createDurableCodemode(
   getHarness: () => Harness,
   emit: (event: AgentSessionEvent) => void,
   ready: (signal?: AbortSignal) => Promise<void> = () => Promise.resolve(),
+  authorize: () => void = () => {},
 ) {
   const callableTools = () =>
     nativeTools.filter((tool) => tool.exposure !== "model-only" && tool.exposure !== "hidden")
@@ -140,6 +141,7 @@ export async function createDurableCodemode(
     replay: "unsafe",
     executionMode: "sequential",
     async execute(args, api, context) {
+      authorize()
       const deadline = AbortSignal.timeout(timeoutMs)
       const executionSignal = context.abortSignal
         ? AbortSignal.any([context.abortSignal, deadline])

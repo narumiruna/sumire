@@ -62,8 +62,18 @@ export async function executeNative(
 }
 
 /** Retain Pi's image-capable coding tools without constructing an AgentSession. */
-export function codingTools(cwd: string): NativeTool[] {
-  return createCodingTools(cwd).map((tool) => ({
+export function codingTools(cwd: string, shellEnvironment?: NodeJS.ProcessEnv): NativeTool[] {
+  return createCodingTools(
+    cwd,
+    shellEnvironment
+      ? {
+          bash: {
+            exposeSessionEnvironment: false,
+            spawnHook: (context) => ({ ...context, env: { ...shellEnvironment } }),
+          },
+        }
+      : undefined,
+  ).map((tool) => ({
     ...tool,
     label: tool.name,
     execute: (callId, args, signal, onUpdate) => tool.execute(callId, args, signal, onUpdate),

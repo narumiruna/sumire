@@ -36,12 +36,13 @@ WORKDIR /build
 
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
+COPY apps/admin/package.json apps/admin/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-content/package.json packages/url-content/package.json
 COPY packages/url-tool/package.json packages/url-tool/package.json
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
+    npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
 # Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
 FROM dependencies AS login-build
@@ -79,6 +80,13 @@ COPY --from=url-tool-build /build/packages/url-tool/dist /build/packages/url-too
 COPY apps/bot/tsconfig*.json apps/bot/
 COPY apps/bot/src/ apps/bot/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire
+
+FROM dependencies AS admin-build
+
+COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html apps/admin/
+COPY apps/admin/src/ apps/admin/src/
+COPY apps/bot/src/admin/policy.ts apps/bot/src/admin/policy.ts
+RUN npm run build --workspace @narumitw/sumire-admin
 
 FROM dependencies AS production-dependencies
 
@@ -156,6 +164,7 @@ COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/pa
 COPY --from=url-content-build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
 COPY --from=url-tool-build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
+COPY --from=admin-build --chown=app:app /build/apps/admin/dist /app/apps/admin/dist
 COPY --chown=app:app packages/url-content/skills/ /app/packages/url-content/skills/
 COPY --chown=app:app packages/url-tool/skills/ /app/packages/url-tool/skills/
 COPY --chown=app:app instructions/ /app/instructions/

@@ -107,7 +107,7 @@ describe("loadSettings", () => {
     expect(settings.botSystemPromptPath).toBe("/app/instructions/SYSTEM.md")
   })
 
-  it("lists only the seven retained variables in .env.example", async () => {
+  it("lists only supported bootstrap variables in .env.example", async () => {
     const example = await readFile(new URL("../../../.env.example", import.meta.url), "utf8")
     const names = example
       .split("\n")
@@ -117,6 +117,11 @@ describe("loadSettings", () => {
       "BOT_TOKEN",
       "BOT_WHITELIST",
       "BOT_ADMIN_ID",
+      "ADMIN_ORIGIN",
+      "TELEGRAM_LOGIN_CLIENT_ID",
+      "TELEGRAM_LOGIN_CLIENT_SECRET",
+      "ADMIN_HOST",
+      "ADMIN_PORT",
       "FIRECRAWL_API_KEY",
       "OTTER_TOKEN",
       "LOGFIRE_TOKEN",
@@ -133,6 +138,30 @@ describe("loadSettings", () => {
     { OPENAI_MODEL: "", OPENAI_BASE_URL: "", OPENAI_API_KEY: "" },
   ])("does not parse OpenAI configuration owned by Pi: %j", (environment) => {
     expect(loadSettings(environment)).toEqual(loadSettings({}))
+  })
+
+  it("enables the WebUI only with explicit HTTPS and Telegram bootstrap settings", () => {
+    const bootstrap = {
+      BOT_ADMIN_ID: "42",
+      ADMIN_ORIGIN: "https://admin.example.test",
+      TELEGRAM_LOGIN_CLIENT_ID: "fixture",
+      TELEGRAM_LOGIN_CLIENT_SECRET: "fixture",
+    }
+    expect(loadSettings(bootstrap).admin).toMatchObject({
+      host: "127.0.0.1",
+      port: 17465,
+      origin: bootstrap.ADMIN_ORIGIN,
+    })
+    expect(loadSettings({}).admin).toBeUndefined()
+    for (const origin of [
+      "http://admin.example.test",
+      "https://admin.example.test/",
+      "https://user:pass@admin.example.test",
+    ])
+      expect(() => loadSettings({ ...bootstrap, ADMIN_ORIGIN: origin })).toThrow()
+    expect(() => loadSettings({ ...bootstrap, BOT_ADMIN_ID: "" })).toThrow()
+    expect(() => loadSettings({ ...bootstrap, TELEGRAM_LOGIN_CLIENT_SECRET: "" })).toThrow()
+    expect(() => loadSettings({ ...bootstrap, ADMIN_PORT: "0" })).toThrow()
   })
 
   it("rejects invalid supported settings", () => {

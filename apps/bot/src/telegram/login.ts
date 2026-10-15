@@ -92,7 +92,7 @@ export function registerTelegramLogin(
     }
     if (!login) {
       const reasons: string[] = []
-      if (!settings.botWhitelist.has(context.from.id)) {
+      if (!settings.admin && !settings.botWhitelist.has(context.from.id)) {
         reasons.push(
           "執行中的 BOT_WHITELIST 未包含 BOT_ADMIN_ID 的使用者 ID；群組 ID 不算，請將該使用者 ID 明確加入白名單。",
         )

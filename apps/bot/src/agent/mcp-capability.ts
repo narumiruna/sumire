@@ -116,6 +116,7 @@ export class McpCapability {
     private readonly logger: Pick<Logger, "warn">,
     private readonly changed: () => void,
     private readonly transportFactory: McpTransportFactory = createMcpTransport,
+    private readonly authorize: (server: string, tool: string) => boolean = () => true,
   ) {
     this.#connections = config.servers.map((config) => ({ config, tools: [], listed: [] }))
     this.#homes = new McpProcessHomes(directory)
@@ -296,6 +297,7 @@ export class McpCapability {
                 return []
               }
               const wrapper = this.wrap(c, tool, names.get(tool.name) as string, schema, namespace)
+              if (!this.authorize(c.config.name, wrapper.name)) return []
               const toolBytes = Buffer.byteLength(
                 JSON.stringify({
                   name: wrapper.name,
@@ -360,6 +362,8 @@ export class McpCapability {
       annotations: boundedMcpAnnotations(tool.annotations, this.config.redact),
       async execute(_callId, args, signal) {
         signal?.throwIfAborted()
+        if (!thisCapability.authorize(connection.config.name, wrapper.name))
+          throw new Error("MCP tool is not allowed")
         // Registry snapshots and already prepared scripts cannot reach withdrawn tools.
         const client = connection.client
         if (

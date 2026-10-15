@@ -1,0 +1,53 @@
+@import "@radix-ui/colors/slate.css";
+@import "@radix-ui/colors/teal.css";
+body {
+  margin: 0;
+  background: var(--slate-2);
+}
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 24px;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+fieldset {
+  border: 1px solid var(--slate-6);
+  border-radius: 8px;
+  margin: 16px 0;
+  padding: 16px;
+  min-width: 0;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+.status {
+  color: var(--teal-11);
+}
+@media (max-width: 600px) {
+  main {
+    padding: 12px;
+  }
+}

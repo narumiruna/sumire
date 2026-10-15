@@ -2,7 +2,31 @@ import { describe, expect, it, vi } from "vitest"
 
 import { loadSettings } from "../src/config/settings.js"
 import type { DocumentConverter } from "../src/documents/converter.js"
-import { createConfiguredDocumentConverter } from "../src/startup.js"
+import { closeApplicationResources, createConfiguredDocumentConverter } from "../src/startup.js"
+
+describe("application cleanup", () => {
+  it("closes all resources in order even after a resource fails", async () => {
+    const order: string[] = []
+    await expect(
+      closeApplicationResources([
+        async () => {
+          order.push("http")
+          throw new Error("fixture")
+        },
+        async () => {
+          order.push("sessions")
+        },
+        () => {
+          order.push("database")
+        },
+        async () => {
+          order.push("logging")
+        },
+      ]),
+    ).rejects.toThrow("Application cleanup failed")
+    expect(order).toEqual(["http", "sessions", "database", "logging"])
+  })
+})
 
 describe("document converter startup", () => {
   it("does not load the native adapter when document input is disabled", async () => {

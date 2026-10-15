@@ -13,6 +13,7 @@ export function createReadImageExtension(
   logger: Logger,
   api: Api = new Api(settings.botToken),
   fetchImplementation?: typeof fetch,
+  allowedChats: () => ReadonlySet<number> = () => settings.botWhitelist,
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
     pi.registerTool({
@@ -30,17 +31,15 @@ export function createReadImageExtension(
       }),
       async execute(_toolCallId, params, signal) {
         const { channel_chat_id: chatId, message_id: messageId } = params
+        const whitelist = allowedChats()
         if (messageId !== undefined && chatId === undefined) {
           throw new Error("channel_chat_id is required when message_id is provided")
         }
-        if (
-          chatId !== undefined &&
-          (!Number.isSafeInteger(chatId) || !settings.botWhitelist.has(chatId))
-        ) {
+        if (chatId !== undefined && (!Number.isSafeInteger(chatId) || !whitelist.has(chatId))) {
           throw new Error("Channel is not allowlisted")
         }
         if (chatId === undefined || messageId === undefined) {
-          const allowed = chatId === undefined ? settings.botWhitelist : new Set([chatId])
+          const allowed = chatId === undefined ? whitelist : new Set([chatId])
           const recent = await index.recent(allowed)
           return {
             content: [

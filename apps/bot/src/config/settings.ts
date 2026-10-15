@@ -1,6 +1,7 @@
 import path from "node:path"
 
 import { z } from "zod"
+import type { AdminConfig } from "../admin/auth.js"
 
 const optionalString = z.preprocess((value) => {
   if (typeof value !== "string") return value
@@ -46,9 +47,15 @@ const environmentSchema = z.object({
   BOT_ADMIN_ID: optionalTelegramUserId,
   LOGFIRE_TOKEN: optionalString,
   MORSEL_API_KEY: optionalString,
+  ADMIN_ORIGIN: optionalString,
+  TELEGRAM_LOGIN_CLIENT_ID: optionalString,
+  TELEGRAM_LOGIN_CLIENT_SECRET: optionalString,
+  ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(17465),
+  ADMIN_HOST: z.string().default("127.0.0.1"),
 })
 
 export interface Settings {
+  admin?: AdminConfig
   projectRoot: string
   botWorkdir: string
   botToken: string
@@ -106,7 +113,32 @@ export function loadSettings(
 ): Settings {
   const parsed = environmentSchema.parse(environment)
   const root = path.resolve(projectRoot)
+  let admin: AdminConfig | undefined
+  if (parsed.ADMIN_ORIGIN) {
+    const origin = new URL(parsed.ADMIN_ORIGIN)
+    if (
+      origin.protocol !== "https:" ||
+      origin.origin !== parsed.ADMIN_ORIGIN ||
+      origin.username ||
+      origin.password ||
+      !parsed.BOT_ADMIN_ID ||
+      !parsed.TELEGRAM_LOGIN_CLIENT_ID ||
+      !parsed.TELEGRAM_LOGIN_CLIENT_SECRET
+    )
+      throw new Error(
+        "Admin requires an HTTPS origin, BOT_ADMIN_ID and Telegram login client credentials",
+      )
+    admin = {
+      origin: origin.origin,
+      clientId: parsed.TELEGRAM_LOGIN_CLIENT_ID,
+      clientSecret: parsed.TELEGRAM_LOGIN_CLIENT_SECRET,
+      port: parsed.ADMIN_PORT,
+      host: parsed.ADMIN_HOST,
+      assets: path.join(root, "apps/admin/dist"),
+    }
+  }
   return {
+    ...(admin ? { admin } : {}),
     projectRoot: root,
     botWorkdir: path.resolve(workdir),
     botToken: parsed.BOT_TOKEN,

@@ -14,7 +14,8 @@ import {
   type ProgressStep,
   parseProgressDetails,
 } from "@narumitw/sumire-progress"
-
+import { inherited } from "../admin/policy.js"
+import type { AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"
 import type { ResponseDelivery } from "./durable-state.js"
@@ -81,6 +82,7 @@ export interface SessionHandle extends SessionModelSettings {
 export type SessionCreator = (chatId: number) => Promise<SessionHandle>
 
 interface ChatSessionRegistryOptions {
+  control?: AdminStore
   replyTreeEnabled?: boolean
   replyTreeMaxRecordsPerChat?: number
   replyTreeMaxIndexBytes?: number
@@ -92,6 +94,7 @@ export class ChatSessionRegistry {
   readonly #recoveryOnly = new Set<SessionHandle>()
   readonly #evicting = new Map<number, Promise<void>>()
   #closed = false
+  #disposing?: Promise<void>
 
   readonly #creating = new Map<number, Promise<SessionHandle>>()
   readonly #generations = new Map<number, number>()
@@ -107,7 +110,7 @@ export class ChatSessionRegistry {
     private readonly createSession: SessionCreator,
     private readonly sessionRoot: string,
     private readonly logger: Logger,
-    options: ChatSessionRegistryOptions = {},
+    private readonly options: ChatSessionRegistryOptions = {},
   ) {
     this.#replyTreeEnabled = options.replyTreeEnabled ?? false
     this.#replyIndex = new TelegramReplyIndex(
@@ -453,7 +456,29 @@ export class ChatSessionRegistry {
         }
       }
       assertCurrent()
-      return change(session, assertCurrent)
+      const state = await change(session, assertCurrent)
+      const control = this.options.control
+      if (control) {
+        const saved = control.snapshot()
+        control.assertChat(chatId)
+        const policy = saved.policy
+        policy.chats[String(chatId)] = {
+          ...inherited,
+          enabled: true,
+          ...policy.chats[String(chatId)],
+          model: state.currentModel ?? null,
+          thinking: state.thinkingLevel,
+        }
+        const changed = control.save(
+          policy,
+          saved.revision,
+          `chat:${chatId}`,
+          "chat.model.update",
+          `chat:${chatId}`,
+        )
+        control.applied(changed.revision, true)
+      }
+      return state
     })()
     const settled = mutation.then(
       () => undefined,
@@ -536,7 +561,40 @@ export class ChatSessionRegistry {
     for (const result of cleanup) if (result.status === "rejected") throw result.reason
   }
 
-  async dispose(): Promise<void> {
+  /** Invalidate policy snapshots without removing transcripts or reply indexes. */
+  async invalidatePolicies(): Promise<void> {
+    const ids = new Set([...this.#sessions.keys(), ...this.#creating.keys()])
+    for (const chatId of ids)
+      this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
+    await Promise.all(this.#modelMutations.values())
+    await Promise.allSettled([
+      ...this.#creating.values(),
+      ...this.#resets.values(),
+      ...this.#evicting.values(),
+    ])
+    const results = await Promise.allSettled(
+      [...this.#sessions.entries()].map(async ([chatId, session]) => {
+        session.clearQueue()
+        await session.abort()
+        await this.#activePromptCaptures.get(chatId)?.done
+        await this.#branchNavigations.get(chatId)
+        await session.dispose()
+        this.#sessions.delete(chatId)
+        this.#recoveryOnly.delete(session)
+        this.#pendingReplyCheckpoints.delete(chatId)
+      }),
+    )
+    for (const result of results)
+      if (result.status === "rejected")
+        throw new Error("A session could not apply the policy change")
+  }
+
+  dispose(): Promise<void> {
+    this.#disposing ??= this.#dispose()
+    return this.#disposing
+  }
+
+  async #dispose(): Promise<void> {
     this.#closed = true
     this.#pendingReplyCheckpoints.clear()
     for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
@@ -668,6 +726,7 @@ export class ChatSessionRegistry {
   }
 
   async #getOrCreate(chatId: number, forRecovery = false): Promise<SessionHandle> {
+    this.options.control?.assertChat(chatId)
     const evicting = this.#evicting.get(chatId)
     if (evicting) await evicting
     const resetting = this.#resets.get(chatId)

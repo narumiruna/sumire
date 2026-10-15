@@ -340,7 +340,7 @@ The production image bundles checksum-verified libcurl-impersonate v2.2.2 for Li
 
 ## Environment configuration
 
-The root [`.env.example`](../../.env.example) lists only these seven variables:
+The root [`.env.example`](../../.env.example) lists bot credentials and optional WebUI bootstrap settings. For Telegram login, persisted chat policies, provider management, and recovery, see the [administration guide](../../docs/admin-webui.md).
 
 | Variable | Purpose |
 | --- | --- |
@@ -352,7 +352,9 @@ The root [`.env.example`](../../.env.example) lists only these seven variables:
 | `LOGFIRE_TOKEN` | Optional redacted telemetry export. |
 | `MORSEL_API_KEY` | Credential for publication to the fixed `https://morsel.narumi.dev/` service. |
 
-All other former Bot environment settings are ignored, including feature flags, limits, working-directory overrides, MCP config-path overrides, and the Morsel URL override. Documents, images, channel images, audio, reply-tree routing, and codemode are enabled by default. Runtime policy and limits are fixed in `apps/bot/src/config/settings.ts`; changing them requires a source change and deployment, not an environment override. MCP servers remain administrator-configured in the root `mcp.json` for desktop startup or `mcp.docker.json` for Compose. Pi and external tools still own their credential discovery and essential system environment.
+The optional WebUI uses `ADMIN_ORIGIN`, `TELEGRAM_LOGIN_CLIENT_ID`, `TELEGRAM_LOGIN_CLIENT_SECRET`, `ADMIN_HOST`, and `ADMIN_PORT`. It defaults to loopback port `17465`. When enabled, the database owns access rules, tools, MCP configuration, and model selections after the first import; Telegram commands share those selections. The administrator login identity remains bootstrap-only.
+
+Without the WebUI, the following legacy fixed-policy behavior applies. Other former Bot environment settings remain ignored, including feature flags, limits, working-directory overrides, MCP config-path overrides, and the Morsel URL override. Documents, images, channel images, audio, reply-tree routing, and codemode are enabled by default. Runtime policy and limits are fixed in `apps/bot/src/config/settings.ts`; changing them requires a source change and deployment, not an environment override. MCP servers remain administrator-configured in the root `mcp.json` for desktop startup or `mcp.docker.json` for Compose. Pi and external tools still own their credential discovery and essential system environment.
 
 | Policy | Fixed limit |
 | --- | --- |
@@ -363,4 +365,4 @@ All other former Bot environment settings are ignored, including feature flags, 
 | Reply index | 1,000 records and 1,000,000 bytes per chat. |
 | URL loading | 15-second built-in/DNS phase, 180-second total deadline, 12,000 output characters; public HTTP(S) only. |
 
-Keep state volumes during upgrades. To revoke channel image access, remove its channel ID from `BOT_WHITELIST` and restart; existing metadata is retained but no longer readable through `read_image` for that channel.
+Keep state volumes during upgrades. Without the WebUI, revoke channel image access by removing its ID from `BOT_WHITELIST` and restarting. With the WebUI, remove the ID from group/channel access. Existing metadata remains stored but `read_image` checks the current authorization before reading it.

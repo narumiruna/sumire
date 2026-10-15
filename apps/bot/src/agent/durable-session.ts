@@ -119,7 +119,7 @@ export class DurableSession implements SessionHandle {
       await options.harness.commit(async (tx) => {
         ;(await tx.doc(OutboxDoc)).pending = []
       }, context)
-      options.logger.warn("Durable pending work cancelled because BOT_WHITELIST changed")
+      options.logger.warn("Durable pending work cancelled because authorization changed")
     }
     await options.harness.commit(async (tx) => {
       ;(await tx.doc(BotSessionDoc)).trustKey = options.trustKey
