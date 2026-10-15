@@ -804,7 +804,7 @@ export function asSessionCreator(factory: {
 }
 
 function submissionActivity(event: AgentSessionEvent): SubmissionActivity | undefined {
-  if (event.type === "agent_start") return "model"
+  if (event.type === "agent_start" || event.type === "turn_start") return "model"
   if (event.type === "tool_execution_start" && event.toolName !== PROGRESS_TOOL_NAME) return "tool"
   if (event.type === "tool_execution_end" && event.toolName !== PROGRESS_TOOL_NAME)
     return "tool_finished"

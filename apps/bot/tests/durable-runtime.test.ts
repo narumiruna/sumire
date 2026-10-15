@@ -63,14 +63,20 @@ describe("durable bot runtime", () => {
       { text: "Deploy — waiting for approval", status: "blocked" },
     ]
     const updates: unknown[] = []
+    const events: string[] = []
     try {
       fixture.enqueue("update_progress", { steps })
       expect(
         await registry.submit(123, "work", {
-          onProgress: (snapshot) => updates.push(snapshot),
+          onProgress: (snapshot) => {
+            updates.push(snapshot)
+            events.push("progress")
+          },
+          onActivity: (activity) => events.push(activity),
         }),
       ).toMatchObject({ kind: "completed" })
       await vi.waitFor(() => expect(updates).toEqual([steps]))
+      expect(events.slice(events.indexOf("progress") + 1)).toContain("model")
       const schema = fixture.requests[0]?.tools.find(
         (tool) => tool.function.name === "update_progress",
       )?.function.parameters

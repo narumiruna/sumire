@@ -46,7 +46,7 @@ Pi packages execute with the current user's permissions. Review third-party sour
 }
 ```
 
-Send an empty `steps` array to clear the state. The package accepts at most 50 steps, 503 grapheme clusters per step, and one `in_progress` step.
+Send an empty `steps` array to clear the state. The package accepts at most 50 steps, 503 grapheme clusters and 8,192 code points per step, and one `in_progress` step.
 
 Steps contain only `text` and `status`; `reason` is not accepted. When restoring version 1 results, the parser merges each blocked reason into its step text as `text — reason`.
 

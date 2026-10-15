@@ -79,8 +79,12 @@ export function createProgressStatusEditor(
   const flushActivity = () => {
     activityTimer = undefined
     const text = latestActivity
-    latestActivity = undefined
     if (closed || text === undefined) return
+    if (pending?.isProgress) {
+      activityTimer = setTimeout(flushActivity, activityEditIntervalMs)
+      return
+    }
+    latestActivity = undefined
     nextActivityAt = Date.now() + activityEditIntervalMs
     enqueue(text)
   }

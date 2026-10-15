@@ -9,6 +9,7 @@ export const PROGRESS_CONTEXT_VERSION = 1
 export const MAX_PROGRESS_STEPS = 50
 // Accommodate the previous text, separator, and blocked reason without data loss.
 export const MAX_PROGRESS_TEXT_LENGTH = 503
+export const MAX_PROGRESS_TEXT_CODE_POINTS = 8_192
 
 const progressStatuses = ["pending", "in_progress", "completed", "blocked"] as const
 const resubmitGuidance = "Fix the input and resubmit the complete steps array."
@@ -36,6 +37,7 @@ export const ProgressParameters = Type.Object(
         {
           text: Type.String({
             minLength: 1,
+            maxLength: MAX_PROGRESS_TEXT_CODE_POINTS,
             description: "A concise, action-oriented step (at most 503 grapheme clusters)",
           }),
           status: progressStatusSchema,
@@ -71,6 +73,9 @@ export function validateProgressArguments(value: unknown): { steps: ProgressStep
       rejectProgress(`item ${item} contains an unsupported field.`)
     }
     if (typeof entry.text !== "string") rejectProgress(`item ${item} text must be a string.`)
+    if (!hasMaxCodePointLength(entry.text, MAX_PROGRESS_TEXT_CODE_POINTS)) {
+      rejectProgress(`item ${item} text exceeds ${MAX_PROGRESS_TEXT_CODE_POINTS} code points.`)
+    }
     if (entry.text.trim().length === 0) {
       rejectProgress(`item ${item} text must contain non-whitespace text.`)
     }
@@ -235,7 +240,17 @@ function rejectProgress(message: string): never {
   throw new Error(`Progress update rejected: ${message} ${resubmitGuidance}`)
 }
 
+function hasMaxCodePointLength(value: string, maximum: number): boolean {
+  let count = 0
+  for (const _character of value) {
+    count += 1
+    if (count > maximum) return false
+  }
+  return true
+}
+
 function hasMaxGraphemeLength(value: string, maximum: number): boolean {
+  if (!hasMaxCodePointLength(value, MAX_PROGRESS_TEXT_CODE_POINTS)) return false
   let count = 0
   for (const _character of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
     value,

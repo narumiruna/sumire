@@ -821,6 +821,7 @@ export function createTelegramAgentBot(
     const initialPendingText = preparedStatus ? "正在載入文章來源…" : pendingText
     let lastDeliveredStatusText: string | undefined
     let lastDeliveredProgress: { text: string; visibleText: string } | undefined
+    let preparedProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
     let releaseReplyCheckpoint = () => {}
@@ -837,6 +838,13 @@ export function createTelegramAgentBot(
     }
     const progressStatus = createProgressStatusEditor(
       async (text, isProgress) => {
+        if (!isProgress && progressSnapshot) {
+          // Activity edits must not publish the snapshot again, even after publication fails.
+          const snapshot =
+            preparedProgress?.text === progressSnapshot ? preparedProgress.visibleText : undefined
+          const combined = `${snapshot ?? progressSnapshot}\n\n${text}`
+          if (delivery.directPayload(combined) !== undefined) text = combined
+        }
         if (status) {
           visiblePayload = undefined
           const outcome = await delivery.edit(
@@ -848,6 +856,7 @@ export function createTelegramAgentBot(
             "default",
             (displayText) => {
               statusDisplayText = displayText
+              if (isProgress) preparedProgress = { text, visibleText: displayText }
             },
           )
           lastDeliveredStatusText = outcome === "delivered" ? text : undefined
@@ -860,6 +869,9 @@ export function createTelegramAgentBot(
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
         lastDeliveredStatusText = progressReply.result === "delivered" ? text : undefined
+        if (isProgress && progressReply.message) {
+          preparedProgress = { text, visibleText: progressReply.message.text ?? text }
+        }
         if (progressReply.result === "delivered" && isProgress) {
           statusDisplayText = progressReply.message?.text ?? text
           lastDeliveredProgress = { text, visibleText: statusDisplayText }
@@ -953,9 +965,7 @@ export function createTelegramAgentBot(
             isCurrent,
             onActivity: (activity, toolName) => {
               const latestActivity = renderActivityStatus(activity, toolName)
-              progressStatus.publishActivity(
-                progressSnapshot ? `${progressSnapshot}\n\n${latestActivity}` : latestActivity,
-              )
+              progressStatus.publishActivity(latestActivity)
             },
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest"
 
 import progressExtension from "../src/progress-extension.js"
 import {
+  MAX_PROGRESS_TEXT_CODE_POINTS,
   PROGRESS_CONTEXT_MESSAGE_TYPE,
   PROGRESS_DETAILS_VERSION,
   PROGRESS_TOOL_NAME,
@@ -85,6 +86,30 @@ describe("progress state", () => {
         steps: [{ text: `${text}a`, status: "pending" }],
       }),
     ).toThrow(/503/iu)
+  })
+
+  it("rejects oversized combining sequences before storage or publication", () => {
+    expect(ProgressParameters.properties.steps.items.properties.text).toMatchObject({
+      maxLength: MAX_PROGRESS_TEXT_CODE_POINTS,
+    })
+    const oversized = `a${"\u0301".repeat(MAX_PROGRESS_TEXT_CODE_POINTS)}`
+    expect(() =>
+      validateProgressArguments({
+        steps: [{ text: oversized, status: "pending" }],
+      }),
+    ).toThrow(/code points/iu)
+    expect(
+      parseProgressDetails({
+        version: 1,
+        steps: [{ text: "release", status: "blocked", reason: oversized }],
+      }),
+    ).toBeUndefined()
+    expect(
+      parseProgressDetails({
+        version: PROGRESS_DETAILS_VERSION,
+        steps: [{ text: oversized, status: "blocked" }],
+      }),
+    ).toBeUndefined()
   })
 
   it("migrates legacy blocked reasons without losing text", () => {

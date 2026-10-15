@@ -103,6 +103,31 @@ describe("Telegram progress status", () => {
     }
   })
 
+  it("does not replace a queued snapshot with next-turn activity", async () => {
+    vi.useFakeTimers()
+    try {
+      let finishFirst: (() => void) | undefined
+      const first = new Promise<void>((resolve) => {
+        finishFirst = resolve
+      })
+      const update = vi.fn(async (text: string) => {
+        if (text === "tool") await first
+      })
+      const editor = createProgressStatusEditor(update, vi.fn())
+      editor.publishActivity("tool")
+      editor.publish("snapshot", true)
+      editor.publishActivity("model")
+      finishFirst?.()
+      await editor.flush()
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["tool", "snapshot"])
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["tool", "snapshot", "model"])
+      await editor.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("restores the last structured status after an in-flight activity edit", async () => {
     let finishActivity: (() => void) | undefined
     const activity = new Promise<void>((resolve) => {

@@ -36,9 +36,12 @@ export function createProgressExtension(authorize: () => void = () => {}) {
         executionMode: "sequential",
         async execute(args, api, context) {
           authorize()
+          // Recovery invokes execute with the saved intent, without prepareArguments.
+          // New calls remain strict because prepareArguments rejects legacy fields.
+          const legacy = parseProgressDetails({ version: 1, steps: args.steps })
           const details = jsonValue({
             version: PROGRESS_DETAILS_VERSION,
-            steps: validateProgressArguments(args).steps,
+            steps: validateProgressArguments(legacy ? { steps: legacy.steps } : args).steps,
           })
           await api.commit(async (tx) => {
             const state = await tx.doc(ProgressDoc, api.conversationId)

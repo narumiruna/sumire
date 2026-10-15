@@ -2,6 +2,7 @@ export { default } from "./progress-extension.js"
 export {
   cloneProgressSteps,
   MAX_PROGRESS_STEPS,
+  MAX_PROGRESS_TEXT_CODE_POINTS,
   MAX_PROGRESS_TEXT_LENGTH,
   PROGRESS_CONTEXT_MESSAGE_TYPE,
   PROGRESS_CONTEXT_VERSION,

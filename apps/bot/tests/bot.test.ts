@@ -1816,6 +1816,69 @@ describe("Telegram bot update routing", () => {
     ])
   })
 
+  it.each(["published", "failed", "inline-boundary"] as const)(
+    "does not republish %s progress during activity edits",
+    async (publication) => {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
+      try {
+        const steps: ProgressStep[] = Array.from(
+          { length: publication === "inline-boundary" ? 1 : 5 },
+          (_, index) => ({
+            text: `Step ${index} ${"x".repeat(publication === "inline-boundary" ? 950 : 250)}`,
+            status: index === 0 ? "in_progress" : "pending",
+          }),
+        )
+        const sessions = createSessions({
+          submit: vi.fn(async (_chatId, _prompt, options) => {
+            options.onAccepted?.()
+            options.onProgress?.(steps)
+            await new Promise<void>((resolve) => setImmediate(resolve))
+            options.onActivity?.("tool", "read")
+            await vi.advanceTimersByTimeAsync(2_000)
+            options.onActivity?.("tool_finished", "read")
+            await vi.advanceTimersByTimeAsync(2_000)
+            options.onActivity?.("tool", "bash")
+            await vi.advanceTimersByTimeAsync(2_000)
+            return { kind: "completed" as const, text: "Done" }
+          }),
+        })
+        const publish = vi.fn(async () => {
+          if (publication === "failed") throw new Error("Morsel unavailable")
+          return "https://morsel.example/s/progress"
+        })
+        const telegram = createTelegramAgentBot(
+          loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+          sessions,
+          logger,
+          {
+            control: approvedStore([7, -100]),
+            botInfo,
+            morselPublisher: { isConfigured: true, publish },
+          },
+        )
+        const calls = installApiMock(telegram.bot)
+        await telegram.bot.handleUpdate(privateMessage(2, "Work"))
+        expect(publish).toHaveBeenCalledTimes(publication === "inline-boundary" ? 0 : 1)
+        const activity = calls.filter((call) => String(call.payload.text).includes("工具："))
+        expect(activity.length).toBeGreaterThanOrEqual(2)
+        if (publication === "published") {
+          expect(
+            activity.every((call) =>
+              String(call.payload.text).includes("https://morsel.example/s/progress"),
+            ),
+          ).toBe(true)
+        }
+        if (publication === "failed") {
+          expect(
+            activity.every((call) => String(call.payload.text).includes("Morsel 暫時無法使用")),
+          ).toBe(true)
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
   it("shows activity alongside structured progress and retains the clean snapshot", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
