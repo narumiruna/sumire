@@ -20,6 +20,48 @@ label {
   flex-direction: column;
   gap: 6px;
   margin: 12px 0;
+  max-width: 560px;
+}
+section {
+  min-width: 0;
+}
+section > .rt-Card {
+  margin: 12px 0;
+}
+summary {
+  cursor: pointer;
+}
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--teal-9);
+  outline-offset: 3px;
+}
+.id-list {
+  list-style: none;
+  padding: 0;
+  max-width: 400px;
+}
+.id-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px;
+  border-bottom: 1px solid var(--slate-5);
+}
+.activity {
+  padding-left: 24px;
+}
+.activity li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--slate-5);
+  overflow-wrap: anywhere;
+}
+.activity li[data-outcome="failed"] {
+  border-left: 3px solid var(--red-9);
+  padding-left: 12px;
 }
 fieldset {
   border: 1px solid var(--slate-6);
@@ -27,6 +69,11 @@ fieldset {
   margin: 16px 0;
   padding: 16px;
   min-width: 0;
+}
+.editor-panel {
+  border: 0;
+  padding: 0;
+  margin: 0;
 }
 pre {
   white-space: pre-wrap;

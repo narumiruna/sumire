@@ -18,7 +18,7 @@ import { type Inventory, request, type Selection, type Snapshot } from "./api.js
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 
 type Option = { id: string; label: string; detail?: string }
-function SearchChoice({
+export function SearchChoice({
   label,
   value,
   options,
@@ -138,6 +138,7 @@ export function Providers({
   run,
   refresh,
   error,
+  onPending,
 }: {
   snapshot: Snapshot
   inventory: Inventory
@@ -145,6 +146,7 @@ export function Providers({
   dirty: boolean
   busy: boolean
   error: string
+  onPending(value: boolean): void
   run(action: () => Promise<void>): Promise<void>
   refresh(): Promise<void>
 }) {
@@ -178,6 +180,10 @@ export function Providers({
       (snapshot.policy.defaults.model !== ref ||
         (snapshot.policy.defaults.thinking ?? "off") !== thinking ||
         !snapshot.policy.defaults.models?.includes(ref)))
+
+  useEffect(() => {
+    onPending(Boolean(key || answer || oauth || (modelChanged && draft)))
+  }, [key, answer, oauth, modelChanged, draft, onPending])
 
   useEffect(() => {
     if (!oauth) return
@@ -266,12 +272,72 @@ export function Providers({
     >
       <Text as="p" color="gray">
         Choose a provider, connect your account, then choose a model. Model changes need a save.
-        Authentication is saved separately.
+        Authentication is saved immediately by its own action. It does not save pending model or
+        policy changes.
       </Text>
       <Text as="p" size="2" color="gray" className="provider-current" mt="2">
         Shared bot default in current settings: {snapshot.policy.defaults.model ?? "Not set"} ·
         Thinking: {snapshot.policy.defaults.thinking ?? "off"}
       </Text>
+      {snapshot.policy.defaults.model && (
+        <AlertDialog.Root>
+          <AlertDialog.Trigger>
+            <Button variant="ghost" disabled={blocked}>
+              Clear shared default model
+            </Button>
+          </AlertDialog.Trigger>
+          <AlertDialog.Content>
+            <AlertDialog.Title>Clear the shared default model?</AlertDialog.Title>
+            <AlertDialog.Description>
+              Save and apply an unconfigured shared model and thinking default. Allowed models,
+              authentication, and chat overrides stay unchanged. Active work will be cancelled.
+            </AlertDialog.Description>
+            <Flex gap="3" mt="4">
+              <AlertDialog.Cancel>
+                <Button variant="soft">Cancel</Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button
+                  onClick={() =>
+                    void run(async () => {
+                      await request(
+                        "settings",
+                        csrf,
+                        {
+                          revision: snapshot.revision,
+                          policy: {
+                            ...snapshot.policy,
+                            defaults: { ...snapshot.policy.defaults, model: null, thinking: null },
+                          },
+                        },
+                        "PUT",
+                      )
+                      await refresh()
+                      setNotice("Shared default cleared. Chat overrides remain unchanged.")
+                    })
+                  }
+                >
+                  Clear default and apply
+                </Button>
+              </AlertDialog.Action>
+            </Flex>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
+      )}
+      {snapshot.policy.defaults.model &&
+        !inventory.providers.find((p) => p.id === snapshot.policy.defaults.model?.split("/")[0])
+          ?.configured && (
+          <Text as="p" color="orange">
+            The shared default is not connected. Select its provider below and configure
+            authentication, or follow its host credential instructions. No remote verification has
+            been run automatically.
+          </Text>
+        )}
+      {!inventory.providers.length && (
+        <Text as="p">
+          No providers available. Add a custom endpoint below or check the host provider setup.
+        </Text>
+      )}
       {!snapshot.policy.defaults.model && (
         <Text as="p" size="2" color="gray" mt="2">
           {saved.model
@@ -542,7 +608,7 @@ export function Providers({
                               "PUT",
                             )
                             await refresh()
-                            setNotice("Model selection saved. Check the applied revision above.")
+                            setNotice("Model selection saved. Check application status above.")
                           })
                         }
                       >
@@ -620,6 +686,7 @@ export function Providers({
               API key
               <TextField.Root
                 id="provider-key"
+                disabled={busy}
                 type="password"
                 autoComplete="new-password"
                 value={key}
@@ -672,7 +739,7 @@ export function Providers({
                 {login.prompt.options ? (
                   <label htmlFor="provider-answer">
                     Login option
-                    <Select.Root value={answer} onValueChange={setAnswer}>
+                    <Select.Root disabled={busy} value={answer} onValueChange={setAnswer}>
                       <Select.Trigger id="provider-answer" />
                       <Select.Content>
                         {login.prompt.options.map((v) => (
@@ -688,6 +755,7 @@ export function Providers({
                     Provider login response
                     <TextField.Root
                       id="provider-answer"
+                      disabled={busy}
                       type="password"
                       autoComplete="off"
                       value={answer}

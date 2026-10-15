@@ -32,7 +32,8 @@ import {
   type Snapshot,
 } from "./api.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
-import { Providers } from "./providers.js"
+import { Providers, SearchChoice } from "./providers.js"
+import { Activity, type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
@@ -87,31 +88,70 @@ function IdList({
   values,
   positive,
   onChange,
+  onPending,
 }: {
   label: string
   values: number[]
   positive: boolean
   onChange(values: number[]): void
+  onPending(value: boolean): void
 }) {
-  const [draft, setDraft] = useState(values.join(", "))
+  const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
   return (
     <fieldset>
       <legend>{label}</legend>
-      <Field label={label} value={draft} onChange={setDraft} />
+      <ul className="id-list">
+        {values.map((id) => (
+          <li key={id}>
+            <code>{id}</code>
+            <Button
+              variant="ghost"
+              color="red"
+              aria-label={`Remove ID ${id}`}
+              onClick={() => onChange(values.filter((v) => v !== id))}
+            >
+              Remove
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {!values.length && <Text as="p">No access approved.</Text>}
+      <Field
+        label={positive ? "Private user ID to add" : "Group or channel ID to add"}
+        value={draft}
+        onChange={(v) => {
+          setDraft(v)
+          onPending(Boolean(v))
+        }}
+      />
       <Button
         variant="soft"
+        disabled={!draft}
         onClick={() => {
           try {
-            onChange(parseIds(draft, positive))
+            const ids = parseIds(draft, positive)
+            if (ids.length !== 1) throw new Error("Enter one ID")
+            onChange([...new Set([...values, ...ids])])
+            setDraft("")
+            onPending(false)
             setError("")
           } catch {
-            setError("Enter valid Telegram IDs")
+            setError(
+              positive
+                ? "Enter one positive whole-number Telegram user ID."
+                : "Enter one negative whole-number Telegram group or channel ID.",
+            )
           }
         }}
       >
-        Set {positive ? "private users" : "groups"}
+        Add ID to pending settings
       </Button>
+      {draft && (
+        <Text as="p" size="2">
+          Not added yet. Add this ID before saving settings.
+        </Text>
+      )}
       {error && (
         <Text color="red" role="alert">
           {error}
@@ -126,12 +166,14 @@ function List({
   value,
   onChange,
   inheritable = false,
+  effective,
 }: {
   label: string
   options: string[]
   value: string[] | null
   onChange(value: string[] | null): void
   inheritable?: boolean
+  effective?: string[]
 }) {
   const displayed = [...new Set([...options, ...(value ?? [])])]
   return (
@@ -159,7 +201,27 @@ function List({
         ) : (
           <Text>No approved options.</Text>
         ))}
-      {value?.length === 0 && <Text size="2">Explicit empty list: none allowed.</Text>}
+      {value === null && !inheritable && (
+        <Text as="p" size="2">
+          None selected.
+        </Text>
+      )}
+      {value?.length === 0 && (
+        <Text as="p" size="2">
+          None allowed. This does not inherit the default.
+        </Text>
+      )}
+      {inheritable && (
+        <Text as="p" size="2">
+          {value === null ? "Inherited" : "Customized"} · Effective:{" "}
+          {effective?.join(", ") || "None"}
+        </Text>
+      )}
+      {inheritable && value !== null && (
+        <Button variant="soft" onClick={() => onChange(null)}>
+          Reset {label.toLowerCase()} to default
+        </Button>
+      )}
     </fieldset>
   )
 }
@@ -187,12 +249,14 @@ function Choices({
   inventory,
   onChange,
   defaults = false,
+  navigate,
 }: {
   value: Selection
   policy: Policy
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
+  navigate(page: "Tools / MCP" | "Model Providers"): void
 }) {
   const model = value.model ?? policy.defaults.model
   const levels = inventory.providers
@@ -204,62 +268,129 @@ function Choices({
         {(["tools", "servers", "models"] as const).map((key) => (
           <List
             key={key}
-            label={key}
+            label={
+              {
+                tools: "Authorized tools",
+                servers: "Authorized MCP servers",
+                models: "Allowed models",
+              }[key]
+            }
             options={policy[key]}
             value={value[key]}
             onChange={(v) => onChange({ ...value, [key]: v })}
             inheritable={!defaults}
+            effective={(value[key] ?? policy.defaults[key] ?? []).filter(
+              (name) =>
+                policy[key].includes(name) &&
+                (key !== "models" ||
+                  policy.providers.find((p) => p.id === name.split("/")[0])?.enabled !== false),
+            )}
           />
         ))}
       </div>
-      <label htmlFor="model-selection">
-        Model
-        <Select.Root
-          value={value.model ?? "inherit"}
-          onValueChange={(v) =>
-            onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
-          }
-        >
-          <Select.Trigger id="model-selection" placeholder="Choose model" />
-          <Select.Content>
-            <Select.Item value="inherit">
-              {defaults ? "Not configured" : "Inherit default"}
-            </Select.Item>
-            {(value.models ?? policy.defaults.models ?? []).map((ref) => (
-              <Select.Item key={ref} value={ref}>
-                {ref}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </label>
-      <label htmlFor="thinking-selection">
-        Thinking level
-        <Select.Root
-          value={value.thinking ?? "inherit"}
-          onValueChange={(v) =>
-            onChange({ ...value, thinking: v === "inherit" ? null : (v as Selection["thinking"]) })
-          }
-        >
-          <Select.Trigger id="thinking-selection" />
-          <Select.Content>
-            <Select.Item value="inherit">
-              {defaults ? "Off (default)" : "Inherit default"}
-            </Select.Item>
-            {levels.map((level) => (
-              <Select.Item key={level} value={level}>
-                {level}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </label>
+      {(!policy.tools.length || !policy.servers.length) && (
+        <Button variant="ghost" onClick={() => navigate("Tools / MCP")}>
+          Configure tools and MCP servers
+        </Button>
+      )}
+      {defaults ? (
+        <Card>
+          <Heading size="3">Default model</Heading>
+          <Text as="p">
+            {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
+            {policy.defaults.thinking ?? "off"}
+          </Text>
+          <Text as="p" size="2">
+            Allowed models limit what chats can use. The default model selects one for chats without
+            an override.
+          </Text>
+          <Button variant="soft" onClick={() => navigate("Model Providers")}>
+            Edit default model in Model Providers
+          </Button>
+        </Card>
+      ) : (
+        <>
+          <label htmlFor="model-selection">
+            Chat model override
+            <Select.Root
+              value={value.model ?? "inherit"}
+              onValueChange={(v) =>
+                onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
+              }
+            >
+              <Select.Trigger id="model-selection" placeholder="Choose model" />
+              <Select.Content>
+                <Select.Item value="inherit">
+                  {defaults ? "Not configured" : "Inherit default"}
+                </Select.Item>
+                {[
+                  ...new Set([
+                    ...(value.models ?? policy.defaults.models ?? []),
+                    ...(value.model ? [value.model] : []),
+                  ]),
+                ].map((ref) => (
+                  <Select.Item key={ref} value={ref}>
+                    {ref}
+                    {!(value.models ?? policy.defaults.models ?? []).includes(ref)
+                      ? " (not allowed)"
+                      : ""}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </label>
+          <label htmlFor="thinking-selection">
+            Thinking level
+            <Select.Root
+              value={value.thinking ?? "inherit"}
+              onValueChange={(v) =>
+                onChange({
+                  ...value,
+                  thinking: v === "inherit" ? null : (v as Selection["thinking"]),
+                })
+              }
+            >
+              <Select.Trigger id="thinking-selection" />
+              <Select.Content>
+                <Select.Item value="inherit">
+                  {defaults ? "Off (default)" : "Inherit default"}
+                </Select.Item>
+                {levels.map((level) => (
+                  <Select.Item key={level} value={level}>
+                    {level}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </label>
+          <Text as="p" size="2">
+            {value.model === null ? "Inherited" : "Customized"} model:{" "}
+            {(value.models ?? policy.defaults.models ?? []).includes(model ?? "") &&
+            policy.models.includes(model ?? "") &&
+            policy.providers.find((p) => p.id === model?.split("/")[0])?.enabled !== false
+              ? model
+              : "No allowed model"}{" "}
+            · {value.thinking === null ? "Inherited" : "Customized"} thinking:{" "}
+            {value.thinking ?? policy.defaults.thinking ?? "off"}
+          </Text>
+          {(value.model !== null || value.thinking !== null) && (
+            <Button
+              variant="soft"
+              onClick={() => onChange({ ...value, model: null, thinking: null })}
+            >
+              Reset model and thinking to default
+            </Button>
+          )}
+        </>
+      )}
     </>
   )
 }
 function SecretFields({
   onChange,
+  onPending,
 }: {
+  onPending(value: boolean): void
   onChange(value: { scope: "env" | "headers"; name: string; value: string }): void
 }) {
   const [name, setName] = useState("")
@@ -268,6 +399,9 @@ function SecretFields({
   return (
     <fieldset>
       <legend>MCP secret replacement</legend>
+      <Text as="p" size="2">
+        Stage a replacement here, then save the MCP connection separately.
+      </Text>
       <label htmlFor="secret-scope">
         Field map
         <Select.Root value={scope} onValueChange={(v) => setScope(v as "env" | "headers")}>
@@ -278,13 +412,29 @@ function SecretFields({
           </Select.Content>
         </Select.Root>
       </label>
-      <Field label="Secret field name" value={name} onChange={setName} />
-      <Field secret label="New secret value" value={value} onChange={setValue} />
+      <Field
+        label="Secret field name"
+        value={name}
+        onChange={(v) => {
+          setName(v)
+          onPending(Boolean(v || value))
+        }}
+      />
+      <Field
+        secret
+        label="New secret value"
+        value={value}
+        onChange={(v) => {
+          setValue(v)
+          onPending(Boolean(v || name))
+        }}
+      />
       <Button
         variant="soft"
         disabled={!name || !value}
         onClick={() => {
           onChange({ scope, name, value })
+          onPending(false)
           setName("")
           setValue("")
         }}
@@ -297,7 +447,9 @@ function SecretFields({
 function ProviderEditor({
   onAdd,
   initial,
+  onPending,
 }: {
+  onPending(value: boolean): void
   onAdd(provider: ProviderSettings): void
   initial?: ProviderSettings
 }) {
@@ -326,7 +478,7 @@ function ProviderEditor({
         ]
       : models
   return (
-    <fieldset>
+    <fieldset onChangeCapture={() => onPending(true)}>
       <legend>{initial ? "Edit provider configuration" : "Add provider configuration"}</legend>
       <Field label="Provider ID" value={id} onChange={setId} />
       <Field label="API base URL" value={url} onChange={setUrl} />
@@ -374,6 +526,7 @@ function ProviderEditor({
               variant="soft"
               color="red"
               onClick={() => {
+                onPending(true)
                 setModels(models.filter((row) => row.id !== m.id))
                 if (model === m.id) {
                   setModel("")
@@ -400,6 +553,7 @@ function ProviderEditor({
           variant="soft"
           disabled={!model}
           onClick={() => {
+            onPending(true)
             setModels(workingModels())
             setModel("")
             setName("")
@@ -422,8 +576,8 @@ function ProviderEditor({
         </Button>
       </Flex>
       <Text as="p" size="2">
-        Save settings before authentication. This replaces the custom model list. Custom model costs
-        are unknown, not verified zero-cost.
+        This stages policy edits only. Use Save settings before authentication. This replaces the
+        custom model list. Custom model costs are unknown, not verified zero-cost.
       </Text>
     </fieldset>
   )
@@ -440,8 +594,17 @@ function App() {
     { id: number; name: string; type: string; effective: unknown }[]
   >([])
   const [chat, setChat] = useState("")
-  const [audit, setAudit] = useState<unknown[]>([])
-  const [imports, setImports] = useState<unknown>()
+  const [audit, setAudit] = useState<AuditEntry[]>([])
+  const [imports, setImports] = useState<ImportReport[]>([])
+  const [mcpDirty, setMcpDirty] = useState(false)
+  const [mcpEditorVersion, setMcpEditorVersion] = useState(0)
+  const [providerPending, setProviderPending] = useState(false)
+  const [editorPending, setEditorPending] = useState<Record<string, boolean>>({})
+  const localPending = Object.values(editorPending).some(Boolean)
+  const markPending = (key: string, value: boolean) =>
+    setEditorPending((previous) => ({ ...previous, [key]: value }))
+  const pending = dirty || mcpDirty || providerPending || localPending
+  const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
   const [auditOffset, setAuditOffset] = useState(0)
   const [chatOffset, setChatOffset] = useState(0)
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
@@ -470,6 +633,11 @@ function App() {
         setSession(null)
         setMcpSecrets({ env: {}, headers: {} })
         setMcpConfig("{}")
+        setMcpDirty(false)
+        setProviderPending(false)
+        setEditorPending({})
+        setDirty(false)
+        setSnapshot(undefined)
       }
       setError(e instanceof Error ? e.message : "Operation failed")
     } finally {
@@ -481,14 +649,14 @@ function App() {
       request<Snapshot>("settings"),
       request<Inventory>("inventory"),
       request<typeof chats>(`chats?offset=${chatOffset}`),
-      request<unknown[]>(`audit?offset=${auditOffset}`),
-      request<unknown>("imports"),
+      request<AuditEntry[]>(`audit?offset=${auditOffset}`),
+      request<ImportReport[]>("imports"),
     ])
     setSnapshot(s)
     setInventory(i)
     setChats(c)
     setAudit(a)
-    setImports(reports)
+    setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
   }, [chatOffset, auditOffset])
   useEffect(() => {
@@ -514,6 +682,15 @@ function App() {
   useEffect(() => {
     if (session) void run(load)
   }, [session, run, load])
+  useEffect(() => {
+    if (!pending) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [pending])
   const update = (policy: Policy) => {
     if (snapshot) {
       setSnapshot({ ...snapshot, policy })
@@ -577,7 +754,11 @@ function App() {
           <GearIcon aria-hidden /> Sumire
         </Heading>
         <Flex gap="2">
-          <Button variant="soft" disabled={busy || dirty} onClick={() => void run(load)}>
+          <Button
+            variant="soft"
+            disabled={busy || dirty || mcpDirty || localPending}
+            onClick={() => void run(load)}
+          >
             <ReloadIcon />
             Reload
           </Button>
@@ -586,10 +767,16 @@ function App() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
+                if (!confirmDiscard()) return
                 clearAccess()
                 await request("logout", session.csrf)
                 setMcpSecrets({ env: {}, headers: {} })
                 setMcpConfig("{}")
+                setMcpDirty(false)
+                setProviderPending(false)
+                setEditorPending({})
+                setDirty(false)
+                setSnapshot(undefined)
                 setSession(null)
               })
             }
@@ -602,30 +789,55 @@ function App() {
       <Text size="2">Administrator {session.actor}</Text>
       <nav aria-label="Administration sections">
         {pages.map((p) => (
-          <Button key={p} variant={page === p ? "solid" : "soft"} onClick={() => setPage(p)}>
+          <Button
+            key={p}
+            aria-current={page === p ? "page" : undefined}
+            variant={page === p ? "solid" : "soft"}
+            onClick={() => setPage(p)}
+          >
             {p}
           </Button>
         ))}
       </nav>
       {error && (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>
+            {error} Review the input and retry. If settings were saved but application failed,
+            reload the saved state to check it; discard policy edits only when you no longer need
+            them.
+          </Callout.Text>
         </Callout.Root>
       )}
       <Flex gap="3" align="center" wrap="wrap">
-        <Badge color={snapshot.status === "applied" ? "green" : "orange"}>
-          Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
+        <Badge role="status" color={snapshot.status === "applied" ? "green" : "orange"}>
+          {busy
+            ? "Saving or checking…"
+            : snapshot.status === "applied" && snapshot.revision === snapshot.applied
+              ? "All changes applied."
+              : snapshot.status === "failed"
+                ? "Saved, but application failed. Retry application."
+                : "Saved changes are waiting to apply."}
         </Badge>
+        <details>
+          <summary>Revision details</summary>Saved {snapshot.revision} · Applied {snapshot.applied}{" "}
+          · {snapshot.status}
+        </details>
         {dirty && <Badge color="orange">Unsaved changes</Badge>}
+        {mcpDirty && <Badge color="orange">Pending MCP configuration</Badge>}
+        {providerPending && (
+          <Badge color="orange">Pending provider selection or authentication</Badge>
+        )}
         <AlertDialog.Root>
           <AlertDialog.Trigger>
-            <Button disabled={busy || !dirty}>Save settings</Button>
+            <Button disabled={busy || !dirty || localPending}>Save settings</Button>
           </AlertDialog.Trigger>
           <AlertDialog.Content>
             <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
             <AlertDialog.Description>
-              Active work will be cancelled. Revoked permissions cannot undo completed external
-              actions.
+              Save all pending chat, access, shared default, global availability, and custom
+              endpoint policy changes across sections. MCP connection edits and authentication are
+              separate. Active work will be cancelled. Revoked permissions cannot undo completed
+              external actions.
             </AlertDialog.Description>
             <Flex gap="3" mt="4">
               <AlertDialog.Cancel>
@@ -653,7 +865,7 @@ function App() {
         </AlertDialog.Root>
         {snapshot.status !== "applied" && (
           <Button
-            disabled={busy || dirty}
+            disabled={busy || dirty || localPending}
             onClick={() =>
               void run(async () => {
                 await request("apply", session.csrf)
@@ -665,11 +877,35 @@ function App() {
           </Button>
         )}
         {dirty && (
-          <Button variant="soft" onClick={() => void run(load)}>
+          <Button
+            variant="soft"
+            disabled={busy || localPending}
+            onClick={() => {
+              if (
+                window.confirm("Discard pending policy edits? Other editor drafts stay unchanged.")
+              )
+                void run(load)
+            }}
+          >
             Discard edits and reload
           </Button>
         )}
       </Flex>
+      {localPending && (
+        <Text as="p" role="status">
+          An editor has unfinished input. Add, stage, or clear it before saving settings. It is not
+          included in policy changes yet.
+        </Text>
+      )}
+      <Text as="p" size="2">
+        Save settings submits policy edits from all sections. MCP connections, model selection, and
+        authentication use separate actions. Switching sections keeps drafts.
+      </Text>
+      <Text as="p" size="2">
+        Global allowed capabilities → shared defaults → chat overrides. Availability limits
+        selection; authorization also requires chat access and tool permission. Defaults do not
+        grant chat access.
+      </Text>
       {accessToken && (
         <AccessApproval
           key={accessToken}
@@ -677,7 +913,7 @@ function App() {
           clear={clearAccess}
           csrf={session.csrf}
           snapshot={snapshot}
-          disabled={busy || dirty}
+          disabled={busy || pending}
           run={run}
           refresh={load}
         />
@@ -685,46 +921,66 @@ function App() {
       <Heading size="5" mt="5">
         {page}
       </Heading>
-      {page === "Chats" && (
-        <>
-          <label htmlFor="known-chat">
-            Known chat
-            <Select.Root
-              value={chat || "none"}
-              onValueChange={(v) => setChat(v === "none" ? "" : v)}
-            >
-              <Select.Trigger id="known-chat" />
-              <Select.Content>
-                <Select.Item value="none">Choose chat</Select.Item>
-                {chats.map((c) => (
-                  <Select.Item key={c.id} value={String(c.id)}>
-                    {c.name} · {c.type} · {c.id}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
+      <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
+        <section hidden={page !== "Chats"} aria-label="Chat settings">
+          <SearchChoice
+            label="Known chat"
+            value={chat}
+            options={chats.map((c) => ({
+              id: String(c.id),
+              label: c.name && c.name !== String(c.id) ? c.name : `Unnamed ${c.type}`,
+              detail: `${c.type} · ${c.id}`,
+            }))}
+            onChange={setChat}
+          />
+          <Text as="p" size="2">
+            Search covers this page of observed chats. Use Next chats for more.
+          </Text>
+          {!chat && (
+            <Text as="p">
+              Select a chat to review inherited settings and set overrides. Access approval remains
+              separate.
+            </Text>
+          )}
           <Flex gap="2">
             <Button
               variant="soft"
-              disabled={chatOffset === 0 || dirty}
+              disabled={busy || chatOffset === 0 || pending}
               onClick={() => setChatOffset(Math.max(0, chatOffset - 100))}
             >
               Previous chats
             </Button>
             <Button
               variant="soft"
-              disabled={chats.length < 100 || dirty}
+              disabled={busy || chats.length < 100 || pending}
               onClick={() => setChatOffset(chatOffset + 100)}
             >
               Next chats
             </Button>
           </Flex>
-          <Field
-            label="Chat ID (can configure before first message)"
-            value={chat}
-            onChange={setChat}
-          />
+          <details>
+            <summary>Configure a chat before its first message</summary>
+            <Text as="p" size="2">
+              Enter its Telegram ID. This creates settings, not access approval.
+            </Text>
+            <Field
+              label="Chat ID (can configure before first message)"
+              value={chat}
+              onChange={setChat}
+            />
+          </details>
+          {chat && (
+            <div>
+              <Heading size="4">
+                {chats.find((c) => String(c.id) === chat)?.name === chat
+                  ? "Unnamed chat"
+                  : chats.find((c) => String(c.id) === chat)?.name || "Chat configuration"}
+              </Heading>
+              <Text as="p" size="2">
+                {chats.find((c) => String(c.id) === chat)?.type ?? "Not yet observed"} · {chat}
+              </Text>
+            </div>
+          )}
           {chat && /^-?[1-9]\d*$/.test(chat) && (
             <Card>
               <Check
@@ -738,6 +994,7 @@ function App() {
                 }
               />
               <Choices
+                navigate={setPage}
                 value={selected ?? inherit}
                 policy={policy}
                 inventory={inventory}
@@ -751,59 +1008,91 @@ function App() {
                   })
                 }
               />
-              <Text as="p">Access must also be approved on the Access page.</Text>
-              <Heading size="3">Effective saved settings</Heading>
-              <pre>
-                {JSON.stringify(
-                  chats.find((c) => String(c.id) === chat)?.effective ??
-                    "Available after saving and reload",
-                  null,
-                  2,
-                )}
-              </pre>
+              <Text as="p">
+                Chat switch: {selected ? "Customized" : "Default"} ·{" "}
+                {selected?.enabled === false ? "Disabled" : "Enabled"}. Access in current settings:{" "}
+                {(Number(chat) > 0 ? policy.privateUsers : policy.groups).includes(Number(chat))
+                  ? "Approved"
+                  : "Not approved"}
+                . Manage approval on Access. Capability selections do not grant access.
+              </Text>
+              <details>
+                <summary>Saved effective settings (before pending edits)</summary>
+                <pre>
+                  {JSON.stringify(
+                    chats.find((c) => String(c.id) === chat)?.effective ??
+                      "Available after saving and reload",
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
             </Card>
           )}
           {!chats.length && (
             <Text>No chats observed. You can configure a Telegram ID directly.</Text>
           )}
-        </>
-      )}
-      {page === "Access" && (
-        <>
-          <Text as="p">Private-message approval does not grant access in any group.</Text>
+        </section>
+        <section hidden={page !== "Access"} aria-label="Access settings">
+          <Text as="p">
+            {policy.privateUsers.length} private users · {policy.groups.length} groups or channels
+            approved in current settings. Changes remain pending until Save settings.
+          </Text>
+          <Text as="p">
+            Private-message approval does not grant access in any group. Import history never grants
+            access or reverses a revocation.
+          </Text>
+          <details>
+            <summary>Imported IDs and review history</summary>
+            <Text as="p">
+              Read-only history is available in Audit. Review current access below; no imported ID
+              is approved automatically.
+            </Text>
+            <Button variant="soft" onClick={() => setPage("Audit")}>
+              Open import history in Audit
+            </Button>
+          </details>
           <IdList
             key={`${snapshot.revision}:users`}
-            label="Allowed private user IDs (comma separated)"
+            onPending={(v) => markPending("users", v)}
+            label="Private-message access"
             values={policy.privateUsers}
             positive
             onChange={(values) => update({ ...policy, privateUsers: values })}
           />
           <IdList
             key={`${snapshot.revision}:groups`}
-            label="Allowed group / channel IDs (negative, comma separated)"
+            onPending={(v) => markPending("groups", v)}
+            label="Group and channel access"
             values={policy.groups}
             positive={false}
             onChange={(values) => update({ ...policy, groups: values })}
           />
-        </>
-      )}
-      {page === "Defaults" && (
-        <Choices
-          defaults
-          value={policy.defaults}
-          policy={policy}
-          inventory={inventory}
-          onChange={(v) => update({ ...policy, defaults: v })}
-        />
-      )}
-      {page === "Tools / MCP" && (
-        <>
+        </section>
+        <section hidden={page !== "Defaults"} aria-label="Shared defaults">
+          <Text as="p">
+            Shared defaults apply to chats that have no override. They cannot exceed global
+            availability and do not approve access.
+          </Text>
+          <Choices
+            navigate={setPage}
+            defaults
+            value={policy.defaults}
+            policy={policy}
+            inventory={inventory}
+            onChange={(v) => update({ ...policy, defaults: v })}
+          />
+        </section>
+        <section hidden={page !== "Tools / MCP"} aria-label="Tools and MCP settings">
           <Callout.Root color="orange">
             <Callout.Text>
               Shell and file tools are trusted capabilities, not a sandbox. They can access
               process-readable credentials. New tools are denied until explicitly approved.
             </Callout.Text>
           </Callout.Root>
+          <Heading size="3" mt="3">
+            Tool authorization — saved with settings
+          </Heading>
           <div className="grid">
             <List
               label="Globally available tools"
@@ -822,30 +1111,56 @@ function App() {
             MCP tool names must be approved individually. Exposure does not grant execution
             permission.
           </Text>
-          <Field label="Additional approved tool name" value={toolName} onChange={setToolName} />
+          <Field
+            label="Additional approved tool name"
+            value={toolName}
+            onChange={(v) => {
+              setToolName(v)
+              markPending("tool", Boolean(v))
+            }}
+          />
           <Button
             disabled={!toolName}
             onClick={() => {
               update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
               setToolName("")
+              markPending("tool", false)
             }}
           >
-            Approve named tool
+            Add tool to pending approval
           </Button>
           <Heading size="3" mt="4">
-            MCP configuration
+            MCP connections — saved separately
           </Heading>
+          {!inventory.mcp.length && (
+            <Text as="p">
+              No MCP connections configured. Add a server below, then test it and approve its tools
+              separately.
+            </Text>
+          )}
           {inventory.mcp.map((m) => (
             <Card key={m.name}>
               <Text>
-                {m.name} · {m.enabled === false ? "disabled" : "enabled"} ·{" "}
+                {m.name} · Configured · {m.enabled === false ? "Disabled" : "Enabled"} · Exposure:{" "}
                 {m.exposure ?? "codemode"}
               </Text>
-              <Text as="p">Connection: {m.connection}</Text>
-              <pre>{m.tools?.join("\n")}</pre>
+              <Text as="p">
+                Connection test: {m.connection} · {m.tools.length} discovered tools ·{" "}
+                {policy.servers.includes(m.name) ? "Globally available" : "Not globally available"}{" "}
+                · {m.tools.filter((name) => policy.tools.includes(name)).length} globally authorized
+                tools
+              </Text>
+              <Text as="p" size="2">
+                Connection state is not an execution grant. Defaults and chat selections can
+                restrict these tools further.
+              </Text>
+              <details>
+                <summary>Discovered tool names</summary>
+                <pre>{m.tools?.join("\n") || "No tools discovered."}</pre>
+              </details>
               <Button
                 variant="soft"
-                disabled={busy || dirty}
+                disabled={busy || dirty || localPending}
                 onClick={() =>
                   void run(async () => {
                     await request(`mcp/${m.name}/discover`, session.csrf)
@@ -855,9 +1170,31 @@ function App() {
               >
                 Test and discover {m.name}
               </Button>
+              <Button
+                variant="soft"
+                disabled={busy || dirty || localPending}
+                onClick={() => {
+                  if (
+                    mcpDirty &&
+                    !window.confirm("Discard the current MCP draft and edit this server?")
+                  )
+                    return
+                  setMcpName(m.name)
+                  setMcpConfig("{}")
+                  setMcpSecrets({ env: {}, headers: {} })
+                  setMcpDirty(true)
+                  document
+                    .getElementById("mcp-config")
+                    ?.closest("details")
+                    ?.setAttribute("open", "")
+                  document.getElementById("mcp-config")?.focus()
+                }}
+              >
+                Edit fields for {m.name}
+              </Button>
               <AlertDialog.Root>
                 <AlertDialog.Trigger>
-                  <Button color="red" variant="soft" disabled={busy || dirty}>
+                  <Button color="red" variant="ghost" disabled={busy || dirty || localPending}>
                     Delete {m.name}
                   </Button>
                 </AlertDialog.Trigger>
@@ -908,24 +1245,47 @@ function App() {
             label="MCP server name"
             value={mcpName}
             onChange={(name) => {
+              if (
+                (Object.keys(mcpSecrets.env).length ||
+                  Object.keys(mcpSecrets.headers).length ||
+                  editorPending.secret) &&
+                !window.confirm(
+                  "Changing the server name discards staged secret replacements. Continue?",
+                )
+              )
+                return
+              markPending("secret", false)
+              setMcpDirty(true)
               setMcpName(name)
               setMcpSecrets({ env: {}, headers: {} })
             }}
           />
-          <label htmlFor="mcp-config">
-            Server configuration JSON
-            <TextArea
-              id="mcp-config"
-              value={mcpConfig}
-              onChange={(e) => setMcpConfig(e.target.value)}
-              rows={12}
-            />
-          </label>
+          <Text as="p" size="2">
+            To update a server, enter its existing name and only the fields to change. The API does
+            not return editable connection configuration.
+          </Text>
+          <details className="provider-advanced">
+            <summary>Advanced server configuration JSON</summary>
+            <label htmlFor="mcp-config">
+              Server configuration JSON
+              <TextArea
+                id="mcp-config"
+                value={mcpConfig}
+                onChange={(e) => {
+                  setMcpDirty(true)
+                  setMcpConfig(e.target.value)
+                }}
+                rows={12}
+              />
+            </label>
+          </details>
           <SecretFields
-            key={mcpName}
-            onChange={({ scope, name, value }) =>
+            key={`${mcpName}:${mcpEditorVersion}`}
+            onPending={(v) => markPending("secret", v)}
+            onChange={({ scope, name, value }) => {
+              setMcpDirty(true)
               setMcpSecrets({ ...mcpSecrets, [scope]: { ...mcpSecrets[scope], [name]: value } })
-            }
+            }}
           />
           <Text as="p">
             Pending secret fields:{" "}
@@ -938,7 +1298,7 @@ function App() {
             object clears the map. Do not put secrets in commands, arguments, descriptions, or URLs.
           </Text>
           <Button
-            disabled={busy || dirty || !mcpName}
+            disabled={busy || dirty || localPending || !mcpName}
             onClick={() =>
               void run(async () => {
                 await request(
@@ -968,116 +1328,158 @@ function App() {
                 )
                 setMcpConfig("{}")
                 setMcpSecrets({ env: {}, headers: {} })
+                setMcpDirty(false)
                 await load()
               })
             }
           >
             Save MCP configuration and apply
           </Button>
-        </>
-      )}
-      <section hidden={page !== "Model Providers"}>
-        <Providers
-          snapshot={snapshot}
-          inventory={inventory}
-          csrf={session.csrf}
-          dirty={dirty}
-          busy={busy}
-          run={run}
-          refresh={load}
-          error={error}
-        />
-        <details className="provider-advanced">
-          <summary>Custom endpoint</summary>
-          <Text as="p" size="2">
-            Use this only for a compatible endpoint that is not in the provider catalog. Save its
-            configuration above before authentication. Costs are unknown, not verified zero-cost.
-          </Text>
-          {policy.providers.map((p) => (
-            <Card key={p.id}>
-              <Check
-                label={`${p.id} enabled`}
-                checked={p.enabled}
-                onChange={(v) =>
-                  update({
-                    ...policy,
-                    providers: policy.providers.map((row) =>
-                      row.id === p.id ? { ...row, enabled: v } : row,
-                    ),
-                  })
+          {(mcpDirty || editorPending.secret) && (
+            <Button
+              variant="soft"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm("Discard pending MCP configuration and secrets?")) {
+                  setMcpName("")
+                  setMcpConfig("{}")
+                  setMcpSecrets({ env: {}, headers: {} })
+                  setMcpDirty(false)
+                  setMcpEditorVersion((version) => version + 1)
+                  markPending("secret", false)
                 }
-              />
-              <Flex gap="2" wrap="wrap">
-                <Button variant="soft" onClick={() => setEditingProvider(p)}>
-                  Edit configuration {p.id}
-                </Button>
-                <Button
-                  variant="soft"
-                  color="red"
-                  onClick={() =>
+              }}
+            >
+              Discard MCP draft
+            </Button>
+          )}
+        </section>
+        <section hidden={page !== "Model Providers"}>
+          <Providers
+            snapshot={snapshot}
+            inventory={inventory}
+            csrf={session.csrf}
+            dirty={dirty || mcpDirty || localPending}
+            busy={busy}
+            run={run}
+            refresh={load}
+            error={error}
+            onPending={setProviderPending}
+          />
+          <details className="provider-advanced">
+            <summary>Custom endpoint</summary>
+            <Text as="p" size="2">
+              Use this only for a compatible endpoint that is not in the provider catalog. Save its
+              configuration above before authentication. Costs are unknown, not verified zero-cost.
+            </Text>
+            {policy.providers.map((p) => (
+              <Card key={p.id}>
+                <Check
+                  label={`${p.id} enabled`}
+                  checked={p.enabled}
+                  onChange={(v) =>
                     update({
                       ...policy,
-                      providers: policy.providers.filter((row) => row.id !== p.id),
+                      providers: policy.providers.map((row) =>
+                        row.id === p.id ? { ...row, enabled: v } : row,
+                      ),
                     })
                   }
-                >
-                  Remove configuration
-                </Button>
-              </Flex>
-            </Card>
-          ))}
-          <ProviderEditor
-            key={JSON.stringify(editingProvider) ?? "new"}
-            initial={editingProvider}
-            onAdd={(p) => {
-              update({
-                ...policy,
-                providers: [...policy.providers.filter((row) => row.id !== p.id), p],
-              })
-              setEditingProvider(undefined)
-            }}
-          />
-        </details>
-        <details className="provider-advanced">
-          <summary>Manage model availability</summary>
-          <Text as="p" size="2">
-            Add models with the provider flow above. Remove references from defaults and chats
-            before removing a model. Selecting a provider never grants its full catalog.
-          </Text>
-          <ModelAvailability
-            key={snapshot.revision}
-            value={policy.models}
-            onChange={(models) => update({ ...policy, models })}
-          />
-        </details>
-      </section>
-      {page === "Audit" && (
-        <>
+                />
+                <Flex gap="2" wrap="wrap">
+                  <Button
+                    variant="soft"
+                    onClick={() => {
+                      if (
+                        !editorPending.endpoint ||
+                        window.confirm("Discard unfinished custom endpoint edits?")
+                      ) {
+                        setEditingProvider(p)
+                        markPending("endpoint", false)
+                      }
+                    }}
+                  >
+                    Edit configuration {p.id}
+                  </Button>
+                  <Button
+                    variant="soft"
+                    color="red"
+                    onClick={() =>
+                      update({
+                        ...policy,
+                        providers: policy.providers.filter((row) => row.id !== p.id),
+                      })
+                    }
+                  >
+                    Remove configuration
+                  </Button>
+                </Flex>
+              </Card>
+            ))}
+            <ProviderEditor
+              key={JSON.stringify(editingProvider) ?? "new"}
+              initial={editingProvider}
+              onPending={(v) => markPending("endpoint", v)}
+              onAdd={(p) => {
+                update({
+                  ...policy,
+                  providers: [...policy.providers.filter((row) => row.id !== p.id), p],
+                })
+                setEditingProvider(undefined)
+                markPending("endpoint", false)
+              }}
+            />
+          </details>
+          <details className="provider-advanced">
+            <summary>Manage model availability</summary>
+            <Text as="p" size="2">
+              Add models with the provider flow above. Remove references from defaults and chats
+              before removing a model. Selecting a provider never grants its full catalog.
+            </Text>
+            <ModelAvailability
+              key={snapshot.revision}
+              value={policy.models}
+              onChange={(models) => update({ ...policy, models })}
+            />
+          </details>
+        </section>
+        <section hidden={page !== "Audit"} aria-label="Audit history">
           <Text as="p">
             Latest configuration operations. Secret values and conversation contents are excluded.
           </Text>
           <Heading size="3">Import reports</Heading>
-          <pre>{JSON.stringify(imports, null, 2)}</pre>
-          <pre>{audit.length ? JSON.stringify(audit, null, 2) : "No audit records."}</pre>
+          <ImportHistory reports={imports} />
+          <Heading size="3">Configuration activity</Heading>
+          <Text as="p" size="2">
+            Showing records {audit.length ? auditOffset + 1 : 0}–{auditOffset + audit.length}. Older
+            records may be available; the server retains up to 10,000 records.
+          </Text>
+          <Activity entries={audit} />
           <Flex gap="2">
             <Button
-              disabled={auditOffset === 0 || dirty}
+              disabled={busy || auditOffset === 0 || pending}
               onClick={() => setAuditOffset(Math.max(0, auditOffset - 100))}
             >
               Newer
             </Button>
             <Button
-              disabled={audit.length < 100 || dirty}
+              disabled={busy || audit.length < 100 || pending}
               onClick={() => setAuditOffset(auditOffset + 100)}
             >
               Older
             </Button>
           </Flex>
-        </>
-      )}
+        </section>
+      </fieldset>
       <VisuallyHidden.Root>
         <span role="status">
-          {busy ? "Operation in progress" : dirty ? "Unsaved changes" : "Ready"}
+          {busy
+            ? "Operation in progress"
+            : error
+              ? "Operation failed. Review the error and retry."
+              : pending
+                ? "Pending changes. Submit each editor separately."
+                : "Ready"}
         </span>
       </VisuallyHidden.Root>
     </main>
