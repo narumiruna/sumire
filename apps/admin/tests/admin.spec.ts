@@ -88,6 +88,162 @@ async function chooseModel(page: Page, query = "Other") {
   await page.getByRole("combobox", { name: "Search model" }).fill(query)
   await page.getByRole("combobox", { name: "Search model" }).press("Enter")
 }
+for (const existing of [false, true]) {
+  test(`discards a ${existing ? "saved" : "new"} custom endpoint draft without changing policy`, async ({
+    page,
+  }) => {
+    await setup(page)
+    const custom = {
+      id: "custom",
+      enabled: true,
+      baseUrl: "https://models.example.test/v1",
+      api: "openai-completions",
+      models: [],
+    }
+    if (existing) {
+      await page.route("**/api/settings", (route) =>
+        route.fulfill({
+          json: {
+            revision: 1,
+            applied: 1,
+            status: "applied",
+            policy: { ...policy, providers: [custom] },
+          },
+        }),
+      )
+      await page.reload()
+    }
+    const mutations: string[] = []
+    page.on("request", (r) => {
+      if (r.method() !== "GET") mutations.push(r.url())
+    })
+    await page.getByRole("button", { name: "Access", exact: true }).click()
+    await page.getByRole("button", { name: "Remove ID 42" }).click()
+    await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+    await page.getByText("Custom endpoint", { exact: true }).click()
+    if (existing)
+      await page.getByRole("button", { name: "Edit configuration custom", exact: true }).click()
+    await page.getByLabel("Provider ID", { exact: true }).fill("abandoned")
+    await page.getByLabel("Model ID (required for custom endpoint)").fill("abandoned-model")
+    await page.getByRole("button", { name: "Add / update model", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled()
+    await page.getByRole("button", { name: "Discard custom endpoint draft", exact: true }).click()
+    await expect(page.getByLabel("Provider ID", { exact: true })).toHaveValue(
+      existing ? "custom" : "",
+    )
+    await expect(page.getByLabel("API base URL")).toHaveValue(existing ? custom.baseUrl : "")
+    await expect(
+      page.getByRole("button", { name: "Edit model abandoned-model", exact: true }),
+    ).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled()
+    await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
+    await page.getByRole("button", { name: "Access", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Remove ID 42" })).toHaveCount(0)
+    expect(mutations).toEqual([])
+    page.once("dialog", (dialog) => dialog.accept())
+    await page.getByRole("button", { name: "Discard edits and reload", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    expect(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      }),
+    ).toBe(false)
+  })
+}
+
+for (const customDraft of [false, true]) {
+  test(`keeps the MCP ${customDraft ? "custom draft" : "new-server template"} through an existing name prefix`, async ({
+    page,
+  }) => {
+    await setup(page)
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: {
+          ...inventory,
+          mcp: [
+            {
+              name: "existing",
+              enabled: true,
+              exposure: "codemode",
+              connection: "not tested",
+              tools: [],
+              env: {},
+              headers: {},
+            },
+          ],
+        },
+      }),
+    )
+    await page.reload()
+    await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+    await page.getByText("Advanced server configuration JSON", { exact: true }).click()
+    const json = page.getByLabel("Server configuration JSON")
+    if (customDraft) await json.fill('{"command":"draft-server","args":["--draft"]}')
+    const draft = await json.inputValue()
+    let mutations = 0
+    page.on("request", (r) => {
+      if (r.method() !== "GET") mutations++
+    })
+    const name = page.getByLabel("MCP server name")
+    await name.pressSequentially("existing")
+    await expect(json).toHaveValue(draft)
+    await name.pressSequentially("-v2")
+    await expect(name).toHaveValue("existing-v2")
+    await expect(json).toHaveValue(draft)
+    page.once("dialog", (dialog) => dialog.dismiss())
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await expect(name).toHaveValue("existing-v2")
+    await expect(json).toHaveValue(draft)
+    page.once("dialog", (dialog) => dialog.accept())
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await expect(name).toHaveValue("existing")
+    await expect(json).toHaveValue("{}")
+    expect(mutations).toBe(0)
+  })
+}
+
+for (const transport of ["stdio", "http"]) {
+  test(`starts an empty update after explicit selection of an existing ${transport} MCP server`, async ({
+    page,
+  }) => {
+    await setup(page)
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: {
+          ...inventory,
+          mcp: [
+            {
+              name: "existing",
+              enabled: true,
+              exposure: "codemode",
+              connection: "not tested",
+              tools: [],
+              env: transport === "stdio" ? { TOKEN_A: null, TOKEN_B: null } : {},
+              headers: transport === "http" ? { TOKEN_A: null, TOKEN_B: null } : {},
+            },
+          ],
+        },
+      }),
+    )
+    await page.reload()
+    await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
+    await expect(page.getByText("Omitted keys are removed.", { exact: false })).toBeVisible()
+    const scope = transport === "stdio" ? "env" : "headers"
+    await page
+      .getByLabel("Server configuration JSON")
+      .fill(JSON.stringify({ [scope]: { TOKEN_A: null } }))
+    const saving = page.waitForRequest(
+      (r) => r.url().endsWith("/api/mcp/existing") && r.method() === "PUT",
+    )
+    await page.getByRole("button", { name: "Save MCP configuration and apply" }).click()
+    expect((await saving).postDataJSON().config).toEqual({ [scope]: { TOKEN_A: null } })
+  })
+}
+
 test("unauthorized visitor sees only passkey sign-in", async ({ page }) => {
   await setup(page, false)
   await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()

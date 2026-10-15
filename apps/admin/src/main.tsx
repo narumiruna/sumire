@@ -448,7 +448,9 @@ function ProviderEditor({
   onAdd,
   initial,
   onPending,
+  onDiscard,
 }: {
+  onDiscard(): void
   onPending(value: boolean): void
   onAdd(provider: ProviderSettings): void
   initial?: ProviderSettings
@@ -594,6 +596,9 @@ function ProviderEditor({
         >
           Set provider configuration
         </Button>
+        <Button variant="soft" onClick={onDiscard}>
+          Discard custom endpoint draft
+        </Button>
       </Flex>
       <Text as="p" size="2">
         This stages policy edits only. Use Save settings before authentication. This replaces the
@@ -628,6 +633,7 @@ function App() {
   const [auditOffset, setAuditOffset] = useState(0)
   const [chatOffset, setChatOffset] = useState(0)
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
+  const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
   const [toolName, setToolName] = useState("")
   const [setup, setSetup] = useState(initialSetup)
   const [accessToken, setAccessToken] = useState(initialAccess)
@@ -1282,8 +1288,9 @@ function App() {
             }}
           />
           <Text as="p" size="2">
-            To update a server, enter its existing name and only the fields to change. The API does
-            not return editable connection configuration. Reload checks saved settings and
+            To update an existing server, use its Edit fields button above to start an empty JSON
+            update. Enter only the fields to change. Typing a name keeps the current JSON draft. The
+            API does not return editable connection configuration. Reload checks saved settings and
             application status. It keeps this MCP draft and staged secrets. A failed request can
             still have saved its changes.
           </Text>
@@ -1317,8 +1324,10 @@ function App() {
             . Enter new secret values only in the masked field, not the JSON editor.
           </Text>
           <Text as="p">
-            Omit fields to preserve them. In env and headers, null preserves a value; an empty
-            object clears the map. Do not put secrets in commands, arguments, descriptions, or URLs.
+            Omit env or headers to preserve that map. A map in JSON replaces the whole map: include
+            every key to retain with null. Omitted keys are removed. An empty object clears the map.
+            Masked replacements preserve existing keys when JSON omits that map. Do not put secrets
+            in commands, arguments, descriptions, or URLs.
           </Text>
           <Button
             disabled={busy || dirty || localPending || !mcpName}
@@ -1440,8 +1449,12 @@ function App() {
               </Card>
             ))}
             <ProviderEditor
-              key={JSON.stringify(editingProvider) ?? "new"}
+              key={`${JSON.stringify(editingProvider) ?? "new"}:${endpointEditorVersion}`}
               initial={editingProvider}
+              onDiscard={() => {
+                setEndpointEditorVersion((version) => version + 1)
+                markPending("endpoint", false)
+              }}
               onPending={(v) => markPending("endpoint", v)}
               onAdd={(p) => {
                 update({
