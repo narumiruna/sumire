@@ -3,12 +3,13 @@ import type { ContextEvent, SessionEntry } from "@earendil-works/pi-coding-agent
 import { type TUnsafe, Type } from "typebox"
 
 export const PROGRESS_TOOL_NAME = "update_progress"
-export const PROGRESS_DETAILS_VERSION = 1
+export const PROGRESS_DETAILS_VERSION = 2
 export const PROGRESS_CONTEXT_MESSAGE_TYPE = "sumire-progress-status"
 export const PROGRESS_CONTEXT_VERSION = 1
 export const MAX_PROGRESS_STEPS = 50
-export const MAX_PROGRESS_TEXT_LENGTH = 300
-export const MAX_PROGRESS_REASON_LENGTH = 200
+// Accommodate the previous text, separator, and blocked reason without data loss.
+export const MAX_PROGRESS_TEXT_LENGTH = 503
+export const MAX_PROGRESS_TEXT_CODE_POINTS = 8_192
 
 const progressStatuses = ["pending", "in_progress", "completed", "blocked"] as const
 const resubmitGuidance = "Fix the input and resubmit the complete steps array."
@@ -22,7 +23,6 @@ const progressStatusSchema: TUnsafe<ProgressStatus> = StringEnum(progressStatuse
 export interface ProgressStep {
   text: string
   status: ProgressStatus
-  reason?: string
 }
 
 export interface ProgressDetails {
@@ -37,17 +37,10 @@ export const ProgressParameters = Type.Object(
         {
           text: Type.String({
             minLength: 1,
-            maxLength: MAX_PROGRESS_TEXT_LENGTH,
-            description: "A concise, action-oriented step",
+            maxLength: MAX_PROGRESS_TEXT_CODE_POINTS,
+            description: "A concise, action-oriented step (at most 503 grapheme clusters)",
           }),
           status: progressStatusSchema,
-          reason: Type.Optional(
-            Type.String({
-              minLength: 1,
-              maxLength: MAX_PROGRESS_REASON_LENGTH,
-              description: "Required only for blocked steps; explain what must unblock the step",
-            }),
-          ),
         },
         { additionalProperties: false },
       ),
@@ -76,10 +69,13 @@ export function validateProgressArguments(value: unknown): { steps: ProgressStep
   for (const [index, entry] of value.steps.entries()) {
     const item = index + 1
     if (!isRecord(entry)) rejectProgress(`item ${item} must be an object.`)
-    if (!hasOnlyKeys(entry, ["text", "status", "reason"])) {
+    if (!hasOnlyKeys(entry, ["text", "status"])) {
       rejectProgress(`item ${item} contains an unsupported field.`)
     }
     if (typeof entry.text !== "string") rejectProgress(`item ${item} text must be a string.`)
+    if (!hasMaxCodePointLength(entry.text, MAX_PROGRESS_TEXT_CODE_POINTS)) {
+      rejectProgress(`item ${item} text exceeds ${MAX_PROGRESS_TEXT_CODE_POINTS} code points.`)
+    }
     if (entry.text.trim().length === 0) {
       rejectProgress(`item ${item} text must contain non-whitespace text.`)
     }
@@ -92,19 +88,6 @@ export function validateProgressArguments(value: unknown): { steps: ProgressStep
 
     const status = entry.status as ProgressStatus
     if (status === "in_progress") inProgressCount += 1
-    if (status === "blocked") {
-      if (typeof entry.reason !== "string" || entry.reason.trim().length === 0) {
-        rejectProgress(`item ${item} is blocked and requires a non-whitespace reason.`)
-      }
-      if (!hasMaxGraphemeLength(entry.reason, MAX_PROGRESS_REASON_LENGTH)) {
-        rejectProgress(`item ${item} reason exceeds ${MAX_PROGRESS_REASON_LENGTH} characters.`)
-      }
-      steps.push({ text: entry.text, status, reason: entry.reason })
-      continue
-    }
-    if (Object.hasOwn(entry, "reason")) {
-      rejectProgress(`item ${item} may include reason only when status is blocked.`)
-    }
     steps.push({ text: entry.text, status })
   }
 
@@ -116,25 +99,54 @@ export function parseProgressDetails(value: unknown): ProgressDetails | undefine
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, ["version", "steps"]) ||
-    value.version !== PROGRESS_DETAILS_VERSION
+    (value.version !== 1 && value.version !== PROGRESS_DETAILS_VERSION)
   ) {
     return undefined
   }
   try {
     return {
       version: PROGRESS_DETAILS_VERSION,
-      steps: validateProgressArguments({ steps: value.steps }).steps,
+      steps: validateProgressArguments({
+        steps: value.version === 1 ? migrateLegacySteps(value.steps) : value.steps,
+      }).steps,
     }
   } catch {
     return undefined
   }
 }
 
+function migrateLegacySteps(value: unknown): unknown {
+  if (!Array.isArray(value)) return value
+  return value.map((step) => {
+    if (!isRecord(step) || !hasOnlyKeys(step, ["text", "status", "reason"])) {
+      rejectProgress("invalid legacy step.")
+    }
+    if (
+      typeof step.text !== "string" ||
+      !step.text.trim() ||
+      !hasMaxGraphemeLength(step.text, 300)
+    ) {
+      rejectProgress("invalid legacy text.")
+    }
+    if (step.status !== "blocked") {
+      if (Object.hasOwn(step, "reason")) rejectProgress("invalid legacy reason.")
+      return step
+    }
+    if (
+      typeof step.reason !== "string" ||
+      !step.reason.trim() ||
+      !hasMaxGraphemeLength(step.reason, 200)
+    ) {
+      rejectProgress("invalid legacy blocked reason.")
+    }
+    return { text: `${step.text} — ${step.reason}`, status: step.status }
+  })
+}
+
 export function cloneProgressSteps(steps: readonly ProgressStep[]): ProgressStep[] {
   return steps.map((step) => ({
     text: step.text,
     status: step.status,
-    ...(step.reason === undefined ? {} : { reason: step.reason }),
   }))
 }
 
@@ -219,10 +231,7 @@ function progressStepsEqual(
   return (
     left.length === right.length &&
     left.every(
-      (step, index) =>
-        step.text === right[index]?.text &&
-        step.status === right[index]?.status &&
-        step.reason === right[index]?.reason,
+      (step, index) => step.text === right[index]?.text && step.status === right[index]?.status,
     )
   )
 }
@@ -231,7 +240,17 @@ function rejectProgress(message: string): never {
   throw new Error(`Progress update rejected: ${message} ${resubmitGuidance}`)
 }
 
+function hasMaxCodePointLength(value: string, maximum: number): boolean {
+  let count = 0
+  for (const _character of value) {
+    count += 1
+    if (count > maximum) return false
+  }
+  return true
+}
+
 function hasMaxGraphemeLength(value: string, maximum: number): boolean {
+  if (!hasMaxCodePointLength(value, MAX_PROGRESS_TEXT_CODE_POINTS)) return false
   let count = 0
   for (const _character of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
     value,

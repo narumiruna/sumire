@@ -16,7 +16,7 @@ export const ProgressDoc = defineDoc({
   scope: "conversation",
   history: "rewindable",
   fork: "asOf",
-  initial: () => ({ steps: [] as Array<{ text: string; status: string; reason?: string }> }),
+  initial: () => ({ steps: [] as Array<{ text: string; status: string }> }),
 })
 
 export const CodemodeStoreDoc = defineDoc({

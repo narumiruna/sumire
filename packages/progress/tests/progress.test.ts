@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest"
 
 import progressExtension from "../src/progress-extension.js"
 import {
+  MAX_PROGRESS_TEXT_CODE_POINTS,
   PROGRESS_CONTEXT_MESSAGE_TYPE,
   PROGRESS_DETAILS_VERSION,
   PROGRESS_TOOL_NAME,
+  ProgressParameters,
   type ProgressStep,
   parseProgressDetails,
   reconcileProgressContext,
@@ -42,14 +44,14 @@ describe("progress state", () => {
         steps: [
           { text: "inspect", status: "completed" },
           { text: "implement", status: "in_progress" },
-          { text: "release", status: "blocked", reason: "approval" },
+          { text: "release — waiting for approval", status: "blocked" },
         ],
       }),
     ).toEqual({
       steps: [
         { text: "inspect", status: "completed" },
         { text: "implement", status: "in_progress" },
-        { text: "release", status: "blocked", reason: "approval" },
+        { text: "release — waiting for approval", status: "blocked" },
       ],
     })
     expect(() =>
@@ -61,11 +63,79 @@ describe("progress state", () => {
       }),
     ).toThrow(/at most one in_progress/iu)
     expect(() =>
-      validateProgressArguments({ steps: [{ text: "release", status: "blocked" }] }),
-    ).toThrow(/requires a non-whitespace reason/iu)
+      validateProgressArguments({
+        steps: [{ text: "release", status: "blocked", reason: "approval" }],
+      }),
+    ).toThrow(/unsupported field/iu)
     expect(() => validateProgressArguments({ steps: [{ text: " ", status: "pending" }] })).toThrow(
       /non-whitespace text/iu,
     )
+  })
+
+  it("exposes only text and status and enforces the grapheme limit", () => {
+    expect(Object.keys(ProgressParameters.properties.steps.items.properties)).toEqual([
+      "text",
+      "status",
+    ])
+    const text = "👩‍💻".repeat(503)
+    expect(validateProgressArguments({ steps: [{ text, status: "blocked" }] }).steps[0]?.text).toBe(
+      text,
+    )
+    expect(() =>
+      validateProgressArguments({
+        steps: [{ text: `${text}a`, status: "pending" }],
+      }),
+    ).toThrow(/503/iu)
+  })
+
+  it("rejects oversized combining sequences before storage or publication", () => {
+    expect(ProgressParameters.properties.steps.items.properties.text).toMatchObject({
+      maxLength: MAX_PROGRESS_TEXT_CODE_POINTS,
+    })
+    const oversized = `a${"\u0301".repeat(MAX_PROGRESS_TEXT_CODE_POINTS)}`
+    expect(() =>
+      validateProgressArguments({
+        steps: [{ text: oversized, status: "pending" }],
+      }),
+    ).toThrow(/code points/iu)
+    expect(
+      parseProgressDetails({
+        version: 1,
+        steps: [{ text: "release", status: "blocked", reason: oversized }],
+      }),
+    ).toBeUndefined()
+    expect(
+      parseProgressDetails({
+        version: PROGRESS_DETAILS_VERSION,
+        steps: [{ text: oversized, status: "blocked" }],
+      }),
+    ).toBeUndefined()
+  })
+
+  it("migrates legacy blocked reasons without losing text", () => {
+    const legacy = {
+      version: 1,
+      steps: [{ text: "a".repeat(300), status: "blocked", reason: "b".repeat(200) }],
+    }
+    const migrated = parseProgressDetails(legacy)
+    expect(migrated).toEqual({
+      version: PROGRESS_DETAILS_VERSION,
+      steps: [{ text: `${"a".repeat(300)} — ${"b".repeat(200)}`, status: "blocked" }],
+    })
+    expect(parseProgressDetails(migrated)).toEqual(migrated)
+    expect(reconstructProgress([resultEntry(legacy, "legacy")])).toEqual(migrated?.steps)
+    expect(
+      parseProgressDetails({
+        version: PROGRESS_DETAILS_VERSION,
+        steps: legacy.steps,
+      }),
+    ).toBeUndefined()
+    expect(
+      parseProgressDetails({
+        version: 1,
+        steps: [{ text: "release", status: "blocked", reason: " " }],
+      }),
+    ).toBeUndefined()
   })
 
   it("parses and restores only successful canonical results", () => {

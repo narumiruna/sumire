@@ -133,7 +133,7 @@ export class ChatSessionRegistry {
       unresolvedReplyPrompt?: string
       onAccepted?: () => void
       onProgress?: (steps: readonly ProgressStep[]) => void
-      onActivity?: (activity: SubmissionActivity) => void
+      onActivity?: (activity: SubmissionActivity, toolName?: string) => void
       isCurrent?: () => boolean
     } = {},
   ): Promise<SubmissionResult> {
@@ -193,7 +193,7 @@ export class ChatSessionRegistry {
         const activity = submissionActivity(event)
         if (activity) {
           try {
-            options.onActivity(activity)
+            options.onActivity(activity, "toolName" in event ? event.toolName : undefined)
           } catch (error) {
             this.logger.warn("Activity listener failed", error)
           }
@@ -804,7 +804,7 @@ export function asSessionCreator(factory: {
 }
 
 function submissionActivity(event: AgentSessionEvent): SubmissionActivity | undefined {
-  if (event.type === "agent_start") return "model"
+  if (event.type === "agent_start" || event.type === "turn_start") return "model"
   if (event.type === "tool_execution_start" && event.toolName !== PROGRESS_TOOL_NAME) return "tool"
   if (event.type === "tool_execution_end" && event.toolName !== PROGRESS_TOOL_NAME)
     return "tool_finished"
