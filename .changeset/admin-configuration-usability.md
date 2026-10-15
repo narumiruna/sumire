@@ -2,4 +2,4 @@
 "@narumitw/sumire-admin": patch
 ---
 
-Clarify configuration scope, separate save outcomes, and inherited chat settings. Add searchable chat selection, accessible access rows, pending-edit protection, MCP authorization summaries, and readable audit history without changing API or authorization semantics. Track pending changes from advanced provider controls and clear matching MCP drafts after deletion.
+Clarify configuration scope, separate save outcomes, and inherited chat settings. Add searchable chat selection, accessible access rows, pending-edit protection, MCP authorization summaries, and readable audit history without changing API or authorization semantics. Track pending changes from advanced provider controls and clear matching MCP drafts after deletion. Keep MCP drafts and staged secrets while reloading saved state after an uncertain save or deletion.

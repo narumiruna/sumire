@@ -1246,7 +1246,7 @@ for (const scenario of [
       await expect(page.getByText("Pending secret fields:", { exact: false })).toContainText(
         "TOKEN",
       )
-      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
     }
     expect(
       await page.evaluate(() => {
@@ -1255,5 +1255,103 @@ for (const scenario of [
         return event.defaultPrevented
       }),
     ).toBe(scenario.draft !== "obsolete" || scenario.fails)
+  })
+}
+
+for (const method of ["PUT", "DELETE"] as const) {
+  test(`reloads saved state without discarding an MCP draft after ${method} application fails`, async ({
+    page,
+  }) => {
+    await setup(page)
+    let revision = 1
+    let status = "applied"
+    let attempts = 0
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({
+        json: { revision, applied: status === "applied" ? revision : revision - 1, status, policy },
+      }),
+    )
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: {
+          ...inventory,
+          mcp:
+            method === "DELETE" && revision > 1
+              ? []
+              : [
+                  {
+                    name: "existing",
+                    enabled: true,
+                    exposure: "codemode",
+                    connection: "not tested",
+                    tools: [],
+                    env: { TOKEN: null },
+                    headers: {},
+                  },
+                ],
+        },
+      }),
+    )
+    await page.route("**/api/mcp/existing", (route) => {
+      expect(route.request().method()).toBe(method)
+      expect(route.request().postDataJSON().revision).toBe(1)
+      if (method === "PUT")
+        expect(route.request().postDataJSON().config.env.TOKEN).toBe("uncertain-fixture")
+      attempts++
+      revision = 2
+      status = "failed"
+      return route.fulfill({ status: 500, json: { error: "Application failed after saving" } })
+    })
+    await page.route("**/api/apply", (route) => {
+      expect(route.request().method()).toBe("POST")
+      status = "applied"
+      return route.fulfill({ json: { ok: true } })
+    })
+    await page.reload()
+    await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
+    await page.getByLabel("Secret field name").fill("TOKEN")
+    await page.getByLabel("New secret value").fill("uncertain-fixture")
+    await page.getByRole("button", { name: "Set pending secret replacement", exact: true }).click()
+    if (method === "PUT")
+      await page
+        .getByRole("button", { name: "Save MCP configuration and apply", exact: true })
+        .click()
+    else {
+      await page.getByRole("button", { name: "Delete existing", exact: true }).click()
+      await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
+    }
+    await expect(page.getByRole("alert")).toContainText("Application failed after saving")
+    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await expect(
+      page.getByText("Saved, but application failed. Retry application.", { exact: true }),
+    ).toBeVisible()
+    await page.getByText("Revision details", { exact: true }).click()
+    await expect(page.getByText("Saved 2 · Applied 1 · failed", { exact: false })).toBeVisible()
+    const checkDraft = async () => {
+      await expect(page.getByLabel("MCP server name")).toHaveValue("existing")
+      await expect(page.getByLabel("Server configuration JSON")).toHaveValue('{"enabled":false}')
+      await expect(page.getByText("Pending MCP configuration", { exact: true })).toBeVisible()
+      await expect(page.getByText("Pending secret fields:", { exact: false })).toContainText(
+        "TOKEN",
+      )
+      await expect(page.getByLabel("Server configuration JSON")).not.toHaveValue(
+        /uncertain-fixture/,
+      )
+      expect(
+        await page.evaluate(() => {
+          const event = new Event("beforeunload", { cancelable: true })
+          window.dispatchEvent(event)
+          return event.defaultPrevented
+        }),
+      ).toBe(true)
+    }
+    await checkDraft()
+    await page.getByRole("button", { name: "Retry application", exact: true }).click()
+    await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+    await checkDraft()
+    expect(attempts).toBe(1)
   })
 }

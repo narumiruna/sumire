@@ -776,7 +776,7 @@ function App() {
         <Flex gap="2">
           <Button
             variant="soft"
-            disabled={busy || dirty || mcpDirty || localPending}
+            disabled={busy || dirty || localPending}
             onClick={() => void run(load)}
           >
             <ReloadIcon />
@@ -1283,7 +1283,9 @@ function App() {
           />
           <Text as="p" size="2">
             To update a server, enter its existing name and only the fields to change. The API does
-            not return editable connection configuration.
+            not return editable connection configuration. Reload checks saved settings and
+            application status. It keeps this MCP draft and staged secrets. A failed request can
+            still have saved its changes.
           </Text>
           <details className="provider-advanced">
             <summary>Advanced server configuration JSON</summary>
