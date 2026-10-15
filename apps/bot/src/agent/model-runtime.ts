@@ -28,7 +28,7 @@ export async function createBotModelRuntime(
 
   if (!settings.admin && !canLogin && (await modelRuntime.getAvailable()).length === 0) {
     throw new Error(
-      "Pi requires credentials for an available chat model or BOT_ADMIN_ID explicitly listed in BOT_WHITELIST for /login",
+      "Pi requires credentials for an available chat model or BOT_ADMIN_ID explicitly listed in BOT_WHITELIST for credential setup",
     )
   }
 

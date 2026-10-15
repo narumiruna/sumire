@@ -61,7 +61,6 @@ export async function startApplication(): Promise<void> {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
       control: control?.store,
-      login: piFactory.login,
       recoverChats: () => piFactory.listChats(),
     })
 

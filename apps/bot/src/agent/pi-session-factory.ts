@@ -186,7 +186,7 @@ export async function createPiSessionFactory(
           (server) => !policy || policy.servers.includes(server.name),
         ),
       }
-      if (!selectedModel) throw new Error("尚未設定 Pi 驗證，請管理員在私聊使用 /login。")
+      if (!selectedModel) throw new Error("尚未設定 Pi 驗證，請管理員在 Web UI 設定 provider。")
       const directory = path.join(settings.botSessionLogDir, String(chatId), "durable")
       await mkdir(directory, { recursive: true, mode: 0o700 })
       await chmod(directory, 0o700)

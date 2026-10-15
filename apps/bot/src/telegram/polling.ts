@@ -57,9 +57,7 @@ export function runTelegramPolling(
     {
       runner: {
         fetch: {
-          allowed_updates: channelImagesEnabled
-            ? ["message", "callback_query", "channel_post"]
-            : ["message", "callback_query"],
+          allowed_updates: channelImagesEnabled ? ["message", "channel_post"] : ["message"],
         },
         // Avoid the runner's raw console output, which can expose bot tokens.
         silent: true,

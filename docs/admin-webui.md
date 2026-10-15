@@ -98,7 +98,7 @@ Saving settings writes a revision and an audit record together. Runtime applicat
 | Restart or branch restoration | Restore current model settings and enforce current permissions; do not replay withdrawn unsafe work. |
 | External action already started | Cancellation cannot reverse an external effect. |
 
-Telegram `/model` and `/thinking` use the same persisted chat selection as the WebUI. They cannot select models outside the effective allowlist. `/reset` removes conversation state but not administrator-owned chat settings. Model requests, compaction, native tools, codemode's native tool calls, and MCP calls check current authorization.
+Configure providers, credentials, chat models, and thinking levels in the WebUI. Telegram does not provide `/model`, `/provider`, `/login`, or `/thinking`. `/reset` removes conversation state but not administrator-owned chat settings. Model requests, compaction, native tools, codemode's native tool calls, and MCP calls check current authorization.
 
 ## Model providers
 

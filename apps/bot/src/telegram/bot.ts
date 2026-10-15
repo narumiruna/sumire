@@ -1,5 +1,4 @@
 import type { RunnerHandle } from "@grammyjs/runner"
-import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import { createPublicUrlLoader, type PublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
@@ -28,7 +27,6 @@ import {
   downloadTelegramImage,
   TelegramDownloadTooLargeError,
 } from "./files.js"
-import { registerTelegramLogin } from "./login.js"
 import {
   audioReferences,
   captionCommandArguments,
@@ -44,7 +42,7 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
-import { registerTelegramModelCommands } from "./model-commands.js"
+import { registerOAuthCallbackGuard } from "./oauth-callbacks.js"
 import { runTelegramPolling } from "./polling.js"
 import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
 import { recoverTelegramResponses } from "./recovery.js"
@@ -57,7 +55,6 @@ export interface TelegramAgentBot {
 
 interface TelegramBotDependencies {
   control?: import("../admin/store.js").AdminStore
-  login?: OAuthLoginClient
   recoverChats?: () => Promise<number[]>
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
@@ -200,8 +197,7 @@ export function createTelegramAgentBot(
     await next()
   })
 
-  const loginBridge = registerTelegramLogin(bot, settings, logger, dependencies.login)
-  registerTelegramModelCommands(bot, sessions, logger)
+  registerOAuthCallbackGuard(bot)
 
   bot.on("channel_post", async (context) => {
     const message = context.channelPost as unknown as TelegramMessageLike
@@ -233,15 +229,12 @@ export function createTelegramAgentBot(
         "在群組中 @mention 我或回覆我的訊息即可提問；私聊可直接傳送訊息。",
         "/f <內容> — 將內容或回覆的訊息整理成台灣繁體中文文章",
         "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
-        "/model — 選擇這個 chat 的 model（或 /model <provider/model>）",
-        "/thinking — 選擇 thinking level（或 /thinking <level>）",
-        "/reset — 清除目前 chat 的 Pi session 與 model/thinking 設定",
+        "/reset — 清除目前 chat 的對話狀態",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
         ...(context.chat.type === "private" && isAdminSender(context, settings.botAdminId)
           ? ["/admin — Open the administration WebUI"]
           : []),
-        ...(dependencies.login ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"] : []),
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
           : []),
@@ -1197,14 +1190,9 @@ export function createTelegramAgentBot(
           { command: "help", description: "查看可用指令" },
           { command: "f", description: "將內容整理成文章" },
           { command: "t", description: "查詢股票、虛擬貨幣或匯率" },
-          { command: "model", description: "選擇這個 chat 的 model" },
-          { command: "thinking", description: "選擇 thinking level" },
-          { command: "reset", description: "清除這個 chat 的 session 與設定" },
+          { command: "reset", description: "清除這個 chat 的對話狀態" },
           { command: "cancel", description: "取消目前任務" },
           { command: "id", description: "顯示 chat ID 與 user ID" },
-          ...(dependencies.login
-            ? [{ command: "login", description: "管理員在私聊登入 OpenAI" }]
-            : []),
         ]
         await bot.api.setMyCommands(commands)
         if (settings.botAdminId !== undefined)
@@ -1235,7 +1223,6 @@ export function createTelegramAgentBot(
     },
     async stop() {
       stopping = true
-      await loginBridge.stop()
       if (!runner) return
       await runner.stop()
       runner = undefined
