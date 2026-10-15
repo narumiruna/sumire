@@ -18,7 +18,13 @@ import {
 } from "@earendil-works/pi-durable"
 import { createBotCodemodeExtension } from "./codemode.js"
 import { CodemodeStoreDoc } from "./durable-state.js"
-import { collectTools, executeNative, jsonValue, type NativeTool } from "./durable-tools.js"
+import {
+  collectTools,
+  executeNative,
+  isCodemodeCallable,
+  jsonValue,
+  type NativeTool,
+} from "./durable-tools.js"
 
 export async function createDurableCodemode(
   nativeTools: NativeTool[],
@@ -28,8 +34,7 @@ export async function createDurableCodemode(
   ready: (signal?: AbortSignal) => Promise<void> = () => Promise.resolve(),
   authorize: () => void = () => {},
 ) {
-  const callableTools = () =>
-    nativeTools.filter((tool) => tool.exposure !== "model-only" && tool.exposure !== "hidden")
+  const callableTools = () => nativeTools.filter(isCodemodeCallable)
   const generations = new WeakMap<NativeTool, string>()
   const generationOf = (tool: NativeTool) => {
     let generation = generations.get(tool)

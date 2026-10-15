@@ -10,6 +10,10 @@ import { defineTool, type ToolExecutionResult } from "@earendil-works/pi-durable
 
 export type NativeTool = ToolDefinition<TSchema>
 
+export function isCodemodeCallable(tool: Pick<NativeTool, "exposure">): boolean {
+  return tool.exposure !== "model-only" && tool.exposure !== "hidden"
+}
+
 /** Discard optional undefined fields before values cross durable's JSON-only storage boundary. */
 export function jsonValue<T>(value: T): T & JsonValue {
   return JSON.parse(JSON.stringify(value))

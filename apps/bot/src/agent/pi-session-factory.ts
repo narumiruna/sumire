@@ -26,7 +26,7 @@ import { traceUrlLoad } from "../url-telemetry.js"
 import { createDurableCodemode } from "./durable-codemode.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
-import { adaptTool, codingTools, collectTools } from "./durable-tools.js"
+import { adaptTool, codingTools, collectTools, isCodemodeCallable } from "./durable-tools.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -197,14 +197,20 @@ export async function createPiSessionFactory(
             section("tool_access", ({ agent }) => {
               const direct = agent.tools.map((tool) => tool.name)
               const indirect = direct.includes("codemode")
-                ? nativeTools.map((tool) => tool.name).filter((name) => !direct.includes(name))
+                ? nativeTools
+                    .filter(isCodemodeCallable)
+                    .map((tool) => tool.name)
+                    .filter((name) => !direct.includes(name))
                 : []
               return [
                 "This chat's current tool access is listed below. Skills and conversation history describe capabilities, not tool authorization.",
                 `Direct tools: ${direct.join(", ") || "none"}.`,
                 `Additional tools through codemode: ${indirect.join(", ") || "none"}.`,
                 "When asked to list tools, report only this chat's current tools. A skill or MCP server is not itself a callable tool.",
-                "Use an available tool for the request before claiming it cannot run. If the required tool is absent, explain that it is not enabled for this chat and ask the administrator to authorize it in the Web UI. Do not ask the user to supply a tool result or infer that the source cannot be read.",
+                "Use an available tool for the request before claiming it cannot run. Do not ask the user to supply a tool result or infer that the source cannot be read.",
+                direct.includes("codemode") && permittedMcp.servers.length > 0
+                  ? "MCP server access is authorized for this chat. A missing MCP tool can mean a discovery or connection failure, an empty server tool list, or a tool policy limit. For a missing MCP tool, use codemode searchTools/describeNamespace once to retry discovery. Only call tools returned by discovery. If the tool is still absent, report that discovery did not provide it and ask the administrator to check the connection and tool policy. Do not claim that missing discovery results prove missing authorization."
+                  : "If the required tool is absent, explain that it is not enabled for this chat and ask the administrator to authorize it in the Web UI.",
               ].join("\n")
             }),
           ],
@@ -293,7 +299,7 @@ export async function createPiSessionFactory(
         logger.info(`Pi chat tool access chat_id=${chatId}`, {
           tools: session.getActiveToolNames(),
           codemodeTools: control.store.allowsTool(chatId, "codemode")
-            ? nativeTools.map((tool) => tool.name)
+            ? nativeTools.filter(isCodemodeCallable).map((tool) => tool.name)
             : [],
         })
         return session

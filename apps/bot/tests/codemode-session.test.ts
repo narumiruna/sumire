@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import { reconstructProgress } from "@narumitw/sumire-progress"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
@@ -29,7 +29,12 @@ describe("codemode through Bot Pi sessions", () => {
       path.join(extensionDirectory, "untrusted.js"),
       "throw new Error('must not load')",
     )
+    const info = vi.spyOn(fixture.logger, "info")
     const session = await fixture.createSession()
+    expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
+      tools: expect.arrayContaining(["codemode", "read_image", "update_progress"]),
+      codemodeTools: ["read", "bash", "edit", "write", "read_url_content"],
+    })
     const result = await fixture.script(
       session,
       `return { models: typeof models, tools: ALL_TOOLS.map(tool => tool.name), progress: ALL_TOOLS.some(tool => tool.name === 'update_progress'), image: ALL_TOOLS.some(tool => tool.name === 'read_image') };`,

@@ -33,7 +33,12 @@ describe("durable bot runtime", () => {
       state.policy.defaults.tools = tools
       store.save(state.policy, state.revision, "7")
       store.applied(state.revision + 1, true)
+      const info = vi.spyOn(fixture.logger, "info")
       const session = await fixture.createSession()
+      expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
+        tools,
+        codemodeTools: [],
+      })
       fixture.enqueueAnswer("Tool access checked")
       await session.prompt("list tools")
       expect(session.getActiveToolNames()).toEqual(tools)
@@ -46,6 +51,9 @@ describe("durable bot runtime", () => {
       )
       expect(JSON.stringify(request?.messages)).toContain(
         "Skills and conversation history describe capabilities, not tool authorization.",
+      )
+      expect(JSON.stringify(request?.messages)).not.toContain(
+        "MCP server access is authorized for this chat.",
       )
       expect(request?.tools?.map((tool) => tool.function.name) ?? []).toEqual(tools)
       if (tools.includes("read_url_content")) {
