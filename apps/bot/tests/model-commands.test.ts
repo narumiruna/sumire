@@ -1,10 +1,10 @@
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from "grammy/types"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { runTelegramPolling } from "../src/telegram/polling.js"
+import { approvedStore } from "./helpers/admin-store.js"
 
 vi.mock("../src/telegram/polling.js", () => ({
   runTelegramPolling: vi.fn(() => ({ task: async () => {}, stop: async () => {} })),
@@ -80,10 +80,10 @@ function setup() {
     submit: vi.fn(),
   }
   const telegram = createTelegramAgentBot(
-    loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7" }),
+    loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
     sessions as unknown as ChatSessionRegistry,
     logger,
-    { botInfo },
+    { control: approvedStore([7, -100]), botInfo },
   )
   const calls: Array<{ method: string; payload: Record<string, unknown> }> = []
   telegram.bot.api.config.use(async (_previous, method, payload) => {

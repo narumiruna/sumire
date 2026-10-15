@@ -31,7 +31,7 @@ describe("application cleanup", () => {
 describe("document converter startup", () => {
   it("does not load the native adapter when document input is disabled", async () => {
     const create = vi.fn()
-    const settings = { ...loadSettings({}), botDocumentInputEnabled: false }
+    const settings = { ...loadSettings({ BOT_ADMIN_ID: "7" }), botDocumentInputEnabled: false }
 
     await expect(createConfiguredDocumentConverter(settings, create)).resolves.toBeUndefined()
     expect(create).not.toHaveBeenCalled()
@@ -41,7 +41,7 @@ describe("document converter startup", () => {
     const converter: DocumentConverter = { convert: vi.fn() }
     const create = vi.fn(async () => converter)
     const settings = {
-      ...loadSettings({}),
+      ...loadSettings({ BOT_ADMIN_ID: "7" }),
       botDocumentConversionTimeoutSeconds: 12.5,
       botDocumentMaxMarkdownChars: 1234,
       botDocumentMaxConcurrentConversions: 3,
@@ -59,11 +59,11 @@ describe("document converter startup", () => {
     const cause = new Error("unsupported architecture")
     const create = vi.fn(async () => Promise.reject(cause))
 
-    await expect(createConfiguredDocumentConverter(loadSettings({}), create)).rejects.toMatchObject(
-      {
-        message: expect.stringContaining("use a supported deployment platform"),
-        cause,
-      },
-    )
+    await expect(
+      createConfiguredDocumentConverter(loadSettings({ BOT_ADMIN_ID: "7" }), create),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("use a supported deployment platform"),
+      cause,
+    })
   })
 })

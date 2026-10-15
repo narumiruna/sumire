@@ -1,7 +1,6 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { UserFromGetMe } from "grammy/types"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
 import type { DurableSession } from "../src/agent/durable-session.js"
 import { OutboxDoc } from "../src/agent/durable-state.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
@@ -9,6 +8,7 @@ import { loadSettings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { runTelegramPolling } from "../src/telegram/polling.js"
+import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 vi.mock("../src/telegram/polling.js", () => ({
@@ -49,10 +49,12 @@ describe("Telegram durable recovery delivery", () => {
         if (phase === "recovery") await interrupted()
       })
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         { recover } as unknown as ChatSessionRegistry,
         logger,
         {
+          control: approvedStore([7, 123, -100]),
+
           botInfo,
           recoverChats: async () => {
             if (phase === "discovery") await interrupted()
@@ -93,6 +95,7 @@ describe("Telegram durable recovery delivery", () => {
         },
         fixture.settings.botSessionLogDir,
         logger,
+        { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
       )
       const recordDelivery = vi.spyOn(sessions, "recordDelivery")
       const publish = vi.fn(async () => `https://morsel.test/s/${"a".repeat(43)}`)
@@ -100,7 +103,11 @@ describe("Telegram durable recovery delivery", () => {
         { ...fixture.settings, botToken: "test-token" },
         sessions,
         logger,
-        { botInfo, morselPublisher: { isConfigured: true, publish } },
+        {
+          control: approvedStore([7, 123, -100]),
+          botInfo,
+          morselPublisher: { isConfigured: true, publish },
+        },
       )
       const texts: unknown[] = []
       telegram.bot.api.config.use(async (_previous, _method, payload) => {
@@ -166,10 +173,12 @@ describe("Telegram durable recovery delivery", () => {
       const sessions = { recover, recordDelivery } as unknown as ChatSessionRegistry
       const publish = vi.fn(async () => `https://morsel.test/s/${"a".repeat(43)}`)
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         sessions,
         logger,
         {
+          control: approvedStore([7, 123, -100]),
+
           botInfo,
           recoverChats: async () => [7],
           morselPublisher: { isConfigured: true, publish },
@@ -186,14 +195,18 @@ describe("Telegram durable recovery delivery", () => {
       try {
         await telegram.start()
         expect(handled).toBe(true)
-        expect(calls.map((call) => call.method)).toEqual(["setMyCommands", "editMessageText"])
-        expect(calls[1]?.payload).toMatchObject({ chat_id: 7, message_id: 11 })
+        expect(calls.map((call) => call.method)).toEqual([
+          "setMyCommands",
+          "setMyCommands",
+          "editMessageText",
+        ])
+        expect(calls[2]?.payload).toMatchObject({ chat_id: 7, message_id: 11 })
         if (mode === "publish") {
           expect(publish).toHaveBeenCalledWith("Recovered answer")
-          expect(calls[1]?.payload.text).toContain("https://morsel.test/s/")
+          expect(calls[2]?.payload.text).toContain("https://morsel.test/s/")
         } else {
           expect(publish).not.toHaveBeenCalled()
-          expect(calls[1]?.payload.text).toBe("Recovered answer")
+          expect(calls[2]?.payload.text).toBe("Recovered answer")
         }
         expect(recordDelivery).toHaveBeenCalledWith(7, checkpoint, [11])
       } finally {
@@ -216,16 +229,16 @@ describe("Telegram durable recovery delivery", () => {
       ).toBe(false)
     }
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       { recover, recordDelivery } as unknown as ChatSessionRegistry,
       logger,
-      { botInfo, recoverChats: async () => [7] },
+      { control: approvedStore([7, 123, -100]), botInfo, recoverChats: async () => [7] },
     )
     const api = vi.fn(async (..._args: unknown[]) => ({ ok: true, result: true }))
     telegram.bot.api.config.use(api as never)
     try {
       await telegram.start()
-      expect(api).toHaveBeenCalledOnce()
+      expect(api).toHaveBeenCalledTimes(2)
       expect(api.mock.calls[0]?.[1]).toBe("setMyCommands")
       expect(recordDelivery).not.toHaveBeenCalled()
     } finally {

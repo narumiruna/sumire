@@ -20,30 +20,8 @@ const optionalTelegramUserId = z.preprocess(
     .optional(),
 )
 
-const csvIntegers = z
-  .string()
-  .optional()
-  .transform((value, context) => {
-    const values = new Set<number>()
-    for (const item of (value ?? "").split(",")) {
-      const normalized = item.trim()
-      if (!normalized) continue
-      const parsed = Number(normalized)
-      if (!Number.isSafeInteger(parsed)) {
-        context.addIssue({
-          code: "custom",
-          message: `Expected an integer, received ${JSON.stringify(normalized)}`,
-        })
-        return z.NEVER
-      }
-      values.add(parsed)
-    }
-    return values
-  })
-
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
-  BOT_WHITELIST: csvIntegers,
   BOT_ADMIN_ID: optionalTelegramUserId,
   LOGFIRE_TOKEN: optionalString,
   MORSEL_API_KEY: optionalString,
@@ -53,12 +31,11 @@ const environmentSchema = z.object({
 })
 
 export interface Settings {
-  admin?: AdminConfig
+  admin: AdminConfig
   projectRoot: string
   botWorkdir: string
   botToken: string
-  botWhitelist: ReadonlySet<number>
-  botAdminId?: number
+  botAdminId: number
   botMcpConfigPath: string
   botCodemodeTimeoutSeconds: number
   botMaxConsecutiveRepliesToBots: number
@@ -111,34 +88,30 @@ export function loadSettings(
 ): Settings {
   const parsed = environmentSchema.parse(environment)
   const root = path.resolve(projectRoot)
-  let admin: AdminConfig | undefined
-  if (parsed.ADMIN_ORIGIN || parsed.BOT_ADMIN_ID) {
-    if (!parsed.BOT_ADMIN_ID) throw new Error("Admin requires BOT_ADMIN_ID")
-    const port = z.coerce.number().int().min(1).max(65535).default(17465).parse(parsed.ADMIN_PORT)
-    const origin = new URL(parsed.ADMIN_ORIGIN ?? `http://localhost:${port}`)
-    if (
-      (parsed.ADMIN_ORIGIN &&
-        (origin.protocol !== "https:" || origin.origin !== parsed.ADMIN_ORIGIN)) ||
-      origin.username ||
-      origin.password
-    )
-      throw new Error("ADMIN_ORIGIN must be an HTTPS origin without a trailing slash")
-    admin = {
-      origin: origin.origin,
-      port,
-      host: parsed.ADMIN_HOST,
-      assets: path.join(root, "apps/admin/dist"),
-    }
+  if (!parsed.BOT_ADMIN_ID) throw new Error("BOT_ADMIN_ID is required")
+  const port = z.coerce.number().int().min(1).max(65535).default(17465).parse(parsed.ADMIN_PORT)
+  const origin = new URL(parsed.ADMIN_ORIGIN ?? `http://localhost:${port}`)
+  if (
+    (parsed.ADMIN_ORIGIN &&
+      (origin.protocol !== "https:" || origin.origin !== parsed.ADMIN_ORIGIN)) ||
+    origin.username ||
+    origin.password
+  )
+    throw new Error("ADMIN_ORIGIN must be an HTTPS origin without a trailing slash")
+  const admin: AdminConfig = {
+    origin: origin.origin,
+    port,
+    host: parsed.ADMIN_HOST,
+    assets: path.join(root, "apps/admin/dist"),
   }
   return {
-    ...(admin ? { admin } : {}),
+    admin,
     projectRoot: root,
     botWorkdir: path.resolve(workdir),
     botToken: parsed.BOT_TOKEN,
-    botWhitelist: parsed.BOT_WHITELIST,
     botMcpConfigPath: path.join(root, "mcp.json"),
     botCodemodeTimeoutSeconds: 300,
-    ...(parsed.BOT_ADMIN_ID !== undefined ? { botAdminId: parsed.BOT_ADMIN_ID } : {}),
+    botAdminId: parsed.BOT_ADMIN_ID,
     botMaxConsecutiveRepliesToBots: 1,
     botGroupPassiveContextEnabled: true,
     botSkillsDir: path.resolve(root, "skills"),

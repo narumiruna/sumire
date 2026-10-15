@@ -20,47 +20,39 @@ export async function startApplication(): Promise<void> {
     process.argv.includes("--verbose") || process.argv.includes("-v"),
     settings.logfireToken,
   )
+  let adminStore: AdminStore | undefined
   let control: { store: AdminStore; mcp: McpAdmin } | undefined
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
   try {
-    if (settings.admin) {
-      const store = new AdminStore(
-        path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
-        settings.botWhitelist,
-        settings.botAdminId,
-      )
-      const mcp = new McpAdmin(store, settings.botWorkdir)
-      control = { store, mcp }
-      await mcp.import(settings.botMcpConfigPath)
-    }
+    const store = new AdminStore(
+      path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
+      settings.botAdminId,
+    )
+    adminStore = store
+    const mcp = new McpAdmin(store, settings.botWorkdir)
+    control = { store, mcp }
+    await mcp.import(settings.botMcpConfigPath)
     const documentConverter = await createConfiguredDocumentConverter(settings)
     const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
-    const piFactory = await createPiSessionFactory(
-      settings,
-      logger,
-      channelImages,
-      undefined,
-      control,
-    )
+    const piFactory = await createPiSessionFactory(settings, logger, control, channelImages)
     const registry = new ChatSessionRegistry(
       asSessionCreator(piFactory),
       settings.botSessionLogDir,
       logger,
       {
-        control: control?.store,
+        control: store,
         replyTreeEnabled: settings.botReplyTreeEnabled,
         replyTreeMaxRecordsPerChat: settings.botReplyTreeMaxRecordsPerChat,
         replyTreeMaxIndexBytes: settings.botReplyTreeMaxIndexBytes,
       },
     )
     sessions = registry
-    if (settings.admin && control)
-      adminServer = await startAdmin(settings.admin, control, piFactory, registry)
+    adminServer = await startAdmin(settings.admin, control, piFactory, registry)
     const telegram = createTelegramAgentBot(settings, registry, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
-      control: control?.store,
+      control: store,
       recoverChats: () => piFactory.listChats(),
     })
 
@@ -95,7 +87,7 @@ export async function startApplication(): Promise<void> {
       () => adminServer?.stop(),
       () => sessions?.dispose(),
       () => control?.mcp.close(),
-      () => control?.store.close(),
+      () => adminStore?.close(),
       () => logger.shutdown?.(),
     ])
   }

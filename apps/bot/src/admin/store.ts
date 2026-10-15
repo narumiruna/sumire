@@ -33,8 +33,7 @@ export class AdminStore {
   readonly db: DatabaseSync
   constructor(
     readonly file: string,
-    readonly whitelist: ReadonlySet<number>,
-    readonly adminId?: number,
+    readonly adminId: number,
   ) {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     this.db = new DatabaseSync(file)
@@ -63,7 +62,7 @@ export class AdminStore {
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
-        .run(JSON.stringify(initialPolicy(whitelist)))
+        .run(JSON.stringify(initialPolicy()))
       this.db.exec("COMMIT")
     } catch (error) {
       this.db.exec("ROLLBACK")

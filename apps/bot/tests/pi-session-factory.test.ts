@@ -8,14 +8,15 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { SessionManager } from "@earendil-works/pi-coding-agent"
 import { createPublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-
+import { inherited } from "../src/admin/policy.js"
 import { DurableSession } from "../src/agent/durable-session.js"
-import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
+import { createPiSessionFactory as createProductionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 import { appendMessage, currentConversation } from "./helpers/durable-session.js"
+import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 vi.mock("@narumitw/sumire-url-tool", { spy: true })
 
@@ -54,7 +55,6 @@ describe("createPiSessionFactory", () => {
     await installInstructions(root)
     const settings = loadSettings(
       {
-        BOT_WHITELIST: "7",
         BOT_ADMIN_ID: "7",
       },
       root,
@@ -81,7 +81,9 @@ describe("createPiSessionFactory", () => {
     try {
       expect(first.model).toMatchObject({ provider: "openai", api: "openai-responses" })
       expect(second.model).toMatchObject({ provider: "openai", api: "openai-responses" })
-      expect(first.modelRuntime).toBe(second.modelRuntime)
+      expect(await first.modelRuntime.getAuth("openai")).toEqual(
+        await second.modelRuntime.getAuth("openai"),
+      )
       expect(first.messages).toEqual([])
     } finally {
       await first.dispose()
@@ -89,50 +91,39 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it.each(["", "7"])("bootstraps non-OpenAI Pi credentials with admin=%s", async (adminId) => {
+  it("requires explicit policy selection instead of falling back to newly available credentials", async () => {
     vi.stubEnv("OPENAI_API_KEY", "")
-    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-provider-fallback-"))
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-provider-policy-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7", BOT_ADMIN_ID: adminId }, root)
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
     const authPath = path.join(settings.botSessionLogDir, ".pi-agent/auth.json")
     await mkdir(path.dirname(authPath), { recursive: true })
     await writeFile(
       authPath,
       JSON.stringify({ anthropic: { type: "api_key", key: "fixture-key" } }),
-      {
-        mode: 0o600,
-      },
+      { mode: 0o600 },
     )
     const factory = await createPiSessionFactory(settings, logger)
+    await expect(factory.create(7)).rejects.toThrow("請管理員在 Web UI 設定 provider")
+    const state = factory.control.snapshot()
+    const selected = state.policy.models.find((ref) => ref.startsWith("anthropic/"))
+    if (!selected) throw new Error("Missing fixture Anthropic model")
+    state.policy.defaults.model = selected
+    factory.control.save(state.policy, state.revision, "7")
+    factory.control.applied(state.revision + 1, true)
     const registry = new ChatSessionRegistry(
       asSessionCreator(factory),
       settings.botSessionLogDir,
       logger,
+      { control: factory.control },
     )
     try {
-      const choices = await registry.getModelSettings(7)
-      expect(choices.currentModel).toMatch(/^anthropic\//u)
-      expect(choices.models.length).toBeGreaterThan(1)
-      expect(choices.models.every((reference) => reference.startsWith("anthropic/"))).toBe(true)
-      const alternative = choices.models.find((reference) => reference !== choices.currentModel)
-      if (!alternative) throw new Error("Missing alternative Anthropic model")
-      await expect(registry.setModel(7, alternative)).resolves.toMatchObject({
-        currentModel: alternative,
-      })
-      await registry.reset(7)
-      await expect(registry.getModelSettings(7)).resolves.toMatchObject({
-        currentModel: choices.currentModel,
-      })
-
-      // Pi discovering OpenAI credentials later restores the preferred default for new chats.
+      expect((await registry.getModelSettings(7)).currentModel).toBe(selected)
       vi.stubEnv("OPENAI_API_KEY", "fixture-openai-key")
-      await expect(registry.getModelSettings(8)).resolves.toMatchObject({
-        currentModel: "openai/gpt-6.1-sol",
-        thinkingLevel: "low",
-      })
-      await expect(registry.setModel(7, "openai/gpt-6.1-sol")).resolves.toMatchObject({
-        currentModel: "openai/gpt-6.1-sol",
-      })
+      expect((await registry.getModelSettings(8)).currentModel).toBe(selected)
+      await registry.setModel(7, "openai/gpt-6.1-sol")
+      await registry.reset(7)
+      expect((await registry.getModelSettings(7)).currentModel).toBe("openai/gpt-6.1-sol")
     } finally {
       await registry.dispose()
     }
@@ -141,7 +132,7 @@ describe("createPiSessionFactory", () => {
   it("uses Pi-owned credentials before login and switches existing sessions to shared OAuth after login", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-auth-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7", BOT_ADMIN_ID: "7" }, root)
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     try {
@@ -176,7 +167,9 @@ describe("createPiSessionFactory", () => {
       })
       const second = await factory.create(8)
       try {
-        expect(second.modelRuntime).toBe(first.modelRuntime)
+        expect(await second.modelRuntime.getAuth("openai")).toEqual(
+          await first.modelRuntime.getAuth("openai"),
+        )
         expect(await second.modelRuntime.checkAuth("openai")).toMatchObject({ type: "oauth" })
       } finally {
         await second.dispose()
@@ -189,7 +182,7 @@ describe("createPiSessionFactory", () => {
   it("restores a chat's model and thinking after restart without changing defaults in other chats", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-persistence-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     const defaultModel = first.model
@@ -205,6 +198,15 @@ describe("createPiSessionFactory", () => {
       })
       await first.setModel(alternative)
       await first.setThinkingLevel("high")
+      const state = factory.control.snapshot()
+      state.policy.chats["7"] = {
+        ...inherited,
+        enabled: true,
+        model: `${alternative.provider}/${alternative.id}`,
+        thinking: "high",
+      }
+      factory.control.save(state.policy, state.revision, "7", "chat.model.update")
+      factory.control.applied(state.revision + 1, true)
       expect(first.thinkingLevel).toBe("high")
     } finally {
       await first.dispose()
@@ -229,12 +231,13 @@ describe("createPiSessionFactory", () => {
       asSessionCreator(restartedFactory),
       settings.botSessionLogDir,
       logger,
+      { control: restartedFactory.control },
     )
     try {
       await registry.reset(7)
       await expect(registry.getModelSettings(7)).resolves.toMatchObject({
-        currentModel: `${defaultModel?.provider}/${defaultModel?.id}`,
-        thinkingLevel: "low",
+        currentModel: `${alternative.provider}/${alternative.id}`,
+        thinkingLevel: "high",
       })
     } finally {
       await registry.dispose()
@@ -244,7 +247,7 @@ describe("createPiSessionFactory", () => {
   it("falls back to the initial model when a saved model is no longer available", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-model-fallback-"))
     await installInstructions(root)
-    const settings = loadSettings({ BOT_WHITELIST: "7" }, root)
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
     const factory = await createPiSessionFactory(settings, logger)
     const first = await factory.create(7)
     try {
@@ -269,11 +272,10 @@ describe("createPiSessionFactory", () => {
     }
   })
 
-  it("rejects an empty whitelist before enabling coding tools", async () => {
-    const settings = loadSettings({})
-
-    await expect(createPiSessionFactory(settings, logger)).rejects.toThrow(
-      "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
+  it("rejects a missing database authorization dependency before enabling tools", async () => {
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" })
+    await expect(createProductionFactory(settings, logger, undefined as never)).rejects.toThrow(
+      "Database authorization is required",
     )
   })
 
@@ -281,7 +283,7 @@ describe("createPiSessionFactory", () => {
     const root = await mkdtemp(path.join(tmpdir(), "sumire-durable-startup-"))
     await installInstructions(root)
     const factory = await createPiSessionFactory(
-      loadSettings({ OPENAI_API_KEY: "test-key", BOT_WHITELIST: "123" }, root),
+      loadSettings({ BOT_ADMIN_ID: "7", OPENAI_API_KEY: "test-key" }, root),
       logger,
     )
     const open = vi
@@ -304,7 +306,7 @@ describe("createPiSessionFactory", () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
     await installInstructions(root)
     const settings = {
-      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
       botUrlAllowedSchemes: new Set(["https"]),
     }
     const spans: Array<{ name: string; attributes: SpanAttributes }> = []
@@ -412,7 +414,7 @@ describe("createPiSessionFactory", () => {
       [false, true],
     ] as const) {
       const settings = {
-        ...loadSettings({ BOT_WHITELIST: "123,-100" }, root),
+        ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
         botChannelImageInputEnabled: channelEnabled,
         botImageInputEnabled: imageEnabled,
       }
@@ -443,7 +445,7 @@ describe("createPiSessionFactory", () => {
     await installInstructions(root)
     await installOtterSkill(root)
     const settings = {
-      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
       botWorkdir: path.resolve(root, "workdir"),
     }
     const factory = await createPiSessionFactory(settings, logger)
@@ -542,7 +544,7 @@ describe("createPiSessionFactory", () => {
     const oldFile = oldSession.getSessionFile()
 
     const settings = {
-      ...loadSettings({ BOT_WHITELIST: "123" }, root),
+      ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
       botWorkdir: path.resolve(root, workdir),
     }
     const factory = await createPiSessionFactory(settings, logger)

@@ -36,7 +36,7 @@ describe("shared bot URL loading", () => {
   ])(
     "extracts the same captions through the tool and article source loader: %s",
     async (target) => {
-      const settings = loadSettings({ BOT_WHITELIST: "123" })
+      const settings = loadSettings({ BOT_ADMIN_ID: "7" })
       const loader = createBotUrlLoader(settings)
       const tool = createUrlTool(loader)
       const result = await tool.execute(
@@ -61,7 +61,7 @@ describe("shared bot URL loading", () => {
   )
 
   it("preserves cancellation in both entry points without attempting captions", async () => {
-    const loader = createBotUrlLoader(loadSettings({ BOT_WHITELIST: "123" }))
+    const loader = createBotUrlLoader(loadSettings({ BOT_ADMIN_ID: "7" }))
     const signal = AbortSignal.abort(new Error("cancelled"))
     await expect(
       createUrlTool(loader).execute("cancel-call", { url }, signal, undefined, undefined as never),

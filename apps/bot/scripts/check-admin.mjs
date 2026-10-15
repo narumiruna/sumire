@@ -44,7 +44,7 @@ try {
   const read = codingTools(directory).find((tool) => tool.name === "read")
   const visible = await read.execute("isolation-fixture", { path: privateFixture })
   assert.match(JSON.stringify(visible), /isolation-sentinel/)
-  store = new AdminStore(file, new Set([42]), 42)
+  store = new AdminStore(file, 42)
   store.applied(1, true)
   const session = store.createSession("42")
   const runtime = { getProviders: () => [], getModels: () => [] }
@@ -151,8 +151,9 @@ try {
   await admin.stop()
   admin = undefined
   store.close()
-  store = new AdminStore(file, new Set(), 42)
-  assert.deepEqual(store.snapshot().policy.privateUsers, [42, 43])
+  store = new AdminStore(file, 42)
+  assert.deepEqual(store.snapshot().policy.privateUsers, [43])
+  assert.equal(store.allows(42), false)
   console.log(
     "Admin offline HTTPS smoke passed: assets, passkey challenge creation, sessions, CSRF, logout, and restart persistence. Same-user file access confirmed: coding tools are not credential-isolated. Live Telegram and providers were not tested.",
   )

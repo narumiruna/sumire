@@ -221,24 +221,6 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       reply(res, 200, { ok: true })
       return
     }
-    if (url.pathname === "/api/access/reconciliation" && method === "GET") {
-      reply(res, 200, access.reconciliation())
-      return
-    }
-    if (url.pathname === "/api/access/reconciliation" && method === "POST") {
-      const input = z
-        .object({
-          fingerprint: z.string().regex(accessTokenPattern),
-          selected: z.array(z.number().int().safe()).max(2000),
-          revision: z.number().int().positive(),
-        })
-        .strict()
-        .parse(await body(req))
-      access.reconcile(input.fingerprint, input.selected, input.revision, session.actor)
-      await services.apply()
-      reply(res, 200, store.snapshot())
-      return
-    }
     if (
       ["/api/access/resolve", "/api/access/approve"].includes(url.pathname) &&
       method === "POST"
@@ -322,14 +304,21 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       return
     }
     if (url.pathname === "/api/imports" && method === "GET") {
-      reply(
-        res,
-        200,
-        store.db
+      reply(res, 200, [
+        ...store.db
           .prepare("SELECT name,report FROM imports ORDER BY name")
           .all()
           .map((row) => ({ name: row.name, report: JSON.parse(String(row.report)) })),
-      )
+        ...store.db
+          .prepare(
+            "SELECT revision,actor,reviewed,decisions FROM access_reviews ORDER BY reviewed DESC,revision DESC LIMIT 10",
+          )
+          .all()
+          .map((row) => ({
+            name: `environment-access:${row.revision}`,
+            report: { ...row, decisions: JSON.parse(String(row.decisions)) },
+          })),
+      ])
       return
     }
     const discoveryRoute = /^\/api\/mcp\/([A-Za-z0-9_-]{1,64})\/discover$/.exec(url.pathname)

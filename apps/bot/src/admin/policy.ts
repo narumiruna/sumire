@@ -86,14 +86,14 @@ export const inherited: Selection = {
   thinking: null,
 }
 
-export function initialPolicy(whitelist: ReadonlySet<number>): Policy {
+export function initialPolicy(): Policy {
   return {
     tools: [],
     servers: [],
     models: [],
     defaults: { ...inherited, tools: [], servers: [], models: [], thinking: "off" },
-    privateUsers: [...whitelist].filter((id) => id > 0),
-    groups: [...whitelist].filter((id) => id < 0),
+    privateUsers: [],
+    groups: [],
     chats: {},
     providers: [],
   }

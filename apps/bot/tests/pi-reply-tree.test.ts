@@ -1,9 +1,9 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable"
 import { afterEach, describe, expect, it } from "vitest"
-
 import { BotSessionDoc } from "../src/agent/durable-state.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
@@ -25,7 +25,7 @@ describe("durable reply-tree behavior", () => {
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     const ask = async (question: string, replyToBotMessageId?: number) => {
       fixture.enqueueAnswer(`${question} answer`)
@@ -49,7 +49,7 @@ describe("durable reply-tree behavior", () => {
       async () => reopened,
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     try {
       fixture.enqueueAnswer("restored A")

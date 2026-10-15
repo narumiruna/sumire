@@ -18,6 +18,8 @@ if (process.env.SUMIRE_SMOKE_PRODUCTION === "true") {
 const { createPiSessionFactory } = await import(
   pathToFileURL(path.join(appRoot, "dist/agent/pi-session-factory.js"))
 )
+const { AdminStore } = await import(pathToFileURL(path.join(appRoot, "dist/admin/store.js")))
+const { McpAdmin } = await import(pathToFileURL(path.join(appRoot, "dist/admin/mcp.js")))
 const { loadSettings } = await import(pathToFileURL(path.join(appRoot, "dist/config/settings.js")))
 const { createBotModelRuntime } = await import(
   pathToFileURL(path.join(appRoot, "dist/agent/model-runtime.js"))
@@ -72,6 +74,7 @@ const server = createServer(async (request, response) => {
   }
 })
 let session
+let control
 try {
   await cp(path.join(projectRoot, "instructions"), path.join(root, "instructions"), {
     recursive: true,
@@ -81,7 +84,10 @@ try {
   const address = server.address()
   assert.ok(address && typeof address !== "string")
   const settings = {
-    ...{ ...loadSettings({ BOT_WHITELIST: "123" }, root), botCodemodeTimeoutSeconds: 1 },
+    ...{
+      ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
+      botCodemodeTimeoutSeconds: 1,
+    },
     botAgentMaxAttempts: 1,
   }
   const logger = { debug() {}, info() {}, warn() {}, error() {} }
@@ -106,7 +112,18 @@ try {
       },
     ],
   })
-  const factory = await createPiSessionFactory(settings, logger, undefined, modelRuntime)
+  control = { store: new AdminStore(path.join(root, "admin.sqlite"), 123) }
+  control.mcp = new McpAdmin(control.store, root)
+  const factory = await createPiSessionFactory(settings, logger, control, undefined, modelRuntime)
+  const state = control.store.snapshot()
+  state.policy.privateUsers = [123]
+  state.policy.tools = factory.toolNames
+  state.policy.defaults.tools = [...state.policy.tools]
+  state.policy.models = ["openai/gpt-6.1-sol"]
+  state.policy.defaults.models = [...state.policy.models]
+  state.policy.defaults.model = state.policy.models[0]
+  control.store.save(state.policy, state.revision, "123")
+  control.store.applied(state.revision + 1, true)
   session = await factory.create(123)
   const call = async (tool, args) => {
     replies.push({ tool, args }, { text: true })
@@ -151,5 +168,7 @@ text(results); store('marker', 'persisted');`,
     await session.dispose()
   }
   await new Promise((resolve) => server.close(resolve))
+  await control?.mcp.close()
+  control?.store.close()
   await rm(root, { recursive: true, force: true })
 }

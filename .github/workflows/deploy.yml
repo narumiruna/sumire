@@ -26,7 +26,6 @@ jobs:
           install -m 600 /dev/null .env
           {
             echo "BOT_TOKEN=${{secrets.BOT_TOKEN}}"
-            echo "BOT_WHITELIST=${{vars.BOT_WHITELIST}}"
             echo "BOT_ADMIN_ID=${{vars.BOT_ADMIN_ID}}"
             echo "ADMIN_ORIGIN=${{vars.ADMIN_ORIGIN}}"
             echo "FIRECRAWL_API_KEY=${{secrets.FIRECRAWL_API_KEY}}"

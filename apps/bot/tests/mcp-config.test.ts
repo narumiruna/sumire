@@ -30,7 +30,7 @@ async function config(input: unknown, environment: NodeJS.ProcessEnv = {}) {
 
 describe("MCP configuration", () => {
   it("resolves config against the application root, not workdir", () => {
-    const settings = loadSettings({}, "/app", "/workdir")
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" }, "/app", "/workdir")
     expect(settings.botWorkdir).toBe("/workdir")
     expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
   })

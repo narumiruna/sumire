@@ -3,13 +3,8 @@ import os from "node:os"
 import path from "node:path"
 import { backup, DatabaseSync } from "node:sqlite"
 import { afterEach, describe, expect, it } from "vitest"
-import {
-  effectivePolicy,
-  inherited,
-  initialPolicy,
-  validateReferences,
-} from "../src/admin/policy.js"
-import { AdminStore } from "../src/admin/store.js"
+import { effectivePolicy, inherited, validateReferences } from "../src/admin/policy.js"
+import { TestAdminStore as AdminStore, testPolicy as initialPolicy } from "./helpers/admin-store.js"
 
 const directories: string[] = []
 const stores: AdminStore[] = []

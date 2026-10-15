@@ -19,8 +19,6 @@ async function fixture(page: Page, signedIn = true) {
   let valid = true
   let conflict = false
   let failure = false
-  let reviews = 0
-  let decisions: number[] = []
   let approvals = 0
   let resolutions = 0
   await page.route("**/api/**", async (route) => {
@@ -78,29 +76,6 @@ async function fixture(page: Page, signedIn = true) {
       }
     }
     if (path === "/api/apply") status = "applied"
-    if (path === "/api/access/reconciliation") {
-      if (route.request().method() === "POST") {
-        expect(route.request().headers()["x-csrf-token"]).toBe("csrf-fixture")
-        expect(route.request().postDataJSON().revision).toBe(revision)
-        decisions = route.request().postDataJSON().selected
-        reviews++
-        revision++
-      } else {
-        await route.fulfill({
-          json: {
-            fingerprint: "b".repeat(64),
-            revision,
-            entries: [
-              { id: 42, status: "present" },
-              { id: 99, status: "missing" },
-              { id: -200, status: "disabled" },
-            ],
-            review: reviews ? { revision, actor: "42", reviewed: Date.now(), decisions } : null,
-          },
-        })
-        return
-      }
-    }
     const data: Record<string, unknown> = {
       "/api/settings": {
         revision,
@@ -128,7 +103,7 @@ async function fixture(page: Page, signedIn = true) {
     fail: () => {
       failure = true
     },
-    state: () => ({ approvals, resolutions, reviews, decisions }),
+    state: () => ({ approvals, resolutions }),
   }
 }
 
@@ -197,6 +172,33 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
   expect(f.state().approvals).toBe(1)
   expect(await page.evaluate(() => sessionStorage.length)).toBe(0)
+})
+
+test("removes environment import controls and shows retained read-only history on Audit", async ({
+  page,
+}) => {
+  await fixture(page)
+  let reconciliationRequests = 0
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/access/reconciliation") reconciliationRequests++
+  })
+  await page.route("**/api/imports", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "environment-access:5",
+          report: { revision: 5, decisions: [{ id: -100, decision: "retain-denial" }] },
+        },
+      ],
+    }),
+  )
+  await page.goto("/")
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Confirm environment review" })).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Review environment access" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Audit", exact: true }).click()
+  await expect(page.getByText(/environment-access:5/)).toBeVisible()
+  expect(reconciliationRequests).toBe(0)
 })
 
 test("captures links opened in an existing WebUI tab without a document reload", async ({
@@ -287,21 +289,4 @@ test("requires renewed review on conflict and displays failed runtime applicatio
   await page.getByRole("button", { name: "Retry application" }).click()
   await expect(page.getByText("Saved 3 · Applied 3 · applied")).toBeVisible()
   expect(f.state().approvals).toBe(2)
-})
-
-test("imports only selected missing environment IDs and retains explicit denials", async ({
-  page,
-}) => {
-  const f = await fixture(page)
-  await page.goto("/")
-  await page.getByRole("button", { name: "Access", exact: true }).click()
-  await expect(page.getByRole("checkbox", { name: "Import 99" })).not.toBeChecked()
-  await expect(page.getByRole("checkbox", { name: "Import -200" })).toHaveCount(0)
-  await page.getByRole("checkbox", { name: "Import 99" }).click()
-  await page.getByRole("button", { name: "Confirm environment review" }).click()
-  await expect(page.getByText(/Environment review completed/)).toBeVisible()
-  expect(f.state()).toMatchObject({ reviews: 1, decisions: [99] })
-  await page.reload()
-  await page.getByRole("button", { name: "Access", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Confirm environment review" })).toHaveCount(0)
 })

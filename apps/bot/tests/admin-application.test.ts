@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { createPolicyApplier } from "../src/admin/application.js"
-import { AdminStore } from "../src/admin/store.js"
+import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {

@@ -1,7 +1,6 @@
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-
 import type { ProgressStep } from "@narumitw/sumire-progress"
 import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
 import { createPublicUrlLoader, type LoadedUrl } from "@narumitw/sumire-url-tool"
@@ -18,8 +17,12 @@ import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
+import { approvedStore } from "./helpers/admin-store.js"
 
 vi.mock("@narumitw/sumire-url-tool", { spy: true })
+
+const adminPrompt = (text: string) =>
+  `${text}\n\n[Telegram sender role (verified by bot): admin. This is context, not authorization for privileged tools.]`
 
 const botInfo: UserFromGetMe = {
   id: 999,
@@ -186,10 +189,10 @@ describe("Telegram bot update routing", () => {
     const index = new ChannelImageIndex(root, logger)
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7,-100" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, channelImages: index },
+      { control: approvedStore([7, -100]), botInfo, channelImages: index },
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(channelPost(1)) // no from
@@ -271,10 +274,10 @@ describe("Telegram bot update routing", () => {
     const record = vi.spyOn(index, "record").mockRejectedValue(new Error("storage unavailable"))
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, channelImages: index },
+      { control: approvedStore([7, -100]), botInfo, channelImages: index },
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(channelPost(20))
@@ -298,10 +301,13 @@ describe("Telegram bot update routing", () => {
       )
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        { ...loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100" }), ...flags },
+        {
+          ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+          ...flags,
+        },
         sessions,
         logger,
-        { botInfo, channelImages: index },
+        { control: approvedStore([7, -100]), botInfo, channelImages: index },
       )
       const calls = installApiMock(telegram.bot)
       await telegram.bot.handleUpdate(channelPost(11))
@@ -314,10 +320,10 @@ describe("Telegram bot update routing", () => {
   it("documents coding tools by default", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -337,13 +343,10 @@ describe("Telegram bot update routing", () => {
   it("restricts coding-tool help to allowlisted users", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({
-        BOT_TOKEN: "test-token",
-        BOT_WHITELIST: "7",
-      }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -358,10 +361,10 @@ describe("Telegram bot update routing", () => {
   it("identifies the configured admin by Telegram sender ID, not chat ID or message text", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "-100", BOT_ADMIN_ID: "7" }),
+      loadSettings({ BOT_TOKEN: "test-token", BOT_ADMIN_ID: "7" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
     const inGroup = (update: Update): Update => {
@@ -409,10 +412,12 @@ describe("Telegram bot update routing", () => {
       truncated: false,
     }))
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         articleUrlLoader: { load },
         morselPublisher: { isConfigured: true, publish },
@@ -446,10 +451,14 @@ describe("Telegram bot update routing", () => {
 
   it("enables Firecrawl fallback for the default /f URL loader", () => {
     createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "false" }),
+      loadSettings({
+        BOT_ADMIN_ID: "7",
+        BOT_TOKEN: "test-token",
+        BOT_URL_FIRECRAWL_FALLBACK_ENABLED: "false",
+      }),
       createSessions(),
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
 
     expect(createPublicUrlLoader).toHaveBeenLastCalledWith(
@@ -470,13 +479,19 @@ describe("Telegram bot update routing", () => {
     }))
     const telegram = createTelegramAgentBot(
       {
-        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         botUrlTimeoutSeconds: 1.2345,
         botUrlContentTimeoutSeconds: 1.2345,
       },
       sessions,
       logger,
-      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     installApiMock(telegram.bot)
 
@@ -495,12 +510,14 @@ describe("Telegram bot update routing", () => {
     try {
       const telegram = createTelegramAgentBot(
         {
-          ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+          ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
           botUrlContentTimeoutSeconds: 60,
         },
         sessions,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo,
           morselPublisher: { isConfigured: true, publish },
           articleUrlLoader: {
@@ -556,12 +573,14 @@ describe("Telegram bot update routing", () => {
     )
     const telegram = createTelegramAgentBot(
       {
-        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         botUrlContentTimeoutSeconds: 0.1,
       },
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         articleUrlLoader: { load },
         morselPublisher: { isConfigured: true, publish },
@@ -590,10 +609,16 @@ describe("Telegram bot update routing", () => {
       throw new Error("unavailable")
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -619,12 +644,18 @@ describe("Telegram bot update routing", () => {
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
       {
-        ...loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         botUrlMaxExtractedChars: 1,
       },
       sessions,
       logger,
-      { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -655,10 +686,16 @@ describe("Telegram bot update routing", () => {
       const sessions = createSessions()
       const publish = vi.fn(async () => "https://morsel.example/s/article")
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         sessions,
         logger,
-        { botInfo, articleUrlLoader: { load }, morselPublisher: { isConfigured: true, publish } },
+        {
+          control: approvedStore([7, -100]),
+
+          botInfo,
+          articleUrlLoader: { load },
+          morselPublisher: { isConfigured: true, publish },
+        },
       )
       const calls = installApiMock(telegram.bot)
 
@@ -689,10 +726,12 @@ describe("Telegram bot update routing", () => {
     )
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         articleUrlLoader: { load },
         morselPublisher: {
@@ -739,10 +778,12 @@ describe("Telegram bot update routing", () => {
       truncated: false,
     }))
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         articleUrlLoader: { load },
         morselPublisher: {
@@ -765,10 +806,12 @@ describe("Telegram bot update routing", () => {
     const load = vi.fn()
     let acknowledge: (() => void) | undefined
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         articleUrlLoader: { load },
         morselPublisher: {
@@ -808,10 +851,10 @@ describe("Telegram bot update routing", () => {
       truncated: false,
     }))
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, articleUrlLoader: { load } },
+      { control: approvedStore([7, -100]), botInfo, articleUrlLoader: { load } },
     )
     installApiMock(telegram.bot)
 
@@ -838,10 +881,12 @@ describe("Telegram bot update routing", () => {
       }
       const publish = vi.fn(async () => "https://morsel.example/s/article")
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         sessions,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo,
           documentConverter,
           imageFetchImplementation: vi.fn(async () => new Response("media bytes")),
@@ -891,10 +936,14 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
     const update = commandMessage(21, "/f")
@@ -923,10 +972,14 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     installApiMock(telegram.bot)
     const update = commandMessage(22, "/f")
@@ -957,16 +1010,20 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") await pendingFirst
+        if (prompt === adminPrompt("第一個問題")) await pendingFirst
         return { kind: "completed" as const, text: "文章" }
       }),
     })
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     installApiMock(telegram.bot)
     const firstHandling = telegram.bot.handleUpdate(privateMessage(21, "第一個問題"))
@@ -1021,15 +1078,17 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") await pendingFirst
+        if (prompt === adminPrompt("第一個問題")) await pendingFirst
         return { kind: "completed" as const, text: "文章" }
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter: { convert },
         imageFetchImplementation: vi.fn(async () => new Response("bytes")),
@@ -1118,15 +1177,17 @@ describe("Telegram bot update routing", () => {
       const sessions = createSessions({
         submit: vi.fn(async (_chatId, prompt, options) => {
           options.onAccepted?.()
-          if (prompt === "第一個問題") await pendingFirst
+          if (prompt === adminPrompt("第一個問題")) await pendingFirst
           return { kind: "completed" as const, text: "回答" }
         }),
       })
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
         sessions,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo,
           articleUrlLoader: { load },
           morselPublisher: {
@@ -1188,16 +1249,20 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") await pendingFirst
+        if (prompt === adminPrompt("第一個問題")) await pendingFirst
         return { kind: "completed" as const, text: "回答" }
       }),
     })
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (method === "sendMessage" && payload.text === "處理中…" && calls.length === 1) {
@@ -1243,10 +1308,14 @@ describe("Telegram bot update routing", () => {
     })
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1266,10 +1335,14 @@ describe("Telegram bot update routing", () => {
     })
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1283,10 +1356,14 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
     const update = commandMessage(24, "/f")
@@ -1318,10 +1395,14 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: false, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: false, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1338,10 +1419,14 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1357,10 +1442,10 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const marketDataQuery = vi.fn(async () => "result")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, marketDataQuery },
+      { control: approvedStore([7, -100]), botInfo, marketDataQuery },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1374,10 +1459,10 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const marketDataQuery = vi.fn(async () => "📊 Apple Inc. (AAPL)\n現價: 195.25 USD")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, marketDataQuery },
+      { control: approvedStore([7, -100]), botInfo, marketDataQuery },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1392,10 +1477,10 @@ describe("Telegram bot update routing", () => {
   it("reports when /t has no matching market data", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, marketDataQuery: async () => "" },
+      { control: approvedStore([7, -100]), botInfo, marketDataQuery: async () => "" },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1408,10 +1493,12 @@ describe("Telegram bot update routing", () => {
   it("reports temporary /t provider failures through the real market-data query", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         marketDataQuery: (input) =>
           queryMarketData(input, {
@@ -1430,16 +1517,16 @@ describe("Telegram bot update routing", () => {
   it("routes private messages through the Pi session and replies with the final answer", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
     await telegram.bot.handleUpdate(privateMessage(1, "你好"))
 
-    expect(sessions.submit).toHaveBeenCalledWith(7, "你好", {
+    expect(sessions.submit).toHaveBeenCalledWith(7, adminPrompt("你好"), {
       images: [],
       delivery: { mode: "default", sourceMessageId: 1, statusMessageId: 100 },
       onAccepted: expect.any(Function),
@@ -1470,10 +1557,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1506,10 +1595,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1542,10 +1633,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     let editCount = 0
     const calls = installApiMock(telegram.bot, (method) => {
@@ -1575,10 +1666,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1614,7 +1707,7 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(reply)
     expect(sessions.submit).toHaveBeenLastCalledWith(
       7,
-      "接著呢？",
+      adminPrompt("接著呢？"),
       expect.objectContaining({ replyToBotMessageId: 100 }),
     )
   })
@@ -1628,10 +1721,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1663,10 +1758,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1702,10 +1799,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1731,10 +1828,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1757,10 +1854,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1793,10 +1892,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1829,10 +1930,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -1861,10 +1964,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1884,10 +1987,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1910,10 +2013,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1953,10 +2056,14 @@ describe("Telegram bot update routing", () => {
     })
     const publish = vi.fn(async () => "https://morsel.example/s/unexpected")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: false, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: false, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -1988,10 +2095,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -2023,10 +2132,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2058,17 +2167,17 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "請處理") {
+        if (prompt === adminPrompt("請處理")) {
           options.onProgress?.([{ text: "分析需求", status: "completed" }])
         }
         return { kind: "completed" as const, text: "完成", checkpoint }
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2091,7 +2200,7 @@ describe("Telegram bot update routing", () => {
       await telegram.bot.handleUpdate(reply)
       expect(sessions.submit).toHaveBeenLastCalledWith(
         7,
-        "請繼續",
+        adminPrompt("請繼續"),
         expect.objectContaining({ replyToBotMessageId: messageId }),
       )
     }
@@ -2108,7 +2217,7 @@ describe("Telegram bot update routing", () => {
       holdReplyCheckpoint: vi.fn(() => release),
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一題") {
+        if (prompt === adminPrompt("第一題")) {
           options.onProgress?.([{ text: "檢查", status: "completed" }])
           return { kind: "completed" as const, text: "完成", checkpoint }
         }
@@ -2116,10 +2225,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (method === "sendMessage" && payload.text === "完成") await pendingSend
@@ -2142,7 +2251,7 @@ describe("Telegram bot update routing", () => {
       await telegram.bot.handleUpdate(reply)
       expect(sessions.submit).toHaveBeenLastCalledWith(
         7,
-        "接著呢？",
+        adminPrompt("接著呢？"),
         expect.objectContaining({ replyToBotMessageId: 100 }),
       )
       expect(release).not.toHaveBeenCalled()
@@ -2163,7 +2272,8 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "請處理") options.onProgress?.([{ text: "檢查", status: "completed" }])
+        if (prompt === adminPrompt("請處理"))
+          options.onProgress?.([{ text: "檢查", status: "completed" }])
         return { kind: "completed" as const, text: "完成" }
       }),
       recordDelivery: vi.fn(async () => {
@@ -2171,10 +2281,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
     const handling = telegram.bot.handleUpdate(privateMessage(2, "請處理"))
@@ -2194,7 +2304,7 @@ describe("Telegram bot update routing", () => {
       await telegram.bot.handleUpdate(reply)
       expect(sessions.submit).toHaveBeenLastCalledWith(
         7,
-        "接著呢？",
+        adminPrompt("接著呢？"),
         expect.objectContaining({ replyToBotMessageId: 100 }),
       )
     } finally {
@@ -2213,10 +2323,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
       if (method === "editMessageText" && String(payload.text).startsWith("進度 ")) {
@@ -2246,10 +2356,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
       if (method === "editMessageText" && String(payload.text).includes("尚未顯示")) {
@@ -2289,10 +2399,14 @@ describe("Telegram bot update routing", () => {
       throw new Error("Morsel unavailable")
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2337,10 +2451,14 @@ describe("Telegram bot update routing", () => {
       return "https://morsel.example/s/previous-progress"
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2367,10 +2485,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, (method, payload) => {
       if (method === "sendMessage" && payload.text === "完成") throw new Error("send failed")
@@ -2401,10 +2519,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (method === "editMessageText" && String(payload.text).startsWith("進度 ")) {
@@ -2430,8 +2548,14 @@ describe("Telegram bot update routing", () => {
 
   it("enforces the allowlist before invoking session or Telegram APIs", async () => {
     const sessions = createSessions()
-    const settings = loadSettings({ BOT_TOKEN: "test-token", BOT_WHITELIST: "7" })
-    const telegram = createTelegramAgentBot(settings, sessions, logger, { botInfo })
+    const settings = loadSettings({
+      BOT_ADMIN_ID: "7",
+      BOT_TOKEN: "test-token",
+    })
+    const telegram = createTelegramAgentBot(settings, sessions, logger, {
+      control: approvedStore([7, -100]),
+      botInfo,
+    })
     const calls = installApiMock(telegram.bot)
 
     await telegram.bot.handleUpdate(privateMessage(2, "不應處理", 8))
@@ -2447,10 +2571,12 @@ describe("Telegram bot update routing", () => {
       return "轉錄內容"
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         audioTranscriber: { transcribe },
         imageFetchImplementation: vi.fn(async () => new Response("audio bytes")),
@@ -2498,10 +2624,12 @@ describe("Telegram bot update routing", () => {
   it("returns a direct error instead of sending failed audio transcription to Pi", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         audioTranscriber: {
           transcribe: vi.fn(async () => {
@@ -2531,10 +2659,10 @@ describe("Telegram bot update routing", () => {
     ] as const) {
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        { ...loadSettings({ BOT_TOKEN: "test-token" }), ...settings },
+        { ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }), ...settings },
         sessions,
         logger,
-        { botInfo },
+        { control: approvedStore([7, -100]), botInfo },
       )
       const calls = installApiMock(telegram.bot)
       const update = privateMessage(92, "")
@@ -2552,10 +2680,10 @@ describe("Telegram bot update routing", () => {
   it("records unaddressed group updates as passive context", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
     const update: Update = {
@@ -2589,10 +2717,10 @@ describe("Telegram bot update routing", () => {
       cancel: vi.fn(async () => true),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
 
@@ -2623,17 +2751,19 @@ describe("Telegram bot update routing", () => {
       submit: vi.fn(async (_chatId, prompt, options) => {
         submissionOrder.push(prompt)
         options.onAccepted?.()
-        return prompt === "第一張"
+        return prompt === adminPrompt("第一張")
           ? pendingFirstSubmission
           : { kind: "completed" as const, text: "AI 回覆" }
       }),
     })
     const imageFetchImplementation = vi.fn<typeof fetch>(async () => pendingImageDownload)
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         imageFetchImplementation,
       },
@@ -2663,7 +2793,7 @@ describe("Telegram bot update routing", () => {
     finishImageDownload?.(new Response("image"))
     await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledTimes(2))
     await secondHandling
-    expect(submissionOrder).toEqual(["第一張", "第二則"])
+    expect(submissionOrder).toEqual(["第一張", "第二則"].map(adminPrompt))
 
     finishFirstSubmission?.({ kind: "completed", text: "第一則完成" })
     await firstHandling
@@ -2684,10 +2814,12 @@ describe("Telegram bot update routing", () => {
     })
     const imageFetchImplementation = vi.fn<typeof fetch>(async () => pendingImageDownload)
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         imageFetchImplementation,
       },
@@ -2720,11 +2852,11 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(privateMessage(11, "重設後"))
 
     expect(sessions.reset).toHaveBeenCalledWith(7)
-    expect(submittedPrompts).toEqual(["重設後"])
+    expect(submittedPrompts).toEqual([adminPrompt("重設後")])
 
     finishImageDownload?.(new Response("image"))
     await Promise.all([imageHandling, queuedHandling])
-    expect(submittedPrompts).toEqual(["重設後"])
+    expect(submittedPrompts).toEqual([adminPrompt("重設後")])
   })
 
   it("sends a cancellation reply when reset invalidates a completed submission", async () => {
@@ -2739,10 +2871,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2777,10 +2909,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -2821,10 +2955,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (method === "sendMessage" && payload.text === "完成") await pendingSend
@@ -2856,8 +2990,14 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const publish = vi.fn(async () => pendingPublication)
-    const settings = loadSettings({ BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" })
+    const settings = loadSettings({
+      BOT_ADMIN_ID: "7",
+      BOT_TOKEN: "test-token",
+      MORSEL_API_KEY: "secret",
+    })
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
+      control: approvedStore([7, -100]),
+
       botInfo,
       morselPublisher: { isConfigured: true, publish },
     })
@@ -2891,10 +3031,10 @@ describe("Telegram bot update routing", () => {
       submit: vi.fn(async () => pendingSubmission),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -2931,10 +3071,12 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         morselPublisher: { isConfigured: true, publish },
       },
@@ -2977,10 +3119,12 @@ describe("Telegram bot update routing", () => {
       })),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         morselPublisher: { isConfigured: true, publish },
       },
@@ -3021,10 +3165,12 @@ describe("Telegram bot update routing", () => {
     })
     const imageFetchImplementation = vi.fn<typeof fetch>(async () => pendingImageDownload)
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         imageFetchImplementation,
       },
@@ -3074,10 +3220,13 @@ describe("Telegram bot update routing", () => {
   it("reports oversized image errors without invoking the agent", async () => {
     const sessions = createSessions()
     const settings = {
-      ...loadSettings({ BOT_TOKEN: "test-token" }),
+      ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       botImageMaxBytes: 10,
     }
-    const telegram = createTelegramAgentBot(settings, sessions, logger, { botInfo })
+    const telegram = createTelegramAgentBot(settings, sessions, logger, {
+      control: approvedStore([7, -100]),
+      botInfo,
+    })
     const calls = installApiMock(telegram.bot)
     const update = privateMessage(6, "看圖")
     if (update.message) {
@@ -3102,11 +3251,13 @@ describe("Telegram bot update routing", () => {
       })
       const publish = vi.fn(async () => "https://morsel.example/s/share")
       const settings = {
-        ...loadSettings({ BOT_TOKEN: "test-token" }),
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         morselMode: mode,
         morselLongReplyThreshold: 5_000,
       }
       const telegram = createTelegramAgentBot(settings, sessions, logger, {
+        control: approvedStore([7, -100]),
+
         botInfo,
         morselPublisher: { isConfigured: true, publish },
       })
@@ -3134,10 +3285,12 @@ describe("Telegram bot update routing", () => {
         throw new Error("Morsel unavailable")
       })
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         sessions,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo,
           morselPublisher: { isConfigured: failure !== "missing-key", publish },
         },
@@ -3159,10 +3312,12 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/share")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         marketDataQuery: async () => text,
         morselPublisher: { isConfigured: true, publish },
@@ -3192,10 +3347,12 @@ describe("Telegram bot update routing", () => {
     })
     const publish = vi.fn(async (_text: string) => "https://morsel.example/s/progress")
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         morselPublisher: { isConfigured: true, publish },
       },
@@ -3235,10 +3392,14 @@ describe("Telegram bot update routing", () => {
       throw new Error("Morsel unavailable")
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, morselPublisher: { isConfigured: true, publish } },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
@@ -3266,10 +3427,12 @@ describe("Telegram bot update routing", () => {
         truncated: false,
       }))
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         sessions,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo,
           documentConverter: AnyDocConverter.forTesting({
             maxConcurrency: 1,
@@ -3315,13 +3478,15 @@ describe("Telegram bot update routing", () => {
     const run = vi.fn(async () => ({ ok: false as const, code: "needsOcr", message: "OCR needed" }))
     const telegram = createTelegramAgentBot(
       {
-        ...loadSettings({ BOT_TOKEN: "test-token" }),
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         botDocumentInputEnabled: failure !== "disabled",
         botDocumentMaxBytes: failure === "oversized" ? 4 : 100,
       },
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         imageFetchImplementation: fetchDocument,
         documentConverter:
@@ -3347,10 +3512,10 @@ describe("Telegram bot update routing", () => {
   it("does not route /ask as a command in groups", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
     for (const text of ["/ask", "/ask 請摘要"]) {
@@ -3376,10 +3541,12 @@ describe("Telegram bot update routing", () => {
       }),
     }
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter,
         imageFetchImplementation: vi.fn(async () => new Response("document bytes")),
@@ -3467,10 +3634,12 @@ describe("Telegram bot update routing", () => {
       })
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         sessions,
         logger,
         {
+          control: approvedStore([...Array.from({ length: 16 }, (_, index) => 100 + index), 200]),
+
           botInfo,
           documentConverter: AnyDocConverter.forTesting({
             maxConcurrency,
@@ -3547,10 +3716,12 @@ describe("Telegram bot update routing", () => {
       }),
     }
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter,
         imageFetchImplementation: vi.fn(async () => new Response("bytes")),
@@ -3579,10 +3750,12 @@ describe("Telegram bot update routing", () => {
 
     const failingSessions = createSessions()
     const failing = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       failingSessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter: {
           convert: vi.fn(async () => {
@@ -3609,10 +3782,12 @@ describe("Telegram bot update routing", () => {
   ] as const)("reports a direct Traditional Chinese %s document error", async (kind, expected) => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter: {
           convert: vi.fn(async () => {
@@ -3650,10 +3825,13 @@ describe("Telegram bot update routing", () => {
       run,
     })
     const disabled = createTelegramAgentBot(
-      { ...loadSettings({ BOT_TOKEN: "test-token" }), botDocumentInputEnabled: false },
+      {
+        ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        botDocumentInputEnabled: false,
+      },
       sessions,
       logger,
-      { botInfo, documentConverter },
+      { control: approvedStore([7, -100]), botInfo, documentConverter },
     )
     const disabledCalls = installApiMock(disabled.bot)
     const update = privateMessage(23, "")
@@ -3670,10 +3848,10 @@ describe("Telegram bot update routing", () => {
     expect(disabledCalls[0]?.payload.text).toBe("目前未啟用文件輸入。")
 
     const oversized = createTelegramAgentBot(
-      { ...loadSettings({ BOT_TOKEN: "test-token" }), botDocumentMaxBytes: 20 },
+      { ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }), botDocumentMaxBytes: 20 },
       sessions,
       logger,
-      { botInfo, documentConverter },
+      { control: approvedStore([7, -100]), botInfo, documentConverter },
     )
     const oversizedCalls = installApiMock(oversized.bot)
     await oversized.bot.handleUpdate(update)
@@ -3735,10 +3913,15 @@ describe("Telegram bot update routing", () => {
       if (occupying) await vi.waitFor(() => expect(run).toHaveBeenCalledOnce())
       const sessions = createSessions()
       const telegram = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "test-token" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
         sessions,
         logger,
-        { botInfo, documentConverter: converter, imageFetchImplementation: fetchDocument },
+        {
+          control: approvedStore([7, -100]),
+          botInfo,
+          documentConverter: converter,
+          imageFetchImplementation: fetchDocument,
+        },
       )
       const calls = installApiMock(telegram.bot)
       const document = input === "mention" ? repliedDocumentMention(300) : privateMessage(300, "")
@@ -3772,7 +3955,11 @@ describe("Telegram bot update routing", () => {
       expect(sessions.cancel).toHaveBeenCalledWith(7)
       expect(sessions.reset).not.toHaveBeenCalled()
       expect(acceptedWhileDraining).toBe(1)
-      expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, "fresh", expect.any(Object))
+      expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(
+        7,
+        adminPrompt("fresh"),
+        expect.any(Object),
+      )
       expect(
         calls.filter((call) => call.method === "sendMessage").map((call) => call.payload.text),
       ).toEqual(["已取消目前任務。", "處理中…"])
@@ -3798,10 +3985,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
     const handling = telegram.bot.handleUpdate(privateMessage(304, "request"))
@@ -3822,10 +4009,10 @@ describe("Telegram bot update routing", () => {
   it("reports no task when cancelling an idle chat", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(commandMessage(303, "/cancel"))
@@ -3852,10 +4039,12 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions()
     const convert = vi.fn(async () => conversion)
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
         documentConverter: { convert },
         imageFetchImplementation: vi.fn(async () => new Response("bytes")),
@@ -3896,10 +4085,12 @@ describe("Telegram bot update routing", () => {
       recordDelivery,
     })
     const settings = {
-      ...loadSettings({ BOT_TOKEN: "test-token" }),
+      ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       morselMode: "disabled" as const,
     }
     const telegram = createTelegramAgentBot(settings, sessions, logger, {
+      control: approvedStore([7, -100]),
+
       botInfo,
       morselPublisher: {
         isConfigured: true,
@@ -3922,7 +4113,7 @@ describe("Telegram bot update routing", () => {
 
     expect(sessions.submit).toHaveBeenCalledWith(
       7,
-      "另一個方向",
+      adminPrompt("另一個方向"),
       expect.objectContaining({
         replyToBotMessageId: 50,
         unresolvedReplyPrompt: expect.stringContaining("Content: old answer"),
@@ -3943,15 +4134,17 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") await pendingFirst
+        if (prompt === adminPrompt("第一個問題")) await pendingFirst
         return { kind: "completed" as const, text: "回答" }
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -3974,7 +4167,7 @@ describe("Telegram bot update routing", () => {
       }
       await telegram.bot.handleUpdate(reply)
       const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
-      expect(prompt).toBe("補充：請繼續")
+      expect(prompt).toBe(adminPrompt("補充：請繼續"))
       expect(options).not.toHaveProperty("replyToBotMessageId")
       expect(options).not.toHaveProperty("unresolvedReplyPrompt")
     } finally {
@@ -3996,15 +4189,15 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") await pendingFirst
+        if (prompt === adminPrompt("第一個問題")) await pendingFirst
         return { kind: "completed" as const, text: "回答" }
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, imageFetchImplementation },
+      { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
     )
     installApiMock(telegram.bot)
     const firstHandling = telegram.bot.handleUpdate(privateMessage(26, "第一個問題"))
@@ -4036,7 +4229,7 @@ describe("Telegram bot update routing", () => {
       await replyHandling
 
       const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
-      expect(prompt).toBe("補充：請繼續")
+      expect(prompt).toBe(adminPrompt("補充：請繼續"))
       expect(options?.images).toHaveLength(1)
       expect(options).not.toHaveProperty("replyToBotMessageId")
       expect(options).not.toHaveProperty("unresolvedReplyPrompt")
@@ -4061,7 +4254,7 @@ describe("Telegram bot update routing", () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, prompt, options) => {
         options.onAccepted?.()
-        if (prompt === "第一個問題") {
+        if (prompt === adminPrompt("第一個問題")) {
           options.onProgress?.([{ text: "**分析**", status: "in_progress" }])
           await new Promise<void>((resolve) => setImmediate(resolve))
           return { kind: "completed" as const, text: "**答案** <tag>", checkpoint }
@@ -4070,10 +4263,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo, imageFetchImplementation },
+      { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
     )
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (method === "sendMessage" && String(payload.text).includes("<b>答案</b>")) {
@@ -4111,7 +4304,7 @@ describe("Telegram bot update routing", () => {
       await replyHandling
 
       const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
-      expect(prompt).toBe("接著呢？")
+      expect(prompt).toBe(adminPrompt("接著呢？"))
       expect(options?.replyToBotMessageId).toBe(101)
       expect(options?.unresolvedReplyPrompt).toContain("Content: 答案 <tag>")
     } finally {
@@ -4142,10 +4335,12 @@ describe("Telegram bot update routing", () => {
       recordDelivery,
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
       {
+        control: approvedStore([7, -100]),
+
         botInfo,
       },
     )
@@ -4190,15 +4385,19 @@ describe("Telegram bot update routing", () => {
   ])("passes URL requests and short follow-ups to the agent unchanged: %s", async (text) => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(privateMessage(27, text))
 
-    expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(7, text, expect.any(Object))
+    expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(
+      7,
+      adminPrompt(text),
+      expect.any(Object),
+    )
     expect(calls.map((call) => call.method)).toEqual(["sendMessage", "editMessageText"])
     expect(calls.at(-1)?.payload.text).toBe("AI 回覆")
   })
@@ -4229,10 +4428,10 @@ describe("Telegram bot update routing", () => {
       publish: vi.fn(async () => "https://morsel.example/s/share"),
     }
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       tracedLogger,
-      { botInfo, morselPublisher: publisher },
+      { control: approvedStore([7, -100]), botInfo, morselPublisher: publisher },
     )
     installApiMock(telegram.bot)
 
@@ -4274,10 +4473,10 @@ describe("Telegram bot update routing", () => {
       }),
     })
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
     const base = {
@@ -4315,7 +4514,7 @@ describe("Telegram bot update routing", () => {
     expect(order).toEqual([
       "background: [群組旁聽訊息 from Bob] @other_bot 下一次 Codex reset 何時？",
       "background: [群組旁聽訊息 from Other Bot] 正在查詢 Codex reset",
-      "request: https://example.com/airbus  @other_bot",
+      `request: ${adminPrompt("https://example.com/airbus  @other_bot")}`,
     ])
     expect(sessions.submit).toHaveBeenCalledOnce()
   })
@@ -4323,10 +4522,10 @@ describe("Telegram bot update routing", () => {
   it("routes addressed group URLs and follow-ups after reset through the agent", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
     const url = "https://example.com/group"
@@ -4353,17 +4552,22 @@ describe("Telegram bot update routing", () => {
     })
 
     expect(sessions.reset).toHaveBeenCalledWith(-100)
-    expect(sessions.submit).toHaveBeenNthCalledWith(1, -100, url, expect.any(Object))
-    expect(sessions.submit).toHaveBeenNthCalledWith(2, -100, "繼續", expect.any(Object))
+    expect(sessions.submit).toHaveBeenNthCalledWith(1, -100, adminPrompt(url), expect.any(Object))
+    expect(sessions.submit).toHaveBeenNthCalledWith(
+      2,
+      -100,
+      adminPrompt("繼續"),
+      expect.any(Object),
+    )
   })
 
   it("keeps mixed questions and quoted historical URLs on the normal agent path", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
-      loadSettings({ BOT_TOKEN: "test-token" }),
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { botInfo },
+      { control: approvedStore([7, -100]), botInfo },
     )
     installApiMock(telegram.bot)
     const text = "這篇和昨天的有何不同 https://example.com/article"
@@ -4381,11 +4585,11 @@ describe("Telegram bot update routing", () => {
     }
     await telegram.bot.handleUpdate(quoted)
 
-    expect(sessions.submit).toHaveBeenNthCalledWith(1, 7, text, expect.any(Object))
+    expect(sessions.submit).toHaveBeenNthCalledWith(1, 7, adminPrompt(text), expect.any(Object))
     expect(sessions.submit).toHaveBeenNthCalledWith(
       2,
       7,
-      "你怎麼看？",
+      adminPrompt("你怎麼看？"),
       expect.objectContaining({
         unresolvedReplyPrompt: expect.stringContaining("https://example.com/historical"),
       }),

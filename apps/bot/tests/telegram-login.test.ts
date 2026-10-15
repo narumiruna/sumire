@@ -1,11 +1,11 @@
 import { Bot } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
-
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { registerOAuthCallbackGuard } from "../src/telegram/oauth-callbacks.js"
+import { approvedStore } from "./helpers/admin-store.js"
 
 const authorizationUrl = "http://127.0.0.1:1455/auth/callback?code=fixture-secret"
 
@@ -120,10 +120,12 @@ describe("Retired Telegram OAuth callback protection", () => {
       const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
       const publish = vi.fn()
       const app = createTelegramAgentBot(
-        loadSettings({ BOT_TOKEN: "1:test", BOT_WHITELIST: "7,-100" }),
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "1:test" }),
         sessions as unknown as ChatSessionRegistry,
         logger,
         {
+          control: approvedStore([7, -100]),
+
           botInfo: {
             id: 999,
             is_bot: true,

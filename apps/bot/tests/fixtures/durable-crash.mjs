@@ -1,11 +1,11 @@
 import path from "node:path"
 import { ModelRuntime } from "@earendil-works/pi-coding-agent"
-import { createPiSessionFactory } from "../../src/agent/pi-session-factory.ts"
 import { loadSettings } from "../../src/config/settings.ts"
+import { createTestSessionFactory as createPiSessionFactory } from "../helpers/session-factory.ts"
 
 const [root, endpoint, mcpConfig] = process.argv.slice(2)
 const settings = {
-  ...loadSettings({ BOT_WHITELIST: "123,456,-100" }, root),
+  ...loadSettings({ BOT_ADMIN_ID: "7" }, root),
   ...(mcpConfig ? { botMcpConfigPath: mcpConfig } : {}),
 }
 const logger = { debug() {}, info() {}, warn() {}, error() {} }

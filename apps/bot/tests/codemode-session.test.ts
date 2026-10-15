@@ -1,12 +1,11 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import { reconstructProgress } from "@narumitw/sumire-progress"
 import { afterEach, describe, expect, it } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
-
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
@@ -173,7 +172,7 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
       async () => session,
       fixture.settings.botSessionLogDir,
       fixture.logger,
-      { replyTreeEnabled: true },
+      { control: approvedStore([1, 2, 7, 8, 123, 456, -100]), replyTreeEnabled: true },
     )
     try {
       const progress = [{ text: "branch A", status: "pending" }]
@@ -268,6 +267,7 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
         },
         fixture.settings.botSessionLogDir,
         fixture.logger,
+        { control: approvedStore([1, 2, 7, 8, 123, 456, -100]) },
       )
       try {
         fixture.enqueue(
