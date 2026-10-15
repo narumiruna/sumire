@@ -1111,3 +1111,149 @@ test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ 
   await expect(page.getByLabel("New secret value")).toHaveValue("")
   await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
 })
+
+for (const control of ["Reasoning supported", "Image input supported", "API"] as const) {
+  test(`guards unsaved custom provider edits made only through ${control}`, async ({ page }) => {
+    await setup(page)
+    const custom = {
+      id: "custom",
+      enabled: true,
+      baseUrl: "https://models.example.test/v1",
+      api: "openai-completions",
+      models: [
+        {
+          id: "one",
+          name: "One",
+          reasoning: false,
+          image: false,
+          contextWindow: 128000,
+          maxTokens: 8192,
+        },
+      ],
+    }
+    await page.route("**/api/settings", (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({
+            json: {
+              revision: 1,
+              applied: 1,
+              status: "applied",
+              policy: { ...policy, providers: [custom] },
+            },
+          })
+        : route.fallback(),
+    )
+    await page.reload()
+    await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+    await page.getByText("Custom endpoint", { exact: true }).click()
+    await page.getByRole("button", { name: "Edit configuration custom", exact: true }).click()
+    await page.getByRole("button", { name: "Edit model one", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    if (control === "API") {
+      await page.getByText("Advanced protocol", { exact: true }).click()
+      await page.getByRole("combobox", { name: "API", exact: true }).click()
+      await page.getByRole("option", { name: "openai-responses", exact: true }).click()
+    } else {
+      await page.getByText("Advanced model metadata", { exact: true }).click()
+      await page.getByRole("checkbox", { name: control, exact: true }).check()
+    }
+    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    expect(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      }),
+    ).toBe(true)
+    const dialog = page.waitForEvent("dialog")
+    const signingOut = page.getByRole("button", { name: "Sign out", exact: true }).click()
+    const warning = await dialog
+    expect(warning.message()).toBe("Discard pending changes and leave?")
+    await warning.dismiss()
+    await signingOut
+    await page.getByRole("button", { name: "Set provider configuration", exact: true }).click()
+    await page.getByRole("button", { name: "Save settings", exact: true }).click()
+    const saving = page.waitForRequest(
+      (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
+    )
+    await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+    const saved = (await saving).postDataJSON().policy.providers[0]
+    expect(saved.api).toBe(control === "API" ? "openai-responses" : "openai-completions")
+    expect(saved.models[0].reasoning).toBe(control === "Reasoning supported")
+    expect(saved.models[0].image).toBe(control === "Image input supported")
+  })
+}
+
+for (const scenario of [
+  { name: "clears a matching MCP draft after deletion", draft: "obsolete", fails: false },
+  { name: "retains a different MCP draft after deletion", draft: "other", fails: false },
+  { name: "retains the matching MCP draft when deletion fails", draft: "obsolete", fails: true },
+]) {
+  test(scenario.name, async ({ page }) => {
+    await setup(page)
+    let deleted = false
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: {
+          ...inventory,
+          mcp: ["obsolete", "other"]
+            .filter((name) => !deleted || name !== "obsolete")
+            .map((name) => ({
+              name,
+              enabled: true,
+              exposure: "codemode",
+              connection: "not tested",
+              tools: [],
+              env: {},
+              headers: {},
+            })),
+        },
+      }),
+    )
+    await page.route("**/api/mcp/obsolete", (route) => {
+      expect(route.request().method()).toBe("DELETE")
+      expect(route.request().postDataJSON()).toEqual({ revision: 1 })
+      if (scenario.fails) return route.fulfill({ status: 500, json: { error: "Deletion failed" } })
+      deleted = true
+      return route.fulfill({ json: { ok: true } })
+    })
+    await page.reload()
+    await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+    await page
+      .getByRole("button", { name: `Edit fields for ${scenario.draft}`, exact: true })
+      .click()
+    await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
+    await page.getByLabel("Secret field name").fill("TOKEN")
+    await page.getByLabel("New secret value").fill("pending-fixture")
+    await page.getByRole("button", { name: "Set pending secret replacement", exact: true }).click()
+    await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+    await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
+    if (scenario.fails) await expect(page.getByRole("alert")).toContainText("Deletion failed")
+    else
+      await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toHaveCount(
+        0,
+      )
+    if (scenario.draft === "obsolete" && !scenario.fails) {
+      await expect(page.getByText("Pending MCP configuration", { exact: true })).toHaveCount(0)
+      await expect(page.getByLabel("MCP server name")).toHaveValue("")
+      await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
+      await expect(page.getByText("Pending secret fields:", { exact: false })).toContainText("none")
+      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    } else {
+      await expect(page.getByText("Pending MCP configuration", { exact: true })).toBeVisible()
+      await expect(page.getByLabel("MCP server name")).toHaveValue(scenario.draft)
+      await expect(page.getByLabel("Server configuration JSON")).toHaveValue('{"enabled":false}')
+      await expect(page.getByText("Pending secret fields:", { exact: false })).toContainText(
+        "TOKEN",
+      )
+      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    }
+    expect(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      }),
+    ).toBe(scenario.draft !== "obsolete" || scenario.fails)
+  })
+}

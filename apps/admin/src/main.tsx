@@ -486,7 +486,13 @@ function ProviderEditor({
         <summary>Advanced protocol</summary>
         <label htmlFor="provider-api">
           API
-          <Select.Root value={api} onValueChange={(v) => setApi(v as ProviderSettings["api"])}>
+          <Select.Root
+            value={api}
+            onValueChange={(v) => {
+              onPending(true)
+              setApi(v as ProviderSettings["api"])
+            }}
+          >
             <Select.Trigger id="provider-api" />
             <Select.Content>
               {[
@@ -543,8 +549,22 @@ function ProviderEditor({
       <details className="provider-advanced">
         <summary>Advanced model metadata</summary>
         <Field label="Model display name" value={name} onChange={setName} />
-        <Check label="Reasoning supported" checked={reasoning} onChange={setReasoning} />
-        <Check label="Image input supported" checked={image} onChange={setImage} />
+        <Check
+          label="Reasoning supported"
+          checked={reasoning}
+          onChange={(v) => {
+            onPending(true)
+            setReasoning(v)
+          }}
+        />
+        <Check
+          label="Image input supported"
+          checked={image}
+          onChange={(v) => {
+            onPending(true)
+            setImage(v)
+          }}
+        />
         <Field label="Context window tokens" value={context} onChange={setContext} />
         <Field label="Maximum output tokens" value={output} onChange={setOutput} />
       </details>
@@ -1224,6 +1244,7 @@ function App() {
                               setMcpName("")
                               setMcpConfig("{}")
                               setMcpSecrets({ env: {}, headers: {} })
+                              setMcpDirty(false)
                             }
                             await load()
                           })
