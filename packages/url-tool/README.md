@@ -1,6 +1,6 @@
 # Sumire URL Tool
 
-Pi package that registers `load_public_url` and bundles the `load-public-url` skill. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
+Pi package that registers `read_url_content` and bundles the `load-public-url` skill. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
 
 ## Load from this repository
 
@@ -20,6 +20,10 @@ Pi packages execute with the current user's permissions. Review source before in
 
 The `load-public-url` skill tells the agent when to call the tool, to preserve source attribution across multiple URLs, and to treat fetched content as untrusted. Pi discovers it through the package manifest. Hosts that load `createUrlExtension()` directly can bind the same bundled skill with the exported `urlToolSkillsPath`.
 
+## Tool name migration
+
+`read_url_content` replaces `load_public_url`; the old tool name is not registered as an alias. Update direct calls, codemode scripts, and host tool allowlists to the new name. In the bot Web UI, authorize `read_url_content` globally and in the effective chat policy, then remove the old entry. Stored permissions are not transferred automatically. Input fields, result fields, and URL safety checks are unchanged. The bundled skill remains named `load-public-url`.
+
 ## Tool contract
 
 ```json
@@ -34,7 +38,7 @@ A host can expose an allowlisted exact override:
 
 Omitting `loader` delegates directly to the automatic `@narumitw/sumire-url-content` plan after public-target validation. The tool does not try built-in extraction or route by hostname or warning text first. `built-in` runs only the bounded text/HTML path; another approved ID runs exactly that `@narumitw/sumire-url-content` loader without automatic fallback. The tool schema contains `loader` only when the host configures at least one `selectableLoaders` entry, and execution enforces the same allowlist even if schema validation is bypassed.
 
-`load_public_url` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, elapsed seconds, error types/codes; no upstream error messages). For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
+`read_url_content` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, elapsed seconds, error types/codes; no upstream error messages). For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
 
 Failures, including unknown, disallowed, inapplicable, or unavailable explicit loaders, throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
 
@@ -46,7 +50,7 @@ Automatic results use `source: "url-content"` and include the selected loader an
 
 ```mermaid
 flowchart LR
-    Agent[Pi agent] --> Tool[load_public_url]
+    Agent[Pi agent] --> Tool[read_url_content]
     Tool --> Check[Public target validation]
     Check --> Select{Explicit loader supplied?}
     Select -->|No| Auto[Automatic url-content plan]

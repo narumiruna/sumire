@@ -15,12 +15,13 @@ import { describe, expect, it, vi } from "vitest"
 import urlExtension, { createUrlExtension, createUrlTool } from "../src/index.js"
 
 describe("URL tool Pi package", () => {
-  it("registers only load_public_url with safe defaults", async () => {
+  it("registers only read_url_content with safe defaults", async () => {
     const registerTool = vi.fn()
     await urlExtension({ registerTool } as unknown as ExtensionAPI)
     expect(registerTool).toHaveBeenCalledOnce()
     const tool = registerTool.mock.calls[0]?.[0] as ToolDefinition
-    expect(tool.name).toBe("load_public_url")
+    expect(tool.name).toBe("read_url_content")
+    expect(tool.label).toBe("Read URL content")
     expect(
       (tool.parameters as unknown as { properties: Record<string, unknown> }).properties.loader,
     ).toBeUndefined()
@@ -159,7 +160,7 @@ describe("URL tool Pi package", () => {
         noTools: "builtin",
       })
       try {
-        expect(session.getActiveToolNames()).toEqual(["load_public_url"])
+        expect(session.getActiveToolNames()).toEqual(["read_url_content"])
       } finally {
         session.dispose()
       }

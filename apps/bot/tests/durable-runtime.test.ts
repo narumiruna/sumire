@@ -23,6 +23,53 @@ afterEach(async () => {
 })
 
 describe("durable bot runtime", () => {
+  it.each([{ tools: [] }, { tools: ["read_url_content"] }])(
+    "reports only the chat's authorized tools to the model ($tools)",
+    async ({ tools }) => {
+      const fixture = await setup()
+      const store = fixture.factory.control
+      const state = store.snapshot()
+      state.policy.tools = tools
+      state.policy.defaults.tools = tools
+      store.save(state.policy, state.revision, "7")
+      store.applied(state.revision + 1, true)
+      const info = vi.spyOn(fixture.logger, "info")
+      const session = await fixture.createSession()
+      expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
+        tools,
+        codemodeTools: [],
+      })
+      fixture.enqueueAnswer("Tool access checked")
+      await session.prompt("list tools")
+      expect(session.getActiveToolNames()).toEqual(tools)
+      const request = fixture.requests[0]
+      expect(JSON.stringify(request?.messages)).toContain(
+        `Direct tools: ${tools.join(", ") || "none"}.`,
+      )
+      expect(JSON.stringify(request?.messages)).toContain(
+        "Additional tools through codemode: none.",
+      )
+      expect(JSON.stringify(request?.messages)).toContain(
+        "Skills and conversation history describe capabilities, not tool authorization.",
+      )
+      expect(JSON.stringify(request?.messages)).not.toContain(
+        "MCP server access is authorized for this chat.",
+      )
+      expect(request?.tools?.map((tool) => tool.function.name) ?? []).toEqual(tools)
+      if (tools.includes("read_url_content")) {
+        fixture.enqueue("read_url_content", { url: "http://127.0.0.1/" })
+        await session.prompt("http://127.0.0.1/ read_url_content")
+        expect(session.messages).toContainEqual(
+          expect.objectContaining({
+            role: "toolResult",
+            toolName: "read_url_content",
+            isError: true,
+          }),
+        )
+      }
+    },
+  )
+
   it("reopens the same chat identity and transcript, accepts images, and keeps storage private", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()

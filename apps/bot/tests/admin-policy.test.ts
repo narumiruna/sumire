@@ -107,9 +107,9 @@ describe("admin policy and persistence", () => {
   })
   it("distinguishes inheritance and explicit empty selections within global ceilings", () => {
     const p = initialPolicy(new Set([42]))
-    p.tools = ["read", "load_public_url"]
-    p.defaults.tools = ["load_public_url"]
-    expect(effectivePolicy(p, 42).tools).toEqual(["load_public_url"])
+    p.tools = ["read", "read_url_content"]
+    p.defaults.tools = ["read_url_content"]
+    expect(effectivePolicy(p, 42).tools).toEqual(["read_url_content"])
     p.chats["42"] = { ...inherited, enabled: true, tools: [] }
     expect(effectivePolicy(p, 42).tools).toEqual([])
     p.chats["42"].tools = ["bash"]

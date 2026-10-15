@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import { reconstructProgress } from "@narumitw/sumire-progress"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
@@ -29,7 +29,12 @@ describe("codemode through Bot Pi sessions", () => {
       path.join(extensionDirectory, "untrusted.js"),
       "throw new Error('must not load')",
     )
+    const info = vi.spyOn(fixture.logger, "info")
     const session = await fixture.createSession()
+    expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
+      tools: expect.arrayContaining(["codemode", "read_image", "update_progress"]),
+      codemodeTools: ["read", "bash", "edit", "write", "read_url_content"],
+    })
     const result = await fixture.script(
       session,
       `return { models: typeof models, tools: ALL_TOOLS.map(tool => tool.name), progress: ALL_TOOLS.some(tool => tool.name === 'update_progress'), image: ALL_TOOLS.some(tool => tool.name === 'read_image') };`,
@@ -38,7 +43,7 @@ describe("codemode through Bot Pi sessions", () => {
     expect(toolResultText(result)).toContain('"models":"undefined"')
     expect(toolResultText(result)).toContain('"progress":false')
     expect(toolResultText(result)).toContain('"image":false')
-    expect(toolResultText(result)).toContain('"load_public_url"')
+    expect(toolResultText(result)).toContain('"read_url_content"')
     for (const name of ["update_progress", "read_image"]) {
       expect(fixture.requests[0]?.tools.some((tool) => tool.function.name === name)).toBe(true)
     }
@@ -89,7 +94,7 @@ const results = await Promise.allSettled([
   tools.bash({ command: 'sleep 0.2; printf first', timeout: 5 }),
   tools.bash({ command: 'sleep 0.2; printf second', timeout: 5 }),
   tools.read({ path: 17 }),
-  ...['http://127.0.0.1/', 'http://169.254.169.254/', 'http://[::1]/', 'https://user:pass@8.8.8.8/'].map(url => tools.load_public_url({ url }))
+  ...['http://127.0.0.1/', 'http://169.254.169.254/', 'http://[::1]/', 'https://user:pass@8.8.8.8/'].map(url => tools.read_url_content({ url }))
 ]);
 text(results.map(result => result.status === 'fulfilled' ? { status: result.status, value: result.value } : { status: result.status, error: result.reason.message }));`,
     )

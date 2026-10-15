@@ -1,12 +1,12 @@
 ---
 name: load-public-url
-description: Load and analyze content from public HTTP(S) URLs with the load_public_url tool.
+description: Load and analyze content from public HTTP(S) URLs with the read_url_content tool.
   Use when a user asks to read, summarize, compare, quote, or inspect content from one or more URLs.
 ---
 
 # Load Public URLs
 
-Call `load_public_url` with the exact URL supplied by the user.
+Call `read_url_content` with the exact URL supplied by the user.
 
 ```json
 { "url": "https://example.com/article" }
