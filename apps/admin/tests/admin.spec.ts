@@ -153,8 +153,59 @@ for (const existing of [false, true]) {
   })
 }
 
+for (const customDraft of [false, true]) {
+  test(`keeps the MCP ${customDraft ? "custom draft" : "new-server template"} through an existing name prefix`, async ({
+    page,
+  }) => {
+    await setup(page)
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: {
+          ...inventory,
+          mcp: [
+            {
+              name: "existing",
+              enabled: true,
+              exposure: "codemode",
+              connection: "not tested",
+              tools: [],
+              env: {},
+              headers: {},
+            },
+          ],
+        },
+      }),
+    )
+    await page.reload()
+    await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+    await page.getByText("Advanced server configuration JSON", { exact: true }).click()
+    const json = page.getByLabel("Server configuration JSON")
+    if (customDraft) await json.fill('{"command":"draft-server","args":["--draft"]}')
+    const draft = await json.inputValue()
+    let mutations = 0
+    page.on("request", (r) => {
+      if (r.method() !== "GET") mutations++
+    })
+    const name = page.getByLabel("MCP server name")
+    await name.pressSequentially("existing")
+    await expect(json).toHaveValue(draft)
+    await name.pressSequentially("-v2")
+    await expect(name).toHaveValue("existing-v2")
+    await expect(json).toHaveValue(draft)
+    page.once("dialog", (dialog) => dialog.dismiss())
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await expect(name).toHaveValue("existing-v2")
+    await expect(json).toHaveValue(draft)
+    page.once("dialog", (dialog) => dialog.accept())
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
+    await expect(name).toHaveValue("existing")
+    await expect(json).toHaveValue("{}")
+    expect(mutations).toBe(0)
+  })
+}
+
 for (const transport of ["stdio", "http"]) {
-  test(`starts an empty update for a manually named existing ${transport} MCP server`, async ({
+  test(`starts an empty update after explicit selection of an existing ${transport} MCP server`, async ({
     page,
   }) => {
     await setup(page)
@@ -178,8 +229,7 @@ for (const transport of ["stdio", "http"]) {
     )
     await page.reload()
     await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
-    await page.getByLabel("MCP server name").fill("existing")
-    await page.getByText("Advanced server configuration JSON", { exact: true }).click()
+    await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
     await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
     await expect(page.getByText("Omitted keys are removed.", { exact: false })).toBeVisible()
     const scope = transport === "stdio" ? "env" : "headers"

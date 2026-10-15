@@ -1284,13 +1284,13 @@ function App() {
               markPending("secret", false)
               setMcpDirty(true)
               setMcpName(name)
-              if (inventory.mcp.some((m) => m.name === name)) setMcpConfig("{}")
               setMcpSecrets({ env: {}, headers: {} })
             }}
           />
           <Text as="p" size="2">
-            To update a server, enter its existing name and only the fields to change. The API does
-            not return editable connection configuration. Reload checks saved settings and
+            To update an existing server, use its Edit fields button above to start an empty JSON
+            update. Enter only the fields to change. Typing a name keeps the current JSON draft. The
+            API does not return editable connection configuration. Reload checks saved settings and
             application status. It keeps this MCP draft and staged secrets. A failed request can
             still have saved its changes.
           </Text>
