@@ -841,9 +841,14 @@ export function createTelegramAgentBot(
         if (!isProgress && progressSnapshot) {
           // Activity edits must not publish the snapshot again, even after publication fails.
           const snapshot =
-            preparedProgress?.text === progressSnapshot ? preparedProgress.visibleText : undefined
-          const combined = `${snapshot ?? progressSnapshot}\n\n${text}`
+            preparedProgress?.text === progressSnapshot
+              ? preparedProgress.visibleText
+              : progressSnapshot
+          const combined = `${snapshot}\n\n${text}`
           if (delivery.directPayload(combined) !== undefined) text = combined
+          else if (delivery.directPayload(snapshot) !== undefined) text = snapshot
+          // Keep the complete snapshot when activity does not fit. Do not edit it again.
+          if (text === lastDeliveredStatusText) return
         }
         if (status) {
           visiblePayload = undefined

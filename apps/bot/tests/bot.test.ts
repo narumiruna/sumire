@@ -1822,9 +1822,9 @@ describe("Telegram bot update routing", () => {
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
       try {
         const steps: ProgressStep[] = Array.from(
-          { length: publication === "inline-boundary" ? 1 : 5 },
+          { length: publication === "inline-boundary" ? 3 : 5 },
           (_, index) => ({
-            text: `Step ${index} ${"x".repeat(publication === "inline-boundary" ? 950 : 250)}`,
+            text: `Step ${index} ${"x".repeat(publication === "inline-boundary" ? 318 : 250)}`,
             status: index === 0 ? "in_progress" : "pending",
           }),
         )
@@ -1860,7 +1860,16 @@ describe("Telegram bot update routing", () => {
         await telegram.bot.handleUpdate(privateMessage(2, "Work"))
         expect(publish).toHaveBeenCalledTimes(publication === "inline-boundary" ? 0 : 1)
         const activity = calls.filter((call) => String(call.payload.text).includes("工具："))
-        expect(activity.length).toBeGreaterThanOrEqual(2)
+        if (publication === "inline-boundary") {
+          const snapshot = renderProgressStatus(steps)
+          expect(Array.from(snapshot).length).toBeLessThanOrEqual(1_000)
+          expect(Array.from(`${snapshot}\n\n正在執行工具…\n工具：read`).length).toBeGreaterThan(
+            1_000,
+          )
+          expect(calls.map((call) => call.payload.text)).toEqual(["處理中…", snapshot, "Done"])
+        } else {
+          expect(activity.length).toBeGreaterThanOrEqual(2)
+        }
         if (publication === "published") {
           expect(
             activity.every((call) =>
