@@ -82,7 +82,12 @@ describe("shared bot URL loading", () => {
     const tool = request?.tools.find((entry) => entry.function.name === "read_url_content")
     expect(JSON.stringify(tool)).toContain("YouTube")
     expect(JSON.stringify(tool)).toContain("caption extraction first")
-    expect(JSON.stringify(request?.messages)).toContain("沒有本次工具失敗的結果")
+    const instructions = JSON.stringify(request?.messages)
+    expect(instructions).toContain("沒有本次工具失敗的結果")
+    expect(instructions).toContain("即使先前宣稱讀不到，仍先呼叫工具")
+    expect(instructions).toContain("本次明確提供的 loaded_url_content")
+    expect(instructions).toContain("讀取失敗不等於影片沒有字幕")
+    expect(instructions).toContain("若 truncated 為 true，說明只取得部分內容")
     expect(JSON.stringify(fixture.requests[1]?.messages)).toContain("測試字幕第一行")
     expect(session.messages).toContainEqual(
       expect.objectContaining({

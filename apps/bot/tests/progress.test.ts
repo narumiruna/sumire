@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { createProgressStatusEditor, renderProgressStatus } from "../src/telegram/progress.js"
+import {
+  createProgressStatusEditor,
+  renderActivityStatus,
+  renderProgressStatus,
+} from "../src/telegram/progress.js"
 
 describe("Telegram progress status", () => {
   it("renders completed, active, pending, and blocked steps", () => {
@@ -9,13 +13,21 @@ describe("Telegram progress status", () => {
         { text: "分析需求", status: "completed" },
         { text: "修改程式", status: "in_progress" },
         { text: "執行測試", status: "pending" },
-        { text: "發布", status: "blocked", reason: "等待核准" },
+        { text: "發布 — 等待核准", status: "blocked" },
       ]),
     ).toBe(
       ["進度 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
         "\n",
       ),
     )
+  })
+
+  it("shows tool names without exposing arguments or control characters", () => {
+    expect(renderActivityStatus("tool", "bash")).toBe("正在執行工具…\n工具：bash")
+    expect(renderActivityStatus("tool_finished", "read\u202e\n")).toBe(
+      "工具執行結束，等待模型回覆…\n工具：read",
+    )
+    expect(renderActivityStatus("model")).toBe("正在等待模型回覆…")
   })
 
   it("renders the progress clear operation", () => {
@@ -30,7 +42,7 @@ describe("Telegram progress status", () => {
       })),
       { text: "目前工作", status: "in_progress" },
       { text: "等待工作", status: "pending" },
-      { text: "發布\u202e\n操作", status: "blocked", reason: "等待\u200f 核准" },
+      { text: "發布\u202e\n操作 — 等待\u200f 核准", status: "blocked" },
     ])
 
     expect(text).toBe(
@@ -85,6 +97,31 @@ describe("Telegram progress status", () => {
 
       await vi.advanceTimersByTimeAsync(2_000)
       expect(update).toHaveBeenCalledTimes(2)
+      await editor.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not replace a queued snapshot with next-turn activity", async () => {
+    vi.useFakeTimers()
+    try {
+      let finishFirst: (() => void) | undefined
+      const first = new Promise<void>((resolve) => {
+        finishFirst = resolve
+      })
+      const update = vi.fn(async (text: string) => {
+        if (text === "tool") await first
+      })
+      const editor = createProgressStatusEditor(update, vi.fn())
+      editor.publishActivity("tool")
+      editor.publish("snapshot", true)
+      editor.publishActivity("model")
+      finishFirst?.()
+      await editor.flush()
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["tool", "snapshot"])
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(update.mock.calls.map(([text]) => text)).toEqual(["tool", "snapshot", "model"])
       await editor.close()
     } finally {
       vi.useRealTimers()

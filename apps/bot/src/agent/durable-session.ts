@@ -506,6 +506,7 @@ export class DurableSession implements SessionHandle {
 
   private onEvent(event: AgentEvent): void {
     if (event.type === "run_start") this.emit({ type: "agent_start" })
+    else if (event.type === "turn_start") this.emit({ type: "turn_start" })
     else if (event.type === "tool_execution_start") this.emit(event)
     else if (event.type === "tool_execution_end") {
       const result = event.entry?.model?.find((message) => message.role === "toolResult")

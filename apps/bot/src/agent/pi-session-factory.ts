@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { chmod, mkdir, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 
@@ -96,10 +97,17 @@ export async function createPiSessionFactory(
       : []),
   ]
 
+  const toolNames = [...baseTools.map((tool) => tool.name), "codemode", "update_progress"]
+  logger.info(`Bot instructions loaded\n${systemPrompt}`, {
+    sha256: createHash("sha256").update(systemPrompt).digest("hex"),
+    chars: systemPrompt.length,
+    tools: toolNames,
+  })
+
   return {
     login,
     modelRuntime,
-    toolNames: [...baseTools.map((tool) => tool.name), "codemode", "update_progress"],
+    toolNames,
 
     async listChats() {
       try {

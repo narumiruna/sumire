@@ -24,12 +24,12 @@ export default function progressExtension(pi: ExtensionAPI): void {
     exposure: "model-only",
     label: "Progress",
     description:
-      "Replace the current session progress state with the complete supplied steps. Call update_progress whenever actual step state changes; keep at most one step in_progress, require a reason for each blocked step, and send an empty steps array to clear it.",
+      "Replace the current session progress state with the complete supplied steps. Call update_progress whenever actual step state changes; keep at most one step in_progress, and send an empty steps array to clear it.",
     promptSnippet: "Maintain the complete session progress state as multi-step work progresses",
     promptGuidelines: [
       "Use update_progress to track work with multiple meaningful steps; skip it for simple, single-step tasks.",
       "Use update_progress to keep the progress state aligned with actual work: mark a step in_progress before starting it, mark it completed as soon as it finishes, and revise the steps before continuing when the plan changes.",
-      "Use blocked with a concise reason only when progress depends on an external action or condition; blocked does not mean completed.",
+      "Use blocked only when progress depends on an external action or condition; describe that condition in the step text. Blocked does not mean completed.",
       "Before a progress report or final response, call update_progress to reconcile every step with actual work; do not report completion while the progress state is stale.",
       "On every update_progress call, send the complete current steps array, keep at most one step in_progress, and send an empty steps array when no tracked work remains.",
     ],

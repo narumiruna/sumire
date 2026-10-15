@@ -741,7 +741,7 @@ describe("ChatSessionRegistry", () => {
   it("reports real Pi activity even when no progress tool is called", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
-    const activities: string[] = []
+    const activities: [string, string | undefined][] = []
     session.prompt = vi.fn(async (text: string) => {
       session.emit({ type: "agent_start" })
       session.emit({
@@ -770,10 +770,16 @@ describe("ChatSessionRegistry", () => {
       control: approvedStore([1, 2, 7, 8, 123, 456, -100]),
     })
 
-    await registry.submit(1, "開始", { onActivity: (activity) => activities.push(activity) })
+    await registry.submit(1, "開始", {
+      onActivity: (activity, toolName) => activities.push([activity, toolName]),
+    })
     session.emit({ type: "agent_start" })
 
-    expect(activities).toEqual(["model", "tool", "tool_finished"])
+    expect(activities).toEqual([
+      ["model", undefined],
+      ["tool", "read"],
+      ["tool_finished", "read"],
+    ])
   })
 
   it("forwards only successful, valid progress results while a prompt is active", async () => {

@@ -17,6 +17,19 @@ export function renderProgressStatus(steps: readonly ProgressStep[]): string {
   return [`進度 ${completed}/${steps.length}`, "", ...steps.map(renderStep)].join("\n")
 }
 
+export function renderActivityStatus(
+  activity: "model" | "tool" | "tool_finished",
+  toolName?: string,
+): string {
+  const status =
+    activity === "model"
+      ? "正在等待模型回覆…"
+      : activity === "tool"
+        ? "正在執行工具…"
+        : "工具執行結束，等待模型回覆…"
+  return toolName ? `${status}\n工具：${sanitizeLine(toolName)}` : status
+}
+
 export function createProgressStatusEditor(
   update: (text: string, isProgress: boolean) => Promise<void>,
   onError: (error: unknown) => void,
@@ -66,8 +79,12 @@ export function createProgressStatusEditor(
   const flushActivity = () => {
     activityTimer = undefined
     const text = latestActivity
-    latestActivity = undefined
     if (closed || text === undefined) return
+    if (pending?.isProgress) {
+      activityTimer = setTimeout(flushActivity, activityEditIntervalMs)
+      return
+    }
+    latestActivity = undefined
     nextActivityAt = Date.now() + activityEditIntervalMs
     enqueue(text)
   }
@@ -105,7 +122,7 @@ function renderStep(step: ProgressStep): string {
     case "in_progress":
       return `🔄 ${text}`
     case "blocked":
-      return `⛔ ${text} — ${sanitizeLine(step.reason ?? "等待外部條件")}`
+      return `⛔ ${text}`
     case "pending":
       return `⬜ ${text}`
   }

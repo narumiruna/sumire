@@ -37,6 +37,20 @@ describe("redactLogMessage", () => {
 })
 
 describe("createLogger", () => {
+  it("exports long startup instructions without truncation and redacts sensitive values", () => {
+    const client = createLogfireClient()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(false, "write-token", client)
+    const instructions = `${"instruction\n".repeat(2_000)}END apiKey=private-key https://example.test/private`
+    logger.info(`Bot instructions loaded\n${instructions}`)
+
+    const exported = vi.mocked(client.info).mock.calls[0]?.[0] ?? ""
+    expect(exported).toContain("instruction\n".repeat(2_000))
+    expect(exported).toContain("END apiKey=[redacted] [redacted-url]")
+    expect(exported).not.toContain("private-key")
+    expect(stderr.mock.calls.flat().join(" ")).not.toContain("private-key")
+  })
+
   it("removes chat approval URL fragments from local and exported logs", async () => {
     const client = createLogfireClient()
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)

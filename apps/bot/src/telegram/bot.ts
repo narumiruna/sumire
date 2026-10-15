@@ -47,7 +47,11 @@ import {
 } from "./messages.js"
 import { registerOAuthCallbackGuard } from "./oauth-callbacks.js"
 import { runTelegramPolling } from "./polling.js"
-import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
+import {
+  createProgressStatusEditor,
+  renderActivityStatus,
+  renderProgressStatus,
+} from "./progress.js"
 import { recoverTelegramResponses } from "./recovery.js"
 
 export interface TelegramAgentBot {
@@ -810,12 +814,14 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined = preparedStatus
     let hasProgressSnapshot = false
+    let progressSnapshot: string | undefined
     let reportedProgress = false
     let progressCleared = false
     const pendingText = "處理中…"
     const initialPendingText = preparedStatus ? "正在載入文章來源…" : pendingText
     let lastDeliveredStatusText: string | undefined
     let lastDeliveredProgress: { text: string; visibleText: string } | undefined
+    let preparedProgress: { text: string; visibleText: string } | undefined
     let visiblePayload: string | undefined
     let pendingMessageId: number | undefined
     let releaseReplyCheckpoint = () => {}
@@ -832,6 +838,18 @@ export function createTelegramAgentBot(
     }
     const progressStatus = createProgressStatusEditor(
       async (text, isProgress) => {
+        if (!isProgress && progressSnapshot) {
+          // Activity edits must not publish the snapshot again, even after publication fails.
+          const snapshot =
+            preparedProgress?.text === progressSnapshot
+              ? preparedProgress.visibleText
+              : progressSnapshot
+          const combined = `${snapshot}\n\n${text}`
+          if (delivery.directPayload(combined) !== undefined) text = combined
+          else if (delivery.directPayload(snapshot) !== undefined) text = snapshot
+          // Keep the complete snapshot when activity does not fit. Do not edit it again.
+          if (text === lastDeliveredStatusText) return
+        }
         if (status) {
           visiblePayload = undefined
           const outcome = await delivery.edit(
@@ -843,6 +861,7 @@ export function createTelegramAgentBot(
             "default",
             (displayText) => {
               statusDisplayText = displayText
+              if (isProgress) preparedProgress = { text, visibleText: displayText }
             },
           )
           lastDeliveredStatusText = outcome === "delivered" ? text : undefined
@@ -855,6 +874,9 @@ export function createTelegramAgentBot(
         const progressReply = await delivery.guardedReply(context, text, replyOptions, isCurrent)
         status = progressReply.message
         lastDeliveredStatusText = progressReply.result === "delivered" ? text : undefined
+        if (isProgress && progressReply.message) {
+          preparedProgress = { text, visibleText: progressReply.message.text ?? text }
+        }
         if (progressReply.result === "delivered" && isProgress) {
           statusDisplayText = progressReply.message?.text ?? text
           lastDeliveredProgress = { text, visibleText: statusDisplayText }
@@ -946,15 +968,9 @@ export function createTelegramAgentBot(
             ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
             onAccepted: releaseSubmissionTurn,
             isCurrent,
-            onActivity: (activity) => {
-              if (hasProgressSnapshot) return
-              const text =
-                activity === "model"
-                  ? "正在等待模型回覆…"
-                  : activity === "tool"
-                    ? "正在執行工具…"
-                    : "工具執行結束，等待模型回覆…"
-              progressStatus.publishActivity(text)
+            onActivity: (activity, toolName) => {
+              const latestActivity = renderActivityStatus(activity, toolName)
+              progressStatus.publishActivity(latestActivity)
             },
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
@@ -965,10 +981,8 @@ export function createTelegramAgentBot(
               } else {
                 progressCleared = true
               }
-              progressStatus.publish(
-                steps.length > 0 ? renderProgressStatus(steps) : pendingText,
-                steps.length > 0,
-              )
+              progressSnapshot = steps.length > 0 ? renderProgressStatus(steps) : undefined
+              progressStatus.publish(progressSnapshot ?? pendingText, steps.length > 0)
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
