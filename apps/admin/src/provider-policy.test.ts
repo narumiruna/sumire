@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Policy } from "./api.js"
-import { loginUrl, withProviderModel } from "./provider-policy.js"
+import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 
 const policy: Policy = {
   tools: ["bash"],
@@ -27,6 +27,64 @@ const policy: Policy = {
   },
   providers: [],
 }
+
+describe("saved provider selection", () => {
+  it("loads the bot default and thinking level, preserving slashes in model IDs", () => {
+    expect(
+      savedProviderSelection({
+        ...policy,
+        defaults: { ...policy.defaults, model: "vendor/family/model", thinking: "high" },
+      }),
+    ).toEqual({ provider: "vendor", model: "family/model", thinking: "high" })
+  })
+  it("loads a unique existing chat model without promoting it to a shared default", () => {
+    const legacy = { ...policy, defaults: { ...policy.defaults, model: null } }
+    expect(savedProviderSelection(legacy)).toEqual({
+      provider: "old",
+      model: "model",
+      thinking: "off",
+    })
+    expect(legacy.defaults.model).toBeNull()
+  })
+  it("does not choose a model when chats use different models", () => {
+    const selection = savedProviderSelection({
+      ...policy,
+      defaults: { ...policy.defaults, model: null },
+      chats: { ...policy.chats, "43": { ...policy.defaults, enabled: true, model: "old/other" } },
+    })
+    expect(selection).toEqual({ provider: "old", model: "", thinking: "off" })
+  })
+  it("does not choose a provider when chat providers differ", () => {
+    expect(
+      savedProviderSelection({
+        ...policy,
+        defaults: { ...policy.defaults, model: null },
+        chats: {
+          ...policy.chats,
+          "43": { ...policy.defaults, enabled: true, model: "other/model" },
+        },
+      }).provider,
+    ).toBe("")
+  })
+  it("requires a thinking choice when existing chats use different levels", () => {
+    expect(
+      savedProviderSelection({
+        ...policy,
+        defaults: { ...policy.defaults, model: null },
+        chats: { ...policy.chats, "43": { ...policy.defaults, enabled: true, thinking: "low" } },
+      }).thinking,
+    ).toBeNull()
+  })
+  it("does not invent a model when no saved selection exists", () => {
+    expect(
+      savedProviderSelection({
+        ...policy,
+        defaults: { ...policy.defaults, model: null },
+        chats: {},
+      }),
+    ).toEqual({ provider: "", model: "", thinking: null })
+  })
+})
 
 describe("provider selection policy", () => {
   it("adds only the selected model and keeps all other policy unchanged", () => {

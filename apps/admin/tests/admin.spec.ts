@@ -179,6 +179,159 @@ test("shows inherited chat settings and supported thinking levels", async ({ pag
   await page.getByRole("option", { name: "low", exact: true }).click()
   await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
 })
+test("loads the saved bot provider, model, thinking level, and default state", async ({ page }) => {
+  await setup(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        policy: { ...policy, defaults: { ...policy.defaults, thinking: "low" } },
+      },
+    }),
+  )
+  await page.reload()
+  let mutations = 0
+  page.on("request", (r) => {
+    if (r.method() === "PUT") mutations++
+  })
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Provider", exact: true })).toHaveText(/Fixture/)
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Test/)
+  await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveText("low")
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeDisabled()
+  expect(mutations).toBe(0)
+})
+
+test("updates untouched provider fields when saved settings are reloaded", async ({ page }) => {
+  await setup(page)
+  let current = structuredClone(policy)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { revision: 2, applied: 2, status: "applied", policy: current } }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Test/)
+  current = {
+    ...policy,
+    models: ["fixture/test", "fixture/other"],
+    defaults: {
+      ...policy.defaults,
+      models: ["fixture/test", "fixture/other"],
+      model: "fixture/other",
+    },
+  }
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+})
+
+test("keeps a local preview on refresh and restores saved values on request", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseModel(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 2,
+        applied: 2,
+        status: "applied",
+        policy: { ...policy, defaults: { ...policy.defaults, thinking: "low" } },
+      },
+    }),
+  )
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+  await page.getByRole("button", { name: "Use saved selection", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Test/)
+  await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveText("low")
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+})
+
+test("loads an existing chat model without creating a shared bot default", async ({ page }) => {
+  await setup(page)
+  const legacy = {
+    ...policy,
+    models: ["fixture/other"],
+    defaults: { ...policy.defaults, models: [], model: null },
+    chats: {
+      "42": {
+        ...policy.defaults,
+        enabled: true,
+        models: ["fixture/other"],
+        model: "fixture/other",
+      },
+    },
+  }
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { revision: 1, applied: 1, status: "applied", policy: legacy } }),
+  )
+  await page.reload()
+  let mutations = 0
+  page.on("request", (r) => {
+    if (r.method() === "PUT") mutations++
+  })
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Provider", exact: true })).toHaveText(/Fixture/)
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).not.toBeChecked()
+  await expect(page.getByText("Existing chat model:", { exact: false })).toContainText(
+    "fixture/other",
+  )
+  await page.getByText("Chat-specific models (1)", { exact: true }).click()
+  await expect(page.getByRole("listitem")).toContainText("Chat 42: fixture/other")
+  expect(mutations).toBe(0)
+})
+
+test("shows different chat models without choosing one as the shared default", async ({ page }) => {
+  await setup(page)
+  const next = {
+    ...policy,
+    models: ["fixture/test", "fixture/other"],
+    defaults: { ...policy.defaults, model: null },
+    chats: {
+      "42": { ...policy.defaults, enabled: true },
+      "43": {
+        ...policy.defaults,
+        enabled: true,
+        models: ["fixture/other"],
+        model: "fixture/other",
+      },
+    },
+  }
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { revision: 1, applied: 1, status: "applied", policy: next } }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Provider", exact: true })).toHaveText(/Fixture/)
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Choose model/)
+  await page.getByText("Chat-specific models (2)", { exact: true }).click()
+  await expect(page.getByRole("listitem")).toHaveCount(2)
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toHaveCount(0)
+})
+
+test("retains an unavailable saved provider instead of choosing a configured replacement", async ({
+  page,
+}) => {
+  await setup(page)
+  const next = {
+    ...policy,
+    models: ["missing/test"],
+    defaults: { ...policy.defaults, models: ["missing/test"], model: "missing/test" },
+  }
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { revision: 1, applied: 1, status: "applied", policy: next } }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Provider", exact: true })).toHaveText(/missing/)
+  await expect(page.getByText("The selected provider missing", { exact: false })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toHaveCount(0)
+})
+
 test("searches built-in catalogs and adds only the selected model", async ({ page }) => {
   await setup(page)
   await page.getByRole("button", { name: "Model Providers", exact: true }).click()
@@ -451,7 +604,13 @@ test("requires an explicit supported thinking choice after catalog changes", asy
   ).toBeVisible()
   await page.getByRole("combobox", { name: "Thinking level" }).click()
   await page.getByRole("option", { name: "off", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeEnabled()
+  await expect(
+    page.getByText("The selected thinking level is unavailable.", { exact: false }),
+  ).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Save model and apply" })).toBeDisabled()
+  await expect(
+    page.getByText("Selection matches current settings.", { exact: false }),
+  ).toBeVisible()
 })
 
 test("provider search works with the keyboard on narrow screens", async ({ page }) => {

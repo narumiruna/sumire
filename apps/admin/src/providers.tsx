@@ -15,7 +15,7 @@ import {
 } from "@radix-ui/themes"
 import { useEffect, useId, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
-import { loginUrl, withProviderModel } from "./provider-policy.js"
+import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 
 type Option = { id: string; label: string; detail?: string }
 function SearchChoice({
@@ -148,10 +148,11 @@ export function Providers({
   run(action: () => Promise<void>): Promise<void>
   refresh(): Promise<void>
 }) {
-  const [provider, setProvider] = useState("")
-  const [model, setModel] = useState("")
-  const [thinking, setThinking] = useState<Selection["thinking"]>("off")
-  const [useDefault, setUseDefault] = useState(false)
+  const saved = savedProviderSelection(snapshot.policy)
+  // Untouched fields follow saved settings. An explicit preview survives credential refresh.
+  const [draft, setDraft] = useState<ReturnType<typeof savedProviderSelection> | null>(null)
+  const { provider, model, thinking } = draft ?? saved
+  const [defaultChoice, setDefaultChoice] = useState<boolean>()
   const [authOpen, setAuthOpen] = useState(false)
   const [method, setMethod] = useState<"choose" | "key" | "account">("choose")
   const [key, setKey] = useState("")
@@ -165,8 +166,18 @@ export function Providers({
   const custom = snapshot.policy.providers.find((p) => p.id === provider)
   const blocked = busy || dirty || Boolean(oauth)
   const ref = provider && model ? `${provider}/${model}` : ""
+  const useDefault = defaultChoice ?? (Boolean(ref) && ref === snapshot.policy.defaults.model)
+  const chatSelections = Object.entries(snapshot.policy.chats).filter(
+    ([, chat]) => chat.model !== null,
+  )
   const supported = selectedModel?.thinking ?? []
   const thinkingValid = thinking !== null && supported.includes(thinking)
+  const modelChanged =
+    !snapshot.policy.models.includes(ref) ||
+    (useDefault &&
+      (snapshot.policy.defaults.model !== ref ||
+        (snapshot.policy.defaults.thinking ?? "off") !== thinking ||
+        !snapshot.policy.defaults.models?.includes(ref)))
 
   useEffect(() => {
     if (!oauth) return
@@ -258,9 +269,47 @@ export function Providers({
         Authentication is saved separately.
       </Text>
       <Text as="p" size="2" color="gray" className="provider-current" mt="2">
-        Bot default in current settings: {snapshot.policy.defaults.model ?? "Not configured"} ·
+        Shared bot default in current settings: {snapshot.policy.defaults.model ?? "Not set"} ·
         Thinking: {snapshot.policy.defaults.thinking ?? "off"}
       </Text>
+      {!snapshot.policy.defaults.model && (
+        <Text as="p" size="2" color="gray" mt="2">
+          {saved.model
+            ? `Existing chat model: ${saved.provider}/${saved.model}. This is not a shared bot default.`
+            : "No shared bot default. Chats can use different models; no model is selected automatically."}
+        </Text>
+      )}
+      {chatSelections.length > 0 && (
+        <details className="provider-advanced provider-current">
+          <summary>Chat-specific models ({chatSelections.length})</summary>
+          <Text as="p" size="2">
+            These settings override the bot default. Change them on Chats.
+          </Text>
+          <ul>
+            {chatSelections.map(([id, chat]) => (
+              <li key={id}>
+                Chat {id}: {chat.model} · Thinking:{" "}
+                {chat.thinking ?? snapshot.policy.defaults.thinking ?? "off"}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {(draft || defaultChoice !== undefined) && (
+        <Button
+          variant="soft"
+          mt="2"
+          disabled={busy || Boolean(oauth)}
+          onClick={() => {
+            setDraft(null)
+            setDefaultChoice(undefined)
+            setNotice("")
+            setDiscovered([])
+          }}
+        >
+          Use saved selection
+        </Button>
+      )}
       {dirty && (
         <Text as="p" color="orange" role="status">
           Save or discard the unsaved settings above before changing provider credentials or
@@ -279,14 +328,19 @@ export function Providers({
             detail: `${p.id} · ${p.configured ? "Configured" : "Not configured"}`,
           }))}
           onChange={(id) => {
-            setProvider(id)
-            setModel("")
-            setThinking("off")
-            setUseDefault(false)
+            if (id === provider) return
+            setDraft(id === saved.provider ? saved : { provider: id, model: "", thinking: null })
+            setDefaultChoice(false)
             setNotice("")
             setDiscovered([])
           }}
         />
+        {provider && !selected && (
+          <Text as="p" color="orange" mt="3">
+            The selected provider {provider} is no longer in the catalog. Choose another provider.
+            No replacement is selected automatically.
+          </Text>
+        )}
         {selected && (
           <>
             <Flex align="center" gap="2" wrap="wrap" mt="3">
@@ -377,11 +431,15 @@ export function Providers({
             disabled={Boolean(oauth) || busy}
             options={selected.models.map((m) => ({ id: m.id, label: m.name, detail: m.id }))}
             onChange={(id) => {
-              setModel(id)
-              setThinking(
-                (selected.models.find((m) => m.id === id)?.thinking[0] as Selection["thinking"]) ??
-                  null,
-              )
+              if (id === model) return
+              setDraft({
+                provider,
+                model: id,
+                thinking:
+                  (selected.models.find((m) => m.id === id)
+                    ?.thinking[0] as Selection["thinking"]) ?? null,
+              })
+              setDefaultChoice(false)
             }}
           />
           {model && !selectedModel && (
@@ -400,7 +458,9 @@ export function Providers({
                   Thinking level
                   <Select.Root
                     value={thinking ?? ""}
-                    onValueChange={(v) => setThinking(v as Selection["thinking"])}
+                    onValueChange={(v) =>
+                      setDraft({ provider, model, thinking: v as Selection["thinking"] })
+                    }
                   >
                     <Select.Trigger id="provider-thinking" />
                     <Select.Content>
@@ -422,7 +482,10 @@ export function Providers({
                 <Checkbox
                   id="provider-default"
                   checked={useDefault}
-                  onCheckedChange={(v) => setUseDefault(v === true)}
+                  onCheckedChange={(v) => {
+                    setDraft(draft ?? saved)
+                    setDefaultChoice(v === true)
+                  }}
                 />
                 Use as the bot default
               </label>
@@ -431,9 +494,19 @@ export function Providers({
                   ? "Changes the inherited model and thinking defaults. Chat overrides stay unchanged. Each chat must allow this model."
                   : "Add only this model to global availability. The bot default and chat overrides stay unchanged. Thinking applies only when this is the bot default."}
               </Text>
+              {thinkingValid && !modelChanged && (
+                <Text as="p" size="2" color="gray" mt="2">
+                  Selection matches current settings. No model change is needed.
+                </Text>
+              )}
               <AlertDialog.Root>
                 <AlertDialog.Trigger>
-                  <Button mt="3" disabled={blocked || !thinkingValid || custom?.enabled === false}>
+                  <Button
+                    mt="3"
+                    disabled={
+                      blocked || !thinkingValid || !modelChanged || custom?.enabled === false
+                    }
+                  >
                     Save model and apply
                   </Button>
                 </AlertDialog.Trigger>
