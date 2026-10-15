@@ -133,7 +133,7 @@ export class ChatSessionRegistry {
       unresolvedReplyPrompt?: string
       onAccepted?: () => void
       onProgress?: (steps: readonly ProgressStep[]) => void
-      onActivity?: (activity: SubmissionActivity) => void
+      onActivity?: (activity: SubmissionActivity, toolName?: string) => void
       isCurrent?: () => boolean
     } = {},
   ): Promise<SubmissionResult> {
@@ -193,7 +193,7 @@ export class ChatSessionRegistry {
         const activity = submissionActivity(event)
         if (activity) {
           try {
-            options.onActivity(activity)
+            options.onActivity(activity, "toolName" in event ? event.toolName : undefined)
           } catch (error) {
             this.logger.warn("Activity listener failed", error)
           }

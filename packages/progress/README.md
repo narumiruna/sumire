@@ -9,7 +9,7 @@ Branch-aware multi-step progress for Pi hosts. The package registers one strict 
 
 - Registers only the canonical `update_progress` tool.
 - Supports `pending`, `in_progress`, `completed`, and `blocked` steps.
-- Requires a reason for blocked work and allows at most one active step.
+- Allows at most one active step. Describe external blockers in the step text.
 - Restores the latest valid snapshot from the active session branch.
 - Adds hidden state after compaction when the matching tool result is no longer model-visible.
 - Exports strict parsers and TypeScript types for SDK hosts.
@@ -41,18 +41,20 @@ Pi packages execute with the current user's permissions. Review third-party sour
   "steps": [
     { "text": "Inspect the implementation", "status": "completed" },
     { "text": "Implement the change", "status": "in_progress" },
-    { "text": "Deploy", "status": "blocked", "reason": "Waiting for approval" }
+    { "text": "Deploy — waiting for approval", "status": "blocked" }
   ]
 }
 ```
 
-Send an empty `steps` array to clear the state. The package accepts at most 50 steps, 300 characters per step, 200 characters per blocked reason, and one `in_progress` step.
+Send an empty `steps` array to clear the state. The package accepts at most 50 steps, 503 grapheme clusters per step, and one `in_progress` step.
+
+Steps contain only `text` and `status`; `reason` is not accepted. When restoring version 1 results, the parser merges each blocked reason into its step text as `text — reason`.
 
 Successful results contain versioned details:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "steps": [{ "text": "Implement the change", "status": "in_progress" }]
 }
 ```

@@ -47,7 +47,11 @@ import {
 } from "./messages.js"
 import { registerOAuthCallbackGuard } from "./oauth-callbacks.js"
 import { runTelegramPolling } from "./polling.js"
-import { createProgressStatusEditor, renderProgressStatus } from "./progress.js"
+import {
+  createProgressStatusEditor,
+  renderActivityStatus,
+  renderProgressStatus,
+} from "./progress.js"
 import { recoverTelegramResponses } from "./recovery.js"
 
 export interface TelegramAgentBot {
@@ -810,6 +814,7 @@ export function createTelegramAgentBot(
     }
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined = preparedStatus
     let hasProgressSnapshot = false
+    let progressSnapshot: string | undefined
     let reportedProgress = false
     let progressCleared = false
     const pendingText = "處理中…"
@@ -946,15 +951,11 @@ export function createTelegramAgentBot(
             ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
             onAccepted: releaseSubmissionTurn,
             isCurrent,
-            onActivity: (activity) => {
-              if (hasProgressSnapshot) return
-              const text =
-                activity === "model"
-                  ? "正在等待模型回覆…"
-                  : activity === "tool"
-                    ? "正在執行工具…"
-                    : "工具執行結束，等待模型回覆…"
-              progressStatus.publishActivity(text)
+            onActivity: (activity, toolName) => {
+              const latestActivity = renderActivityStatus(activity, toolName)
+              progressStatus.publishActivity(
+                progressSnapshot ? `${progressSnapshot}\n\n${latestActivity}` : latestActivity,
+              )
             },
             onProgress: (steps) => {
               if (steps.length === 0 && !hasProgressSnapshot) return
@@ -965,10 +966,8 @@ export function createTelegramAgentBot(
               } else {
                 progressCleared = true
               }
-              progressStatus.publish(
-                steps.length > 0 ? renderProgressStatus(steps) : pendingText,
-                steps.length > 0,
-              )
+              progressSnapshot = steps.length > 0 ? renderProgressStatus(steps) : undefined
+              progressStatus.publish(progressSnapshot ?? pendingText, steps.length > 0)
             },
           })
           span.setAttribute("pi.outcome", submission.kind)

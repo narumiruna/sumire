@@ -48,6 +48,38 @@ describe("durable bot runtime", () => {
     expect(JSON.stringify(fixture.requests[1]?.messages)).toContain("look at this")
   })
 
+  it("delivers structured progress from the durable tool to the host", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const registry = new ChatSessionRegistry(
+      async () => session,
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+      { control: approvedStore([123]) },
+    )
+    const steps = [
+      { text: "Inspect", status: "completed" },
+      { text: "Implement", status: "in_progress" },
+      { text: "Deploy — waiting for approval", status: "blocked" },
+    ]
+    const updates: unknown[] = []
+    try {
+      fixture.enqueue("update_progress", { steps })
+      expect(
+        await registry.submit(123, "work", {
+          onProgress: (snapshot) => updates.push(snapshot),
+        }),
+      ).toMatchObject({ kind: "completed" })
+      await vi.waitFor(() => expect(updates).toEqual([steps]))
+      const schema = fixture.requests[0]?.tools.find(
+        (tool) => tool.function.name === "update_progress",
+      )?.function.parameters
+      expect(JSON.stringify(schema)).not.toContain('"reason"')
+    } finally {
+      await registry.dispose()
+    }
+  })
+
   it("acknowledges delivered responses even when reply-tree routing is disabled", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()

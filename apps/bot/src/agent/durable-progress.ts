@@ -2,6 +2,7 @@ import { defineExtension, defineTool, section } from "@earendil-works/pi-durable
 import {
   PROGRESS_DETAILS_VERSION,
   ProgressParameters,
+  parseProgressDetails,
   validateProgressArguments,
 } from "@narumitw/sumire-progress"
 import { ProgressDoc } from "./durable-state.js"
@@ -13,9 +14,12 @@ export function createProgressExtension(authorize: () => void = () => {}) {
     sections: [
       section("progress", async ({ conversationId, read }, context) => {
         const state = await read.snapshot(ProgressDoc, conversationId, context)
+        const details =
+          parseProgressDetails({ version: PROGRESS_DETAILS_VERSION, steps: state?.steps ?? [] }) ??
+          parseProgressDetails({ version: 1, steps: state?.steps ?? [] })
         return [
-          "Use update_progress for multi-step work. Submit the complete steps array, with at most one in_progress step and a reason for every blocked step. Reconcile progress before reports and final answers; clear it with an empty array. Never claim unfinished steps are completed.",
-          state?.steps.length ? `Current progress (JSON data): ${JSON.stringify(state)}` : "",
+          "Use update_progress for multi-step work. Submit the complete steps array, with at most one in_progress step. Describe external blockers in the step text. Mark a step in_progress before starting it and completed when it finishes. Reconcile progress before reports and final answers; clear it with an empty array. Never claim unfinished steps are completed.",
+          details?.steps.length ? `Current progress (JSON data): ${JSON.stringify(details)}` : "",
         ]
           .filter(Boolean)
           .join("\n")
@@ -25,7 +29,7 @@ export function createProgressExtension(authorize: () => void = () => {}) {
       defineTool({
         name: "update_progress",
         description:
-          "Replace the current progress with the complete supplied steps; keep at most one in_progress step, require a reason for each blocked step, and send an empty steps array to clear it.",
+          "Replace the current progress with the complete supplied steps; keep at most one in_progress step, and send an empty steps array to clear it.",
         parameters: ProgressParameters,
         prepareArguments: validateProgressArguments,
         replay: "safe",

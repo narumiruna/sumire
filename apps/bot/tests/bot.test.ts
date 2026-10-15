@@ -56,7 +56,7 @@ function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessi
         options: {
           onAccepted?: () => void
           onProgress?: (steps: readonly ProgressStep[]) => void
-          onActivity?: (activity: SubmissionActivity) => void
+          onActivity?: (activity: SubmissionActivity, toolName?: string) => void
           isCurrent?: () => boolean
         } = {},
       ) => {
@@ -1816,14 +1816,14 @@ describe("Telegram bot update routing", () => {
     ])
   })
 
-  it("does not replace structured progress with generic activity", async () => {
+  it("shows activity alongside structured progress and retains the clean snapshot", async () => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
         options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
         await new Promise<void>((resolve) => setImmediate(resolve))
-        options.onActivity?.("model")
-        options.onActivity?.("tool")
+        options.onActivity?.("tool", "read")
+        await new Promise<void>((resolve) => setImmediate(resolve))
         return { kind: "completed" as const, text: "完成" }
       }),
     })
@@ -1839,6 +1839,8 @@ describe("Telegram bot update routing", () => {
 
     expect(calls.map((call) => call.payload.text)).toEqual([
       "處理中…",
+      "進度 0/1\n\n🔄 分析需求",
+      "進度 0/1\n\n🔄 分析需求\n\n正在執行工具…\n工具：read",
       "進度 0/1\n\n🔄 分析需求",
       "完成",
     ])
