@@ -13,7 +13,8 @@ export async function createBotModelRuntime(
   suppliedModelRuntime?: ModelRuntime,
 ) {
   const canLogin =
-    settings.botAdminId !== undefined && settings.botWhitelist.has(settings.botAdminId)
+    settings.botAdminId !== undefined &&
+    (settings.admin !== undefined || settings.botWhitelist.has(settings.botAdminId))
   const modelRuntime =
     suppliedModelRuntime ??
     (await ModelRuntime.create({
@@ -25,7 +26,7 @@ export async function createBotModelRuntime(
   const model = modelRuntime.getModel("openai", initialModelId)
   if (!model) throw new Error(`Pi model not found: openai/${initialModelId}`)
 
-  if (!canLogin && (await modelRuntime.getAvailable()).length === 0) {
+  if (!settings.admin && !canLogin && (await modelRuntime.getAvailable()).length === 0) {
     throw new Error(
       "Pi requires credentials for an available chat model or BOT_ADMIN_ID explicitly listed in BOT_WHITELIST for /login",
     )

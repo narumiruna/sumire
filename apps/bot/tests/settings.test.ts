@@ -107,7 +107,7 @@ describe("loadSettings", () => {
     expect(settings.botSystemPromptPath).toBe("/app/instructions/SYSTEM.md")
   })
 
-  it("lists only the seven retained variables in .env.example", async () => {
+  it("lists only supported bootstrap variables in .env.example", async () => {
     const example = await readFile(new URL("../../../.env.example", import.meta.url), "utf8")
     const names = example
       .split("\n")
@@ -117,6 +117,9 @@ describe("loadSettings", () => {
       "BOT_TOKEN",
       "BOT_WHITELIST",
       "BOT_ADMIN_ID",
+      "ADMIN_ORIGIN",
+      "ADMIN_HOST",
+      "ADMIN_PORT",
       "FIRECRAWL_API_KEY",
       "OTTER_TOKEN",
       "LOGFIRE_TOKEN",
@@ -134,6 +137,46 @@ describe("loadSettings", () => {
   ])("does not parse OpenAI configuration owned by Pi: %j", (environment) => {
     expect(loadSettings(environment)).toEqual(loadSettings({}))
   })
+
+  it("enables the WebUI only with explicit HTTPS and Telegram bootstrap settings", () => {
+    const bootstrap = {
+      BOT_ADMIN_ID: "42",
+      ADMIN_ORIGIN: "https://admin.example.test",
+    }
+    expect(loadSettings(bootstrap).admin).toMatchObject({
+      host: "127.0.0.1",
+      port: 17465,
+      origin: bootstrap.ADMIN_ORIGIN,
+    })
+    for (const host of [undefined, "", "   "])
+      expect(loadSettings({ ...bootstrap, ADMIN_HOST: host }).admin?.host).toBe("127.0.0.1")
+    for (const host of ["0.0.0.0", "::1", "localhost"])
+      expect(loadSettings({ ...bootstrap, ADMIN_HOST: ` ${host} ` }).admin?.host).toBe(host)
+    expect(loadSettings({}).admin).toBeUndefined()
+    for (const origin of [
+      "http://admin.example.test",
+      "https://admin.example.test/",
+      "https://user:pass@admin.example.test",
+    ])
+      expect(() => loadSettings({ ...bootstrap, ADMIN_ORIGIN: origin })).toThrow()
+    expect(() => loadSettings({ ...bootstrap, BOT_ADMIN_ID: "" })).toThrow()
+    expect(() => loadSettings({ ...bootstrap, ADMIN_PORT: "0" })).toThrow()
+  })
+
+  it.each(["", " ", "invalid", "0", "65536"])(
+    "ignores an unused admin port %j but validates it when enabled",
+    (port) => {
+      expect(loadSettings({ ADMIN_PORT: port }).admin).toBeUndefined()
+      expect(loadSettings({ ADMIN_ORIGIN: " ", ADMIN_PORT: port }).admin).toBeUndefined()
+      expect(() =>
+        loadSettings({
+          BOT_ADMIN_ID: "42",
+          ADMIN_ORIGIN: "https://admin.example.test",
+          ADMIN_PORT: port,
+        }),
+      ).toThrow()
+    },
+  )
 
   it("rejects invalid supported settings", () => {
     expect(() => loadSettings({ BOT_WHITELIST: "123,nope" })).toThrow(ZodError)

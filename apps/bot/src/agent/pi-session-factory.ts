@@ -12,7 +12,11 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import { urlContentSkillsPath } from "@narumitw/sumire-url-content/resources"
 import { createPublicUrlLoader, createUrlTool, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
-
+import type { McpAdmin } from "../admin/mcp.js"
+import { effectivePolicy } from "../admin/policy.js"
+import { chatModelRuntime } from "../admin/providers.js"
+import { adminShellEnvironment } from "../admin/shell.js"
+import type { AdminStore } from "../admin/store.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
@@ -22,7 +26,7 @@ import { createDurableCodemode } from "./durable-codemode.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
 import { adaptTool, codingTools, collectTools } from "./durable-tools.js"
-import { McpCapability } from "./mcp-capability.js"
+import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { loadMcpConfig } from "./mcp-config.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -32,6 +36,8 @@ const soulSectionPlaceholder = "{{SOUL_SECTION}}"
 
 export interface PiSessionFactory {
   login?: OAuthLoginClient
+  modelRuntime?: ModelRuntime
+  toolNames?: string[]
   create(chatId: number): Promise<DurableSession>
   listChats(): Promise<number[]>
 }
@@ -41,13 +47,14 @@ export async function createPiSessionFactory(
   logger: Logger,
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
   modelRuntimeOverride?: ModelRuntime,
+  control?: { store: AdminStore; mcp: McpAdmin },
 ): Promise<PiSessionFactory> {
-  if (settings.botWhitelist.size === 0) {
+  if (!control && settings.botWhitelist.size === 0) {
     throw new Error(
       "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
     )
   }
-  const mcpConfig = await loadMcpConfig(settings, logger)
+  const mcpConfig = control ? control.mcp.config() : await loadMcpConfig(settings, logger)
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
 
   const { modelRuntime, model, login } = await createBotModelRuntime(
@@ -95,16 +102,26 @@ export async function createPiSessionFactory(
     },
   )
   const baseTools = [
-    ...codingTools(settings.botWorkdir),
+    ...codingTools(settings.botWorkdir, control ? adminShellEnvironment(process.env) : undefined),
     urlTool,
     ...buildMorselTools(createMorselPublisher(settings), settings.morselMode, logger),
     ...(settings.botChannelImageInputEnabled && settings.botImageInputEnabled
-      ? await collectTools(createReadImageExtension(settings, channelImages, logger))
+      ? await collectTools(
+          createReadImageExtension(settings, channelImages, logger, undefined, undefined, () =>
+            control
+              ? new Set(
+                  control.store.snapshot().policy.groups.filter((id) => control.store.allows(id)),
+                )
+              : settings.botWhitelist,
+          ),
+        )
       : []),
   ]
 
   return {
     login,
+    modelRuntime,
+    toolNames: [...baseTools.map((tool) => tool.name), "codemode", "update_progress"],
 
     async listChats() {
       try {
@@ -128,34 +145,80 @@ export async function createPiSessionFactory(
       }
     },
     async create(chatId) {
-      const selectedModel = (await modelRuntime.checkAuth(model.provider))
-        ? model
-        : (await modelRuntime.getAvailable())[0]
+      const state = control?.store.snapshot()
+      control?.store.assertChat(chatId, state?.revision)
+      const policy = state ? effectivePolicy(state.policy, chatId) : undefined
+      const ref = policy?.model
+      const requested = ref
+        ? modelRuntime.getModel(ref.slice(0, ref.indexOf("/")), ref.slice(ref.indexOf("/") + 1))
+        : policy
+          ? undefined
+          : model
+      const selectedModel = policy
+        ? requested &&
+          policy.models.includes(`${requested.provider}/${requested.id}`) &&
+          (await modelRuntime.checkAuth(requested.provider))
+          ? requested
+          : undefined
+        : (await modelRuntime.checkAuth(model.provider))
+          ? model
+          : (await modelRuntime.getAvailable())[0]
+      const runtime = control ? chatModelRuntime(modelRuntime, control.store, chatId) : modelRuntime
+      const guard = (tool: import("./durable-tools.js").NativeTool) =>
+        control
+          ? {
+              ...tool,
+              execute: (...args: Parameters<typeof tool.execute>) => {
+                control.store.assertChat(chatId)
+                if (!control.store.allowsTool(chatId, tool.name))
+                  throw new Error("Tool is not allowed")
+                return tool.execute(...args)
+              },
+            }
+          : tool
+      const allowed = (tool: import("./durable-tools.js").NativeTool) =>
+        !control || control.store.allowsTool(chatId, tool.name)
+      const chatBaseTools = baseTools.filter(allowed).map(guard)
+      const chatMcpConfig = control ? control.mcp.config() : mcpConfig
+      const permittedMcp = {
+        ...chatMcpConfig,
+        servers: chatMcpConfig.servers.filter(
+          (server) => !policy || policy.servers.includes(server.name),
+        ),
+      }
       if (!selectedModel) throw new Error("尚未設定 Pi 驗證，請管理員在私聊使用 /login。")
       const directory = path.join(settings.botSessionLogDir, String(chatId), "durable")
       await mkdir(directory, { recursive: true, mode: 0o700 })
       await chmod(directory, 0o700)
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
-      const nativeTools = [...baseTools]
+      const nativeTools = [...chatBaseTools]
       const mcp: McpCapability | undefined =
-        mcpConfig.servers.length > 0
+        permittedMcp.servers.length > 0
           ? new McpCapability(
-              mcpConfig,
+              permittedMcp,
               settings.botWorkdir,
               path.join(directory, "mcp"),
               logger,
               () => {
                 if (!mcp) return
-                nativeTools.splice(baseTools.length, nativeTools.length, ...mcp.tools)
+                const tools = mcp.tools.filter(allowed).map(guard)
+                nativeTools.splice(chatBaseTools.length, nativeTools.length, ...tools)
                 registry.install(
                   defineExtension({
                     name: "sumire-mcp",
-                    tools: mcp.tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
+                    tools: tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
                     sections: [section("mcp_servers", () => mcp?.summary())],
                   }),
                 )
               },
+              (server, cwd, home) => {
+                control?.store.assertChat(chatId)
+                if (control && control.store.snapshot().epoch !== state?.epoch)
+                  throw new Error("Chat policy changed before MCP startup")
+                return createMcpTransport(server, cwd, home)
+              },
+              (server, tool) => !control || control.store.allowsTool(chatId, tool, server),
             )
           : undefined
       registry.install(
@@ -165,29 +228,39 @@ export async function createPiSessionFactory(
           sections: [section("system", () => systemPrompt, { tag: false })],
         }),
       )
-      registry.install(createProgressExtension())
+      const assertTool = (name: string) => {
+        if (control && !control.store.allowsTool(chatId, name))
+          throw new Error("Tool is not allowed")
+      }
+      if (!control || control.store.allowsTool(chatId, "update_progress"))
+        registry.install(createProgressExtension(() => assertTool("update_progress")))
       let harness: Harness | undefined
       let session: DurableSession | undefined
-      registry.install(
-        await createDurableCodemode(
-          nativeTools,
-          Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
-          () => {
-            if (!harness) throw new Error("Durable harness is not open")
-            return harness
-          },
-          (event) => session?.emit(event),
-          (signal) => mcp?.ready(signal) ?? Promise.resolve(),
-        ),
+      const codemode = await createDurableCodemode(
+        nativeTools,
+        Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
+        () => {
+          if (!harness) throw new Error("Durable harness is not open")
+          return harness
+        },
+        (event) => session?.emit(event),
+        (signal) => mcp?.ready(signal) ?? Promise.resolve(),
+        () => assertTool("codemode"),
       )
+      registry.install({
+        ...codemode,
+        tools: !control || control.store.allowsTool(chatId, "codemode") ? codemode.tools : [],
+      })
       const storage = await openNodeSqliteStorage(sessionFile)
       try {
         await chmod(sessionFile, 0o600)
+        control?.store.assertChat(chatId, state?.revision)
         await mcp?.ready()
+        control?.store.assertChat(chatId, state?.revision)
         harness = await Harness.open(
           storage,
           {
-            models: modelRuntime,
+            models: runtime,
             registry,
             settings: {
               compaction: {
@@ -216,7 +289,7 @@ export async function createPiSessionFactory(
         await harness.root(context, {
           agent: {
             model: { provider: selectedModel.provider, modelId: selectedModel.id },
-            thinkingLevel: "off",
+            thinkingLevel: policy?.thinking ?? "off",
             cwd: settings.botWorkdir,
           },
         })
@@ -226,14 +299,20 @@ export async function createPiSessionFactory(
           sessionFile,
           cwd: settings.botWorkdir,
           model: selectedModel,
-          modelRuntime,
+          modelRuntime: runtime,
           registry,
           systemPrompt,
           nativeTools,
           logger,
-          trustKey: JSON.stringify([...settings.botWhitelist].sort((a, b) => a - b)),
+          trustKey: state
+            ? `admin:${state.epoch}`
+            : JSON.stringify([...settings.botWhitelist].sort((a, b) => a - b)),
           cleanup: () => mcp?.close() ?? Promise.resolve(),
         })
+        if (policy) {
+          await session.setModel(selectedModel)
+          await session.setThinkingLevel(policy.thinking)
+        }
         return session
       } catch (error) {
         try {

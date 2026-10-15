@@ -66,6 +66,14 @@ export async function loadMcpConfig(
   } catch {
     throw new Error("MCP configuration could not be read as bounded JSON")
   }
+  return parseMcpConfig(input, logger, environment)
+}
+
+export function parseMcpConfig(
+  input: unknown,
+  logger: Pick<Logger, "warn">,
+  environment: NodeJS.ProcessEnv = process.env,
+): McpConfig {
   const top = z
     .object({ mcpServers: z.record(z.string(), z.unknown()) })
     .strict()

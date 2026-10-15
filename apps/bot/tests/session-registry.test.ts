@@ -1540,6 +1540,67 @@ describe("recovery-only session ownership", () => {
   })
 })
 
+describe("administration policy invalidation", () => {
+  it("closes cached sessions without deleting their durable directories", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-registry-"))
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    await registry.getModelSettings(7)
+    await registry.invalidatePolicies()
+    expect(session.aborted).toBe(true)
+    expect(session.disposed).toBe(true)
+    await registry.dispose()
+  })
+
+  it("rejects session creation admitted under the previous generation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-creation-"))
+    const pending = deferred()
+    const started = deferred()
+    const session = new FakeSession()
+    const registry = new ChatSessionRegistry(
+      async () => {
+        started.resolve()
+        await pending.promise
+        return session
+      },
+      root,
+      logger,
+    )
+    const opening = registry.getModelSettings(7)
+    const rejected = expect(opening).rejects.toThrow("invalidated")
+    await started.promise
+    const invalidating = registry.invalidatePolicies()
+    pending.resolve()
+    await rejected
+    await invalidating
+    expect(session.disposed).toBe(true)
+    await registry.dispose()
+  })
+
+  it("reports failed cancellation instead of treating the revision as applied", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-failure-"))
+    const session = new FakeSession()
+    session.abort = async () => {
+      throw new Error("Fixture cancellation failure")
+    }
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    await registry.getModelSettings(7)
+    await expect(registry.invalidatePolicies()).rejects.toThrow("could not apply")
+    expect(session.disposed).toBe(false)
+    await registry.dispose()
+  })
+
+  it("coalesces shutdown so a session is disposed only once", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-policy-shutdown-"))
+    const session = new FakeSession()
+    const dispose = vi.spyOn(session, "dispose")
+    const registry = new ChatSessionRegistry(async () => session, root, logger)
+    await registry.getModelSettings(7)
+    await Promise.all([registry.dispose(), registry.dispose()])
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+})
+
 function assistant(text: string): AgentMessage {
   return {
     role: "assistant",

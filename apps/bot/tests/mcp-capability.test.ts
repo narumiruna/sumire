@@ -21,6 +21,7 @@ async function setup(
   entries?: Record<string, unknown>,
   environment: NodeJS.ProcessEnv = {},
   beforeReady?: (capability: McpCapability) => Promise<void>,
+  authorize?: (server: string, tool: string) => boolean,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-"))
   cleanup.push(() => rm(directory, { recursive: true, force: true }))
@@ -40,6 +41,8 @@ async function setup(
     path.join(directory, "mcp"),
     logger,
     changed,
+    undefined,
+    authorize,
   )
   cleanup.push(() => capability.close())
   await beforeReady?.(capability)
@@ -53,6 +56,30 @@ async function setup(
 }
 
 describe("MCP capability", () => {
+  it("filters discovery and blocks previously discovered tools after policy revocation", async () => {
+    let allowed = true
+    const { capability } = await setup(
+      undefined,
+      {},
+      undefined,
+      (server, tool) => allowed && server === "fake" && tool.endsWith("__echo"),
+    )
+    expect(capability.tools).toHaveLength(1)
+    const echo = capability.tools[0]
+    expect(
+      await echo?.execute(
+        "approved",
+        { text: "fixture" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).toMatchObject({ isError: false })
+    allowed = false
+    await expect(
+      echo?.execute("revoked", {}, undefined, undefined, undefined as never),
+    ).rejects.toThrow("not allowed")
+  })
   it("uses real stdio, preserves structured content and errors, and exposes namespace instructions", async () => {
     const { capability, call } = await setup()
     expect(capability.tools[0]).toMatchObject({

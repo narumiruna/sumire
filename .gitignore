@@ -12,6 +12,8 @@ build/
 dist/
 node_modules/
 coverage/
+playwright-report/
+test-results/
 develop-eggs/
 downloads/
 eggs/

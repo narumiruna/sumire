@@ -25,6 +25,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./network": {
+      "types": "./dist/core/network.d.ts",
+      "import": "./dist/core/network.js"
+    },
     "./anydoc": {
       "types": "./dist/core/anydoc.d.ts",
       "import": "./dist/core/anydoc.js"

@@ -7,7 +7,7 @@ import {
 import { ProgressDoc } from "./durable-state.js"
 import { jsonValue } from "./durable-tools.js"
 
-export function createProgressExtension() {
+export function createProgressExtension(authorize: () => void = () => {}) {
   return defineExtension({
     name: "sumire-progress",
     sections: [
@@ -31,6 +31,7 @@ export function createProgressExtension() {
         replay: "safe",
         executionMode: "sequential",
         async execute(args, api, context) {
+          authorize()
           const details = jsonValue({
             version: PROGRESS_DETAILS_VERSION,
             steps: validateProgressArguments(args).steps,
