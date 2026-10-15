@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -387,6 +388,11 @@ describe("createPiSessionFactory", () => {
           .tools()
           .find(({ tool }) => tool.name === "load_public_url")?.tool.replay,
       ).toBe("unsafe")
+      expect(logger.info).toHaveBeenCalledWith(`Bot instructions loaded\n${session.systemPrompt}`, {
+        sha256: createHash("sha256").update(session.systemPrompt).digest("hex"),
+        chars: session.systemPrompt.length,
+        tools: factory.toolNames,
+      })
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(
