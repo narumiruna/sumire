@@ -131,7 +131,8 @@ flowchart LR
 
 - Implementation branch: `narumi/feat/admin-webui`.
 - Node.js 26.10.0 and npm 11.19.1; root `npm ci` completed.
-- All five required root checks passed. `npm test`: 1,297 tests across 88 files.
+- All five required root checks passed. `npm test`: 1,306 tests across 89 files.
+- The private `/admin` command returns the WebUI link only to the bootstrap administrator, before chat approval and during pending or failed policies. Nine command tests cover authorization, disabled configuration, and the private command menu.
 - Frontend browser suite: 10 fixture-based tests passed, including provider interaction, failed application, conflict handling, secret replacement, keyboard dialog behavior, and mobile width.
 - Actual Pi fixture turns verify direct and codemode revocation, branch restoration, active and queued cancellation, retained transcript files, and no withdrawn tool replay after restart. A separate regression verifies that MCP-only edits cancel pre-change persisted work even when chat permissions are unchanged; serialized Telegram model commands retain the authorization epoch.
 - MCP real-stdio tests verify discovery filtering and rejection of previously discovered calls after revocation.

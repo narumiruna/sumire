@@ -27,6 +27,7 @@ Available now:
 - default, on-demand reading of newly indexed images from allowlisted Telegram channels via Pi's `read_image` tool
 - allowlist and bot-loop limits
 - `/start`, `/help`, `/id`, `/f`, `/model`, `/thinking`, `/cancel`, and `/reset`
+- admin-only private `/admin` to open the administration WebUI, without requiring chat approval or model credentials
 - admin-only private `/login` for a shared OpenAI subscription account, with credentials resolved by Pi
 - `/f` article rewriting and Morsel publication in Taiwan Traditional Chinese
 - `/t` market-data queries for Yahoo Finance stocks/crypto, TWSE stocks, MAX crypto pairs, Frankfurter reference rates, and Bank of Taiwan TWD quotes

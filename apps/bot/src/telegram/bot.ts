@@ -130,6 +130,27 @@ export function createTelegramAgentBot(
         onError: (provider, error) => logger.warn(`${provider} market-data query failed`, error),
       }))
 
+  // Bootstrap access to administration must not depend on chat policy or model credentials.
+  bot.command("admin", async (context) => {
+    if (
+      context.chat.type !== "private" ||
+      context.chat.id !== context.from?.id ||
+      !isAdminSender(context, settings.botAdminId)
+    )
+      return
+    if (!settings.admin) {
+      await context.reply(
+        "Administration WebUI is not enabled. Configure ADMIN_ORIGIN and Telegram login client credentials, then restart the bot.",
+      )
+      return
+    }
+    await context.reply("Open Sumire administration. Sign in with Telegram in your browser.", {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Open administration", url: settings.admin.origin }]],
+      },
+    })
+  })
+
   bot.use(async (context, next) => {
     if (dependencies.control) {
       const chat = context.chat
@@ -201,6 +222,9 @@ export function createTelegramAgentBot(
         "/reset — 清除目前 chat 的 Pi session 與 model/thinking 設定",
         "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
         "/id — 顯示 chat ID 與 user ID",
+        ...(context.chat.type === "private" && isAdminSender(context, settings.botAdminId)
+          ? ["/admin — Open the administration WebUI"]
+          : []),
         ...(dependencies.login ? ["/login — 管理員在私聊登入 OpenAI（整個 bot 共用帳號）"] : []),
         ...(settings.botDocumentInputEnabled
           ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
@@ -1152,7 +1176,7 @@ export function createTelegramAgentBot(
     async start() {
       await bot.init()
       try {
-        await bot.api.setMyCommands([
+        const commands = [
           { command: "start", description: "開始使用助理" },
           { command: "help", description: "查看可用指令" },
           { command: "f", description: "將內容整理成文章" },
@@ -1165,7 +1189,13 @@ export function createTelegramAgentBot(
           ...(dependencies.login
             ? [{ command: "login", description: "管理員在私聊登入 OpenAI" }]
             : []),
-        ])
+        ]
+        await bot.api.setMyCommands(commands)
+        if (settings.botAdminId !== undefined)
+          await bot.api.setMyCommands(
+            [...commands, { command: "admin", description: "Open the administration WebUI" }],
+            { scope: { type: "chat", chat_id: settings.botAdminId } },
+          )
       } catch (error) {
         logger.warn("Could not register Telegram command menu", error)
       }

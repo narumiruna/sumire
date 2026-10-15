@@ -23,7 +23,8 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
    - Leaving `ADMIN_ORIGIN` unset preserves the deployment without the WebUI.
 4. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
-5. Sign in with Telegram. Other Telegram users cannot obtain an administrator session. Bot access does not grant administrator access.
+5. Send `/admin` in a private chat with Sumire. The bot returns an **Open administration** button only to `BOT_ADMIN_ID`. This command works before chat access is approved and while policies are pending or failed. If the WebUI is disabled, it returns a setup notice instead. The command does not start a model turn or grant bot access.
+6. Open the button and sign in with Telegram. Other Telegram users cannot obtain an administrator session. Bot access does not grant administrator access. You can also open `ADMIN_ORIGIN` directly in a browser.
 
 Sumire uses Telegram's current official Authorization Code flow with PKCE, a browser-bound one-use transaction, and a nonce. It verifies RS256 ID tokens against Telegram's JWKS, issuer, audience, issue time, expiration, and nonce. Authorization uses the signed `profile.id` claim. The OIDC `sub` is a different identifier. Sumire requests `openid profile`, not a phone number or bot messaging permission.
 
