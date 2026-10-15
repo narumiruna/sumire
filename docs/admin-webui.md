@@ -108,6 +108,10 @@ The upgrade retains the existing schema version 3, database path, policy revisio
 
 ## Policy behavior
 
+To change settings for all chats, edit **Defaults**. Existing chat overrides take priority. Select **Use Defaults for all chats** and confirm to clear all tool, MCP server, allowed-model, model, and thinking overrides, including overrides outside the current chat page. This also replaces explicit empty lists with inheritance. Access approvals and chat enabled switches do not change. Review the defaults before you select **Save settings**. Future chats inherit the same defaults unless given overrides.
+
+Model validation errors identify **Defaults** or the chat ID, the model, and whether the allowed list is inherited. Open that section and add the model to **Allowed models**, or change the model selection. For an inherited allowed list, edit **Defaults** or clear **Inherit default** for that chat. Model conflicts also appear next to the selection before saving.
+
 Global lists are availability ceilings. Global defaults select from those lists. Chat overrides can narrow or select within the ceiling, not exceed it. `Inherit default` and an explicit empty list have different meanings. An empty list allows nothing. The Chats page shows inherited or customized values and their effective pending selections. Expand **Saved effective settings** to inspect the last loaded server state.
 
 MCP server permission and individual tool permission are both required. `direct`, `codemode`, and `hidden` control exposure, not authorization. Discover a server's tools before approving their exact names. New server tools remain denied until approved.

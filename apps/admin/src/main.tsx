@@ -297,6 +297,16 @@ function Choices({
           Configure tools and MCP servers
         </Button>
       )}
+      {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>
+            Model "{value.model}" is not in Allowed models
+            {value.models === null ? " inherited from Defaults" : ""}. Add it above
+            {value.models === null ? " by editing Defaults or clearing Inherit default" : ""}, or
+            change the {defaults ? "default model in Model Providers" : "chat model override"}.
+          </Callout.Text>
+        </Callout.Root>
+      )}
       {defaults ? (
         <Card>
           <Heading size="3">Default model</Heading>
@@ -1106,6 +1116,51 @@ function App() {
             Shared defaults apply to chats that have no override. They cannot exceed global
             availability and do not approve access.
           </Text>
+          <AlertDialog.Root>
+            <AlertDialog.Trigger>
+              <Button
+                variant="soft"
+                disabled={
+                  !Object.values(policy.chats).some((choice) =>
+                    Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
+                  )
+                }
+              >
+                Use Defaults for all chats
+              </Button>
+            </AlertDialog.Trigger>
+            <AlertDialog.Content>
+              <AlertDialog.Title>Use shared defaults for every chat?</AlertDialog.Title>
+              <AlertDialog.Description>
+                Clear tool, MCP server, allowed model, model, and thinking overrides for all chats,
+                including chats outside the current page. Explicit empty lists will also inherit
+                Defaults. Chat access and enabled switches stay unchanged. Future chats already
+                inherit Defaults. This stages edits only; use Save settings to apply them.
+              </AlertDialog.Description>
+              <Flex gap="3" mt="4">
+                <AlertDialog.Cancel>
+                  <Button variant="soft">Cancel</Button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action>
+                  <Button
+                    onClick={() =>
+                      update({
+                        ...policy,
+                        chats: Object.fromEntries(
+                          Object.entries(policy.chats).map(([id, choice]) => [
+                            id,
+                            { ...inherit, enabled: choice.enabled },
+                          ]),
+                        ),
+                      })
+                    }
+                  >
+                    Stage inheritance for all chats
+                  </Button>
+                </AlertDialog.Action>
+              </Flex>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
           <Choices
             navigate={setPage}
             defaults
