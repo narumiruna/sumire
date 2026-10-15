@@ -86,18 +86,21 @@ function Field({
 function IdList({
   label,
   values,
+  chats,
   positive,
   onChange,
   onPending,
 }: {
   label: string
   values: number[]
+  chats: { id: number; name: string }[]
   positive: boolean
   onChange(values: number[]): void
   onPending(value: boolean): void
 }) {
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
+  const names = new Map(chats.map((chat) => [chat.id, chat.name]))
   return (
     <fieldset>
       <legend>{label}</legend>
@@ -105,6 +108,7 @@ function IdList({
         {values.map((id) => (
           <li key={id}>
             <code>{id}</code>
+            {names.get(id) && names.get(id) !== String(id) && <Text>{names.get(id)}</Text>}
             <Button
               variant="ghost"
               color="red"
@@ -1083,6 +1087,7 @@ function App() {
             onPending={(v) => markPending("users", v)}
             label="Private-message access"
             values={policy.privateUsers}
+            chats={chats}
             positive
             onChange={(values) => update({ ...policy, privateUsers: values })}
           />
@@ -1091,6 +1096,7 @@ function App() {
             onPending={(v) => markPending("groups", v)}
             label="Group and channel access"
             values={policy.groups}
+            chats={chats}
             positive={false}
             onChange={(values) => update({ ...policy, groups: values })}
           />
