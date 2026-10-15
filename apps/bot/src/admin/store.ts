@@ -33,14 +33,14 @@ export class AdminStore {
   readonly db: DatabaseSync
   constructor(
     readonly file: string,
-    whitelist: ReadonlySet<number>,
+    readonly whitelist: ReadonlySet<number>,
     readonly adminId?: number,
   ) {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     this.db = new DatabaseSync(file)
     chmodSync(file, 0o600)
     const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number }
-    if (version.user_version > 2) {
+    if (version.user_version > 3) {
       this.db.close()
       throw new Error("Admin database schema is newer than this application")
     }
@@ -55,8 +55,10 @@ export class AdminStore {
       CREATE TABLE IF NOT EXISTS passkeys (actor TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, public_key BLOB NOT NULL, counter INTEGER NOT NULL, user_handle TEXT NOT NULL, device_type TEXT NOT NULL, backed_up INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS passkey_setup (actor TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, origin TEXT NOT NULL, created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS passkey_challenges (hash TEXT PRIMARY KEY, actor TEXT NOT NULL, kind TEXT NOT NULL, challenge TEXT NOT NULL, setup_hash TEXT NOT NULL, user_handle TEXT NOT NULL, created INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS chat_access_requests (hash TEXT PRIMARY KEY, chat_id INTEGER NOT NULL UNIQUE, type TEXT NOT NULL, name TEXT NOT NULL, origin TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS access_reviews (fingerprint TEXT PRIMARY KEY, revision INTEGER NOT NULL, actor TEXT NOT NULL, reviewed INTEGER NOT NULL, decisions TEXT NOT NULL);
       DROP TABLE IF EXISTS login;
-      PRAGMA user_version = 2;
+      PRAGMA user_version = 3;
     `)
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
@@ -85,12 +87,14 @@ export class AdminStore {
       policy: policySchema.parse(JSON.parse(row.policy)),
     }
   }
+  /** persist must be synchronous; it shares this revision's transaction and rollback. */
   save(
     input: unknown,
     revision: number,
     actor: string,
     operation = "settings.update",
     target = "settings",
+    persist?: () => void,
   ) {
     const policy = policySchema.parse(input)
     try {
@@ -115,6 +119,7 @@ export class AdminStore {
         if (!this.db.prepare("SELECT id FROM chats WHERE id=?").get(id))
           this.observe(id, id > 0 ? "private" : "group", key)
       }
+      persist?.()
       this.db.exec("COMMIT")
     } catch (error) {
       this.db.exec("ROLLBACK")

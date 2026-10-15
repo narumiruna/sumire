@@ -37,6 +37,16 @@ describe("redactLogMessage", () => {
 })
 
 describe("createLogger", () => {
+  it("removes chat approval URL fragments from local and exported logs", async () => {
+    const client = createLogfireClient()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const logger = createLogger(true, "write-token", client)
+    const token = "a".repeat(64)
+    logger.info(`Approval link https://admin.example.test/#allow=${token}`)
+    expect(JSON.stringify(stderr.mock.calls)).not.toContain(token)
+    expect(client.info).toHaveBeenCalledWith("Approval link [redacted-url]")
+    await logger.shutdown?.()
+  })
   it("configures Logfire and forwards only redacted messages", async () => {
     const client = createLogfireClient()
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)

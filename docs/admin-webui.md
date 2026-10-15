@@ -82,6 +82,32 @@ The database is `.telegramagent/admin.sqlite`, separate from Pi's session databa
 
 Review imported access, model selections, and MCP entries before enabling capabilities. Select global model availability, defaults, and per-chat settings. A new chat is denied until its ID is approved. Knowing an ID is not authorization to approve it.
 
+## Request chat access with /allow
+
+1. Send `/allow` without arguments in the private chat, group, or supergroup to approve. `/allow@your_bot` also works. Ordinary denied messages remain silent. Channel posts do not support this command; manage channel IDs in the WebUI.
+2. Give the returned link to the administrator. With HTTPS, use **Review chat access**. With the default localhost origin, copy the URL into a browser on the computer that runs Sumire, not Telegram's embedded browser. A phone's `localhost` is not the Sumire host. Remote access requires an HTTPS `ADMIN_ORIGIN` and a Passkey registered for that domain.
+3. Sign in with the existing administrator Passkey. The page removes the token fragment before network requests and retains the pending request in browser-tab session storage through sign-in and reload. Storage-disabled browsers cannot retain it through reload. Success, invalidation, expiry, dismissal, or sign-out clears the intent.
+4. Check the displayed chat name, type, and numeric ID, then select **Approve chat**. Opening the URL and signing in do not grant access. Chat names are untrusted labels; verify the ID before approval. A link cannot enroll a Passkey or authorize a non-administrator.
+5. Check the saved and applied revision badge. Approval cancels active work through the normal policy application worker. Pending or failed application denies new work; use **Retry application** after correcting any configuration failure. Approval does not enable additional tools, MCP servers, or models.
+
+The server generates a 32-byte random hex token and stores only its SHA-256 hash with the Telegram-supplied chat metadata and configured origin. Links expire after 15 minutes. A new request replaces the previous link for that chat after a one-minute cooldown. At most 1,000 unexpired requests exist. Restart retains pending requests until expiry. Changing origin invalidates them. The URL does not accept a caller-supplied target chat ID.
+
+Resolution and approval require an administrator session, exact Origin, CSRF token, and same-origin JSON POST. Approval atomically consumes the request, changes only that chat's access, and records an audit event and policy revision. A disabled override is enabled without changing its other selections. Revision conflicts leave the request usable; reload and review before confirming again. A consumed link cannot restore later-revoked access. Do not log HTTP request bodies at ingress: resolution and approval bodies contain request tokens.
+
+## Review existing environment access
+
+This stage retains `BOT_WHITELIST`. New databases still import it once. Existing databases do not automatically merge later environment changes because a missing ID can be an intentional WebUI revocation.
+
+Before removing the environment variable in a later release:
+
+1. Back up the administration state with the bot stopped.
+2. Open **Access → Review environment access**. The authenticated report lists up to 1,000 positive and 1,000 negative IDs in numeric order as present, missing, or explicitly disabled.
+3. Select only missing IDs that must be imported. Nothing is selected by default. Explicitly disabled IDs cannot be imported through this review; manage those separately in the normal access controls when intended.
+4. Select **Confirm environment review**, even if no missing IDs should be imported. This records imported IDs, retained approvals, and retained denials together with a policy revision and audit record. Check application status before proceeding.
+5. Restart and verify the intended approved and denied chats. Review completion persists in SQLite; later WebUI revocations are not undone. Changes to the configured ID set require another review. The Audit import reports for MCP and models remain separate from this access review.
+
+The report is available at authenticated `GET /api/access/reconciliation`; its confirmation is a revision-checked, CSRF-protected POST. Reviews are keyed by the hash of the sorted environment ID set and are retained in `access_reviews`. The UI shows review status for the current set. Do not start Stage 2 until the administrator has checked every deployment ID and accepted restart persistence plus the real Telegram and Passkey flow.
+
 ## Policy behavior
 
 Global lists are availability ceilings. Global defaults select from those lists. Chat overrides can narrow or select within the ceiling, not exceed it. `Inherit default` and an explicit empty list have different meanings. An empty list allows nothing. The Chats page displays effective saved values and their sources.
@@ -92,7 +118,7 @@ Saving settings writes a revision and an audit record together. Runtime applicat
 
 | State | Enforcement |
 | --- | --- |
-| Unknown or denied chat | Reject before commands, attachments, callbacks, or passive context. |
+| Unknown or denied chat | Reject before commands, attachments, callbacks, or passive context, except the narrow `/admin` and `/allow` bootstrap handlers. |
 | Pending or failed revision | Deny new model and tool calls; keep administrator repair endpoints available. |
 | Previously discovered tool | Recheck current authorization at execution, including calls through codemode. |
 | Active work during application | Cancel queued and active work, close cached sessions, and retain transcript files. |
@@ -158,7 +184,7 @@ Before enabling the WebUI or changing versions:
 2. Back up the state volume, source MCP configuration, and bootstrap secrets with restricted access. Include Pi's `auth.json`, model store, and all session SQLite files and their SQLite sidecar files. Never commit this backup.
 3. Start the selected application version, inspect the import report and effective policies, then reopen ingress.
 
-Use a consistent SQLite backup or a stopped-service volume snapshot, not an unsynchronized copy of a running database. To recover from an incorrect administrator ID, use trusted host access to correct `BOT_ADMIN_ID`. The migration to schema version 2 preserves policy and transcript state, drops pending Telegram login transactions, and revokes old Telegram sessions. Older binaries refuse this schema; rollback requires the matching database backup. To revoke all administrator sessions while stopped, delete rows from the administration database's `sessions` table using a trusted SQLite tool. Do not delete the database to log out: that would discard policies and trigger import again.
+Use a consistent SQLite backup or a stopped-service volume snapshot, not an unsynchronized copy of a running database. To recover from an incorrect administrator ID, use trusted host access to correct `BOT_ADMIN_ID`. The migration to schema version 2 preserves policy and transcript state, drops pending Telegram login transactions, and revokes old Telegram sessions. Older binaries refuse this schema; rollback requires the matching database backup. Schema version 3 adds pending chat approval requests and environment review records. Upgrading from version 2 retains policies, Passkeys, and administrator sessions. Version 2 binaries refuse the new schema; restore the matching pre-upgrade database for rollback. Pending links and review records from the newer deployment must not be copied into an older backup. To revoke all administrator sessions while stopped, delete rows from the administration database's `sessions` table using a trusted SQLite tool. Do not delete the database to log out: that would discard policies and trigger import again.
 
 If all copies of the passkey are lost, stop the bot and back up state. Use a trusted SQLite tool to run this transaction on `admin.sqlite`:
 
@@ -189,7 +215,7 @@ npm run build
 npm run test:browser --workspace @narumitw/sumire-admin
 ```
 
-After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, and reload. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
+After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and persisted environment review. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
 
 `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
 

@@ -19,6 +19,8 @@ import { useCallback, useEffect, useId, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
+import { AccessApproval, AccessReconciliation } from "./access.js"
+import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import {
   ApiError,
   type Inventory,
@@ -32,6 +34,8 @@ import {
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { Providers } from "./providers.js"
 
+const accessStorage = tabStorage(window)
+const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const inherit: Selection = { tools: null, servers: null, models: null, model: null, thinking: null }
 const pages = ["Chats", "Access", "Defaults", "Tools / MCP", "Model Providers", "Audit"] as const
@@ -443,6 +447,11 @@ function App() {
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [toolName, setToolName] = useState("")
   const [setup, setSetup] = useState(initialSetup)
+  const [accessToken, setAccessToken] = useState(initialAccess)
+  const clearAccess = useCallback(() => {
+    clearAccessLink(accessStorage)
+    setAccessToken("")
+  }, [])
   const [mcpName, setMcpName] = useState("")
   const [mcpSecrets, setMcpSecrets] = useState<{
     env: Record<string, string>
@@ -482,6 +491,19 @@ function App() {
     setImports(reports)
     setDirty(false)
   }, [chatOffset, auditOffset])
+  useEffect(() => {
+    const capture = () => {
+      const params = new URLSearchParams(window.location.hash.slice(1))
+      if (params.has("allow")) {
+        setAccessToken(captureAccessLink(window.location, window.history, accessStorage))
+        setSetup("")
+      } else if (params.has("setup")) {
+        setSetup(captureSetupLink(window.location, window.history))
+      }
+    }
+    window.addEventListener("hashchange", capture)
+    return () => window.removeEventListener("hashchange", capture)
+  }, [])
   useEffect(() => {
     void request<{ csrf: string; actor: string }>("session").then(setSession, (e) => {
       setSession(null)
@@ -561,8 +583,10 @@ function App() {
           </Button>
           <Button
             variant="soft"
+            disabled={busy}
             onClick={() =>
               void run(async () => {
+                clearAccess()
                 await request("logout", session.csrf)
                 setMcpSecrets({ env: {}, headers: {} })
                 setMcpConfig("{}")
@@ -646,6 +670,18 @@ function App() {
           </Button>
         )}
       </Flex>
+      {accessToken && (
+        <AccessApproval
+          key={accessToken}
+          token={accessToken}
+          clear={clearAccess}
+          csrf={session.csrf}
+          snapshot={snapshot}
+          disabled={busy || dirty}
+          run={run}
+          refresh={load}
+        />
+      )}
       <Heading size="5" mt="5">
         {page}
       </Heading>
@@ -734,6 +770,13 @@ function App() {
       )}
       {page === "Access" && (
         <>
+          <AccessReconciliation
+            csrf={session.csrf}
+            snapshot={snapshot}
+            disabled={busy || dirty}
+            run={run}
+            refresh={load}
+          />
           <Text as="p">Private-message approval does not grant access in any group.</Text>
           <IdList
             key={`${snapshot.revision}:users`}

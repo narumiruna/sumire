@@ -14,7 +14,7 @@ const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
-async function setup(enabled = true, administrator = true) {
+async function setup(enabled = true, administrator = true, control = true) {
   const root = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-command-"))
   const store = new AdminStore(path.join(root, "admin.sqlite"), new Set(), 42)
   const sessions = {
@@ -44,7 +44,7 @@ async function setup(enabled = true, administrator = true) {
         username: "fixture_bot",
         first_name: "Fixture",
       } as UserFromGetMe,
-      control: store,
+      control: control ? store : undefined,
     },
   )
   cleanup.push(async () => {
@@ -81,7 +81,7 @@ function command(text = "/admin", sender = 42, group = false): Update {
         ? { id: -100, type: "supergroup", title: "Fixture" }
         : { id: sender, type: "private", first_name: "Fixture" },
       text,
-      entities: [{ type: "bot_command", offset: 0, length: text.length }],
+      entities: [{ type: "bot_command", offset: 0, length: text.split(" ")[0]?.length ?? 0 }],
     },
   }
 }
@@ -178,6 +178,83 @@ it("does not authorize an owner when BOT_ADMIN_ID is missing", async () => {
   const { telegram, calls } = await setup(false, false)
   await telegram.bot.handleUpdate(command())
   expect(calls).toEqual([])
+})
+it.each(["private", "group", "supergroup"])(
+  "issues /allow links in denied %s chats without model work",
+  async (type) => {
+    const { telegram, store, calls, sessions } = await setup()
+    const update = command("/allow@fixture_bot", 43, type !== "private")
+    if (type === "group" && update.message)
+      update.message.chat = { id: -100, type: "group", title: "Target" }
+    await telegram.bot.handleUpdate(update)
+    expect(calls[0]?.payload).toMatchObject({
+      link_preview_options: { is_disabled: true },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Review chat access",
+              url: expect.stringMatching(/^https:\/\/admin\.example\.test\/#allow=[a-f0-9]{64}$/),
+            },
+          ],
+        ],
+      },
+    })
+    expect(store.db.prepare("SELECT chat_id FROM chat_access_requests").get()).toMatchObject({
+      chat_id: type === "private" ? 43 : -100,
+    })
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
+    expect(store.allows(type === "private" ? 43 : -100)).toBe(false)
+    await telegram.bot.handleUpdate(update)
+    expect(calls[1]?.payload.text).toContain("one minute")
+  },
+)
+it("handles /allow arguments, sender mismatch, ordinary denied input, and channel posts without issuing requests", async () => {
+  const { telegram, store, calls, sessions } = await setup()
+  await telegram.bot.handleUpdate(command("/allow -200"))
+  expect(calls[0]?.payload.text).toContain("without arguments")
+  const mismatch = command("/allow")
+  if (mismatch.message) mismatch.message.chat = { id: 43, type: "private", first_name: "Other" }
+  await telegram.bot.handleUpdate(mismatch)
+  const ordinary = command("hello", 43)
+  if (ordinary.message) ordinary.message.entities = []
+  await telegram.bot.handleUpdate(ordinary)
+  await telegram.bot.handleUpdate({
+    update_id: 2,
+    channel_post: {
+      message_id: 1,
+      date: 1,
+      chat: { id: -100, type: "channel", title: "Channel" },
+      text: "/allow",
+      entities: [{ type: "bot_command", offset: 0, length: 6 }],
+    },
+  })
+  expect(calls).toHaveLength(1)
+  expect(store.db.prepare("SELECT * FROM chat_access_requests").all()).toEqual([])
+  expect(sessions.submit).not.toHaveBeenCalled()
+  expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
+})
+it("uses localhost links and gives setup guidance when administration or its store is unavailable", async () => {
+  const local = await setup(false)
+  await local.telegram.bot.handleUpdate(command("/allow"))
+  expect(local.calls[0]?.payload.text).toMatch(/http:\/\/localhost:17465\/#allow=[a-f0-9]{64}/)
+  expect(local.calls[0]?.payload).not.toHaveProperty("reply_markup")
+  const disabled = await setup(false, false)
+  await disabled.telegram.bot.handleUpdate(command("/allow"))
+  expect(disabled.calls[0]?.payload.text).toContain("not available")
+  const missing = await setup(true, true, false)
+  await missing.telegram.bot.handleUpdate(command("/allow"))
+  expect(missing.calls[0]?.payload.text).toContain("not available")
+})
+it("returns approved status without a link even while application is pending", async () => {
+  const { telegram, store, calls } = await setup()
+  const policy = store.snapshot().policy
+  policy.privateUsers = [42]
+  store.save(policy, 1, "42")
+  await telegram.bot.handleUpdate(command("/allow"))
+  expect(calls[0]?.payload.text).toContain("already approved")
+  expect(store.db.prepare("SELECT * FROM chat_access_requests").all()).toEqual([])
 })
 it("adds admin only to the owner's private command menu", async () => {
   const { telegram, calls } = await setup()
