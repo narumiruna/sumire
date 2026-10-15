@@ -76,10 +76,10 @@ describe("shared bot URL loading", () => {
     const fixture = await createPiFixture()
     fixtures.push(fixture)
     const session = await fixture.createSession()
-    fixture.enqueue("load_public_url", { url })
+    fixture.enqueue("read_url_content", { url })
     await session.prompt(url)
     const request = fixture.requests[0]
-    const tool = request?.tools.find((entry) => entry.function.name === "load_public_url")
+    const tool = request?.tools.find((entry) => entry.function.name === "read_url_content")
     expect(JSON.stringify(tool)).toContain("YouTube")
     expect(JSON.stringify(tool)).toContain("caption extraction first")
     expect(JSON.stringify(request?.messages)).toContain("沒有本次工具失敗的結果")
@@ -87,7 +87,7 @@ describe("shared bot URL loading", () => {
     expect(session.messages).toContainEqual(
       expect.objectContaining({
         role: "toolResult",
-        toolName: "load_public_url",
+        toolName: "read_url_content",
         isError: false,
       }),
     )

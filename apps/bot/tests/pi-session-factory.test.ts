@@ -343,15 +343,15 @@ describe("createPiSessionFactory", () => {
         "bash",
         "edit",
         "write",
-        "load_public_url",
+        "read_url_content",
         "read_image",
         "update_progress",
         "codemode",
       ])
       expect(session.getActiveToolNames()).toContain("codemode")
-      const urlTool = session.nativeTools.find((tool) => tool.name === "load_public_url")
+      const urlTool = session.nativeTools.find((tool) => tool.name === "read_url_content")
       expect(urlTool).toBeDefined()
-      if (!urlTool) throw new Error("load_public_url was not registered")
+      if (!urlTool) throw new Error("read_url_content was not registered")
       expect(
         (
           urlTool.parameters as unknown as {
@@ -385,12 +385,12 @@ describe("createPiSessionFactory", () => {
         session.registry
           .snapshot()
           .tools()
-          .find(({ tool }) => tool.name === "load_public_url")?.tool.replay,
+          .find(({ tool }) => tool.name === "read_url_content")?.tool.replay,
       ).toBe("unsafe")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(
-        "使用者只提供網址時，先以 load_public_url 讀取本則訊息的網址",
+        "使用者只提供網址時，先以 read_url_content 讀取本則訊息的網址",
       )
       expect(session.systemPrompt).toContain("虛構 AI companion")
       expect(session.systemPrompt).not.toContain("{{SOUL_SECTION}}")
@@ -458,7 +458,7 @@ describe("createPiSessionFactory", () => {
         "bash",
         "edit",
         "write",
-        "load_public_url",
+        "read_url_content",
         "read_image",
         "update_progress",
         "codemode",

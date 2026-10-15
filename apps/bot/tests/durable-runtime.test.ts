@@ -23,7 +23,7 @@ afterEach(async () => {
 })
 
 describe("durable bot runtime", () => {
-  it.each([{ tools: [] }, { tools: ["load_public_url"] }])(
+  it.each([{ tools: [] }, { tools: ["read_url_content"] }])(
     "reports only the chat's authorized tools to the model ($tools)",
     async ({ tools }) => {
       const fixture = await setup()
@@ -48,13 +48,13 @@ describe("durable bot runtime", () => {
         "Skills and conversation history describe capabilities, not tool authorization.",
       )
       expect(request?.tools?.map((tool) => tool.function.name) ?? []).toEqual(tools)
-      if (tools.includes("load_public_url")) {
-        fixture.enqueue("load_public_url", { url: "http://127.0.0.1/" })
-        await session.prompt("http://127.0.0.1/ load_public_url")
+      if (tools.includes("read_url_content")) {
+        fixture.enqueue("read_url_content", { url: "http://127.0.0.1/" })
+        await session.prompt("http://127.0.0.1/ read_url_content")
         expect(session.messages).toContainEqual(
           expect.objectContaining({
             role: "toolResult",
-            toolName: "load_public_url",
+            toolName: "read_url_content",
             isError: true,
           }),
         )

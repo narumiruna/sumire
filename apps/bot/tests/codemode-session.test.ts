@@ -38,7 +38,7 @@ describe("codemode through Bot Pi sessions", () => {
     expect(toolResultText(result)).toContain('"models":"undefined"')
     expect(toolResultText(result)).toContain('"progress":false')
     expect(toolResultText(result)).toContain('"image":false')
-    expect(toolResultText(result)).toContain('"load_public_url"')
+    expect(toolResultText(result)).toContain('"read_url_content"')
     for (const name of ["update_progress", "read_image"]) {
       expect(fixture.requests[0]?.tools.some((tool) => tool.function.name === name)).toBe(true)
     }
@@ -89,7 +89,7 @@ const results = await Promise.allSettled([
   tools.bash({ command: 'sleep 0.2; printf first', timeout: 5 }),
   tools.bash({ command: 'sleep 0.2; printf second', timeout: 5 }),
   tools.read({ path: 17 }),
-  ...['http://127.0.0.1/', 'http://169.254.169.254/', 'http://[::1]/', 'https://user:pass@8.8.8.8/'].map(url => tools.load_public_url({ url }))
+  ...['http://127.0.0.1/', 'http://169.254.169.254/', 'http://[::1]/', 'https://user:pass@8.8.8.8/'].map(url => tools.read_url_content({ url }))
 ]);
 text(results.map(result => result.status === 'fulfilled' ? { status: result.status, value: result.value } : { status: result.status, error: result.reason.message }));`,
     )

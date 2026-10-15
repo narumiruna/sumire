@@ -835,13 +835,13 @@ describe("ChatSessionRegistry", () => {
       session.emit({
         type: "tool_execution_start",
         toolCallId: "call-1",
-        toolName: "load_public_url",
+        toolName: "read_url_content",
         args: { url: "https://example.com/?key=private" },
       })
       session.emit({
         type: "tool_execution_end",
         toolCallId: "call-1",
-        toolName: "load_public_url",
+        toolName: "read_url_content",
         result: { content: [], details: { text: "private content" } },
         isError: false,
       })
@@ -874,10 +874,10 @@ describe("ChatSessionRegistry", () => {
       expect.arrayContaining([
         expect.stringContaining("session_id=fake-session reply_branch_restored=false"),
         expect.stringContaining(
-          "Pi tool started chat_id=1 session_id=fake-session tool=load_public_url call_id=call-1",
+          "Pi tool started chat_id=1 session_id=fake-session tool=read_url_content call_id=call-1",
         ),
         expect.stringContaining(
-          "Pi tool finished chat_id=1 session_id=fake-session tool=load_public_url call_id=call-1 success=true",
+          "Pi tool finished chat_id=1 session_id=fake-session tool=read_url_content call_id=call-1 success=true",
         ),
         expect.stringContaining(
           "Pi model response chat_id=1 session_id=fake-session model=test stop_reason=stop input_tokens=0",

@@ -22,7 +22,7 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
   const selectableLoaders = normalizeSelectableLoaders(options.selectableLoaders)
   const allowedLoaders = new Set(selectableLoaders)
   const parameters = Type.Object({
-    url: Type.String({ description: "The absolute public HTTP(S) URL to load" }),
+    url: Type.String({ description: "The absolute public HTTP(S) URL to read" }),
     ...(selectableLoaders.length > 0
       ? {
           loader: Type.Optional(
@@ -36,10 +36,10 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
   })
 
   return defineTool({
-    name: "load_public_url",
-    label: "Load public URL",
+    name: "read_url_content",
+    label: "Read URL content",
     description:
-      "Load readable text or Markdown from a public HTTP(S) URL. Use this tool to read, summarize, or inspect a supplied URL before answering from its content. YouTube watch, Shorts, and youtu.be links use caption extraction first, with audio transcription fallback; call with only url for automatic selection. A video URL is not a reason to assume captions are unavailable. Google Docs links use plain-text export; Threads post and share links require verified post metadata; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Automatic loading delegates directly to url-content source selection and fallback; built-in extraction runs only when explicitly selected. Private, local, oversized, and unsafe redirect targets are rejected.",
+      "Read text or Markdown from a public HTTP(S) URL. Use this tool to read, summarize, or inspect a supplied URL before answering from its content. YouTube watch, Shorts, and youtu.be links use caption extraction first, with audio transcription fallback; call with only url for automatic selection. A video URL is not a reason to assume captions are unavailable. Google Docs links use plain-text export; Threads post and share links require verified post metadata; Office, OpenDocument, RTF, EPUB, and CSV links use local AnyDoc conversion. Automatic loading delegates directly to url-content source selection and fallback; built-in extraction runs only when explicitly selected. Private, local, oversized, and unsafe redirect targets are rejected.",
     parameters,
     execute: async (toolCallId, toolParameters, signal) => {
       const rawLoader = "loader" in toolParameters ? toolParameters.loader : undefined

@@ -1,11 +1,11 @@
 import { expect, type Page, test } from "@playwright/test"
 
 const policy = {
-  tools: ["load_public_url"],
+  tools: ["read_url_content"],
   servers: [],
   models: ["fixture/test"],
   defaults: {
-    tools: ["load_public_url"],
+    tools: ["read_url_content"],
     servers: [],
     models: ["fixture/test"],
     model: "fixture/test",
@@ -17,7 +17,7 @@ const policy = {
   providers: [],
 }
 const inventory = {
-  tools: ["load_public_url", "bash"],
+  tools: ["read_url_content", "bash"],
   providers: [
     {
       id: "fixture",
@@ -65,7 +65,7 @@ async function setup(page: Page, signedIn = true) {
           id: 42,
           name: "Fixture chat",
           type: "private",
-          effective: { enabled: true, tools: ["load_public_url"], sources: { tools: "default" } },
+          effective: { enabled: true, tools: ["read_url_content"], sources: { tools: "default" } },
         },
       ]
     else if (url.pathname === "/api/audit") data = []
@@ -1030,7 +1030,7 @@ test("distinguishes inherited, empty, and customized chat authorization", async 
   await page.getByRole("combobox", { name: "Search known chat" }).fill("Fixture")
   await page.keyboard.press("Enter")
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true }).first()
-  await expect(tools).toContainText("Inherited · Effective: load_public_url")
+  await expect(tools).toContainText("Inherited · Effective: read_url_content")
   await tools.getByRole("checkbox", { name: "Inherit default", exact: true }).uncheck()
   await expect(tools).toContainText("None allowed. This does not inherit the default.")
   await expect(tools).toContainText("Customized · Effective: None")
@@ -1046,8 +1046,8 @@ test("distinguishes inherited, empty, and customized chat authorization", async 
   await tools.getByRole("button", { name: "Reset authorized tools to default" }).click()
   expect(await save()).toBeNull()
   await tools.getByRole("checkbox", { name: "Inherit default", exact: true }).uncheck()
-  await tools.getByRole("checkbox", { name: "load_public_url", exact: true }).check()
-  expect(await save()).toEqual(["load_public_url"])
+  await tools.getByRole("checkbox", { name: "read_url_content", exact: true }).check()
+  expect(await save()).toEqual(["read_url_content"])
 })
 
 test("validates access rows without approving history or restoring removals", async ({ page }) => {

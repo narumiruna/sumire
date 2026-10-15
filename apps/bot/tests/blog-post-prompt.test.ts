@@ -9,7 +9,7 @@ describe("blog post prompt", () => {
     expect(prompt).toContain("written entirely in 台灣正體中文")
     expect(prompt).toContain("Preserve all materially important information")
     expect(prompt).toContain("Do not add or infer facts")
-    expect(prompt).toContain("use load_public_url")
+    expect(prompt).toContain("use read_url_content")
     expect(prompt).toContain("Do not call publish_markdown_to_morsel")
     expect(prompt).toContain("exactly one relevant emoji")
     expect(prompt).toContain("complete article below 5,000 characters")
