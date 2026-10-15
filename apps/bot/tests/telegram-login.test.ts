@@ -2,6 +2,9 @@ import { Bot } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
 
+import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
+import { loadSettings } from "../src/config/settings.js"
+import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { registerOAuthCallbackGuard } from "../src/telegram/oauth-callbacks.js"
 
 const authorizationUrl = "http://127.0.0.1:1455/auth/callback?code=fixture-secret"
@@ -19,7 +22,21 @@ function message(text: string): Update {
   }
 }
 
-function setup(deletionFails = false) {
+function loginCommand(text: string, caption = false): Update {
+  const update = message(text)
+  if (!update.message) throw new Error("Missing message")
+  const entities = [
+    { type: "bot_command" as const, offset: 0, length: text.split(" ")[0]?.length ?? 0 },
+  ]
+  if (caption) {
+    delete update.message.text
+    update.message.caption = text
+    update.message.caption_entities = entities
+  } else update.message.entities = entities
+  return update
+}
+
+function setup(deletionFails = false, replyFails = false) {
   const bot = new Bot("1:test", {
     botInfo: { id: 999, is_bot: true, first_name: "Test", username: "test_bot" } as UserFromGetMe,
   })
@@ -30,6 +47,7 @@ function setup(deletionFails = false) {
   bot.api.config.use(async (_previous, method, payload) => {
     calls.push({ method, payload })
     if (method === "deleteMessage" && deletionFails) throw new Error("Deletion denied")
+    if (method === "sendMessage" && replyFails) throw new Error("Delivery failed")
     return { ok: true, result: true } as never
   })
   return { bot, forwarded, calls }
@@ -67,6 +85,70 @@ describe("Retired Telegram OAuth callback protection", () => {
       }
       await bot.handleUpdate(update)
       expect(forwarded).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "discards retired login input after delivery failures: delete=%s reply=%s",
+    async (deletionFails, replyFails) => {
+      const { bot, forwarded, calls } = setup(deletionFails, replyFails)
+      await bot.handleUpdate(loginCommand("/login fixture-secret"))
+      expect(forwarded).not.toHaveBeenCalled()
+      expect(calls.map((call) => call.method)).toEqual(["deleteMessage", "sendMessage"])
+      expect(JSON.stringify(calls)).not.toContain("fixture-secret")
+      expect(JSON.stringify(calls)).toContain("/admin")
+    },
+  )
+
+  it.each([
+    ["/login", false, false],
+    ["/login fixture-secret", false, false],
+    ["/login@test_bot fixture-secret", false, false],
+    ["/login fixture-secret", true, false],
+    ["/login@test_bot fixture-secret", true, false],
+    ["/login fixture-secret", false, true],
+    ["/login@test_bot fixture-secret", true, true],
+  ])(
+    "blocks retired commands before bot submission: %s caption=%s group=%s",
+    async (text, caption, group) => {
+      const sessions = { submit: vi.fn(), appendPassiveContext: vi.fn() }
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const publish = vi.fn()
+      const app = createTelegramAgentBot(
+        loadSettings({ BOT_TOKEN: "1:test", BOT_WHITELIST: "7,-100" }),
+        sessions as unknown as ChatSessionRegistry,
+        logger,
+        {
+          botInfo: {
+            id: 999,
+            is_bot: true,
+            first_name: "Test",
+            username: "test_bot",
+          } as UserFromGetMe,
+          morselPublisher: { isConfigured: true, publish },
+        },
+      )
+      const payloads: unknown[] = []
+      app.bot.api.config.use(async (_previous, _method, payload) => {
+        payloads.push(payload)
+        return { ok: true, result: true } as never
+      })
+      const update = loginCommand(text, caption)
+      if (group && update.message)
+        update.message.chat = { id: -100, type: "supergroup", title: "Test" }
+      await app.bot.handleUpdate(update)
+      expect(sessions.submit).not.toHaveBeenCalled()
+      expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
+      expect(publish).not.toHaveBeenCalled()
+      expect(JSON.stringify(payloads)).not.toContain("fixture-secret")
+      expect(JSON.stringify(payloads)).toContain("/admin")
+      for (const log of Object.values(logger)) expect(log).not.toHaveBeenCalled()
+      await app.stop()
     },
   )
 

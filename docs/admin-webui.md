@@ -14,7 +14,7 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
 
    - Use the real administrator's numeric Bot API user ID.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
-   - `BOT_ADMIN_ID` enables the WebUI. Without `ADMIN_ORIGIN`, the browser URL is `http://localhost:17465`. A custom `ADMIN_PORT` changes this URL too.
+   - `BOT_ADMIN_ID` enables the WebUI. Without `ADMIN_ORIGIN`, the browser URL is `http://localhost:17465`. Outside the supplied Compose configuration, a custom `ADMIN_PORT` changes this URL too. The supplied `compose.yaml` fixes the backend and published port at `17465`; an `ADMIN_PORT` value in `.env` does not override it.
    - Local passkeys require a browser that supports WebAuthn and Secure cookies on `localhost`. Open the URL on the computer that runs Sumire. Do not replace `localhost` with a LAN address or open it inside Telegram.
    - For remote access, set `ADMIN_ORIGIN=https://sumire.example.com`. An explicit origin must use HTTPS with no trailing slash, path, query, or fragment.
    - Without `BOT_ADMIN_ID`, the WebUI remains disabled and startup requires existing model credentials. `ADMIN_PORT` is ignored while disabled; an enabled WebUI requires an integer port from 1 to 65535.
@@ -51,7 +51,7 @@ Use the root `compose.yaml`:
 docker compose up -d --build
 ```
 
-Compose binds `127.0.0.1:17465` on the host and listens on all container interfaces when the WebUI is enabled. The port mapping remains reserved when the WebUI is disabled; in that case, the healthcheck succeeds without making an HTTP request. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
+Compose binds `127.0.0.1:17465` on the host and listens on all container interfaces when the WebUI is enabled. To change that port in Compose, update its `environment`, `ports`, and healthcheck together; changing `.env` alone has no effect. The port mapping remains reserved when the WebUI is disabled; in that case, the healthcheck succeeds without making an HTTP request. It does not claim host port 443. Attach the host's existing HTTPS ingress. For example, an existing Caddy installation can use:
 
 ```caddyfile
 sumire.example.com {

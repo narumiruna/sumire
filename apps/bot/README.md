@@ -48,7 +48,7 @@ Available now:
 - Node.js 22.19 or newer
 - Linux x86_64 with glibc for the production AnyDoc native adapter
 - Telegram bot token
-- OpenAI subscription login through Telegram `/login`, or credentials already available to Pi
+- Provider credentials configured through `/admin` and the Web UI, or credentials already available to Pi
 - Playwright Chromium for source-aware browser fallbacks
 - Git and OpenSSH client tools (`ssh`, `ssh-keygen`) for repository cloning and SSH key generation outside Docker
 
@@ -232,7 +232,7 @@ To disable MCP connections and subprocesses, set every server to `enabled: false
 
 ## Provider login
 
-Use the administration Web UI to configure provider credentials and OAuth login. Do not send API keys, tokens, or authorization callback URLs to Telegram. Known callback URLs from the retired Telegram login flow are still blocked before model input and deleted when Telegram permits.
+Use the administration Web UI to configure provider credentials and OAuth login. Do not send API keys, tokens, or authorization callback URLs to Telegram. Retired `/login` commands and known callback URLs are blocked before model input and deleted when Telegram permits. The bot discards command arguments and directs the user to `/admin`; it does not start login.
 
 Keep credential storage private, writable, and out of Git. Trusted bot users have coding tools and can access files with the bot process's permissions; provider login is not a filesystem sandbox.
 
@@ -325,7 +325,7 @@ The root [`.env.example`](../../.env.example) lists bot credentials and optional
 | --- | --- |
 | `BOT_TOKEN` | Required Telegram bot credential. |
 | `BOT_WHITELIST` | Required trusted user/chat IDs; channel IDs authorize image access explicitly. |
-| `BOT_ADMIN_ID` | Optional explicitly allowlisted user ID for private `/login` and admin context. |
+| `BOT_ADMIN_ID` | Administrator user ID for private `/admin` setup, Web UI access, and admin context. |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl fallback and MCP credential. |
 | `OTTER_TOKEN` | Credential for the Otter expense skill. |
 | `LOGFIRE_TOKEN` | Optional redacted telemetry export. |
