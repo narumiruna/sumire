@@ -51,7 +51,7 @@ const environmentSchema = z.object({
   TELEGRAM_LOGIN_CLIENT_ID: optionalString,
   TELEGRAM_LOGIN_CLIENT_SECRET: optionalString,
   ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(17465),
-  ADMIN_HOST: z.string().default("127.0.0.1"),
+  ADMIN_HOST: optionalString.transform((value) => value ?? "127.0.0.1"),
 })
 
 export interface Settings {

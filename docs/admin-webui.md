@@ -22,6 +22,7 @@ The WebUI manages chat access, tools, MCP servers, models, thinking levels, and 
    - `ADMIN_ORIGIN` must have no trailing slash, path, query, or fragment.
    - Keep `BOT_TOKEN` and other required bot credentials configured as before.
    - Leaving `ADMIN_ORIGIN` unset preserves the deployment without the WebUI.
+   - An unset, empty, or whitespace-only `ADMIN_HOST` uses `127.0.0.1`. Set `0.0.0.0` only when the container or network requires it. Keep the host port private.
 4. Route the public HTTPS origin to the private backend. Retain the original Host header. Do not publish the application port on a public interface.
 5. Send `/admin` in a private chat with Sumire. The bot returns an **Open administration** button only to `BOT_ADMIN_ID`. This command works before chat access is approved and while policies are pending or failed. If the WebUI is disabled, it returns a setup notice instead. The command does not start a model turn or grant bot access.
 6. Open the button and sign in with Telegram. Other Telegram users cannot obtain an administrator session. Bot access does not grant administrator access. You can also open `ADMIN_ORIGIN` directly in a browser.
@@ -68,7 +69,7 @@ The database is `.telegramagent/admin.sqlite`, separate from Pi's session databa
 
 - Positive `BOT_WHITELIST` IDs become private-message users. Negative IDs become group or channel IDs.
 - This narrows old sender-based group authorization: an approved private user no longer authorizes an otherwise unapproved group.
-- Existing `mcp.json` entries are copied once into protected administration state. The source remains unchanged. The read-only Docker mount remains an import source, not the active editable configuration after import.
+- Valid `mcp.json` entries are copied once into protected administration state. Invalid entries are skipped. The import report records accepted and skipped counts without rejected names or values. The source remains unchanged. After import, restart does not read the source again. The read-only Docker mount remains an import source, not the active editable configuration after import.
 - Provider credentials remain in Pi's existing credential store. Provider metadata references and existing per-chat model selections are imported without copying credentials into settings.
 - Session model import reads a consistent temporary SQLite backup through Pi's storage API. It does not run a conversation, change the source database, or delete transcripts.
 - New capabilities are not automatically approved. Shell and file tools start unavailable in the new global policy, including for imported chats.
@@ -82,7 +83,7 @@ Global lists are availability ceilings. Global defaults select from those lists.
 
 MCP server permission and individual tool permission are both required. `direct`, `codemode`, and `hidden` control exposure, not authorization. Discover a server's tools before approving their exact names. New server tools remain denied until approved.
 
-Saving settings writes a revision and an audit record together. Runtime application cancels affected admitted work and closes cached sessions without deleting history. Current implementation rebuilds all cached chats for an administration change, not only the changed chat. An authorization epoch also cancels pre-change persisted work after restart, including MCP-only edits. New calls are denied while a revision is pending or failed. Completed external side effects cannot be reversed. A failed application remains visible and can be retried.
+Saving settings writes a revision and an audit record together. Runtime application cancels affected admitted work and closes cached sessions without deleting history. Current implementation rebuilds all cached chats for an administration change, not only the changed chat. An authorization epoch also cancels pre-change persisted work after restart, including MCP-only edits. New calls are denied while a revision is pending or failed. Completed external side effects cannot be reversed. Concurrent saves use one application worker. It applies the latest saved revision and does not install superseded provider settings. A failed application remains visible and can be retried.
 
 | State | Enforcement |
 | --- | --- |
@@ -112,7 +113,7 @@ Use **Model Providers** to select built-in providers or configure a public compa
 
 ## MCP configuration and secrets
 
-Only the administrator can change MCP commands, endpoints, environment fields, headers, timeouts, and exposure rules. Starting a configured stdio server executes administrator-supplied code. Connection tests can therefore have startup effects even though they do not invoke tools.
+Only the administrator can change MCP commands, endpoints, environment fields, headers, timeouts, and exposure rules. Starting a configured stdio server executes administrator-supplied code. Connection tests can therefore have startup effects even though they do not invoke tools. Stdio connection tests use the bot working directory, including as the base for a relative server `cwd`.
 
 MCP configuration supports the existing transport fields. An update preserves omitted fields. For `env` and `headers`, null preserves a named value, a literal replaces it, and an empty object clears the map. Use these maps for secrets; do not put secrets in commands, arguments, descriptions, names, or URLs. Ordinary inventory responses show configured markers and field names, not existing secret values.
 

@@ -131,11 +131,12 @@ flowchart LR
 
 - Implementation branch: `narumi/feat/admin-webui`.
 - Node.js 26.10.0 and npm 11.19.1; root `npm ci` completed.
-- All five required root checks passed. `npm test`: 1,306 tests across 89 files.
+- All five required root checks passed. `npm test`: 1,315 tests across 90 files.
 - The private `/admin` command returns the WebUI link only to the bootstrap administrator, before chat approval and during pending or failed policies. Nine command tests cover authorization, disabled configuration, and the private command menu.
 - Frontend browser suite: 10 fixture-based tests passed, including provider interaction, failed application, conflict handling, secret replacement, keyboard dialog behavior, and mobile width.
 - Actual Pi fixture turns verify direct and codemode revocation, branch restoration, active and queued cancellation, retained transcript files, and no withdrawn tool replay after restart. A separate regression verifies that MCP-only edits cancel pre-change persisted work even when chat permissions are unchanged; serialized Telegram model commands retain the authorization epoch.
-- MCP real-stdio tests verify discovery filtering and rejection of previously discovered calls after revocation.
+- MCP real-stdio tests verify discovery filtering, rejection of previously discovered calls after revocation, and probe working-directory parity for default and relative `cwd` values.
+- Review regressions verify startup after the imported MCP source is deleted or corrupted, independent entry validation with redacted skip counts, blank-host loopback defaults, and serialized application of concurrent policy revisions. Latest-revision failures remain visible and can be retried.
 - Real Pi provider contract tests verify literal key persistence, custom compatible model registration and restart restoration. OAuth completion, denial, cancellation, expiry, and restart state use test interactions, not real provider credentials.
 - Signed Telegram fixtures verify stable identity, signature, issuer, audience, freshness, nonce, browser transaction consumption, and session revocation. They are not live Telegram login evidence.
 - `listenr` confirmed backend `17465` and development `17466` were available. No existing service was stopped.

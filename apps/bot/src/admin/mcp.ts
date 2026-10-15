@@ -1,7 +1,7 @@
 import path from "node:path"
 import { z } from "zod"
 import { McpCapability } from "../agent/mcp-capability.js"
-import { parseMcpConfig } from "../agent/mcp-config.js"
+import { MCP_MAX_SERVERS, parseMcpConfig } from "../agent/mcp-config.js"
 import { readMcpConfigFile } from "../agent/mcp-config-file.js"
 import { AdminError, type AdminStore } from "./store.js"
 
@@ -28,7 +28,10 @@ type Entry = z.infer<typeof entrySchema>
 export class McpAdmin {
   readonly discovered = new Map<string, { status: string; tools: string[] }>()
   readonly probes = new Set<McpCapability>()
-  constructor(readonly store: AdminStore) {
+  constructor(
+    readonly store: AdminStore,
+    private readonly workdir: string,
+  ) {
     store.db.exec("CREATE TABLE IF NOT EXISTS mcp (name TEXT PRIMARY KEY, config TEXT NOT NULL)")
   }
   async import(file: string) {
@@ -38,18 +41,48 @@ export class McpAdmin {
     const text = await readMcpConfigFile(file)
     if (Buffer.byteLength(text) > 1024 * 1024) throw new Error("MCP import exceeded byte limit")
     const parsed = z
-      .object({ mcpServers: z.record(z.string(), entrySchema) })
+      .object({ mcpServers: z.record(z.string(), z.unknown()) })
       .strict()
       .parse(JSON.parse(text))
+    const entries = Object.entries(parsed.mcpServers)
+    if (entries.length > MCP_MAX_SERVERS)
+      throw new Error(`MCP configuration supports at most ${MCP_MAX_SERVERS} server entries`)
+    const candidates: [string, Entry][] = []
+    for (const [name, input] of entries) {
+      const entry = entrySchema.safeParse(input)
+      if (!entry.success) continue
+      let invalid = false
+      const validated = parseMcpConfig(
+        { mcpServers: { [name]: entry.data } },
+        {
+          warn: () => {
+            invalid = true
+          },
+        },
+      )
+      if (!invalid && (entry.data.enabled === false || validated.servers.length === 1))
+        candidates.push([name, entry.data])
+    }
+    const names = new Map<string, number>()
+    for (const [name, entry] of candidates) {
+      if (entry.enabled === false) continue
+      const normalized = name.replaceAll("-", "_")
+      names.set(normalized, (names.get(normalized) ?? 0) + 1)
+    }
+    const accepted = candidates.filter(
+      ([name, entry]) => entry.enabled === false || names.get(name.replaceAll("-", "_")) === 1,
+    )
     this.store.db.exec("BEGIN IMMEDIATE")
     try {
-      for (const [name, entry] of Object.entries(parsed.mcpServers))
+      for (const [name, entry] of accepted)
         this.store.db.prepare("INSERT INTO mcp VALUES (?,?)").run(name, JSON.stringify(entry))
-      this.store.db
-        .prepare("INSERT INTO imports VALUES ('mcp',?)")
-        .run(
-          JSON.stringify({ servers: Object.keys(parsed.mcpServers).length, reviewRequired: true }),
-        )
+      this.store.db.prepare("INSERT INTO imports VALUES ('mcp',?)").run(
+        JSON.stringify({
+          servers: accepted.length,
+          skippedServers: entries.length - accepted.length,
+          reviewRequired: true,
+        }),
+      )
       this.store.audit(
         "system",
         "mcp.import",
@@ -96,7 +129,7 @@ export class McpAdmin {
     if (!server) throw new AdminError(400, "MCP server is disabled or invalid")
     const capability = new McpCapability(
       { ...config, servers: [server] },
-      path.dirname(this.store.file),
+      this.workdir,
       path.join(path.dirname(this.store.file), "admin-mcp"),
       { warn: () => {} },
       () => {},

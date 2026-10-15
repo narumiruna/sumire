@@ -54,7 +54,7 @@ export async function createPiSessionFactory(
       "BOT_WHITELIST must contain a trusted Telegram user or chat ID for coding tools",
     )
   }
-  const mcpConfig = await loadMcpConfig(settings, logger)
+  const mcpConfig = control ? control.mcp.config() : await loadMcpConfig(settings, logger)
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
 
   const { modelRuntime, model, login } = await createBotModelRuntime(

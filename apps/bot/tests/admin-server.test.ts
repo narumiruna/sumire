@@ -82,7 +82,7 @@ beforeEach(async () => {
     {
       store,
       providers: new ProviderAdmin(runtime, store),
-      mcp: new McpAdmin(store),
+      mcp: new McpAdmin(store, directory),
       apply,
       tools: () => ["read"],
     },

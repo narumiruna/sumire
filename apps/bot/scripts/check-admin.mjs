@@ -59,7 +59,7 @@ try {
     },
     {
       store,
-      mcp: new McpAdmin(store),
+      mcp: new McpAdmin(store, directory),
       providers: new ProviderAdmin(runtime, store),
       tools: () => [],
       apply: async () => store.applied(store.snapshot().revision, true),

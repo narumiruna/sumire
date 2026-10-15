@@ -8,6 +8,41 @@ import { ProviderAdmin } from "./providers.js"
 import { createAdminServer } from "./server.js"
 import type { AdminStore } from "./store.js"
 
+export function createPolicyApplier(
+  store: AdminStore,
+  sessions: Pick<ChatSessionRegistry, "invalidatePolicies">,
+  providers: Pick<ProviderAdmin, "validate" | "install">,
+) {
+  let applying: Promise<void> | undefined
+  return () => {
+    if (applying) return applying
+    const work = (async () => {
+      for (;;) {
+        const { revision, policy } = store.snapshot()
+        try {
+          await sessions.invalidatePolicies()
+          await providers.validate(policy)
+          if (store.snapshot().revision !== revision) continue
+          providers.install(policy.providers)
+          store.applied(revision, true)
+          return
+        } catch {
+          if (store.snapshot().revision !== revision) continue
+          store.applied(revision, false)
+          throw new Error("Settings could not be applied")
+        }
+      }
+    })()
+    applying = work
+    void work
+      .finally(() => {
+        if (applying === work) applying = undefined
+      })
+      .catch(() => {})
+    return work
+  }
+}
+
 export async function startAdmin(
   config: AdminConfig,
   control: { store: AdminStore; mcp: McpAdmin },
@@ -32,31 +67,7 @@ export async function startAdmin(
     )
     await apply()
   })
-  let applying: Promise<void> | undefined
-  const apply = () => {
-    if (applying) return applying
-    const work = (async () => {
-      const revision = store.snapshot().revision
-      try {
-        await sessions.invalidatePolicies()
-        await providers.validate(store.snapshot().policy)
-        providers.install(store.snapshot().policy.providers)
-        if (store.snapshot().revision !== revision)
-          throw new Error("Settings changed during application")
-        store.applied(revision, true)
-      } catch {
-        store.applied(revision, false)
-        throw new Error("Settings could not be applied")
-      }
-    })()
-    applying = work
-    void work
-      .finally(() => {
-        if (applying === work) applying = undefined
-      })
-      .catch(() => {})
-    return work
-  }
+  const apply = createPolicyApplier(store, sessions, providers)
   // A failed application must not prevent the administrator from repairing settings.
   await apply().catch(() => {})
   for (const id of await factory.listChats())

@@ -30,7 +30,7 @@ export async function startApplication(): Promise<void> {
         settings.botWhitelist,
         settings.botAdminId,
       )
-      const mcp = new McpAdmin(store)
+      const mcp = new McpAdmin(store, settings.botWorkdir)
       control = { store, mcp }
       await mcp.import(settings.botMcpConfigPath)
     }

@@ -26,6 +26,25 @@ async function setup() {
 }
 
 describe("admin durable runtime integration", () => {
+  it.each(["corrupt", "missing"])("ignores a %s legacy MCP source after import", async (state) => {
+    const { root, settings } = await setup()
+    const store = new AdminStore(path.join(root, "admin.sqlite"), settings.botWhitelist, 42)
+    const mcp = new McpAdmin(store, settings.botWorkdir)
+    try {
+      await mcp.import(settings.botMcpConfigPath)
+      if (state === "missing") await rm(settings.botMcpConfigPath)
+      else await writeFile(settings.botMcpConfigPath, "{broken")
+      await expect(mcp.import(settings.botMcpConfigPath)).resolves.toBeUndefined()
+      await expect(
+        createPiSessionFactory(settings, logger, undefined, undefined, { store, mcp }),
+      ).resolves.toBeDefined()
+      await expect(createPiSessionFactory(settings, logger)).rejects.toThrow()
+    } finally {
+      await mcp.close()
+      store.close()
+    }
+  })
+
   it("imports model selections through a consistent copy without changing session data", async () => {
     const { root, settings } = await setup()
     const factory = await createPiSessionFactory(settings, logger)
@@ -77,7 +96,7 @@ describe("admin durable runtime integration", () => {
       settings.botWhitelist,
       42,
     )
-    const mcp = new McpAdmin(store)
+    const mcp = new McpAdmin(store, settings.botWorkdir)
     const policy = store.snapshot().policy
     policy.models = ["openai/gpt-6.1-sol"]
     policy.defaults.models = [...policy.models]

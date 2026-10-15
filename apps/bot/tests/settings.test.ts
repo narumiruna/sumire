@@ -152,6 +152,10 @@ describe("loadSettings", () => {
       port: 17465,
       origin: bootstrap.ADMIN_ORIGIN,
     })
+    for (const host of [undefined, "", "   "])
+      expect(loadSettings({ ...bootstrap, ADMIN_HOST: host }).admin?.host).toBe("127.0.0.1")
+    for (const host of ["0.0.0.0", "::1", "localhost"])
+      expect(loadSettings({ ...bootstrap, ADMIN_HOST: ` ${host} ` }).admin?.host).toBe(host)
     expect(loadSettings({}).admin).toBeUndefined()
     for (const origin of [
       "http://admin.example.test",

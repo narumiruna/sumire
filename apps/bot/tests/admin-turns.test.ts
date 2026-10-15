@@ -11,7 +11,7 @@ import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 it("cancels an active Pi tool, denies new work, and does not replay it after restart", async () => {
   const fixture = await createPiFixture()
   const store = new AdminStore(path.join(fixture.root, "admin.sqlite"), new Set([123]), 123)
-  const mcp = new McpAdmin(store)
+  const mcp = new McpAdmin(store, fixture.settings.botWorkdir)
   let session: DurableSession | undefined
   let reopened: DurableSession | undefined
   let registry: ChatSessionRegistry | undefined
@@ -82,7 +82,7 @@ it("cancels an active Pi tool, denies new work, and does not replay it after res
 it("cancels pre-change persisted work after an MCP edit even when chat permissions are unchanged", async () => {
   const fixture = await createPiFixture()
   const store = new AdminStore(path.join(fixture.root, "admin.sqlite"), new Set([123]), 123)
-  const mcp = new McpAdmin(store)
+  const mcp = new McpAdmin(store, fixture.settings.botWorkdir)
   let session: DurableSession | undefined
   let reopened: DurableSession | undefined
   const release = fixture.pauseNextRequest()
@@ -136,7 +136,7 @@ it("cancels pre-change persisted work after an MCP edit even when chat permissio
 it("denies stale direct and codemode calls in actual Pi turns without reading the target", async () => {
   const fixture = await createPiFixture()
   const store = new AdminStore(path.join(fixture.root, "admin.sqlite"), new Set([123]), 123)
-  const mcp = new McpAdmin(store)
+  const mcp = new McpAdmin(store, fixture.settings.botWorkdir)
   let session: DurableSession | undefined
   try {
     const policy = store.snapshot().policy
