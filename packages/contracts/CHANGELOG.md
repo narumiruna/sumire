@@ -1,5 +1,12 @@
 # @narumitw/sumire-contracts
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [ae28992]
+  - @narumitw/sumire-policy@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

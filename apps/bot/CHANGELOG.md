@@ -1,5 +1,25 @@
 # @narumitw/sumire
 
+## 0.11.0
+
+### Minor Changes
+
+- 8cfb372: Add a standalone Pi CNA news tool that mentions miyuyo_bot in a host-bound Telegram group and matches its direct reply. Expose the tool only with confirmed Miyu membership, and recheck membership before sending. Connect the tool to bot startup, per-input tool refresh, authorized Telegram transport, and reply routing.
+
+### Patch Changes
+
+- c89e4e6: Require Miyu to be a group administrator before offering or sending plain-mention CNA news requests. Reject normal and restricted members, and document the required Telegram delivery settings.
+- d684efd: Consume known Miyu replies after tool-only revocation. Defer optional membership checks until input preparation or background recovery so idle historical sessions do not delay polling startup. Include the Miyu workspace in both CI path filters.
+- 0b5ad82: Stop polling intake before sending the shutdown notice. Reject queued inputs cancelled during tool refresh. Consume matching non-text and late Miyu reply parts without starting another model turn, using a bounded recent-request index.
+- ae28992: Enable first-seen built-in and MCP tools in global and shared-default permissions. Preserve manual removals, explicit chat overrides, server gates, and chat access. Track registered names persistently and record automatic grants in the audit log. Keep startup available when permission lists are full. Register MCP names before authorization, but count only allowed tools against the runtime metadata limit.
+- 0f18d65: Notify the configured Telegram administrator after bot startup and before graceful shutdown. Bound notification requests to five seconds and log failures without blocking the lifecycle.
+- Updated dependencies [0b5ad82]
+- Updated dependencies [ae28992]
+- Updated dependencies [8cfb372]
+  - @narumitw/sumire-pi-miyu-cna-news@0.2.0
+  - @narumitw/sumire-policy@0.2.1
+  - @narumitw/sumire-contracts@0.2.1
+
 ## 0.10.1
 
 ### Patch Changes
