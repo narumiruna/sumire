@@ -43,6 +43,7 @@ COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
+COPY packages/pi-miyu-cna-news/package.json packages/pi-miyu-cna-news/package.json
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
@@ -72,6 +73,12 @@ COPY packages/progress/tsconfig*.json packages/progress/
 COPY packages/progress/src/ packages/progress/src/
 RUN npm run build --workspace @narumitw/sumire-progress
 
+FROM dependencies AS miyu-build
+
+COPY packages/pi-miyu-cna-news/tsconfig*.json packages/pi-miyu-cna-news/
+COPY packages/pi-miyu-cna-news/src/ packages/pi-miyu-cna-news/src/
+RUN npm run build --workspace @narumitw/sumire-pi-miyu-cna-news
+
 FROM dependencies AS url-reader-build
 
 COPY packages/url-reader/tsconfig*.json packages/url-reader/
@@ -93,6 +100,7 @@ COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contr
 
 COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
+COPY --from=miyu-build /build/packages/pi-miyu-cna-news/dist /build/packages/pi-miyu-cna-news/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
 COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
 COPY apps/bot/tsconfig*.json apps/bot/
@@ -181,10 +189,12 @@ COPY --from=production-dependencies --chown=app:app /build/packages/login/packag
 COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/url-reader/package.json /app/packages/url-reader/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reader/package.json /app/packages/pi-url-reader/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/pi-miyu-cna-news/package.json /app/packages/pi-miyu-cna-news/package.json
 COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=miyu-build --chown=app:app /build/packages/pi-miyu-cna-news/dist /app/packages/pi-miyu-cna-news/dist
 COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist
 COPY --from=pi-url-reader-build --chown=app:app /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist

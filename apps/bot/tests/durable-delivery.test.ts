@@ -199,7 +199,9 @@ describe("Telegram durable recovery delivery", () => {
           "setMyCommands",
           "setMyCommands",
           "editMessageText",
+          "sendMessage",
         ])
+        expect(calls[3]?.payload).toMatchObject({ chat_id: 7, text: "Sumire bot 已啟動。" })
         expect(calls[2]?.payload).toMatchObject({ chat_id: 7, message_id: 11 })
         if (mode === "publish") {
           expect(publish).toHaveBeenCalledWith("Recovered answer")
@@ -238,8 +240,10 @@ describe("Telegram durable recovery delivery", () => {
     telegram.bot.api.config.use(api as never)
     try {
       await telegram.start()
-      expect(api).toHaveBeenCalledTimes(2)
+      expect(api).toHaveBeenCalledTimes(3)
       expect(api.mock.calls[0]?.[1]).toBe("setMyCommands")
+      expect(api.mock.calls[2]?.[1]).toBe("sendMessage")
+      expect(api.mock.calls[2]?.[2]).toMatchObject({ chat_id: 7, text: "Sumire bot 已啟動。" })
       expect(recordDelivery).not.toHaveBeenCalled()
     } finally {
       await telegram.stop()

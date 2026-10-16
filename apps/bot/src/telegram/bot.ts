@@ -45,6 +45,7 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
+import type { TelegramMiyuNews } from "./miyu-cna-news.js"
 import { registerOAuthCallbackGuard } from "./oauth-callbacks.js"
 import { runTelegramPolling } from "./polling.js"
 import {
@@ -71,6 +72,7 @@ interface TelegramBotDependencies {
   audioTranscriber?: AudioTranscriber
   articleUrlLoader?: PublicUrlLoader
   channelImages?: ChannelImageIndex
+  miyuNews?: Pick<TelegramMiyuNews, "observe" | "handleMessage">
 }
 
 interface InputSubmissionOptions {
@@ -107,6 +109,20 @@ export function createTelegramAgentBot(
   >()
   let runner: RunnerHandle | undefined
   let stopping = false
+  let stopPromise: Promise<void> | undefined
+
+  async function notifyAdmin(text: string): Promise<void> {
+    if (settings.botAdminId === undefined) return
+    try {
+      // grammY uses abort-controller types but accepts native AbortSignal at runtime.
+      const signal = AbortSignal.timeout(5_000) as unknown as Parameters<
+        typeof bot.api.sendMessage
+      >[3]
+      await bot.api.sendMessage(settings.botAdminId, text, {}, signal)
+    } catch (error) {
+      logger.warn("Could not send Telegram lifecycle notification", error)
+    }
+  }
   const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
   const articleUrlLoader = dependencies.articleUrlLoader ?? createBotUrlLoader(settings)
   const audioTranscriber =
@@ -224,6 +240,13 @@ export function createTelegramAgentBot(
       (!settings.botChannelImageInputEnabled || !settings.botImageInputEnabled)
     )
       return
+    await next()
+  })
+
+  // Resolve tool replies before commands, bot-loop guards, and per-chat submission queues.
+  bot.on("message", async (context, next) => {
+    dependencies.miyuNews?.observe(context.message)
+    if (await dependencies.miyuNews?.handleMessage(context.message)) return
     await next()
   })
 
@@ -1255,18 +1278,27 @@ export function createTelegramAgentBot(
           (await dependencies.recoverChats()).filter((id) => dependencies.control.allows(id)),
         )
       if (stopping) return
-      runner = runTelegramPolling(
+      const polling = runTelegramPolling(
         bot,
         logger,
         settings.botChannelImageInputEnabled && settings.botImageInputEnabled,
       )
-      await runner.task()
+      runner = polling
+      await notifyAdmin("Sumire bot 已啟動。")
+      await polling.task()
     },
     async stop() {
+      if (stopPromise) return stopPromise
       stopping = true
-      if (!runner) return
-      await runner.stop()
-      runner = undefined
+      const polling = runner
+      if (!polling) return
+      stopPromise = (async () => {
+        // Stop accepting updates before notification I/O; drain both before disposal.
+        const stopped = polling.stop()
+        await Promise.all([stopped, notifyAdmin("Sumire bot 即將關閉。")])
+        runner = undefined
+      })()
+      return stopPromise
     },
   }
 }
