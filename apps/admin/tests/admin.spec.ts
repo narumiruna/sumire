@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto"
 import { expect, type Page, test } from "@playwright/test"
 
 const policy = {
@@ -2366,6 +2367,116 @@ for (const trigger of ["initial load", "pagination", "retry"]) {
     ).toBe(false)
   })
 }
+
+test("sign-out clears names from chat pages loaded in the previous session", async ({
+  page,
+  context,
+}) => {
+  await setup(page)
+  await expect(
+    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+  ).toHaveCount(1)
+  let signIns = 0
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        policy: { ...policy, privateUsers: [42, 201] },
+      },
+    }),
+  )
+  await page.route("**/api/chats?*", (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("offset") === "100"
+          ? [
+              {
+                id: 201,
+                name: signIns ? "Updated off-page name" : "Previous session name",
+                type: "private",
+              },
+            ]
+          : Array.from({ length: 100 }, (_, index) => ({
+              id: index + 1,
+              name: `Session ${signIns} user ${index + 1}`,
+              type: "private",
+            })),
+    }),
+  )
+  const client = await context.newCDPSession(page)
+  await client.send("WebAuthn.enable")
+  const { authenticatorId } = await client.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  })
+  const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({
+    type: "pkcs8",
+    format: "der",
+  })
+  await client.send("WebAuthn.addCredential", {
+    authenticatorId,
+    credential: {
+      credentialId: Buffer.from("cache-cleanup-credential").toString("base64"),
+      isResidentCredential: true,
+      rpId: "localhost",
+      privateKey: key.toString("base64"),
+      userHandle: Buffer.from("42").toString("base64"),
+      signCount: 0,
+    },
+  })
+  await page.route("**/auth/passkey/**", async (route) => {
+    if (route.request().url().endsWith("options")) {
+      await route.fulfill({
+        json: {
+          challenge: Buffer.from("cache-cleanup-challenge").toString("base64url"),
+          rpId: "localhost",
+          userVerification: "required",
+        },
+      })
+    } else {
+      expect(route.request().postDataJSON().response.response.signature).toBeTruthy()
+      signIns++
+      await route.fulfill({ json: { csrf: "browser-fixture", actor: "42" } })
+    }
+  })
+  await page.goto("http://localhost:17466/")
+  await page.getByRole("button", { name: "Next chats", exact: true }).click()
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
+    "Previous session name",
+  )
+  await page.getByRole("button", { name: "Previous chats", exact: true }).click()
+  await navigate(page, "Access")
+  await expect(
+    page.getByRole("group", { name: "Private-message access", exact: true }),
+  ).toContainText("Previous session name")
+  await navigate(page, "Chats")
+  await page.getByRole("button", { name: "Sign out", exact: true }).click()
+  await page.getByRole("button", { name: "Sign in with passkey", exact: true }).click()
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
+    "Session 1 user 42",
+  )
+  await navigate(page, "Access")
+  const users = page.getByRole("group", { name: "Private-message access", exact: true })
+  const offPage = users.getByRole("listitem").filter({ hasText: "201" })
+  await expect(offPage).toContainText("Name not known")
+  await expect(users).not.toContainText("Previous session name")
+  await navigate(page, "Chats")
+  await page.getByRole("button", { name: "Next chats", exact: true }).click()
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
+    "Updated off-page name",
+  )
+  await navigate(page, "Access")
+  await expect(offPage).toContainText("Updated off-page name")
+  expect(signIns).toBe(1)
+})
 
 test("policy-only discard preserves unfinished access input", async ({ page }) => {
   await setup(page)

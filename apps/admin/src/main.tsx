@@ -898,14 +898,7 @@ function App() {
                   if (!confirmDiscard()) return
                   clearAccess()
                   await request("logout", session.csrf)
-                  setMcpSecrets({ env: {}, headers: {} })
-                  setMcpConfig("{}")
-                  setMcpDirty(false)
-                  setProviderPending(false)
-                  setEditorPending({})
-                  setDirty(false)
-                  setSnapshot(undefined)
-                  setSession(null)
+                  expireSession()
                 })
               }
             >

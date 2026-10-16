@@ -15,6 +15,14 @@ describe("admin navigation", () => {
       chat: "",
     })
   })
+  it("rejects noncanonical chat IDs in deep links and navigation links", () => {
+    for (const chat of ["0042", "-00100", "+42", "42.0"]) {
+      const url = new URL("https://example.com/?section=Chats")
+      url.searchParams.set("chat", chat)
+      expect(readNavigation(url)).toEqual({ page: "Chats", chat: "" })
+      expect(navigationHref("Chats", chat, url)).toBe("/?section=Chats")
+    }
+  })
   it("accepts supported sections and exact, non-zero chat IDs", () => {
     expect(
       readNavigation(new URL("https://example.com/?section=Model%20Providers&chat=-100")),
