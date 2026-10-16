@@ -68,7 +68,14 @@ describe("MCP through durable sessions", () => {
       expect(toolResultText(result)).toContain("recovered")
       expect(session.nativeTools.some((tool) => tool.name === "mcp__fake__echo")).toBe(true)
       expect(JSON.stringify(fixture.requests.at(-1)?.messages)).toContain("mcp__fake__echo")
-      expect(fixture.factory.control.snapshot().policy).toEqual(policy)
+      expect(fixture.factory.control.snapshot().policy).toEqual({
+        ...policy,
+        tools: expect.arrayContaining(policy.tools),
+        defaults: {
+          ...policy.defaults,
+          tools: expect.arrayContaining(policy.defaults.tools ?? []),
+        },
+      })
     },
   )
 
@@ -115,7 +122,14 @@ describe("MCP through durable sessions", () => {
           isError: false,
         },
       )
-      expect(store.snapshot().policy).toEqual(policy)
+      expect(store.snapshot().policy).toEqual({
+        ...policy,
+        tools: expect.arrayContaining(policy.tools),
+        defaults: {
+          ...policy.defaults,
+          tools: expect.arrayContaining(policy.defaults.tools ?? []),
+        },
+      })
     },
   )
 

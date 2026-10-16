@@ -1,8 +1,10 @@
 import { z } from "zod"
 
+export const POLICY_MAX_NAMES = 512
+
 const names = z
   .array(z.string().min(1).max(256))
-  .max(512)
+  .max(POLICY_MAX_NAMES)
   .refine((v) => new Set(v).size === v.length)
 export const thinkingSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
 export const selectionSchema = z

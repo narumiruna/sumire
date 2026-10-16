@@ -104,6 +104,7 @@ export async function createPiSessionFactory(
     "codemode",
     "update_progress",
   ]
+  control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${systemPrompt}`, {
     sha256: createHash("sha256").update(systemPrompt).digest("hex"),
     chars: systemPrompt.length,
@@ -140,6 +141,17 @@ export async function createPiSessionFactory(
       const state = control.store.snapshot()
       control.store.assertChat(chatId, state.revision)
       const policy = effectivePolicy(state.policy, chatId)
+      const assertSessionPolicy = () => {
+        control.store.assertChat(chatId)
+        const latest = control.store.snapshot()
+        const current = effectivePolicy(latest.policy, chatId)
+        if (
+          latest.epoch !== state.epoch ||
+          current.model !== policy.model ||
+          current.thinking !== policy.thinking
+        )
+          throw new Error("Chat policy changed before session startup")
+      }
       const ref = policy.model
       const requested = ref
         ? modelRuntime.getModel(ref.slice(0, ref.indexOf("/")), ref.slice(ref.indexOf("/") + 1))
@@ -212,6 +224,7 @@ export async function createPiSessionFactory(
                 return createMcpTransport(server, cwd, home)
               },
               (server, tool) => control.store.allowsTool(chatId, tool, server),
+              (names) => control.store.registerTools(names),
             )
           : undefined
       const refreshTools = async () => {
@@ -286,9 +299,9 @@ export async function createPiSessionFactory(
       const storage = await openNodeSqliteStorage(sessionFile)
       try {
         await chmod(sessionFile, 0o600)
-        control.store.assertChat(chatId, state.revision)
+        assertSessionPolicy()
         await mcp?.ready()
-        control.store.assertChat(chatId, state.revision)
+        assertSessionPolicy()
         harness = await Harness.open(
           storage,
           {

@@ -189,9 +189,10 @@ describe("admin durable runtime integration", () => {
           changed.servers = []
           changed.defaults.servers = []
         }
-        if (revoked === "configuration") mcp.save("fixture", { enabled: false }, 3, "42")
-        else store.save(changed, 3, "42")
-        store.applied(4, true)
+        const revision = store.snapshot().revision
+        if (revoked === "configuration") mcp.save("fixture", { enabled: false }, revision, "42")
+        else store.save(changed, revision, "42")
+        store.applied(revision + 1, true)
       } finally {
         release.resolve()
         await rejected
@@ -229,8 +230,8 @@ describe("admin durable runtime integration", () => {
     const changed = store.snapshot().policy
     changed.tools = []
     changed.defaults.tools = []
-    store.save(changed, 2, "42")
-    store.applied(3, true)
+    const revoked = store.save(changed, store.snapshot().revision, "42")
+    store.applied(revoked.revision, true)
     expect(() =>
       read?.execute("read-2", { path: file }, undefined, undefined, undefined as never),
     ).toThrow("not allowed")

@@ -140,6 +140,7 @@ export class McpAdmin {
     try {
       await capability.ready(AbortSignal.timeout(15_000))
       const tools = capability.tools.map((tool) => tool.name)
+      this.store.registerTools(tools)
       const state = {
         status: tools.length ? "connected" : "no visible tools or unavailable",
         tools,
