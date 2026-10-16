@@ -6,7 +6,8 @@ export const pages = [
   "Chats",
   "Access",
   "Defaults",
-  "Tools / MCP",
+  "Tool permissions",
+  "MCP connections",
   "Model Providers",
   "Audit",
 ] as const
@@ -16,7 +17,10 @@ export function readNavigation(url: URL) {
   const section = url.searchParams.get("section")
   const chat = url.searchParams.get("chat") ?? ""
   return {
-    page: pages.find((page) => page === section) ?? "Chats",
+    page:
+      section === "Tools / MCP"
+        ? "Tool permissions"
+        : (pages.find((page) => page === section) ?? "Chats"),
     chat: /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat)) ? chat : "",
   }
 }
@@ -38,13 +42,18 @@ export function useNavigation() {
   }, [])
   return {
     ...state,
-    setPage: (page: Page) => {
-      if (page !== state.page) window.history.pushState(null, "", navigationHref(page, state.chat))
-      setState({ ...state, page })
+    setPage: (page: Page, anchor?: string) => {
+      const url = new URL(window.location.href)
+      if (anchor) url.hash = anchor
+      else if (url.hash === "#default-tool-permissions") url.hash = ""
+      const href = navigationHref(page, readNavigation(url).chat, url)
+      if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
+        window.history.pushState(null, "", href)
+      setState((current) => ({ ...current, page }))
     },
     setChat: (chat: string) => {
       window.history.replaceState(null, "", navigationHref(state.page, chat))
-      setState({ ...state, chat })
+      setState((current) => ({ ...current, chat }))
     },
   }
 }

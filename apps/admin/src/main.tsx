@@ -32,11 +32,12 @@ import {
   type Snapshot,
 } from "./api.js"
 import { type Chat, ChatWorkspace } from "./chats.js"
-import { SideNavigation, useNavigation } from "./navigation.js"
+import { navigationHref, SideNavigation, useNavigation } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChanges } from "./policy-changes.js"
 import { Providers } from "./providers.js"
 import { EditorSection, SectionSelect as Select } from "./sections.js"
+import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
@@ -302,7 +303,7 @@ function Choices({
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
-  navigate(page: "Tools / MCP" | "Model Providers"): void
+  navigate(page: "Tool permissions" | "Model Providers"): void
 }) {
   const model = value.model ?? policy.defaults.model
   const levels = inventory.providers
@@ -311,32 +312,34 @@ function Choices({
   return (
     <>
       <div className="grid">
-        {(["tools", "servers", "models"] as const).map((key) => (
-          <List
-            key={key}
-            label={
-              {
-                tools: "Authorized tools",
-                servers: "Authorized MCP servers",
-                models: "Allowed models",
-              }[key]
-            }
-            options={policy[key]}
-            value={value[key]}
-            onChange={(v) => onChange({ ...value, [key]: v })}
-            inheritable={!defaults}
-            effective={(value[key] ?? policy.defaults[key] ?? []).filter(
-              (name) =>
-                policy[key].includes(name) &&
-                (key !== "models" ||
-                  policy.providers.find((p) => p.id === name.split("/")[0])?.enabled !== false),
-            )}
-          />
-        ))}
+        {(defaults ? (["models"] as const) : (["tools", "servers", "models"] as const)).map(
+          (key) => (
+            <List
+              key={key}
+              label={
+                {
+                  tools: "Authorized tools",
+                  servers: "Authorized MCP servers",
+                  models: "Allowed models",
+                }[key]
+              }
+              options={policy[key]}
+              value={value[key]}
+              onChange={(v) => onChange({ ...value, [key]: v })}
+              inheritable={!defaults}
+              effective={(value[key] ?? policy.defaults[key] ?? []).filter(
+                (name) =>
+                  policy[key].includes(name) &&
+                  (key !== "models" ||
+                    policy.providers.find((p) => p.id === name.split("/")[0])?.enabled !== false),
+              )}
+            />
+          ),
+        )}
       </div>
-      {(!policy.tools.length || !policy.servers.length) && (
-        <Button variant="ghost" onClick={() => navigate("Tools / MCP")}>
-          Configure tools and MCP servers
+      {!defaults && (
+        <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+          Manage global and default tool permissions
         </Button>
       )}
       {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
@@ -963,7 +966,7 @@ function App() {
                 setPage("Access")
               }}
               onProviders={() => setPage("Model Providers")}
-              onTools={() => setPage("Tools / MCP")}
+              onTools={() => setPage("Tool permissions")}
             >
               <Card>
                 <Check
@@ -1066,17 +1069,22 @@ function App() {
                     )
                   }
                 >
-                  Use Defaults for all chats
+                  Reset all chats to inherit defaults
                 </Button>
               </AlertDialog.Trigger>
               <AlertDialog.Content>
-                <AlertDialog.Title>Use shared defaults for every chat?</AlertDialog.Title>
+                <AlertDialog.Title>Reset all chat overrides to inherit defaults?</AlertDialog.Title>
                 <AlertDialog.Description>
-                  Clear tool, MCP server, allowed model, model, and thinking overrides for all
-                  chats, including chats outside the current page. Explicit empty lists will also
-                  inherit Defaults. Chat access and enabled switches stay unchanged. Future chats
-                  already inherit Defaults. This stages edits only; use Apply policy changes to
-                  apply them.
+                  {
+                    Object.values(policy.chats).filter((choice) =>
+                      Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
+                    ).length
+                  }{" "}
+                  chats have explicit overrides in the policy draft. Clear tool, MCP server, allowed
+                  model, model, and thinking overrides for all chats, including chats outside the
+                  current page. Explicit empty lists will also inherit Defaults. Chat access and
+                  enabled switches stay unchanged. Future chats already inherit Defaults. This
+                  stages edits only; use Apply policy changes to apply them.
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4">
                   <AlertDialog.Cancel>
@@ -1096,12 +1104,46 @@ function App() {
                         })
                       }
                     >
-                      Stage inheritance for all chats
+                      Stage reset of all chat overrides
                     </Button>
                   </AlertDialog.Action>
                 </Flex>
               </AlertDialog.Content>
             </AlertDialog.Root>
+            <Card>
+              <Heading size="3">Default tool permissions</Heading>
+              <Text as="p">
+                Applies to chats without a tool or MCP-server permission override. Explicit
+                overrides are not changed.
+              </Text>
+              <Text as="p">Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Text>
+              {dirty && (
+                <Text as="p">Policy draft defaults: {defaultPermissionSummary(policy)}.</Text>
+              )}
+              <Button variant="soft" asChild>
+                <a
+                  href={navigationHref(
+                    "Tool permissions",
+                    chat,
+                    new URL("#default-tool-permissions", window.location.href),
+                  )}
+                  onClick={(event) => {
+                    if (
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return
+                    event.preventDefault()
+                    setPage("Tool permissions", "default-tool-permissions")
+                  }}
+                >
+                  Manage default tool permissions
+                </a>
+              </Button>
+            </Card>
             <Choices
               navigate={setPage}
               defaults
@@ -1111,34 +1153,27 @@ function App() {
               onChange={(v) => update({ ...policy, defaults: v })}
             />
           </EditorSection>
-          <EditorSection active={page === "Tools / MCP"} aria-label="Tools and MCP settings">
+          <EditorSection active={page === "Tool permissions"} aria-label="Tool permissions">
             <Callout.Root color="orange">
               <Callout.Text>
                 Shell and file tools are trusted capabilities, not a sandbox. They can access
                 process-readable credentials. New tools are denied until explicitly approved.
               </Callout.Text>
             </Callout.Root>
-            <Heading size="3" mt="3">
-              Tool authorization — saved with settings
-            </Heading>
-            <div className="grid">
-              <List
-                label="Globally available tools"
-                options={[...new Set([...inventory.tools, ...policy.tools])]}
-                value={policy.tools}
-                onChange={(v) => update({ ...policy, tools: v ?? [] })}
-              />
-              <List
-                label="Globally available MCP servers"
-                options={inventory.mcp.map((m) => m.name)}
-                value={policy.servers}
-                onChange={(v) => update({ ...policy, servers: v ?? [] })}
-              />
-            </div>
-            <Text as="p">
-              MCP tool names must be approved individually. Exposure does not grant execution
-              permission.
-            </Text>
+            <ToolPermissions
+              dirty={dirty}
+              policy={policy}
+              saved={savedPolicy ?? policy}
+              inventory={inventory}
+              onChange={update}
+              onChat={(id) => {
+                setChat(id)
+                setPage("Chats")
+              }}
+              defaultContext={
+                page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
+              }
+            />
             <Field
               label="Additional approved tool name"
               value={toolName}
@@ -1157,9 +1192,25 @@ function App() {
             >
               Add tool to pending approval
             </Button>
+            <Text as="p" size="2">
+              Enter an exact tool name even if discovery is unavailable. This stages global approval
+              only; default and chat permissions remain unchanged.
+            </Text>
+            <Button variant="soft" onClick={() => setPage("MCP connections")}>
+              Manage MCP connections
+            </Button>
+          </EditorSection>
+          <EditorSection active={page === "MCP connections"} aria-label="MCP connections">
             <Heading size="3" mt="4">
               MCP connections — saved separately
             </Heading>
+            <Text as="p">
+              Connection configuration and enabled state do not grant execution permission. Tests
+              and discovery run only when requested.
+            </Text>
+            <Button variant="soft" onClick={() => setPage("Tool permissions")}>
+              Manage tool and MCP server permissions
+            </Button>
             {!inventory.mcp.length && (
               <Text as="p">
                 No MCP connections configured. Add a server below, then test it and approve its
@@ -1177,8 +1228,8 @@ function App() {
                   {policy.servers.includes(m.name)
                     ? "Globally available"
                     : "Not globally available"}{" "}
-                  · {m.tools.filter((name) => policy.tools.includes(name)).length} globally
-                  authorized tools
+                  · {m.tools.filter((name) => policy.tools.includes(name)).length} globally approved
+                  tool names · {dirty ? "Policy draft" : "Saved policy"}
                 </Text>
                 <Text as="p" size="2">
                   Connection state is not an execution grant. Defaults and chat selections can

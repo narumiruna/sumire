@@ -279,14 +279,20 @@ test("stages inheritance for all chat overrides without changing access or enabl
   })
   await page.reload()
   await navigate(page, "Defaults")
-  const bulk = page.getByRole("button", { name: "Use Defaults for all chats", exact: true })
+  const bulk = page.getByRole("button", {
+    name: "Reset all chats to inherit defaults",
+    exact: true,
+  })
   await bulk.click()
+  await expect(page.getByRole("alertdialog")).toContainText(
+    "3 chats have explicit overrides in the policy draft.",
+  )
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(page.getByRole("button", { name: "Apply policy changes", exact: true })).toHaveCount(
     0,
   )
   await bulk.click()
-  await page.getByRole("button", { name: "Stage inheritance for all chats", exact: true }).click()
+  await page.getByRole("button", { name: "Stage reset of all chat overrides", exact: true }).click()
   expect(writes).toBe(0)
   await expect(bulk).toBeDisabled()
   await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
@@ -406,7 +412,7 @@ for (const customDraft of [false, true]) {
       }),
     )
     await page.reload()
-    await navigate(page, "Tools / MCP")
+    await navigate(page, "MCP connections")
     await page.getByText("Advanced server configuration JSON", { exact: true }).click()
     const json = page.getByLabel("Server configuration JSON")
     if (customDraft) await json.fill('{"command":"draft-server","args":["--draft"]}')
@@ -457,7 +463,7 @@ for (const transport of ["stdio", "http"]) {
       }),
     )
     await page.reload()
-    await navigate(page, "Tools / MCP")
+    await navigate(page, "MCP connections")
     await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
     await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
     await expect(page.getByText("Omitted keys are removed.", { exact: false })).toBeVisible()
@@ -584,7 +590,7 @@ test("confirms MCP deletion, sends the saved revision, and refreshes inventory",
     await route.fulfill({ json: { ok: true } })
   })
   await page.reload()
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("stored secrets")
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
@@ -849,8 +855,8 @@ test("opens a single API-key method directly and preserves model selection after
 
 test("blocks credential and model saves while other policy edits are unsaved", async ({ page }) => {
   await setup(page)
-  await navigate(page, "Tools / MCP")
-  await page.getByRole("checkbox", { name: "bash", exact: true }).check()
+  await navigate(page, "Tool permissions")
+  await page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }).check()
   await navigate(page, "Model Providers")
   await chooseProvider(page)
   await chooseModel(page)
@@ -858,8 +864,10 @@ test("blocks credential and model saves while other policy edits are unsaved", a
   await expect(
     page.getByRole("button", { name: /Save default model|Save model availability/ }),
   ).toBeDisabled()
-  await navigate(page, "Tools / MCP")
-  await expect(page.getByRole("checkbox", { name: "bash", exact: true })).toBeChecked()
+  await navigate(page, "Tool permissions")
+  await expect(
+    page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }),
+  ).toBeChecked()
 })
 
 test("retains the selected model after a revision conflict", async ({ page }) => {
@@ -1130,13 +1138,15 @@ test("retains edits and reports revision conflicts", async ({ page }) => {
       })
     else await route.fallback()
   })
-  await navigate(page, "Tools / MCP")
-  await page.getByRole("checkbox", { name: "bash", exact: true }).check()
+  await navigate(page, "Tool permissions")
+  await page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }).check()
   await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.getByRole("button", { name: "Save and apply" }).click()
   await expect(page.getByRole("alert")).toContainText("Settings changed")
   await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
-  await expect(page.getByRole("checkbox", { name: "bash", exact: true })).toBeChecked()
+  await expect(
+    page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }),
+  ).toBeChecked()
 })
 
 test("completes a browser-initiated provider interaction with a masked response", async ({
@@ -1209,7 +1219,7 @@ test("reports failed runtime application without claiming success", async ({ pag
 })
 test("uses masked MCP secret replacements instead of displaying them in JSON", async ({ page }) => {
   await setup(page)
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name").fill("fixture")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await page.getByLabel("Server configuration JSON").fill('{"command":"fixture-server"}')
@@ -1230,8 +1240,8 @@ test("uses masked MCP secret replacements instead of displaying them in JSON", a
 test("supports narrow layouts and keyboard dialog cancellation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await setup(page)
-  await navigate(page, "Tools / MCP")
-  await page.getByRole("checkbox", { name: "bash", exact: true }).check()
+  await navigate(page, "Tool permissions")
+  await page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }).check()
   await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.keyboard.press("Escape")
   await expect(page.getByRole("alertdialog")).toHaveCount(0)
@@ -1252,7 +1262,7 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
   await navigate(page, "Access")
   await page.getByLabel("Private user ID to add").fill("43")
   await page.getByRole("button", { name: "Add ID to pending settings" }).first().click()
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name").fill("draft-server")
   await navigate(page, "Model Providers")
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeDisabled()
@@ -1266,7 +1276,7 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
   await page.getByRole("button", { name: "Save and apply", exact: true }).click()
   expect((await saving).postDataJSON().policy.privateUsers).toEqual([42, 43])
   await expect(page.getByText("Pending MCP configuration", { exact: true })).toBeVisible()
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name")).toHaveValue("draft-server")
   expect(mutations).toEqual(["/api/settings"])
 })
@@ -1422,7 +1432,7 @@ test("edits MCP fields without exposing secrets and preserves omitted replacemen
     }),
   )
   await page.reload()
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await expect(page.getByText("Connection test:", { exact: false })).toContainText("not tested")
   await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
   await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
@@ -1449,7 +1459,7 @@ test("never saves plaintext secrets from the advanced JSON editor", async ({ pag
   page.on("request", (r) => {
     if (r.url().endsWith("/api/mcp/new") && r.method() === "PUT") saves++
   })
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name").fill("new")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await page.getByLabel("Server configuration JSON").fill('{"env":{"TOKEN":"unsafe-fixture"}}')
@@ -1504,7 +1514,7 @@ test("locks configuration inputs while policy submission is in flight", async ({
 
 test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ page }) => {
   await setup(page)
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("Secret field name").fill("TOKEN")
   await page.getByLabel("New secret value").fill("discard-fixture")
   page.once("dialog", (dialog) => dialog.accept())
@@ -1620,7 +1630,7 @@ for (const scenario of [
       return route.fulfill({ json: { ok: true } })
     })
     await page.reload()
-    await navigate(page, "Tools / MCP")
+    await navigate(page, "MCP connections")
     await page
       .getByRole("button", { name: `Edit fields for ${scenario.draft}`, exact: true })
       .click()
@@ -1710,7 +1720,7 @@ for (const method of ["PUT", "DELETE"] as const) {
       return route.fulfill({ json: { ok: true } })
     })
     await page.reload()
-    await navigate(page, "Tools / MCP")
+    await navigate(page, "MCP connections")
     await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
     await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
     await page.getByLabel("Secret field name").fill("TOKEN")
@@ -1929,7 +1939,7 @@ test("policy discard leaves provider and MCP drafts unchanged", async ({ page })
   await setup(page)
   await navigate(page, "Model Providers")
   await chooseModel(page)
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name", { exact: true }).fill("local-draft")
   await navigate(page, "Access")
   await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
@@ -1938,7 +1948,7 @@ test("policy discard leaves provider and MCP drafts unchanged", async ({ page })
   await expect(
     page.getByRole("button", { name: "Revoke access for ID 42", exact: true }),
   ).toBeVisible()
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("local-draft")
   await navigate(page, "Model Providers")
   await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
@@ -2205,7 +2215,7 @@ test("applies chat policy changes without saving model-provider or MCP drafts", 
   await setup(page)
   await navigate(page, "Model Providers")
   await chooseModel(page)
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name", { exact: true }).fill("connection-draft")
   await navigate(page, "Chats")
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
@@ -2229,7 +2239,7 @@ test("applies chat policy changes without saving model-provider or MCP drafts", 
   ).toBeVisible()
   await navigate(page, "Model Providers")
   await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("connection-draft")
 })
 
@@ -2431,7 +2441,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
   await expect(page.getByRole("heading", { name: "Original name", exact: true })).toBeVisible()
   await navigate(page, "Model Providers")
   await chooseModel(page)
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name", { exact: true }).fill("retained-draft")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
@@ -2443,7 +2453,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
   expect(reads).toBe(2)
   await navigate(page, "Model Providers")
   await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
-  await navigate(page, "Tools / MCP")
+  await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("retained-draft")
   await expect(page.getByLabel("Server configuration JSON")).toHaveValue('{"enabled":false}')
 })
@@ -2502,7 +2512,7 @@ for (const trigger of ["initial load", "pagination", "retry"]) {
       else await expect(page.getByRole("button", { name: "Next chats", exact: true })).toBeEnabled()
       await navigate(page, "Model Providers")
       await chooseModel(page)
-      await navigate(page, "Tools / MCP")
+      await navigate(page, "MCP connections")
       await page.getByLabel("MCP server name", { exact: true }).fill("expired-draft")
       await page.getByLabel("Secret field name", { exact: true }).fill("TOKEN")
       await page.getByLabel("New secret value", { exact: true }).fill("masked-fixture-value")
