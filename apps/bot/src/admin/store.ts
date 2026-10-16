@@ -43,6 +43,7 @@ export class AdminStore {
     this.db.exec("PRAGMA journal_mode = DELETE; PRAGMA foreign_keys = ON; BEGIN IMMEDIATE")
     try {
       this.db.exec(`
+      CREATE TABLE IF NOT EXISTS known_tools (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS imports (name TEXT PRIMARY KEY, report TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, applied INTEGER NOT NULL, status TEXT NOT NULL, policy TEXT NOT NULL, epoch INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, actor TEXT NOT NULL, time INTEGER NOT NULL, operation TEXT NOT NULL, revision INTEGER NOT NULL, outcome TEXT NOT NULL, target TEXT NOT NULL);
@@ -122,6 +123,39 @@ export class AdminStore {
       throw error
     }
     return this.snapshot()
+  }
+  /** Add first-seen tools only. This additive change does not invalidate active sessions. */
+  registerTools(names: readonly string[]) {
+    this.db.exec("BEGIN IMMEDIATE")
+    try {
+      const state = this.snapshot()
+      const remember = this.db.prepare("INSERT OR IGNORE INTO known_tools VALUES (?)")
+      // Existing selections are already known, including selections denied globally.
+      for (const name of [
+        ...state.policy.tools,
+        ...(state.policy.defaults.tools ?? []),
+        ...Object.values(state.policy.chats).flatMap((chat) => chat.tools ?? []),
+      ])
+        remember.run(name)
+      const added = [...new Set(names)].filter((name) => remember.run(name).changes)
+      if (added.length) {
+        state.policy.tools.push(...added)
+        state.policy.defaults.tools = [...(state.policy.defaults.tools ?? []), ...added]
+        const policy = policySchema.parse(state.policy)
+        // No model, admission, server gate, or explicit chat selection changes.
+        // Pending and failed revisions remain unavailable until normal application.
+        this.db
+          .prepare(
+            "UPDATE settings SET revision=revision+1, applied=CASE WHEN status='applied' AND applied=revision THEN revision+1 ELSE applied END, policy=? WHERE id=1",
+          )
+          .run(JSON.stringify(policy))
+        this.audit("system", "tools.register", state.revision + 1, "enabled", added.join(", "))
+      }
+      this.db.exec("COMMIT")
+    } catch (error) {
+      this.db.exec("ROLLBACK")
+      throw error
+    }
   }
   audit(actor: string, operation: string, revision: number, outcome: string, target = "settings") {
     this.db

@@ -22,6 +22,7 @@ async function setup(
   environment: NodeJS.ProcessEnv = {},
   beforeReady?: (capability: McpCapability) => Promise<void>,
   authorize?: (server: string, tool: string) => boolean,
+  discovered?: (names: string[]) => void,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-mcp-"))
   cleanup.push(() => rm(directory, { recursive: true, force: true }))
@@ -43,6 +44,7 @@ async function setup(
     changed,
     undefined,
     authorize,
+    discovered,
   )
   cleanup.push(() => capability.close())
   await beforeReady?.(capability)
@@ -56,6 +58,20 @@ async function setup(
 }
 
 describe("MCP capability", () => {
+  it("registers discovered tools before authorization filters publication", async () => {
+    const known = new Set<string>()
+    const { capability } = await setup(
+      undefined,
+      {},
+      undefined,
+      (_server, tool) => known.has(tool),
+      (names) => {
+        for (const name of names) known.add(name)
+      },
+    )
+    expect(known.has("mcp__fake__echo")).toBe(true)
+    expect(capability.tools.some((tool) => tool.name === "mcp__fake__echo")).toBe(true)
+  })
   it("filters discovery and blocks previously discovered tools after policy revocation", async () => {
     let allowed = true
     const { capability } = await setup(

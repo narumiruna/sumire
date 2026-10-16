@@ -117,6 +117,7 @@ export class McpCapability {
     private readonly changed: () => void,
     private readonly transportFactory: McpTransportFactory = createMcpTransport,
     private readonly authorize: (server: string, tool: string) => boolean = () => true,
+    private readonly discovered: (names: string[]) => void = () => {},
   ) {
     this.#connections = config.servers.map((config) => ({ config, tools: [], listed: [] }))
     this.#homes = new McpProcessHomes(directory)
@@ -297,7 +298,6 @@ export class McpCapability {
                 return []
               }
               const wrapper = this.wrap(c, tool, names.get(tool.name) as string, schema, namespace)
-              if (!this.authorize(c.config.name, wrapper.name)) return []
               const toolBytes = Buffer.byteLength(
                 JSON.stringify({
                   name: wrapper.name,
@@ -329,6 +329,9 @@ export class McpCapability {
         c.tools = c.tools.filter((tool) => !duplicates.has(tool.name))
       this.logger.warn("Colliding MCP tool identifiers were withheld")
     }
+    this.discovered(this.tools.map((tool) => tool.name))
+    for (const c of this.#connections)
+      c.tools = c.tools.filter((tool) => this.authorize(c.config.name, tool.name))
     this.changed()
   }
 

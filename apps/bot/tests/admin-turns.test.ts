@@ -50,17 +50,17 @@ it("cancels an active Pi tool, denies new work, and does not replay it after res
     await vi.waitFor(async () => expect(await readFile(marker, "utf8")).toBe("started\n"))
     await expect(session.followUp("queued request must not run")).resolves.toBe("queued")
     policy.privateUsers = []
-    store.save(policy, 2, "123")
+    store.save(policy, store.snapshot().revision, "123")
     await registry.invalidatePolicies()
     await pending
-    store.applied(3, true)
+    store.applied(store.snapshot().revision, true)
     await expect(registry.getModelSettings(123)).rejects.toThrow("policy")
     expect((await stat(session.sessionFile)).size).toBeGreaterThan(0)
     policy.privateUsers = [123]
     policy.tools = []
     policy.defaults.tools = []
-    store.save(policy, 3, "123")
-    store.applied(4, true)
+    store.save(policy, store.snapshot().revision, "123")
+    store.applied(store.snapshot().revision, true)
     reopened = await factory.create(123)
     const deliver = vi.fn(async () => {})
     await reopened.recoverPending(deliver)
@@ -107,7 +107,7 @@ it("cancels pre-change persisted work after an MCP edit even when chat permissio
       .catch(() => undefined)
     await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
     const before = store.snapshot()
-    mcp.save("unused", { command: process.execPath }, 2, "123")
+    mcp.save("unused", { command: process.execPath }, before.revision, "123")
     expect(store.snapshot().policy).toEqual(before.policy)
     expect(store.snapshot().epoch).toBe(before.epoch + 1)
     // Simulate shutdown before live policy application, then an empty-registry startup apply.
@@ -115,7 +115,7 @@ it("cancels pre-change persisted work after an MCP edit even when chat permissio
     await pending
     await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
     release()
-    store.applied(3, true)
+    store.applied(store.snapshot().revision, true)
     reopened = await factory.create(123)
     const deliver = vi.fn(async () => {})
     await reopened.recoverPending(deliver)
@@ -163,8 +163,8 @@ it("denies stale direct and codemode calls in actual Pi turns without reading th
     if (!checkpoint) throw new Error("Missing fixture checkpoint")
     policy.tools = ["codemode"]
     policy.defaults.tools = ["codemode"]
-    store.save(policy, 2, "123")
-    store.applied(3, true)
+    store.save(policy, store.snapshot().revision, "123")
+    store.applied(store.snapshot().revision, true)
     expect(await session.navigateTree(checkpoint)).toEqual({ cancelled: false })
     const nested = await fixture.script(session, code)
     expect(nested.isError).toBe(true)
@@ -174,8 +174,8 @@ it("denies stale direct and codemode calls in actual Pi turns without reading th
     expect(toolResultText(direct)).not.toContain("private-fixture-content")
     policy.tools = []
     policy.defaults.tools = []
-    store.save(policy, 3, "123")
-    store.applied(4, true)
+    store.save(policy, store.snapshot().revision, "123")
+    store.applied(store.snapshot().revision, true)
     expect((await fixture.script(session, 'text("should not execute")')).isError).toBe(true)
   } finally {
     await session?.abort()
