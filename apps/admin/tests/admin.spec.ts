@@ -2200,6 +2200,173 @@ test("closes a chat model dropdown when browser navigation hides its owning sect
   ).toBeVisible()
 })
 
+test("global access undo leaves no pending changes when only ID order differs", async ({
+  page,
+}) => {
+  await setup(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        policy: { ...policy, privateUsers: [42, 43] },
+      },
+    }),
+  )
+  await page.reload()
+  await navigate(page, "Access")
+  let writes = 0
+  page.on("request", (request) => {
+    if (request.method() !== "GET") writes++
+  })
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Undo revocation for 42", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "Apply policy changes", exact: true }),
+  ).toBeDisabled()
+  await expect(page.getByText(/\d+ pending policy changes/)).toHaveCount(0)
+  expect(
+    await page.evaluate(() => {
+      const event = new Event("beforeunload", { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }),
+  ).toBe(false)
+  expect(writes).toBe(0)
+})
+
+test("Reload refreshes current chat names and new chats while retaining provider and MCP drafts", async ({
+  page,
+}) => {
+  await setup(page)
+  await expect(
+    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+  ).toHaveCount(1)
+  let reads = 0
+  await page.route("**/api/chats?*", (route) => {
+    reads++
+    return route.fulfill({
+      json:
+        reads === 1
+          ? [{ id: 42, name: "Original name", type: "private" }]
+          : [
+              { id: 42, name: "Updated name", type: "private" },
+              { id: 43, name: "New chat", type: "private" },
+            ],
+    })
+  })
+  await page.reload()
+  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+  await expect(page.getByRole("heading", { name: "Original name", exact: true })).toBeVisible()
+  await navigate(page, "Model Providers")
+  await chooseModel(page)
+  await navigate(page, "Tools / MCP")
+  await page.getByLabel("MCP server name", { exact: true }).fill("retained-draft")
+  await page.getByText("Advanced server configuration JSON", { exact: true }).click()
+  await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await navigate(page, "Chats")
+  await expect(page.getByRole("heading", { name: "Updated name", exact: true })).toBeVisible()
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("New chat")
+  await expect(page.getByRole("button", { name: "Next chats", exact: true })).toBeDisabled()
+  expect(reads).toBe(2)
+  await navigate(page, "Model Providers")
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+  await navigate(page, "Tools / MCP")
+  await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("retained-draft")
+  await expect(page.getByLabel("Server configuration JSON")).toHaveValue('{"enabled":false}')
+})
+
+test("Reload does not let an older chat response replace fresh metadata", async ({ page }) => {
+  await setup(page)
+  await expect(
+    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+  ).toHaveCount(1)
+  let finish!: () => void
+  const oldRequest = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  let reads = 0
+  await page.route("**/api/chats?*", async (route) => {
+    const current = ++reads
+    if (current === 1) await oldRequest
+    await route.fulfill({
+      json: [{ id: 42, name: current === 1 ? "Old name" : "Fresh name", type: "private" }],
+    })
+  })
+  await page.reload()
+  await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("Fresh name")
+  const oldResponse = page.waitForResponse((response) => response.url().includes("/api/chats?"))
+  finish()
+  await (await oldResponse).finished()
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("Fresh name")
+})
+
+for (const trigger of ["initial load", "pagination", "retry"]) {
+  test(`chat-list ${trigger} handles session expiry and clears sensitive drafts`, async ({
+    page,
+  }) => {
+    await setup(page)
+    let expired = trigger === "initial load"
+    await page.route("**/api/chats?*", (route) => {
+      if (expired) return route.fulfill({ status: 401, json: { error: "Sign in" } })
+      if (trigger === "retry")
+        return route.fulfill({ status: 500, json: { error: "Chat fetch failed" } })
+      return route.fulfill({
+        json: Array.from({ length: 100 }, (_, index) => ({
+          id: index + 1,
+          name: `Chat ${index + 1}`,
+          type: "private",
+        })),
+      })
+    })
+    await page.reload()
+    if (trigger !== "initial load") {
+      if (trigger === "retry")
+        await expect(page.getByRole("button", { name: "Retry chats", exact: true })).toBeVisible()
+      else await expect(page.getByRole("button", { name: "Next chats", exact: true })).toBeEnabled()
+      await navigate(page, "Model Providers")
+      await chooseModel(page)
+      await navigate(page, "Tools / MCP")
+      await page.getByLabel("MCP server name", { exact: true }).fill("expired-draft")
+      await page.getByLabel("Secret field name", { exact: true }).fill("TOKEN")
+      await page.getByLabel("New secret value", { exact: true }).fill("masked-fixture-value")
+      await page
+        .getByRole("button", { name: "Set pending secret replacement", exact: true })
+        .click()
+      await expect(page.getByText("Pending MCP configuration", { exact: true })).toBeVisible()
+      await navigate(page, "Chats")
+      expired = true
+      await page
+        .getByRole("button", {
+          name: trigger === "retry" ? "Retry chats" : "Next chats",
+          exact: true,
+        })
+        .click()
+    }
+    await expect(
+      page.getByRole("button", { name: "Sign in with passkey", exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("alert")).toContainText(
+      "Administrator session expired. Sign in again.",
+    )
+    expect(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      }),
+    ).toBe(false)
+  })
+}
+
 test("policy-only discard preserves unfinished access input", async ({ page }) => {
   await setup(page)
   await navigate(page, "Access")

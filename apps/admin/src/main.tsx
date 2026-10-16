@@ -689,7 +689,8 @@ function App() {
   const pending = dirty || mcpDirty || providerPending || localPending
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
   const [auditOffset, setAuditOffset] = useState(0)
-  const [chatOffset, setChatOffset] = useState(0)
+  const [chatPage, setChatPage] = useState({ offset: 0 })
+  const refreshChats = () => setChatPage((page) => ({ offset: page.offset }))
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
   const [toolName, setToolName] = useState("")
@@ -707,27 +708,34 @@ function App() {
   const [mcpConfig, setMcpConfig] = useState(
     '{\n  "command": "",\n  "args": [],\n  "enabled": true,\n  "exposure": "codemode"\n}',
   )
-  const run = useCallback(async (action: () => Promise<void>) => {
-    setBusy(true)
-    setError("")
-    try {
-      await action()
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        setSession(null)
-        setMcpSecrets({ env: {}, headers: {} })
-        setMcpConfig("{}")
-        setMcpDirty(false)
-        setProviderPending(false)
-        setEditorPending({})
-        setDirty(false)
-        setSnapshot(undefined)
-      }
-      setError(e instanceof Error ? e.message : "Operation failed")
-    } finally {
-      setBusy(false)
-    }
+  const expireSession = useCallback(() => {
+    setSession(null)
+    setMcpSecrets({ env: {}, headers: {} })
+    setMcpConfig("{}")
+    setMcpDirty(false)
+    setProviderPending(false)
+    setEditorPending({})
+    setDirty(false)
+    setSnapshot(undefined)
+    setSavedPolicy(undefined)
+    setChats([])
+    setKnownChats([])
   }, [])
+  const run = useCallback(
+    async (action: () => Promise<void>) => {
+      setBusy(true)
+      setError("")
+      try {
+        await action()
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) expireSession()
+        setError(e instanceof Error ? e.message : "Operation failed")
+      } finally {
+        setBusy(false)
+      }
+    },
+    [expireSession],
+  )
   const load = useCallback(async () => {
     const [s, i, a, reports] = await Promise.all([
       request<Snapshot>("settings"),
@@ -747,20 +755,25 @@ function App() {
       setChatsLoading(true)
       setChatsError("")
       try {
-        const result = await request<Chat[]>(`chats?offset=${chatOffset}`)
+        const result = await request<Chat[]>(`chats?offset=${chatPage.offset}`)
         if (signal.aborted) return
         setChats(result)
         setKnownChats((previous) => [
           ...new Map([...previous, ...result].map((c) => [c.id, c])).values(),
         ])
       } catch (error) {
-        if (!signal.aborted)
+        if (signal.aborted) return
+        if (error instanceof ApiError && error.status === 401) {
+          expireSession()
+          setError("Administrator session expired. Sign in again.")
+        } else {
           setChatsError(error instanceof Error ? error.message : "Could not load chats")
+        }
       } finally {
         if (!signal.aborted) setChatsLoading(false)
       }
     },
-    [chatOffset],
+    [chatPage, expireSession],
   )
   useEffect(() => {
     if (!session) return
@@ -869,7 +882,10 @@ function App() {
             <Button
               variant="soft"
               disabled={busy || dirty || localPending}
-              onClick={() => void run(load)}
+              onClick={() => {
+                refreshChats()
+                void run(load)
+              }}
             >
               <ReloadIcon />
               Reload
@@ -941,11 +957,11 @@ function App() {
               policy={policy}
               savedPolicy={savedPolicy ?? policy}
               inventory={inventory}
-              offset={chatOffset}
+              offset={chatPage.offset}
               loading={chatsLoading}
               error={chatsError}
-              onPage={setChatOffset}
-              onRetry={() => void loadChats(new AbortController().signal)}
+              onPage={(offset) => setChatPage({ offset })}
+              onRetry={refreshChats}
               audit={audit}
               onPolicyChange={update}
               onAudit={() => setPage("Audit")}
