@@ -302,6 +302,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         tools: [
           ...new Set([...services.tools(), ...mcp.inventory().flatMap((entry) => entry.tools)]),
         ],
+        builtInTools: services.tools(),
         providers: providers.inventory(),
         mcp: mcp.inventory(),
       } satisfies Inventory)

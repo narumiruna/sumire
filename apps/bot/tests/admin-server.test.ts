@@ -361,9 +361,10 @@ describe("admin HTTP security", () => {
     expect(result.body).not.toContain("delete-secret")
     expect(apply).toHaveBeenCalledOnce()
     expect(store.snapshot()).toMatchObject({ revision: 3, applied: 3, status: "applied" })
-    expect(JSON.parse((await call("/api/inventory", "GET", undefined, auth())).body).mcp).toEqual(
-      [],
-    )
+    const inventory = JSON.parse((await call("/api/inventory", "GET", undefined, auth())).body)
+    expect(inventory.mcp).toEqual([])
+    expect(inventory.builtInTools).toEqual(["read"])
+    expect(inventory.tools).toEqual(["read"])
     expect(store.listAudit(0)).toContainEqual(
       expect.objectContaining({ operation: "mcp.delete", target: "mcp:fixture" }),
     )

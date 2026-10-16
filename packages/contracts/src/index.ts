@@ -10,6 +10,7 @@ export type Snapshot = {
 
 export interface Inventory {
   tools: string[]
+  builtInTools?: string[]
   providers: {
     id: string
     name: string

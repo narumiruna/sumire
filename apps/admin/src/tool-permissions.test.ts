@@ -6,20 +6,24 @@ import {
 } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
-import { defaultPermissionSummary, permissionNames } from "./tool-permissions.js"
+import {
+  defaultPermissionSummary,
+  permissionNames,
+  toolPermissionGroups,
+} from "./tool-permissions.js"
 
+const server = {
+  name: "fixture",
+  tools: ["mcp__fixture__new"],
+  connection: "not tested",
+  env: {},
+  headers: {},
+}
 const inventory: Inventory = {
   tools: ["read"],
+  builtInTools: ["read"],
   providers: [],
-  mcp: [
-    {
-      name: "fixture",
-      tools: ["mcp__fixture__new"],
-      connection: "not tested",
-      env: {},
-      headers: {},
-    },
-  ],
+  mcp: [server],
 }
 
 describe("tool permission presentation and existing policy rules", () => {
@@ -41,6 +45,43 @@ describe("tool permission presentation and existing policy rules", () => {
     expect(permissionNames("servers", draft, saved, inventory)).toEqual(["fixture", "offline"])
     expect(draft).toEqual(before)
     expect(effectivePolicy(draft, 42).tools).toEqual([])
+  })
+  it("groups inventory tools by server and leaves built-in and unknown names visible", () => {
+    const other = {
+      ...inventory,
+      mcp: [
+        ...inventory.mcp,
+        { ...server, name: "other", tools: ["other-tool", "mcp__fixture__new"] },
+        { ...server, name: "empty", tools: [] },
+      ],
+    }
+    const names = ["read", "mcp__fixture__new", "manual", "other-tool"]
+    expect(toolPermissionGroups(names, other)).toEqual([
+      { id: "built-in", label: "Built-in tools", names: ["read"] },
+      { id: "mcp:fixture", label: "MCP: fixture", names: ["mcp__fixture__new"] },
+      { id: "mcp:other", label: "MCP: other", names: ["mcp__fixture__new", "other-tool"] },
+      { id: "unknown", label: "Unknown source", names: ["manual"] },
+    ])
+    expect(toolPermissionGroups([], other)).toEqual([])
+    expect(names).toEqual(["read", "mcp__fixture__new", "manual", "other-tool"])
+  })
+  it("does not infer source from tool prefixes or a legacy combined inventory", () => {
+    expect(
+      toolPermissionGroups(["mcp__missing__read", "read"], {
+        ...inventory,
+        builtInTools: undefined,
+        mcp: [],
+      }),
+    ).toEqual([{ id: "unknown", label: "Unknown source", names: ["mcp__missing__read", "read"] }])
+    expect(
+      toolPermissionGroups(["read"], {
+        ...inventory,
+        mcp: [{ ...server, tools: ["read"] }],
+      }),
+    ).toEqual([
+      { id: "built-in", label: "Built-in tools", names: ["read"] },
+      { id: "mcp:fixture", label: "MCP: fixture", names: ["read"] },
+    ])
   })
   it("counts only inherited default selections within the global ceiling", () => {
     const policy = initialPolicy()

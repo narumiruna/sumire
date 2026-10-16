@@ -19,6 +19,7 @@ const basePolicy = {
 }
 const inventory = {
   tools: ["read_url_content", "bash"],
+  builtInTools: ["read_url_content", "bash"],
   providers: [
     {
       id: "fixture",
@@ -119,6 +120,9 @@ async function navigate(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "Tool permissions") {
+    await page.getByRole("button", { name: "Expand all", exact: true }).click()
+  }
 }
 async function stagePolicy(page: Page) {
   await navigate(page, "Access")
