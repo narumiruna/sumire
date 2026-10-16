@@ -98,13 +98,46 @@ export function ChatWorkspace({
   const unavailableTools = (override?.tools ?? policy.defaults.tools ?? []).filter(
     (name) => !policy.tools.includes(name),
   )
-  const authentication = !effective.model
-    ? "No effective model to inspect."
-    : provider?.configured
-      ? "Configured locally; remote authentication not checked here."
-      : provider
-        ? "Model authentication is not configured."
-        : "Configuration status unknown; remote authentication not checked here."
+  const blockers = [
+    ...(!approved
+      ? [
+          {
+            text: "Access approval is missing.",
+            action: "Review access approval",
+            run: () => changeTab("access"),
+          },
+        ]
+      : []),
+    ...(override?.enabled === false
+      ? [
+          {
+            text: "The chat is disabled.",
+            action: "Review chat enabled switch",
+            run: () => changeTab("configuration"),
+          },
+        ]
+      : []),
+    ...(!effective.model
+      ? [
+          {
+            text: configuredModel
+              ? `Configured model ${configuredModel} is not effective. Review allowed models and provider availability.`
+              : "No effective model configured.",
+            action: "Configure model",
+            run: () => changeTab("configuration"),
+          },
+        ]
+      : []),
+    ...(effective.model && provider && !provider.configured
+      ? [
+          {
+            text: "Model authentication is not configured.",
+            action: "Configure authentication",
+            run: onProviders,
+          },
+        ]
+      : []),
+  ]
   const openChat = (value: string) => {
     onSelect(value)
     setShowDirectory(false)
@@ -118,7 +151,7 @@ export function ChatWorkspace({
       <aside className="chat-directory" aria-label="Find a chat">
         <Heading size="3">Chat directory</Heading>
         <label htmlFor="chat-search">
-          Search this page
+          Search these {chats.length} chats
           <TextField.Root
             id="chat-search"
             ref={searchRef}
@@ -151,11 +184,14 @@ export function ChatWorkspace({
             </select>
           </div>
         </div>
-        <Text as="p" size="1" color="gray">
-          Search and filters cover this page of observed chats (up to 100), not all chats. Access
-          labels show {preview ? "the policy draft" : "saved policy"}, not verified runtime
-          readiness.
-        </Text>
+        <details className="directory-help">
+          <summary>Search scope and access labels</summary>
+          <Text as="p" size="1" color="gray">
+            Search and filters cover this page of observed chats (up to 100), not all chats. Access
+            labels show {preview ? "the policy draft" : "saved policy"}, not verified runtime
+            readiness. Names reflect observed Telegram metadata; ID-only records have no known name.
+          </Text>
+        </details>
         <div aria-live="polite">
           {loading ? (
             <Text as="p">Loading chats…</Text>
@@ -203,7 +239,7 @@ export function ChatWorkspace({
                   onClick={() => openChat(String(c.id))}
                 >
                   <strong>{chatName(c)}</strong>
-                  <small>
+                  <small title={`${c.type || "Type not known"} · ${c.id}`}>
                     {c.type || "Type not known"} · {c.id}
                   </small>
                   <Badge color={effectivePolicy(policy, c.id).enabled ? "teal" : "gray"}>
@@ -286,9 +322,6 @@ export function ChatWorkspace({
                 </Text>
               </div>
               <Flex gap="2" align="center" wrap="wrap">
-                <Badge color={valid && effective.enabled ? "teal" : "gray"}>
-                  {!valid ? "Unknown" : effective.enabled ? "Allowed" : "Not allowed"}
-                </Badge>
                 <Button
                   variant="surface"
                   onClick={async () => {
@@ -315,334 +348,368 @@ export function ChatWorkspace({
                 Enter a valid, non-zero Telegram ID.
               </Text>
             ) : (
-              <Tabs.Root value={tab} onValueChange={setTab}>
-                <Tabs.List ref={tabsRef} aria-label="Selected chat views">
-                  <Tabs.Trigger value="overview" data-view="overview">
-                    Overview
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="access" data-view="access">
-                    Access
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="configuration" data-view="configuration">
-                    Model &amp; Tools
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="history" data-view="history">
-                    History
-                  </Tabs.Trigger>
-                </Tabs.List>
-                <Text className="draft-context" as="p" size="2" color="gray">
-                  {preview ? "Policy draft preview — not yet saved." : "Saved policy."}{" "}
-                  Authentication and MCP status reflect the loaded inventory.
-                </Text>
-                {preview && (
-                  <Text as="p" size="2">
-                    Saved access: {saved.enabled ? "Allowed" : "Not allowed"} · Saved model:{" "}
-                    {saved.model ?? "No allowed model"}
-                  </Text>
-                )}
-                <Tabs.Content value="overview" forceMount hidden={tab !== "overview"}>
-                  <Heading size="3" mb="3">
-                    Effective settings
+              <>
+                <section
+                  className="chat-status"
+                  aria-label="Chat setup status"
+                  data-blocked={blockers.length > 0}
+                >
+                  <Heading size="3">
+                    {blockers.length
+                      ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
+                      : "Runtime status unchecked"}
                   </Heading>
-                  <div className="overview-cards">
-                    <Card>
-                      <Text as="p" size="2" color="gray">
-                        Policy access
-                      </Text>
-                      <Heading size="4">{effective.enabled ? "Allowed" : "Not allowed"}</Heading>
-                      <Text as="p" size="2">
-                        Approval {approved ? "granted" : "not granted"} · Chat{" "}
-                        {override?.enabled === false ? "disabled" : "enabled"}
-                      </Text>
-                      <Button variant="ghost" mt="2" onClick={() => changeTab("access")}>
-                        Manage access
+                  {blockers.map((blocker) => (
+                    <div className="blocker" key={blocker.text}>
+                      <Text size="2">{blocker.text}</Text>
+                      <Button type="button" variant="soft" onClick={blocker.run}>
+                        {blocker.action}
                       </Button>
-                    </Card>
-                    <Card>
-                      <Text as="p" size="2" color="gray">
-                        Effective model
-                      </Text>
-                      <Heading size="3">{effective.model ?? "No allowed model"}</Heading>
+                    </div>
+                  ))}
+                  <Text as="p" size="2" color="gray">
+                    {effective.enabled
+                      ? "This chat is approved by policy."
+                      : "Policy access is not allowed."}{" "}
+                    {effective.model && provider?.configured
+                      ? "Configured locally; remote authentication not checked here."
+                      : "Remote authentication not checked here."}{" "}
+                    Runtime availability is unchecked; policy approval does not establish readiness.
+                  </Text>
+                  {blockers.length > 1 && (
+                    <details className="setup-details">
+                      <summary>Setup details</summary>
                       <Text as="p" size="2">
-                        {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
+                        Approval and the chat enabled switch are independent. Model availability
+                        follows global policy and chat settings. Authentication status comes from
+                        the loaded local inventory, not a remote model request. Each action keeps
+                        its own save boundary.
                       </Text>
-                      <Button variant="ghost" mt="2" onClick={() => changeTab("configuration")}>
-                        Change model
+                    </details>
+                  )}
+                  {effective.model && !provider && (
+                    <Flex gap="2" align="center" wrap="wrap" mt="2">
+                      <Text size="2">
+                        Configuration status unknown; remote authentication not checked here.
+                      </Text>
+                      <Button type="button" variant="soft" onClick={onProviders}>
+                        Review authentication configuration
                       </Button>
-                    </Card>
-                    <Card>
-                      <Text as="p" size="2" color="gray">
-                        Effective tools
-                      </Text>
-                      <Heading size="3">
-                        {effective.tools.length} {effective.tools.length === 1 ? "tool" : "tools"}{" "}
-                        allowed
-                      </Heading>
-                      <Text as="p" size="2">
-                        {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                      </Text>
-                      <Button variant="ghost" mt="2" onClick={() => changeTab("configuration")}>
-                        View tool permissions
-                      </Button>
-                    </Card>
-                    <Card>
-                      <Text as="p" size="2" color="gray">
-                        Authentication
-                      </Text>
-                      <Text as="p" size="2">
-                        {authentication}
-                      </Text>
-                      <Button variant="ghost" mt="2" onClick={onProviders}>
-                        Manage authentication
-                      </Button>
-                    </Card>
-                  </div>
-                  <Card className="blocker-panel" mt="3">
-                    <Heading size="3" mb="2">
-                      Blockers and checks
+                    </Flex>
+                  )}
+                </section>
+                <Tabs.Root value={tab} onValueChange={changeTab}>
+                  <Tabs.List ref={tabsRef} aria-label="Selected chat views">
+                    <Tabs.Trigger type="button" value="overview" data-view="overview">
+                      Overview
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="access" data-view="access">
+                      Access
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="configuration" data-view="configuration">
+                      Model &amp; Tools
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="history" data-view="history">
+                      History
+                    </Tabs.Trigger>
+                  </Tabs.List>
+                  <Text className="draft-context" as="p" size="2" color="gray">
+                    {preview ? "Policy draft preview — not yet saved." : "Saved policy."}{" "}
+                    Authentication and MCP status reflect the loaded inventory.
+                  </Text>
+                  {preview && (
+                    <Text as="p" size="2">
+                      Saved access: {saved.enabled ? "Allowed" : "Not allowed"} · Saved model:{" "}
+                      {saved.model ?? "No allowed model"}
+                    </Text>
+                  )}
+                  <Tabs.Content value="overview" forceMount hidden={tab !== "overview"}>
+                    <Heading size="3" mb="3">
+                      Effective settings
                     </Heading>
-                    {!approved && (
-                      <div className="blocker">
-                        <Badge color="orange">Blocker</Badge>
-                        <Text>Access approval is missing.</Text>
-                        <Button variant="soft" onClick={() => changeTab("access")}>
-                          Review access approval
+                    <dl className="overview-settings">
+                      <div>
+                        <dt>Access</dt>
+                        <dd>
+                          {effective.enabled ? "Approved" : "Not allowed"}
+                          <small>
+                            Approval {approved ? "granted" : "not granted"} · Chat{" "}
+                            {override?.enabled === false ? "disabled" : "enabled"}
+                          </small>
+                        </dd>
+                        <Button type="button" variant="ghost" onClick={() => changeTab("access")}>
+                          Manage access
                         </Button>
                       </div>
-                    )}
-                    {override?.enabled === false && (
-                      <div className="blocker">
-                        <Badge color="orange">Blocker</Badge>
-                        <Text>The chat is disabled.</Text>
-                        <Button variant="soft" onClick={() => changeTab("configuration")}>
-                          Review chat enabled switch
+                      <div>
+                        <dt>Model</dt>
+                        <dd>
+                          {effective.model ?? "No allowed model"}
+                          <small>
+                            {effective.sources.model === "chat"
+                              ? "Chat override"
+                              : "Shared default"}
+                          </small>
+                        </dd>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => changeTab("configuration")}
+                        >
+                          Change model
                         </Button>
                       </div>
-                    )}
-                    {!effective.model && (
-                      <div className="blocker">
-                        <Badge color="orange">Blocker</Badge>
-                        <Text>
-                          {configuredModel
-                            ? `Configured model ${configuredModel} is not effective. Review allowed models and provider availability.`
-                            : "No effective model configured."}
-                        </Text>
-                        <Button variant="soft" onClick={() => changeTab("configuration")}>
-                          Configure model
-                        </Button>
-                        <Button variant="ghost" onClick={onProviders}>
-                          Review model providers
-                        </Button>
-                      </div>
-                    )}
-                    {effective.model && provider && !provider.configured && (
-                      <div className="blocker">
-                        <Badge color="orange">Blocker</Badge>
-                        <Text>Model authentication is not configured.</Text>
-                        <Button variant="soft" onClick={onProviders}>
-                          Configure authentication
+                      <div>
+                        <dt>Tools</dt>
+                        <dd>
+                          {effective.tools.length} allowed
+                          <small>
+                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                          </small>
+                        </dd>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => changeTab("configuration")}
+                        >
+                          View tool permissions
                         </Button>
                       </div>
-                    )}
+                    </dl>
                     {unavailableTools.length > 0 && (
                       <div className="blocker">
-                        <Badge color="orange">Warning</Badge>
-                        <Text>
+                        <Text size="2">
                           Selected tools excluded by global policy: {unavailableTools.join(", ")}
                         </Text>
-                        <Button variant="soft" onClick={() => changeTab("configuration")}>
+                        <Button
+                          type="button"
+                          variant="soft"
+                          onClick={() => changeTab("configuration")}
+                        >
                           Review tool permissions
                         </Button>
                       </div>
                     )}
-                    <Text as="p" size="2" color="gray">
-                      Unchecked: remote authentication and runtime availability are not verified
-                      here. Policy access does not establish that a chat can complete a model turn.
-                    </Text>
-                    {effective.model && !provider && (
-                      <Button variant="soft" mt="2" onClick={onProviders}>
-                        Review authentication configuration
-                      </Button>
-                    )}
-                  </Card>
-                </Tabs.Content>
-                <Tabs.Content value="access" forceMount hidden={tab !== "access"}>
-                  <Card>
-                    <Heading size="3">Access for this chat</Heading>
-                    <Text as="p" size="2" mt="2">
-                      {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
-                      never grants access in other chats.
-                    </Text>
+                    <details className="permission-details">
+                      <summary>Advanced configuration / Check details</summary>
+                      <dl className="effective-settings">
+                        <dt>Tools</dt>
+                        <dd>
+                          {effective.tools.join(", ") || "None"} ·{" "}
+                          {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                        </dd>
+                        <dt>MCP servers</dt>
+                        <dd>
+                          {effective.servers.join(", ") || "None"} ·{" "}
+                          {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                        </dd>
+                        <dt>Thinking</dt>
+                        <dd>
+                          {effective.thinking} ·{" "}
+                          {effective.sources.thinking === "chat"
+                            ? "Explicit override"
+                            : "Inherited"}
+                        </dd>
+                      </dl>
+                      <Text as="p" size="2">
+                        Remote authentication and runtime availability are not verified here.
+                        Connection checks require an explicit action.
+                      </Text>
+                      <Flex gap="3" wrap="wrap" mt="2">
+                        <Button type="button" variant="soft" onClick={onProviders}>
+                          Manage authentication
+                        </Button>
+                        <Button type="button" variant="soft" onClick={onTools}>
+                          Review tools and MCP connections
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="soft"
+                          onClick={() => changeTab("configuration")}
+                        >
+                          Review chat overrides
+                        </Button>
+                      </Flex>
+                    </details>
+                  </Tabs.Content>
+                  <Tabs.Content value="access" forceMount hidden={tab !== "access"}>
+                    <Card>
+                      <Heading size="3">Access for this chat</Heading>
+                      <Text as="p" size="2" mt="2">
+                        {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
+                        never grants access in other chats.
+                      </Text>
+                      <dl className="effective-settings">
+                        <dt>Saved approval</dt>
+                        <dd>{savedApproval ? "Granted" : "Not granted"}</dd>
+                        <dt>Draft approval</dt>
+                        <dd>{approved ? "Granted" : "Not granted"}</dd>
+                        <dt>Policy access</dt>
+                        <dd>
+                          {effective.enabled ? "Allowed" : "Not allowed"}
+                          {override?.enabled === false
+                            ? " · Chat disabled independently of approval"
+                            : ""}
+                        </dd>
+                      </dl>
+                      <Text as="p" role="status">
+                        {accessPending
+                          ? approved
+                            ? "Pending access grant"
+                            : "Pending access revocation"
+                          : "No pending approval change for this chat."}
+                      </Text>
+                      <Flex gap="3" wrap="wrap" mt="3">
+                        <Button
+                          color={approved ? "red" : "teal"}
+                          variant={approved ? "soft" : "solid"}
+                          onClick={() => onPolicyChange(withChatAccess(policy, id, !approved))}
+                        >
+                          {approved
+                            ? "Revoke access"
+                            : savedApproval
+                              ? "Undo pending revocation"
+                              : "Grant access"}
+                        </Button>
+                        {accessPending && approved && (
+                          <Button
+                            variant="soft"
+                            onClick={() =>
+                              onPolicyChange(withChatAccess(policy, id, savedApproval))
+                            }
+                          >
+                            Undo pending grant
+                          </Button>
+                        )}
+                        <Button variant="ghost" onClick={onAccess}>
+                          Open global Access
+                        </Button>
+                      </Flex>
+                      <Text as="p" size="2" color="gray" mt="3">
+                        These actions stage policy edits only. Apply policy changes saves all
+                        pending policy edits across sections, not provider authentication or MCP
+                        connection drafts. Granting approval does not enable a disabled chat.
+                      </Text>
+                    </Card>
+                  </Tabs.Content>
+                  <Tabs.Content value="configuration" forceMount hidden={tab !== "configuration"}>
+                    <Heading size="3">Model &amp; Tools</Heading>
                     <dl className="effective-settings">
-                      <dt>Saved approval</dt>
-                      <dd>{savedApproval ? "Granted" : "Not granted"}</dd>
-                      <dt>Draft approval</dt>
-                      <dd>{approved ? "Granted" : "Not granted"}</dd>
-                      <dt>Policy access</dt>
+                      <dt>Effective model</dt>
                       <dd>
-                        {effective.enabled ? "Allowed" : "Not allowed"}
-                        {override?.enabled === false
-                          ? " · Chat disabled independently of approval"
-                          : ""}
+                        {effective.model ?? "No allowed model"} ·{" "}
+                        {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
+                      </dd>
+                      <dt>Chat model override</dt>
+                      <dd>{override?.model ?? "Inherit from defaults"}</dd>
+                      <dt>Tools</dt>
+                      <dd>
+                        {effective.tools.join(", ") || "None"} ·{" "}
+                        {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                      </dd>
+                      <dt>MCP servers</dt>
+                      <dd>
+                        {effective.servers.join(", ") || "None"} ·{" "}
+                        {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                      </dd>
+                      <dt>Thinking</dt>
+                      <dd>
+                        {effective.thinking} ·{" "}
+                        {effective.sources.thinking === "chat" ? "Explicit override" : "Inherited"}
                       </dd>
                     </dl>
-                    <Text as="p" role="status">
-                      {accessPending
-                        ? approved
-                          ? "Pending access grant"
-                          : "Pending access revocation"
-                        : "No pending approval change for this chat."}
-                    </Text>
-                    <Flex gap="3" wrap="wrap" mt="3">
-                      <Button
-                        color={approved ? "red" : "teal"}
-                        variant={approved ? "soft" : "solid"}
-                        onClick={() => onPolicyChange(withChatAccess(policy, id, !approved))}
-                      >
-                        {approved
-                          ? "Revoke access"
-                          : savedApproval
-                            ? "Undo pending revocation"
-                            : "Grant access"}
+                    <Flex gap="3" wrap="wrap">
+                      <Button variant="soft" onClick={onProviders}>
+                        Manage model authentication
                       </Button>
-                      {accessPending && approved && (
-                        <Button
-                          variant="soft"
-                          onClick={() => onPolicyChange(withChatAccess(policy, id, savedApproval))}
-                        >
-                          Undo pending grant
-                        </Button>
-                      )}
-                      <Button variant="ghost" onClick={onAccess}>
-                        Open global Access
+                      <Button variant="soft" onClick={onTools}>
+                        Review tools and MCP connections
                       </Button>
                     </Flex>
-                    <Text as="p" size="2" color="gray" mt="3">
-                      These actions stage policy edits only. Apply policy changes saves all pending
-                      policy edits across sections, not provider authentication or MCP connection
-                      drafts. Granting approval does not enable a disabled chat.
+                    <Heading size="3" mt="4">
+                      Chat overrides
+                    </Heading>
+                    <Text as="p" size="2" color="gray">
+                      Model, tool, and enabled-switch edits share the policy save boundary. Apply
+                      policy changes saves these and all other staged policy changes.
                     </Text>
-                  </Card>
-                </Tabs.Content>
-                <Tabs.Content value="configuration" forceMount hidden={tab !== "configuration"}>
-                  <Heading size="3">Model &amp; Tools</Heading>
-                  <dl className="effective-settings">
-                    <dt>Effective model</dt>
-                    <dd>
-                      {effective.model ?? "No allowed model"} ·{" "}
-                      {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
-                    </dd>
-                    <dt>Chat model override</dt>
-                    <dd>{override?.model ?? "Inherit from defaults"}</dd>
-                    <dt>Tools</dt>
-                    <dd>
-                      {effective.tools.join(", ") || "None"} ·{" "}
-                      {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                    </dd>
-                    <dt>MCP servers</dt>
-                    <dd>
-                      {effective.servers.join(", ") || "None"} ·{" "}
-                      {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
-                    </dd>
-                    <dt>Thinking</dt>
-                    <dd>
-                      {effective.thinking} ·{" "}
-                      {effective.sources.thinking === "chat" ? "Explicit override" : "Inherited"}
-                    </dd>
-                    <dt>Authentication</dt>
-                    <dd>{authentication}</dd>
-                  </dl>
-                  <Flex gap="3" wrap="wrap">
-                    <Button variant="soft" onClick={onProviders}>
-                      Manage model authentication
-                    </Button>
-                    <Button variant="soft" onClick={onTools}>
-                      Review tools and MCP connections
-                    </Button>
-                  </Flex>
-                  <Heading size="3" mt="4">
-                    Chat overrides
-                  </Heading>
-                  <Text as="p" size="2" color="gray">
-                    Model, tool, and enabled-switch edits share the policy save boundary. Apply
-                    policy changes saves these and all other staged policy changes.
-                  </Text>
-                  {children}
-                  <details className="permission-details">
-                    <summary>Inspect individual tool permissions</summary>
-                    <Text as="p" size="2">
-                      Available capabilities, configured selection, and effective permission are
-                      different. Global availability limits chat choices. MCP tools also require
-                      their server's permission and applicable exposure.
-                    </Text>
-                    <ul>
-                      {[
-                        ...new Set([
-                          ...inventory.tools,
-                          ...policy.tools,
-                          ...(override?.tools ?? policy.defaults.tools ?? []),
-                        ]),
-                      ].map((name) => (
-                        <li key={name}>
-                          <strong>{name}</strong> ·{" "}
-                          {inventory.tools.includes(name)
-                            ? "In loaded inventory"
-                            : "Not in loaded inventory"}{" "}
-                          ·{" "}
-                          {policy.tools.includes(name)
-                            ? "Globally available"
-                            : "Excluded by global policy"}{" "}
-                          ·{" "}
-                          {(override?.tools ?? policy.defaults.tools ?? []).includes(name)
-                            ? "Selected"
-                            : "Not selected"}{" "}
-                          ·{" "}
-                          {effective.tools.includes(name)
-                            ? "Tool permission allowed"
-                            : "Tool permission denied"}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                  {!!effective.servers.length && (
-                    <Card mt="3">
-                      <Heading size="2">Loaded MCP connection status</Heading>
+                    {children}
+                    <details className="permission-details">
+                      <summary>Inspect individual tool permissions</summary>
                       <Text as="p" size="2">
-                        Connection checks do not run automatically and do not grant permission.
+                        Available capabilities, configured selection, and effective permission are
+                        different. Global availability limits chat choices. MCP tools also require
+                        their server's permission and applicable exposure.
                       </Text>
                       <ul>
-                        {effective.servers.map((name) => {
-                          const server = inventory.mcp.find((entry) => entry.name === name)
-                          return (
-                            <li key={name}>
-                              {name}:{" "}
-                              {server
-                                ? `${server.enabled === false ? "Disabled · " : ""}${server.connection}`
-                                : "Not present in loaded inventory"}
-                            </li>
-                          )
-                        })}
+                        {[
+                          ...new Set([
+                            ...inventory.tools,
+                            ...policy.tools,
+                            ...(override?.tools ?? policy.defaults.tools ?? []),
+                          ]),
+                        ].map((name) => (
+                          <li key={name}>
+                            <strong>{name}</strong> ·{" "}
+                            {inventory.tools.includes(name)
+                              ? "In loaded inventory"
+                              : "Not in loaded inventory"}{" "}
+                            ·{" "}
+                            {policy.tools.includes(name)
+                              ? "Globally available"
+                              : "Excluded by global policy"}{" "}
+                            ·{" "}
+                            {(override?.tools ?? policy.defaults.tools ?? []).includes(name)
+                              ? "Selected"
+                              : "Not selected"}{" "}
+                            ·{" "}
+                            {effective.tools.includes(name)
+                              ? "Tool permission allowed"
+                              : "Tool permission denied"}
+                          </li>
+                        ))}
                       </ul>
-                    </Card>
-                  )}
-                </Tabs.Content>
-                <Tabs.Content value="history" forceMount hidden={tab !== "history"}>
-                  <Heading size="3">Chat-targeted audit history</Heading>
-                  <Text as="p" size="2" color="gray">
-                    Only records explicitly targeted to this chat in the loaded audit page (up to
-                    100 records). Global policy saves are not attributed to individual chats. This
-                    is not a complete chat history.
-                  </Text>
-                  {history.length ? (
-                    <Activity entries={history} />
-                  ) : (
-                    <Text as="p">No chat-targeted records in the loaded audit page.</Text>
-                  )}
-                  <Button variant="soft" mt="3" onClick={onAudit}>
-                    Open global Audit
-                  </Button>
-                </Tabs.Content>
-              </Tabs.Root>
+                    </details>
+                    {!!effective.servers.length && (
+                      <Card mt="3">
+                        <Heading size="2">Loaded MCP connection status</Heading>
+                        <Text as="p" size="2">
+                          Connection checks do not run automatically and do not grant permission.
+                        </Text>
+                        <ul>
+                          {effective.servers.map((name) => {
+                            const server = inventory.mcp.find((entry) => entry.name === name)
+                            return (
+                              <li key={name}>
+                                {name}:{" "}
+                                {server
+                                  ? `${server.enabled === false ? "Disabled · " : ""}${server.connection}`
+                                  : "Not present in loaded inventory"}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </Card>
+                    )}
+                  </Tabs.Content>
+                  <Tabs.Content value="history" forceMount hidden={tab !== "history"}>
+                    <Heading size="3">Chat-targeted audit history</Heading>
+                    <Text as="p" size="2" color="gray">
+                      Only records explicitly targeted to this chat in the loaded audit page (up to
+                      100 records). Global policy saves are not attributed to individual chats. This
+                      is not a complete chat history.
+                    </Text>
+                    {history.length ? (
+                      <Activity entries={history} />
+                    ) : (
+                      <Text as="p">No chat-targeted records in the loaded audit page.</Text>
+                    )}
+                    <Button variant="soft" mt="3" onClick={onAudit}>
+                      Open global Audit
+                    </Button>
+                  </Tabs.Content>
+                </Tabs.Root>
+              </>
             )}
           </>
         )}

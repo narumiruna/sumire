@@ -282,9 +282,8 @@ export function Providers({
       }}
     >
       <Text as="p" color="gray">
-        Choose a provider, connect your account, then choose a model. Model changes need a save.
-        Authentication is saved immediately by its own action. It does not save pending model or
-        policy changes.
+        Select a provider and configure its credentials, then choose a model. Authentication is
+        saved separately. Model selection does not save policy drafts, authentication, or MCP edits.
       </Text>
       <Text as="p" size="2" color="gray" className="provider-current" mt="2">
         Shared bot default in current settings: {snapshot.policy.defaults.model ?? "Not set"} ·
@@ -335,15 +334,6 @@ export function Providers({
           </AlertDialog.Content>
         </AlertDialog.Root>
       )}
-      {snapshot.policy.defaults.model &&
-        !inventory.providers.find((p) => p.id === snapshot.policy.defaults.model?.split("/")[0])
-          ?.configured && (
-          <Text as="p" color="orange">
-            The shared default is not connected. Select its provider below and configure
-            authentication, or follow its host credential instructions. No remote verification has
-            been run automatically.
-          </Text>
-        )}
       {!inventory.providers.length && (
         <Text as="p">
           No providers available. Add a custom endpoint below or check the host provider setup.
@@ -394,7 +384,7 @@ export function Providers({
         </Text>
       )}
       <Card mt="4">
-        <Heading size="3">1. Provider</Heading>
+        <Heading size="3">1. Provider and authentication</Heading>
         <SearchChoice
           label="Provider"
           value={provider}
@@ -421,8 +411,10 @@ export function Providers({
         {selected && (
           <>
             <Flex align="center" gap="2" wrap="wrap" mt="3">
-              <Badge color={selected.configured ? "green" : "gray"}>
-                {selected.configured ? "Authentication configured" : "Not connected"}
+              <Badge color={selected.configured ? "teal" : "orange"}>
+                {selected.configured
+                  ? "Authentication configured locally"
+                  : "Authentication not configured"}
               </Badge>
               {selected.apiKey || selected.oauth ? (
                 <Dialog.Trigger>
@@ -493,8 +485,8 @@ export function Providers({
               )}
             </Flex>
             <Text as="p" size="2" color="gray" mt="2">
-              Configured authentication does not prove remote acceptance. Checks do not generate
-              tokens.
+              Model availability is unverified. Check authentication resolves credentials without
+              generating model output. You can select and save a model before authentication.
             </Text>
           </>
         )}
@@ -584,11 +576,11 @@ export function Providers({
                       blocked || !thinkingValid || !modelChanged || custom?.enabled === false
                     }
                   >
-                    Save model and apply
+                    {useDefault ? "Save default model" : "Save model availability"}
                   </Button>
                 </AlertDialog.Trigger>
                 <AlertDialog.Content>
-                  <AlertDialog.Title>Apply model selection?</AlertDialog.Title>
+                  <AlertDialog.Title>Save model selection?</AlertDialog.Title>
                   <AlertDialog.Description>
                     Add {ref} to availability.
                     {useDefault
