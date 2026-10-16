@@ -1,7 +1,7 @@
 import { Button, Flex, Text, TextField } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
-import { request } from "./api.js"
+import { ApiError, request } from "./api.js"
 
 const empty = { actor: "", operation: "", outcome: "", from: "", to: "" }
 export function auditSearch(filters: typeof empty, offset: number) {
@@ -51,9 +51,10 @@ export function AuditHistory({
       } catch (error) {
         if (!stopped) {
           setError("Could not load audit records. Retry the query.")
-          await run(async () => {
-            throw error
-          })
+          if (error instanceof ApiError && error.status === 401)
+            await run(async () => {
+              throw error
+            })
         }
       } finally {
         if (!stopped) setLoading(false)

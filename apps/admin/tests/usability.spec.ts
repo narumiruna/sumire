@@ -289,6 +289,7 @@ test("failed and stale audit queries cannot replace the current result or discar
   await expect(page.getByRole("list", { name: "Configuration activity" })).toHaveCount(0)
   await page.getByRole("button", { name: "Clear audit filters" }).click()
   await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor 42")
+  await expect(page.getByRole("alert")).toHaveCount(0)
   let release = () => {}
   const gate = new Promise<void>((resolve) => {
     release = resolve
@@ -330,6 +331,99 @@ test("failed and stale audit queries cannot replace the current result or discar
   )
   await expect(page.locator("#save-status")).toContainText("1 pending policy changes")
 })
+
+test("audit retry clears the local error and HTTP 401 still clears the session", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  await navigate(page, "Audit")
+  let failed = false
+  await page.route("**/api/audit?*", async (route) => {
+    if (!failed) {
+      failed = true
+      return route.fulfill({ status: 500, json: { error: "Fixture audit failure" } })
+    }
+    return route.fallback()
+  })
+  await page.getByRole("button", { name: "Apply audit filters" }).click()
+  await expect(page.getByText("Could not load audit records. Retry the query.")).toBeVisible()
+  await page.getByRole("button", { name: "Retry audit" }).click()
+  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor 42")
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  state.expire()
+  await page.getByRole("button", { name: "Apply audit filters" }).click()
+  await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()
+  await expect(page.locator("#save-status")).toHaveCount(0)
+})
+
+for (const change of ["url", "protocol"] as const) {
+  test(`model discovery does not retain verification or IDs for a changed ${change}`, async ({
+    page,
+  }) => {
+    await fixture(page)
+    const custom = {
+      id: "fixture",
+      enabled: true,
+      baseUrl: "https://models.example.test/v1",
+      api: "openai-completions",
+      models: [
+        {
+          id: "test",
+          name: "Test",
+          reasoning: false,
+          image: false,
+          contextWindow: 128000,
+          maxTokens: 8192,
+        },
+      ],
+    }
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({
+        json: {
+          revision: 1,
+          applied: 1,
+          status: "applied",
+          policy: { ...basePolicy, providers: [custom] },
+        },
+      }),
+    )
+    await page.route("**/api/providers/fixture/discover", (route) =>
+      route.fulfill({ json: ["checked-endpoint-model"] }),
+    )
+    await page.reload()
+    await navigate(page, "Model providers")
+    await page.getByText("Model discovery", { exact: true }).click()
+    const check = page.getByText("Model-list check:", { exact: false })
+    await page.getByRole("button", { name: "Discover custom models" }).click()
+    await expect(check).toContainText("Verified")
+    await expect(page.getByText("checked-endpoint-model", { exact: true })).toBeVisible()
+    await page.getByText("Custom endpoint", { exact: true }).click()
+    await page.getByRole("button", { name: "Edit configuration fixture", exact: true }).click()
+    if (change === "url")
+      await page
+        .getByLabel("API base URL", { exact: true })
+        .fill("https://replacement.example.test/v1")
+    else {
+      await page.getByText("Advanced protocol", { exact: true }).click()
+      await page.getByRole("combobox", { name: "API", exact: true }).click()
+      await page.getByRole("option", { name: "openai-responses", exact: true }).click()
+    }
+    await page.getByRole("button", { name: "Set provider configuration", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Discover custom models" })).toBeDisabled()
+    await expect(check).toHaveText("Model-list check: Not checked")
+    await expect(page.getByText("checked-endpoint-model", { exact: true })).toHaveCount(0)
+    page.once("dialog", (dialog) => dialog.accept())
+    await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
+    await expect(check).toContainText("Verified")
+    await expect(page.getByText("checked-endpoint-model", { exact: true })).toBeVisible()
+    await page.route("**/api/providers/fixture/discover", (route) =>
+      route.fulfill({ status: 500, json: { error: "Discovery failed" } }),
+    )
+    await page.getByRole("button", { name: "Discover custom models" }).click()
+    await expect(check).toHaveText("Model-list check: Check failed")
+    await expect(page.getByText("checked-endpoint-model", { exact: true })).toHaveCount(0)
+  })
+}
 
 test("audit groups show failed retries without hiding the underlying records", async ({ page }) => {
   await fixture(page)

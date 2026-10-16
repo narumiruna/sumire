@@ -97,12 +97,12 @@ export function mcpChangePreview(patch: McpPatch, previous?: Inventory["mcp"][nu
     if (index >= 0) operations.splice(index, 1)
     add("type", "Removed / inferred")
   }
-  const removed =
-    patch.url !== undefined
-      ? ["command", "cwd", "args", "env"]
-      : patch.command !== undefined
-        ? ["url", "headers"]
-        : []
+  const http = patch.command === undefined && (patch.url !== undefined || known.has("url"))
+  const removed = http
+    ? ["command", "cwd", "args", "env"]
+    : patch.command !== undefined
+      ? ["url", "headers"]
+      : ["headers"]
   // Transport cleanup wins over the patch and preserved fields.
   return [
     ...operations

@@ -54,7 +54,7 @@ The persistent bar summarizes these scopes and links to their controls. It must 
 
 ## Execution evidence
 
-Implementation and automated validation are complete. `docs/admin-usability-validation.md` records the seven-section baseline inventory, save-state contract, design decisions, test coverage, measured contrast, full-diff review, and remaining external checks. Root formatting, lint, typecheck, tests (1,418), and build pass. Chromium passes 113 tests; local HTTP and offline HTTPS smoke checks pass. No schema migration or live-provider call was added. Changesets cover both affected packages.
+Implementation and automated validation are complete. `docs/admin-usability-validation.md` records the seven-section baseline inventory, save-state contract, design decisions, test coverage, measured contrast, full-diff review, and remaining external checks. Root formatting, lint, typecheck, tests (1,420), and build pass. Chromium passes 116 tests; local HTTP and offline HTTPS smoke checks pass. No schema migration or live-provider call was added. Changesets cover both affected packages.
 
 User acceptance of the delivered redesign is still open. This is a review handoff, not a request to authorize implementation again. Retain this plan until that final criterion is satisfied.
 

@@ -63,18 +63,28 @@ The original pending badge measured 3.86:1 and failed. Its foreground was correc
 All checks passed on Node.js 26.10.0:
 
 - Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-- Root tests: 1,418 passing tests across all six workspaces (44 admin, 1,009 bot, 9 login, 7 progress, 298 URL content, and 51 URL tool).
-- `npm run test:browser --workspace @narumitw/sumire-admin`: 113 passing Chromium tests.
+- Root tests: 1,420 passing tests across all six workspaces (46 admin, 1,009 bot, 9 login, 7 progress, 298 URL content, and 51 URL tool).
+- `npm run test:browser --workspace @narumitw/sumire-admin`: 116 passing Chromium tests.
 - `node apps/bot/scripts/check-admin-local.mjs`: real local HTTP virtual-authenticator, cookie, CSRF, logout, reload, and approval checks passed. The obsolete Access-button selector was updated to the current navigation link.
 - `node apps/bot/scripts/check-admin.mjs`: offline HTTPS assets, authentication, CSRF, logout, and restart-persistence smoke passed.
 - `git diff --check`: passed. Generated screenshots and temporary state are not committed.
+
+## PR #111 review ledger
+
+All three findings are P2 defects in the new UI. The review receipt and summary add no separate change request. No item was deferred.
+
+| Comment | Severity / outcome | Verified evidence | Fix and test evidence |
+| --- | --- | --- | --- |
+| `4293439450` | P2 — Already addressed | The preview checked only patch transport fields. The server also uses the saved URL before it removes fields that do not apply. | The preview now uses the saved transport when the patch keeps it. Two unit tests cover headers on stdio and environment fields on HTTP. Both failed before the fix. |
+| `4293439459` | P2 — Already addressed | Audit failures set both local and App errors. Successful read-only queries cleared only the local error. | Ordinary query errors now stay local. Retry and Clear filters tests check that no old alert remains. HTTP 401 still uses shared session cleanup. The recovery tests failed before the fix. |
+| `4293439463` | P2 — Already addressed | Endpoint drafts change policy without changing the revision. Old model-list status and IDs therefore stayed visible for a different endpoint. | Status and IDs now belong to one check result. It includes the checked provider, revision, and endpoint settings. Browser tests cover URL and protocol edits, restore of unchanged settings, and a failed check. Both endpoint-edit tests failed before the fix. |
 
 ## Review and remaining external checks
 
 - Authorization, global ceilings, separate secret stores, runtime application, and cancellation logic remain unchanged.
 - Audit SQL uses fixed column names and parameter-bound values. Results remain bounded to 100 rows over at most 10,000 retained records. Live inserts can shift existing offset pages; grouping is page-local and explicitly labeled.
 - MCP previews never render patch values. Guided updates preserve unedited JSON fields. Saved commands and URLs remain opaque. Connection tests still require an explicit action and can start administrator-supplied stdio code.
-- The save bar uses a cleaned-up `ResizeObserver`; audit queries ignore late results after query changes or unmount. Provider checks are revision-scoped.
+- The save bar uses a cleaned-up `ResizeObserver`; audit queries ignore late results after query changes or unmount. Provider checks are revision-scoped. Model-list status and IDs also require the checked endpoint settings to match the current settings.
 - No database migration, dependency update, package publication, tag, or release workflow is part of this change. `npm ci` reported an existing critical transitive `handlebars` advisory; dependency remediation is outside this UI/API change.
 - Real-device Passkey use, screen-reader output, live provider acceptance, and production deployment remain unverified. They are not replaced by fixture results.
 - User acceptance of the delivered redesign remains open. Keep `docs/plans/2026-10-16_admin-usability-plan.md` until that acceptance is recorded. Deployment rollback uses the previous compatible image; do not restore an old access-policy snapshot for a visual rollback.

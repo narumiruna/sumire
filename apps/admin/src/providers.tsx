@@ -173,7 +173,6 @@ export function Providers({
   const [oauth, setOauth] = useState("")
   const [login, setLogin] = useState<LoginState>()
   const [notice, setNotice] = useState("")
-  const [discovered, setDiscovered] = useState<string[]>([])
   const [credentialCheck, setCredentialCheck] = useState<{
     provider: string
     status: string
@@ -183,10 +182,25 @@ export function Providers({
     provider: string
     status: string
     revision: number
+    configuration: string
+    models: string[]
   }>()
   const selected = inventory.providers.find((p) => p.id === provider)
   const selectedModel = selected?.models.find((m) => m.id === model)
   const custom = snapshot.policy.providers.find((p) => p.id === provider)
+  const discoveryConfiguration = JSON.stringify([
+    custom?.baseUrl,
+    custom?.api,
+    custom?.enabled,
+    custom?.models,
+  ])
+  const currentDiscovery =
+    discoveryCheck?.provider === provider &&
+    discoveryCheck.revision === snapshot.revision &&
+    discoveryCheck.configuration === discoveryConfiguration
+      ? discoveryCheck
+      : undefined
+  const discovered = currentDiscovery?.models ?? []
   const blocked = busy || dirty || Boolean(oauth)
   const ref = provider && model ? `${provider}/${model}` : ""
   const useDefault = defaultChoice ?? (Boolean(ref) && ref === snapshot.policy.defaults.model)
@@ -381,7 +395,7 @@ export function Providers({
             setDraft(null)
             setDefaultChoice(undefined)
             setNotice("")
-            setDiscovered([])
+            setDiscoveryCheck(undefined)
           }}
         >
           Use saved selection
@@ -415,7 +429,7 @@ export function Providers({
             setDraft(id === saved.provider ? saved : { provider: id, model: "", thinking: null })
             setDefaultChoice(false)
             setNotice("")
-            setDiscovered([])
+            setDiscoveryCheck(undefined)
           }}
         />
         {provider && !selected && (
@@ -684,16 +698,20 @@ export function Providers({
                 onClick={() =>
                   void run(async () => {
                     try {
-                      setDiscovered(await request<string[]>(`providers/${provider}/discover`, csrf))
+                      const models = await request<string[]>(`providers/${provider}/discover`, csrf)
                       setDiscoveryCheck({
                         provider,
                         revision: snapshot.revision,
+                        configuration: discoveryConfiguration,
+                        models,
                         status: "Verified — bounded model-list request only, not model execution",
                       })
                     } catch (error) {
                       setDiscoveryCheck({
                         provider,
                         revision: snapshot.revision,
+                        configuration: discoveryConfiguration,
+                        models: [],
                         status: "Check failed",
                       })
                       throw error
@@ -704,11 +722,7 @@ export function Providers({
                 Discover custom models
               </Button>
               <Text as="p" role="status">
-                Model-list check:{" "}
-                {discoveryCheck?.provider === provider &&
-                discoveryCheck.revision === snapshot.revision
-                  ? discoveryCheck.status
-                  : "Not checked"}
+                Model-list check: {currentDiscovery?.status ?? "Not checked"}
               </Text>
               {discovered.length > 0 && (
                 <ul>

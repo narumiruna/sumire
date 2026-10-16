@@ -54,6 +54,29 @@ describe("MCP patch and preview", () => {
         mcpSavePatch(JSON.stringify({ env }), previous, { env: {}, headers: {} }),
       ).toThrow("masked")
   })
+  it.each([
+    {
+      fields: ["command", "env"],
+      patch: { headers: { X: "opaque-header" } },
+      removed: "headers",
+      kept: "command",
+    },
+    {
+      fields: ["url", "headers"],
+      patch: { env: { X: "opaque-env" } },
+      removed: "env",
+      kept: "url",
+    },
+  ])(
+    "uses saved transport fields when the patch keeps $kept",
+    ({ fields, patch, removed, kept }) => {
+      const preview = mcpChangePreview(patch, { ...previous, fields })
+      expect(preview).toContain(`Preserved: ${kept}`)
+      expect(preview).toContain(`Removed by transport selection: ${removed}`)
+      expect(preview.some((line) => line === `Added: ${removed}.X`)).toBe(false)
+      expect(JSON.stringify(preview)).not.toContain("opaque-")
+    },
+  )
   it("reports transport cleanup instead of claiming removed fields are preserved", () => {
     const preview = mcpChangePreview({ url: "https://example.test/opaque" }, previous)
     expect(preview).toContain("Removed by transport selection: command")
