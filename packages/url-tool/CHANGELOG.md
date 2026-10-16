@@ -1,5 +1,19 @@
 # @narumitw/sumire-url-tool
 
+## 0.4.0
+
+### Minor Changes
+
+- e9f5653: Rename the URL-reading tool from `load_public_url` to `read_url_content`. Update bot instructions, skills, documentation, and tests to use the new name. No legacy alias is registered; update direct calls, codemode scripts, and tool allowlists. Existing bot permissions are not transferred automatically: authorize the new name globally and in the effective chat policy through the Web UI.
+
+### Patch Changes
+
+- 48a5fab: Share bot URL loader configuration between article preloading and Pi tools. Make YouTube caption extraction explicit in the tool description and require a current tool failure before reporting unreadable captions. Add offline caption-loading and Pi tool-loop regression tests.
+- Updated dependencies [426f3d7]
+- Updated dependencies [9f3168d]
+- Updated dependencies [e9f5653]
+  - @narumitw/sumire-url-content@0.23.0
+
 ## 0.3.4
 
 ### Patch Changes
