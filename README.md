@@ -12,6 +12,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
+| [`packages/pi-miyu-cna-news`](packages/pi-miyu-cna-news/README.md) | Host-bound Pi CNA news tool through `miyuyo_bot` in the current Telegram group. |
 | [`packages/url-reader`](packages/url-reader/README.md) | Source-aware URL reading library and CLI. |
 | [`packages/pi-url-reader`](packages/pi-url-reader/README.md) | Pi URL-reading tool and bundled skills, backed by `url-reader`. |
 
