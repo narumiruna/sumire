@@ -42,13 +42,13 @@ describe("miyu_cna_news", () => {
       "@miyuyo_bot 使用 CNA MCP 今日台灣重要新聞",
       expect.any(AbortSignal),
     )
-    expect(client.handleMessage(reply())).toBe(true)
+    expect(await client.handleMessage(reply())).toBe(true)
     expect((await result).details).toEqual({
       chatId: group.id,
       messageId: 11,
       text: "CNA news result",
     })
-    expect(client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(false)
   })
 
   it("does not provide a tool when Miyu membership is absent or unknown", async () => {
@@ -76,7 +76,7 @@ describe("miyu_cna_news", () => {
     const client = createClient({ sendMessage, hasMiyuyoBot })
     await expect(invoke(client)).rejects.toThrow("not a confirmed member")
     expect(sendMessage).not.toHaveBeenCalled()
-    expect(client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(false)
   })
 
   it("fails closed when the membership check fails", async () => {
@@ -102,10 +102,10 @@ describe("miyu_cna_news", () => {
       reply({ reply_to_message: undefined }),
       reply({ reply_to_message: { message_id: 99 } }),
     ])
-      expect(client.handleMessage(message)).toBe(false)
-    expect(client.handleMessage(reply({ from: { is_bot: true, username: "Miyuyo_Bot" } }))).toBe(
-      true,
-    )
+      expect(await client.handleMessage(message)).toBe(false)
+    expect(
+      await client.handleMessage(reply({ from: { is_bot: true, username: "Miyuyo_Bot" } })),
+    ).toBe(true)
     await result
   })
 
@@ -117,6 +117,35 @@ describe("miyu_cna_news", () => {
       },
     })
     expect((await invoke(client)).details.text).toBe("CNA news result")
+  })
+
+  it("matches early replies only after the sent request ID is known", async () => {
+    let finishSend = (_sent: { message_id: number }) => {}
+    const client = createClient({
+      sendMessage: () =>
+        new Promise((resolve) => {
+          finishSend = resolve
+        }),
+    })
+    const result = invoke(client)
+    await flush()
+    const unrelated = client.handleMessage(reply({ reply_to_message: { message_id: 99 } }))
+    const matching = client.handleMessage(reply())
+    finishSend({ message_id: 10 })
+    expect(await unrelated).toBe(false)
+    expect(await matching).toBe(true)
+    await result
+  })
+
+  it("releases early reply routing when sending is cancelled", async () => {
+    const client = createClient({ sendMessage: () => new Promise(() => {}) })
+    const controller = new AbortController()
+    const result = expect(invoke(client, controller.signal)).rejects.toThrow("cancelled")
+    await flush()
+    const handled = client.handleMessage(reply())
+    controller.abort(new Error("cancelled"))
+    await result
+    expect(await handled).toBe(false)
   })
 
   it("rejects empty queries without sending", async () => {
@@ -132,9 +161,9 @@ describe("miyu_cna_news", () => {
     await expect(invoke(client)).rejects.toThrow("already pending")
     const second = invoke(client, undefined, { ...group, id: -456 })
     await flush()
-    expect(client.handleMessage(reply({ chat: { id: -456 } }))).toBe(true)
+    expect(await client.handleMessage(reply({ chat: { id: -456 } }))).toBe(true)
     await second
-    expect(client.handleMessage(reply())).toBe(true)
+    expect(await client.handleMessage(reply())).toBe(true)
     await first
   })
 
@@ -157,7 +186,7 @@ describe("miyu_cna_news", () => {
     const result = expect(invoke(client)).rejects.toThrow("Timed out")
     await vi.advanceTimersByTimeAsync(120_000)
     await result
-    expect(client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -171,7 +200,7 @@ describe("miyu_cna_news", () => {
     controller.abort(new Error("cancelled"))
     await rejected
     expect(sendMessage.mock.calls[0]?.[2].aborted).toBe(true)
-    expect(client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(false)
     const next = invoke(client)
     await flush()
     client.handleMessage(reply())

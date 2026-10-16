@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-progress && npm run build --workspace @narumitw/sumire-login",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-pi-miyu-cna-news && npm run build --workspace @narumitw/sumire-progress && npm run build --workspace @narumitw/sumire-login",
     "dev": "cd ../.. && node --env-file-if-exists=.env --import tsx apps/bot/src/index.ts",
     "start": "cd ../.. && node --env-file-if-exists=.env apps/bot/dist/index.js",
     "format": "biome format --write .",
@@ -42,6 +42,7 @@
     "@narumitw/sumire-progress": "0.2.0",
     "@narumitw/sumire-url-reader": "0.24.0",
     "@narumitw/sumire-pi-url-reader": "0.5.0",
+    "@narumitw/sumire-pi-miyu-cna-news": "0.1.0",
     "@pydantic/logfire-node": "0.18.27",
     "@simplewebauthn/server": "14.0.3",
     "grammy": "1.46.0",

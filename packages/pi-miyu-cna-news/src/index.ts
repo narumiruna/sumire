@@ -18,7 +18,8 @@ export interface MiyuTransport {
 
 interface Pending {
   requestId?: number
-  early: MiyuMessage[]
+  ready: Promise<void>
+  markReady(): void
   resolve(message: MiyuMessage): void
 }
 
@@ -29,7 +30,7 @@ export class MiyuCnaNews {
   constructor(private readonly transport: MiyuTransport) {}
 
   /** Call before normal message handling, after host chat authorization. */
-  handleMessage(message: MiyuMessage): boolean {
+  async handleMessage(message: MiyuMessage): Promise<boolean> {
     const pending = this.#pending.get(message.chat.id)
     if (
       !pending ||
@@ -40,11 +41,13 @@ export class MiyuCnaNews {
       !message.reply_to_message
     )
       return false
-    if (pending.requestId === undefined) {
-      if (pending.early.length < 32) pending.early.push(message)
+    // The update can arrive before sendMessage returns its message ID.
+    await pending.ready
+    if (
+      this.#pending.get(message.chat.id) !== pending ||
+      message.reply_to_message.message_id !== pending.requestId
+    )
       return false
-    }
-    if (message.reply_to_message.message_id !== pending.requestId) return false
     pending.resolve(message)
     return true
   }
@@ -104,7 +107,11 @@ export class MiyuCnaNews {
       return await new Promise<MiyuMessage>((resolve, reject) => {
         onAbort = () => reject(signal.reason)
         signal.addEventListener("abort", onAbort, { once: true })
-        pending = { early: [], resolve }
+        let markReady = () => {}
+        const ready = new Promise<void>((resolveReady) => {
+          markReady = resolveReady
+        })
+        pending = { ready, markReady, resolve }
         const current = pending
         this.#pending.set(chatId, current)
         // Start after registering the waiter; some transports deliver a reply before send resolves.
@@ -119,11 +126,7 @@ export class MiyuCnaNews {
           .then((sent) => {
             if (signal.aborted || this.#pending.get(chatId) !== current) return
             current.requestId = sent.message_id
-            const reply = current.early.find(
-              (message) => message.reply_to_message?.message_id === sent.message_id,
-            )
-            current.early = []
-            if (reply) resolve(reply)
+            current.markReady()
           })
           .catch(reject)
       })
@@ -131,6 +134,7 @@ export class MiyuCnaNews {
       clearTimeout(timer)
       if (onAbort) signal.removeEventListener("abort", onAbort)
       if (this.#pending.get(chatId) === pending) this.#pending.delete(chatId)
+      pending?.markReady()
       controller.abort()
     }
   }

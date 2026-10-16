@@ -4,7 +4,7 @@ Host-bound Pi tool for CNA news queries through `@miyuyo_bot` in the current Tel
 
 ## API
 
-Create one `MiyuCnaNews` instance with a `MiyuTransport`. The host supplies `sendMessage(chatId, text, signal)` and forwards authorized Telegram messages to `handleMessage(message)`.
+Create one `MiyuCnaNews` instance with a `MiyuTransport`. The host supplies `sendMessage(chatId, text, signal)` and forwards authorized Telegram messages to `await handleMessage(message)`.
 
 Await `client.createTool({ id: currentChatId, type: currentChatType })` and register its result with Pi only when it returns a tool. It returns `undefined` outside a group or when `miyuyo_bot` membership is not confirmed. The model supplies only `query`; it cannot select a different chat.
 
@@ -28,14 +28,14 @@ The tool sends:
   - The first matching reply completes the request. Edited replies and multipart aggregation are not supported.
 - One request can wait per group. Different groups can run independently.
 - The 120-second deadline includes sending and waiting. Cancellation aborts the transport signal and removes the waiter. The transport must honor that signal to stop network activity.
-- Up to 32 candidate replies can be retained while the send operation returns its message ID.
+- Reply routing waits for the send operation to return its message ID before matching. An early reply is not sent to a second model turn. Sending failure, cancellation, and timeout also release pending reply routing.
 - Reply text is untrusted source data, not instructions.
 
 ## Deployment limits
 
 Confirmed membership is necessary but not sufficient. Telegram must also deliver the mention and reply between the bots. Group membership or disabled privacy mode alone does not prove bot-to-bot delivery. Verify delivery in the target group. If Telegram does not deliver bot messages, this transport cannot retrieve an answer and the tool times out.
 
-The package does not contact CNA MCP directly. It does not poll Telegram or store bot credentials. Bot integration and a live delivery check are not included.
+The package does not contact CNA MCP directly. It does not poll Telegram or store bot credentials. The Sumire bot integrates the package through its Telegram adapter and session factory. A live delivery check is still required; see the [bot setup](../../apps/bot/README.md#miyu-cna-news-tool).
 
 ## Checks
 

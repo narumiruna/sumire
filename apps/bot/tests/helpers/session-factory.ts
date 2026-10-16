@@ -6,6 +6,7 @@ import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import type { Settings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
 import type { ChannelImageIndex } from "../../src/telegram/channel-images.js"
+import type { TelegramMiyuNews } from "../../src/telegram/miyu-cna-news.js"
 import { TestAdminStore } from "./admin-store.js"
 
 export async function createTestSessionFactory(
@@ -14,10 +15,11 @@ export async function createTestSessionFactory(
   images?: ChannelImageIndex,
   runtime?: ModelRuntime,
   supplied?: { store: AdminStore; mcp: McpAdmin },
+  miyuNews?: Pick<TelegramMiyuNews, "createTool">,
 ) {
   if (supplied)
     return {
-      ...(await createPiSessionFactory(settings, logger, supplied, images, runtime)),
+      ...(await createPiSessionFactory(settings, logger, supplied, images, runtime, miyuNews)),
       control: supplied.store,
     }
   const store = new TestAdminStore(
@@ -27,7 +29,14 @@ export async function createTestSessionFactory(
   )
   const mcp = new McpAdmin(store, settings.botWorkdir)
   await mcp.import(settings.botMcpConfigPath)
-  const factory = await createPiSessionFactory(settings, logger, { store, mcp }, images, runtime)
+  const factory = await createPiSessionFactory(
+    settings,
+    logger,
+    { store, mcp },
+    images,
+    runtime,
+    miyuNews,
+  )
   // The fixture explicitly approves a finite tool/model catalog, never arbitrary chat IDs.
   if (store.snapshot().policy.models.length === 0) {
     const policy = store.snapshot().policy

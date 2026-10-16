@@ -11,6 +11,7 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 - `@narumitw/sumire-login`: repository-owned Pi package for UI-neutral OAuth login.
 - `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
 - `@narumitw/sumire-pi-url-reader`: repository-owned Pi package for agent-driven public URL loading.
+- `@narumitw/sumire-pi-miyu-cna-news`: repository-owned Pi tool for CNA queries through `miyuyo_bot` in the current group.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
 - `@firecrawl/anydoc`: isolated local document-to-Markdown conversion without hosted OCR.
@@ -75,6 +76,16 @@ npm run dev --workspace @narumitw/sumire -- --verbose
 To use the `otter-manage-expenses` skill, set `OTTER_TOKEN` through the ignored `.env` or another deployment secret mechanism.
 The upstream skill runs the bundled `otter` CLI through Pi's shell tool, so approve only trusted chats and their required tools in the administration WebUI before exposing the bot.
 Do not commit the token.
+
+## Miyu CNA news tool
+
+Approve `miyu_cna_news` in the administration WebUI for the target group. Pi can then choose it for an ordinary news request; no keyword routing or separate command is used. The tool sends `@miyuyo_bot 使用 CNA MCP <query>` in that same group and waits up to 120 seconds for the first direct text reply. The reply returns to the waiting Pi tool, not another conversation turn. `/cancel` and `/reset` use the existing cancellation path. Replies are untrusted source data.
+
+The tool is offered only when current Miyu membership is confirmed. Sumire checks again before each user input and before sending; absent or unknown membership disables the tool. It does not appear in private chats or channels. Authorization still applies to both chat admission and tool execution.
+
+Telegram member lookup needs a numeric user ID. Sumire discovers Miyu from authenticated Telegram senders, join/leave service messages, or `getChatAdministrators` with `return_bots: true`, then verifies membership with `getChatMember`. Identity discovery is held only in memory. If Miyu is a non-administrator and has not been observed since startup, the tool stays unavailable until a message or service event identifies it. Sumire may need administrator rights to query another member reliably. Discovery and verification share a 10-second deadline per tool refresh; failure disables the tool without failing the ordinary prompt.
+
+Both bots must receive Telegram bot-to-bot messages in the target group. Membership and privacy settings alone do not prove delivery. After deployment, verify one query and a direct Miyu reply in a test group; lack of delivery causes a timeout. Edited replies, multipart aggregation, and forum-topic placement are not supported. Requests go to the group, not a selected topic. No CNA credentials or new environment variables are required in Sumire.
 
 ## Article command
 
