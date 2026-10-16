@@ -48,7 +48,7 @@ describe("miyu_cna_news", () => {
       messageId: 11,
       text: "CNA news result",
     })
-    expect(await client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(true)
   })
 
   it("does not provide a tool when Miyu membership is absent or unknown", async () => {
@@ -89,7 +89,7 @@ describe("miyu_cna_news", () => {
     expect(sendMessage).not.toHaveBeenCalled()
   })
 
-  it("ignores other chats, users, bots, anonymous senders, empty text and unrelated replies", async () => {
+  it("ignores other chats, users, bots, anonymous senders and unrelated replies", async () => {
     const client = createClient({ sendMessage: vi.fn().mockResolvedValue({ message_id: 10 }) })
     const result = invoke(client)
     await flush()
@@ -98,7 +98,6 @@ describe("miyu_cna_news", () => {
       reply({ from: { is_bot: false, username: "miyuyo_bot" } }),
       reply({ from: { is_bot: true, username: "other_bot" } }),
       reply({ sender_chat: { id: group.id } }),
-      reply({ text: " " }),
       reply({ reply_to_message: undefined }),
       reply({ reply_to_message: { message_id: 99 } }),
     ])
@@ -107,6 +106,90 @@ describe("miyu_cna_news", () => {
       await client.handleMessage(reply({ from: { is_bot: true, username: "Miyuyo_Bot" } })),
     ).toBe(true)
     await result
+  })
+
+  it("consumes non-text and empty parts without completing the text-only request", async () => {
+    const client = createClient({ sendMessage: vi.fn().mockResolvedValue({ message_id: 10 }) })
+    let settled = false
+    const result = invoke(client).then((value) => {
+      settled = true
+      return value
+    })
+    await flush()
+    expect(await client.handleMessage(reply({ text: undefined }))).toBe(true)
+    expect(await client.handleMessage(reply({ text: " " }))).toBe(true)
+    expect(settled).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(true)
+    await result
+    expect(await client.handleMessage(reply({ text: "Second part" }))).toBe(true)
+    expect(await client.handleMessage(reply({ text: undefined }))).toBe(true)
+    expect(await client.handleMessage(reply({ chat: { id: -999 } }))).toBe(false)
+    expect(
+      await client.handleMessage(reply({ from: { is_bot: true, username: "other_bot" } })),
+    ).toBe(false)
+    expect(await client.handleMessage(reply({ reply_to_message: { message_id: 99 } }))).toBe(false)
+  })
+
+  it("consumes late parts of a prior request while a new request waits", async () => {
+    let id = 10
+    const client = createClient({ sendMessage: async () => ({ message_id: id++ }) })
+    const first = invoke(client)
+    await flush()
+    await client.handleMessage(reply())
+    await first
+    let settled = false
+    const second = invoke(client).then((value) => {
+      settled = true
+      return value
+    })
+    await flush()
+    expect(await client.handleMessage(reply({ text: "Late first part" }))).toBe(true)
+    expect(settled).toBe(false)
+    await client.handleMessage(reply({ reply_to_message: { message_id: 11 } }))
+    await second
+  })
+
+  it("expires completed request identities after five minutes", async () => {
+    vi.useFakeTimers()
+    const client = createClient({ sendMessage: async () => ({ message_id: 10 }) })
+    const result = invoke(client)
+    await flush()
+    await client.handleMessage(reply())
+    await result
+    await vi.advanceTimersByTimeAsync(300_000)
+    expect(await client.handleMessage(reply())).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("keeps at most 1000 recent request identities", async () => {
+    let id = 10
+    const client = createClient({ sendMessage: async () => ({ message_id: id++ }) })
+    for (let requestId = 10; requestId <= 1010; requestId++) {
+      const result = invoke(client)
+      await flush()
+      await client.handleMessage(reply({ reply_to_message: { message_id: requestId } }))
+      await result
+    }
+    expect(await client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply({ reply_to_message: { message_id: 1010 } }))).toBe(true)
+  })
+
+  it("remembers a successful send that returns after cancellation", async () => {
+    let finishSend = (_sent: { message_id: number }) => {}
+    const client = createClient({
+      sendMessage: () =>
+        new Promise((resolve) => {
+          finishSend = resolve
+        }),
+    })
+    const controller = new AbortController()
+    const rejected = expect(invoke(client, controller.signal)).rejects.toThrow("cancelled")
+    await flush()
+    controller.abort(new Error("cancelled"))
+    await rejected
+    finishSend({ message_id: 10 })
+    await flush()
+    expect(await client.handleMessage(reply())).toBe(true)
   })
 
   it("retains a reply received before sendMessage resolves", async () => {
@@ -200,7 +283,7 @@ describe("miyu_cna_news", () => {
     controller.abort(new Error("cancelled"))
     await rejected
     expect(sendMessage.mock.calls[0]?.[2].aborted).toBe(true)
-    expect(await client.handleMessage(reply())).toBe(false)
+    expect(await client.handleMessage(reply())).toBe(true)
     const next = invoke(client)
     await flush()
     client.handleMessage(reply())

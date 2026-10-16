@@ -23,9 +23,11 @@ The tool sends:
   - The host must refresh tool registration after membership changes. This package does not receive membership updates automatically.
 - The host must authorize the chat and tool before execution. This package does not provide access control or Telegram polling.
 - Forward replies before normal message processing or per-chat turn queues. A `true` return from `handleMessage` means the host must consume the message without starting another model turn.
+  - Matching non-text or empty replies are consumed but do not complete the text-only request.
+  - Later parts are consumed for five minutes after completion, cancellation, or timeout when the sent request ID is known. The in-memory index holds at most 1000 request identities across all chats; older identities are removed first. A successful send that returns after cancellation also enters this index. Restart clears the index.
 - A result must be a non-empty text message from the bot username `miyuyo_bot`, in the same chat, with `reply_to_message.message_id` equal to the sent request ID.
   - Anonymous chat senders, forwarded copies without that sender identity, unrelated replies, and captions do not complete the request.
-  - The first matching reply completes the request. Edited replies and multipart aggregation are not supported.
+  - The first matching non-empty text reply completes the request. Edited replies and multipart aggregation are not supported.
 - One request can wait per group. Different groups can run independently.
 - The 120-second deadline includes sending and waiting. Cancellation aborts the transport signal and removes the waiter. The transport must honor that signal to stop network activity.
 - Reply routing waits for the send operation to return its message ID before matching. An early reply is not sent to a second model turn. Sending failure, cancellation, and timeout also release pending reply routing.

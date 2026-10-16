@@ -198,6 +198,6 @@ describe("Telegram Miyu news transport", () => {
     controller.abort(new Error("cancelled"))
     await rejected
     expect(f.sendMessage.mock.calls[0]?.[3]?.aborted).toBe(true)
-    expect(await f.client.handleMessage(message({ reply_to_message: replied(10) }))).toBe(false)
+    expect(await f.client.handleMessage(message({ reply_to_message: replied(10) }))).toBe(true)
   })
 })

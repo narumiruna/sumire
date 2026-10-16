@@ -26,30 +26,48 @@ interface Pending {
 /** Share one instance across sessions to route replies without another model turn. */
 export class MiyuCnaNews {
   readonly #pending = new Map<number, Pending>()
+  readonly #recentRequests = new Map<string, number>()
 
   constructor(private readonly transport: MiyuTransport) {}
 
   /** Call before normal message handling, after host chat authorization. */
   async handleMessage(message: MiyuMessage): Promise<boolean> {
-    const pending = this.#pending.get(message.chat.id)
     if (
-      !pending ||
       message.sender_chat ||
       !message.from?.is_bot ||
       message.from.username?.toLowerCase() !== "miyuyo_bot" ||
-      !message.text?.trim() ||
       !message.reply_to_message
     )
       return false
+    const pending = this.#pending.get(message.chat.id)
     // The update can arrive before sendMessage returns its message ID.
-    await pending.ready
-    if (
-      this.#pending.get(message.chat.id) !== pending ||
-      message.reply_to_message.message_id !== pending.requestId
-    )
-      return false
-    pending.resolve(message)
-    return true
+    if (pending && pending.requestId === undefined) await pending.ready
+    const requestId = message.reply_to_message.message_id
+    if (pending?.requestId === requestId) {
+      if (this.#pending.get(message.chat.id) === pending && message.text?.trim())
+        pending.resolve(message)
+      // Unsupported reply parts still belong to the tool, not another model turn.
+      return true
+    }
+    this.pruneRecentRequests()
+    return this.#recentRequests.has(`${message.chat.id}:${requestId}`)
+  }
+
+  private pruneRecentRequests() {
+    const now = Date.now()
+    for (const [key, expires] of this.#recentRequests)
+      if (expires <= now) this.#recentRequests.delete(key)
+  }
+
+  private rememberRequest(chatId: number, requestId: number) {
+    this.pruneRecentRequests()
+    const key = `${chatId}:${requestId}`
+    this.#recentRequests.delete(key)
+    this.#recentRequests.set(key, Date.now() + 300_000)
+    while (this.#recentRequests.size > 1000) {
+      const oldest = this.#recentRequests.keys().next().value
+      if (oldest !== undefined) this.#recentRequests.delete(oldest)
+    }
   }
 
   async createTool(chat: { id: number; type: string }, signal?: AbortSignal) {
@@ -124,7 +142,8 @@ export class MiyuCnaNews {
             return this.transport.sendMessage(chatId, `@miyuyo_bot 使用 CNA MCP ${query}`, signal)
           })
           .then((sent) => {
-            if (signal.aborted || this.#pending.get(chatId) !== current) return
+            // A successful send can return its ID after cancellation.
+            this.rememberRequest(chatId, sent.message_id)
             current.requestId = sent.message_id
             current.markReady()
           })
@@ -134,6 +153,7 @@ export class MiyuCnaNews {
       clearTimeout(timer)
       if (onAbort) signal.removeEventListener("abort", onAbort)
       if (this.#pending.get(chatId) === pending) this.#pending.delete(chatId)
+      if (pending?.requestId !== undefined) this.rememberRequest(chatId, pending.requestId)
       pending?.markReady()
       controller.abort()
     }

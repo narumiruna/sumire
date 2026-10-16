@@ -47,7 +47,7 @@ function setup(failNotifications = false) {
   return { telegram, messages, events, stop, logger }
 }
 
-it("notifies only the configured admin after startup and before stopping polling", async () => {
+it("notifies only the configured admin after startup and after stopping update intake", async () => {
   const { telegram, messages, events, stop } = setup()
   await telegram.start()
   await Promise.all([telegram.stop(), telegram.stop()])
@@ -59,10 +59,35 @@ it("notifies only the configured admin after startup and before stopping polling
   expect(events).toEqual([
     "polling started",
     "Sumire bot 已啟動。",
-    "Sumire bot 即將關閉。",
     "polling stopped",
+    "Sumire bot 即將關閉。",
   ])
   expect(stop).toHaveBeenCalledOnce()
+})
+
+it("sends the shutdown notice while polling drains and waits for both", async () => {
+  const { telegram, messages, stop } = setup()
+  let finishDrain = () => {}
+  stop.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishDrain = resolve
+      }),
+  )
+  await telegram.start()
+  let stopped = false
+  const stopping = telegram.stop().then(() => {
+    stopped = true
+  })
+  try {
+    await vi.waitFor(() => expect(messages).toHaveLength(2))
+    expect(stop).toHaveBeenCalledOnce()
+    expect(stopped).toBe(false)
+  } finally {
+    finishDrain()
+    await stopping
+  }
+  expect(stopped).toBe(true)
 })
 
 it("logs notification failures without blocking startup or shutdown", async () => {
@@ -94,6 +119,7 @@ it("bounds lifecycle notifications to five seconds", async () => {
     await vi.advanceTimersByTimeAsync(5_000)
     await starting
     const stopping = telegram.stop()
+    expect(stop).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(5_000)
     await stopping
     expect(timeout.mock.calls).toEqual([[5_000], [5_000]])

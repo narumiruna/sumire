@@ -1293,8 +1293,9 @@ export function createTelegramAgentBot(
       const polling = runner
       if (!polling) return
       stopPromise = (async () => {
-        await notifyAdmin("Sumire bot 即將關閉。")
-        await polling.stop()
+        // Stop accepting updates before notification I/O; drain both before disposal.
+        const stopped = polling.stop()
+        await Promise.all([stopped, notifyAdmin("Sumire bot 即將關閉。")])
         runner = undefined
       })()
       return stopPromise

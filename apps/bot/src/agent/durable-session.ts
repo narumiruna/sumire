@@ -474,8 +474,12 @@ export class DurableSession implements SessionHandle {
   }
 
   private async queue(text: string, images: ImageContent[], whenBusy: "steer" | "followUp") {
+    if (this.#closing) return
+    const epoch = this.#epoch
     await this.refreshTools()
+    if (epoch !== this.#epoch || this.#closing) return
     await this.configureInput()
+    if (epoch !== this.#epoch || this.#closing) return
     await this.#conversation.submit(
       {
         type: "input",
@@ -484,6 +488,7 @@ export class DurableSession implements SessionHandle {
       },
       context,
     )
+    if (epoch !== this.#epoch && !this.#closing) await this.#conversation.abort(context)
   }
 
   private async findEntry(id: string): Promise<EntryRecord | undefined> {

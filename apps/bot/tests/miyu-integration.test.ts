@@ -132,7 +132,7 @@ describe("Miyu bot integration", () => {
     const submit = vi.spyOn(sessions, "submit")
     const passive = vi.spyOn(sessions, "appendPassiveContext")
     const telegram = createTelegramAgentBot(
-      { ...fixture.settings, botToken: "123:fixture", botMaxConsecutiveRepliesToBots: 0 },
+      { ...fixture.settings, botToken: "123:fixture", botMaxConsecutiveRepliesToBots: 2 },
       sessions,
       fixture.logger,
       { botInfo, control: fixture.factory.control, miyuNews: host },
@@ -168,11 +168,34 @@ describe("Miyu bot integration", () => {
           },
         },
       }
-      const response = telegram.bot.handleUpdate(reply)
-      // Telegram can deliver the update before the sendMessage HTTP response.
+      const nonText = telegram.bot.handleUpdate({
+        update_id: 3,
+        message: {
+          ...message(19, ""),
+          text: undefined,
+          caption: "Miyu photo part",
+          photo: [{ file_id: "photo", file_unique_id: "photo", width: 1, height: 1 }],
+          reply_to_message: reply.message?.reply_to_message,
+        },
+      })
+      // Telegram can deliver a non-text update before sendMessage returns its ID.
       finishSend(message(10, "request"))
-      await response
+      await nonText
+      expect(submit).toHaveBeenCalledOnce()
+      expect(session.messages).not.toContainEqual(
+        expect.objectContaining({ role: "toolResult", toolName: "miyu_cna_news" }),
+      )
+      await telegram.bot.handleUpdate(reply)
       await turn
+      // Later parts must not enter the ordinary addressed-message path either.
+      await telegram.bot.handleUpdate({
+        ...reply,
+        update_id: 4,
+        message: {
+          ...message(21, "Miyu second text part"),
+          reply_to_message: reply.message?.reply_to_message,
+        },
+      })
       expect(submit).toHaveBeenCalledOnce()
       expect(passive).not.toHaveBeenCalled()
       expect(session.messages).toContainEqual(
@@ -186,6 +209,68 @@ describe("Miyu bot integration", () => {
       await turn
     }
   })
+
+  it.each(["steer", "followUp"] as const)(
+    "does not submit %s after cancellation during membership refresh",
+    async (intent) => {
+      const { fixture, member } = await setup()
+      const session = await fixture.createSession(-100)
+      const releaseModel = fixture.pauseNextRequest()
+      fixture.enqueueAnswer("Unused answer")
+      const active = session.prompt("first input")
+      let finishRefresh = (_member: Awaited<ReturnType<Api["getChatMember"]>>) => {}
+      try {
+        await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+        member.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishRefresh = resolve
+            }),
+        )
+        const calls = member.mock.calls.length
+        const queued = session[intent]("cancelled queued input")
+        await vi.waitFor(() => expect(member.mock.calls.length).toBe(calls + 1))
+        await session.abort()
+        finishRefresh(administrator)
+        await queued
+        await active
+        await session.waitForIdle()
+        expect(fixture.requests).toHaveLength(1)
+        expect(JSON.stringify(session.messages)).not.toContain("cancelled queued input")
+      } finally {
+        finishRefresh(administrator)
+        releaseModel()
+        await session.abort()
+        await active
+      }
+    },
+  )
+
+  it.each(["steer", "followUp"] as const)(
+    "does not submit %s after disposal during membership refresh",
+    async (intent) => {
+      const { fixture, member } = await setup()
+      const session = await fixture.createSession(-100)
+      let finishRefresh = (_member: Awaited<ReturnType<Api["getChatMember"]>>) => {}
+      member.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRefresh = resolve
+          }),
+      )
+      const calls = member.mock.calls.length
+      const queued = session[intent]("closed queued input")
+      try {
+        await vi.waitFor(() => expect(member.mock.calls.length).toBe(calls + 1))
+        await session.dispose()
+      } finally {
+        finishRefresh(administrator)
+      }
+      await expect(queued).resolves.toBe("queued")
+      expect(fixture.requests).toHaveLength(0)
+      expect(JSON.stringify(session.messages)).not.toContain("closed queued input")
+    },
+  )
 
   it("never routes Miyu messages from an unauthorized chat", async () => {
     const { fixture } = await setup()
