@@ -33,7 +33,9 @@ import {
   type Snapshot,
 } from "./api.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
-import { Providers, SearchChoice } from "./providers.js"
+import { ChatWorkspace, type Chat } from "./chats.js"
+import { policyChanges } from "./policy-changes.js"
+import { Providers, SectionActive } from "./providers.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
@@ -86,6 +88,8 @@ function Field({
 function IdList({
   label,
   values,
+  savedValues,
+  target,
   chats,
   positive,
   onChange,
@@ -93,6 +97,8 @@ function IdList({
 }: {
   label: string
   values: number[]
+  savedValues: number[]
+  target: string
   chats: { id: number; name: string }[]
   positive: boolean
   onChange(values: number[]): void
@@ -100,27 +106,63 @@ function IdList({
 }) {
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
+  const [query, setQuery] = useState("")
+  useEffect(() => {
+    setQuery(target && Number(target) > 0 === positive ? target : "")
+  }, [target, positive])
   const names = new Map(chats.map((chat) => [chat.id, chat.name]))
+  const matches = (id: number) =>
+    `${names.get(id) ?? ""} ${id}`.toLowerCase().includes(query.toLowerCase())
+  const visible = values.filter(matches)
+  const revoked = savedValues.filter((id) => !values.includes(id))
   return (
     <fieldset>
       <legend>{label}</legend>
+      <Text as="p" size="2">
+        Approval and revocation remain pending until Apply policy changes. Private-message and
+        group/channel approval are separate.
+      </Text>
+      <Text as="p" size="2">
+        Search all entries in this access list by ID or loaded chat name. Names for chats on other
+        pages may not be loaded.
+      </Text>
+      <Field label={`Search ${label.toLowerCase()}`} value={query} onChange={setQuery} />
+      {!!values.length && !visible.length && <Text as="p">No matching access entries.</Text>}
       <ul className="id-list">
-        {values.map((id) => (
+        {visible.map((id) => (
           <li key={id}>
-            <code>{id}</code>
-            {names.get(id) && names.get(id) !== String(id) && <Text>{names.get(id)}</Text>}
+            <div>
+              <Text as="p" weight="medium">
+                {names.get(id) && names.get(id) !== String(id) ? names.get(id) : "Name not known"}
+              </Text>
+              <Text size="2">
+                <code>{id}</code>
+              </Text>
+              {!savedValues.includes(id) && <Badge color="orange">Pending approval</Badge>}
+            </div>
             <Button
               variant="ghost"
               color="red"
-              aria-label={`Remove ID ${id}`}
+              aria-label={`Revoke access for ID ${id}`}
               onClick={() => onChange(values.filter((v) => v !== id))}
             >
-              Remove
+              Revoke access
             </Button>
           </li>
         ))}
       </ul>
-      {!values.length && <Text as="p">No access approved.</Text>}
+      {revoked.filter(matches).map((id) => (
+        <Flex key={id} gap="2" align="center" wrap="wrap">
+          <Text>
+            {names.get(id) || "Name not known"} · {id}
+          </Text>
+          <Badge color="orange">Pending revocation</Badge>
+          <Button variant="soft" onClick={() => onChange([...values, id])}>
+            Undo revocation for {id}
+          </Button>
+        </Flex>
+      ))}
+      {!values.length && <Text as="p">No access approved in the policy draft.</Text>}
       <Field
         label={positive ? "Private user ID to add" : "Group or channel ID to add"}
         value={draft}
@@ -615,7 +657,7 @@ function ProviderEditor({
         </Button>
       </Flex>
       <Text as="p" size="2">
-        This stages policy edits only. Use Save settings before authentication. This replaces the
+        This stages policy edits only. Apply policy changes before authentication. This replaces the
         custom model list. Custom model costs are unknown, not verified zero-cost.
       </Text>
     </fieldset>
@@ -624,15 +666,18 @@ function ProviderEditor({
 function App() {
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
+  const [savedPolicy, setSavedPolicy] = useState<Policy>()
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const [page, setPage] = useState<(typeof pages)[number]>("Chats")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [chats, setChats] = useState<
-    { id: number; name: string; type: string; effective: unknown }[]
-  >([])
+  const [chats, setChats] = useState<Chat[]>([])
+  const [knownChats, setKnownChats] = useState<Chat[]>([])
+  const [chatsLoading, setChatsLoading] = useState(false)
+  const [chatsError, setChatsError] = useState("")
   const [chat, setChat] = useState("")
+  const [accessTarget, setAccessTarget] = useState("")
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [imports, setImports] = useState<ImportReport[]>([])
   const [mcpDirty, setMcpDirty] = useState(false)
@@ -685,20 +730,45 @@ function App() {
     }
   }, [])
   const load = useCallback(async () => {
-    const [s, i, c, a, reports] = await Promise.all([
+    const [s, i, a, reports] = await Promise.all([
       request<Snapshot>("settings"),
       request<Inventory>("inventory"),
-      request<typeof chats>(`chats?offset=${chatOffset}`),
       request<AuditEntry[]>(`audit?offset=${auditOffset}`),
       request<ImportReport[]>("imports"),
     ])
     setSnapshot(s)
+    setSavedPolicy(s.policy)
     setInventory(i)
-    setChats(c)
     setAudit(a)
     setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
-  }, [chatOffset, auditOffset])
+  }, [auditOffset])
+  const loadChats = useCallback(
+    async (signal: AbortSignal) => {
+      setChatsLoading(true)
+      setChatsError("")
+      try {
+        const result = await request<Chat[]>(`chats?offset=${chatOffset}`)
+        if (signal.aborted) return
+        setChats(result)
+        setKnownChats((previous) => [
+          ...new Map([...previous, ...result].map((c) => [c.id, c])).values(),
+        ])
+      } catch (error) {
+        if (!signal.aborted)
+          setChatsError(error instanceof Error ? error.message : "Could not load chats")
+      } finally {
+        if (!signal.aborted) setChatsLoading(false)
+      }
+    },
+    [chatOffset],
+  )
+  useEffect(() => {
+    if (!session) return
+    const controller = new AbortController()
+    void loadChats(controller.signal)
+    return () => controller.abort()
+  }, [session, loadChats])
   useEffect(() => {
     const capture = () => {
       const params = new URLSearchParams(window.location.hash.slice(1))
@@ -734,7 +804,7 @@ function App() {
   const update = (policy: Policy) => {
     if (snapshot) {
       setSnapshot({ ...snapshot, policy })
-      setDirty(true)
+      setDirty(JSON.stringify(policy) !== JSON.stringify(savedPolicy))
     }
   }
   if (session === undefined)
@@ -787,6 +857,7 @@ function App() {
     )
   const policy = snapshot.policy
   const selected = policy.chats[chat]
+  const changes = policyChanges(savedPolicy ?? policy, policy)
   return (
     <main aria-busy={busy}>
       <Flex justify="between" align="center" wrap="wrap" gap="3">
@@ -832,7 +903,7 @@ function App() {
           <Button
             key={p}
             aria-current={page === p ? "page" : undefined}
-            variant={page === p ? "solid" : "soft"}
+            variant="ghost"
             onClick={() => setPage(p)}
           >
             {p}
@@ -848,12 +919,18 @@ function App() {
           </Callout.Text>
         </Callout.Root>
       )}
-      <Flex gap="3" align="center" wrap="wrap">
+      <Flex
+        className="pending-bar"
+        gap="3"
+        align="center"
+        wrap="wrap"
+        aria-label="Save status and pending changes"
+      >
         <Badge role="status" color={snapshot.status === "applied" ? "green" : "orange"}>
           {busy
             ? "Saving or checking…"
             : snapshot.status === "applied" && snapshot.revision === snapshot.applied
-              ? "All changes applied."
+              ? "Saved revision applied."
               : snapshot.status === "failed"
                 ? "Saved, but application failed. Retry application."
                 : "Saved changes are waiting to apply."}
@@ -862,14 +939,28 @@ function App() {
           <summary>Revision details</summary>Saved {snapshot.revision} · Applied {snapshot.applied}{" "}
           · {snapshot.status}
         </details>
-        {dirty && <Badge color="orange">Unsaved changes</Badge>}
+        {dirty && <Badge color="orange">{changes.length} pending policy changes</Badge>}
+        {dirty && (
+          <details>
+            <summary>Review pending policy changes</summary>
+            <ul>
+              {changes.map((change) => (
+                <li key={change}>{change}</li>
+              ))}
+            </ul>
+            <Text as="p" size="2">
+              Applying saves all policy changes listed here, not MCP connection or authentication
+              drafts.
+            </Text>
+          </details>
+        )}
         {mcpDirty && <Badge color="orange">Pending MCP configuration</Badge>}
         {providerPending && (
           <Badge color="orange">Pending provider selection or authentication</Badge>
         )}
         <AlertDialog.Root>
           <AlertDialog.Trigger>
-            <Button disabled={busy || !dirty || localPending}>Save settings</Button>
+            <Button disabled={busy || !dirty || localPending}>Apply policy changes</Button>
           </AlertDialog.Trigger>
           <AlertDialog.Content>
             <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
@@ -923,11 +1014,13 @@ function App() {
             onClick={() => {
               if (
                 window.confirm("Discard pending policy edits? Other editor drafts stay unchanged.")
-              )
-                void run(load)
+              ) {
+                setSnapshot({ ...snapshot, policy: savedPolicy ?? policy })
+                setDirty(false)
+              }
             }}
           >
-            Discard edits and reload
+            Discard policy changes
           </Button>
         )}
       </Flex>
@@ -937,15 +1030,15 @@ function App() {
           included in policy changes yet.
         </Text>
       )}
-      <Text as="p" size="2">
-        Save settings submits policy edits from all sections. MCP connections, model selection, and
-        authentication use separate actions. Switching sections keeps drafts.
-      </Text>
-      <Text as="p" size="2">
-        Global allowed capabilities → shared defaults → chat overrides. Availability limits
-        selection; authorization also requires chat access and tool permission. Defaults do not
-        grant chat access.
-      </Text>
+      <details className="save-help">
+        <summary>How saving works</summary>
+        <Text as="p" size="2">
+          Apply policy changes saves chat overrides, access lists, defaults, global availability,
+          and custom endpoint policy edits across sections. MCP connections, provider model
+          selection, and authentication use separate actions. Switching sections keeps drafts.
+          Defaults do not grant access.
+        </Text>
+      </details>
       {accessToken && (
         <AccessApproval
           key={accessToken}
@@ -963,73 +1056,35 @@ function App() {
       </Heading>
       <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
         <section hidden={page !== "Chats"} aria-label="Chat settings">
-          <SearchChoice
-            label="Known chat"
-            value={chat}
-            options={chats.map((c) => ({
-              id: String(c.id),
-              label: c.name && c.name !== String(c.id) ? c.name : `Unnamed ${c.type}`,
-              detail: `${c.type} · ${c.id}`,
-            }))}
-            onChange={setChat}
-          />
-          <Text as="p" size="2">
-            Search covers this page of observed chats. Use Next chats for more.
-          </Text>
-          {!chat && (
-            <Text as="p">
-              Select a chat to review inherited settings and set overrides. Access approval remains
-              separate.
-            </Text>
-          )}
-          <Flex gap="2">
-            <Button
-              variant="soft"
-              disabled={busy || chatOffset === 0 || pending}
-              onClick={() => setChatOffset(Math.max(0, chatOffset - 100))}
-            >
-              Previous chats
-            </Button>
-            <Button
-              variant="soft"
-              disabled={busy || chats.length < 100 || pending}
-              onClick={() => setChatOffset(chatOffset + 100)}
-            >
-              Next chats
-            </Button>
-          </Flex>
-          <details>
-            <summary>Configure a chat before its first message</summary>
-            <Text as="p" size="2">
-              Enter its Telegram ID. This creates settings, not access approval.
-            </Text>
-            <Field
-              label="Chat ID (can configure before first message)"
-              value={chat}
-              onChange={setChat}
-            />
-          </details>
-          {chat && (
-            <div>
-              <Heading size="4">
-                {chats.find((c) => String(c.id) === chat)?.name === chat
-                  ? "Unnamed chat"
-                  : chats.find((c) => String(c.id) === chat)?.name || "Chat configuration"}
-              </Heading>
-              <Text as="p" size="2">
-                {chats.find((c) => String(c.id) === chat)?.type ?? "Not yet observed"} · {chat}
-              </Text>
-            </div>
-          )}
-          {chat && /^-?[1-9]\d*$/.test(chat) && (
+          <ChatWorkspace
+            active={page === "Chats"}
+            chats={chats}
+            knownChats={knownChats}
+            chat={chat}
+            onSelect={setChat}
+            policy={policy}
+            savedPolicy={savedPolicy ?? policy}
+            inventory={inventory}
+            offset={chatOffset}
+            loading={chatsLoading}
+            error={chatsError}
+            onPage={setChatOffset}
+            onRetry={() => void loadChats(new AbortController().signal)}
+            onAccess={() => {
+              setAccessTarget(chat)
+              setPage("Access")
+            }}
+            onProviders={() => setPage("Model Providers")}
+            onTools={() => setPage("Tools / MCP")}
+          >
             <Card>
               <Check
                 label="Chat enabled"
                 checked={selected?.enabled !== false}
-                onChange={(v) =>
+                onChange={(enabled) =>
                   update({
                     ...policy,
-                    chats: { ...policy.chats, [chat]: { ...inherit, ...selected, enabled: v } },
+                    chats: { ...policy.chats, [chat]: { ...inherit, ...selected, enabled } },
                   })
                 }
               />
@@ -1038,45 +1093,38 @@ function App() {
                 value={selected ?? inherit}
                 policy={policy}
                 inventory={inventory}
-                onChange={(v) =>
+                onChange={(value) =>
                   update({
                     ...policy,
                     chats: {
                       ...policy.chats,
-                      [chat]: { ...v, enabled: selected?.enabled ?? true },
+                      [chat]: { ...value, enabled: selected?.enabled ?? true },
                     },
                   })
                 }
               />
-              <Text as="p">
-                Chat switch: {selected ? "Customized" : "Default"} ·{" "}
-                {selected?.enabled === false ? "Disabled" : "Enabled"}. Access in current settings:{" "}
-                {(Number(chat) > 0 ? policy.privateUsers : policy.groups).includes(Number(chat))
-                  ? "Approved"
-                  : "Not approved"}
-                . Manage approval on Access. Capability selections do not grant access.
-              </Text>
-              <details>
-                <summary>Saved effective settings (before pending edits)</summary>
-                <pre>
-                  {JSON.stringify(
-                    chats.find((c) => String(c.id) === chat)?.effective ??
-                      "Available after saving and reload",
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
             </Card>
-          )}
-          {!chats.length && (
-            <Text>No chats observed. You can configure a Telegram ID directly.</Text>
-          )}
+          </ChatWorkspace>
         </section>
         <section hidden={page !== "Access"} aria-label="Access settings">
+          {accessTarget && (
+            <Card>
+              <Heading size="3">Access for chat {accessTarget}</Heading>
+              <Text as="p">
+                Review its access entry below. If approval is missing, add this ID to the
+                appropriate list. Approval requires Apply policy changes.
+              </Text>
+              <Button variant="soft" onClick={() => setPage("Chats")}>
+                Back to chat details
+              </Button>
+              <Button variant="ghost" onClick={() => setAccessTarget("")}>
+                Show all access entries
+              </Button>
+            </Card>
+          )}
           <Text as="p">
             {policy.privateUsers.length} private users · {policy.groups.length} groups or channels
-            approved in current settings. Changes remain pending until Save settings.
+            approved in the policy draft. Changes remain pending until Apply policy changes.
           </Text>
           <Text as="p">
             Private-message approval does not grant access in any group. Import history never grants
@@ -1097,7 +1145,9 @@ function App() {
             onPending={(v) => markPending("users", v)}
             label="Private-message access"
             values={policy.privateUsers}
-            chats={chats}
+            chats={knownChats}
+            savedValues={savedPolicy?.privateUsers ?? policy.privateUsers}
+            target={accessTarget}
             positive
             onChange={(values) => update({ ...policy, privateUsers: values })}
           />
@@ -1106,7 +1156,9 @@ function App() {
             onPending={(v) => markPending("groups", v)}
             label="Group and channel access"
             values={policy.groups}
-            chats={chats}
+            chats={knownChats}
+            savedValues={savedPolicy?.groups ?? policy.groups}
+            target={accessTarget}
             positive={false}
             onChange={(values) => update({ ...policy, groups: values })}
           />
@@ -1135,7 +1187,7 @@ function App() {
                 Clear tool, MCP server, allowed model, model, and thinking overrides for all chats,
                 including chats outside the current page. Explicit empty lists will also inherit
                 Defaults. Chat access and enabled switches stay unchanged. Future chats already
-                inherit Defaults. This stages edits only; use Save settings to apply them.
+                inherit Defaults. This stages edits only; use Apply policy changes to apply them.
               </AlertDialog.Description>
               <Flex gap="3" mt="4">
                 <AlertDialog.Cancel>
@@ -1448,17 +1500,19 @@ function App() {
           )}
         </section>
         <section hidden={page !== "Model Providers"}>
-          <Providers
-            snapshot={snapshot}
-            inventory={inventory}
-            csrf={session.csrf}
-            dirty={dirty || mcpDirty || localPending}
-            busy={busy}
-            run={run}
-            refresh={load}
-            error={error}
-            onPending={setProviderPending}
-          />
+          <SectionActive value={page === "Model Providers"}>
+            <Providers
+              snapshot={snapshot}
+              inventory={inventory}
+              csrf={session.csrf}
+              dirty={dirty || mcpDirty || localPending}
+              busy={busy}
+              run={run}
+              refresh={load}
+              error={error}
+              onPending={setProviderPending}
+            />
+          </SectionActive>
           <details className="provider-advanced">
             <summary>Custom endpoint</summary>
             <Text as="p" size="2">

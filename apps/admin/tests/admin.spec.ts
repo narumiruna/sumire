@@ -119,14 +119,16 @@ test("stages inheritance for all chat overrides without changing access or enabl
   const bulk = page.getByRole("button", { name: "Use Defaults for all chats", exact: true })
   await bulk.click()
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled()
+  await expect(
+    page.getByRole("button", { name: "Apply policy changes", exact: true }),
+  ).toBeDisabled()
   await bulk.click()
   await page.getByRole("button", { name: "Stage inheritance for all chats", exact: true }).click()
   expect(writes).toBe(0)
   await expect(bulk).toBeDisabled()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.getByRole("button", { name: "Save and apply", exact: true }).click()
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   expect(writes).toBe(1)
   expect(saved).toEqual({
     ...original,
@@ -178,7 +180,7 @@ for (const existing of [false, true]) {
       if (r.method() !== "GET") mutations.push(r.url())
     })
     await page.getByRole("button", { name: "Access", exact: true }).click()
-    await page.getByRole("button", { name: "Remove ID 42" }).click()
+    await page.getByRole("button", { name: "Revoke access for ID 42" }).click()
     await page.getByRole("button", { name: "Model Providers", exact: true }).click()
     await page.getByText("Custom endpoint", { exact: true }).click()
     if (existing)
@@ -186,7 +188,9 @@ for (const existing of [false, true]) {
     await page.getByLabel("Provider ID", { exact: true }).fill("abandoned")
     await page.getByLabel("Model ID (required for custom endpoint)").fill("abandoned-model")
     await page.getByRole("button", { name: "Add / update model", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled()
+    await expect(
+      page.getByRole("button", { name: "Apply policy changes", exact: true }),
+    ).toBeDisabled()
     await page.getByRole("button", { name: "Discard custom endpoint draft", exact: true }).click()
     await expect(page.getByLabel("Provider ID", { exact: true })).toHaveValue(
       existing ? "custom" : "",
@@ -195,13 +199,15 @@ for (const existing of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Edit model abandoned-model", exact: true }),
     ).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled()
-    await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Apply policy changes", exact: true }),
+    ).toBeEnabled()
+    await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
     await page.getByRole("button", { name: "Access", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Remove ID 42" })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Revoke access for ID 42" })).toHaveCount(0)
     expect(mutations).toEqual([])
     page.once("dialog", (dialog) => dialog.accept())
-    await page.getByRole("button", { name: "Discard edits and reload", exact: true }).click()
+    await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
     await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
     expect(
       await page.evaluate(() => {
@@ -307,7 +313,9 @@ for (const transport of ["stdio", "http"]) {
 test("unauthorized visitor sees only passkey sign-in", async ({ page }) => {
   await setup(page, false)
   await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Apply policy changes", exact: true })).toHaveCount(
+    0,
+  )
 })
 test("registers and signs in with a browser passkey without Telegram Web Login", async ({
   page,
@@ -433,10 +441,10 @@ test("edits private access and saves with a confirmation", async ({ page }) => {
   await page.getByRole("button", { name: "Access", exact: true }).click()
   await page.getByLabel("Private user ID to add").fill("43")
   await page.getByRole("button", { name: "Add ID to pending settings" }).first().click()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toBeVisible()
   await page.getByRole("button", { name: "Save and apply" }).click()
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
 })
 test("shows inherited chat settings and supported thinking levels", async ({ page }) => {
   await setup(page)
@@ -447,7 +455,7 @@ test("shows inherited chat settings and supported thinking levels", async ({ pag
   await expect(page.getByRole("option", { name: "low", exact: true })).toBeVisible()
   await expect(page.getByRole("option", { name: "high", exact: true })).toHaveCount(0)
   await page.getByRole("option", { name: "low", exact: true }).click()
-  await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
 })
 test("loads the saved bot provider, model, thinking level, and default state", async ({ page }) => {
   await setup(page)
@@ -619,7 +627,7 @@ test("searches built-in catalogs and adds only the selected model", async ({ pag
     revision: 1,
     policy: { ...policy, models: ["fixture/test", "fixture/other"] },
   })
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
 })
 
 test("sets a bot default only after explicit selection and confirmation", async ({ page }) => {
@@ -665,7 +673,7 @@ test("opens a single API-key method directly and preserves model selection after
   expect((await saving).postDataJSON()).toEqual({ key: "fixture-secret", revision: 1 })
   await expect(page.getByRole("dialog")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Configure authentication" }).click()
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("")
 })
@@ -739,7 +747,7 @@ test("opens account-only authentication directly and cancels it on Escape", asyn
   await page.keyboard.press("Escape")
   await expect(page.getByRole("dialog")).toHaveCount(0)
   expect(cancelled).toBe(true)
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeFocused()
 })
 
@@ -925,7 +933,7 @@ test("configures multiple custom models without exposing an existing key", async
   await page.getByRole("button", { name: "Add / update model" }).click()
   await page.getByLabel("Model ID (required for custom endpoint)").fill("two")
   await page.getByRole("button", { name: "Set provider configuration" }).click()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
   )
@@ -947,10 +955,10 @@ test("retains edits and reports revision conflicts", async ({ page }) => {
   })
   await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
   await page.getByRole("checkbox", { name: "bash", exact: true }).check()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.getByRole("button", { name: "Save and apply" }).click()
   await expect(page.getByRole("alert")).toContainText("Settings changed")
-  await expect(page.getByText("Unsaved changes", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
   await expect(page.getByRole("checkbox", { name: "bash", exact: true })).toBeChecked()
 })
 
@@ -1047,10 +1055,12 @@ test("supports narrow layouts and keyboard dialog cancellation", async ({ page }
   await setup(page)
   await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
   await page.getByRole("checkbox", { name: "bash", exact: true }).check()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.keyboard.press("Escape")
   await expect(page.getByRole("alertdialog")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeFocused()
+  await expect(
+    page.getByRole("button", { name: "Apply policy changes", exact: true }),
+  ).toBeFocused()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
@@ -1069,7 +1079,7 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
   await page.getByLabel("MCP server name").fill("draft-server")
   await page.getByRole("button", { name: "Model Providers", exact: true }).click()
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeDisabled()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText(
     "MCP connection edits and authentication are separate",
   )
@@ -1095,7 +1105,7 @@ test("distinguishes inherited, empty, and customized chat authorization", async 
   await expect(tools).toContainText("None allowed. This does not inherit the default.")
   await expect(tools).toContainText("Customized · Effective: None")
   const save = async () => {
-    await page.getByRole("button", { name: "Save settings", exact: true }).click()
+    await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
     const pending = page.waitForRequest(
       (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
     )
@@ -1128,8 +1138,8 @@ test("validates access rows without approving history or restoring removals", as
   await page.getByRole("button", { name: "Add ID to pending settings" }).first().click()
   await expect(page.getByRole("alert")).toContainText("positive whole-number")
   await page.getByLabel("Private user ID to add").fill("")
-  await page.getByRole("button", { name: "Remove ID 42", exact: true }).click()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
   )
@@ -1306,14 +1316,14 @@ test("locks configuration inputs while policy submission is in flight", async ({
     await route.fallback()
   })
   await page.getByRole("button", { name: "Access", exact: true }).click()
-  await page.getByRole("button", { name: "Remove ID 42" }).click()
-  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Revoke access for ID 42" }).click()
+  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.getByRole("button", { name: "Save and apply", exact: true }).click()
   await expect(page.getByLabel("Private user ID to add")).toBeDisabled()
   await expect(page.getByText("Saving or checking…", { exact: true })).toBeVisible()
   finish()
   await expect(page.getByLabel("Private user ID to add")).toBeEnabled()
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
 })
 
 test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ page }) => {
@@ -1388,7 +1398,7 @@ for (const control of ["Reasoning supported", "Image input supported", "API"] as
     await warning.dismiss()
     await signingOut
     await page.getByRole("button", { name: "Set provider configuration", exact: true }).click()
-    await page.getByRole("button", { name: "Save settings", exact: true }).click()
+    await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
     const saving = page.waitForRequest(
       (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
     )
@@ -1566,8 +1576,255 @@ for (const method of ["PUT", "DELETE"] as const) {
     }
     await checkDraft()
     await page.getByRole("button", { name: "Retry application", exact: true }).click()
-    await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
     await checkDraft()
     expect(attempts).toBe(1)
+  })
+}
+
+for (const destination of ["Access", "Model Providers"]) {
+  test(`closes the known-chat portal on navigation to ${destination} without moving focus to a hidden trigger`, async ({
+    page,
+  }) => {
+    await setup(page)
+    const trigger = page.getByRole("button", { name: "Known chat", exact: true })
+    await trigger.click()
+    await expect(page.getByRole("dialog", { name: "Choose known chat" })).toBeVisible()
+    const navigation = page.getByRole("button", { name: destination, exact: true })
+    await navigation.click()
+    await expect(page.getByRole("dialog", { name: "Choose known chat" })).toHaveCount(0)
+    await expect(navigation).toBeFocused()
+    await page.getByRole("button", { name: "Chats", exact: true }).click()
+    await expect(trigger).toBeVisible()
+    await expect(page.getByRole("dialog", { name: "Choose known chat" })).toHaveCount(0)
+  })
+}
+
+test("dismisses chat search with Escape and outside click, restoring focus for Escape", async ({
+  page,
+}) => {
+  await setup(page)
+  const trigger = page.getByRole("button", { name: "Known chat", exact: true })
+  await trigger.click()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog", { name: "Choose known chat" })).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await page.getByRole("heading", { name: "Find a chat", exact: true }).click()
+  await expect(page.getByRole("dialog", { name: "Choose known chat" })).toHaveCount(0)
+})
+
+test("closes provider search on navigation without clearing its model draft", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseModel(page)
+  await page.getByRole("button", { name: "Provider", exact: true }).click()
+  await page.getByRole("button", { name: "Chats", exact: true }).click()
+  await expect(page.getByRole("dialog", { name: "Choose provider", exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+})
+
+test("shows truthful chat search scope, unknown names, and no-results states on a narrow viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setup(page)
+  await page.route("**/api/chats?*", (route) =>
+    route.fulfill({
+      json: [
+        { id: 42, name: "42", type: "private" },
+        { id: -100, name: "", type: "supergroup" },
+      ],
+    }),
+  )
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "Select a chat", exact: true })).toBeVisible()
+  await expect(page.getByText("Search covers this page", { exact: false })).toBeVisible()
+  const search = page.getByLabel("Search this page", { exact: true })
+  await search.fill("missing")
+  await expect(page.getByText("No chats match on this page.", { exact: false })).toBeVisible()
+  await search.fill("-100")
+  const row = page.getByRole("button").filter({ hasText: "Unnamed supergroup" })
+  await row.focus()
+  await page.keyboard.press("Enter")
+  const detail = page.getByRole("region", { name: "Chat details" })
+  await expect(detail.getByRole("heading", { name: "Unnamed supergroup" })).toBeVisible()
+  await expect(detail).toContainText("Access approval is missing.")
+  await expect(detail).toContainText("Configured locally; remote authentication not checked here.")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await detail.getByRole("button", { name: "Review access approval" }).click()
+  await expect(page.getByRole("heading", { name: "Access for chat -100" })).toBeVisible()
+  await expect(page.getByLabel("Search group and channel access")).toHaveValue("-100")
+})
+
+test("summarizes effective draft states without remote checks or implicit writes", async ({
+  page,
+}) => {
+  await setup(page)
+  const writes: string[] = []
+  page.on("request", (r) => {
+    if (r.method() !== "GET") writes.push(r.url())
+  })
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        policy: {
+          ...policy,
+          chats: {
+            "42": {
+              tools: [],
+              servers: null,
+              models: null,
+              model: null,
+              thinking: null,
+              enabled: false,
+            },
+          },
+        },
+      },
+    }),
+  )
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({
+      json: { ...inventory, providers: [{ ...inventory.providers[0], configured: false }] },
+    }),
+  )
+  await page.reload()
+  await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+  const detail = page.getByRole("region", { name: "Chat details" })
+  await expect(detail).toContainText("Not allowed")
+  await expect(detail).toContainText("None · Explicit override")
+  await expect(detail).toContainText("fixture/test · Shared default")
+  await expect(detail).toContainText("Model authentication is not configured.")
+  await expect(detail.getByRole("button", { name: "Configure authentication" })).toBeVisible()
+  await detail.getByRole("checkbox", { name: "Chat enabled", exact: true }).check()
+  await expect(detail).toContainText("Policy draft preview")
+  await expect(detail).toContainText("Saved access: Not allowed")
+  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  page.once("dialog", (dialog) => dialog.accept())
+  await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
+  await expect(
+    detail.getByRole("checkbox", { name: "Chat enabled", exact: true }),
+  ).not.toBeChecked()
+  expect(writes).toEqual([])
+})
+
+test("paginates chats without reloading settings or dropping cross-section drafts", async ({
+  page,
+}) => {
+  await setup(page)
+  const first = Array.from({ length: 100 }, (_, i) => ({
+    id: i + 1,
+    name: `Chat ${i + 1}`,
+    type: "private",
+  }))
+  await page.route("**/api/chats?*", (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("offset") === "100"
+          ? [{ id: 101, name: "Next page chat", type: "private" }]
+          : first,
+    }),
+  )
+  await page.reload()
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  await page.getByRole("button", { name: "Chats", exact: true }).click()
+  await page.getByRole("button", { name: "Next chats", exact: true }).click()
+  await expect(page.getByRole("button").filter({ hasText: "Next page chat" })).toBeVisible()
+  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await expect(page.getByText("Pending revocation", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Undo revocation for 42", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "Apply policy changes", exact: true }),
+  ).toBeDisabled()
+})
+
+test("policy discard leaves provider and MCP drafts unchanged", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await chooseModel(page)
+  await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+  await page.getByLabel("MCP server name", { exact: true }).fill("local-draft")
+  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  page.once("dialog", (dialog) => dialog.accept())
+  await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "Revoke access for ID 42", exact: true }),
+  ).toBeVisible()
+  await page.getByRole("button", { name: "Tools / MCP", exact: true }).click()
+  await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("local-draft")
+  await page.getByRole("button", { name: "Model Providers", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+})
+
+test("handles chat loading, errors, retry, and empty results independently of settings", async ({
+  page,
+}) => {
+  await setup(page)
+  let finish!: () => void
+  const wait = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  await page.route("**/api/chats?*", async (route) => {
+    await wait
+    await route.fulfill({ status: 500, json: { error: "Chat list unavailable" } })
+  })
+  await page.reload()
+  await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Access", exact: true })).toBeEnabled()
+  finish()
+  await expect(page.getByRole("alert")).toContainText("Chat list unavailable")
+  await page.route("**/api/chats?*", (route) => route.fulfill({ json: [] }))
+  await page.getByRole("button", { name: "Retry chats", exact: true }).click()
+  await expect(page.getByText("No chats observed on this page.", { exact: false })).toBeVisible()
+})
+
+for (const missingProvider of [false, true]) {
+  test(`distinguishes ${missingProvider ? "unknown authentication" : "disabled model provider"} from verified failure`, async ({
+    page,
+  }) => {
+    await setup(page)
+    await page.route("**/api/inventory", (route) =>
+      route.fulfill({
+        json: { ...inventory, providers: missingProvider ? [] : inventory.providers },
+      }),
+    )
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({
+        json: {
+          revision: 1,
+          applied: 1,
+          status: "applied",
+          policy: {
+            ...policy,
+            providers: missingProvider ? [] : [{ id: "fixture", enabled: false, models: [] }],
+          },
+        },
+      }),
+    )
+    await page.reload()
+    await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+    const detail = page.getByRole("region", { name: "Chat details" })
+    await expect(detail).toContainText(
+      missingProvider
+        ? "Configuration status unknown; remote authentication not checked here."
+        : "No allowed model",
+    )
+    await expect(
+      detail.getByRole("button", {
+        name: missingProvider ? "Review authentication configuration" : "Configure model",
+        exact: true,
+      }),
+    ).toBeVisible()
+    await expect(detail).not.toContainText("Authentication failed")
   })
 }

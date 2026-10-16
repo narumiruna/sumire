@@ -166,7 +166,7 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
   await expect(page.getByText("<img src=x onerror=alert(1)> · supergroup · -100")).toBeVisible()
   await expect(page.locator("img")).toHaveCount(0)
   await page.getByRole("button", { name: "Approve chat", exact: true }).click()
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toHaveCount(0)
   await page.reload()
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
@@ -226,14 +226,18 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
   await page.getByRole("button", { name: "Access", exact: true }).click()
   const users = page.getByRole("group", { name: "Private-message access", exact: true })
   await expect(users.getByRole("listitem").filter({ hasText: "Alice" })).toContainText("42")
-  await expect(users.getByRole("listitem").filter({ hasText: "43" })).toHaveText("43Remove")
+  await expect(users.getByRole("listitem").filter({ hasText: "43" })).toHaveText(
+    "Name not known43Revoke access",
+  )
   const groups = page.getByRole("group", { name: "Group and channel access", exact: true })
   await expect(groups.getByRole("listitem").filter({ hasText: "-100" })).toContainText(
     "<img src=x onerror=alert(1)>",
   )
-  await expect(groups.getByRole("listitem").filter({ hasText: "-200" })).toHaveText("-200Remove")
+  await expect(groups.getByRole("listitem").filter({ hasText: "-200" })).toHaveText(
+    "Name not known-200Revoke access",
+  )
   await expect(page.locator("img")).toHaveCount(0)
-  await users.getByRole("button", { name: "Remove ID 42", exact: true }).click()
+  await users.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
   await expect(users.getByText("Alice", { exact: true })).toHaveCount(0)
 })
 
@@ -325,6 +329,6 @@ test("requires renewed review on conflict and displays failed runtime applicatio
     page.getByText("Saved, but application failed. Retry application.", { exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "Retry application" }).click()
-  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   expect(f.state().approvals).toBe(2)
 })
