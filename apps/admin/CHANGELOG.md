@@ -1,5 +1,14 @@
 # @narumitw/sumire-admin
 
+## 0.3.1
+
+### Patch Changes
+
+- 0bd4846: Extract shared management API contracts and policy schemas and rules into private workspace packages. Remove administration frontend imports of bot source, and update dependency builds, Docker stages, and CI.
+- Updated dependencies [0bd4846]
+  - @narumitw/sumire-contracts@0.2.0
+  - @narumitw/sumire-policy@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes

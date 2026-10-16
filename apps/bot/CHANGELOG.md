@@ -1,5 +1,18 @@
 # @narumitw/sumire
 
+## 0.10.1
+
+### Patch Changes
+
+- d97aaab: Rename the URL library and CLI to `@narumitw/sumire-url-reader` and `sumire-url-reader`, and rename the Pi integration to `@narumitw/sumire-pi-url-reader`. Move both URL skills into the Pi package and resolve the CLI through its declared library dependency. Update bot imports, Docker stages, and CI paths. Keep `read_url_content`, skill names, loader behavior, and source metadata unchanged. Hosts must update package imports and use the Pi package's `urlReaderSkillsPath` instead of the former skill path exports.
+- 0bd4846: Extract shared management API contracts and policy schemas and rules into private workspace packages. Remove administration frontend imports of bot source, and update dependency builds, Docker stages, and CI.
+- Updated dependencies [d97aaab]
+- Updated dependencies [0bd4846]
+  - @narumitw/sumire-url-reader@0.24.0
+  - @narumitw/sumire-pi-url-reader@0.5.0
+  - @narumitw/sumire-contracts@0.2.0
+  - @narumitw/sumire-policy@0.2.0
+
 ## 0.10.0
 
 ### Minor Changes
