@@ -12,6 +12,9 @@ afterEach(async () => {
 })
 const miyu = { id: 1234, is_bot: true, username: "miyuyo_bot", first_name: "Miyu" }
 const chat = { id: -100, type: "supergroup" as const, title: "News" }
+const administrator = { status: "administrator", user: miyu } as Awaited<
+  ReturnType<Api["getChatMember"]>
+>
 const botInfo: UserFromGetMe = {
   id: 999,
   is_bot: true,
@@ -43,7 +46,7 @@ async function setup() {
   const api = new Api("123:fixture")
   vi.spyOn(api, "getChat").mockResolvedValue(chat as Awaited<ReturnType<Api["getChat"]>>)
   vi.spyOn(api, "getChatAdministrators").mockResolvedValue([])
-  const member = vi.spyOn(api, "getChatMember").mockResolvedValue({ status: "member", user: miyu })
+  const member = vi.spyOn(api, "getChatMember").mockResolvedValue(administrator)
   const send = vi.spyOn(api, "sendMessage").mockResolvedValue(message(10, "request"))
   host = new TelegramMiyuNews(api, fixture.factory.control, fixture.logger)
   host.observe(message(1, "identity"))
@@ -63,7 +66,7 @@ describe("Miyu bot integration", () => {
       "miyu_cna_news",
     )
 
-    member.mockResolvedValue({ status: "member", user: miyu })
+    member.mockResolvedValue(administrator)
     fixture.enqueueAnswer()
     await session.prompt("Check available tools again")
     expect(session.getActiveToolNames()).toContain("miyu_cna_news")
@@ -75,6 +78,19 @@ describe("Miyu bot integration", () => {
     member.mockResolvedValue({ status: "left", user: miyu })
     fixture.enqueueAnswer()
     await session.prompt("Miyu left")
+    expect(session.getActiveToolNames()).not.toContain("miyu_cna_news")
+    expect(session.nativeTools.map((tool) => tool.name)).not.toContain("miyu_cna_news")
+    expect(fixture.requests.at(-1)?.tools.map((tool) => tool.function.name)).not.toContain(
+      "miyu_cna_news",
+    )
+    member.mockResolvedValue(administrator)
+    fixture.enqueueAnswer()
+    await session.prompt("Miyu is an administrator again")
+    expect(session.getActiveToolNames()).toContain("miyu_cna_news")
+
+    member.mockResolvedValue({ status: "member", user: miyu })
+    fixture.enqueueAnswer()
+    await session.prompt("Miyu is no longer an administrator")
     expect(session.getActiveToolNames()).not.toContain("miyu_cna_news")
     expect(session.nativeTools.map((tool) => tool.name)).not.toContain("miyu_cna_news")
     expect(fixture.requests.at(-1)?.tools.map((tool) => tool.function.name)).not.toContain(

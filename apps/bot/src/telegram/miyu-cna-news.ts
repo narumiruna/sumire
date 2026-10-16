@@ -79,10 +79,8 @@ export class TelegramMiyuNews {
     return (
       this.control.allowsTool(chatId, toolName) &&
       isMiyu(member.user) &&
-      (member.status === "creator" ||
-        member.status === "administrator" ||
-        member.status === "member" ||
-        (member.status === "restricted" && member.is_member))
+      // Plain bot mentions require the receiving bot to be a group administrator.
+      (member.status === "creator" || member.status === "administrator")
     )
   }
 }

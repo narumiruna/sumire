@@ -20,7 +20,9 @@ function setup() {
   const getChatAdministrators = vi.spyOn(api, "getChatAdministrators").mockResolvedValue([])
   const getChatMember = vi
     .spyOn(api, "getChatMember")
-    .mockResolvedValue({ status: "member", user: miyu })
+    .mockResolvedValue({ status: "administrator", user: miyu } as Awaited<
+      ReturnType<Api["getChatMember"]>
+    >)
   const sendMessage = vi
     .spyOn(api, "sendMessage")
     .mockResolvedValue({ ...message({ message_id: 10 }), text: "request" })
@@ -58,6 +60,31 @@ describe("Telegram Miyu news transport", () => {
     f.client.observe(message())
     f.getChatMember.mockResolvedValue({ status: "left", user: miyu })
     expect(await f.client.createTool(-100)).toBeUndefined()
+    expect(f.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { status: "member" as const, user: miyu },
+    { status: "restricted" as const, user: miyu, is_member: true },
+  ])("does not offer the tool for $status status", async (member) => {
+    const f = setup()
+    f.client.observe(message())
+    f.getChatMember.mockResolvedValue(member as Awaited<ReturnType<Api["getChatMember"]>>)
+    expect(await f.client.createTool(-100)).toBeUndefined()
+    expect(f.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { status: "member" as const, user: miyu },
+    { status: "restricted" as const, user: miyu, is_member: true },
+  ])("refuses a previously offered tool after demotion to $status", async (member) => {
+    const f = setup()
+    f.client.observe(message())
+    const tool = await toolOf(f.client)
+    f.getChatMember.mockResolvedValue(member as Awaited<ReturnType<Api["getChatMember"]>>)
+    await expect(
+      tool.execute("call", { query: "今日新聞" }, undefined, undefined, undefined as never),
+    ).rejects.toThrow("not a confirmed member")
     expect(f.sendMessage).not.toHaveBeenCalled()
   })
 
