@@ -9,13 +9,13 @@ import {
   Flex,
   Heading,
   Popover,
-  Select,
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { useEffect, useId, useState } from "react"
+import { useContext, useEffect, useId, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
+import { SectionActive, SectionSelect as Select } from "./sections.js"
 
 type Option = { id: string; label: string; detail?: string }
 export function SearchChoice({
@@ -31,7 +31,11 @@ export function SearchChoice({
   disabled?: boolean
   onChange(value: string): void
 }) {
+  const sectionActive = useContext(SectionActive)
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!sectionActive) setOpen(false)
+  }, [sectionActive])
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const id = useId()
@@ -51,7 +55,7 @@ export function SearchChoice({
         {label}
       </Text>
       <Popover.Root
-        open={open}
+        open={open && sectionActive}
         onOpenChange={(v) => {
           setOpen(v)
           setQuery("")
@@ -65,7 +69,14 @@ export function SearchChoice({
               (value || `Choose ${label.toLowerCase()}`)}
           </Button>
         </Popover.Trigger>
-        <Popover.Content className="provider-search" aria-label={`Choose ${label.toLowerCase()}`}>
+        <Popover.Content
+          className="provider-search"
+          aria-label={`Choose ${label.toLowerCase()}`}
+          onCloseAutoFocus={(event) => {
+            // Navigation must keep focus on the destination, not a hidden trigger.
+            if (!sectionActive) event.preventDefault()
+          }}
+        >
           <TextField.Root
             role="combobox"
             aria-label={`Search ${label.toLowerCase()}`}
