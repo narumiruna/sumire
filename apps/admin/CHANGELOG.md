@@ -1,5 +1,21 @@
 # @narumitw/sumire-admin
 
+## 0.3.0
+
+### Minor Changes
+
+- dcd5173: Add a responsive chat-centric workspace with sidebar links, page-scoped search and filters, compatible chat deep links, effective policy summaries, contextual staged access actions, Model & Tools editing, and scoped audit history. Remove the obsolete chat selector, close remaining search popovers on navigation, preserve cross-section drafts, and show persistent scoped policy review, apply, discard, and pending access changes without changing backend save boundaries.
+  
+  Keep access undo and pending counts consistent. Refresh current chat metadata with Reload. Clear the session and sensitive drafts when a chat request returns 401. Clear cached chat metadata after sign-out.
+- cff5f69: Clarify administration save scopes and chat readiness, add guided MCP patch editing and redacted change previews, and provide filtered, grouped audit history with accessible controls.
+  
+  Keep MCP previews consistent with saved transports, clear audit errors after query recovery, and bind model-list check results to the checked endpoint settings.
+- 5e2fc04: Centralize global and shared-default tool permissions with retained-selection warnings. Separate MCP connections, replace duplicate Defaults editors with saved/draft summaries, and clarify the all-chat override reset. Preserve authorization rules, drafts, legacy section links, and separate saves.
+
+### Patch Changes
+
+- c9051b2: Prioritize chat setup blockers, compact effective settings and directory rows, and clarify provider authentication and separate model and policy save actions. Add browser coverage for tab navigation and responsive action layout.
+
 ## 0.2.0
 
 ### Minor Changes
