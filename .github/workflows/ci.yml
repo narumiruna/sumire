@@ -9,6 +9,9 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"
       - "apps/bot/**"
+      - "apps/admin/**"
+      - "packages/contracts/**"
+      - "packages/policy/**"
       - "package.json"
       - "package-lock.json"
       - "packages/login/**"
@@ -22,6 +25,9 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"
       - "apps/bot/**"
+      - "apps/admin/**"
+      - "packages/contracts/**"
+      - "packages/policy/**"
       - "package.json"
       - "package-lock.json"
       - "packages/login/**"
@@ -49,4 +55,4 @@ jobs:
       - name: Test
         run: npm test
       - name: Build
-        run: npm run build --workspace @narumitw/sumire
+        run: npm run build

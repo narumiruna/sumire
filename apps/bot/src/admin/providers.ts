@@ -1,8 +1,9 @@
 import type { Api, AuthEvent, AuthPrompt, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import type { Inventory } from "@narumitw/sumire-contracts"
+import { effectivePolicy, type Policy, type ProviderSettings } from "@narumitw/sumire-policy"
 import { assertPublicUrl, readResponseBytes, safeFetch } from "@narumitw/sumire-url-content/network"
-import { effectivePolicy, type Policy, type ProviderSettings } from "./policy.js"
 import { AdminError, type AdminStore, token } from "./store.js"
 
 /** Public endpoint fetch with DNS validation at connect time and no credential-bearing redirects. */
@@ -127,7 +128,7 @@ export class ProviderAdmin {
       })
     }
   }
-  inventory() {
+  inventory(): Inventory["providers"] {
     return this.runtime.getProviders().map((p) => ({
       id: p.id,
       name: p.name,

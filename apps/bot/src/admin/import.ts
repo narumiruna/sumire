@@ -7,8 +7,8 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
+import { inherited, thinkingSchema } from "@narumitw/sumire-policy"
 import { z } from "zod"
-import { inherited, thinkingSchema } from "./policy.js"
 import type { AdminStore } from "./store.js"
 
 /** Read a consistent copy through Pi's storage API; never open a scheduler or modify the source. */

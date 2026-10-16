@@ -2,14 +2,14 @@ import { createHash, randomBytes } from "node:crypto"
 import { chmodSync, mkdirSync } from "node:fs"
 import path from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import type { AuditFilters } from "./audit-query.js"
+import type { AuditEntry, Chat, Snapshot } from "@narumitw/sumire-contracts"
 import {
   effectivePolicy,
   initialPolicy,
-  type Policy,
   policySchema,
   validateReferences,
-} from "./policy.js"
+} from "@narumitw/sumire-policy"
+import type { AuditFilters } from "./audit-query.js"
 
 export class AdminError extends Error {
   constructor(
@@ -23,13 +23,7 @@ export const sessionMaxAgeMs = 30 * 24 * 3600_000
 const sessionIdleTimeoutMs = 7 * 24 * 3600_000
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex")
 export const token = () => randomBytes(32).toString("base64url")
-export type Snapshot = {
-  revision: number
-  applied: number
-  status: string
-  policy: Policy
-  epoch: number
-}
+export type { Snapshot } from "@narumitw/sumire-contracts"
 
 /** One process owns this database. Secrets are never stored in audit values. */
 export class AdminStore {
@@ -184,10 +178,12 @@ export class AdminStore {
       )
       .run(id, type.slice(0, 32), name.slice(0, 128))
   }
-  listChats(offset: number) {
-    return this.db.prepare("SELECT * FROM chats ORDER BY id LIMIT 100 OFFSET ?").all(offset)
+  listChats(offset: number): Chat[] {
+    return this.db
+      .prepare("SELECT * FROM chats ORDER BY id LIMIT 100 OFFSET ?")
+      .all(offset) as Chat[]
   }
-  listAudit(offset: number, filters: AuditFilters = {}) {
+  listAudit(offset: number, filters: AuditFilters = {}): AuditEntry[] {
     const clauses: string[] = []
     const values: (string | number)[] = []
     for (const key of ["actor", "operation", "outcome"] as const) {
@@ -208,7 +204,7 @@ export class AdminStore {
       .prepare(
         `SELECT * FROM audit ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY id DESC LIMIT 100 OFFSET ?`,
       )
-      .all(...values, offset)
+      .all(...values, offset) as AuditEntry[]
   }
   createSession(actor: string, now = Date.now()) {
     this.prune(now)

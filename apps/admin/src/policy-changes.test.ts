@@ -1,5 +1,5 @@
+import { initialPolicy } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
-import { initialPolicy } from "../../bot/src/admin/policy.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 
 describe("policyChanges", () => {

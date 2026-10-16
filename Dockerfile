@@ -37,6 +37,8 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/admin/package.json apps/admin/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-content/package.json packages/url-content/package.json
@@ -45,6 +47,19 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
 # Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
+FROM dependencies AS policy-build
+
+COPY packages/policy/tsconfig*.json packages/policy/
+COPY packages/policy/src/ packages/policy/src/
+RUN npm run build --workspace @narumitw/sumire-policy
+
+FROM dependencies AS contracts-build
+
+COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
+COPY packages/contracts/tsconfig*.json packages/contracts/
+COPY packages/contracts/src/ packages/contracts/src/
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire-contracts
+
 FROM dependencies AS login-build
 
 COPY packages/login/tsconfig*.json packages/login/
@@ -73,6 +88,9 @@ RUN npm --ignore-scripts run build --workspace @narumitw/sumire-url-tool
 
 FROM dependencies AS build
 
+COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
+
 COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
 COPY --from=url-content-build /build/packages/url-content/dist /build/packages/url-content/dist
@@ -83,10 +101,12 @@ RUN npm --ignore-scripts run build --workspace @narumitw/sumire
 
 FROM dependencies AS admin-build
 
+COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
+
 COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html apps/admin/
 COPY apps/admin/src/ apps/admin/src/
-COPY apps/bot/src/admin/policy.ts apps/bot/src/admin/policy.ts
-RUN npm run build --workspace @narumitw/sumire-admin
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire-admin
 
 FROM dependencies AS production-dependencies
 
@@ -155,10 +175,14 @@ ENV NODE_ENV=production
 ENV PATH="/opt/audio/bin:/app/node_modules/.bin:${PATH}"
 
 COPY --from=production-dependencies --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/contracts/package.json /app/packages/contracts/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/policy/package.json /app/packages/policy/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
+COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
 COPY --from=url-content-build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist

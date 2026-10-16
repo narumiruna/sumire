@@ -1,5 +1,5 @@
+import { inherited, initialPolicy, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
-import { inherited, initialPolicy, validateReferences } from "../../bot/src/admin/policy.js"
 import type { Inventory, Policy } from "../src/api.js"
 
 async function navigate(page: Page, name: string) {

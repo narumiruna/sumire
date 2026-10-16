@@ -1,11 +1,12 @@
+import type { Chat } from "@narumitw/sumire-contracts"
+import { effectivePolicy } from "@narumitw/sumire-policy"
 import { Badge, Button, Card, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
-import { effectivePolicy } from "../../bot/src/admin/policy.js"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 
-export type Chat = { id: number; name: string; type: string }
+export type { Chat } from "@narumitw/sumire-contracts"
 export function chatName(chat: Chat) {
   return chat.name?.trim() && chat.name !== String(chat.id)
     ? chat.name

@@ -1,4 +1,5 @@
 import path from "node:path"
+import type { Inventory } from "@narumitw/sumire-contracts"
 import { z } from "zod"
 import { McpCapability } from "../agent/mcp-capability.js"
 import { MCP_MAX_SERVERS, parseMcpConfig } from "../agent/mcp-config.js"
@@ -105,7 +106,7 @@ export class McpAdmin {
   config() {
     return parseMcpConfig({ mcpServers: this.raw() }, { warn: () => {} })
   }
-  inventory() {
+  inventory(): Inventory["mcp"] {
     return Object.entries(this.raw()).map(([name, entry]) => ({
       name,
       fields: Object.keys(entry),

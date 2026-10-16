@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, expect, it, vi } from "vitest"
 import { ChatAccess } from "../src/admin/access.js"
-import { inherited } from "../src/admin/policy.js"
 import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
 const origin = "https://admin.example.test"
