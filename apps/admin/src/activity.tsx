@@ -1,15 +1,7 @@
+import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 import { Badge, Card, Heading, Text } from "@radix-ui/themes"
 
-export type AuditEntry = {
-  id: number
-  time: number
-  actor: string
-  operation: string
-  revision: number
-  outcome: string
-  target: string
-}
-export type ImportReport = { name: string; report: Record<string, unknown> }
+export type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 
 function failedImports(report: ImportReport["report"]) {
   return Array.isArray(report.failedChatIds) ? report.failedChatIds.length : 0

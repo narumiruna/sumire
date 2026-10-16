@@ -9,12 +9,12 @@ import type {
   AgentSessionEventListener,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent"
+import { inherited } from "@narumitw/sumire-policy"
 import {
   PROGRESS_TOOL_NAME,
   type ProgressStep,
   parseProgressDetails,
 } from "@narumitw/sumire-progress"
-import { inherited } from "../admin/policy.js"
 import type { AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"

@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { initialPolicy } from "../../src/admin/policy.js"
+import { initialPolicy } from "@narumitw/sumire-policy"
 import { AdminStore } from "../../src/admin/store.js"
 
 const stores = new Set<TestAdminStore>()

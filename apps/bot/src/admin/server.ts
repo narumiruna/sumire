@@ -1,12 +1,13 @@
 import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
+import type { ChatResponse, ImportReport, Inventory } from "@narumitw/sumire-contracts"
+import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import { z } from "zod"
 import { accessTokenPattern, ChatAccess } from "./access.js"
 import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import type { McpAdmin } from "./mcp.js"
-import { effectivePolicy, policySchema } from "./policy.js"
 import type { ProviderAdmin } from "./providers.js"
 import { AdminError, type AdminStore, digest, sessionMaxAgeMs } from "./store.js"
 
@@ -283,10 +284,12 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       reply(
         res,
         200,
-        store.listChats(offset(url)).map((c) => ({
-          ...c,
-          effective: effectivePolicy(store.snapshot().policy, Number(c.id)),
-        })),
+        store.listChats(offset(url)).map(
+          (c): ChatResponse => ({
+            ...c,
+            effective: effectivePolicy(store.snapshot().policy, Number(c.id)),
+          }),
+        ),
       )
       return
     }
@@ -301,7 +304,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         ],
         providers: providers.inventory(),
         mcp: mcp.inventory(),
-      })
+      } satisfies Inventory)
       return
     }
     if (url.pathname === "/api/imports" && method === "GET") {
@@ -309,7 +312,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         ...store.db
           .prepare("SELECT name,report FROM imports ORDER BY name")
           .all()
-          .map((row) => ({ name: row.name, report: JSON.parse(String(row.report)) })),
+          .map((row) => ({ name: row.name as string, report: JSON.parse(String(row.report)) })),
         ...store.db
           .prepare(
             "SELECT revision,actor,reviewed,decisions FROM access_reviews ORDER BY reviewed DESC,revision DESC LIMIT 10",
@@ -319,7 +322,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
             name: `environment-access:${row.revision}`,
             report: { ...row, decisions: JSON.parse(String(row.decisions)) },
           })),
-      ])
+      ] satisfies ImportReport[])
       return
     }
     const discoveryRoute = /^\/api\/mcp\/([A-Za-z0-9_-]{1,64})\/discover$/.exec(url.pathname)

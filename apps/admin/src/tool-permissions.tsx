@@ -1,6 +1,6 @@
+import { effectivePolicy } from "@narumitw/sumire-policy"
 import { Badge, Button, Callout, Card, Checkbox, Heading, Text } from "@radix-ui/themes"
 import { useEffect, useId, useRef } from "react"
-import { effectivePolicy } from "../../bot/src/admin/policy.js"
 import type { Inventory, Policy } from "./api.js"
 
 export function defaultPermissionSummary(policy: Policy) {

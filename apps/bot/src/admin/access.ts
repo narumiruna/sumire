@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { effectivePolicy } from "./policy.js"
+import { effectivePolicy } from "@narumitw/sumire-policy"
 import { AdminError, type AdminStore, digest } from "./store.js"
 
 export const accessTokenPattern = /^[a-f0-9]{64}$/

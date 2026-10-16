@@ -6,6 +6,8 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 
 | Path | Purpose |
 | --- | --- |
+| [`packages/contracts`](packages/contracts/README.md) | Shared management API data types. |
+| [`packages/policy`](packages/policy/README.md) | Shared policy schemas and authorization rules. |
 | [`apps/admin`](docs/admin-webui.md) | Passkey-authenticated Radix administration frontend, served by the bot. |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |

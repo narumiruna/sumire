@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest"
 import {
   effectivePolicy,
   inherited,
   initialPolicy,
   validateReferences,
-} from "../../bot/src/admin/policy.js"
+} from "@narumitw/sumire-policy"
+import { describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
 import { defaultPermissionSummary, permissionNames } from "./tool-permissions.js"
 
