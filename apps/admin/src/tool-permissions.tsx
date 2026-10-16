@@ -52,14 +52,15 @@ export function ToolPermissions({
   }, [defaultContext])
   return (
     <>
-      <Text as="p">
-        Global permission is the system-wide ceiling for every chat. Default chat permission applies
-        only to chats that inherit that category. Explicit chat overrides stay in chat details.
-      </Text>
-      <Text as="p">
-        Changes are policy drafts until Apply policy changes. Changing global permission never
-        clears default or chat selections.
-      </Text>
+      <Text as="p">Choose global and default permissions, then apply policy changes.</Text>
+      <details>
+        <summary>Permission rules and inheritance</summary>
+        <Text as="p">
+          Global permission is the system-wide ceiling. Defaults apply only to inheriting chats.
+          Explicit overrides stay in chat details. Global changes never clear stored selections. MCP
+          requires both server and individual tool permission.
+        </Text>
+      </details>
       <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="3" mt="3">
         Global and default chat permissions
       </Heading>
@@ -91,6 +92,12 @@ export function ToolPermissions({
               remains available below.
             </Text>
           )}
+          <div className="permission-matrix-heading" aria-hidden="true">
+            <strong>Tool / server</strong>
+            <strong>Global</strong>
+            <strong>Default</strong>
+            <strong>Effective result</strong>
+          </div>
           <div className="permission-list">
             {permissionNames(key, policy, saved, inventory).map((name, index) => {
               const id = `${prefix}-${key}-${index}`
@@ -164,16 +171,33 @@ export function ToolPermissions({
                       />
                       Default chat permission
                     </label>
+                  </div>
+                  <div>
+                    <Text as="p" size="2" weight="medium">
+                      Effective for inheriting chats
+                    </Text>
                     <Text as="p" size="2" id={`${id}-status`}>
                       {!global
                         ? "Unavailable globally"
                         : selected
-                          ? "Allowed for inheriting chats"
+                          ? servers.length
+                            ? "Tool permission selected; check MCP server gates below"
+                            : "Allowed for inheriting chats"
                           : "Not allowed for inheriting chats"}
                       {!global && selected
                         ? " · stored default selection retained; clear it explicitly to resolve the save conflict"
                         : ""}
                     </Text>
+                    {servers.map((server) => (
+                      <Text key={server.name} as="p" size="2">
+                        {server.name}:{" "}
+                        {policy.servers.includes(server.name) &&
+                        policy.defaults.servers?.includes(server.name)
+                          ? "Server gate selected for inheriting chats"
+                          : "Blocked by global or default server permission"}
+                        . Connection and chat approval remain separate.
+                      </Text>
+                    ))}
                   </div>
                   {removed && (
                     <Text as="p" size="2" color="orange" className="permission-impact">

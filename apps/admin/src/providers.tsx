@@ -174,6 +174,16 @@ export function Providers({
   const [login, setLogin] = useState<LoginState>()
   const [notice, setNotice] = useState("")
   const [discovered, setDiscovered] = useState<string[]>([])
+  const [credentialCheck, setCredentialCheck] = useState<{
+    provider: string
+    status: string
+    revision: number
+  }>()
+  const [discoveryCheck, setDiscoveryCheck] = useState<{
+    provider: string
+    status: string
+    revision: number
+  }>()
   const selected = inventory.providers.find((p) => p.id === provider)
   const selectedModel = selected?.models.find((m) => m.id === model)
   const custom = snapshot.policy.providers.find((p) => p.id === provider)
@@ -383,6 +393,12 @@ export function Providers({
           applying a model.
         </Text>
       )}
+      <ol className="provider-steps" aria-label="Provider setup steps">
+        <li>Configure credentials</li>
+        <li>Review check status</li>
+        <li>Choose model</li>
+        <li>Save model explicitly</li>
+      </ol>
       <Card mt="4">
         <Heading size="3">1. Provider and authentication</Heading>
         <SearchChoice
@@ -432,15 +448,29 @@ export function Providers({
                 disabled={blocked}
                 onClick={() =>
                   void run(async () => {
-                    const result = await request<{ configured: boolean }>(
-                      `providers/${provider}/test`,
-                      csrf,
-                    )
-                    setNotice(
-                      result.configured
-                        ? "Authentication is available. No tokens were generated."
-                        : "Authentication is not available. Check provider setup.",
-                    )
+                    try {
+                      const result = await request<{ configured: boolean }>(
+                        `providers/${provider}/test`,
+                        csrf,
+                      )
+                      setCredentialCheck({
+                        provider,
+                        revision: snapshot.revision,
+                        status: result.configured ? "Configured locally" : "Not configured",
+                      })
+                      setNotice(
+                        result.configured
+                          ? "Authentication is available. No tokens were generated."
+                          : "Authentication is not available. Check provider setup.",
+                      )
+                    } catch (error) {
+                      setCredentialCheck({
+                        provider,
+                        revision: snapshot.revision,
+                        status: "Check failed",
+                      })
+                      throw error
+                    }
                   })
                 }
               >
@@ -484,6 +514,20 @@ export function Providers({
                 </AlertDialog.Root>
               )}
             </Flex>
+            <Heading size="3" mt="3">
+              2. Check status
+            </Heading>
+            <Text as="p" size="2" role="status">
+              Local credential check:{" "}
+              {credentialCheck?.provider === provider &&
+              credentialCheck.revision === snapshot.revision
+                ? credentialCheck.status
+                : "Not checked"}
+            </Text>
+            <Text as="p" size="2">
+              Remote verification: Not checked. Local credential checks do not verify remote
+              acceptance.
+            </Text>
             <Text as="p" size="2" color="gray" mt="2">
               Model availability is unverified. Check authentication resolves credentials without
               generating model output. You can select and save a model before authentication.
@@ -493,7 +537,7 @@ export function Providers({
       </Card>
       {selected && (
         <Card mt="3">
-          <Heading size="3">2. Model</Heading>
+          <Heading size="3">3. Choose model</Heading>
           <SearchChoice
             label="Model"
             value={model}
@@ -531,7 +575,7 @@ export function Providers({
                       setDraft({ provider, model, thinking: v as Selection["thinking"] })
                     }
                   >
-                    <Select.Trigger id="provider-thinking" />
+                    <Select.Trigger id="provider-thinking" aria-label="Thinking level" />
                     <Select.Content>
                       {supported.map((level) => (
                         <Select.Item key={level} value={level}>
@@ -550,6 +594,7 @@ export function Providers({
               <label className="check" htmlFor="provider-default">
                 <Checkbox
                   id="provider-default"
+                  aria-label="Use as the bot default"
                   checked={useDefault}
                   onCheckedChange={(v) => {
                     setDraft(draft ?? saved)
@@ -568,6 +613,9 @@ export function Providers({
                   Selection matches current settings. No model change is needed.
                 </Text>
               )}
+              <Heading size="3" mt="3">
+                4. Save model
+              </Heading>
               <AlertDialog.Root>
                 <AlertDialog.Trigger>
                   <Button
@@ -635,12 +683,33 @@ export function Providers({
                 disabled={blocked || !custom.api?.startsWith("openai-")}
                 onClick={() =>
                   void run(async () => {
-                    setDiscovered(await request<string[]>(`providers/${provider}/discover`, csrf))
+                    try {
+                      setDiscovered(await request<string[]>(`providers/${provider}/discover`, csrf))
+                      setDiscoveryCheck({
+                        provider,
+                        revision: snapshot.revision,
+                        status: "Verified — bounded model-list request only, not model execution",
+                      })
+                    } catch (error) {
+                      setDiscoveryCheck({
+                        provider,
+                        revision: snapshot.revision,
+                        status: "Check failed",
+                      })
+                      throw error
+                    }
                   })
                 }
               >
                 Discover custom models
               </Button>
+              <Text as="p" role="status">
+                Model-list check:{" "}
+                {discoveryCheck?.provider === provider &&
+                discoveryCheck.revision === snapshot.revision
+                  ? discoveryCheck.status
+                  : "Not checked"}
+              </Text>
               {discovered.length > 0 && (
                 <ul>
                   {discovered.map((id) => (
@@ -743,7 +812,7 @@ export function Providers({
                   <label htmlFor="provider-answer">
                     Login option
                     <Select.Root disabled={busy} value={answer} onValueChange={setAnswer}>
-                      <Select.Trigger id="provider-answer" />
+                      <Select.Trigger id="provider-answer" aria-label={login.prompt.message} />
                       <Select.Content>
                         {login.prompt.options.map((v) => (
                           <Select.Item key={v.id} value={v.id}>

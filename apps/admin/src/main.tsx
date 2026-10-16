@@ -20,7 +20,7 @@ import "@radix-ui/themes/styles.css"
 import "./styles.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
-import { Activity, type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
+import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
 import {
   ApiError,
   type Inventory,
@@ -31,8 +31,10 @@ import {
   type Selection,
   type Snapshot,
 } from "./api.js"
-import { type Chat, ChatWorkspace } from "./chats.js"
-import { navigationHref, SideNavigation, useNavigation } from "./navigation.js"
+import { AuditHistory } from "./audit.js"
+import { type Chat, ChatWorkspace, chatName } from "./chats.js"
+import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
+import { navigationHref, pageLabel, SideNavigation, useNavigation } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChanges } from "./policy-changes.js"
 import { Providers } from "./providers.js"
@@ -56,7 +58,12 @@ function Check({
   const id = useId()
   return (
     <label className="check" htmlFor={id}>
-      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} />
+      <Checkbox
+        id={id}
+        aria-label={label}
+        checked={checked}
+        onCheckedChange={(v) => onChange(v === true)}
+      />
       {label}
     </label>
   )
@@ -100,7 +107,7 @@ function IdList({
   values: number[]
   savedValues: number[]
   target: string
-  chats: { id: number; name: string }[]
+  chats: Chat[]
   positive: boolean
   onChange(values: number[]): void
   onPending(value: boolean): void
@@ -111,6 +118,7 @@ function IdList({
   useEffect(() => {
     setQuery(target && Number(target) > 0 === positive ? target : "")
   }, [target, positive])
+  const metadata = new Map(chats.map((chat) => [chat.id, chat]))
   const names = new Map(chats.map((chat) => [chat.id, chat.name]))
   const matches = (id: number) =>
     `${names.get(id) ?? ""} ${id}`.toLowerCase().includes(query.toLowerCase())
@@ -120,8 +128,7 @@ function IdList({
     <fieldset>
       <legend>{label}</legend>
       <Text as="p" size="2">
-        Approval and revocation remain pending until Apply policy changes. Private-message and
-        group/channel approval are separate.
+        Review approvals, then use Apply policy changes. Private and group access are separate.
       </Text>
       <Text as="p" size="2">
         Search all entries in this access list by ID or loaded chat name. Names for chats on other
@@ -129,33 +136,63 @@ function IdList({
       </Text>
       <Field label={`Search ${label.toLowerCase()}`} value={query} onChange={setQuery} />
       {!!values.length && !visible.length && <Text as="p">No matching access entries.</Text>}
-      <ul className="id-list">
-        {visible.map((id) => (
-          <li key={id}>
-            <div>
-              <Text as="p" weight="medium">
-                {names.get(id) && names.get(id) !== String(id) ? names.get(id) : "Name not known"}
-              </Text>
-              <Text size="2">
-                <code>{id}</code>
-              </Text>
-              {!savedValues.includes(id) && <Badge color="orange">Pending approval</Badge>}
-            </div>
-            <Button
-              variant="ghost"
-              color="red"
-              aria-label={`Revoke access for ID ${id}`}
-              onClick={() => onChange(values.filter((v) => v !== id))}
-            >
-              Revoke access
-            </Button>
-          </li>
-        ))}
-      </ul>
+      <Text as="p" size="2">
+        {visible.length} matching of {values.length} draft approvals · {savedValues.length} saved ·{" "}
+        {revoked.length} pending revocations. <a href="#save-status">Review pending changes</a>
+      </Text>
+      <table className="access-table" aria-label={label}>
+        <thead>
+          <tr>
+            <th scope="col">Chat / ID</th>
+            <th scope="col">Approval</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((id) => (
+            <tr key={id}>
+              <td>
+                <Text as="p" weight="medium">
+                  {chatName(
+                    metadata.get(id) ?? {
+                      id,
+                      name: "",
+                      type: id > 0 ? "private" : "group or channel",
+                    },
+                  )}
+                </Text>
+                <Text size="2">
+                  <code>{id}</code>
+                </Text>
+              </td>
+              <td>
+                {!savedValues.includes(id) ? (
+                  <Badge color="orange">Pending approval</Badge>
+                ) : (
+                  "Approved"
+                )}
+              </td>
+              <td>
+                <Button
+                  variant="ghost"
+                  color="red"
+                  aria-label={`Revoke access for ID ${id}`}
+                  onClick={() => onChange(values.filter((v) => v !== id))}
+                >
+                  Revoke access
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {revoked.filter(matches).map((id) => (
         <Flex key={id} gap="2" align="center" wrap="wrap">
           <Text>
-            {names.get(id) || "Name not known"} · {id}
+            {chatName(
+              metadata.get(id) ?? { id, name: "", type: id > 0 ? "private" : "group or channel" },
+            )}{" "}
+            · {id}
           </Text>
           <Badge color="orange">Pending revocation</Badge>
           <Button variant="soft" onClick={() => onChange([...values, id])}>
@@ -377,7 +414,11 @@ function Choices({
                 onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
               }
             >
-              <Select.Trigger id="model-selection" placeholder="Choose model" />
+              <Select.Trigger
+                id="model-selection"
+                aria-label="Chat model override"
+                placeholder="Choose model"
+              />
               <Select.Content>
                 <Select.Item value="inherit">
                   {defaults ? "Not configured" : "Inherit default"}
@@ -409,7 +450,7 @@ function Choices({
                 })
               }
             >
-              <Select.Trigger id="thinking-selection" />
+              <Select.Trigger id="thinking-selection" aria-label="Thinking level" />
               <Select.Content>
                 <Select.Item value="inherit">
                   {defaults ? "Off (default)" : "Inherit default"}
@@ -464,7 +505,7 @@ function SecretFields({
       <label htmlFor="secret-scope">
         Field map
         <Select.Root value={scope} onValueChange={(v) => setScope(v as "env" | "headers")}>
-          <Select.Trigger id="secret-scope" />
+          <Select.Trigger id="secret-scope" aria-label="Field map" />
           <Select.Content>
             <Select.Item value="env">Environment</Select.Item>
             <Select.Item value="headers">Headers</Select.Item>
@@ -554,7 +595,7 @@ function ProviderEditor({
               setApi(v as ProviderSettings["api"])
             }}
           >
-            <Select.Trigger id="provider-api" />
+            <Select.Trigger id="provider-api" aria-label="API" />
             <Select.Content>
               {[
                 "openai-completions",
@@ -674,6 +715,24 @@ function App() {
   const { page, setPage, chat, setChat } = useNavigation()
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const savedRevision = snapshot?.revision
+  useEffect(() => {
+    if (savedRevision === undefined) return
+    const bar = document.getElementById("save-status")
+    if (!bar) return
+    const resize = () =>
+      document.documentElement.style.setProperty(
+        "--save-status-height",
+        `${bar.getBoundingClientRect().height + 20}px`,
+      )
+    const observer = new ResizeObserver(resize)
+    observer.observe(bar)
+    resize()
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty("--save-status-height")
+    }
+  }, [savedRevision])
   const [dirty, setDirty] = useState(false)
   const [chats, setChats] = useState<Chat[]>([])
   const [knownChats, setKnownChats] = useState<Chat[]>([])
@@ -691,7 +750,6 @@ function App() {
     setEditorPending((previous) => ({ ...previous, [key]: value }))
   const pending = dirty || mcpDirty || providerPending || localPending
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
-  const [auditOffset, setAuditOffset] = useState(0)
   const [chatPage, setChatPage] = useState({ offset: 0 })
   const refreshChats = () => setChatPage((page) => ({ offset: page.offset }))
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
@@ -743,7 +801,7 @@ function App() {
     const [s, i, a, reports] = await Promise.all([
       request<Snapshot>("settings"),
       request<Inventory>("inventory"),
-      request<AuditEntry[]>(`audit?offset=${auditOffset}`),
+      request<AuditEntry[]>("audit?offset=0"),
       request<ImportReport[]>("imports"),
     ])
     setSnapshot(s)
@@ -752,7 +810,7 @@ function App() {
     setAudit(a)
     setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
-  }, [auditOffset])
+  }, [])
   const loadChats = useCallback(
     async (signal: AbortSignal) => {
       setChatsLoading(true)
@@ -873,13 +931,21 @@ function App() {
   const policy = snapshot.policy
   const selected = policy.chats[chat]
   const changes = policyChanges(savedPolicy ?? policy, policy)
+  let mcpPreview: string[] = []
+  let mcpValidation = ""
+  try {
+    const previous = inventory.mcp.find((m) => m.name === mcpName)
+    mcpPreview = mcpChangePreview(mcpSavePatch(mcpConfig, previous, mcpSecrets), previous)
+  } catch (error) {
+    mcpValidation = error instanceof Error ? error.message : "Invalid configuration"
+  }
   return (
     <div className="admin-shell">
       <SideNavigation page={page} chat={chat} actor={session.actor} onNavigate={setPage} />
       <main aria-busy={busy}>
         <header className="workspace-header">
           <Text size="2" color="gray">
-            Administration / {page}
+            Administration / {pageLabel(page)}
           </Text>
           <Flex gap="2">
             <Button
@@ -940,8 +1006,143 @@ function App() {
             refresh={load}
           />
         )}
-        <Heading size="6" id="current-section-heading" mb="3">
-          {page}
+        <Flex
+          id="save-status"
+          role="region"
+          className={`save-status ${dirty ? "pending-bar" : "saved-state"}`}
+          data-pending={dirty}
+          gap="3"
+          align="center"
+          wrap="wrap"
+          aria-label="Save status and pending changes"
+        >
+          <Badge
+            role="status"
+            data-saved={snapshot.status === "applied" && snapshot.revision === snapshot.applied}
+            color={snapshot.status === "applied" ? "green" : "orange"}
+          >
+            {busy
+              ? "Saving or checking…"
+              : snapshot.status === "applied" && snapshot.revision === snapshot.applied
+                ? "Saved revision applied."
+                : snapshot.status === "failed"
+                  ? "Saved, but application failed. Retry application."
+                  : "Saved changes are waiting to apply."}
+          </Badge>
+          <details>
+            <summary>Revision details</summary>Saved {snapshot.revision} · Applied{" "}
+            {snapshot.applied} · {snapshot.status}
+          </details>
+          {dirty && (
+            <Badge color="orange" role="status">
+              {changes.length} pending policy changes
+            </Badge>
+          )}
+          {dirty && (
+            <details>
+              <summary>Review pending policy changes</summary>
+              <ul>
+                {changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+              <Text as="p" size="2">
+                Applying saves all policy changes listed here, not MCP connection or authentication
+                drafts.
+              </Text>
+            </details>
+          )}
+          <Button variant="ghost" onClick={() => setPage("Access")}>
+            Policy: {dirty ? `${changes.length} changes` : "No changes"}
+          </Button>
+          {localPending && (
+            <Text size="1" color="gray">
+              Unstaged editor input
+            </Text>
+          )}
+          <Button variant="ghost" onClick={() => setPage("MCP connections")}>
+            {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
+          </Button>
+          <Button variant="ghost" onClick={() => setPage("Model Providers")}>
+            {providerPending
+              ? "Provider: Unsaved selection or authentication"
+              : "Provider: No browser edits"}
+          </Button>
+          {dirty && (
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button disabled={busy || !dirty || localPending}>Apply policy changes</Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content>
+                <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
+                <AlertDialog.Description>
+                  Save all pending chat, access, shared default, global availability, and custom
+                  endpoint policy changes across sections. MCP connection edits and authentication
+                  are separate. Active work will be cancelled. Revoked permissions cannot undo
+                  completed external actions.
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft">Cancel</Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button
+                      onClick={() =>
+                        void run(async () => {
+                          await request(
+                            "settings",
+                            session.csrf,
+                            { revision: snapshot.revision, policy },
+                            "PUT",
+                          )
+                          await load()
+                        })
+                      }
+                    >
+                      Save and apply
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+          )}
+          {snapshot.status !== "applied" && (
+            <Button
+              disabled={busy || dirty || localPending}
+              onClick={() =>
+                void run(async () => {
+                  await request("apply", session.csrf)
+                  await load()
+                })
+              }
+            >
+              Retry application
+            </Button>
+          )}
+          {dirty && (
+            <Button
+              variant="soft"
+              disabled={busy}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Discard pending policy edits? Other editor drafts stay unchanged.",
+                  )
+                ) {
+                  setSnapshot({ ...snapshot, policy: savedPolicy ?? policy })
+                  setDirty(false)
+                }
+              }}
+            >
+              Discard policy changes
+            </Button>
+          )}
+          {localPending && (
+            <Text size="2">Save unavailable: finish or clear unstaged editor input.</Text>
+          )}
+        </Flex>
+        <Heading size="6" id="current-section-heading" tabIndex={-1} mb="3">
+          {pageLabel(page)}
         </Heading>
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
@@ -952,6 +1153,13 @@ function App() {
               onSelect={setChat}
               policy={policy}
               savedPolicy={savedPolicy ?? policy}
+              application={
+                snapshot.status === "applied" && snapshot.revision === snapshot.applied
+                  ? "Applied"
+                  : snapshot.status === "failed"
+                    ? "Failed"
+                    : "Pending"
+              }
               inventory={inventory}
               offset={chatPage.offset}
               loading={chatsLoading}
@@ -1056,8 +1264,12 @@ function App() {
           </EditorSection>
           <EditorSection active={page === "Defaults"} aria-label="Shared defaults">
             <Text as="p">
-              Shared defaults apply to chats that have no override. They cannot exceed global
-              availability and do not approve access.
+              Review shared defaults below. Chat overrides take priority within global availability;
+              defaults do not approve access.
+            </Text>
+            <Text as="p" size="2">
+              Reset is unavailable when all chats already inherit defaults. During a save,
+              configuration controls are unavailable.
             </Text>
             <AlertDialog.Root>
               <AlertDialog.Trigger>
@@ -1144,6 +1356,16 @@ function App() {
                 </a>
               </Button>
             </Card>
+            <Text as="p" size="2">
+              Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
+              {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
+              {savedPolicy?.defaults.models?.join(", ") || "None"}
+            </Text>
+            <Text as="p" size="2">
+              Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
+              {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
+              {policy.defaults.models?.join(", ") || "None"}
+            </Text>
             <Choices
               navigate={setPage}
               defaults
@@ -1264,11 +1486,7 @@ function App() {
                     setMcpConfig("{}")
                     setMcpSecrets({ env: {}, headers: {} })
                     setMcpDirty(true)
-                    document
-                      .getElementById("mcp-config")
-                      ?.closest("details")
-                      ?.setAttribute("open", "")
-                    document.getElementById("mcp-config")?.focus()
+                    document.getElementById("mcp-guided")?.focus()
                   }}
                 >
                   Edit fields for {m.name}
@@ -1343,12 +1561,17 @@ function App() {
               }}
             />
             <Text as="p" size="2">
-              To update an existing server, use its Edit fields button above to start an empty JSON
-              update. Enter only the fields to change. Typing a name keeps the current JSON draft.
-              The API does not return editable connection configuration. Reload checks saved
-              settings and application status. It keeps this MCP draft and staged secrets. A failed
-              request can still have saved its changes.
+              Use Edit fields for an existing server, then select only the fields to replace. Saved
+              values stay hidden. Reload retains this draft; a failed request can still have saved
+              changes.
             </Text>
+            <McpGuidedEditor
+              text={mcpConfig}
+              onChange={(text) => {
+                setMcpConfig(text)
+                setMcpDirty(true)
+              }}
+            />
             <details className="provider-advanced">
               <summary>Advanced server configuration JSON</summary>
               <label htmlFor="mcp-config">
@@ -1378,14 +1601,48 @@ function App() {
                 "none"}
               . Enter new secret values only in the masked field, not the JSON editor.
             </Text>
-            <Text as="p">
-              Omit env or headers to preserve that map. A map in JSON replaces the whole map:
-              include every key to retain with null. Omitted keys are removed. An empty object
-              clears the map. Masked replacements preserve existing keys when JSON omits that map.
-              Do not put secrets in commands, arguments, descriptions, or URLs.
-            </Text>
+            <details>
+              <summary>Secret preservation and transport rules</summary>
+              <Text as="p">
+                Omit env or headers to preserve that map. A map in JSON replaces the whole map:
+                include every key to retain with null. Omitted keys are removed. An empty object
+                clears the map. Masked replacements preserve existing keys when JSON omits that map.
+                Do not put secrets in commands, arguments, descriptions, or URLs. Selecting an HTTP
+                URL removes command, arguments, working directory, and environment fields. Selecting
+                a stdio command removes URL and header fields. For a command-only update, an omitted
+                transport type is cleared and inferred again.
+              </Text>
+            </details>
+            <section aria-label="MCP change preview">
+              <Heading size="3">Review before saving MCP</Heading>
+              <Text as="p" size="2">
+                Field operations only; values are hidden. Transport changes remove fields that do
+                not apply. The server validates this update before saving.
+              </Text>
+              {mcpValidation ? (
+                <Text as="p" role="alert">
+                  {mcpValidation}
+                </Text>
+              ) : (
+                <ul>
+                  {mcpPreview.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {(dirty || localPending || !mcpName) && (
+              <Text as="p" size="2">
+                MCP save unavailable:{" "}
+                {dirty
+                  ? "save or discard policy edits first."
+                  : localPending
+                    ? "finish or clear unstaged input first."
+                    : "enter a server name."}
+              </Text>
+            )}
             <Button
-              disabled={busy || dirty || localPending || !mcpName}
+              disabled={busy || dirty || localPending || !mcpName || Boolean(mcpValidation)}
               onClick={() =>
                 void run(async () => {
                   await request(
@@ -1394,21 +1651,11 @@ function App() {
                     {
                       revision: snapshot.revision,
                       config: (() => {
-                        const config = JSON.parse(mcpConfig)
-                        const previous = inventory.mcp.find((m) => m.name === mcpName)
-                        for (const scope of ["env", "headers"] as const) {
-                          if (
-                            config[scope] &&
-                            Object.values(config[scope]).some((value) => value !== null)
-                          )
-                            throw new Error("Use the masked field for secret replacements")
-                          if (Object.keys(mcpSecrets[scope]).length)
-                            config[scope] = {
-                              ...(config[scope] ?? previous?.[scope] ?? {}),
-                              ...mcpSecrets[scope],
-                            }
-                        }
-                        return config
+                        return mcpSavePatch(
+                          mcpConfig,
+                          inventory.mcp.find((m) => m.name === mcpName),
+                          mcpSecrets,
+                        )
                       })(),
                     },
                     "PUT",
@@ -1542,156 +1789,9 @@ function App() {
             <Heading size="3">Import reports</Heading>
             <ImportHistory reports={imports} />
             <Heading size="3">Configuration activity</Heading>
-            <Text as="p" size="2">
-              Showing records {audit.length ? auditOffset + 1 : 0}–{auditOffset + audit.length}.
-              Older records may be available; the server retains up to 10,000 records.
-            </Text>
-            <Activity entries={audit} />
-            <Flex gap="2">
-              <Button
-                disabled={busy || auditOffset === 0 || pending}
-                onClick={() => setAuditOffset(Math.max(0, auditOffset - 100))}
-              >
-                Newer
-              </Button>
-              <Button
-                disabled={busy || audit.length < 100 || pending}
-                onClick={() => setAuditOffset(auditOffset + 100)}
-              >
-                Older
-              </Button>
-            </Flex>
+            <AuditHistory revision={snapshot.revision} run={run} />
           </EditorSection>
         </fieldset>
-        <Flex
-          className={dirty ? "pending-bar" : "saved-state"}
-          data-pending={dirty}
-          gap="3"
-          align="center"
-          wrap="wrap"
-          aria-label="Save status and pending changes"
-        >
-          <Badge
-            role="status"
-            data-saved={snapshot.status === "applied" && snapshot.revision === snapshot.applied}
-            color={snapshot.status === "applied" ? "green" : "orange"}
-          >
-            {busy
-              ? "Saving or checking…"
-              : snapshot.status === "applied" && snapshot.revision === snapshot.applied
-                ? "Saved revision applied."
-                : snapshot.status === "failed"
-                  ? "Saved, but application failed. Retry application."
-                  : "Saved changes are waiting to apply."}
-          </Badge>
-          <details>
-            <summary>Revision details</summary>Saved {snapshot.revision} · Applied{" "}
-            {snapshot.applied} · {snapshot.status}
-          </details>
-          {dirty && (
-            <Badge color="orange" role="status">
-              {changes.length} pending policy changes
-            </Badge>
-          )}
-          {dirty && (
-            <details>
-              <summary>Review pending policy changes</summary>
-              <ul>
-                {changes.map((change) => (
-                  <li key={change}>{change}</li>
-                ))}
-              </ul>
-              <Text as="p" size="2">
-                Applying saves all policy changes listed here, not MCP connection or authentication
-                drafts.
-              </Text>
-            </details>
-          )}
-          {localPending && (
-            <Text size="1" color="gray">
-              Unstaged editor input
-            </Text>
-          )}
-          {mcpDirty && (
-            <Text size="1" color="gray">
-              Pending MCP configuration
-            </Text>
-          )}
-          {providerPending && (
-            <Text size="1" color="gray">
-              Pending provider selection or authentication
-            </Text>
-          )}
-          {dirty && (
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button disabled={busy || !dirty || localPending}>Apply policy changes</Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content>
-                <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
-                <AlertDialog.Description>
-                  Save all pending chat, access, shared default, global availability, and custom
-                  endpoint policy changes across sections. MCP connection edits and authentication
-                  are separate. Active work will be cancelled. Revoked permissions cannot undo
-                  completed external actions.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft">Cancel</Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <Button
-                      onClick={() =>
-                        void run(async () => {
-                          await request(
-                            "settings",
-                            session.csrf,
-                            { revision: snapshot.revision, policy },
-                            "PUT",
-                          )
-                          await load()
-                        })
-                      }
-                    >
-                      Save and apply
-                    </Button>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          )}
-          {snapshot.status !== "applied" && (
-            <Button
-              disabled={busy || dirty || localPending}
-              onClick={() =>
-                void run(async () => {
-                  await request("apply", session.csrf)
-                  await load()
-                })
-              }
-            >
-              Retry application
-            </Button>
-          )}
-          {dirty && (
-            <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Discard pending policy edits? Other editor drafts stay unchanged.",
-                  )
-                ) {
-                  setSnapshot({ ...snapshot, policy: savedPolicy ?? policy })
-                  setDirty(false)
-                }
-              }}
-            >
-              Discard policy changes
-            </Button>
-          )}
-        </Flex>
         {localPending && (
           <Text as="p" role="status">
             An editor has unfinished input. Add, stage, or clear it before saving settings. It is

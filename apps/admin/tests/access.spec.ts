@@ -225,16 +225,16 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
   await page.goto("/")
   await page.getByRole("link", { name: "Access", exact: true }).click()
   const users = page.getByRole("group", { name: "Private-message access", exact: true })
-  await expect(users.getByRole("listitem").filter({ hasText: "Alice" })).toContainText("42")
-  await expect(users.getByRole("listitem").filter({ hasText: "43" })).toHaveText(
-    "Name not known43Revoke access",
+  await expect(users.getByRole("row").filter({ hasText: "Alice" })).toContainText("42")
+  await expect(users.getByRole("row").filter({ hasText: "43" })).toHaveText(
+    "Unnamed private 4343ApprovedRevoke access",
   )
   const groups = page.getByRole("group", { name: "Group and channel access", exact: true })
-  await expect(groups.getByRole("listitem").filter({ hasText: "-100" })).toContainText(
+  await expect(groups.getByRole("row").filter({ hasText: "-100" })).toContainText(
     "<img src=x onerror=alert(1)>",
   )
-  await expect(groups.getByRole("listitem").filter({ hasText: "-200" })).toHaveText(
-    "Name not known-200Revoke access",
+  await expect(groups.getByRole("row").filter({ hasText: "-200" })).toHaveText(
+    "Unnamed group -200-200ApprovedRevoke access",
   )
   await expect(page.locator("img")).toHaveCount(0)
   await users.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()

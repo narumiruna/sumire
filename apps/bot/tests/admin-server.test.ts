@@ -109,6 +109,67 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("filters all retained audit records with bounded, inclusive, parameterized queries", async () => {
+    store.db.exec("DELETE FROM audit")
+    const insert = store.db.prepare(
+      "INSERT INTO audit(actor,time,operation,revision,outcome,target) VALUES (?,?,?,?,?,?)",
+    )
+    for (let i = 0; i < 205; i++) insert.run("42", 1000, "settings.apply", 2, "failed", "settings")
+    insert.run("system", 1000, "settings.apply", 2, "failed", "settings")
+    insert.run("42", 999, "settings.apply", 2, "failed", "settings")
+    insert.run("42", 1001, "settings.apply", 2, "failed", "settings")
+    insert.run("42", 1000, "settings.update", 2, "saved", "settings")
+    const query = "/api/audit?actor=42&operation=settings.apply&outcome=failed&from=1000&to=1000"
+    const first = JSON.parse((await call(query, "GET", undefined, auth())).body) as {
+      id: number
+      time: number
+      actor: string
+    }[]
+    const second = JSON.parse((await call(query + "&offset=100", "GET", undefined, auth())).body)
+    const last = JSON.parse((await call(query + "&offset=200", "GET", undefined, auth())).body)
+    expect(first).toHaveLength(100)
+    expect(second).toHaveLength(100)
+    expect(last).toHaveLength(5)
+    expect(new Set([...first, ...second, ...last].map((entry) => entry.id)).size).toBe(205)
+    expect(first[0]?.id).toBeGreaterThan(second[0].id)
+    expect(first.every((entry) => entry.time === 1000 && entry.actor === "42")).toBe(true)
+    expect(
+      JSON.parse((await call("/api/audit?actor=absent", "GET", undefined, auth())).body),
+    ).toEqual([])
+    expect(
+      JSON.parse(
+        (
+          await call(
+            "/api/audit?actor=" + encodeURIComponent("' OR 1=1 --"),
+            "GET",
+            undefined,
+            auth(),
+          )
+        ).body,
+      ),
+    ).toEqual([])
+    expect(
+      JSON.parse((await call("/api/audit?offset=0", "GET", undefined, auth())).body),
+    ).toHaveLength(100)
+    for (const suffix of [
+      "actor=",
+      "actor=42&actor=system",
+      "actor=" + "x".repeat(129),
+      "from=-1",
+      "from=NaN",
+      "from=1.5",
+      "from=1001&to=1000",
+      "from=9007199254740992",
+      "offset=10001",
+      "outcome=%00",
+    ]) {
+      expect((await call("/api/audit?" + suffix, "GET", undefined, auth())).status, suffix).toBe(
+        400,
+      )
+    }
+    expect((await call(query)).status).toBe(401)
+  })
+
   it("withdraws reconciliation mutations but retains authenticated historical reports", async () => {
     store.db
       .prepare("INSERT INTO access_reviews VALUES (?,?,?,?,?)")

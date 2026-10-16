@@ -1,0 +1,313 @@
+import { Button, Checkbox, Heading, Text, TextField } from "@radix-ui/themes"
+import { useId } from "react"
+import type { Inventory } from "./api.js"
+
+const fields = [
+  "type",
+  "command",
+  "args",
+  "cwd",
+  "env",
+  "url",
+  "headers",
+  "description",
+  "enabled",
+  "timeout",
+  "exposure",
+  "toolExposure",
+]
+export type McpPatch = Record<string, unknown>
+export function parseMcpPatch(text: string): McpPatch {
+  const value: unknown = JSON.parse(text)
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Enter a configuration object.")
+  if (Object.keys(value).some((key) => !fields.includes(key)))
+    throw new Error("Unknown fields: correct them in advanced JSON. The draft is unchanged.")
+  const patch = value as McpPatch
+  for (const key of ["command", "url", "cwd", "description"] as const)
+    if (key in patch && typeof patch[key] !== "string")
+      throw new Error(`Correct ${key} in advanced JSON. The draft is unchanged.`)
+  if ("enabled" in patch && typeof patch.enabled !== "boolean")
+    throw new Error("Correct enabled in advanced JSON. The draft is unchanged.")
+  if ("timeout" in patch && (typeof patch.timeout !== "number" || !Number.isFinite(patch.timeout)))
+    throw new Error("Timeout must be a positive number; correct advanced JSON.")
+  for (const [key, options] of [
+    ["type", ["stdio", "http", "streamable-http"]],
+    ["exposure", ["codemode", "direct", "hidden"]],
+  ] as const)
+    if (key in patch && !options.some((option) => option === patch[key]))
+      throw new Error(`Correct ${key} in advanced JSON. The draft is unchanged.`)
+  return patch
+}
+
+/** Masked replacements preserve the saved map only when the patch omits that map. */
+export function mcpSavePatch(
+  text: string,
+  previous: Inventory["mcp"][number] | undefined,
+  secrets: { env: Record<string, string>; headers: Record<string, string> },
+) {
+  const config = parseMcpPatch(text)
+  if (typeof config.timeout === "number" && config.timeout <= 0)
+    throw new Error("Timeout must be positive.")
+  for (const scope of ["env", "headers"] as const) {
+    const map = config[scope]
+    if (
+      map !== undefined &&
+      (!map ||
+        typeof map !== "object" ||
+        Array.isArray(map) ||
+        Object.values(map).some((value) => value !== null))
+    )
+      throw new Error("Use the masked field for secret replacements")
+    if (Object.keys(secrets[scope]).length)
+      config[scope] = { ...(map ?? previous?.[scope] ?? {}), ...secrets[scope] }
+  }
+  return config
+}
+
+/** Field operations only. Never include values, including legacy command or URL secrets. */
+export function mcpChangePreview(patch: McpPatch, previous?: Inventory["mcp"][number]) {
+  const operations: { field: string; name?: string; action: string }[] = []
+  const add = (field: string, action: string, name?: string) =>
+    operations.push({ field, action, name })
+  const known = new Set(previous?.fields ?? [])
+  for (const key of known)
+    if (!(key in patch) && key !== "env" && key !== "headers") add(key, "Preserved")
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === "env" || key === "headers") {
+      const old = previous?.[key] ?? {}
+      const map = value as Record<string, unknown>
+      for (const [name, secret] of Object.entries(map))
+        add(key, secret === null ? "Preserved" : name in old ? "Replaced" : "Added", name)
+      for (const name of Object.keys(old)) if (!(name in map)) add(key, "Removed", name)
+      if (!Object.keys(map).length) add(key, "Cleared")
+    } else add(key, known.has(key) ? "Set / replaced" : "Set")
+  }
+  for (const scope of ["env", "headers"] as const)
+    if (!(scope in patch))
+      for (const name of Object.keys(previous?.[scope] ?? {})) add(scope, "Preserved", name)
+  if (
+    (patch.command !== undefined || patch.url !== undefined) &&
+    patch.type === undefined &&
+    known.has("type")
+  ) {
+    const index = operations.findIndex(
+      (operation) => operation.field === "type" && operation.action === "Preserved",
+    )
+    if (index >= 0) operations.splice(index, 1)
+    add("type", "Removed / inferred")
+  }
+  const removed =
+    patch.url !== undefined
+      ? ["command", "cwd", "args", "env"]
+      : patch.command !== undefined
+        ? ["url", "headers"]
+        : []
+  // Transport cleanup wins over the patch and preserved fields.
+  return [
+    ...operations
+      .filter((operation) => !removed.includes(operation.field))
+      .map(
+        ({ field, name, action }) =>
+          `${action}: ${field}${action === "Cleared" ? " map" : name !== undefined ? `.${name}` : ""}`,
+      ),
+    ...removed
+      .filter(
+        (key) =>
+          known.has(key) ||
+          key in patch ||
+          (key === "env" && Object.keys(previous?.env ?? {}).length > 0) ||
+          (key === "headers" && Object.keys(previous?.headers ?? {}).length > 0),
+      )
+      .map((key) => `Removed by transport selection: ${key}`),
+  ]
+}
+
+export function McpGuidedEditor({
+  text,
+  onChange,
+}: {
+  text: string
+  onChange(text: string): void
+}) {
+  const prefix = useId()
+  let patch: McpPatch
+  try {
+    patch = parseMcpPatch(text)
+    if (
+      patch.args !== undefined &&
+      (!Array.isArray(patch.args) || patch.args.some((arg) => typeof arg !== "string"))
+    )
+      throw new Error("Edit invalid arguments in advanced JSON. The draft is unchanged.")
+  } catch (error) {
+    return (
+      <Text as="p" role="alert">
+        {error instanceof Error ? error.message : "Correct advanced JSON to use guided fields."}
+      </Text>
+    )
+  }
+  const set = (key: string, value: unknown) =>
+    onChange(JSON.stringify({ ...patch, [key]: value }, null, 2))
+  const omit = (key: string) => {
+    const next = { ...patch }
+    delete next[key]
+    onChange(JSON.stringify(next, null, 2))
+  }
+  return (
+    <fieldset id="mcp-guided" tabIndex={-1}>
+      <legend>Guided connection fields</legend>
+      <Text as="p" size="2">
+        Only selected fields change. Omitted fields stay saved. Existing values are not returned;
+        enter replacements only.
+      </Text>
+      <label htmlFor={`${prefix}-transport`}>
+        Transport update
+        <select
+          id={`${prefix}-transport`}
+          value={
+            patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : "preserve"
+          }
+          onChange={(event) => {
+            const next = { ...patch }
+            delete next.command
+            delete next.url
+            delete next.type
+            if (event.target.value === "http") {
+              next.url = ""
+              next.type = "http"
+            }
+            if (event.target.value === "stdio") {
+              next.command = ""
+              next.type = "stdio"
+            }
+            onChange(JSON.stringify(next, null, 2))
+          }}
+        >
+          <option value="preserve">Keep saved transport</option>
+          <option value="stdio">Replace with stdio command</option>
+          <option value="http">Replace with HTTP endpoint</option>
+        </select>
+      </label>
+      {(
+        ["command", "url", "cwd", "description", "timeout", "enabled", "exposure", "type"] as const
+      ).map((key) => (
+        <div key={key}>
+          <label className="check" htmlFor={`${prefix}-${key}-edit`}>
+            <Checkbox
+              id={`${prefix}-${key}-edit`}
+              aria-label={`Edit MCP ${key}`}
+              checked={key in patch}
+              onCheckedChange={(checked) =>
+                checked === true
+                  ? set(
+                      key,
+                      key === "enabled"
+                        ? true
+                        : key === "timeout"
+                          ? 30
+                          : key === "exposure"
+                            ? "codemode"
+                            : key === "type"
+                              ? "stdio"
+                              : "",
+                    )
+                  : omit(key)
+              }
+            />
+            Edit {key}
+          </label>
+          {key in patch &&
+            (key === "enabled" ? (
+              <label className="check" htmlFor={`${prefix}-enabled-value`}>
+                <Checkbox
+                  id={`${prefix}-enabled-value`}
+                  aria-label="MCP enabled value"
+                  checked={patch.enabled === true}
+                  onCheckedChange={(v) => set(key, v === true)}
+                />
+                Enabled
+              </label>
+            ) : key === "exposure" || key === "type" ? (
+              <label>
+                Replacement {key}
+                <select
+                  aria-label={`MCP ${key} replacement`}
+                  value={String(patch[key])}
+                  onChange={(e) => set(key, e.target.value)}
+                >
+                  {(key === "exposure"
+                    ? ["codemode", "direct", "hidden"]
+                    : ["stdio", "http", "streamable-http"]
+                  ).map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label htmlFor={`${prefix}-${key}-value`}>
+                Replacement {key}
+                <TextField.Root
+                  id={`${prefix}-${key}-value`}
+                  aria-label={`MCP ${key} replacement`}
+                  type={key === "timeout" ? "number" : "text"}
+                  value={String(patch[key] ?? "")}
+                  onChange={(e) =>
+                    set(key, key === "timeout" ? Number(e.target.value) : e.target.value)
+                  }
+                />
+              </label>
+            ))}
+        </div>
+      ))}
+      <Heading size="2">Arguments</Heading>
+      {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
+        // Arguments are controlled positional fields with no row state; additions append only.
+        // biome-ignore lint/suspicious/noArrayIndexKey: Argument position is the field identity.
+        <div key={`${prefix}-${index}`}>
+          <label htmlFor={`${prefix}-arg-${index}`}>
+            Argument {index + 1}
+            <TextField.Root
+              id={`${prefix}-arg-${index}`}
+              aria-label={`MCP argument ${index + 1}`}
+              value={arg}
+              onChange={(e) =>
+                set(
+                  "args",
+                  (patch.args as string[]).map((v, i) => (i === index ? e.target.value : v)),
+                )
+              }
+            />
+          </label>
+          <Button
+            variant="soft"
+            onClick={() =>
+              set(
+                "args",
+                (patch.args as string[]).filter((_, i) => i !== index),
+              )
+            }
+          >
+            Remove argument {index + 1}
+          </Button>
+        </div>
+      ))}
+      <Button
+        variant="soft"
+        onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
+      >
+        Add argument
+      </Button>
+      {"args" in patch && (
+        <Button variant="soft" onClick={() => omit("args")}>
+          Keep saved arguments
+        </Button>
+      )}
+      <Text as="p" size="2">
+        Use masked fields below for secret replacements. Use advanced JSON for secret-map removal,
+        preservation markers, and per-tool exposure; guided edits retain those fields.
+      </Text>
+    </fieldset>
+  )
+}

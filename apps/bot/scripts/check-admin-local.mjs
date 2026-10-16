@@ -88,7 +88,7 @@ try {
   await page.reload()
   await page.getByRole("button", { name: "Sign out" }).waitFor()
   assert.equal(store.allows(-100), true)
-  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("link", { name: "Access", exact: true }).click()
   assert.equal(await page.getByRole("button", { name: "Confirm environment review" }).count(), 0)
   console.log(
     "Local HTTP browser smoke passed: passkey registration, Secure cookies, CSRF enforcement, logout, sign-in, chat approval after reload, and database-only access. No live Telegram or provider requests were made.",

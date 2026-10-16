@@ -9,7 +9,7 @@ export type Chat = { id: number; name: string; type: string }
 export function chatName(chat: Chat) {
   return chat.name?.trim() && chat.name !== String(chat.id)
     ? chat.name
-    : `Unnamed ${chat.type || "chat"}`
+    : `Unnamed ${chat.type || "chat"} ${chat.id}`
 }
 function chatType(chat: Chat) {
   if (chat.type === "supergroup") return "group"
@@ -23,6 +23,7 @@ export function ChatWorkspace({
   onSelect,
   policy,
   savedPolicy,
+  application,
   inventory,
   offset,
   loading,
@@ -43,6 +44,7 @@ export function ChatWorkspace({
   onSelect(value: string): void
   policy: Policy
   savedPolicy: Policy
+  application: string
   inventory: Inventory
   offset: number
   loading: boolean
@@ -179,8 +181,8 @@ export function ChatWorkspace({
               onChange={(e) => setAccess(e.target.value)}
             >
               <option value="all">All access</option>
-              <option value="allowed">Allowed</option>
-              <option value="denied">Not allowed</option>
+              <option value="allowed">Approved and enabled</option>
+              <option value="denied">Not approved or disabled</option>
             </select>
           </div>
         </div>
@@ -242,8 +244,12 @@ export function ChatWorkspace({
                   <small title={`${c.type || "Type not known"} · ${c.id}`}>
                     {c.type || "Type not known"} · {c.id}
                   </small>
-                  <Badge color={effectivePolicy(policy, c.id).enabled ? "teal" : "gray"}>
-                    {effectivePolicy(policy, c.id).enabled ? "Allowed" : "Not allowed"}
+                  <Badge color="gray">
+                    {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
+                      ? "Approved"
+                      : "Not approved"}
+                    {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
+                    {preview ? " · Draft" : ""}
                   </Badge>
                 </button>
               </li>
@@ -315,7 +321,9 @@ export function ChatWorkspace({
             <header className="chat-header">
               <div>
                 <Heading size="5" ref={headerRef} tabIndex={-1}>
-                  {metadata ? chatName(metadata) : "Chat name not available"}
+                  {chatName(
+                    metadata ?? { id, name: "", type: id > 0 ? "private" : "group or channel" },
+                  )}
                 </Heading>
                 <Text size="2" color="gray">
                   {metadata?.type || "Type not known"} · <code>{chat}</code>
@@ -359,6 +367,30 @@ export function ChatWorkspace({
                       ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
                       : "Runtime status unchecked"}
                   </Heading>
+                  <dl className="effective-settings readiness">
+                    <dt>Access</dt>
+                    <dd>
+                      {savedApproval ? "Approved" : "Not approved"}
+                      {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
+                    </dd>
+                    <dt>Chat</dt>
+                    <dd>
+                      {override?.enabled === false ? "Disabled" : "Enabled"}
+                      {preview ? " · Policy draft" : ""}
+                    </dd>
+                    <dt>Configuration</dt>
+                    <dd>
+                      {!provider
+                        ? "Unknown"
+                        : effective.model && provider.configured
+                          ? "Configured locally"
+                          : "Setup required"}
+                    </dd>
+                    <dt>Verification</dt>
+                    <dd>Not checked — no remote model request</dd>
+                    <dt>Application</dt>
+                    <dd>{application}</dd>
+                  </dl>
                   {blockers.map((blocker) => (
                     <div className="blocker" key={blocker.text}>
                       <Text size="2">{blocker.text}</Text>
@@ -419,8 +451,8 @@ export function ChatWorkspace({
                   </Text>
                   {preview && (
                     <Text as="p" size="2">
-                      Saved access: {saved.enabled ? "Allowed" : "Not allowed"} · Saved model:{" "}
-                      {saved.model ?? "No allowed model"}
+                      Saved access: {saved.enabled ? "Approved and enabled" : "Blocked by policy"} ·
+                      Saved model: {saved.model ?? "No allowed model"}
                     </Text>
                   )}
                   <Tabs.Content value="overview" forceMount hidden={tab !== "overview"}>
@@ -431,7 +463,7 @@ export function ChatWorkspace({
                       <div>
                         <dt>Access</dt>
                         <dd>
-                          {effective.enabled ? "Approved" : "Not allowed"}
+                          {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
                           <small>
                             Approval {approved ? "granted" : "not granted"} · Chat{" "}
                             {override?.enabled === false ? "disabled" : "enabled"}
@@ -541,12 +573,12 @@ export function ChatWorkspace({
                       </Text>
                       <dl className="effective-settings">
                         <dt>Saved approval</dt>
-                        <dd>{savedApproval ? "Granted" : "Not granted"}</dd>
+                        <dd>{savedApproval ? "Approved" : "Not approved"}</dd>
                         <dt>Draft approval</dt>
-                        <dd>{approved ? "Granted" : "Not granted"}</dd>
+                        <dd>{approved ? "Approved" : "Not approved"}</dd>
                         <dt>Policy access</dt>
                         <dd>
-                          {effective.enabled ? "Allowed" : "Not allowed"}
+                          {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
                           {override?.enabled === false
                             ? " · Chat disabled independently of approval"
                             : ""}

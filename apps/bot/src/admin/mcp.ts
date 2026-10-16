@@ -108,6 +108,7 @@ export class McpAdmin {
   inventory() {
     return Object.entries(this.raw()).map(([name, entry]) => ({
       name,
+      fields: Object.keys(entry),
       enabled: entry.enabled,
       exposure: entry.exposure,
       toolExposure: entry.toolExposure,

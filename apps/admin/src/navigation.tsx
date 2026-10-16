@@ -12,9 +12,11 @@ export const pages = [
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
+export const pageLabel = (page: Page) => (page === "Model Providers" ? "Model providers" : page)
 
 export function readNavigation(url: URL) {
-  const section = url.searchParams.get("section")
+  const raw = url.searchParams.get("section")
+  const section = raw === "Model providers" ? "Model Providers" : raw
   const chat = url.searchParams.get("chat") ?? ""
   return {
     page:
@@ -84,7 +86,7 @@ export function SideNavigation({
         aria-controls="section-navigation"
         onClick={() => setOpen(!open)}
       >
-        <HamburgerMenuIcon aria-hidden /> Sections · {page}
+        <HamburgerMenuIcon aria-hidden /> Sections · {pageLabel(page)}
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
         {pages.map((item) => (
@@ -107,7 +109,7 @@ export function SideNavigation({
               if (open) trigger.current?.focus()
             }}
           >
-            {item}
+            {pageLabel(item)}
           </a>
         ))}
       </nav>

@@ -191,7 +191,9 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
 }) => {
   const state = await setup(page)
   await navigate(page, "MCP connections")
-  await expect(page.getByRole("checkbox")).toHaveCount(0)
+  await expect(
+    page.getByRole("checkbox", { name: /Globally allow|Default chat permission/ }),
+  ).toHaveCount(0)
   await expect(
     page.getByText(/Connection configuration and enabled state do not grant execution permission/),
   ).toBeVisible()
