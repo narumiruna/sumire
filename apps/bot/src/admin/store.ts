@@ -6,6 +6,7 @@ import type { AuditEntry, Chat, Snapshot } from "@narumitw/sumire-contracts"
 import {
   effectivePolicy,
   initialPolicy,
+  POLICY_MAX_NAMES,
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
@@ -137,7 +138,21 @@ export class AdminStore {
         ...Object.values(state.policy.chats).flatMap((chat) => chat.tools ?? []),
       ])
         remember.run(name)
-      const added = [...new Set(names)].filter((name) => remember.run(name).changes)
+      const capacity = Math.max(
+        0,
+        Math.min(
+          POLICY_MAX_NAMES - state.policy.tools.length,
+          POLICY_MAX_NAMES - (state.policy.defaults.tools?.length ?? 0),
+        ),
+      )
+      const known = new Set(
+        (this.db.prepare("SELECT name FROM known_tools").all() as { name: string }[]).map(
+          (row) => row.name,
+        ),
+      )
+      // Leave overflow names unknown. Retry them when policy capacity is available.
+      const added = [...new Set(names)].filter((name) => !known.has(name)).slice(0, capacity)
+      for (const name of added) remember.run(name)
       if (added.length) {
         state.policy.tools.push(...added)
         state.policy.defaults.tools = [...(state.policy.defaults.tools ?? []), ...added]

@@ -106,6 +106,12 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("heading", { name: "Global and default chat permissions" }),
     ).toBeFocused()
+    await expect(
+      page.getByText("New tools are denied until explicitly approved.", { exact: false }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByText(/New tools are enabled in global and default permissions/),
+    ).toBeVisible()
     const blocked = page.getByRole("checkbox", {
       name: "Default chat permission for tool write",
       exact: true,

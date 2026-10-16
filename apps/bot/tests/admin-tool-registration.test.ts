@@ -72,6 +72,43 @@ it.each(["pending", "failed"])(
   },
 )
 
+it.each([0, 511, 512])("keeps full policies available (default tools: %s)", async (defaults) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-full-"))
+  const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)
+  try {
+    const policy = store.snapshot().policy
+    policy.privateUsers = [42]
+    policy.tools = Array.from({ length: 512 }, (_, i) => `known_${i}`)
+    policy.defaults.tools = policy.tools.slice(0, defaults)
+    const saved = store.save(policy, 1, "42")
+    store.applied(saved.revision, true)
+    const before = store.snapshot()
+    expect(() => store.registerTools(["new_a", "new_b"])).not.toThrow()
+    expect(store.snapshot()).toEqual(before)
+    expect(store.allows(42)).toBe(true)
+    expect(
+      store.db.prepare("SELECT name FROM known_tools WHERE name='new_a'").get(),
+    ).toBeUndefined()
+
+    // Free one slot. Only the first new name fits. A removed known name stays denied.
+    policy.tools = policy.tools.slice(1)
+    policy.defaults.tools = policy.defaults.tools.filter((name) => name !== "known_0")
+    const freed = store.save(policy, before.revision, "42")
+    store.applied(freed.revision, true)
+    store.registerTools(["known_0", "new_a", "new_b"])
+    const after = store.snapshot()
+    expect(after.policy.tools).toHaveLength(512)
+    expect(after.policy.tools).toContain("new_a")
+    expect(after.policy.defaults.tools).toContain("new_a")
+    expect(after.policy.tools).not.toContain("known_0")
+    expect(after.policy.tools).not.toContain("new_b")
+    expect(store.allows(42)).toBe(true)
+  } finally {
+    store.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 it("rolls back first-seen records if policy validation fails", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-"))
   const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)

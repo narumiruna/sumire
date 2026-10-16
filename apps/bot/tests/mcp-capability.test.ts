@@ -333,6 +333,36 @@ describe("MCP capability", () => {
     expect(JSON.stringify(capability.tools)).not.toContain("xxx")
   })
 
+  it("excludes denied tools from the metadata budget after registering all safe names", async () => {
+    const discovered = new Set<string>()
+    const { capability, call, logger } = await setup(
+      {
+        fake: {
+          command: process.execPath,
+          args: [fixturePath],
+          description: "x".repeat(4096),
+          env: {
+            SECRET_KEY: "x",
+            MCP_TEST_TOOLS: [...Array.from({ length: 1023 }, (_, i) => `t${i}`), "echo"].join(","),
+            MCP_TEST_SCHEMA: JSON.stringify({ type: "object", description: "x".repeat(2000) }),
+          },
+        },
+      },
+      {},
+      undefined,
+      (_server, tool) => discovered.has(tool) && tool === "mcp__fake__echo",
+      (names) => {
+        for (const name of names) discovered.add(name)
+      },
+    )
+    expect(discovered.size).toBe(1024)
+    expect(capability.tools.map((tool) => tool.name)).toEqual(["mcp__fake__echo"])
+    expect(await call("echo", { value: "allowed" })).toMatchObject({ isError: false })
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      "An MCP tool was withheld because redacted metadata exceeds the byte limit",
+    )
+  })
+
   it("reapplies the cumulative publication byte limit after redaction expansion", async () => {
     const { capability, logger } = await setup({
       fake: {

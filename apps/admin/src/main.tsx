@@ -1379,7 +1379,9 @@ function App() {
             <Callout.Root color="orange">
               <Callout.Text>
                 Shell and file tools are trusted capabilities, not a sandbox. They can access
-                process-readable credentials. New tools are denied until explicitly approved.
+                process-readable credentials. New tools are enabled in global and default
+                permissions when first registered or discovered. Explicit chat overrides and MCP
+                server gates still apply.
               </Callout.Text>
             </Callout.Root>
             <ToolPermissions
