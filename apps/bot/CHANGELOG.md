@@ -1,5 +1,18 @@
 # @narumitw/sumire
 
+## 0.10.0
+
+### Minor Changes
+
+- cff5f69: Clarify administration save scopes and chat readiness, add guided MCP patch editing and redacted change previews, and provide filtered, grouped audit history with accessible controls.
+  
+  Keep MCP previews consistent with saved transports, clear audit errors after query recovery, and bind model-list check results to the checked endpoint settings.
+
+### Patch Changes
+
+- 5e2fc04: Centralize global and shared-default tool permissions with retained-selection warnings. Separate MCP connections, replace duplicate Defaults editors with saved/draft summaries, and clarify the all-chat override reset. Preserve authorization rules, drafts, legacy section links, and separate saves.
+- b507a83: Extend administrator sessions to seven idle days and 30 days total, including the session cookie lifetime.
+
 ## 0.9.0
 
 ### Minor Changes
