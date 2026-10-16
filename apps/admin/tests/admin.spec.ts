@@ -78,6 +78,66 @@ async function setup(page: Page, signedIn = true) {
   })
   await page.goto("/")
 }
+test("shows the model conflict beside its allowed list", async ({ page }) => {
+  await setup(page)
+  await page.getByRole("button", { name: "Defaults", exact: true }).click()
+  await page.getByRole("checkbox", { name: "fixture/test", exact: true }).uncheck()
+  await expect(page.getByRole("alert")).toContainText(
+    'Model "fixture/test" is not in Allowed models',
+  )
+  await page.getByRole("checkbox", { name: "fixture/test", exact: true }).check()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+})
+
+test("stages inheritance for all chat overrides without changing access or enabled switches", async ({
+  page,
+}) => {
+  await setup(page)
+  const inherited = { tools: null, servers: null, models: null, model: null, thinking: null }
+  const original = {
+    ...structuredClone(policy),
+    groups: [-100],
+    chats: {
+      "42": { ...inherited, tools: [], model: "fixture/test", enabled: true },
+      "-100": { ...inherited, models: [], thinking: "high", enabled: false },
+      "999": { ...inherited, servers: [], enabled: true },
+    },
+  }
+  let saved = structuredClone(original)
+  let writes = 0
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      saved = route.request().postDataJSON().policy
+      writes++
+    }
+    await route.fulfill({
+      json: { revision: 1 + writes, applied: 1 + writes, status: "applied", policy: saved },
+    })
+  })
+  await page.reload()
+  await page.getByRole("button", { name: "Defaults", exact: true }).click()
+  const bulk = page.getByRole("button", { name: "Use Defaults for all chats", exact: true })
+  await bulk.click()
+  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled()
+  await bulk.click()
+  await page.getByRole("button", { name: "Stage inheritance for all chats", exact: true }).click()
+  expect(writes).toBe(0)
+  await expect(bulk).toBeDisabled()
+  await page.getByRole("button", { name: "Save settings", exact: true }).click()
+  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  await expect(page.getByText("All changes applied.", { exact: true })).toBeVisible()
+  expect(writes).toBe(1)
+  expect(saved).toEqual({
+    ...original,
+    chats: {
+      "42": { ...inherited, enabled: true },
+      "-100": { ...inherited, enabled: false },
+      "999": { ...inherited, enabled: true },
+    },
+  })
+})
+
 async function chooseProvider(page: Page) {
   await page.getByRole("button", { name: "Provider", exact: true }).click()
   await page.getByRole("combobox", { name: "Search provider" }).fill("fixt")

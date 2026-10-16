@@ -116,6 +116,30 @@ describe("admin policy and persistence", () => {
     expect(effectivePolicy(p, 42).tools).toEqual([])
     expect(() => validateReferences(p)).toThrow("global availability")
   })
+  it("identifies the scope, model, and allowed-list source in validation errors", () => {
+    const p = initialPolicy(new Set([42]))
+    p.models = ["fixture/test", "fixture/other"]
+    p.defaults.models = ["fixture/test"]
+    p.defaults.model = "fixture/other"
+    expect(() => validateReferences(p)).toThrow(
+      'Defaults: model "fixture/other" is not in Allowed models',
+    )
+    p.defaults.model = "fixture/test"
+    p.chats["-100"] = { ...inherited, enabled: false, model: "fixture/other" }
+    expect(() => validateReferences(p)).toThrow(
+      'Chats → -100: model "fixture/other" is not in Allowed models inherited from Defaults',
+    )
+    p.chats["-100"].models = []
+    expect(() => validateReferences(p)).toThrow(
+      'Chats → -100: model "fixture/other" is not in Allowed models.',
+    )
+    p.chats["-100"].models = ["fixture/other"]
+    expect(() => validateReferences(p)).not.toThrow()
+    p.chats["-100"].tools = ["unknown"]
+    expect(() => validateReferences(p)).toThrow(
+      "Chats → -100: tools selection exceeds global availability: unknown",
+    )
+  })
   it("commits revisions and audit atomically and rejects stale writes", () => {
     const { s } = store()
     const p = s.snapshot().policy

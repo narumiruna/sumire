@@ -127,12 +127,21 @@ export function effectivePolicy(policy: Policy, chatId: number) {
 }
 
 export function validateReferences(policy: Policy): void {
-  for (const choice of [policy.defaults, ...Object.values(policy.chats)]) {
-    for (const key of ["tools", "servers", "models"] as const)
-      if (choice[key]?.some((value) => !policy[key].includes(value)))
-        throw new Error("Selection exceeds global availability")
+  for (const [scope, choice] of [
+    ["Defaults", policy.defaults],
+    ...Object.entries(policy.chats).map(([id, choice]) => [`Chats → ${id}`, choice] as const),
+  ] as const) {
+    for (const key of ["tools", "servers", "models"] as const) {
+      const unavailable = choice[key]?.filter((value) => !policy[key].includes(value))
+      if (unavailable?.length)
+        throw new Error(
+          `${scope}: ${key} selection exceeds global availability: ${unavailable.join(", ")}. Update the selection or the global availability list.`,
+        )
+    }
     if (choice.model && !(choice.models ?? policy.defaults.models ?? []).includes(choice.model))
-      throw new Error("Default model must be allowed")
+      throw new Error(
+        `${scope}: model "${choice.model}" is not in Allowed models${choice.models === null ? " inherited from Defaults" : ""}. Add it to Allowed models, or change the ${scope === "Defaults" ? "default model in Model Providers" : "chat model override"}.`,
+      )
   }
   for (const p of policy.providers) {
     if (!p.enabled && policy.models.some((ref) => ref.startsWith(`${p.id}/`)))
