@@ -171,6 +171,47 @@ describe("Miyu bot integration", () => {
     }
   })
 
+  it.each([
+    { intent: "steer", action: "abort" },
+    { intent: "followUp", action: "abort" },
+    { intent: "steer", action: "dispose" },
+    { intent: "followUp", action: "dispose" },
+  ] as const)(
+    "rejects $intent after $action during membership refresh",
+    async ({ intent, action }) => {
+      const { fixture, member, send } = await setup()
+      const session = await fixture.createSession(-100)
+      fixture.enqueue("miyu_cna_news", { query: "news" }, false)
+      const turn = session.prompt("Start the news request").catch(() => undefined)
+      let release = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      try {
+        await vi.waitFor(() => expect(send).toHaveBeenCalledOnce())
+        let entered = false
+        member.mockImplementationOnce(async () => {
+          entered = true
+          await gate
+          return { status: "member", user: miyu }
+        })
+        const queued = session[intent]("This input must be cancelled")
+        const outcome = expect(queued).rejects.toThrow("cancelled before acceptance")
+        await vi.waitFor(() => expect(entered).toBe(true))
+        await session[action]()
+        release()
+        await outcome
+        await turn
+        expect(fixture.requests).toHaveLength(1)
+        expect(JSON.stringify(session.messages)).not.toContain("This input must be cancelled")
+      } finally {
+        release()
+        await session.abort()
+        await turn
+      }
+    },
+  )
+
   it("never routes Miyu messages from an unauthorized chat", async () => {
     const { fixture } = await setup()
     const sessions = {

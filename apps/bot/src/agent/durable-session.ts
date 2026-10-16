@@ -474,8 +474,16 @@ export class DurableSession implements SessionHandle {
   }
 
   private async queue(text: string, images: ImageContent[], whenBusy: "steer" | "followUp") {
+    const epoch = this.#epoch
+    const assertCurrent = () => {
+      if (epoch !== this.#epoch || this.#closing)
+        throw new Error("Queued input was cancelled before acceptance")
+    }
+    assertCurrent()
     await this.refreshTools()
+    assertCurrent()
     await this.configureInput()
+    assertCurrent()
     await this.#conversation.submit(
       {
         type: "input",
