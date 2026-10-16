@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { expect, it } from "vitest"
 import { effectivePolicy } from "@narumitw/sumire-policy"
+import { expect, it } from "vitest"
 import { AdminStore } from "../src/admin/store.js"
 
 it("enables first-seen tools without changing admission, overrides, or server gates", async () => {
