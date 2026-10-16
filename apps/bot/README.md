@@ -85,7 +85,14 @@ The tool is offered only when current Miyu membership is confirmed. Sumire check
 
 Telegram member lookup needs a numeric user ID. Sumire discovers Miyu from authenticated Telegram senders, join/leave service messages, or `getChatAdministrators` with `return_bots: true`, then verifies membership with `getChatMember`. Identity discovery is held only in memory. If Miyu is a non-administrator and has not been observed since startup, the tool stays unavailable until a message or service event identifies it. Sumire may need administrator rights to query another member reliably. Discovery and verification share a 10-second deadline per tool refresh; failure disables the tool without failing the ordinary prompt.
 
-Both bots must receive Telegram bot-to-bot messages in the target group. Membership and privacy settings alone do not prove delivery. After deployment, verify one query and a direct Miyu reply in a test group; lack of delivery causes a timeout. Edited replies, multipart aggregation, and forum-topic placement are not supported. Requests go to the group, not a selected topic. No CNA credentials or new environment variables are required in Sumire.
+Apply the [official Telegram bot-to-bot requirements](https://core.telegram.org/api/bots/bot-to-bot) before use:
+
+- Enable **Bot-to-Bot Communication Mode** for `miyuyo_bot` in `@BotFather`.
+  - The request is an ordinary mention, not a command mention or a direct reply. To receive it, `miyuyo_bot` must also be a group administrator or have **Group Privacy Mode** disabled.
+- Make `miyuyo_bot` reply directly to the request message.
+  - Direct group replies require Bot-to-Bot Communication Mode on at least one bot. The required Miyu setting meets this condition. Telegram recommends enabling the mode for each participating bot, including Sumire.
+
+Membership alone does not prove delivery. After applying these settings, verify one query and a direct Miyu reply in a test group; lack of delivery causes a timeout. Edited replies, multipart aggregation, and forum-topic placement are not supported. Requests go to the group, not a selected topic. No CNA credentials or new environment variables are required in Sumire.
 
 ## Article command
 

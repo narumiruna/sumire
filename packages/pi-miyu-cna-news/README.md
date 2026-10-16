@@ -33,7 +33,14 @@ The tool sends:
 
 ## Deployment limits
 
-Confirmed membership is necessary but not sufficient. Telegram must also deliver the mention and reply between the bots. Group membership or disabled privacy mode alone does not prove bot-to-bot delivery. Verify delivery in the target group. If Telegram does not deliver bot messages, this transport cannot retrieve an answer and the tool times out.
+Apply the [official Telegram bot-to-bot requirements](https://core.telegram.org/api/bots/bot-to-bot):
+
+- Enable **Bot-to-Bot Communication Mode** for `miyuyo_bot` in `@BotFather`.
+  - This tool sends an ordinary `@miyuyo_bot` mention, not a command mention or a direct reply. To receive it, `miyuyo_bot` must also be a group administrator or have **Group Privacy Mode** disabled.
+- Make `miyuyo_bot` reply directly to the request message.
+  - Telegram requires Bot-to-Bot Communication Mode on at least one bot for direct replies in a group. The required Miyu setting meets this condition. Telegram recommends enabling the mode for each participating bot, including Sumire.
+
+Confirmed membership alone does not prove delivery. After applying these settings, verify one query and a direct reply in the target group. If Telegram does not deliver bot messages, the tool waits until its 120-second deadline and reports a timeout.
 
 The package does not contact CNA MCP directly. It does not poll Telegram or store bot credentials. The Sumire bot integrates the package through its Telegram adapter and session factory. A live delivery check is still required; see the [bot setup](../../apps/bot/README.md#miyu-cna-news-tool).
 
