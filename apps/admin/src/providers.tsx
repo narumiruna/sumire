@@ -9,15 +9,13 @@ import {
   Flex,
   Heading,
   Popover,
-  Select,
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { createContext, useContext, useEffect, useId, useState } from "react"
+import { useContext, useEffect, useId, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
-
-export const SectionActive = createContext(true)
+import { SectionActive, SectionSelect as Select } from "./sections.js"
 
 type Option = { id: string; label: string; detail?: string }
 export function SearchChoice({

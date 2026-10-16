@@ -2,4 +2,4 @@
 "@narumitw/sumire-admin": minor
 ---
 
-Add a searchable, page-scoped chat workspace with effective policy summaries and contextual access and configuration actions. Close section-owned search popovers on navigation, preserve drafts during chat pagination, and show scoped policy review, discard, and pending access changes.
+Add a responsive chat-centric workspace with sidebar links, page-scoped search and filters, compatible chat deep links, effective policy summaries, contextual staged access actions, Model & Tools editing, and scoped audit history. Remove the obsolete chat selector, close remaining search popovers on navigation, preserve cross-section drafts, and show persistent scoped policy review, apply, discard, and pending access changes without changing backend save boundaries.

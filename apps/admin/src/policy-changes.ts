@@ -1,5 +1,17 @@
 import type { Policy } from "./api.js"
 
+/** Stage one explicit approval without changing chat overrides or other access scopes. */
+export function withChatAccess(policy: Policy, id: number, allowed: boolean): Policy {
+  if (!Number.isSafeInteger(id) || id === 0) throw new Error("Enter a valid, non-zero Telegram ID")
+  const key = id > 0 ? "privateUsers" : "groups"
+  return {
+    ...policy,
+    [key]: allowed
+      ? [...new Set([...policy[key], id])]
+      : policy[key].filter((value) => value !== id),
+  }
+}
+
 /** Describe policy-only changes without including credentials or endpoint values. */
 export function policyChanges(saved: Policy, draft: Policy): string[] {
   const changes: string[] = []

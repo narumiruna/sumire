@@ -193,10 +193,10 @@ test("removes environment import controls and shows retained read-only history o
     }),
   )
   await page.goto("/")
-  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("link", { name: "Access", exact: true }).click()
   await expect(page.getByRole("button", { name: "Confirm environment review" })).toHaveCount(0)
   await expect(page.getByRole("heading", { name: "Review environment access" })).toHaveCount(0)
-  await page.getByRole("button", { name: "Audit", exact: true }).click()
+  await page.getByRole("link", { name: "Audit", exact: true }).click()
   await expect(page.getByText(/environment-access:5/)).toBeVisible()
   expect(reconciliationRequests).toBe(0)
 })
@@ -223,7 +223,7 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
     }),
   )
   await page.goto("/")
-  await page.getByRole("button", { name: "Access", exact: true }).click()
+  await page.getByRole("link", { name: "Access", exact: true }).click()
   const users = page.getByRole("group", { name: "Private-message access", exact: true })
   await expect(users.getByRole("listitem").filter({ hasText: "Alice" })).toContainText("42")
   await expect(users.getByRole("listitem").filter({ hasText: "43" })).toHaveText(
