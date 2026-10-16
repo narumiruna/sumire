@@ -3,13 +3,13 @@ import {
   DocumentConversionError,
   type DocumentConversionErrorKind,
   runAnyDocChild,
-} from "@narumitw/sumire-url-content/anydoc"
+} from "@narumitw/sumire-url-reader/anydoc"
 
 export {
   DocumentConversionError,
   type DocumentConversionErrorKind,
   runAnyDocChild,
-} from "@narumitw/sumire-url-content/anydoc"
+} from "@narumitw/sumire-url-reader/anydoc"
 
 export interface ConvertedDocument {
   markdown: string

@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url"
 
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { SessionManager } from "@earendil-works/pi-coding-agent"
+import { createPublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { inherited } from "@narumitw/sumire-policy"
-import { createPublicUrlLoader } from "@narumitw/sumire-url-tool"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DurableSession } from "../src/agent/durable-session.js"
 import { createPiSessionFactory as createProductionFactory } from "../src/agent/pi-session-factory.js"
@@ -19,7 +19,7 @@ import { urlFingerprint } from "../src/url-telemetry.js"
 import { appendMessage, currentConversation } from "./helpers/durable-session.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
-vi.mock("@narumitw/sumire-url-tool", { spy: true })
+vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
 
 const logger: Logger = {
   debug: vi.fn(),

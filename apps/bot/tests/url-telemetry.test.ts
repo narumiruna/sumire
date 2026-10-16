@@ -1,4 +1,4 @@
-import { LoaderError, resolveExplicitLoadChain } from "@narumitw/sumire-url-content"
+import { LoaderError, resolveExplicitLoadChain } from "@narumitw/sumire-url-reader"
 import { describe, expect, it, vi } from "vitest"
 
 import type { Logger, SpanAttributes } from "../src/logging.js"

@@ -3,7 +3,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { Inventory } from "@narumitw/sumire-contracts"
 import { effectivePolicy, type Policy, type ProviderSettings } from "@narumitw/sumire-policy"
-import { assertPublicUrl, readResponseBytes, safeFetch } from "@narumitw/sumire-url-content/network"
+import { assertPublicUrl, readResponseBytes, safeFetch } from "@narumitw/sumire-url-reader/network"
 import { AdminError, type AdminStore, token } from "./store.js"
 
 /** Public endpoint fetch with DNS validation at connect time and no credential-bearing redirects. */

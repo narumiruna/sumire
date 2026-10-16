@@ -1,4 +1,4 @@
-# @narumitw/sumire-url-tool
+# @narumitw/sumire-pi-url-reader
 
 ## 0.4.0
 

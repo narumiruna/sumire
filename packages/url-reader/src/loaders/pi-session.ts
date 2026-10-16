@@ -289,7 +289,7 @@ export class PiSessionLoader implements Loader {
     try {
       const apiUrl = GITHUB_GIST_API.replace("{gistId}", target.gistId)
       const response = await this.get(apiUrl, {
-        headers: { Accept: "application/vnd.github+json", "User-Agent": "sumire-url-content" },
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "sumire-url-reader" },
         redirect: "follow",
         signal: activeSignal,
       })

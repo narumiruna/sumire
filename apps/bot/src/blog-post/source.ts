@@ -1,4 +1,4 @@
-import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
+import type { PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 
 const maxArticleUrls = 4
 const urlPattern = /https?:\/\/[^\s<>"]+/giu

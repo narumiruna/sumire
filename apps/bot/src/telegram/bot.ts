@@ -1,5 +1,5 @@
 import type { RunnerHandle } from "@grammyjs/runner"
-import type { PublicUrlLoader } from "@narumitw/sumire-url-tool"
+import type { PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 

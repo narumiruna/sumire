@@ -199,7 +199,7 @@ it("uses the same npm-ci Playwright CLI for Docker browser and OS dependency ins
   const dockerfile = readFileSync(new URL("../../../Dockerfile", import.meta.url), "utf8")
   const bot = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
   const content = JSON.parse(
-    readFileSync(new URL("../../../packages/url-content/package.json", import.meta.url), "utf8"),
+    readFileSync(new URL("../../../packages/url-reader/package.json", import.meta.url), "utf8"),
   )
   const lock = JSON.parse(
     readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8"),

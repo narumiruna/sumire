@@ -1,4 +1,4 @@
-import type { LoadedUrl, PublicUrlLoader } from "@narumitw/sumire-url-tool"
+import type { LoadedUrl, PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { describe, expect, it, vi } from "vitest"
 import {
   ArticleUrlBudgetError,

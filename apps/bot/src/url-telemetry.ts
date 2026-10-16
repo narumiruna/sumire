@@ -1,12 +1,11 @@
 import { createHmac, randomBytes } from "node:crypto"
-
+import type { LoadedUrl } from "@narumitw/sumire-pi-url-reader"
 import {
   type AttemptRecord,
   getInterruptedAttempts,
   getLoaderDef,
   LoaderError,
-} from "@narumitw/sumire-url-content"
-import type { LoadedUrl } from "@narumitw/sumire-url-tool"
+} from "@narumitw/sumire-url-reader"
 
 import { type Logger, withLogSpan } from "./logging.js"
 

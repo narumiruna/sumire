@@ -11,9 +11,8 @@ import {
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import type { OAuthLoginClient } from "@narumitw/sumire-login"
+import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { urlContentSkillsPath } from "@narumitw/sumire-url-content/resources"
-import { createUrlTool, urlToolSkillsPath } from "@narumitw/sumire-url-tool"
 import type { McpAdmin } from "../admin/mcp.js"
 import { chatModelRuntime } from "../admin/providers.js"
 import { adminShellEnvironment } from "../admin/shell.js"
@@ -61,7 +60,7 @@ export async function createPiSessionFactory(
   const loader = new DefaultResourceLoader({
     cwd: settings.botWorkdir,
     agentDir,
-    additionalSkillPaths: [settings.botSkillsDir, urlToolSkillsPath, urlContentSkillsPath],
+    additionalSkillPaths: [settings.botSkillsDir, urlReaderSkillsPath],
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,

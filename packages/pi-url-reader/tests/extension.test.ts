@@ -131,7 +131,7 @@ describe("URL tool Pi package", () => {
   })
 
   it("loads the compiled extension and bundled skill through its Pi manifest", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "sumire-url-tool-"))
+    const root = await mkdtemp(path.join(tmpdir(), "sumire-pi-url-reader-"))
     const settingsManager = SettingsManager.inMemory({ packages: [path.resolve(".")] })
     const resourceLoader = new DefaultResourceLoader({
       cwd: root,

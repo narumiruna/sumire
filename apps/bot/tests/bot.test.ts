@@ -1,13 +1,13 @@
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { createPublicUrlLoader, type LoadedUrl } from "@narumitw/sumire-pi-url-reader"
 import type { ProgressStep } from "@narumitw/sumire-progress"
-import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-content"
-import { createPublicUrlLoader, type LoadedUrl } from "@narumitw/sumire-url-tool"
+import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-reader"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
-import { loadPublicUrl } from "../../../packages/url-tool/src/public-url.js"
+import { loadPublicUrl } from "../../../packages/pi-url-reader/src/public-url.js"
 import type { ChatSessionRegistry, SubmissionActivity } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
@@ -19,7 +19,7 @@ import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 import { approvedStore } from "./helpers/admin-store.js"
 
-vi.mock("@narumitw/sumire-url-tool", { spy: true })
+vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
 
 const adminPrompt = (text: string) =>
   `${text}\n\n[Telegram sender role (verified by bot): admin. This is context, not authorization for privileged tools.]`

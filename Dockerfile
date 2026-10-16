@@ -41,8 +41,8 @@ COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
-COPY packages/url-content/package.json packages/url-content/package.json
-COPY packages/url-tool/package.json packages/url-tool/package.json
+COPY packages/url-reader/package.json packages/url-reader/package.json
+COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
@@ -72,19 +72,19 @@ COPY packages/progress/tsconfig*.json packages/progress/
 COPY packages/progress/src/ packages/progress/src/
 RUN npm run build --workspace @narumitw/sumire-progress
 
-FROM dependencies AS url-content-build
+FROM dependencies AS url-reader-build
 
-COPY packages/url-content/tsconfig*.json packages/url-content/
-COPY packages/url-content/src/ packages/url-content/src/
-RUN npm run build --workspace @narumitw/sumire-url-content
+COPY packages/url-reader/tsconfig*.json packages/url-reader/
+COPY packages/url-reader/src/ packages/url-reader/src/
+RUN npm run build --workspace @narumitw/sumire-url-reader
 
-FROM dependencies AS url-tool-build
+FROM dependencies AS pi-url-reader-build
 
-COPY --from=url-content-build /build/packages/url-content/dist /build/packages/url-content/dist
-COPY packages/url-tool/tsconfig*.json packages/url-tool/
-COPY packages/url-tool/src/ packages/url-tool/src/
+COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
+COPY packages/pi-url-reader/tsconfig*.json packages/pi-url-reader/
+COPY packages/pi-url-reader/src/ packages/pi-url-reader/src/
 # Dependencies are already compiled; skip the prebuild hook that recompiles them.
-RUN npm --ignore-scripts run build --workspace @narumitw/sumire-url-tool
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire-pi-url-reader
 
 FROM dependencies AS build
 
@@ -93,8 +93,8 @@ COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contr
 
 COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
-COPY --from=url-content-build /build/packages/url-content/dist /build/packages/url-content/dist
-COPY --from=url-tool-build /build/packages/url-tool/dist /build/packages/url-tool/dist
+COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
+COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
 COPY apps/bot/tsconfig*.json apps/bot/
 COPY apps/bot/src/ apps/bot/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire
@@ -164,7 +164,7 @@ WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /workdir /app/apps/bot /app/packages/login /app/packages/progress /app/packages/url-content /app/packages/url-tool /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
+    && mkdir -p /workdir /app/apps/bot /app/packages/login /app/packages/progress /app/packages/url-reader /app/packages/pi-url-reader /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
     && chown -R app:app /app /workdir
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
@@ -179,18 +179,17 @@ COPY --from=production-dependencies --chown=app:app /build/packages/contracts/pa
 COPY --from=production-dependencies --chown=app:app /build/packages/policy/package.json /app/packages/policy/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/url-content/package.json /app/packages/url-content/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/url-tool/package.json /app/packages/url-tool/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/url-reader/package.json /app/packages/url-reader/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reader/package.json /app/packages/pi-url-reader/package.json
 COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
-COPY --from=url-content-build --chown=app:app /build/packages/url-content/dist /app/packages/url-content/dist
-COPY --from=url-tool-build --chown=app:app /build/packages/url-tool/dist /app/packages/url-tool/dist
+COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist
+COPY --from=pi-url-reader-build --chown=app:app /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build --chown=app:app /build/apps/admin/dist /app/apps/admin/dist
-COPY --chown=app:app packages/url-content/skills/ /app/packages/url-content/skills/
-COPY --chown=app:app packages/url-tool/skills/ /app/packages/url-tool/skills/
+COPY --chown=app:app packages/pi-url-reader/skills/ /app/packages/pi-url-reader/skills/
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
 COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/

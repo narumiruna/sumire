@@ -9,7 +9,7 @@ import {
   LoaderContentError,
   loadUrlDetailed,
   type LoadResult as UrlContentLoadResult,
-} from "@narumitw/sumire-url-content"
+} from "@narumitw/sumire-url-reader"
 import ipaddr from "ipaddr.js"
 import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
 
