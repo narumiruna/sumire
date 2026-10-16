@@ -7,7 +7,7 @@ import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import type { McpAdmin } from "./mcp.js"
 import { effectivePolicy, policySchema } from "./policy.js"
 import type { ProviderAdmin } from "./providers.js"
-import { AdminError, type AdminStore, digest } from "./store.js"
+import { AdminError, type AdminStore, digest, sessionMaxAgeMs } from "./store.js"
 
 interface AdminServices {
   store: AdminStore
@@ -160,7 +160,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       const session = store.createSession(actor)
       store.audit(actor, "admin.login", store.snapshot().revision, "completed", "administrator")
       res.setHeader("set-cookie", [
-        cookie("__Host-sumire-session", session.value, 8 * 3600),
+        cookie("__Host-sumire-session", session.value, sessionMaxAgeMs / 1000),
         cookie("__Host-sumire-passkey", "", 0),
       ])
       reply(res, 200, { csrf: session.csrf, actor })
@@ -401,7 +401,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         id: providers.startLogin(
           id,
           owner,
-          Math.min(session.created + 8 * 3600_000, Date.now() + 30 * 60_000),
+          Math.min(session.created + sessionMaxAgeMs, Date.now() + 30 * 60_000),
         ),
       })
       return

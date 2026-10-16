@@ -65,7 +65,7 @@ For a reverse proxy in another container, use a private Docker network and the `
 
 The backend does not trust `Forwarded` or `X-Forwarded-*` headers. It uses the exact configured origin, or the default localhost origin, and checks the Host header. It sends HSTS only for an HTTPS origin. Rate limits use the socket peer, so a proxy shares the login budget across users. This is suitable for the single-administrator service. Configure matching body and request limits at the ingress. `/healthz` is a liveness check, not proof of valid providers or applied settings.
 
-Cookies are host-only, Secure, HttpOnly, and SameSite=Strict. Administrator sessions expire after 30 idle minutes or eight hours total. Mutations require the session's CSRF token and the exact Origin. Logout revokes the server-side session and cancels provider login interactions owned by it.
+Cookies are host-only, Secure, HttpOnly, and SameSite=Strict. Administrator sessions expire after seven idle days or 30 days total. Authenticated API requests reset the idle timeout but do not extend the total lifetime. Mutations require the session's CSRF token and the exact Origin. Logout revokes the server-side session and cancels provider login interactions owned by it.
 
 ## First-start import
 

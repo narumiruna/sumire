@@ -18,6 +18,8 @@ export class AdminError extends Error {
     super(message)
   }
 }
+export const sessionMaxAgeMs = 30 * 24 * 3600_000
+const sessionIdleTimeoutMs = 7 * 24 * 3600_000
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex")
 export const token = () => randomBytes(32).toString("base64url")
 export type Snapshot = {
@@ -211,7 +213,7 @@ export class AdminStore {
   prune(now = Date.now()) {
     this.db
       .prepare("DELETE FROM sessions WHERE created<=? OR touched<=?")
-      .run(now - 8 * 3600_000, now - 30 * 60_000)
+      .run(now - sessionMaxAgeMs, now - sessionIdleTimeoutMs)
     this.db.prepare("DELETE FROM passkey_setup WHERE created<=?").run(now - 5 * 60_000)
     this.db.prepare("DELETE FROM passkey_challenges WHERE created<=?").run(now - 5 * 60_000)
   }

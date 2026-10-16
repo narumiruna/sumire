@@ -405,6 +405,13 @@ describe("admin HTTP security", () => {
       { ...auth(), cookie: String(next.headers["set-cookie"]).split(";")[0] as string },
     )
     expect(loggedIn.status).toBe(200)
+    expect(loggedIn.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^__Host-sumire-session=.+; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/,
+        ),
+      ]),
+    )
     const sessionCookie = (loggedIn.headers["set-cookie"] as string[])
       .find((item) => item.startsWith("__Host-sumire-session="))
       ?.split(";")[0] as string
