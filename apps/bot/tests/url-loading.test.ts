@@ -1,4 +1,4 @@
-import { createUrlTool } from "@narumitw/sumire-url-tool"
+import { createUrlTool } from "@narumitw/sumire-pi-url-reader"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { loadArticleSourceUrls } from "../src/blog-post/source.js"
 import { loadSettings } from "../src/config/settings.js"

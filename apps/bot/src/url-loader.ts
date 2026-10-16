@@ -1,4 +1,4 @@
-import { createPublicUrlLoader } from "@narumitw/sumire-url-tool"
+import { createPublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import type { Settings } from "./config/settings.js"
 
 /** Keep article preloading and Pi URL tools on the same source selection and limits. */

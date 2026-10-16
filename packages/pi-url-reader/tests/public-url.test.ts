@@ -1,11 +1,7 @@
 import type { lookup } from "node:dns/promises"
 
-import {
-  LoaderContentError,
-  resolveLoadChain,
-  UrlContentClient,
-} from "@narumitw/sumire-url-content"
-import { htmlToMarkdown } from "@narumitw/sumire-url-content/loaders"
+import { LoaderContentError, resolveLoadChain, UrlContentClient } from "@narumitw/sumire-url-reader"
+import { htmlToMarkdown } from "@narumitw/sumire-url-reader/loaders"
 import { describe, expect, it, vi } from "vitest"
 import {
   assertPublicUrl,

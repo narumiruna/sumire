@@ -12,7 +12,8 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
-| [`packages/url-content`](packages/url-content/README.md) | URL-content CLI and library with a bundled Pi skill. |
+| [`packages/url-reader`](packages/url-reader/README.md) | Source-aware URL reading library and CLI. |
+| [`packages/pi-url-reader`](packages/pi-url-reader/README.md) | Pi URL-reading tool and bundled skills, backed by `url-reader`. |
 
 Bot-owned shared runtime resources stay at the repository root:
 
@@ -73,7 +74,7 @@ Run `npm run precommit` to check staged files manually.
 Run one workspace with `--workspace`, for example:
 
 ```bash
-npm test --workspace @narumitw/sumire-url-content
+npm test --workspace @narumitw/sumire-url-reader
 ```
 
 ## Package releases

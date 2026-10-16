@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { createPublicUrlLoader, createUrlTool } from "@narumitw/sumire-url-tool"
+import { createPublicUrlLoader, createUrlTool } from "@narumitw/sumire-pi-url-reader"
 import { McpCapability } from "../dist/agent/mcp-capability.js"
 import { loadMcpConfig } from "../dist/agent/mcp-config.js"
 import { createLogger, withLogSpan } from "../dist/logging.js"

@@ -1,4 +1,4 @@
-# @narumitw/sumire-url-content
+# @narumitw/sumire-url-reader
 
 ## 0.23.0
 

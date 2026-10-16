@@ -1,4 +1,4 @@
-# @narumitw/sumire-url-content
+# @narumitw/sumire-url-reader
 
 A TypeScript and Node.js package that extracts text or Markdown from URLs and automatically chooses a source-safe loader.
 
@@ -9,12 +9,12 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
 - Reusable fetch, `impers`, and Playwright resources with concurrency limits and total deadlines
-- ESM library API, TypeScript declarations, and a `sumire-url-content` CLI
+- ESM library API, TypeScript declarations, and a `sumire-url-reader` CLI
 
 ## Installation
 
 ```bash
-npm install @narumitw/sumire-url-content
+npm install @narumitw/sumire-url-reader
 ```
 
 ## Workspace usage
@@ -23,15 +23,15 @@ From this repository root:
 
 ```bash
 npm install
-npm run build --workspace @narumitw/sumire-url-content
-npm test --workspace @narumitw/sumire-url-content
-npm exec --workspace @narumitw/sumire-url-content -- sumire-url-content --list
+npm run build --workspace @narumitw/sumire-url-reader
+npm test --workspace @narumitw/sumire-url-reader
+npm exec --workspace @narumitw/sumire-url-reader -- sumire-url-reader --list
 ```
 
 ## Library API
 
 ```ts
-import { explainPlan, loadUrl, loadUrlDetailed } from "@narumitw/sumire-url-content";
+import { explainPlan, loadUrl, loadUrlDetailed } from "@narumitw/sumire-url-reader";
 
 const plan = explainPlan("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 console.log(plan.execution_plan);
@@ -57,7 +57,7 @@ The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict networ
 A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.
 
 ```ts
-import { UrlContentClient } from "@narumitw/sumire-url-content";
+import { UrlContentClient } from "@narumitw/sumire-url-reader";
 
 await using client = new UrlContentClient({
   deadlineSeconds: 30,
@@ -79,16 +79,20 @@ Cancellation is propagated through `AbortSignal`; waiting is bounded even if an 
 ## CLI
 
 ```bash
-sumire-url-content https://example.com
-sumire-url-content --loader curl-cffi,playwright,httpx https://example.com
-sumire-url-content --list
+sumire-url-reader https://example.com
+sumire-url-reader --loader curl-cffi,playwright,httpx https://example.com
+sumire-url-reader --list
 ```
 
 Automatic planning is preferred. Explicit loaders are exact overrides for debugging or allowlisted host integrations; they retain target validation, deadlines, cancellation, resource admission, and requirement checks.
 
-## Pi package
+## Pi integration
 
-From the repository root, run `npm ci` and build this workspace before loading it locally with `pi -e ./packages/url-content`. Pi discovers `skills/load-url-content/SKILL.md` through the package manifest; the package remains private and is not published to npm. The skill calls `dist/cli.js` relative to its own directory, so it works outside the repository's npm workspace when the package and its dependencies are installed. It needs Pi's `bash` tool and the CLI's runtime requirements below; it does not register a Pi tool. In the Telegram bot, this CLI skill and the bounded `read_url_content` tool are available only when their required capabilities are approved by database policy. The bot requires `BOT_ADMIN_ID` for WebUI bootstrap and an applied SQLite policy that approves the chat and its capabilities; new databases deny chats until approval.
+This package provides the library and `sumire-url-reader` CLI; it does not register Pi tools or bundle Pi skills. Use [`@narumitw/sumire-pi-url-reader`](../pi-url-reader/README.md) for the `read_url_content` tool and both URL-reading skills.
+
+## Name migration
+
+This package was previously `@narumitw/sumire-url-content` in `packages/url-content`. Update imports and workspace paths to `@narumitw/sumire-url-reader` and `packages/url-reader`; replace the `sumire-url-content` CLI command with `sumire-url-reader`. The library API names, including `UrlContentClient`, are unchanged. Pi skill consumers must load `pi-url-reader` instead of this package.
 
 ## Runtime requirements
 
@@ -140,11 +144,11 @@ The `anydoc` worker loader uses [`@firecrawl/anydoc`](https://github.com/firecra
 - OpenDocument: `.odt`, `.ods`, `.odp`
 - Other: `.rtf`, `.epub`, `.csv`
 
-Existing source-specific plans, including Google Docs, GitHub, and PDF, retain precedence. PDF URLs can also be converted explicitly with `sumire-url-content --loader anydoc https://example.com/report.pdf`. Extensionless download endpoints and local Office-file paths are not matched.
+Existing source-specific plans, including Google Docs, GitHub, and PDF, retain precedence. PDF URLs can also be converted explicitly with `sumire-url-reader --loader anydoc https://example.com/report.pdf`. Extensionless download endpoints and local Office-file paths are not matched.
 
 Keep npm optional dependencies enabled so the AnyDoc native binding for your platform is installed. Conversion does not require `FIRECRAWL_API_KEY` and always uses `ocr: "reject"`: scanned PDFs requiring OCR fail with `needsOcr`, and documents are never sent to hosted OCR. Format detection uses the bytes first, then the filename for formats such as CSV.
 
-Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-content/anydoc` and is also used for Telegram attachments.
+Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-reader/anydoc` and is also used for Telegram attachments.
 
 ### PDF
 
@@ -186,9 +190,9 @@ All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and cont
 ## Development
 
 ```bash
-npm run format:check --workspace @narumitw/sumire-url-content
-npm run lint --workspace @narumitw/sumire-url-content
-npm run typecheck --workspace @narumitw/sumire-url-content
-npm test --workspace @narumitw/sumire-url-content
-npm run build --workspace @narumitw/sumire-url-content
+npm run format:check --workspace @narumitw/sumire-url-reader
+npm run lint --workspace @narumitw/sumire-url-reader
+npm run typecheck --workspace @narumitw/sumire-url-reader
+npm test --workspace @narumitw/sumire-url-reader
+npm run build --workspace @narumitw/sumire-url-reader
 ```

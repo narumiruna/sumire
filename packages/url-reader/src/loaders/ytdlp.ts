@@ -109,7 +109,7 @@ export class YtdlpLoader implements Loader {
   ) {}
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
-    const directory = await mkdtemp(join(tmpdir(), "sumire-url-content-audio-"))
+    const directory = await mkdtemp(join(tmpdir(), "sumire-url-reader-audio-"))
     const audioPath = join(directory, "audio.mp3")
     try {
       const ytdlp = this.options.ytdlpPath ?? "yt-dlp"

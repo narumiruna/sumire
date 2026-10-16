@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { runCommand } from "@narumitw/sumire-url-content/loaders"
+import { runCommand } from "@narumitw/sumire-url-reader/loaders"
 
 export function promptWithAudioContext(
   instruction: string,

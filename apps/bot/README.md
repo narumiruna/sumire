@@ -10,7 +10,7 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
 - `@narumitw/sumire-login`: repository-owned Pi package for UI-neutral OAuth login.
 - `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
-- `@narumitw/sumire-url-tool`: repository-owned Pi package for agent-driven public URL loading.
+- `@narumitw/sumire-pi-url-reader`: repository-owned Pi package for agent-driven public URL loading.
 - grammY: Telegram Bot API.
 - Biome: formatting and linting.
 - `@firecrawl/anydoc`: isolated local document-to-Markdown conversion without hosted OCR.
@@ -288,9 +288,9 @@ The first use of the local `tiny` model downloads model weights. Compose keeps t
 
 ## URL content loading
 
-The [`@narumitw/sumire-url-tool`](../../packages/url-tool/README.md) Pi extension registers `read_url_content`. It validates the original target as public HTTP(S), then delegates every automatic load to the local `@narumitw/sumire-url-content` workspace package. The tool and `/f` article-source loader use the same source selection and fallback; no built-in-first step or host exception is applied. Built-in extraction is available only as an explicit approved override. Automatic results include the source loader and attempt metadata, may contain Markdown, and do not include built-in HTTP status or title fields. Threads post URLs and `/share/<id>` links use bounded metadata extraction so the JavaScript application shell or a dead-link page cannot be mistaken for a post. Share links require matching canonical and Open Graph post URLs; results may contain only the Open Graph excerpt, not the entire post. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
+The [`@narumitw/sumire-pi-url-reader`](../../packages/pi-url-reader/README.md) Pi extension registers `read_url_content`. It validates the original target as public HTTP(S), then delegates every automatic load to the local `@narumitw/sumire-url-reader` workspace package. The tool and `/f` article-source loader use the same source selection and fallback; no built-in-first step or host exception is applied. Built-in extraction is available only as an explicit approved override. Automatic results include the source loader and attempt metadata, may contain Markdown, and do not include built-in HTTP status or title fields. Threads post URLs and `/share/<id>` links use bounded metadata extraction so the JavaScript application shell or a dead-link page cannot be mistaken for a post. Share links require matching canonical and Open Graph post URLs; results may contain only the Open Graph excerpt, not the entire post. The package handles richer sources such as transcripts, social posts, PDFs, GitHub files, and browser-rendered pages.
 
-The `read_url_content` tool and its bundled `load-public-url` skill are available by default. The separate `load-url-content` CLI skill from the URL-content package is also always available; it uses the native `bash` tool. Database policy restricts access to both coding tools and URL-loading capabilities.
+The `read_url_content` tool and both skills, `load-public-url` and `load-url-content`, come from `@narumitw/sumire-pi-url-reader`. The CLI skill uses the native `bash` tool and resolves the CLI through the `@narumitw/sumire-url-reader` dependency. Database policy restricts access to both coding tools and URL-loading capabilities.
 
 The agent can optionally request one of the bot's approved exact loaders: `built-in`, `httpx`, `curl-cffi`, `playwright`, or `firecrawl`. Omission keeps automatic selection; an explicit selection runs only that loader and reports its failure without switching to another path. `firecrawl` requires `FIRECRAWL_API_KEY`; an HTTP error from that loader is attributed to the Firecrawl API, not the target site. A Threads share link cannot succeed with an unverified generic override. This fixed host allowlist prevents arbitrary registered loaders from being selected through the tool call.
 

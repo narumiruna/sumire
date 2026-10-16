@@ -1,15 +1,15 @@
 {
-  "name": "@narumitw/sumire-url-tool",
+  "name": "@narumitw/sumire-pi-url-reader",
   "version": "0.4.0",
   "private": true,
-  "description": "Bounded public URL loading tool for Pi agents",
+  "description": "Pi URL-reading tool and skills backed by the Sumire URL reader",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/narumiruna/sumire.git",
-    "directory": "packages/url-tool"
+    "directory": "packages/pi-url-reader"
   },
-  "homepage": "https://github.com/narumiruna/sumire/tree/main/packages/url-tool#readme",
+  "homepage": "https://github.com/narumiruna/sumire/tree/main/packages/pi-url-reader#readme",
   "bugs": {
     "url": "https://github.com/narumiruna/sumire/issues"
   },
@@ -48,7 +48,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-content",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-reader",
     "prebuild": "npm run build:dependencies",
     "check": "biome check .",
     "format": "biome format --write .",
@@ -61,7 +61,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@narumitw/sumire-url-content": "0.23.0",
+    "@narumitw/sumire-url-reader": "0.23.0",
     "ipaddr.js": "2.5.0",
     "undici": "8.11.2"
   },
