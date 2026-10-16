@@ -32,8 +32,8 @@ import {
   type Selection,
   type Snapshot,
 } from "./api.js"
+import { type Chat, ChatWorkspace } from "./chats.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
-import { ChatWorkspace, type Chat } from "./chats.js"
 import { policyChanges } from "./policy-changes.js"
 import { Providers, SectionActive } from "./providers.js"
 
