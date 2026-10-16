@@ -45,7 +45,7 @@ export class TelegramMiyuNews {
   }
 
   async handleMessage(message: Message): Promise<boolean> {
-    if (!this.control.allowsTool(message.chat.id, toolName)) return false
+    // After host chat admission, consume known replies even if the tool was revoked.
     return this.#client.handleMessage(message)
   }
 

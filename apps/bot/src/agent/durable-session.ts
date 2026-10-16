@@ -422,6 +422,8 @@ export class DurableSession implements SessionHandle {
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
+    await this.refreshTools()
+    if (this.#closing) return
     this.harness.resume()
     const outbox = await this.harness.snapshot(OutboxDoc, context)
     for (const pending of outbox?.pending ?? []) {

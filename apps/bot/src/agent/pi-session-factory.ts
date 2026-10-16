@@ -226,7 +226,7 @@ export async function createPiSessionFactory(
           defineExtension({ name: "sumire-miyu", tools: miyuTool ? [adaptTool(miyuTool)] : [] }),
         )
       }
-      await refreshTools()
+      // Input preparation and background recovery discover optional tools on demand.
       registry.install(
         defineExtension({
           name: "sumire",

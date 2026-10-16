@@ -101,6 +101,90 @@ describe("Miyu bot integration", () => {
     expect(reopened.getActiveToolNames()).not.toContain("miyu_cna_news")
   })
 
+  it("recovers idle historical groups without waiting for Miyu membership", async () => {
+    const { fixture, host, member } = await setup()
+    const store = fixture.factory.control
+    const state = store.snapshot()
+    state.policy.groups = [-100, -200, -300]
+    store.save(state.policy, state.revision, "7")
+    store.applied(state.revision + 1, true)
+    for (const chatId of [-100, -200, -300]) {
+      const session = await fixture.createSession(chatId)
+      await session.dispose()
+    }
+    const discovery = vi.spyOn(host, "createTool")
+    let finishLookup = (_member: Awaited<ReturnType<Api["getChatMember"]>>) => {}
+    member.mockReturnValue(
+      new Promise((resolve) => {
+        finishLookup = resolve
+      }),
+    )
+    member.mockClear()
+    const sessions = new ChatSessionRegistry(
+      (chatId) => fixture.createSession(chatId),
+      fixture.settings.botSessionLogDir,
+      fixture.logger,
+      { control: store },
+    )
+    let recovered = false
+    const deliver = vi.fn(async () => true)
+    const recovering = sessions.recover(await fixture.factory.listChats(), deliver).then(() => {
+      recovered = true
+    })
+    try {
+      await vi.waitFor(() => expect(recovered).toBe(true))
+      expect(discovery).not.toHaveBeenCalled()
+      expect(member).not.toHaveBeenCalled()
+      expect(deliver).not.toHaveBeenCalled()
+    } finally {
+      finishLookup(administrator)
+      await recovering
+      await sessions.dispose()
+    }
+  })
+
+  it("refreshes Miyu tools before resuming a recovered model request", async () => {
+    const { fixture, member } = await setup()
+    const session = await fixture.createSession(-100)
+    const releaseModel = fixture.pauseNextRequest()
+    fixture.enqueueAnswer("Recovered news answer")
+    const active = session
+      .prompt("persisted request", { delivery: { sourceMessageId: 51, mode: "default" } })
+      .catch(() => undefined)
+    let finishLookup = (_member: Awaited<ReturnType<Api["getChatMember"]>>) => {}
+    try {
+      await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+      await session.dispose()
+      await active
+      await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
+      releaseModel()
+      member.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishLookup = resolve
+        }),
+      )
+      const calls = member.mock.calls.length
+      const reopened = await fixture.createSession(-100)
+      expect(member.mock.calls).toHaveLength(calls)
+      const deliver = vi.fn(async () => {})
+      const recovering = reopened.recoverPending(deliver)
+      await vi.waitFor(() => expect(member.mock.calls).toHaveLength(calls + 1))
+      expect(fixture.requests).toHaveLength(1)
+      finishLookup(administrator)
+      await recovering
+      expect(deliver).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Recovered news answer" }),
+        expect.anything(),
+      )
+      expect(fixture.requests.at(-1)?.tools.map((tool) => tool.function.name)).toContain(
+        "miyu_cna_news",
+      )
+    } finally {
+      finishLookup(administrator)
+      releaseModel()
+    }
+  })
+
   it("does not register or check membership for a tool denied by chat policy", async () => {
     const { fixture, member } = await setup()
     const store = fixture.factory.control
@@ -187,7 +271,15 @@ describe("Miyu bot integration", () => {
       )
       await telegram.bot.handleUpdate(reply)
       await turn
-      // Later parts must not enter the ordinary addressed-message path either.
+      // Tool-only revocation must not send known replies into the addressed-message path.
+      const store = fixture.factory.control
+      const state = store.snapshot()
+      state.policy.defaults.tools =
+        state.policy.defaults.tools?.filter((name) => name !== "miyu_cna_news") ?? []
+      store.save(state.policy, state.revision, "7")
+      store.applied(state.revision + 1, true)
+      expect(store.allows(-100)).toBe(true)
+      expect(store.allowsTool(-100, "miyu_cna_news")).toBe(false)
       await telegram.bot.handleUpdate({
         ...reply,
         update_id: 4,
