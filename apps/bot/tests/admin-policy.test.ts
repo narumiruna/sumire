@@ -208,14 +208,27 @@ describe("admin policy and persistence", () => {
     const { s } = store()
     const session = s.createSession("42", 100000)
     expect(s.session(session.value, 100001)?.csrf).toBe(session.csrf)
-    expect(s.session(session.value, 100001 + 30 * 60_000)).toBeUndefined()
+    const day = 24 * 3600_000
+    expect(s.session(session.value, 100001 + 7 * day)).toBeUndefined()
     const other = s.createSession("43")
     expect(s.session(other.value)).toBeUndefined()
     const fresh = s.createSession("42")
     s.revoke(fresh.value)
     expect(s.session(fresh.value)).toBeUndefined()
     const absolute = s.createSession("42", 0)
-    expect(s.session(absolute.value, 8 * 3600_000 + 1)).toBeUndefined()
+    for (const days of [6, 12, 18, 24, 29]) {
+      expect(s.session(absolute.value, days * day)).toBeDefined()
+    }
+    expect(s.session(absolute.value, 30 * day - 1)).toBeDefined()
+    expect(s.session(absolute.value, 30 * day)).toBeUndefined()
+  })
+  it("extends idle expiry on activity without requiring daily sign-in", () => {
+    const { s } = store()
+    const day = 24 * 3600_000
+    const session = s.createSession("42", 0)
+    expect(s.session(session.value, 7 * day - 1)).toBeDefined()
+    expect(s.session(session.value, 8 * day)).toBeDefined()
+    expect(s.session(session.value, 15 * day)).toBeUndefined()
   })
   it("bounds known chat inventory and does not grant access from observation", () => {
     const { s } = store()
