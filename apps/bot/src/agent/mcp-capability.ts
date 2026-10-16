@@ -117,6 +117,7 @@ export class McpCapability {
     private readonly changed: () => void,
     private readonly transportFactory: McpTransportFactory = createMcpTransport,
     private readonly authorize: (server: string, tool: string) => boolean = () => true,
+    private readonly discovered: (names: string[]) => void = () => {},
   ) {
     this.#connections = config.servers.map((config) => ({ config, tools: [], listed: [] }))
     this.#homes = new McpProcessHomes(directory)
@@ -273,6 +274,7 @@ export class McpCapability {
         const name = `mcp__${c.config.name}__${tool.name}`.replace(/[^A-Za-z0-9_]/g, "_")
         counts.set(name, (counts.get(name) ?? 0) + 1)
       }
+    const namespaceBytes = new Map<Connection, number>()
     for (const c of this.#connections) {
       const names = mcpToolNames(
         c.config.name,
@@ -285,7 +287,7 @@ export class McpCapability {
         description: this.config.redact(c.config.description ?? "MCP server").slice(0, 4096),
         instructions: this.config.redact(c.client?.instructions ?? "").slice(0, 4096),
       }
-      let bytes = Buffer.byteLength(JSON.stringify(namespace))
+      namespaceBytes.set(c, Buffer.byteLength(JSON.stringify(namespace)))
       c.tools = this.#closed
         ? []
         : c.listed
@@ -296,25 +298,7 @@ export class McpCapability {
                 this.logger.warn("An MCP tool was withheld because its schema contains credentials")
                 return []
               }
-              const wrapper = this.wrap(c, tool, names.get(tool.name) as string, schema, namespace)
-              if (!this.authorize(c.config.name, wrapper.name)) return []
-              const toolBytes = Buffer.byteLength(
-                JSON.stringify({
-                  name: wrapper.name,
-                  description: wrapper.description,
-                  parameters: wrapper.parameters,
-                  namespace: wrapper.namespace,
-                  annotations: wrapper.annotations,
-                }),
-              )
-              if (bytes + toolBytes > MCP_MAX_MESSAGE_BYTES) {
-                this.logger.warn(
-                  "An MCP tool was withheld because redacted metadata exceeds the byte limit",
-                )
-                return []
-              }
-              bytes += toolBytes
-              return [wrapper]
+              return [this.wrap(c, tool, names.get(tool.name) as string, schema, namespace)]
             })
     }
     const published = this.#connections.flatMap((c) => c.tools.map((tool) => tool.name))
@@ -328,6 +312,30 @@ export class McpCapability {
       for (const c of this.#connections)
         c.tools = c.tools.filter((tool) => !duplicates.has(tool.name))
       this.logger.warn("Colliding MCP tool identifiers were withheld")
+    }
+    this.discovered(this.tools.map((tool) => tool.name))
+    for (const c of this.#connections) {
+      let bytes = namespaceBytes.get(c) ?? 0
+      c.tools = c.tools.filter((tool) => {
+        if (!this.authorize(c.config.name, tool.name)) return false
+        const toolBytes = Buffer.byteLength(
+          JSON.stringify({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+            namespace: tool.namespace,
+            annotations: tool.annotations,
+          }),
+        )
+        if (bytes + toolBytes > MCP_MAX_MESSAGE_BYTES) {
+          this.logger.warn(
+            "An MCP tool was withheld because redacted metadata exceeds the byte limit",
+          )
+          return false
+        }
+        bytes += toolBytes
+        return true
+      })
     }
     this.changed()
   }

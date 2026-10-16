@@ -83,7 +83,7 @@ export function ToolPermissions({
           </Heading>
           <Text as="p" size="2">
             {key === "tools"
-              ? "Every MCP tool name needs explicit approval, in addition to its server gate. Discovery and exposure never approve execution."
+              ? "New tools are automatically added to global and default permissions when first registered or discovered. Manual removals and explicit chat overrides are preserved. MCP tools still require their server gate."
               : "A server gate does not approve its tools. Each tool also needs global and inherited or explicit chat permission. Connection enabled state is separate."}
           </Text>
           {!permissionNames(key, policy, saved, inventory).length && (

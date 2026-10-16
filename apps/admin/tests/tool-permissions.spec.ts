@@ -64,6 +64,9 @@ async function setup(page: Page) {
       })
     if (path === "/api/mcp/fixture/discover") {
       inventory.mcp[0]?.tools.push("mcp__fixture__new")
+      saved.tools.push("mcp__fixture__new")
+      saved.defaults.tools?.push("mcp__fixture__new")
+      revision++
       return route.fulfill({ json: {} })
     }
     if (path === "/api/mcp/draft") {
@@ -103,6 +106,12 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("heading", { name: "Global and default chat permissions" }),
     ).toBeFocused()
+    await expect(
+      page.getByText("New tools are denied until explicitly approved.", { exact: false }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByText(/New tools are enabled in global and default permissions/),
+    ).toBeVisible()
     const blocked = page.getByRole("checkbox", {
       name: "Default chat permission for tool write",
       exact: true,
@@ -206,13 +215,13 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
     name: "Globally allow tool mcp__fixture__new",
     exact: true,
   })
-  await expect(discovered).not.toBeChecked()
+  await expect(discovered).toBeChecked()
   await expect(
     page.getByRole("checkbox", {
       name: "Default chat permission for tool mcp__fixture__new",
       exact: true,
     }),
-  ).toBeDisabled()
+  ).toBeChecked()
   const server = page.getByRole("checkbox", { name: "Globally allow server fixture", exact: true })
   await server.uncheck()
   await expect(
@@ -244,8 +253,9 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
   await savePolicy(page)
   await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   expect(state.saved().tools).toContain("mcp__offline__manual")
-  expect(state.saved().tools).not.toContain("mcp__fixture__new")
-  expect(state.saved().defaults).toEqual(state.initial.defaults)
+  expect(state.saved().tools).toContain("mcp__fixture__new")
+  expect(state.saved().defaults.tools).toContain("mcp__fixture__new")
+  expect(state.saved().defaults.servers).toEqual(state.initial.defaults.servers)
   expect(state.writes).toEqual(["/api/mcp/fixture/discover", "/api/settings"])
   await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("draft")

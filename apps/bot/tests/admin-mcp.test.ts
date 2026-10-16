@@ -226,6 +226,12 @@ it.each([undefined, "subdir"])(
         "42",
       )
       expect((await mcp.discover("fixture")).tools).toContain("mcp__fixture__echo")
+      expect(store.snapshot().policy.tools).toContain("mcp__fixture__echo")
+      expect(store.snapshot().policy.defaults.tools).toContain("mcp__fixture__echo")
+      expect(store.snapshot().policy.servers).toEqual([])
+      const revision = store.snapshot().revision
+      await mcp.discover("fixture")
+      expect(store.snapshot().revision).toBe(revision)
       expect(mcp.probes.size).toBe(0)
     } finally {
       await mcp.close()

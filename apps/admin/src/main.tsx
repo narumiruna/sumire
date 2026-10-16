@@ -1379,7 +1379,9 @@ function App() {
             <Callout.Root color="orange">
               <Callout.Text>
                 Shell and file tools are trusted capabilities, not a sandbox. They can access
-                process-readable credentials. New tools are denied until explicitly approved.
+                process-readable credentials. New tools are enabled in global and default
+                permissions when first registered or discovered. Explicit chat overrides and MCP
+                server gates still apply.
               </Callout.Text>
             </Callout.Root>
             <ToolPermissions
@@ -1427,8 +1429,9 @@ function App() {
               MCP connections — saved separately
             </Heading>
             <Text as="p">
-              Connection configuration and enabled state do not grant execution permission. Tests
-              and discovery run only when requested.
+              Connection configuration and enabled state do not grant execution permission. First
+              discovery adds new tools to global and default permissions, but does not open server
+              gates. Connection tests run only when requested.
             </Text>
             <Button variant="soft" onClick={() => setPage("Tool permissions")}>
               Manage tool and MCP server permissions
