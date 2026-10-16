@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 import { chmodSync, mkdirSync } from "node:fs"
 import path from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import type { AuditFilters } from "./audit-query.js"
 import {
   effectivePolicy,
   initialPolicy,
@@ -186,8 +187,28 @@ export class AdminStore {
   listChats(offset: number) {
     return this.db.prepare("SELECT * FROM chats ORDER BY id LIMIT 100 OFFSET ?").all(offset)
   }
-  listAudit(offset: number) {
-    return this.db.prepare("SELECT * FROM audit ORDER BY id DESC LIMIT 100 OFFSET ?").all(offset)
+  listAudit(offset: number, filters: AuditFilters = {}) {
+    const clauses: string[] = []
+    const values: (string | number)[] = []
+    for (const key of ["actor", "operation", "outcome"] as const) {
+      if (filters[key] !== undefined) {
+        clauses.push(`${key} = ?`)
+        values.push(filters[key])
+      }
+    }
+    if (filters.from !== undefined) {
+      clauses.push("time >= ?")
+      values.push(filters.from)
+    }
+    if (filters.to !== undefined) {
+      clauses.push("time <= ?")
+      values.push(filters.to)
+    }
+    return this.db
+      .prepare(
+        `SELECT * FROM audit ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY id DESC LIMIT 100 OFFSET ?`,
+      )
+      .all(...values, offset)
   }
   createSession(actor: string, now = Date.now()) {
     this.prune(now)

@@ -16,6 +16,7 @@ export interface Inventory {
     name: string
     connection: string
     tools: string[]
+    fields?: string[]
     enabled?: boolean
     exposure?: string
     env: Record<string, null>

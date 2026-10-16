@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path"
 import { z } from "zod"
 import { accessTokenPattern, ChatAccess } from "./access.js"
+import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import type { McpAdmin } from "./mcp.js"
 import { effectivePolicy, policySchema } from "./policy.js"
@@ -290,7 +291,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       return
     }
     if (url.pathname === "/api/audit" && method === "GET") {
-      reply(res, 200, store.listAudit(offset(url)))
+      reply(res, 200, store.listAudit(offset(url), auditFilters(url.searchParams)))
       return
     }
     if (url.pathname === "/api/inventory" && method === "GET") {

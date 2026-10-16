@@ -29,6 +29,12 @@ it("imports MCP once, replaces secret fields explicitly, and never echoes their 
     expect(mcp.raw().fixture?.headers?.Authorization).toBe("Bearer fixture-secret")
     expect(JSON.stringify(mcp.inventory())).not.toContain("fixture-secret")
     expect(JSON.stringify(mcp.inventory())).not.toContain("/private")
+    expect(mcp.inventory()[0]?.fields).toEqual(expect.arrayContaining(["url", "headers"]))
+    const beforeInvalid = mcp.raw()
+    expect(() => mcp.save("fixture", { headers: { UNKNOWN: null } }, 1, "42")).toThrow(
+      "unknown secret",
+    )
+    expect(mcp.raw()).toEqual(beforeInvalid)
     mcp.save("fixture", { headers: { Authorization: null }, exposure: "direct" }, 1, "42")
     expect(mcp.raw().fixture?.headers?.Authorization).toBe("Bearer fixture-secret")
     expect(() => mcp.save("fixture", { headers: {} }, 1, "42")).toThrow("Settings changed")
@@ -39,6 +45,58 @@ it("imports MCP once, replaces secret fields explicitly, and never echoes their 
     expect(JSON.stringify(store.listAudit(0))).not.toContain("fixture-secret")
     expect(JSON.stringify(store.listAudit(0))).not.toContain("replacement-fixture")
     expect(() => mcp.save("bad-name!", { command: "fixture" }, 4, "42")).toThrow("Invalid MCP name")
+  } finally {
+    await mcp.close()
+    store.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+it("keeps patch preservation and transport cleanup consistent with the field preview", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-patch-"))
+  const store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([42]), 42)
+  const mcp = new McpAdmin(store, directory)
+  try {
+    mcp.save(
+      "fixture",
+      {
+        type: "stdio",
+        command: "node",
+        args: ["--version"],
+        cwd: directory,
+        env: { A: "opaque-a", B: "opaque-b" },
+        enabled: false,
+      },
+      1,
+      "42",
+    )
+    mcp.save("fixture", { description: "updated" }, 2, "42")
+    expect(mcp.raw().fixture?.env).toEqual({ A: "opaque-a", B: "opaque-b" })
+    mcp.save("fixture", { env: { A: null } }, 3, "42")
+    expect(mcp.raw().fixture?.env).toEqual({ A: "opaque-a" })
+    const before = mcp.raw()
+    expect(() => mcp.save("fixture", { unknown: true }, 4, "42")).toThrow()
+    expect(() =>
+      mcp.save("fixture", { command: "node", url: "https://example.test" }, 4, "42"),
+    ).toThrow("one MCP transport")
+    expect(mcp.raw()).toEqual(before)
+    mcp.save(
+      "fixture",
+      { url: "https://example.test", headers: { Authorization: "opaque-header" } },
+      4,
+      "42",
+    )
+    expect(mcp.raw().fixture).toEqual({
+      url: "https://example.test",
+      description: "updated",
+      headers: { Authorization: "opaque-header" },
+      enabled: false,
+    })
+    expect(mcp.inventory()[0]?.fields).toEqual(expect.arrayContaining(["url", "headers"]))
+    expect(mcp.inventory()[0]?.fields).not.toContain("command")
+    mcp.save("fixture", { command: "node" }, 5, "42")
+    expect(mcp.raw().fixture).toEqual({ command: "node", description: "updated", enabled: false })
+    expect(JSON.stringify(mcp.inventory())).not.toContain("opaque-")
   } finally {
     await mcp.close()
     store.close()

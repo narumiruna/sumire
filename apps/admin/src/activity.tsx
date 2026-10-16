@@ -81,23 +81,89 @@ const operationNames: Record<string, string> = {
   "provider.oauth.complete": "Provider sign-in completed",
 }
 
+export function groupActivity(entries: AuditEntry[]) {
+  const groups: AuditEntry[][] = []
+  const related = (entry: AuditEntry) =>
+    entry.operation === "settings.apply" ||
+    [
+      "settings.update",
+      "chat.model.update",
+      "chat.access.approve",
+      "mcp.update",
+      "mcp.delete",
+      "provider.credential",
+      "provider.oauth.complete",
+    ].includes(entry.operation)
+  for (const entry of entries) {
+    const last = groups.at(-1)
+    if (
+      last &&
+      last[0]?.revision === entry.revision &&
+      related(entry) &&
+      last.every(related) &&
+      (entry.operation === "settings.apply" ||
+        last.every(
+          (previous) => previous.operation === "settings.apply" || previous.target === entry.target,
+        ))
+    )
+      last.push(entry)
+    else groups.push([entry])
+  }
+  return groups
+}
+
+function AuditRecord({ entry }: { entry: AuditEntry }) {
+  return (
+    <>
+      <strong>{operationNames[entry.operation] ?? entry.operation}</strong> — {entry.outcome}
+      <Text as="p" size="2">
+        <time dateTime={new Date(entry.time).toISOString()}>
+          {new Date(entry.time).toLocaleString()}
+        </time>
+        {` · Actor ${entry.actor} · Revision ${entry.revision} · ${entry.target}`}
+      </Text>
+      <details>
+        <summary>Raw audit record</summary>
+        <pre>{JSON.stringify(entry, null, 2)}</pre>
+      </details>
+    </>
+  )
+}
+
 export function Activity({ entries }: { entries: AuditEntry[] }) {
   if (!entries.length) return <Text as="p">No audit records on this page.</Text>
   return (
     <ol className="activity" aria-label="Configuration activity">
-      {entries.map((entry) => (
-        <li key={entry.id} data-outcome={entry.outcome}>
-          <strong>{operationNames[entry.operation] ?? entry.operation}</strong> — {entry.outcome}
-          <Text as="p" size="2">
-            <time dateTime={new Date(entry.time).toISOString()}>
-              {new Date(entry.time).toLocaleString()}
-            </time>
-            {` · Actor ${entry.actor} · Revision ${entry.revision} · ${entry.target}`}
-          </Text>
-          <details>
-            <summary>Raw audit record</summary>
-            <pre>{JSON.stringify(entry, null, 2)}</pre>
-          </details>
+      {groupActivity(entries).map((group) => (
+        <li
+          key={group[0]?.id}
+          data-outcome={
+            group.some((entry) => entry.outcome === "failed") ? "failed" : group[0]?.outcome
+          }
+        >
+          {group.length === 1 ? (
+            group[0] && <AuditRecord entry={group[0]} />
+          ) : (
+            <>
+              <strong>
+                Revision {group[0]?.revision}: {group.length} save/application records
+              </strong>
+              <Text as="p">
+                {group.filter((entry) => entry.outcome === "failed").length} failed applications.
+                Field-level changes were not recorded.
+              </Text>
+              <details>
+                <summary>Individual save and application records</summary>
+                <ul>
+                  {group.map((entry) => (
+                    <li key={entry.id}>
+                      <AuditRecord entry={entry} />
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </>
+          )}
         </li>
       ))}
     </ol>

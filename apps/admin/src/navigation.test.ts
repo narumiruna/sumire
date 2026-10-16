@@ -33,6 +33,12 @@ describe("admin navigation", () => {
       chat: "",
     })
   })
+  it("accepts the normalized provider label while retaining old links", () => {
+    expect(readNavigation(new URL("https://example.com/?section=Model+providers"))).toEqual({
+      page: "Model Providers",
+      chat: "",
+    })
+  })
   it("accepts supported sections and exact, non-zero chat IDs", () => {
     expect(
       readNavigation(new URL("https://example.com/?section=Model%20Providers&chat=-100")),

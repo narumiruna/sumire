@@ -11,7 +11,7 @@ main {
 }
 .admin-shell {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   max-width: 1600px;
   margin: auto;
   min-height: 100dvh;
@@ -110,23 +110,6 @@ textarea:focus-visible {
   outline: 2px solid var(--teal-9);
   outline-offset: 3px;
 }
-.id-list {
-  list-style: none;
-  padding: 0;
-  max-width: 640px;
-}
-.id-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px;
-  border-bottom: 1px solid var(--slate-5);
-}
-.id-list li > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
 .activity {
   padding-left: 24px;
 }
@@ -174,9 +157,15 @@ pre {
 .permission-list > .permission-row {
   overflow-wrap: anywhere;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+}
+.permission-matrix-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
 }
 .permission-impact {
   grid-column: 1 / -1;
@@ -186,6 +175,9 @@ pre {
   outline-offset: 4px;
 }
 @media (max-width: 850px) {
+  .permission-matrix-heading {
+    display: none;
+  }
   .permission-list > .permission-row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -268,6 +260,59 @@ pre {
   background: transparent;
   color: inherit;
 }
+.rt-CheckboxRoot {
+  border: 1px solid var(--slate-9);
+}
+.rt-CalloutRoot[data-accent-color="orange"] .rt-CalloutText {
+  color: var(--slate-12);
+}
+.rt-Badge[data-accent-color="orange"],
+.rt-Badge[data-accent-color="red"] {
+  color: var(--slate-12);
+}
+.rt-Button:disabled {
+  color: var(--slate-11);
+  background: var(--slate-3);
+  opacity: 1;
+}
+.save-status {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 12px 0 20px;
+  padding: 12px;
+  background: var(--slate-1);
+  border: 1px solid var(--slate-7);
+  border-radius: 8px;
+  max-height: 40dvh;
+  overflow: auto;
+  font-size: var(--font-size-2);
+  color: var(--slate-12);
+}
+html {
+  scroll-padding-top: var(--save-status-height, 200px);
+}
+.access-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.access-table th,
+.access-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--slate-6);
+  overflow-wrap: anywhere;
+}
+.access-table button {
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
+}
+.readiness {
+  margin-block: 12px;
+  font-size: var(--font-size-2);
+}
 .save-help {
   margin-top: 12px;
 }
@@ -286,8 +331,7 @@ pre {
 .chat-list {
   list-style: none;
   padding: 0;
-  max-height: min(60dvh, 620px);
-  overflow: auto;
+  min-height: 80px;
   margin: 12px 0;
 }
 .chat-list button {
@@ -347,7 +391,7 @@ pre {
 .directory-filters select {
   min-height: 36px;
   max-width: 100%;
-  border: 1px solid var(--slate-7);
+  border: 1px solid var(--slate-9);
   border-radius: 4px;
   background: var(--slate-1);
   color: var(--slate-12);
@@ -355,6 +399,12 @@ pre {
   font: inherit;
 }
 .chat-directory {
+  position: sticky;
+  top: var(--save-status-height, 200px);
+  max-height: calc(100dvh - var(--save-status-height, 200px) - 20px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
   padding-right: 20px;
   border-right: 1px solid var(--slate-5);
 }
@@ -442,7 +492,7 @@ pre {
 }
 @media (max-width: 1100px) {
   .admin-shell {
-    grid-template-columns: 170px minmax(0, 1fr);
+    grid-template-columns: 200px minmax(0, 1fr);
   }
   .chat-workspace {
     grid-template-columns: minmax(280px, 300px) minmax(0, 1fr);
@@ -454,11 +504,14 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
   .chat-directory {
+    position: static;
+    max-height: none;
+    overflow: visible;
     padding-right: 0;
     border-right: 0;
   }
   .chat-list {
-    max-height: 45dvh;
+    overflow: visible;
   }
   .mobile-directory-action {
     display: inline-flex;
