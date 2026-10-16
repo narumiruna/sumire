@@ -1513,14 +1513,18 @@ function App() {
           </EditorSection>
         </fieldset>
         <Flex
-          className="pending-bar"
-          data-pending={pending}
+          className={dirty ? "pending-bar" : "saved-state"}
+          data-pending={dirty}
           gap="3"
           align="center"
           wrap="wrap"
           aria-label="Save status and pending changes"
         >
-          <Badge role="status" color={snapshot.status === "applied" ? "green" : "orange"}>
+          <Badge
+            role="status"
+            data-saved={snapshot.status === "applied" && snapshot.revision === snapshot.applied}
+            color={snapshot.status === "applied" ? "green" : "orange"}
+          >
             {busy
               ? "Saving or checking…"
               : snapshot.status === "applied" && snapshot.revision === snapshot.applied
@@ -1552,47 +1556,59 @@ function App() {
               </Text>
             </details>
           )}
-          {localPending && <Badge color="orange">Unstaged editor input</Badge>}
-          {mcpDirty && <Badge color="orange">Pending MCP configuration</Badge>}
-          {providerPending && (
-            <Badge color="orange">Pending provider selection or authentication</Badge>
+          {localPending && (
+            <Text size="1" color="gray">
+              Unstaged editor input
+            </Text>
           )}
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button disabled={busy || !dirty || localPending}>Apply policy changes</Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content>
-              <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
-              <AlertDialog.Description>
-                Save all pending chat, access, shared default, global availability, and custom
-                endpoint policy changes across sections. MCP connection edits and authentication are
-                separate. Active work will be cancelled. Revoked permissions cannot undo completed
-                external actions.
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4">
-                <AlertDialog.Cancel>
-                  <Button variant="soft">Cancel</Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button
-                    onClick={() =>
-                      void run(async () => {
-                        await request(
-                          "settings",
-                          session.csrf,
-                          { revision: snapshot.revision, policy },
-                          "PUT",
-                        )
-                        await load()
-                      })
-                    }
-                  >
-                    Save and apply
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
+          {mcpDirty && (
+            <Text size="1" color="gray">
+              Pending MCP configuration
+            </Text>
+          )}
+          {providerPending && (
+            <Text size="1" color="gray">
+              Pending provider selection or authentication
+            </Text>
+          )}
+          {dirty && (
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button disabled={busy || !dirty || localPending}>Apply policy changes</Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content>
+                <AlertDialog.Title>Apply configuration changes?</AlertDialog.Title>
+                <AlertDialog.Description>
+                  Save all pending chat, access, shared default, global availability, and custom
+                  endpoint policy changes across sections. MCP connection edits and authentication
+                  are separate. Active work will be cancelled. Revoked permissions cannot undo
+                  completed external actions.
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft">Cancel</Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button
+                      onClick={() =>
+                        void run(async () => {
+                          await request(
+                            "settings",
+                            session.csrf,
+                            { revision: snapshot.revision, policy },
+                            "PUT",
+                          )
+                          await load()
+                        })
+                      }
+                    >
+                      Save and apply
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+          )}
           {snapshot.status !== "applied" && (
             <Button
               disabled={busy || dirty || localPending}
