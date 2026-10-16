@@ -1,5 +1,37 @@
 # @narumitw/sumire
 
+## 0.9.0
+
+### Minor Changes
+
+- 426f3d7: Add a Passkey-authenticated Radix administration interface with persistent chat policies, model provider management, MCP configuration, audit records, and HTTPS deployment guidance. Expose the shared bounded public-network helpers for provider requests. Add the private administrator-only `/admin` command to open the WebUI before chat approval. Use administrator-only first-passkey setup links, browser-bound WebAuthn challenges, and a state migration that revokes old Telegram sessions. Remove Telegram Web Login credentials. Add searchable provider and model setup, supported authentication dialogs, capability badges, explicit default selection, and separate custom endpoint controls. Load saved default and chat models into provider setup without promoting chat overrides to a shared default. Keep blank bind hosts on loopback, import valid MCP entries independently, use the runtime working directory for MCP probes, and apply the latest concurrent policy revision. Add revision-checked MCP deletion with confirmation and capacity recovery, block stale MCP startup after policy changes, ignore unused admin ports while the WebUI is disabled, and report unsupported imported thinking levels without failing the shared policy.
+- 9f3168d: Remove environment-based chat authorization and require `BOT_ADMIN_ID` plus the SQLite administration policy for all bot admission, restored work, model access, and tools. New databases deny all chats until explicit WebUI approval. Existing permissions, revocations, Passkeys, sessions, and historical access reviews remain unchanged.
+  
+  This is a breaking bootstrap change for the pre-1.0 bot: `BOT_WHITELIST` is ignored, WebUI administration cannot be disabled, and Stage 1 reconciliation must be accepted before upgrade. Remove reconciliation mutation endpoints and UI controls while retaining read-only historical reports on the Audit page.
+- 9f0d16c: Add `/allow` links for explicit Passkey-authenticated chat approval, with short-lived hash-only requests, atomic policy updates, and review of existing environment allowlist IDs without restoring revoked access. Upgrade administration SQLite state to schema version 3; rollback requires a matching pre-upgrade backup.
+
+### Patch Changes
+
+- 0ad0784: Exclude model-only and hidden tools from codemode access logs and prompt metadata with the same filter used by execution. Keep MCP discovery recovery available after a connection failure without treating missing tools as proof of missing authorization. Report MCP connection failures separately from permission limits when codemode is disabled.
+- a14a8d8: Give the model each chat's authorized tool list and explain how to request missing access instead of treating skills as executable tools. Log the actual per-chat tool loadout for diagnosis.
+- 39677b1: Add the Sumire GitHub repository link to the Telegram `/help` response.
+- 8f94f1b: Remove Telegram model selection, thinking controls, and login commands in favor of the administration Web UI. Keep protection against pasted legacy OAuth callbacks and discard retired login command arguments before model input. Enable local passkey setup at localhost when BOT_ADMIN_ID is set and ADMIN_ORIGIN is empty. Require existing model credentials when the Web UI is unavailable.
+- e9f5653: Rename the URL-reading tool from `load_public_url` to `read_url_content`. Update bot instructions, skills, documentation, and tests to use the new name. No legacy alias is registered; update direct calls, codemode scripts, and tool allowlists. Existing bot permissions are not transferred automatically: authorize the new name globally and in the effective chat policy through the Web UI.
+- 83a2765: Remove the blocked reason field and preserve legacy reasons in step text, including interrupted durable calls. Show Telegram progress steps with current activity and tool names. Reuse long-message notices for activity edits, keep complete inline progress when activity does not fit, report each model turn, and enforce both grapheme and absolute text size limits.
+- 82b3428: Identify model validation conflicts by settings scope and model. Add inline model warnings and a confirmed action to make all chats inherit shared defaults without changing access or enabled switches.
+- 48a5fab: Share bot URL loader configuration between article preloading and Pi tools. Make YouTube caption extraction explicit in the tool description and require a current tool failure before reporting unreadable captions. Add offline caption-loading and Pi tool-loop regression tests.
+- 5dfb275: Log the assembled startup instructions through the redacted logger with their hash and base tool names. Strengthen URL instructions to require current source evidence, retry after unsupported earlier claims, and disclose truncated content.
+- Updated dependencies [426f3d7]
+- Updated dependencies [9f3168d]
+- Updated dependencies [8f94f1b]
+- Updated dependencies [e9f5653]
+- Updated dependencies [83a2765]
+- Updated dependencies [48a5fab]
+  - @narumitw/sumire-url-content@0.23.0
+  - @narumitw/sumire-login@0.1.2
+  - @narumitw/sumire-url-tool@0.4.0
+  - @narumitw/sumire-progress@0.2.0
+
 ## 0.8.0
 
 ### Minor Changes
