@@ -9,7 +9,7 @@ async function navigate(page: Page, name: string) {
   await link.click()
 }
 
-async function setup(page: Page) {
+async function setup(page: Page, options: { actor?: string; inventory?: Inventory } = {}) {
   const initial = initialPolicy()
   initial.tools = ["read", "bash", "mcp__fixture__read"]
   initial.servers = ["fixture"]
@@ -19,7 +19,8 @@ async function setup(page: Page) {
   initial.chats["43"] = { ...inherited, enabled: true, tools: ["read"] }
   let saved = structuredClone(initial)
   let revision = 1
-  const inventory: Inventory = {
+  const inventory: Inventory = options.inventory ?? {
+    builtInTools: ["read", "bash", "write"],
     tools: ["read", "bash", "write"],
     providers: [],
     mcp: [
@@ -38,7 +39,8 @@ async function setup(page: Page) {
     const request = route.request()
     const path = new URL(request.url()).pathname
     if (request.method() !== "GET") writes.push(path)
-    if (path === "/api/session") return route.fulfill({ json: { actor: "42", csrf: "fixture" } })
+    if (path === "/api/session")
+      return route.fulfill({ json: { actor: options.actor ?? "42", csrf: "fixture" } })
     if (path === "/api/settings") {
       if (request.method() === "PUT") {
         const next: Policy = request.postDataJSON().policy
@@ -110,8 +112,9 @@ for (const width of [1440, 390]) {
       page.getByText("New tools are denied until explicitly approved.", { exact: false }),
     ).toHaveCount(0)
     await expect(
-      page.getByText(/New tools are enabled in global and default permissions/),
+      page.getByText(/New tools are automatically added to global and default permissions/),
     ).toBeVisible()
+    await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
     const blocked = page.getByRole("checkbox", {
       name: "Default chat permission for tool write",
       exact: true,
@@ -152,11 +155,50 @@ for (const width of [1440, 390]) {
   })
 }
 
+for (const width of [1440, 390]) {
+  test(`MCP tool groups collapse without changing permissions at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await setup(page)
+    await navigate(page, "Tool permissions")
+    const summary = page.getByRole("button", { name: "MCP: fixture · 1 tool", exact: true })
+    const global = page.getByRole("checkbox", {
+      name: "Globally allow tool mcp__fixture__read",
+      exact: true,
+    })
+    await expect(summary).toBeVisible()
+    await expect(global).not.toBeVisible()
+    await expect(
+      page.getByRole("checkbox", { name: "Globally allow tool read", exact: true }),
+    ).not.toBeVisible()
+    await expect(summary).toHaveAttribute("aria-expanded", "false")
+    await summary.focus()
+    await page.keyboard.press("Enter")
+    await expect(global).toBeVisible()
+    const defaults = page.getByRole("checkbox", {
+      name: "Default chat permission for tool mcp__fixture__read",
+      exact: true,
+    })
+    await defaults.uncheck()
+    await summary.click()
+    await expect(defaults).not.toBeVisible()
+    await summary.click()
+    await expect(defaults).not.toBeChecked()
+    await expect(global).toBeChecked()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(state.writes).toEqual([])
+    await savePolicy(page)
+    await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
+    expect(state.saved().tools).toEqual(state.initial.tools)
+    expect(state.saved().defaults.tools).toEqual(["read"])
+  })
+}
+
 test("global removal retains defaults and overrides, shows exact references, and cannot bypass save validation", async ({
   page,
 }) => {
   const state = await setup(page)
   await navigate(page, "Tool permissions")
+  await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
   const global = page.getByRole("checkbox", { name: "Globally allow tool read", exact: true })
   const defaults = page.getByRole("checkbox", {
     name: "Default chat permission for tool read",
@@ -211,6 +253,7 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
   await page
     .getByRole("button", { name: "Manage tool and MCP server permissions", exact: true })
     .click()
+  await page.getByRole("button", { name: "MCP: fixture · 2 tools", exact: true }).click()
   const discovered = page.getByRole("checkbox", {
     name: "Globally allow tool mcp__fixture__new",
     exact: true,
@@ -241,6 +284,7 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
     "mcp__offline__manual",
   )
   await page.getByRole("button", { name: "Add tool to pending approval", exact: true }).click()
+  await page.getByRole("button", { name: "Unknown source · 1 tool", exact: true }).click()
   await expect(
     page.getByRole("checkbox", { name: "Globally allow tool mcp__offline__manual", exact: true }),
   ).toBeChecked()
@@ -262,6 +306,128 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
   await page.getByRole("button", { name: "Save MCP configuration and apply", exact: true }).click()
   await expect(page.getByRole("button", { name: "Discard MCP draft", exact: true })).toHaveCount(0)
   expect(state.writes).toEqual(["/api/mcp/fixture/discover", "/api/settings", "/api/mcp/draft"])
+})
+
+test("bulk expansion persists per user and new groups start collapsed", async ({ page }) => {
+  const state = await setup(page)
+  await navigate(page, "Tool permissions")
+  const builtin = page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true })
+  const fixture = page.getByRole("button", { name: "MCP: fixture · 1 tool", exact: true })
+  await page.getByRole("button", { name: "Expand all", exact: true }).click()
+  await expect(builtin).toHaveAttribute("aria-expanded", "true")
+  await expect(fixture).toHaveAttribute("aria-expanded", "true")
+  await page.reload()
+  await expect(builtin).toHaveAttribute("aria-expanded", "true")
+  await fixture.click()
+  await page.reload()
+  await expect(builtin).toHaveAttribute("aria-expanded", "true")
+  await expect(fixture).toHaveAttribute("aria-expanded", "false")
+  await page.getByRole("button", { name: "Collapse all", exact: true }).click()
+  await page.reload()
+  await expect(builtin).toHaveAttribute("aria-expanded", "false")
+  await page.getByRole("button", { name: "Expand all", exact: true }).click()
+  expect(state.writes).toEqual([])
+
+  await setup(page, { actor: "43" })
+  await navigate(page, "Tool permissions")
+  await expect(builtin).toHaveAttribute("aria-expanded", "false")
+  await expect(fixture).toHaveAttribute("aria-expanded", "false")
+
+  await setup(page, {
+    inventory: {
+      tools: ["read", "bash", "write", "unattributed"],
+      builtInTools: ["read", "bash", "write"],
+      providers: [],
+      mcp: [
+        {
+          name: "fixture",
+          tools: ["mcp__fixture__read"],
+          connection: "not tested",
+          env: {},
+          headers: {},
+        },
+        {
+          name: "new-server",
+          tools: ["plain-name"],
+          connection: "not tested",
+          env: {},
+          headers: {},
+        },
+      ],
+    },
+  })
+  await navigate(page, "Tool permissions")
+  await expect(builtin).toHaveAttribute("aria-expanded", "true")
+  await expect(fixture).toHaveAttribute("aria-expanded", "true")
+  await expect(
+    page.getByRole("button", { name: "MCP: new-server · 1 tool", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false")
+  await expect(
+    page.getByRole("button", { name: "Unknown source · 1 tool", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false")
+})
+
+test("duplicate tool names appear under both metadata servers and share existing name-based permissions", async ({
+  page,
+}) => {
+  const inventory: Inventory = {
+    tools: ["read", "bash", "write", "unattributed"],
+    builtInTools: ["read", "bash", "write"],
+    providers: [],
+    mcp: [
+      {
+        name: "fixture",
+        tools: ["mcp__fixture__read"],
+        connection: "not tested",
+        env: {},
+        headers: {},
+      },
+      {
+        name: "other",
+        tools: ["mcp__fixture__read"],
+        connection: "not tested",
+        env: {},
+        headers: {},
+      },
+    ],
+  }
+  await setup(page, { inventory })
+  await navigate(page, "Tool permissions")
+  await page.getByRole("button", { name: "Expand all", exact: true }).click()
+  const first = page.getByRole("region", { name: "MCP: fixture", exact: true })
+  const second = page.getByRole("region", { name: "MCP: other", exact: true })
+  const permission = { name: "Default chat permission for tool mcp__fixture__read", exact: true }
+  await expect(first.getByRole("checkbox", permission)).toBeChecked()
+  await expect(second.getByRole("checkbox", permission)).toBeChecked()
+  await first.getByRole("checkbox", permission).uncheck()
+  await expect(second.getByRole("checkbox", permission)).not.toBeChecked()
+  await page.getByRole("button", { name: "Collapse all", exact: true }).click()
+  await page.getByRole("button", { name: "Expand all", exact: true }).click()
+  await expect(first.getByRole("checkbox", permission)).not.toBeChecked()
+  await expect(second.getByRole("checkbox", permission)).not.toBeChecked()
+  await expect(
+    page
+      .getByRole("region", { name: "Unknown source", exact: true })
+      .getByText("unattributed", { exact: true }),
+  ).toBeVisible()
+})
+
+test("unavailable or malformed local storage does not block expansion", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("sumire:tool-permissions:expanded:v1:42", "{invalid")
+    Storage.prototype.setItem = () => {
+      throw new Error("Storage disabled")
+    }
+  })
+  const state = await setup(page)
+  await navigate(page, "Tool permissions")
+  const group = page.getByRole("button", { name: "MCP: fixture · 1 tool", exact: true })
+  await expect(group).toHaveAttribute("aria-expanded", "false")
+  await group.click()
+  await expect(group).toHaveAttribute("aria-expanded", "true")
+  await page.getByRole("button", { name: "Collapse all", exact: true }).click()
+  await expect(group).toHaveAttribute("aria-expanded", "false")
+  expect(state.writes).toEqual([])
 })
 
 test("legacy links open canonical permissions without policy changes or remote tests", async ({

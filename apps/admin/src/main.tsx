@@ -1385,6 +1385,8 @@ function App() {
               </Callout.Text>
             </Callout.Root>
             <ToolPermissions
+              key={session.actor}
+              actor={session.actor}
               dirty={dirty}
               policy={policy}
               saved={savedPolicy ?? policy}
