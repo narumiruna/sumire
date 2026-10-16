@@ -23,15 +23,25 @@ describe("admin navigation", () => {
       expect(navigationHref("Chats", chat, url)).toBe("/?section=Chats")
     }
   })
+  it("maps legacy Tools / MCP links to tool permissions", () => {
+    expect(readNavigation(new URL("https://example.com/?section=Tools+%2F+MCP&chat=42"))).toEqual({
+      page: "Tool permissions",
+      chat: "42",
+    })
+    expect(readNavigation(new URL("https://example.com/?section=MCP+connections"))).toEqual({
+      page: "MCP connections",
+      chat: "",
+    })
+  })
   it("accepts supported sections and exact, non-zero chat IDs", () => {
     expect(
       readNavigation(new URL("https://example.com/?section=Model%20Providers&chat=-100")),
     ).toEqual({ page: "Model Providers", chat: "-100" })
   })
   it("creates compatible same-path section links while retaining other URL state", () => {
-    expect(navigationHref("Tools / MCP", "42", new URL("https://example.com/?existing=1"))).toBe(
-      "/?existing=1&section=Tools+%2F+MCP&chat=42",
-    )
+    expect(
+      navigationHref("Tool permissions", "42", new URL("https://example.com/?existing=1")),
+    ).toBe("/?existing=1&section=Tool+permissions&chat=42")
     expect(navigationHref("Chats", "", new URL("https://example.com/?chat=42"))).toBe(
       "/?section=Chats",
     )

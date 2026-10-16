@@ -520,7 +520,7 @@ export function ChatWorkspace({
                           Manage authentication
                         </Button>
                         <Button type="button" variant="soft" onClick={onTools}>
-                          Review tools and MCP connections
+                          Manage tool permissions
                         </Button>
                         <Button
                           type="button"
@@ -623,7 +623,7 @@ export function ChatWorkspace({
                         Manage model authentication
                       </Button>
                       <Button variant="soft" onClick={onTools}>
-                        Review tools and MCP connections
+                        Manage tool permissions
                       </Button>
                     </Flex>
                     <Heading size="3" mt="4">
