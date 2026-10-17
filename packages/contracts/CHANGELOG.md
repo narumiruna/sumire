@@ -1,5 +1,11 @@
 # @narumitw/sumire-contracts
 
+## 0.2.2
+
+### Patch Changes
+
+- 61fc250: Group tools by explicit inventory source in compact, accessible sections. Add bulk expansion controls and per-user local expansion preferences without changing permissions. Expose built-in tool metadata separately from the combined inventory.
+
 ## 0.2.1
 
 ### Patch Changes
