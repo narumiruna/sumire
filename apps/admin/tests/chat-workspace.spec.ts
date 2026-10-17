@@ -77,6 +77,71 @@ async function select(page: Page, index: number) {
   await page.locator(".chat-list button").nth(index).click()
   await expect(page.locator(".chat-header code")).toHaveText(String(chats[index]?.id))
 }
+test("keeps a directory below a tall API error usable after document scrolling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const requests = await fixture(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      status: 500,
+      json: { error: "Fixture API failure. ".repeat(300) },
+    }),
+  )
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Fixture API failure.")
+  const workspace = page.locator(".chat-workspace")
+  expect(
+    await workspace.evaluate((el) => el.getBoundingClientRect().top + window.scrollY),
+  ).toBeGreaterThan(900)
+  const list = page.locator(".directory-list-region")
+  await expect.poll(() => list.evaluate((el) => el.clientHeight)).toBeGreaterThan(80)
+  requests.length = 0
+  for (const index of [0, 50, 99]) {
+    const row = page.locator(".chat-list button").nth(index)
+    await row.scrollIntoViewIfNeeded()
+    await expect(row).toBeInViewport()
+    await row.click()
+    await expect(page.locator(".chat-header code")).toHaveText(String(chats[index]?.id))
+  }
+  const lastBox = await page.locator(".chat-list button").last().boundingBox()
+  const footerBox = await page.locator(".directory-footer").boundingBox()
+  if (!lastBox || !footerBox) throw new Error("Missing directory geometry")
+  expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(footerBox.y)
+  await expect(page.locator(".pending-bar")).toHaveCount(0)
+  expect(requests).toEqual([])
+  await page.unroute("**/api/settings")
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await expect(page.locator(".chat-directory")).toHaveCSS("position", "sticky")
+  await expect.poll(() => list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+})
+
+for (const width of [390, 850]) {
+  for (const action of ["Show selected chat", "Open chat details"]) {
+    test(`restores directory scroll after ${action} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      const requests = await fixture(page)
+      await select(page, 50)
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      const previous = await page.evaluate(() => window.scrollY)
+      if (action === "Open chat details") await page.locator(".configure-id summary").click()
+      const button = page.getByRole("button", { name: action, exact: true })
+      await button.scrollIntoViewIfNeeded()
+      const expected = await page.evaluate(() => window.scrollY)
+      expect(expected).toBeGreaterThan(previous)
+      requests.length = 0
+      await button.click()
+      await expect(page.locator(".chat-header code")).toHaveText("-1050")
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      await expect(page.locator(".chat-list button").nth(50)).toBeFocused()
+      expect(await page.evaluate(() => window.scrollY)).toBe(expected)
+      await expect(page.locator(".pending-bar")).toHaveCount(0)
+      expect(requests).toEqual([])
+    })
+  }
+}
+
 for (const width of [1440, 390]) {
   test(`chat screenshots at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })

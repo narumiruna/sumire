@@ -463,6 +463,13 @@ html {
   padding-right: 20px;
   border-right: 1px solid var(--slate-5);
 }
+.chat-directory[data-natural-scroll="true"] {
+  position: static;
+  max-height: none;
+}
+.chat-directory[data-natural-scroll="true"] .directory-list-region {
+  overflow: visible;
+}
 .chat-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

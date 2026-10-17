@@ -72,20 +72,41 @@ export function ChatWorkspace({
   useEffect(() => {
     const directory = directoryRef.current
     const main = directory?.closest("main")
-    if (!directory || !main) return
+    const workspace = directory?.parentElement
+    const header = directory?.querySelector<HTMLElement>(".directory-header")
+    const footer = directory?.querySelector<HTMLElement>(".directory-footer")
+    const list = directory?.querySelector<HTMLElement>(".directory-list-region")
+    if (!directory || !main || !workspace || !header || !footer || !list) return
     let frame = 0
     const resize = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         if (!directory.getClientRects().length) return
         // Measure the non-sticky workspace so document scrolling does not change the bound.
-        const top = `${directory.parentElement!.getBoundingClientRect().top + window.scrollY}px`
-        if (directory.style.getPropertyValue("--directory-start") !== top)
-          directory.style.setProperty("--directory-start", top)
+        const top = workspace.getBoundingClientRect().top + window.scrollY
+        const start = `${top}px`
+        if (directory.style.getPropertyValue("--directory-start") !== start)
+          directory.style.setProperty("--directory-start", start)
+        const rowHeight = Array.from(
+          directory.querySelectorAll<HTMLElement>(".chat-list button"),
+        ).reduce((height, row) => Math.max(height, row.offsetHeight), 0)
+        const listStyle = getComputedStyle(list)
+        const minimumHeight =
+          header.offsetHeight +
+          footer.offsetHeight +
+          rowHeight +
+          Number.parseFloat(listStyle.paddingTop) +
+          Number.parseFloat(listStyle.paddingBottom)
+        const availableHeight =
+          window.innerHeight - top - Number.parseFloat(getComputedStyle(main).paddingBottom)
+        // Keep at least one full row usable when content above the workspace is tall.
+        directory.dataset.naturalScroll = String(availableHeight < minimumHeight)
       })
     }
     const observer = new ResizeObserver(resize)
     observer.observe(main)
+    observer.observe(header)
+    observer.observe(footer)
     window.addEventListener("resize", resize)
     resize()
     return () => {
@@ -175,10 +196,13 @@ export function ChatWorkspace({
         ]
       : []),
   ]
-  const openChat = (value: string) => {
+  const showChatDetails = () => {
     if (window.matchMedia("(max-width: 850px)").matches) directoryScroll.current = window.scrollY
-    onSelect(value)
     setShowDirectory(false)
+  }
+  const openChat = (value: string) => {
+    onSelect(value)
+    showChatDetails()
   }
   return (
     <div
@@ -327,7 +351,7 @@ export function ChatWorkspace({
               className="mobile-directory-action"
               variant="soft"
               mt="3"
-              onClick={() => setShowDirectory(false)}
+              onClick={showChatDetails}
             >
               Show selected chat
             </Button>
@@ -345,7 +369,7 @@ export function ChatWorkspace({
                 onChange={(e) => onSelect(e.target.value)}
               />
             </label>
-            <Button variant="soft" disabled={!valid} onClick={() => setShowDirectory(false)}>
+            <Button variant="soft" disabled={!valid} onClick={showChatDetails}>
               Open chat details
             </Button>
           </details>
