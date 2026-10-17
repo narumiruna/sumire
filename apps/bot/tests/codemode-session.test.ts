@@ -1,12 +1,14 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import { publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
-import { reconstructProgress } from "@narumitw/sumire-progress"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
+import { ProgressDoc } from "../src/agent/durable-state.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
+import { currentConversation } from "./helpers/durable-session.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
@@ -210,7 +212,13 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
         .at(-1)
       if (result?.role !== "toolResult") throw new Error("Missing codemode result")
       expect(result.content).toContainEqual({ type: "text", text: "1" })
-      expect(reconstructProgress(session.sessionManager.getBranch())).toEqual(progress)
+      expect(
+        await session.harness.snapshot(
+          ProgressDoc,
+          (await currentConversation(session)).id,
+          context,
+        ),
+      ).toEqual({ steps: progress })
     } finally {
       await registry.dispose()
     }
@@ -219,9 +227,9 @@ await tools.bash({ command: 'sleep 30', timeout: 60 });`,
       type: "text",
       text: "1",
     })
-    expect(reconstructProgress(resumed.sessionManager.getBranch())).toEqual([
-      { text: "branch A", status: "pending" },
-    ])
+    expect(
+      await resumed.harness.snapshot(ProgressDoc, (await currentConversation(resumed)).id, context),
+    ).toEqual({ steps: [{ text: "branch A", status: "pending" }] })
     expect((await fixture.call(resumed, "update_progress", { steps: [] })).isError).toBe(false)
     const other = await fixture.createSession(456)
     expect((await fixture.script(other, "return load('marker') ?? null")).content).toContainEqual({

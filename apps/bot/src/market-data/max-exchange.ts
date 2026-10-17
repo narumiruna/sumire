@@ -1,3 +1,4 @@
+import { collectMarketResults } from "./collect-results.js"
 import { formatNumber, priceLines } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
@@ -63,12 +64,7 @@ export async function queryMaxExchange(
       ].join("\n")
     }),
   )
-  const formatted = results.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : [],
-  )
-  const failure = results.find((result) => result.status === "rejected")
-  if (formatted.length === 0 && failure) throw failure.reason
-  return formatted
+  return collectMarketResults(results)
 }
 
 export function normalizeMaxMarket(symbol: string): string {

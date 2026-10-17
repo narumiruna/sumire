@@ -8,7 +8,6 @@ import {
   clampThinkingLevel,
   getSupportedThinkingLevels,
   type ImageContent,
-  type Message,
   type Model,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai"
@@ -16,7 +15,6 @@ import type {
   AgentSessionEvent,
   AgentSessionEventListener,
   ModelRuntime,
-  SessionEntry,
 } from "@earendil-works/pi-coding-agent"
 import {
   type AgentEvent,
@@ -59,16 +57,23 @@ export class DurableSession implements SessionHandle {
   #model: Model<Api>
   #thinkingLevel: ModelThinkingLevel = "off"
 
-  readonly sessionManager = {
-    getLeafId: () => {
-      const entry = this.entries.at(-1)
-      return entry ? checkpointId(entry) : null
-    },
-    getEntry: (id: string) => this.findEntry(id),
-    getBranch: () => this.entries.map(toSessionEntry),
-    getCwd: () => this.cwd,
-    getSessionId: () => this.sessionId,
-    getSessionFile: () => this.sessionFile,
+  getCheckpoint(): string | null {
+    const entry = this.entries.at(-1)
+    return entry ? checkpointId(entry) : null
+  }
+
+  async hasCheckpoint(id: string): Promise<boolean> {
+    return Boolean(await this.findEntry(id))
+  }
+
+  recentPassiveContext(): string[] {
+    const contexts: string[] = []
+    for (const entry of this.entries.toReversed()) {
+      if (entry.kind === "telegram-passive-context") {
+        contexts.unshift(String((entry.data as { content: string }).content))
+      } else if (entry.model?.[0]) break
+    }
+    return contexts
   }
 
   private constructor(
@@ -320,15 +325,11 @@ export class DurableSession implements SessionHandle {
     return "queued"
   }
 
-  async sendCustomMessage(message: {
-    customType: string
-    content: string
-    display: boolean
-  }): Promise<void> {
+  async appendPassiveContext(text: string): Promise<void> {
     const entry = {
-      kind: message.customType,
-      data: { content: message.content },
-      model: [{ role: "user" as const, content: message.content, timestamp: Date.now() }],
+      kind: "telegram-passive-context",
+      data: { content: text },
+      model: [{ role: "user" as const, content: text, timestamp: Date.now() }],
     }
     // Writes are durably queued while busy, without starting or steering a turn.
     // Harness places them at the next boundary before subsequent addressed inputs.
@@ -337,7 +338,7 @@ export class DurableSession implements SessionHandle {
     await this.refresh()
   }
 
-  async navigateTree(id: string): Promise<{ cancelled: boolean }> {
+  async restoreBranch(id: string): Promise<void> {
     const target = parseCheckpoint(id)
     if (!target) throw new Error("Invalid durable checkpoint")
     await this.#conversation.waitForIdle(context)
@@ -359,7 +360,6 @@ export class DurableSession implements SessionHandle {
     this.#view?.dispose()
     this.#conversation = fork
     await this.attach()
-    return { cancelled: false }
   }
 
   async waitForIdle(): Promise<void> {
@@ -558,20 +558,4 @@ function assistantText(entry: EntryRecord | undefined): string {
         .join("\n")
         .trim()
     : ""
-}
-
-function toSessionEntry(entry: EntryRecord): SessionEntry {
-  const base = { id: checkpointId(entry), parentId: null, timestamp: "" }
-  if (entry.kind === "telegram-passive-context")
-    return {
-      ...base,
-      type: "custom_message",
-      customType: entry.kind,
-      content: String((entry.data as { content: string }).content),
-      display: false,
-    }
-  const message = entry.model?.[0] as Message | undefined
-  return message
-    ? { ...base, type: "message", message }
-    : { ...base, type: "custom", customType: entry.kind, data: entry.data }
 }

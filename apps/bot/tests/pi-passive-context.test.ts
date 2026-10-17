@@ -1,6 +1,8 @@
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
+import { currentConversation } from "./helpers/durable-session.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
@@ -15,6 +17,37 @@ afterEach(async () => {
 })
 
 describe("durable passive-context behavior", () => {
+  it("reads recent passive context directly without crossing a model-message boundary", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    await session.appendPassiveContext("old background")
+    fixture.enqueueAnswer("Boundary answer")
+    await session.prompt("boundary question")
+    await session.appendPassiveContext("first recent background")
+    const conversation = await currentConversation(session)
+    await conversation.commit(
+      (tx) => tx.appendEntry(conversation.id, { kind: "fixture-metadata", data: {} }),
+      context,
+    )
+    await session.appendPassiveContext("second recent background")
+    const entries = [...session.entries]
+    const recent = session.recentPassiveContext()
+    expect(recent).toEqual(["first recent background", "second recent background"])
+    recent.push("not stored")
+    expect(session.recentPassiveContext()).toEqual([
+      "first recent background",
+      "second recent background",
+    ])
+    expect(session.entries).toEqual(entries)
+    const checkpoint = session.getCheckpoint()
+    if (!checkpoint) throw new Error("Missing checkpoint")
+    expect(await session.hasCheckpoint(checkpoint)).toBe(true)
+    expect(await session.hasCheckpoint("invalid")).toBe(false)
+    expect(await session.hasCheckpoint(`999999:${checkpoint.split(":")[1]}`)).toBe(false)
+    await expect(session.restoreBranch("invalid")).rejects.toThrow("Invalid durable checkpoint")
+    expect(session.getCheckpoint()).toBe(checkpoint)
+  })
+
   it("puts background context before the addressed question, including on a restored reply branch", async () => {
     const fixture = await setup()
     const session = await fixture.createSession()
@@ -139,17 +172,14 @@ describe("durable passive-context behavior", () => {
       await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
       await registry.appendPassiveContext(123, "passive background only")
       expect(JSON.stringify(fixture.requests[0]?.messages)).not.toContain("passive background only")
-      expect(
-        session.sessionManager.getBranch().some((entry) => entry.type === "custom_message"),
-      ).toBe(false)
+      expect(session.recentPassiveContext()).toEqual([])
       release()
       await running
-      const branch = session.sessionManager.getBranch()
-      const answer = branch.findIndex(
-        (entry) => entry.type === "message" && entry.message.role === "assistant",
-      )
-      const passive = branch.findIndex((entry) => entry.type === "custom_message")
+      const branch = session.entries
+      const answer = branch.findIndex((entry) => entry.model?.[0]?.role === "assistant")
+      const passive = branch.findIndex((entry) => entry.kind === "telegram-passive-context")
       expect(passive).toBeGreaterThan(answer)
+      expect(session.recentPassiveContext()).toEqual(["passive background only"])
       fixture.enqueueAnswer("Next answer")
       await registry.submit(123, "next addressed question")
       const context = JSON.stringify(fixture.requests.at(-1)?.messages)

@@ -481,7 +481,7 @@ describe("createPiSessionFactory", () => {
     const session = await factory.create(123)
 
     try {
-      expect(session.sessionManager.getCwd()).toBe(workdir)
+      expect(session.cwd).toBe(workdir)
       expect(session.getActiveToolNames()).toEqual([
         "read",
         "bash",
@@ -580,9 +580,9 @@ describe("createPiSessionFactory", () => {
     const factory = await createPiSessionFactory(settings, logger)
     const session = await factory.create(123)
     try {
-      expect(session.sessionManager.getCwd()).toBe(workdir)
-      expect(session.sessionManager.getSessionId()).not.toBe(oldSession.getSessionId())
-      expect(session.sessionManager.getSessionFile()).not.toBe(oldFile)
+      expect(session.cwd).toBe(workdir)
+      expect(session.sessionId).not.toBe(oldSession.getSessionId())
+      expect(session.sessionFile).not.toBe(oldFile)
       expect(oldFile && existsSync(oldFile)).toBe(true)
     } finally {
       await session.dispose()

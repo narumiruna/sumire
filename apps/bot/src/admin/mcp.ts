@@ -167,22 +167,11 @@ export class McpAdmin {
       )
     )
       throw new AdminError(409, "Remove the server from global, default, and chat selections first")
-    this.store.db.exec("BEGIN IMMEDIATE")
-    try {
-      const changed = this.store.db
-        .prepare(
-          "UPDATE settings SET revision=revision+1,epoch=epoch+1,status='pending' WHERE id=1 AND revision=?",
-        )
-        .run(revision)
-      if (!changed.changes) throw new AdminError(409, "Settings changed; reload")
+    this.commitChange(revision, () => {
       this.store.db.prepare("DELETE FROM mcp WHERE name=?").run(name)
       this.store.audit(actor, "mcp.delete", revision + 1, "deleted", `mcp:${name}`)
-      this.store.db.exec("COMMIT")
-      this.discovered.delete(name)
-    } catch (error) {
-      this.store.db.exec("ROLLBACK")
-      throw error
-    }
+    })
+    this.discovered.delete(name)
   }
   save(name: string, input: unknown, revision: number, actor: string) {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) throw new AdminError(400, "Invalid MCP name")
@@ -241,6 +230,17 @@ export class McpAdmin {
     )
     if (invalid || (entry.enabled !== false && !validated.servers.some((s) => s.name === name)))
       throw new AdminError(400, "Invalid MCP configuration or missing environment value")
+    this.commitChange(revision, () => {
+      this.store.db
+        .prepare(
+          "INSERT INTO mcp VALUES (?,?) ON CONFLICT(name) DO UPDATE SET config=excluded.config",
+        )
+        .run(name, JSON.stringify(entry))
+      this.store.audit(actor, "mcp.update", revision + 1, "saved", `mcp:${name}`)
+      this.discovered.delete(name)
+    })
+  }
+  private commitChange(revision: number, change: () => void) {
     this.store.db.exec("BEGIN IMMEDIATE")
     try {
       const result = this.store.db
@@ -249,13 +249,7 @@ export class McpAdmin {
         )
         .run(revision)
       if (!result.changes) throw new AdminError(409, "Settings changed; reload")
-      this.store.db
-        .prepare(
-          "INSERT INTO mcp VALUES (?,?) ON CONFLICT(name) DO UPDATE SET config=excluded.config",
-        )
-        .run(name, JSON.stringify(entry))
-      this.store.audit(actor, "mcp.update", revision + 1, "saved", `mcp:${name}`)
-      this.discovered.delete(name)
+      change()
       this.store.db.exec("COMMIT")
     } catch (error) {
       this.store.db.exec("ROLLBACK")

@@ -1,3 +1,4 @@
+import { collectMarketResults } from "./collect-results.js"
 import { parseCurrencyPair } from "./exchange-rates.js"
 import { formatNumber } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
@@ -18,12 +19,7 @@ export async function queryFrankfurterRates(
     return currencies ? [fetchFrankfurterRate(...currencies, fetchImplementation)] : []
   })
   const settled = await Promise.allSettled(requests)
-  const results = settled.flatMap((result) =>
-    result.status === "fulfilled" ? [formatFrankfurterRate(result.value)] : [],
-  )
-  const failure = settled.find((result) => result.status === "rejected")
-  if (results.length === 0 && failure) throw failure.reason
-  return results
+  return collectMarketResults(settled).map(formatFrankfurterRate)
 }
 
 async function fetchFrankfurterRate(

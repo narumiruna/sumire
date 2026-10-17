@@ -1,3 +1,4 @@
+import { collectMarketResults } from "./collect-results.js"
 import { priceLines } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
@@ -8,12 +9,7 @@ export async function queryYahooFinance(
   const results = await Promise.allSettled(
     symbols.map((symbol) => queryYahooSymbol(symbol, fetchImplementation)),
   )
-  const formatted = results.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : [],
-  )
-  const failure = results.find((result) => result.status === "rejected")
-  if (formatted.length === 0 && failure) throw failure.reason
-  return formatted
+  return collectMarketResults(results)
 }
 
 async function queryYahooSymbol(

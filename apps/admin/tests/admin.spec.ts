@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from "node:crypto"
+import { effectivePolicy, inherited } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 
 const policy = {
@@ -639,6 +640,53 @@ test("shows inherited chat settings and supported thinking levels", async ({ pag
   await page.getByRole("option", { name: "low", exact: true }).click()
   await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
 })
+for (const state of ["inherited", "empty", "globally unavailable", "disabled provider"] as const) {
+  test(`keeps raw model selections and shared effective values when ${state}`, async ({ page }) => {
+    await setup(page)
+    const selectedPolicy = {
+      ...policy,
+      models: state === "globally unavailable" ? [] : policy.models,
+      defaults: { ...policy.defaults, thinking: "low" as const },
+      providers: [{ id: "fixture", enabled: state !== "disabled provider", models: [] }],
+      chats: {
+        "42": {
+          ...inherited,
+          enabled: true,
+          model: "fixture/test",
+          models: state === "inherited" ? null : state === "empty" ? [] : ["fixture/test"],
+        },
+      },
+    }
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({
+        json: { revision: 1, applied: 1, status: "applied", policy: selectedPolicy },
+      }),
+    )
+    await page.reload()
+    await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+    await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+    const effective = effectivePolicy(selectedPolicy, 42)
+    const models = page.getByRole("group", { name: "Allowed models", exact: true })
+    await expect(models).toContainText(
+      `${state === "inherited" ? "Inherited" : "Customized"} · Effective: ${effective.models.join(", ") || "None"}`,
+    )
+    await expect(
+      page.getByText(
+        `Customized model: ${effective.model ?? "No allowed model"} · Inherited thinking: ${effective.thinking}`,
+        { exact: true },
+      ),
+    ).toBeVisible()
+    await expect(
+      page.getByRole("combobox", { name: "Chat model override", exact: true }),
+    ).toContainText("fixture/test")
+    if (state !== "empty" && state !== "inherited")
+      await expect(models.getByRole("checkbox", { name: /fixture\/test/ })).toBeChecked()
+    await expect(
+      page.getByRole("button", { name: "Apply policy changes", exact: true }),
+    ).toHaveCount(0)
+  })
+}
+
 test("loads the saved bot provider, model, thinking level, and default state", async ({ page }) => {
   await setup(page)
   await page.route("**/api/settings", (route) =>

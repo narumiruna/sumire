@@ -2,11 +2,7 @@ import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
-import type {
-  AgentSessionEvent,
-  AgentSessionEventListener,
-  SessionEntry,
-} from "@earendil-works/pi-coding-agent"
+import type { AgentSessionEvent, AgentSessionEventListener } from "@earendil-works/pi-coding-agent"
 import { describe, expect, it, vi } from "vitest"
 import type { DurableAnswer } from "../src/agent/durable-session.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
@@ -29,19 +25,16 @@ class FakeSession implements SessionHandle {
   readonly sessionId: string
   leafId: string | null = null
   readonly entries = new Set<string>()
-  readonly branchEntries: SessionEntry[] = []
+  readonly recentContexts: string[] = []
   readonly navigated: string[] = []
-  readonly sessionManager = {
-    getLeafId: () => this.leafId,
-    getEntry: (id: string) => (this.entries.has(id) ? { id } : undefined),
-    getBranch: () => this.branchEntries,
-  }
+  getCheckpoint = () => this.leafId
+  hasCheckpoint = async (id: string) => this.entries.has(id)
+  recentPassiveContext = () => [...this.recentContexts]
   messages: AgentMessage[] = []
   readonly prompts: string[] = []
   readonly steering: string[] = []
   readonly followUps: string[] = []
   readonly contexts: string[] = []
-  readonly contextOptions: Array<{ triggerTurn?: boolean; deliverAs?: string } | undefined> = []
   readonly listeners = new Set<AgentSessionEventListener>()
   aborted = false
   disposed = false
@@ -87,18 +80,13 @@ class FakeSession implements SessionHandle {
     return "queued"
   }
 
-  async sendCustomMessage(
-    message: { content: string },
-    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
-  ): Promise<void> {
-    this.contexts.push(message.content)
-    this.contextOptions.push(options)
+  async appendPassiveContext(text: string): Promise<void> {
+    this.contexts.push(text)
   }
 
-  async navigateTree(targetId: string): Promise<{ cancelled: boolean }> {
+  async restoreBranch(targetId: string): Promise<void> {
     this.navigated.push(targetId)
     this.leafId = targetId
-    return { cancelled: false }
   }
 
   async waitForIdle(): Promise<void> {
@@ -455,13 +443,12 @@ describe("ChatSessionRegistry", () => {
     const navigationStarted = deferred()
     const navigationFinished = deferred()
     const navigate = vi
-      .spyOn(session, "navigateTree")
+      .spyOn(session, "restoreBranch")
       .mockImplementationOnce(async (targetId: string) => {
         navigationStarted.resolve()
         await navigationFinished.promise
         session.navigated.push(targetId)
         session.leafId = targetId
-        return { cancelled: false }
       })
     let current = true
     try {
@@ -778,7 +765,6 @@ describe("ChatSessionRegistry", () => {
     await registry.reset(1)
 
     expect(session.contexts).toEqual(["旁聽內容"])
-    expect(session.contextOptions).toEqual([{ triggerTurn: false }])
     expect(session.aborted).toBe(true)
     expect(session.disposed).toBe(true)
   })
@@ -797,7 +783,7 @@ describe("ChatSessionRegistry", () => {
 
     first.isStreaming = true
     await registry.appendPassiveContext(1, "群組旁聽")
-    expect(first.contextOptions).toEqual([{ triggerTurn: false }])
+    expect(first.contexts).toEqual(["群組旁聽"])
     expect(first.steering).toEqual([])
     expect(first.followUps).toEqual([])
     await registry.reset(1)
@@ -904,43 +890,7 @@ describe("ChatSessionRegistry", () => {
       [100],
     )
     await registry.submit(1, "latest")
-    const timestamp = new Date().toISOString()
-    session.branchEntries.push(
-      {
-        type: "custom_message",
-        id: "old-context",
-        parentId: null,
-        timestamp,
-        customType: "telegram-passive-context",
-        content: "舊背景",
-        display: false,
-      },
-      {
-        type: "message",
-        id: "latest-answer",
-        parentId: "old-context",
-        timestamp,
-        message: assistant("latest answer"),
-      },
-      {
-        type: "custom_message",
-        id: "current-context",
-        parentId: "latest-answer",
-        timestamp,
-        customType: "telegram-passive-context",
-        content: "新背景",
-        display: false,
-      },
-      {
-        type: "custom_message",
-        id: "second-context",
-        parentId: "current-context",
-        timestamp,
-        customType: "telegram-passive-context",
-        content: "第二則背景",
-        display: false,
-      },
-    )
+    session.recentContexts.push("新背景", "第二則背景")
     await registry.appendPassiveContext(1, "新背景")
     await registry.appendPassiveContext(1, "第二則背景")
     await registry.submit(1, "reply", { replyToBotMessageId: 100 })
@@ -966,18 +916,10 @@ describe("ChatSessionRegistry", () => {
       [100],
     )
     await registry.submit(1, "latest")
-    session.branchEntries.push({
-      type: "custom_message",
-      id: "recent-context",
-      parentId: "entry-2",
-      timestamp: new Date().toISOString(),
-      customType: "telegram-passive-context",
-      content: "新背景",
-      display: false,
-    })
+    session.recentContexts.push("新背景")
     const replayStarted = deferred()
     const replayFinished = deferred()
-    const send = vi.spyOn(session, "sendCustomMessage").mockImplementationOnce(async () => {
+    const send = vi.spyOn(session, "appendPassiveContext").mockImplementationOnce(async () => {
       replayStarted.resolve()
       await replayFinished.promise
     })
@@ -1157,11 +1099,10 @@ describe("ChatSessionRegistry", () => {
         return { text: "AI: running", entryId: "entry-2" }
       })
       session.waitForIdle = vi.fn(() => idle.promise)
-      session.navigateTree = vi.fn(async (targetId: string) => {
+      session.restoreBranch = vi.fn(async (targetId: string) => {
         session.navigated.push(targetId)
         session.leafId = targetId
         session.messages = [...firstMessages]
-        return { cancelled: false }
       })
 
       const running = registry.submit(1, "running", { onAccepted: accepted.resolve })

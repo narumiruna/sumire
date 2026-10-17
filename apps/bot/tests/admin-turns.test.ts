@@ -159,13 +159,13 @@ it("denies stale direct and codemode calls in actual Pi turns without reading th
     await writeFile(file, "private-fixture-content")
     const code = `text(await tools.read(${JSON.stringify({ path: file })}))`
     expect(toolResultText(await fixture.script(session, code))).toContain("private-fixture-content")
-    const checkpoint = session.sessionManager.getLeafId()
+    const checkpoint = session.getCheckpoint()
     if (!checkpoint) throw new Error("Missing fixture checkpoint")
     policy.tools = ["codemode"]
     policy.defaults.tools = ["codemode"]
     store.save(policy, store.snapshot().revision, "123")
     store.applied(store.snapshot().revision, true)
-    expect(await session.navigateTree(checkpoint)).toEqual({ cancelled: false })
+    await session.restoreBranch(checkpoint)
     const nested = await fixture.script(session, code)
     expect(nested.isError).toBe(true)
     expect(toolResultText(nested)).not.toContain("private-fixture-content")

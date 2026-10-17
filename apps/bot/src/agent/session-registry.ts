@@ -2,11 +2,7 @@ import { rm } from "node:fs/promises"
 import path from "node:path"
 
 import type { ImageContent } from "@earendil-works/pi-ai"
-import type {
-  AgentSessionEvent,
-  AgentSessionEventListener,
-  SessionEntry,
-} from "@earendil-works/pi-coding-agent"
+import type { AgentSessionEvent, AgentSessionEventListener } from "@earendil-works/pi-coding-agent"
 import {
   PROGRESS_TOOL_NAME,
   type ProgressStep,
@@ -36,11 +32,9 @@ export interface SessionHandle {
   readonly isStreaming: boolean
   readonly isIdle: boolean
   readonly sessionId: string
-  readonly sessionManager: {
-    getLeafId(): string | null
-    getEntry(id: string): unknown
-    getBranch(): SessionEntry[]
-  }
+  getCheckpoint(): string | null
+  hasCheckpoint(id: string): Promise<boolean>
+  recentPassiveContext(): string[]
   subscribe(listener: AgentSessionEventListener): () => void
   prompt(
     text: string,
@@ -48,11 +42,8 @@ export interface SessionHandle {
   ): Promise<DurableAnswer>
   steer(text: string, images?: ImageContent[]): Promise<"queued">
   followUp(text: string, images?: ImageContent[]): Promise<"queued">
-  sendCustomMessage(
-    message: { customType: string; content: string; display: boolean; details?: unknown },
-    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
-  ): Promise<void>
-  navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<{ cancelled: boolean }>
+  appendPassiveContext(text: string): Promise<void>
+  restoreBranch(targetId: string): Promise<void>
   waitForIdle(): Promise<void>
   abort(): Promise<void>
   dispose(): void | Promise<void>
@@ -193,7 +184,7 @@ export class ChatSessionRegistry {
         onAccepted: options.onAccepted,
       })
       const text = answer.text
-      const entryId = answer.entryId ?? session.sessionManager.getLeafId()
+      const entryId = answer.entryId ?? session.getCheckpoint()
       return {
         kind: text ? "completed" : "no_response",
         text: text || NO_RESPONSE_TEXT,
@@ -262,7 +253,7 @@ export class ChatSessionRegistry {
     }
     if (this.#replyTreeEnabled) {
       try {
-        if (await session.sessionManager.getEntry(checkpoint.entryId))
+        if (await session.hasCheckpoint(checkpoint.entryId))
           await this.#replyIndex.record(chatId, telegramMessageIds, checkpoint)
       } catch (error) {
         this.logger.warn(
@@ -362,12 +353,7 @@ export class ChatSessionRegistry {
     const generation = this.#generations.get(chatId) ?? 0
     const session = await this.#getOrCreate(chatId)
     this.#assertCurrentGeneration(chatId, generation)
-    await session.sendCustomMessage(
-      { customType: "telegram-passive-context", content: text, display: false },
-      // Context-only writes do not trigger a turn. Harness queues them while busy
-      // and places them at a boundary before later addressed inputs.
-      { triggerTurn: false },
-    )
+    await session.appendPassiveContext(text)
   }
 
   async cancel(chatId: number): Promise<boolean> {
@@ -495,7 +481,7 @@ export class ChatSessionRegistry {
     if (
       !target ||
       target.sessionId !== session.sessionId ||
-      !(await session.sessionManager.getEntry(target.entryId))
+      !(await session.hasCheckpoint(target.entryId))
     ) {
       return false
     }
@@ -508,44 +494,25 @@ export class ChatSessionRegistry {
     }
     if (!session.isIdle) await session.waitForIdle()
     assertCurrent()
-    const previousLeafId = session.sessionManager.getLeafId()
+    const previousLeafId = session.getCheckpoint()
     if (previousLeafId === target.entryId) return true
-    // A reply to an older bot message switches to a sibling Pi branch. Carry
-    // only the passive messages since the most recent model/user message, not
-    // older background or prompts from the branch we are leaving.
-    const recentPassiveContexts: string[] = []
-    for (const entry of session.sessionManager.getBranch().reverse()) {
-      if (entry.type === "message") break
-      if (
-        entry.type === "custom_message" &&
-        entry.customType === "telegram-passive-context" &&
-        typeof entry.content === "string"
-      ) {
-        recentPassiveContexts.unshift(entry.content)
-      }
-    }
+    // Carry only recent passive context, not older prompts from the branch we leave.
+    const recentPassiveContexts = session.recentPassiveContext()
     const navigation = (async () => {
-      const result = await session.navigateTree(target.entryId, { summarize: false })
-      if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
+      await session.restoreBranch(target.entryId)
       try {
         assertCurrent()
         for (const content of recentPassiveContexts) {
-          await session.sendCustomMessage(
-            { customType: "telegram-passive-context", content, display: false },
-            { triggerTurn: false },
-          )
+          await session.appendPassiveContext(content)
           assertCurrent()
         }
       } catch (error) {
         if (
           previousLeafId &&
           this.#sessions.get(chatId) === session &&
-          session.sessionManager.getLeafId() !== previousLeafId
+          session.getCheckpoint() !== previousLeafId
         ) {
-          const rollback = await session.navigateTree(previousLeafId, { summarize: false })
-          if (rollback.cancelled) {
-            throw new Error("Pi session branch navigation rollback was cancelled", { cause: error })
-          }
+          await session.restoreBranch(previousLeafId)
         }
         throw error
       }

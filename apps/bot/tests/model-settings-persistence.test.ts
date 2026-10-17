@@ -94,7 +94,7 @@ describe("administration model policy persistence", () => {
         await original.setThinkingLevel(thinkingLevel === "off" && changeModel ? "high" : "low")
         await appendMessage(original, { role: "user", content: "root", timestamp: Date.now() })
         const rootAnswer = await appendMessage(original, assistant(original))
-        await original.navigateTree(rootAnswer)
+        await original.restoreBranch(rootAnswer)
         await registry.recordDelivery(
           7,
           { sessionId: original.sessionId, entryId: rootAnswer, generation: 0 },
