@@ -1,5 +1,16 @@
 # @narumitw/sumire-contracts
 
+## 0.3.0
+
+### Minor Changes
+
+- 2798cbf: Require Node.js 26 or newer across all workspaces. CI, release workflows, and Docker stages now use Node.js 26. Node.js versions below 26 are no longer supported.
+
+### Patch Changes
+
+- Updated dependencies [2798cbf]
+  - @narumitw/sumire-policy@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes
