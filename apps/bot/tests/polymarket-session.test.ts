@@ -60,36 +60,48 @@ async function call(tool: NativeTool, params: Record<string, unknown>) {
 }
 
 describe("bot Polymarket integration", () => {
-  it("keeps new Polymarket tools denied when an applied policy is upgraded", async () => {
-    const factory = await setup()
-    const store = factory.control
-    const state = store.snapshot()
-    state.policy.tools = state.policy.tools.filter(
-      (name) => !publicPolymarketToolNames.includes(name),
-    )
-    state.policy.defaults.tools = [...state.policy.tools]
-    const saved = store.save(state.policy, state.revision, "7")
-    store.applied(saved.revision, true)
-    for (const name of publicPolymarketToolNames)
-      store.db.prepare("DELETE FROM known_tools WHERE name=?").run(name)
-    const before = store.snapshot()
-    const upgraded = await createTestSessionFactory(
-      factory.settings,
-      logger,
-      undefined,
-      factory.modelRuntime,
-      { store, mcp: new McpAdmin(store, factory.settings.botWorkdir) },
-    )
-    expect(store.snapshot()).toEqual(before)
-    const session = await upgraded.create(7)
-    sessions.push(session)
-    for (const name of publicPolymarketToolNames) {
-      expect(upgraded.toolNames).toContain(name)
-      expect(store.allowsTool(7, name)).toBe(false)
-      expect(session.getActiveToolNames()).not.toContain(name)
-      expect(session.nativeTools.some((tool) => tool.name === name)).toBe(false)
-    }
-  })
+  it.each([true, false])(
+    "enables only first-seen Polymarket tools on upgrade (new: %s)",
+    async (isNew) => {
+      const factory = await setup()
+      const store = factory.control
+      const state = store.snapshot()
+      state.policy.tools = state.policy.tools.filter(
+        (name) => !publicPolymarketToolNames.includes(name),
+      )
+      state.policy.defaults.tools = [...state.policy.tools]
+      const saved = store.save(state.policy, state.revision, "7")
+      store.applied(saved.revision, true)
+      if (isNew)
+        for (const name of publicPolymarketToolNames)
+          store.db.prepare("DELETE FROM known_tools WHERE name=?").run(name)
+      const before = store.snapshot()
+      const upgraded = await createTestSessionFactory(
+        factory.settings,
+        logger,
+        undefined,
+        factory.modelRuntime,
+        { store, mcp: new McpAdmin(store, factory.settings.botWorkdir) },
+      )
+      if (isNew) {
+        const after = store.snapshot()
+        expect(after.policy.tools).toEqual(expect.arrayContaining([...publicPolymarketToolNames]))
+        expect(after.policy.defaults.tools).toEqual(
+          expect.arrayContaining([...publicPolymarketToolNames]),
+        )
+        expect(after.status).toBe("applied")
+        expect(after.applied).toBe(after.revision)
+      } else expect(store.snapshot()).toEqual(before)
+      const session = await upgraded.create(7)
+      sessions.push(session)
+      for (const name of publicPolymarketToolNames) {
+        expect(upgraded.toolNames).toContain(name)
+        expect(store.allowsTool(7, name)).toBe(isNew)
+        expect(session.getActiveToolNames().includes(name)).toBe(isNew)
+        expect(session.nativeTools.some((tool) => tool.name === name)).toBe(isNew)
+      }
+    },
+  )
 
   it("registers only public capabilities with normal policy guards and unsafe replay", async () => {
     const factory = await setup()
