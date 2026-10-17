@@ -1,15 +1,12 @@
 import { rm } from "node:fs/promises"
 import path from "node:path"
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
 import type {
-  AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent"
-import { inherited } from "@narumitw/sumire-policy"
 import {
   PROGRESS_TOOL_NAME,
   type ProgressStep,
@@ -19,13 +16,6 @@ import type { AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"
 import type { ResponseDelivery } from "./durable-state.js"
-import {
-  type ChatModelSettings,
-  type ChatModelState,
-  currentModelState,
-  ModelSettingsError,
-  type SessionModelSettings,
-} from "./model-settings.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
 
 export interface SubmissionCheckpoint extends PiReplyCheckpoint {
@@ -42,28 +32,22 @@ export type SubmissionResult =
 export type SubmissionIntent = "steer" | "followUp" | "newTurn"
 export type SubmissionActivity = "model" | "tool" | "tool_finished"
 
-export interface SessionHandle extends SessionModelSettings {
-  readonly handlesAcceptance?: boolean
+export interface SessionHandle {
   readonly isStreaming: boolean
   readonly isIdle: boolean
   readonly sessionId: string
-  readonly messages: AgentMessage[]
   readonly sessionManager: {
     getLeafId(): string | null
     getEntry(id: string): unknown
     getBranch(): SessionEntry[]
-    buildSessionContext?: AgentSession["sessionManager"]["buildSessionContext"]
-    appendModelChange?: AgentSession["sessionManager"]["appendModelChange"]
-    appendThinkingLevelChange?: AgentSession["sessionManager"]["appendThinkingLevelChange"]
   }
   subscribe(listener: AgentSessionEventListener): () => void
   prompt(
     text: string,
     options?: { images?: ImageContent[]; onAccepted?: () => void; delivery?: ResponseDelivery },
-  ): Promise<void> | Promise<DurableAnswer>
-  steer(text: string, images?: ImageContent[]): ReturnType<AgentSession["steer"]>
-  followUp(text: string, images?: ImageContent[]): ReturnType<AgentSession["followUp"]>
-  clearQueue(): { steering: string[]; followUp: string[] }
+  ): Promise<DurableAnswer>
+  steer(text: string, images?: ImageContent[]): Promise<"queued">
+  followUp(text: string, images?: ImageContent[]): Promise<"queued">
   sendCustomMessage(
     message: { customType: string; content: string; display: boolean; details?: unknown },
     options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
@@ -72,9 +56,9 @@ export interface SessionHandle extends SessionModelSettings {
   waitForIdle(): Promise<void>
   abort(): Promise<void>
   dispose(): void | Promise<void>
-  acknowledge?(requestId: string): Promise<void>
-  hasPendingResponses?(): Promise<boolean>
-  recoverPending?(
+  acknowledge(requestId: string): Promise<void>
+  hasPendingResponses(): Promise<boolean>
+  recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void>
 }
@@ -100,7 +84,6 @@ export class ChatSessionRegistry {
   readonly #generations = new Map<number, number>()
   readonly #activePromptCaptures = new Map<number, { generation: number; done: Promise<void> }>()
   readonly #branchNavigations = new Map<number, Promise<void>>()
-  readonly #modelMutations = new Map<number, Promise<void>>()
   readonly #resets = new Map<number, Promise<void>>()
   readonly #pendingReplyCheckpoints = new Map<number, Map<number, SubmissionCheckpoint>>()
   readonly #replyTreeEnabled: boolean
@@ -144,7 +127,6 @@ export class ChatSessionRegistry {
         throw new Error("Pi session submission was cancelled before acceptance")
       }
     }
-    await this.#modelMutations.get(chatId)
     const session = await this.#getOrCreate(chatId)
     assertCurrent()
     const restoredBranch = await this.#restoreReplyBranch(
@@ -169,21 +151,16 @@ export class ChatSessionRegistry {
     } else if (!restoredBranch && session.isStreaming) {
       assertCurrent()
       if (options.intent === "followUp") {
-        const submission = session.followUp(submissionPrompt, images)
-        if (!session.handlesAcceptance) options.onAccepted?.()
-        await submission
-        if (session.handlesAcceptance) options.onAccepted?.()
+        await session.followUp(submissionPrompt, images)
+        options.onAccepted?.()
         return { kind: "followed_up", text: "已將新訊息排在目前任務完成後處理。" }
       }
-      const submission = session.steer(submissionPrompt, images)
-      if (!session.handlesAcceptance) options.onAccepted?.()
-      await submission
-      if (session.handlesAcceptance) options.onAccepted?.()
+      await session.steer(submissionPrompt, images)
+      options.onAccepted?.()
       return { kind: "steered", text: "已將新訊息加入目前任務。" }
     }
 
     assertCurrent()
-    const previousMessageCount = session.messages.length
     const notifyProgress = options.onProgress
       ? progressListener(options.onProgress, this.logger)
       : undefined
@@ -210,33 +187,29 @@ export class ChatSessionRegistry {
     }
     this.#activePromptCaptures.set(chatId, capture)
     try {
-      const submission = session.prompt(submissionPrompt, {
+      const answer = await session.prompt(submissionPrompt, {
         ...(images.length > 0 ? { images } : {}),
         ...(options.delivery ? { delivery: options.delivery } : {}),
-        ...(session.handlesAcceptance ? { onAccepted: options.onAccepted } : {}),
+        onAccepted: options.onAccepted,
       })
-      if (!session.handlesAcceptance) options.onAccepted?.()
-      const answer = await submission
-      const text = answer
-        ? answer.text
-        : lastAssistantText(session.messages.slice(previousMessageCount))
-      const entryId = answer?.entryId ?? session.sessionManager.getLeafId()
+      const text = answer.text
+      const entryId = answer.entryId ?? session.sessionManager.getLeafId()
       return {
         kind: text ? "completed" : "no_response",
         text: text || NO_RESPONSE_TEXT,
-        ...(entryId && (text || answer?.requestId)
+        ...(entryId && (text || answer.requestId)
           ? {
               checkpoint: {
                 sessionId: session.sessionId,
                 entryId,
                 generation,
-                ...(answer?.requestId ? { requestId: answer.requestId } : {}),
+                ...(answer.requestId ? { requestId: answer.requestId } : {}),
               },
             }
           : {}),
       }
     } finally {
-      unsubscribe?.()
+      unsubscribe()
       if (this.#activePromptCaptures.get(chatId) === capture) {
         this.#activePromptCaptures.delete(chatId)
       }
@@ -300,7 +273,7 @@ export class ChatSessionRegistry {
     }
     if (checkpoint.requestId) {
       try {
-        await session.acknowledge?.(checkpoint.requestId)
+        await session.acknowledge(checkpoint.requestId)
       } catch (error) {
         this.logger.warn(`Could not acknowledge durable delivery for chat_id=${chatId}`, error)
       }
@@ -335,7 +308,7 @@ export class ChatSessionRegistry {
         (this.#generations.get(chatId) ?? 0) === generation &&
         this.#sessions.get(chatId) === session
       const recovery = session
-        .recoverPending?.(async (answer, delivery) => {
+        .recoverPending(async (answer, delivery) => {
           if (!isCurrent()) return
           const checkpoint = answer.entryId
             ? {
@@ -346,23 +319,21 @@ export class ChatSessionRegistry {
               }
             : undefined
           if (await deliver(chatId, answer, delivery, checkpoint, isCurrent)) {
-            if (answer.requestId && isCurrent()) await session.acknowledge?.(answer.requestId)
+            if (answer.requestId && isCurrent()) await session.acknowledge(answer.requestId)
           }
         })
         .finally(() => this.#releaseRecoverySession(chatId, session))
         .catch((error) => {
           if (isCurrent()) this.logger.warn(`Durable recovery failed for chat_id=${chatId}`, error)
         })
-      if (recovery) {
-        this.#recoveries.add(recovery)
-        void recovery.finally(() => this.#recoveries.delete(recovery))
-      }
+      this.#recoveries.add(recovery)
+      void recovery.finally(() => this.#recoveries.delete(recovery))
     }
   }
 
   async #releaseRecoverySession(chatId: number, session: SessionHandle): Promise<boolean> {
     if (this.#closed || !this.#recoveryOnly.has(session)) return false
-    const pending = await session.hasPendingResponses?.()
+    const pending = await session.hasPendingResponses()
     if (
       pending !== false ||
       !session.isIdle ||
@@ -386,115 +357,9 @@ export class ChatSessionRegistry {
     return true
   }
 
-  async getModelSettings(chatId: number): Promise<ChatModelSettings> {
-    const generation = this.#generations.get(chatId) ?? 0
-    await this.#modelMutations.get(chatId)
-    const session = await this.#getOrCreate(chatId)
-    const models = await session.modelRuntime.getAvailable()
-    this.#assertCurrentGeneration(chatId, generation)
-    return {
-      ...currentModelState(session),
-      models: models.map((model) => `${model.provider}/${model.id}`).sort(),
-    }
-  }
-
-  setModel(chatId: number, reference: string): Promise<ChatModelState> {
-    return this.#mutateModelSettings(chatId, async (session, assertCurrent) => {
-      const models = await session.modelRuntime.getAvailable()
-      assertCurrent()
-      const exactMatches = models.filter((model) => `${model.provider}/${model.id}` === reference)
-      const matches =
-        exactMatches.length > 0 ? exactMatches : models.filter((model) => model.id === reference)
-      const model = matches.length === 1 ? matches[0] : undefined
-      if (!model) {
-        throw new ModelSettingsError(
-          matches.length > 1
-            ? "Model 名稱不唯一，請在 Web UI 使用完整的 provider/model。"
-            : "找不到可用的 model，請在 Web UI 查看並設定模型。",
-        )
-      }
-      await session.setModel(model)
-      assertCurrent()
-      return currentModelState(session)
-    })
-  }
-
-  setThinkingLevel(chatId: number, requestedLevel: string): Promise<ChatModelState> {
-    return this.#mutateModelSettings(chatId, async (session, assertCurrent) => {
-      const level = session.getAvailableThinkingLevels().find((level) => level === requestedLevel)
-      if (!level) {
-        throw new ModelSettingsError(
-          "目前 model 不支援這個 thinking level，請使用 /thinking 查看選項。",
-        )
-      }
-      assertCurrent()
-      await session.setThinkingLevel(level)
-      return currentModelState(session)
-    })
-  }
-
-  async #mutateModelSettings(
-    chatId: number,
-    change: (session: SessionHandle, assertCurrent: () => void) => Promise<ChatModelState>,
-  ): Promise<ChatModelState> {
-    const generation = this.#generations.get(chatId) ?? 0
-    const reset = this.#resets.get(chatId)
-    if (reset) await reset
-    this.#assertCurrentGeneration(chatId, generation)
-    if (this.#modelMutations.has(chatId)) {
-      throw new ModelSettingsError("正在切換設定，請稍後再試。")
-    }
-    const mutation = (async () => {
-      const session = await this.#getOrCreate(chatId)
-      const assertCurrent = () => {
-        this.#assertCurrentGeneration(chatId, generation)
-        if (
-          !session.isIdle ||
-          this.#activePromptCaptures.has(chatId) ||
-          this.#branchNavigations.has(chatId)
-        ) {
-          throw new ModelSettingsError("目前有任務執行中，請等待完成或使用 /cancel 後再切換設定。")
-        }
-      }
-      assertCurrent()
-      const state = await change(session, assertCurrent)
-      const control = this.options.control
-      const saved = control.snapshot()
-      control.assertChat(chatId)
-      const policy = saved.policy
-      policy.chats[String(chatId)] = {
-        ...inherited,
-        enabled: true,
-        ...policy.chats[String(chatId)],
-        model: state.currentModel ?? null,
-        thinking: state.thinkingLevel,
-      }
-      const changed = control.save(
-        policy,
-        saved.revision,
-        `chat:${chatId}`,
-        "chat.model.update",
-        `chat:${chatId}`,
-      )
-      control.applied(changed.revision, true)
-      return state
-    })()
-    const settled = mutation.then(
-      () => undefined,
-      () => undefined,
-    )
-    this.#modelMutations.set(chatId, settled)
-    try {
-      return await mutation
-    } finally {
-      if (this.#modelMutations.get(chatId) === settled) this.#modelMutations.delete(chatId)
-    }
-  }
-
   async appendPassiveContext(chatId: number, text: string): Promise<void> {
     if (!text) return
     const generation = this.#generations.get(chatId) ?? 0
-    await this.#modelMutations.get(chatId)
     const session = await this.#getOrCreate(chatId)
     this.#assertCurrentGeneration(chatId, generation)
     await session.sendCustomMessage(
@@ -510,14 +375,13 @@ export class ChatSessionRegistry {
     if (branchNavigation) await branchNavigation
     const session = this.#sessions.get(chatId)
     if (!session?.isStreaming) {
-      if (session?.handlesAcceptance) {
+      if (session) {
         this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
         await session.abort()
       }
       return branchNavigation !== undefined
     }
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
-    session.clearQueue()
     await session.abort()
     return true
   }
@@ -537,16 +401,12 @@ export class ChatSessionRegistry {
   async #resetChat(chatId: number): Promise<void> {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
-    await this.#modelMutations.get(chatId)
     await this.#evicting.get(chatId)
     await this.#creating.get(chatId)?.catch(() => undefined)
     const session = this.#sessions.get(chatId)
     if (session) {
-      if (session.isStreaming) {
-        session.clearQueue()
-        await session.abort()
-      }
-      if (session.handlesAcceptance) await this.#activePromptCaptures.get(chatId)?.done
+      if (session.isStreaming) await session.abort()
+      await this.#activePromptCaptures.get(chatId)?.done
       await session.dispose()
       this.#sessions.delete(chatId)
       this.#recoveryOnly.delete(session)
@@ -565,7 +425,6 @@ export class ChatSessionRegistry {
     const ids = new Set([...this.#sessions.keys(), ...this.#creating.keys()])
     for (const chatId of ids)
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
-    await Promise.all(this.#modelMutations.values())
     await Promise.allSettled([
       ...this.#creating.values(),
       ...this.#resets.values(),
@@ -573,7 +432,6 @@ export class ChatSessionRegistry {
     ])
     const results = await Promise.allSettled(
       [...this.#sessions.entries()].map(async ([chatId, session]) => {
-        session.clearQueue()
         await session.abort()
         await this.#activePromptCaptures.get(chatId)?.done
         await this.#branchNavigations.get(chatId)
@@ -599,8 +457,6 @@ export class ChatSessionRegistry {
     for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     }
-
-    await Promise.all(this.#modelMutations.values())
 
     await Promise.all([
       ...[...this.#sessions.values()].map(async (session) => {
@@ -673,21 +529,6 @@ export class ChatSessionRegistry {
       if (result.cancelled) throw new Error("Pi session branch navigation was cancelled")
       try {
         assertCurrent()
-        // Pi navigation preserves live selections, but the destination transcript
-        // can still contain older ones. Record only differences so restart uses
-        // the same chat settings, without a separate preference store.
-        const context = session.sessionManager.buildSessionContext?.()
-        const model = session.model
-        if (
-          context &&
-          model &&
-          (context.model?.provider !== model.provider || context.model?.modelId !== model.id)
-        ) {
-          session.sessionManager.appendModelChange?.(model.provider, model.id)
-        }
-        if (context && context.thinkingLevel !== session.thinkingLevel) {
-          session.sessionManager.appendThinkingLevelChange?.(session.thinkingLevel)
-        }
         for (const content of recentPassiveContexts) {
           await session.sendCustomMessage(
             { customType: "telegram-passive-context", content, display: false },
@@ -837,17 +678,4 @@ function toolResultDetails(result: unknown): unknown {
   return result && typeof result === "object" && "details" in result
     ? (result as { details: unknown }).details
     : undefined
-}
-
-function lastAssistantText(messages: AgentMessage[]): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role !== "assistant") continue
-    return message.content
-      .filter((content) => content.type === "text")
-      .map((content) => content.text)
-      .join("\n")
-      .trim()
-  }
-  return ""
 }

@@ -57,6 +57,48 @@ describe("Telegram audio input", () => {
     await expect(readFile(join(directory, "input.txt"))).rejects.toMatchObject({ code: "ENOENT" })
   })
 
+  it("admits queued downloads only after the previous operation and cleanup", async () => {
+    let finish = () => {}
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    let firstDirectory = ""
+    const run = vi.fn(async (_command: string, args: readonly string[]) => {
+      const directory = join(args[0] ?? "", "..")
+      if (!firstDirectory) {
+        firstDirectory = directory
+        await pending
+      }
+      await writeFile(join(directory, "input.txt"), "transcript")
+      return { stdout: "", stderr: "" }
+    })
+    const transcriber = new TelegramAudioTranscriber({
+      maxConcurrency: 1,
+      timeoutMs: 1_000,
+      maxChars: 100,
+      run,
+    })
+    const first = transcriber.transcribe(
+      async () => Buffer.from("first"),
+      () => true,
+    )
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce())
+    const download = vi.fn(async () => {
+      await expect(readFile(join(firstDirectory, "input.audio"))).rejects.toMatchObject({
+        code: "ENOENT",
+      })
+      return Buffer.from("next")
+    })
+    const next = transcriber.transcribe(download, () => true)
+    await Promise.resolve()
+    expect(download).not.toHaveBeenCalled()
+    finish()
+
+    await expect(Promise.all([first, next])).resolves.toEqual(["transcript", "transcript"])
+    expect(download).toHaveBeenCalledOnce()
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
   it("does not download queued audio after cancellation and cleans up after failure", async () => {
     let finish = () => {}
     let directory = ""

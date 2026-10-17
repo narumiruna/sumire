@@ -74,9 +74,6 @@ function callback(
 
 function setup() {
   const sessions = {
-    getModelSettings: vi.fn(),
-    setModel: vi.fn(),
-    setThinkingLevel: vi.fn(),
     submit: vi.fn(),
   }
   const telegram = createTelegramAgentBot(
@@ -101,9 +98,6 @@ describe("Retired Telegram settings controls", () => {
     async (data) => {
       const { bot, sessions, calls } = setup()
       await bot.handleUpdate(callback(data))
-      expect(sessions.getModelSettings).not.toHaveBeenCalled()
-      expect(sessions.setModel).not.toHaveBeenCalled()
-      expect(sessions.setThinkingLevel).not.toHaveBeenCalled()
       expect(sessions.submit).not.toHaveBeenCalled()
       expect(calls).toHaveLength(0)
     },

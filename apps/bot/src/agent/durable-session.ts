@@ -47,7 +47,6 @@ export const NO_RESPONSE_TEXT = "模型沒有回覆內容，請稍後再試。"
 
 /** Transport adapter only: Harness owns every model turn and tool task. */
 export class DurableSession implements SessionHandle {
-  readonly handlesAcceptance = true
   readonly #listeners = new Set<AgentSessionEventListener>()
   #conversation: Conversation
   #view?: AttachedReplicatedState<ConversationView>
@@ -319,10 +318,6 @@ export class DurableSession implements SessionHandle {
   async followUp(text: string, images: ImageContent[] = []): Promise<"queued"> {
     await this.queue(text, images, "followUp")
     return "queued"
-  }
-
-  clearQueue() {
-    return { steering: [], followUp: [] }
   }
 
   async sendCustomMessage(message: {

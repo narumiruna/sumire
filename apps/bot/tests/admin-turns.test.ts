@@ -39,7 +39,7 @@ it("cancels an active Pi tool, denies new work, and does not replay it after res
       fixture.logger,
       { control: store },
     )
-    await registry.getModelSettings(123)
+    await registry.appendPassiveContext(123, "context")
     const marker = path.join(fixture.root, "marker.txt")
     fixture.enqueue(
       "bash",
@@ -54,7 +54,7 @@ it("cancels an active Pi tool, denies new work, and does not replay it after res
     await registry.invalidatePolicies()
     await pending
     store.applied(store.snapshot().revision, true)
-    await expect(registry.getModelSettings(123)).rejects.toThrow("policy")
+    await expect(registry.appendPassiveContext(123, "context")).rejects.toThrow("policy")
     expect((await stat(session.sessionFile)).size).toBeGreaterThan(0)
     policy.privateUsers = [123]
     policy.tools = []

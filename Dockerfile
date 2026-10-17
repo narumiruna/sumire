@@ -61,12 +61,6 @@ COPY packages/contracts/tsconfig*.json packages/contracts/
 COPY packages/contracts/src/ packages/contracts/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-contracts
 
-FROM dependencies AS login-build
-
-COPY packages/login/tsconfig*.json packages/login/
-COPY packages/login/src/ packages/login/src/
-RUN npm run build --workspace @narumitw/sumire-login
-
 FROM dependencies AS progress-build
 
 COPY packages/progress/tsconfig*.json packages/progress/
@@ -98,7 +92,6 @@ FROM dependencies AS build
 COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
 
-COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
 COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
@@ -192,7 +185,6 @@ COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reade
 COPY --from=production-dependencies --chown=app:app /build/packages/pi-polymarket/package.json /app/packages/pi-polymarket/package.json
 COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
-COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
 COPY --from=polymarket-build --chown=app:app /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist

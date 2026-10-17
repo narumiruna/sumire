@@ -92,7 +92,6 @@ try {
   }
   const logger = { debug() {}, info() {}, warn() {}, error() {} }
   const { modelRuntime } = await createBotModelRuntime(
-    { ...settings, botAdminId: 123 },
     path.join(settings.botSessionLogDir, ".pi-agent"),
   )
   modelRuntime.registerProvider("openai", {

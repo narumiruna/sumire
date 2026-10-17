@@ -11,6 +11,7 @@ import { publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createPublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { ProviderAdmin } from "../src/admin/providers.js"
 import { DurableSession } from "../src/agent/durable-session.js"
 import { createPiSessionFactory as createProductionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
@@ -62,7 +63,6 @@ describe("createPiSessionFactory", () => {
       root,
     )
     const factory = await createPiSessionFactory(settings, logger)
-    expect(factory.login).toBeDefined()
     await expect(factory.create(7)).rejects.toThrow("請管理員在 Web UI 設定 provider")
     const authPath = path.join(settings.botSessionLogDir, ".pi-agent/auth.json")
     await mkdir(path.dirname(authPath), { recursive: true })
@@ -123,12 +123,27 @@ describe("createPiSessionFactory", () => {
       { control: factory.control },
     )
     try {
-      expect((await registry.getModelSettings(7)).currentModel).toBe(selected)
-      vi.stubEnv("OPENAI_API_KEY", "fixture-openai-key")
-      expect((await registry.getModelSettings(8)).currentModel).toBe(selected)
-      await registry.setModel(7, "openai/gpt-6.1-sol")
+      for (const chatId of [7, 8]) {
+        if (chatId === 8) vi.stubEnv("OPENAI_API_KEY", "fixture-openai-key")
+        const session = await factory.create(chatId)
+        try {
+          expect(`${session.model?.provider}/${session.model?.id}`).toBe(selected)
+        } finally {
+          await session.dispose()
+        }
+      }
+      const updated = factory.control.snapshot()
+      updated.policy.chats["7"] = { ...inherited, enabled: true, model: "openai/gpt-6.1-sol" }
+      factory.control.save(updated.policy, updated.revision, "7")
+      await registry.invalidatePolicies()
+      factory.control.applied(updated.revision + 1, true)
       await registry.reset(7)
-      expect((await registry.getModelSettings(7)).currentModel).toBe("openai/gpt-6.1-sol")
+      const reset = await factory.create(7)
+      try {
+        expect(reset.model).toMatchObject({ provider: "openai", id: "gpt-6.1-sol" })
+      } finally {
+        await reset.dispose()
+      }
     } finally {
       await registry.dispose()
     }
@@ -143,13 +158,12 @@ describe("createPiSessionFactory", () => {
     try {
       const model = first.model
       if (!model) throw new Error("Missing OpenAI model")
-      expect(factory.login).toBeDefined()
       expect(model).toMatchObject({ provider: "openai", api: "openai-responses" })
       expect(await first.modelRuntime.getAuth(model)).toMatchObject({
         auth: { apiKey: "fixture-key" },
       })
       const provider = first.modelRuntime.getProvider("openai")
-      if (!provider?.auth.oauth || !factory.login) throw new Error("Missing OAuth provider")
+      if (!provider?.auth.oauth || !factory.modelRuntime) throw new Error("Missing OAuth provider")
       first.modelRuntime.registerNativeProvider({
         ...provider,
         auth: {
@@ -165,7 +179,10 @@ describe("createPiSessionFactory", () => {
           },
         },
       })
-      await factory.login.login({ prompt: vi.fn(), notify: vi.fn() })
+      const admin = new ProviderAdmin(factory.modelRuntime, factory.control)
+      const login = admin.loginState(admin.startLogin("openai", "7"), "7")
+      await login.done
+      expect(login.status).toBe("completed")
       expect(await first.modelRuntime.getAuth(model)).toMatchObject({
         auth: { apiKey: "fixture-access" },
         source: "OAuth",
@@ -201,8 +218,6 @@ describe("createPiSessionFactory", () => {
         content: "fixture conversation",
         timestamp: Date.now(),
       })
-      await first.setModel(alternative)
-      await first.setThinkingLevel("high")
       const state = factory.control.snapshot()
       state.policy.chats["7"] = {
         ...inherited,
@@ -210,9 +225,8 @@ describe("createPiSessionFactory", () => {
         model: `${alternative.provider}/${alternative.id}`,
         thinking: "high",
       }
-      factory.control.save(state.policy, state.revision, "7", "chat.model.update")
+      factory.control.save(state.policy, state.revision, "7")
       factory.control.applied(state.revision + 1, true)
-      expect(first.thinkingLevel).toBe("high")
     } finally {
       await first.dispose()
     }
@@ -240,10 +254,14 @@ describe("createPiSessionFactory", () => {
     )
     try {
       await registry.reset(7)
-      await expect(registry.getModelSettings(7)).resolves.toMatchObject({
-        currentModel: `${alternative.provider}/${alternative.id}`,
-        thinkingLevel: "high",
-      })
+      const reset = await restartedFactory.create(7)
+      try {
+        expect(reset.model).toMatchObject({ provider: alternative.provider, id: alternative.id })
+        expect(reset.thinkingLevel).toBe("high")
+        expect(reset.messages).toEqual([])
+      } finally {
+        await reset.dispose()
+      }
     } finally {
       await registry.dispose()
     }

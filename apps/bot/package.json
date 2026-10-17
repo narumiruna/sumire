@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-pi-polymarket && npm run build --workspace @narumitw/sumire-progress && npm run build --workspace @narumitw/sumire-login",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-pi-polymarket && npm run build --workspace @narumitw/sumire-progress",
     "dev": "cd ../.. && node --env-file-if-exists=.env --import tsx apps/bot/src/index.ts",
     "start": "cd ../.. && node --env-file-if-exists=.env apps/bot/dist/index.js",
     "format": "biome format --write .",
@@ -37,7 +37,6 @@
     "@grammyjs/runner": "2.0.3",
     "@narumitw/otter-cli": "0.3.1",
     "@narumitw/sumire-contracts": "0.3.0",
-    "@narumitw/sumire-login": "0.2.0",
     "@narumitw/sumire-policy": "0.3.0",
     "@narumitw/sumire-progress": "0.3.0",
     "@narumitw/sumire-url-reader": "0.25.0",

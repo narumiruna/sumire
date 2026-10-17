@@ -1,17 +1,10 @@
 import path from "node:path"
 
-import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent"
-import { createOAuthLogin } from "@narumitw/sumire-login"
-
-import type { Settings } from "../config/settings.js"
+import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 
 const initialModelId = "gpt-6.1-sol"
 
-export async function createBotModelRuntime(
-  settings: Settings,
-  agentDir: string,
-  suppliedModelRuntime?: ModelRuntime,
-) {
+export async function createBotModelRuntime(agentDir: string, suppliedModelRuntime?: ModelRuntime) {
   const modelRuntime =
     suppliedModelRuntime ??
     (await ModelRuntime.create({
@@ -23,11 +16,5 @@ export async function createBotModelRuntime(
   const model = modelRuntime.getModel("openai", initialModelId)
   if (!model) throw new Error(`Pi model not found: openai/${initialModelId}`)
 
-  const authSettings = SettingsManager.create(settings.botWorkdir, agentDir, {
-    projectTrusted: false,
-  })
-  const login = createOAuthLogin(modelRuntime, {
-    getDeviceId: () => authSettings.getOrCreateDeviceId(),
-  })
-  return { modelRuntime, model, login }
+  return { modelRuntime, model }
 }

@@ -1,11 +1,14 @@
 import { existsSync } from "node:fs"
-import { cp, mkdtemp, writeFile } from "node:fs/promises"
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
+import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { createPolicyApplier } from "../src/admin/application.js"
+import { ProviderAdmin } from "../src/admin/providers.js"
 import type { DurableSession } from "../src/agent/durable-session.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
@@ -15,9 +18,9 @@ import { createTestSessionFactory as createPiSessionFactory } from "./helpers/se
 
 const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const instructions = fileURLToPath(new URL("../../../instructions", import.meta.url))
+const roots: string[] = []
 
 function assistant(session: DurableSession): Extract<AgentMessage, { role: "assistant" }> {
-  if (!session.model) throw new Error("Missing fixture model")
   return {
     role: "assistant",
     content: [{ type: "text", text: "fixture answer" }],
@@ -39,23 +42,34 @@ function assistant(session: DurableSession): Extract<AgentMessage, { role: "assi
 
 async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-settings-persistence-"))
+  roots.push(root)
   await cp(instructions, path.join(root, "instructions"), { recursive: true })
   await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
   const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
   const factory = await createPiSessionFactory(settings, logger)
-  const session = await factory.create(7)
-  const registry = new ChatSessionRegistry(async () => session, settings.botSessionLogDir, logger, {
+  const create = vi.fn((id: number) => factory.create(id))
+  const registry = new ChatSessionRegistry(create, settings.botSessionLogDir, logger, {
     control: factory.control,
-
     replyTreeEnabled: true,
   })
-  await registry.getModelSettings(7)
-  return { settings, registry, session }
+  if (!factory.modelRuntime) throw new Error("Missing fixture runtime")
+  const providers = new ProviderAdmin(factory.modelRuntime, factory.control)
+  const apply = createPolicyApplier(factory.control, registry, providers)
+  const open = async () => {
+    await registry.appendPassiveContext(7, "fixture context")
+    const result = create.mock.results.at(-1)
+    if (result?.type !== "return") throw new Error("Missing fixture session")
+    return result.value
+  }
+  return { settings, factory, registry, apply, open }
 }
 
-describe("durable chat model settings persistence", () => {
+describe("administration model policy persistence", () => {
   beforeEach(() => vi.stubEnv("OPENAI_API_KEY", "fixture-key"))
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+  })
 
   it.each([
     { name: "model and high thinking", changeModel: true, thinkingLevel: "high" },
@@ -63,54 +77,55 @@ describe("durable chat model settings persistence", () => {
     { name: "model and explicit off", changeModel: true, thinkingLevel: "off" },
     { name: "unchanged settings", changeModel: false, thinkingLevel: "low" },
   ] as const)(
-    "keeps $name across older replies and restart",
+    "keeps $name across policy application, older replies, reset, and restart",
     async ({ changeModel, thinkingLevel }) => {
-      const { settings, registry, session } = await setup()
-      const initialModel = session.model
-      const alternative = session.modelRuntime
-        .getModels("openai")
-        .find(
-          (model) =>
-            model.id !== initialModel?.id &&
-            (thinkingLevel === "off" ? !model.reasoning : model.reasoning),
-        )
-      if (!initialModel || !alternative) throw new Error("Missing fixture models")
+      const { settings, factory, registry, apply, open } = await setup()
       try {
-        // Make the destination branch disagree except in the unchanged-settings case.
-        const initialThinking = thinkingLevel === "off" && changeModel ? "high" : "low"
-        if (initialThinking === "high") await registry.setThinkingLevel(7, "high")
-        await appendMessage(session, {
-          role: "user",
-          content: "root",
-          timestamp: Date.now(),
-        })
-        const rootAnswer = await appendMessage(session, assistant(session))
-        await session.navigateTree(rootAnswer)
+        const original = await open()
+        const initialModel = original.model
+        const alternative = original.modelRuntime
+          .getModels("openai")
+          .find(
+            (model) =>
+              model.id !== initialModel.id &&
+              (thinkingLevel === "off" ? !model.reasoning : model.reasoning),
+          )
+        if (!alternative) throw new Error("Missing fixture model")
+        await original.setThinkingLevel(thinkingLevel === "off" && changeModel ? "high" : "low")
+        await appendMessage(original, { role: "user", content: "root", timestamp: Date.now() })
+        const rootAnswer = await appendMessage(original, assistant(original))
+        await original.navigateTree(rootAnswer)
         await registry.recordDelivery(
           7,
-          { sessionId: session.sessionId, entryId: rootAnswer, generation: 0 },
+          { sessionId: original.sessionId, entryId: rootAnswer, generation: 0 },
           [100],
         )
 
         const selectedModel = changeModel ? alternative : initialModel
-        if (changeModel) await registry.setModel(7, `${selectedModel.provider}/${selectedModel.id}`)
-        await registry.setThinkingLevel(7, thinkingLevel)
+        const state = factory.control.snapshot()
+        state.policy.chats["7"] = {
+          ...inherited,
+          enabled: true,
+          model: `${selectedModel.provider}/${selectedModel.id}`,
+          thinking: thinkingLevel,
+        }
+        factory.control.save(state.policy, state.revision, "7")
+        await apply()
+        const session = await open()
+        expect(session).not.toBe(original)
         await appendMessage(session, {
           role: "user",
           content: "abandoned later turn",
           timestamp: Date.now(),
         })
         await appendMessage(session, assistant(session))
-
-        // Exercise durable forks and persisted model configuration, without calling a provider.
         const prompt = vi.spyOn(session, "prompt").mockImplementation(async (text) => {
-          expect(session.model).toBe(selectedModel)
-          expect(session.thinkingLevel).toBe(thinkingLevel)
-          await appendMessage(session, {
-            role: "user",
-            content: text,
-            timestamp: Date.now(),
+          expect(session.model).toMatchObject({
+            provider: selectedModel.provider,
+            id: selectedModel.id,
           })
+          expect(session.thinkingLevel).toBe(thinkingLevel)
+          await appendMessage(session, { role: "user", content: text, timestamp: Date.now() })
           return { text: "" }
         })
         await registry.submit(7, "reply to root", { replyToBotMessageId: 100 })
@@ -122,7 +137,6 @@ describe("durable chat model settings persistence", () => {
           model: { provider: selectedModel.provider, modelId: selectedModel.id },
           thinkingLevel,
         })
-
         await registry.dispose()
 
         const resumed = await (await createPiSessionFactory(settings, logger)).create(7)
@@ -132,11 +146,31 @@ describe("durable chat model settings persistence", () => {
             id: selectedModel.id,
           })
           expect(resumed.thinkingLevel).toBe(thinkingLevel)
-          const history = JSON.stringify(resumed.messages)
-          expect(history).toContain("reply to root")
-          expect(history).not.toContain("abandoned later turn")
+          expect(JSON.stringify(resumed.messages)).toContain("reply to root")
+          expect(JSON.stringify(resumed.messages)).not.toContain("abandoned later turn")
         } finally {
           await resumed.dispose()
+        }
+        const resetRegistry = new ChatSessionRegistry(
+          factory.create,
+          settings.botSessionLogDir,
+          logger,
+          {
+            control: factory.control,
+          },
+        )
+        await resetRegistry.reset(7)
+        await resetRegistry.dispose()
+        const fresh = await factory.create(7)
+        try {
+          expect(fresh.model).toMatchObject({
+            provider: selectedModel.provider,
+            id: selectedModel.id,
+          })
+          expect(fresh.thinkingLevel).toBe(thinkingLevel)
+          expect(fresh.messages).toEqual([])
+        } finally {
+          await fresh.dispose()
         }
       } finally {
         await registry.dispose()
@@ -144,34 +178,32 @@ describe("durable chat model settings persistence", () => {
     },
   )
 
-  it("persists setup-only choices in administration policy before the first conversation message", async () => {
-    const { settings, registry, session } = await setup()
-    const initialModel = session.model
-    const alternative = session.modelRuntime
-      .getModels("openai")
-      .find((model) => model.reasoning && model.id !== initialModel?.id)
-    if (!initialModel || !alternative || !session.sessionFile)
-      throw new Error("Missing fixture state")
+  it("applies setup-only policy choices before the first conversation message", async () => {
+    const { factory, registry, apply } = await setup()
     try {
-      await registry.setModel(7, `${alternative.provider}/${alternative.id}`)
-      await registry.setThinkingLevel(7, "high")
-      expect(session.messages).toEqual([])
-      expect(session.model).toBe(alternative)
-      expect(session.thinkingLevel).toBe("high")
-      expect(await (await currentConversation(session)).agent(context)).toMatchObject({
-        model: { provider: initialModel.provider, modelId: initialModel.id },
-        thinkingLevel: "low",
-      })
-      expect(existsSync(session.sessionFile)).toBe(true)
-      await registry.dispose()
-
-      const restartedFactory = await createPiSessionFactory(settings, logger)
-      const fresh = await restartedFactory.create(7)
+      const initial = await factory.create(7)
+      const alternative = initial.modelRuntime
+        .getModels("openai")
+        .find((model) => model.reasoning && model.id !== initial.model.id)
+      await initial.dispose()
+      if (!alternative) throw new Error("Missing fixture model")
+      const state = factory.control.snapshot()
+      state.policy.chats["7"] = {
+        ...inherited,
+        enabled: true,
+        model: `${alternative.provider}/${alternative.id}`,
+        thinking: "high",
+      }
+      factory.control.save(state.policy, state.revision, "7")
+      await apply()
+      const session = await factory.create(7)
       try {
-        expect(fresh.model).toMatchObject({ provider: alternative.provider, id: alternative.id })
-        expect(fresh.thinkingLevel).toBe("high")
+        expect(session.messages).toEqual([])
+        expect(session.model).toMatchObject({ provider: alternative.provider, id: alternative.id })
+        expect(session.thinkingLevel).toBe("high")
+        expect(existsSync(session.sessionFile)).toBe(true)
       } finally {
-        await fresh.dispose()
+        await session.dispose()
       }
     } finally {
       await registry.dispose()

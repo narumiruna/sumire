@@ -4,6 +4,8 @@ import { join } from "node:path"
 
 import { runCommand } from "@narumitw/sumire-url-reader/loaders"
 
+import { Semaphore } from "../semaphore.js"
+
 export function promptWithAudioContext(
   instruction: string,
   transcripts: readonly { source: "current" | "replied"; kind: "voice" | "audio"; text: string }[],
@@ -25,8 +27,7 @@ export interface AudioTranscriber {
 }
 
 export class TelegramAudioTranscriber implements AudioTranscriber {
-  readonly #waiters: Array<() => void> = []
-  #active = 0
+  readonly #semaphore: Semaphore
 
   constructor(
     private readonly options: {
@@ -36,13 +37,15 @@ export class TelegramAudioTranscriber implements AudioTranscriber {
       model?: string
       run?: typeof runCommand
     },
-  ) {}
+  ) {
+    this.#semaphore = new Semaphore(options.maxConcurrency)
+  }
 
   async transcribe(
     loadBytes: () => Promise<Uint8Array>,
     isCurrent: () => boolean,
   ): Promise<string> {
-    const release = await this.#acquire()
+    const release = await this.#semaphore.acquire()
     try {
       if (!isCurrent()) return ""
       const bytes = await loadBytes()
@@ -79,19 +82,6 @@ export class TelegramAudioTranscriber implements AudioTranscriber {
       }
     } finally {
       release()
-    }
-  }
-
-  async #acquire(): Promise<() => void> {
-    if (this.#active >= this.options.maxConcurrency) {
-      await new Promise<void>((resolve) => this.#waiters.push(resolve))
-    } else {
-      this.#active++
-    }
-    return () => {
-      const next = this.#waiters.shift()
-      if (next) next()
-      else this.#active--
     }
   }
 }

@@ -107,9 +107,9 @@ export class AdminStore {
     try {
       const changed = this.db
         .prepare(
-          "UPDATE settings SET revision=revision+1, epoch=epoch+?, status='pending', policy=? WHERE id=1 AND revision=?",
+          "UPDATE settings SET revision=revision+1, epoch=epoch+1, status='pending', policy=? WHERE id=1 AND revision=?",
         )
-        .run(Number(operation !== "chat.model.update"), JSON.stringify(policy), revision)
+        .run(JSON.stringify(policy), revision)
       if (!changed.changes) throw new AdminError(409, "Settings changed; reload before saving")
       this.audit(actor, operation, revision + 1, "saved", target)
       for (const key of Object.keys(policy.chats)) {
