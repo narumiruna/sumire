@@ -1,5 +1,11 @@
 # @narumitw/sumire
 
+## 0.12.1
+
+### Patch Changes
+
+- e669516: Simplify the durable session contract, remove retired model and OAuth wiring, and share media admission control without changing Telegram or WebUI behavior.
+
 ## 0.12.0
 
 ### Minor Changes
