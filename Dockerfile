@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Match the libcurl release pinned by impers 0.1.2; verify each platform's archive.
-FROM node:24-bookworm-slim AS curl-impersonate
+FROM node:26-bookworm-slim AS curl-impersonate
 
 ARG TARGETARCH
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -30,7 +30,7 @@ RUN set -eu; \
         --wildcards 'libcurl-impersonate*.so*' 'LICENSE*'; \
     rm /tmp/libcurl.tar.gz
 
-FROM node:24-bookworm-slim AS dependencies
+FROM node:26-bookworm-slim AS dependencies
 
 WORKDIR /build
 
@@ -43,6 +43,7 @@ COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
+COPY packages/pi-polymarket/package.json packages/pi-polymarket/package.json
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
@@ -72,6 +73,12 @@ COPY packages/progress/tsconfig*.json packages/progress/
 COPY packages/progress/src/ packages/progress/src/
 RUN npm run build --workspace @narumitw/sumire-progress
 
+FROM dependencies AS polymarket-build
+
+COPY packages/pi-polymarket/tsconfig*.json packages/pi-polymarket/
+COPY packages/pi-polymarket/src/ packages/pi-polymarket/src/
+RUN npm run build --workspace @narumitw/sumire-pi-polymarket
+
 FROM dependencies AS url-reader-build
 
 COPY packages/url-reader/tsconfig*.json packages/url-reader/
@@ -93,6 +100,7 @@ COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contr
 
 COPY --from=login-build /build/packages/login/dist /build/packages/login/dist
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
+COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
 COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
 COPY apps/bot/tsconfig*.json apps/bot/
@@ -113,7 +121,7 @@ FROM dependencies AS production-dependencies
 RUN --mount=type=cache,target=/root/.npm \
     npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
 
-FROM node:24-bookworm-slim AS audio-dependencies
+FROM node:26-bookworm-slim AS audio-dependencies
 
 ARG TARGETARCH
 # Docker's default apt hook deletes downloaded packages, defeating the cache mount.
@@ -136,7 +144,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # Use the npm-ci installation, including its locked browser revisions and headless shell.
 RUN node node_modules/playwright/cli.js install chromium
 
-FROM node:24-bookworm-slim AS runtime-dependencies
+FROM node:26-bookworm-slim AS runtime-dependencies
 
 ARG TARGETARCH
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -181,10 +189,12 @@ COPY --from=production-dependencies --chown=app:app /build/packages/login/packag
 COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/url-reader/package.json /app/packages/url-reader/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reader/package.json /app/packages/pi-url-reader/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/pi-polymarket/package.json /app/packages/pi-polymarket/package.json
 COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=login-build --chown=app:app /build/packages/login/dist /app/packages/login/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=polymarket-build --chown=app:app /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist
 COPY --from=pi-url-reader-build --chown=app:app /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
 COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist

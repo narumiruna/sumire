@@ -2,7 +2,11 @@ import { readFile, rm, stat } from "node:fs/promises"
 import { dirname } from "node:path"
 import { createPublicClient, type PublicClient, type SecureClient } from "@polymarket/client"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { createPolymarketTools, polymarketApi } from "../src/client-tools.js"
+import {
+  createPolymarketTools,
+  polymarketApi,
+  publicPolymarketToolNames,
+} from "../src/client-tools.js"
 import extension from "../src/index.js"
 
 const runtimes: ReturnType<typeof createPolymarketTools>[] = []
@@ -67,6 +71,7 @@ describe("client-backed tools", () => {
     const on = vi.fn()
     extension({ registerTool, on } as never)
     const names = registerTool.mock.calls.map(([tool]) => tool.name)
+    expect(names).toEqual(publicPolymarketToolNames)
     expect(names).toContain("polymarket_discovery_query")
     expect(names.some((name) => name.endsWith("_execute"))).toBe(false)
     expect(on).toHaveBeenCalledWith("session_shutdown", expect.any(Function))

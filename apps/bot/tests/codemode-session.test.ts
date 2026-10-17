@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
+import { publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { reconstructProgress } from "@narumitw/sumire-progress"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DurableSession } from "../src/agent/durable-session.js"
@@ -33,7 +34,14 @@ describe("codemode through Bot Pi sessions", () => {
     const session = await fixture.createSession()
     expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
       tools: expect.arrayContaining(["codemode", "read_image", "update_progress"]),
-      codemodeTools: ["read", "bash", "edit", "write", "read_url_content"],
+      codemodeTools: [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "read_url_content",
+        ...publicPolymarketToolNames,
+      ],
     })
     const result = await fixture.script(
       session,
@@ -44,6 +52,7 @@ describe("codemode through Bot Pi sessions", () => {
     expect(toolResultText(result)).toContain('"progress":false')
     expect(toolResultText(result)).toContain('"image":false')
     expect(toolResultText(result)).toContain('"read_url_content"')
+    expect(toolResultText(result)).toContain('"polymarket_api"')
     for (const name of ["update_progress", "read_image"]) {
       expect(fixture.requests[0]?.tools.some((tool) => tool.function.name === name)).toBe(true)
     }

@@ -25,6 +25,12 @@ export interface MethodSpec {
 }
 
 export const polymarketApi: readonly MethodSpec[] = api
+/** Inventory for hosts that must register capabilities before creating chat runtimes. */
+export const publicPolymarketToolNames: readonly string[] = [
+  "polymarket_api",
+  ...new Set(polymarketApi.filter((spec) => !spec.secure).map(toolName)),
+  "polymarket_handle",
+]
 const maxHandles = 100
 const maxOutputBytes = 32_000
 const maxWaitMs = 300_000

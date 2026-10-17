@@ -1,6 +1,6 @@
 # Pi Polymarket
 
-Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.13.0**. Requires Node.js 24 or newer.
+Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.13.0**. Requires Node.js 26 or newer.
 
 The package exposes all **113 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
 
@@ -14,7 +14,7 @@ npm run build --workspace @narumitw/sumire-pi-polymarket
 pi -e ./packages/pi-polymarket
 ```
 
-This private workspace is not published to npm. It does not load into the Telegram bot automatically.
+This private workspace is not published to npm. Sumire bundles the public tools in each chat's Pi Durable runtime. Administrators must approve their tool names in the existing global and per-chat policies; deployment does not grant access automatically. The bot does not supply an authenticated client or enable trading.
 
 ## Tools
 
@@ -130,6 +130,8 @@ export async function loadTradingTools(pi: ExtensionAPI, signer: Signer) {
 ```
 
 The host must declare its own SDK and signer-adapter dependencies. Supported upstream adapters include Viem, Ethers v5, and Privy. Host-owned code supplies credentials, signer functions, callbacks, decorators, environment configuration, and authentication lifecycle. These are not JSON tool arguments. Client factories, client credentials, and client lifecycle methods are deliberately not model-callable actions.
+
+`publicPolymarketToolNames` provides the public capability inventory without creating a client.
 
 For programmatic Pi integration, `createPolymarketTools({ publicClient?, secureClient? })` returns `{ tools, dispose }`. Pass `tools` through Pi's normal custom-tool integration and call `dispose()` when the session ends. The package does not implement another agent loop.
 

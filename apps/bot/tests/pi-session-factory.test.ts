@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { SessionManager } from "@earendil-works/pi-coding-agent"
+import { publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createPublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -349,6 +350,7 @@ describe("createPiSessionFactory", () => {
         "write",
         "read_url_content",
         "read_image",
+        ...publicPolymarketToolNames,
         "update_progress",
         "codemode",
       ])
@@ -469,6 +471,7 @@ describe("createPiSessionFactory", () => {
         "write",
         "read_url_content",
         "read_image",
+        ...publicPolymarketToolNames,
         "update_progress",
         "codemode",
       ])

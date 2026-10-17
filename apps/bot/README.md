@@ -45,7 +45,7 @@ Available now:
 
 ## Requirements
 
-- Node.js 22.19 or newer
+- Node.js 26 or newer
 - Linux x86_64 with glibc for the production AnyDoc native adapter
 - Telegram bot token
 - Provider credentials configured through `/admin` and the Web UI, or credentials already available to Pi
@@ -162,6 +162,14 @@ The repository vendors the reviewed `otter-manage-expenses` skill from [narumiru
 Use the administration Web UI to configure providers, credentials, chat models, and thinking levels. Telegram does not provide `/model`, `/provider`, `/login`, or `/thinking` commands. Old model and thinking picker buttons cannot change settings.
 
 The bot updates its Telegram command menu at startup. Menu-registration failures are logged without stopping polling. `/reset` removes conversation state but preserves administrator-owned chat settings.
+
+## Polymarket
+
+Sumire bundles the public tools from [`@narumitw/sumire-pi-polymarket`](../../packages/pi-polymarket/README.md). Each chat has an isolated client and handle registry. The administrator must approve the `polymarket_*` tool names in the global capability policy and the chat's effective tool selection. Existing policies receive no automatic grants. Approved tools are available directly and through codemode; saved tool references still check current policy before execution.
+
+The bot exposes API discovery, market/event search, prices, order books, trades, public account data, rewards, analytics, Perps market data, subscriptions, and bounded handle access. It does not configure a wallet, authenticated client, private keys, or trading tools. Sessions close their handles and subscriptions on shutdown and failed startup. Network calls remain replay-unsafe in Pi Durable. No keyword routing, additional agent loop, or Polymarket environment variables are required.
+
+Use `polymarket_api` to inspect an action before calling it. Handles are local to the active chat runtime and cannot be reused after reset or restart. See the package documentation for pagination, stream bounds, cancellation, and temporary output retention.
 
 ## Codemode
 

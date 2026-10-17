@@ -11,6 +11,7 @@ import {
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import type { OAuthLoginClient } from "@narumitw/sumire-login"
+import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import type { McpAdmin } from "../admin/mcp.js"
@@ -96,7 +97,12 @@ export async function createPiSessionFactory(
       : []),
   ]
 
-  const toolNames = [...baseTools.map((tool) => tool.name), "codemode", "update_progress"]
+  const toolNames = [
+    ...baseTools.map((tool) => tool.name),
+    ...publicPolymarketToolNames,
+    "codemode",
+    "update_progress",
+  ]
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${systemPrompt}`, {
     sha256: createHash("sha256").update(systemPrompt).digest("hex"),
@@ -166,7 +172,6 @@ export async function createPiSessionFactory(
       })
       const allowed = (tool: import("./durable-tools.js").NativeTool) =>
         control.store.allowsTool(chatId, tool.name)
-      const chatBaseTools = baseTools.filter(allowed).map(guard)
       const chatMcpConfig = control.mcp.config()
       const permittedMcp = {
         ...chatMcpConfig,
@@ -178,6 +183,8 @@ export async function createPiSessionFactory(
       await chmod(directory, 0o700)
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
+      const polymarket = createPolymarketTools()
+      const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
       const nativeTools = [...chatBaseTools]
       let mcpTools: import("./durable-tools.js").NativeTool[] = []
       const updateNativeTools = () => {
@@ -213,6 +220,9 @@ export async function createPiSessionFactory(
               (names) => control.store.registerTools(names),
             )
           : undefined
+      const cleanup = async () => {
+        await Promise.all([mcp?.close(), polymarket.dispose()])
+      }
       registry.install(
         defineExtension({
           name: "sumire",
@@ -254,23 +264,24 @@ export async function createPiSessionFactory(
         registry.install(createProgressExtension(() => assertTool("update_progress")))
       let harness: Harness | undefined
       let session: DurableSession | undefined
-      const codemode = await createDurableCodemode(
-        nativeTools,
-        Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
-        () => {
-          if (!harness) throw new Error("Durable harness is not open")
-          return harness
-        },
-        (event) => session?.emit(event),
-        (signal) => mcp?.ready(signal) ?? Promise.resolve(),
-        () => assertTool("codemode"),
-      )
-      registry.install({
-        ...codemode,
-        tools: control.store.allowsTool(chatId, "codemode") ? codemode.tools : [],
-      })
-      const storage = await openNodeSqliteStorage(sessionFile)
+      let storage: Awaited<ReturnType<typeof openNodeSqliteStorage>> | undefined
       try {
+        const codemode = await createDurableCodemode(
+          nativeTools,
+          Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
+          () => {
+            if (!harness) throw new Error("Durable harness is not open")
+            return harness
+          },
+          (event) => session?.emit(event),
+          (signal) => mcp?.ready(signal) ?? Promise.resolve(),
+          () => assertTool("codemode"),
+        )
+        registry.install({
+          ...codemode,
+          tools: control.store.allowsTool(chatId, "codemode") ? codemode.tools : [],
+        })
+        storage = await openNodeSqliteStorage(sessionFile)
         await chmod(sessionFile, 0o600)
         assertSessionPolicy()
         await mcp?.ready()
@@ -323,7 +334,7 @@ export async function createPiSessionFactory(
           nativeTools,
           logger,
           trustKey: `admin:${state.epoch}`,
-          cleanup: () => mcp?.close() ?? Promise.resolve(),
+          cleanup,
         })
         await session.setModel(selectedModel)
         await session.setThinkingLevel(policy.thinking)
@@ -337,9 +348,9 @@ export async function createPiSessionFactory(
       } catch (error) {
         try {
           if (harness) await harness.close(context)
-          else await storage.close(context)
+          else await storage?.close(context)
         } finally {
-          await mcp?.close()
+          await cleanup()
         }
         logger.error(`Durable session initialization failed for chat_id=${chatId}`, error)
         throw error
