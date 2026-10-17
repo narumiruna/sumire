@@ -86,6 +86,9 @@ describe("createPiSessionFactory", () => {
         await second.modelRuntime.getAuth("openai"),
       )
       expect(first.messages).toEqual([])
+      expect(factory.toolNames).not.toContain("miyu_cna_news")
+      expect(first.getActiveToolNames()).not.toContain("miyu_cna_news")
+      expect(first.nativeTools.map((tool) => tool.name)).not.toContain("miyu_cna_news")
     } finally {
       await first.dispose()
       await second.dispose()
