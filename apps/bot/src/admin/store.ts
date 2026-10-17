@@ -125,12 +125,14 @@ export class AdminStore {
     }
     return this.snapshot()
   }
-  /** Add first-seen tools only. This additive change does not invalidate active sessions. */
-  registerTools(names: readonly string[]) {
+  /** Remember tools. Enable first-seen names only when enableNew is true. */
+  registerTools(names: readonly string[], enableNew = true) {
     this.db.exec("BEGIN IMMEDIATE")
     try {
       const state = this.snapshot()
       const remember = this.db.prepare("INSERT OR IGNORE INTO known_tools VALUES (?)")
+      if (!enableNew)
+        for (const name of policySchema.shape.tools.parse([...new Set(names)])) remember.run(name)
       // Existing selections are already known, including selections denied globally.
       for (const name of [
         ...state.policy.tools,

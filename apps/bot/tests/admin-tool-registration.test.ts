@@ -109,6 +109,25 @@ it.each([0, 511, 512])("keeps full policies available (default tools: %s)", asyn
   }
 })
 
+it("remembers approval-only tools without changing policy or enabling them later", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-"))
+  const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)
+  try {
+    const before = store.snapshot()
+    store.registerTools(["approval_only"], false)
+    expect(store.snapshot()).toEqual(before)
+    expect(store.db.prepare("SELECT name FROM known_tools").all()).toEqual([
+      { name: "approval_only" },
+    ])
+    store.registerTools(["approval_only"])
+    expect(store.snapshot()).toEqual(before)
+    expect(() => store.registerTools([""], false)).toThrow()
+  } finally {
+    store.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 it("rolls back first-seen records if policy validation fails", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-"))
   const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)

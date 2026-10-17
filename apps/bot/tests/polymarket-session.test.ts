@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 import { Harness } from "@earendil-works/pi-durable"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { McpAdmin } from "../src/admin/mcp.js"
 import type { AdminStore } from "../src/admin/store.js"
 import type { DurableSession } from "../src/agent/durable-session.js"
 import { adaptTool, type NativeTool } from "../src/agent/durable-tools.js"
@@ -39,9 +40,10 @@ async function setup() {
     recursive: true,
   })
   await writeFile(path.join(root, "mcp.json"), JSON.stringify({ mcpServers: {} }))
-  const factory = await createTestSessionFactory(loadSettings({ BOT_ADMIN_ID: "7" }, root), logger)
+  const settings = loadSettings({ BOT_ADMIN_ID: "7" }, root)
+  const factory = await createTestSessionFactory(settings, logger)
   stores.push(factory.control)
-  return factory
+  return { ...factory, settings }
 }
 
 function findTool(session: DurableSession, name: string) {
@@ -58,6 +60,37 @@ async function call(tool: NativeTool, params: Record<string, unknown>) {
 }
 
 describe("bot Polymarket integration", () => {
+  it("keeps new Polymarket tools denied when an applied policy is upgraded", async () => {
+    const factory = await setup()
+    const store = factory.control
+    const state = store.snapshot()
+    state.policy.tools = state.policy.tools.filter(
+      (name) => !publicPolymarketToolNames.includes(name),
+    )
+    state.policy.defaults.tools = [...state.policy.tools]
+    const saved = store.save(state.policy, state.revision, "7")
+    store.applied(saved.revision, true)
+    for (const name of publicPolymarketToolNames)
+      store.db.prepare("DELETE FROM known_tools WHERE name=?").run(name)
+    const before = store.snapshot()
+    const upgraded = await createTestSessionFactory(
+      factory.settings,
+      logger,
+      undefined,
+      factory.modelRuntime,
+      { store, mcp: new McpAdmin(store, factory.settings.botWorkdir) },
+    )
+    expect(store.snapshot()).toEqual(before)
+    const session = await upgraded.create(7)
+    sessions.push(session)
+    for (const name of publicPolymarketToolNames) {
+      expect(upgraded.toolNames).toContain(name)
+      expect(store.allowsTool(7, name)).toBe(false)
+      expect(session.getActiveToolNames()).not.toContain(name)
+      expect(session.nativeTools.some((tool) => tool.name === name)).toBe(false)
+    }
+  })
+
   it("registers only public capabilities with normal policy guards and unsafe replay", async () => {
     const factory = await setup()
     expect(factory.toolNames).toEqual(expect.arrayContaining([...publicPolymarketToolNames]))

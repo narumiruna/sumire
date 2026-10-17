@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -12,7 +13,11 @@ describe("Node.js runtime baseline", () => {
       const entries = await readdir(path.join(root, parent), { withFileTypes: true })
       manifests.push(
         ...entries
-          .filter((entry) => entry.isDirectory())
+          .filter(
+            (entry) =>
+              entry.isDirectory() &&
+              existsSync(path.join(root, parent, entry.name, "package.json")),
+          )
           .map((entry) => `${parent}/${entry.name}/package.json`),
       )
     }

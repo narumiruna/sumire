@@ -153,6 +153,33 @@ describe("client-backed tools", () => {
     ).toEqual({ events: [] })
   })
 
+  it("offers only new Perps sessions and rejects delegated credentials before SDK dispatch", async () => {
+    const openPerpsSession = vi.fn(async () => ({ close: vi.fn() }))
+    const { value, call } = setup({}, { openPerpsSession })
+    const discovery = await value("polymarket_api", { method: "openPerpsSession" })
+    expect(discovery[0].args[0].type).toBe("CreatePerpsSessionRequest")
+    expect(JSON.stringify(discovery)).not.toContain('"credentials"')
+    expect(JSON.stringify(discovery)).not.toContain('"privateKey"')
+    for (const credentials of [{ privateKey: "fixture", secret: "fixture" }, null, {}]) {
+      await expect(
+        call("polymarket_perps_execute", {
+          action: "openPerpsSession",
+          client: "secure",
+          confirm: true,
+          args: [{ credentials }],
+        }),
+      ).rejects.toThrow("host-only")
+    }
+    expect(openPerpsSession).not.toHaveBeenCalled()
+    await value("polymarket_perps_execute", {
+      action: "openPerpsSession",
+      client: "secure",
+      confirm: true,
+      args: [{ label: "test" }],
+    })
+    expect(openPerpsSession).toHaveBeenCalledWith({ label: "test" })
+  })
+
   it("round-trips bigint arguments without executing model code", async () => {
     const transferErc20 = vi.fn(async (request) => ({ amount: request.amount }))
     const { call, value } = setup({}, { transferErc20 })
@@ -350,6 +377,29 @@ describe("client-backed tools", () => {
     if (!path) throw new Error("Missing full output file")
     expect(JSON.parse(await readFile(path, "utf8")).data.length).toBe(100_000)
     expect((await stat(path)).mode & 0o777).toBe(0o600)
+  })
+
+  it("retains at most ten full outputs and removes them on disposal", async () => {
+    const { call, runtime } = setup({
+      fetchOrderBook: vi.fn(async () => ({ data: "x".repeat(40_000) })),
+    })
+    const paths: string[] = []
+    for (let i = 0; i < 12; i++) {
+      const response = await call("polymarket_market_data_query", {
+        action: "fetchOrderBook",
+        args: [{}],
+      })
+      const path = response.structuredContent.fullOutputPath
+      if (!path) throw new Error("Missing output file")
+      paths.push(path)
+    }
+    for (const path of paths.slice(0, 2))
+      await expect(stat(dirname(path))).rejects.toMatchObject({ code: "ENOENT" })
+    for (const path of paths.slice(2)) expect((await stat(path)).size).toBeGreaterThan(40_000)
+    await runtime.dispose()
+    for (const path of paths)
+      await expect(stat(dirname(path))).rejects.toMatchObject({ code: "ENOENT" })
+    await runtime.dispose()
   })
 
   it("disposes handles and dedicated clients exactly once", async () => {

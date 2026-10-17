@@ -103,6 +103,7 @@ export async function createPiSessionFactory(
     "codemode",
     "update_progress",
   ]
+  control.store.registerTools(publicPolymarketToolNames, false)
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${systemPrompt}`, {
     sha256: createHash("sha256").update(systemPrompt).digest("hex"),

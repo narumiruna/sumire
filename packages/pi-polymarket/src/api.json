@@ -13036,95 +13036,46 @@
       {
         "name": "request",
         "optional": true,
-        "type": "OpenPerpsSessionRequest | undefined",
+        "type": "CreatePerpsSessionRequest",
         "schema": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "builderAttribution": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
-                },
-                "includeBuilderFills": {
-                  "anyOf": [
-                    {
-                      "const": false,
-                      "type": "boolean"
-                    },
-                    {
-                      "const": true,
-                      "type": "boolean"
-                    }
-                  ]
-                },
-                "expiresIn": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "label": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
+          "type": "object",
+          "properties": {
+            "builderAttribution": {
+              "anyOf": [
+                {
+                  "type": "string"
                 }
-              },
-              "required": [],
-              "additionalProperties": true
+              ]
             },
-            {
-              "type": "object",
-              "properties": {
-                "builderAttribution": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
+            "includeBuilderFills": {
+              "anyOf": [
+                {
+                  "const": false,
+                  "type": "boolean"
                 },
-                "includeBuilderFills": {
-                  "anyOf": [
-                    {
-                      "const": false,
-                      "type": "boolean"
-                    },
-                    {
-                      "const": true,
-                      "type": "boolean"
-                    }
-                  ]
-                },
-                "credentials": {
-                  "type": "object",
-                  "properties": {
-                    "proxy": {
-                      "type": "string"
-                    },
-                    "privateKey": {
-                      "type": "string"
-                    },
-                    "secret": {
-                      "type": "string"
-                    },
-                    "expiresAt": {
-                      "type": "number"
-                    }
-                  },
-                  "required": ["proxy", "privateKey", "secret", "expiresAt"],
-                  "additionalProperties": true
+                {
+                  "const": true,
+                  "type": "boolean"
                 }
-              },
-              "required": ["credentials"],
-              "additionalProperties": true
+              ]
+            },
+            "expiresIn": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                }
+              ]
             }
-          ]
+          },
+          "required": [],
+          "additionalProperties": true
         }
       }
     ]

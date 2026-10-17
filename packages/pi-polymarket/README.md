@@ -112,7 +112,7 @@ For subscriptions or session events:
 
 A read consumes at most 100 events and waits at most 300 seconds. The defaults are one event and ten seconds. A timeout or cancellation closes and invalidates that stream handle. Use `operation: "close"` to release a handle explicitly. At most 100 handles can exist in one tool runtime. Handles do not survive session replacement, reload, or process restart and must not be reused from an old transcript.
 
-Tool results contain JSON text. Structured results have `{ output, truncated, fullOutputPath? }`. Model output is limited to 32,000 bytes or 2,000 lines. Larger results are saved to an owner-readable temporary JSON file. Use the file reader with pagination or use narrower query filters. Temporary output can contain account data; apply the host's retention policy to the system temporary directory.
+Tool results contain JSON text. Structured results have `{ output, truncated, fullOutputPath? }`. Model output is limited to 32,000 bytes or 2,000 lines. Larger results are saved to an owner-readable temporary JSON file. Use the file reader with pagination or use narrower query filters. Temporary output can contain account data. Each runtime keeps at most ten full-output files and removes them on disposal. Older file paths expire when the limit is reached.
 
 ## Supply an authenticated client
 
@@ -129,7 +129,7 @@ export async function loadTradingTools(pi: ExtensionAPI, signer: Signer) {
 }
 ```
 
-The host must declare its own SDK and signer-adapter dependencies. Supported upstream adapters include Viem, Ethers v5, and Privy. Host-owned code supplies credentials, signer functions, callbacks, decorators, environment configuration, and authentication lifecycle. These are not JSON tool arguments. Client factories, client credentials, and client lifecycle methods are deliberately not model-callable actions.
+The host must declare its own SDK and signer-adapter dependencies. Supported upstream adapters include Viem, Ethers v5, and Privy. Host-owned code supplies credentials, signer functions, callbacks, decorators, environment configuration, and authentication lifecycle. These are not JSON tool arguments. `openPerpsSession` accepts only `CreatePerpsSessionRequest`. Requests with delegated `credentials` are rejected. Resume an authenticated session only in host-owned code, not through tool arguments. This rejection cannot remove credentials already submitted in a prompt or transcript. Client factories, client credentials, and client lifecycle methods are deliberately not model-callable actions.
 
 `publicPolymarketToolNames` provides the public capability inventory without creating a client.
 

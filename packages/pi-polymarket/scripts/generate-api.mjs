@@ -107,7 +107,13 @@ for (const [group, names] of Object.entries(groups)) {
         ["firstPage", "from"].includes(prop.name)
       const args = signature.parameters.map((p) => {
         const d = p.valueDeclaration ?? p.declarations[0]
-        const t = checker.getTypeOfSymbolAtLocation(p, d)
+        // Resuming with delegated credentials is host-only, never a JSON tool request.
+        const t =
+          prop.name === "openPerpsSession"
+            ? checker.getDeclaredTypeOfSymbol(
+                exports.find((item) => item.name === "CreatePerpsSessionRequest"),
+              )
+            : checker.getTypeOfSymbolAtLocation(p, d)
         return {
           name: p.name,
           optional: Boolean(d.questionToken || d.initializer),

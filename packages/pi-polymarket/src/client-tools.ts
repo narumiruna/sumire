@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdtemp, writeFile } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Type } from "@earendil-works/pi-ai"
@@ -54,41 +54,6 @@ const argsSchema = Type.Optional(
   }),
 )
 
-async function result(value: unknown) {
-  const json =
-    JSON.stringify(
-      value,
-      (_key, item) => (typeof item === "bigint" ? { $bigint: item.toString() } : item),
-      2,
-    ) ?? "null"
-  const cut = truncateHead(json, { maxBytes: maxOutputBytes, maxLines: 2000 })
-  let fullOutputPath: string | undefined
-  if (cut.truncated) {
-    const directory = await mkdtemp(join(tmpdir(), "pi-polymarket-"))
-    fullOutputPath = join(directory, "output.json")
-    await writeFile(fullOutputPath, json, { mode: 0o600 })
-  }
-  const data = {
-    output: cut.content,
-    truncated: cut.truncated,
-    ...(fullOutputPath ? { fullOutputPath } : {}),
-  }
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text:
-          cut.content +
-          (cut.truncated
-            ? `\n[Output truncated. Full JSON: ${fullOutputPath}. Use read with offset/limit, or use smaller SDK pageSize or narrower filters.]`
-            : ""),
-      },
-    ],
-    details: data,
-    structuredContent: data,
-  }
-}
-
 function decode(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(decode)
   if (value && typeof value === "object") {
@@ -132,8 +97,59 @@ interface Handle {
 export function createPolymarketTools(options: PolymarketOptions = {}) {
   const publicClient = options.publicClient ?? createPublicClient()
   const handles = new Map<string, Handle>()
+  const outputDirectories: string[] = []
   let disposed = false
   const available = polymarketApi.filter((spec) => !spec.secure || options.secureClient)
+
+  async function result(value: unknown) {
+    const json =
+      JSON.stringify(
+        value,
+        (_key, item) => (typeof item === "bigint" ? { $bigint: item.toString() } : item),
+        2,
+      ) ?? "null"
+    const cut = truncateHead(json, { maxBytes: maxOutputBytes, maxLines: 2000 })
+    let fullOutputPath: string | undefined
+    if (cut.truncated) {
+      checkActive()
+      const directory = await mkdtemp(join(tmpdir(), "pi-polymarket-"))
+      if (disposed) {
+        await rm(directory, { recursive: true, force: true })
+        checkActive()
+      }
+      outputDirectories.push(directory)
+      fullOutputPath = join(directory, "output.json")
+      try {
+        await writeFile(fullOutputPath, json, { mode: 0o600 })
+        while (outputDirectories.length > 10) {
+          const oldest = outputDirectories.shift()
+          if (oldest) await rm(oldest, { recursive: true, force: true })
+        }
+        checkActive()
+      } finally {
+        if (disposed) await rm(directory, { recursive: true, force: true })
+      }
+    }
+    const data = {
+      output: cut.content,
+      truncated: cut.truncated,
+      ...(fullOutputPath ? { fullOutputPath } : {}),
+    }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            cut.content +
+            (cut.truncated
+              ? `\n[Output truncated. Full JSON: ${fullOutputPath}. Use read with offset/limit, or use smaller SDK pageSize or narrower filters.]`
+              : ""),
+        },
+      ],
+      details: data,
+      structuredContent: data,
+    }
+  }
 
   async function closeHandle(id: string) {
     const handle = handles.get(id)
@@ -316,6 +332,10 @@ export function createPolymarketTools(options: PolymarketOptions = {}) {
         if (typeof fn !== "function")
           throw new Error("The supplied client does not implement this SDK action")
         const args = (params.args ?? []).map(decode)
+        if (spec.method === "openPerpsSession" && isObject(args[0]) && "credentials" in args[0])
+          throw new Error(
+            "Perps credentials are host-only and must not be supplied in tool arguments",
+          )
         const required = spec.args.filter((arg) => !arg.optional).length
         if (args.length < required || args.length > spec.args.length)
           throw new Error(
@@ -410,6 +430,9 @@ export function createPolymarketTools(options: PolymarketOptions = {}) {
       disposed = true
       await Promise.allSettled([
         ...[...handles.keys()].map(closeHandle),
+        ...outputDirectories
+          .splice(0)
+          .map((directory) => rm(directory, { recursive: true, force: true })),
         publicClient.closeSubscriptions(),
         ...(options.secureClient ? [options.secureClient.closeSubscriptions()] : []),
       ])
