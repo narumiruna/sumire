@@ -84,7 +84,6 @@ export class DurableSession implements SessionHandle {
     readonly nativeTools: NativeTool[],
     private readonly logger: Logger,
     private readonly cleanup: () => Promise<void>,
-    private readonly refreshTools: () => Promise<void>,
   ) {
     this.#conversation = conversation
     this.#model = model
@@ -102,7 +101,6 @@ export class DurableSession implements SessionHandle {
     trustKey: string
     logger: Logger
     cleanup?: () => Promise<void>
-    refreshTools?: () => Promise<void>
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -151,7 +149,6 @@ export class DurableSession implements SessionHandle {
       options.nativeTools,
       options.logger,
       options.cleanup ?? (() => Promise.resolve()),
-      options.refreshTools ?? (() => Promise.resolve()),
     )
     session.sessionId = saved.sessionId
     session.#thinkingLevel = clampThinkingLevel(selected, agent.thinkingLevel ?? "off")
@@ -271,7 +268,6 @@ export class DurableSession implements SessionHandle {
       : undefined
     this.#prompting++
     try {
-      await this.refreshTools()
       await this.configureInput()
       // Write recovery intent first. submit's request ID closes the crash window between the two commits.
       if (pending)
@@ -422,7 +418,6 @@ export class DurableSession implements SessionHandle {
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
-    await this.refreshTools()
     if (this.#closing) return
     this.harness.resume()
     const outbox = await this.harness.snapshot(OutboxDoc, context)
@@ -478,8 +473,6 @@ export class DurableSession implements SessionHandle {
   private async queue(text: string, images: ImageContent[], whenBusy: "steer" | "followUp") {
     if (this.#closing) return
     const epoch = this.#epoch
-    await this.refreshTools()
-    if (epoch !== this.#epoch || this.#closing) return
     await this.configureInput()
     if (epoch !== this.#epoch || this.#closing) return
     await this.#conversation.submit(

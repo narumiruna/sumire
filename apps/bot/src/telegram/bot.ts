@@ -45,7 +45,6 @@ import {
   stripBotMention,
   type TelegramMessageLike,
 } from "./messages.js"
-import type { TelegramMiyuNews } from "./miyu-cna-news.js"
 import { registerOAuthCallbackGuard } from "./oauth-callbacks.js"
 import { runTelegramPolling } from "./polling.js"
 import {
@@ -72,7 +71,6 @@ interface TelegramBotDependencies {
   audioTranscriber?: AudioTranscriber
   articleUrlLoader?: PublicUrlLoader
   channelImages?: ChannelImageIndex
-  miyuNews?: Pick<TelegramMiyuNews, "observe" | "handleMessage">
 }
 
 interface InputSubmissionOptions {
@@ -240,13 +238,6 @@ export function createTelegramAgentBot(
       (!settings.botChannelImageInputEnabled || !settings.botImageInputEnabled)
     )
       return
-    await next()
-  })
-
-  // Resolve tool replies before commands, bot-loop guards, and per-chat submission queues.
-  bot.on("message", async (context, next) => {
-    dependencies.miyuNews?.observe(context.message)
-    if (await dependencies.miyuNews?.handleMessage(context.message)) return
     await next()
   })
 

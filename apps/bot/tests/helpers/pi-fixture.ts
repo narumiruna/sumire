@@ -9,7 +9,6 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import type { DurableSession } from "../../src/agent/durable-session.js"
 import { loadSettings, type Settings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
-import type { TelegramMiyuNews } from "../../src/telegram/miyu-cna-news.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./session-factory.js"
 
 interface CompletionRequest {
@@ -21,10 +20,7 @@ interface CompletionRequest {
 type Reply = { tool: string; args: unknown } | { text: string } | { error: string }
 
 /** A local fixture speaks the real Chat Completions wire contract, without calling a model. */
-export async function createPiFixture(
-  overrides: Partial<Settings> = {},
-  miyuNews?: Pick<TelegramMiyuNews, "createTool">,
-) {
+export async function createPiFixture(overrides: Partial<Settings> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-codemode-test-"))
   const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..")
   await cp(path.join(repositoryRoot, "instructions"), path.join(root, "instructions"), {
@@ -131,14 +127,7 @@ export async function createPiFixture(
         },
       ],
     })
-    const factory = await createPiSessionFactory(
-      settings,
-      logger,
-      undefined,
-      modelRuntime,
-      undefined,
-      miyuNews,
-    )
+    const factory = await createPiSessionFactory(settings, logger, undefined, modelRuntime)
     const createSession = async (chatId = 123) => {
       const session = await factory.create(chatId)
       sessions.add(session)
@@ -184,8 +173,7 @@ export async function createPiFixture(
         return release
       },
       createSession,
-      createFactory: () =>
-        createPiSessionFactory(settings, logger, undefined, modelRuntime, undefined, miyuNews),
+      createFactory: () => createPiSessionFactory(settings, logger, undefined, modelRuntime),
       call,
       script: (session: DurableSession, code: string) => call(session, "codemode", { code }),
       async cleanup() {

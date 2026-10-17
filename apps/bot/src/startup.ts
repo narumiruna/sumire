@@ -1,6 +1,5 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { Api } from "grammy"
 import { startAdmin } from "./admin/application.js"
 import { McpAdmin } from "./admin/mcp.js"
 import { AdminStore } from "./admin/store.js"
@@ -11,7 +10,6 @@ import { AnyDocConverter, type DocumentConverter } from "./documents/converter.j
 import { createLogger } from "./logging.js"
 import { createTelegramAgentBot } from "./telegram/bot.js"
 import { ChannelImageIndex } from "./telegram/channel-images.js"
-import { TelegramMiyuNews } from "./telegram/miyu-cna-news.js"
 
 export async function startApplication(): Promise<void> {
   const defaultProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
@@ -37,15 +35,7 @@ export async function startApplication(): Promise<void> {
     await mcp.import(settings.botMcpConfigPath)
     const documentConverter = await createConfiguredDocumentConverter(settings)
     const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
-    const miyuNews = new TelegramMiyuNews(new Api(settings.botToken), store, logger)
-    const piFactory = await createPiSessionFactory(
-      settings,
-      logger,
-      control,
-      channelImages,
-      undefined,
-      miyuNews,
-    )
+    const piFactory = await createPiSessionFactory(settings, logger, control, channelImages)
     const registry = new ChatSessionRegistry(
       asSessionCreator(piFactory),
       settings.botSessionLogDir,
@@ -62,7 +52,6 @@ export async function startApplication(): Promise<void> {
     const telegram = createTelegramAgentBot(settings, registry, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
-      miyuNews,
       control: store,
       recoverChats: () => piFactory.listChats(),
     })

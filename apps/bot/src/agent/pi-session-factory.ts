@@ -21,7 +21,6 @@ import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
 import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { ChannelImageIndex } from "../telegram/channel-images.js"
-import type { TelegramMiyuNews } from "../telegram/miyu-cna-news.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { traceUrlLoad } from "../url-telemetry.js"
 import { createDurableCodemode } from "./durable-codemode.js"
@@ -49,7 +48,6 @@ export async function createPiSessionFactory(
   control: { store: AdminStore; mcp: McpAdmin },
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
   modelRuntimeOverride?: ModelRuntime,
-  miyuNews?: Pick<TelegramMiyuNews, "createTool">,
 ): Promise<PiSessionFactory> {
   if (!control) throw new Error("Database authorization is required")
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
@@ -98,12 +96,7 @@ export async function createPiSessionFactory(
       : []),
   ]
 
-  const toolNames = [
-    ...baseTools.map((tool) => tool.name),
-    ...(miyuNews ? ["miyu_cna_news"] : []),
-    "codemode",
-    "update_progress",
-  ]
+  const toolNames = [...baseTools.map((tool) => tool.name), "codemode", "update_progress"]
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${systemPrompt}`, {
     sha256: createHash("sha256").update(systemPrompt).digest("hex"),
@@ -186,16 +179,9 @@ export async function createPiSessionFactory(
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
       const nativeTools = [...chatBaseTools]
-      let miyuTool: import("./durable-tools.js").NativeTool | undefined
       let mcpTools: import("./durable-tools.js").NativeTool[] = []
       const updateNativeTools = () => {
-        nativeTools.splice(
-          0,
-          nativeTools.length,
-          ...chatBaseTools,
-          ...(miyuTool ? [miyuTool] : []),
-          ...mcpTools,
-        )
+        nativeTools.splice(0, nativeTools.length, ...chatBaseTools, ...mcpTools)
       }
       const mcp: McpCapability | undefined =
         permittedMcp.servers.length > 0
@@ -227,19 +213,6 @@ export async function createPiSessionFactory(
               (names) => control.store.registerTools(names),
             )
           : undefined
-      const refreshTools = async () => {
-        const tool = control.store.allowsTool(chatId, "miyu_cna_news")
-          ? await miyuNews?.createTool(chatId)
-          : undefined
-        control.store.assertChat(chatId)
-        if (Boolean(tool) === Boolean(miyuTool)) return
-        miyuTool = tool ? guard(tool) : undefined
-        updateNativeTools()
-        registry.install(
-          defineExtension({ name: "sumire-miyu", tools: miyuTool ? [adaptTool(miyuTool)] : [] }),
-        )
-      }
-      // Input preparation and background recovery discover optional tools on demand.
       registry.install(
         defineExtension({
           name: "sumire",
@@ -351,7 +324,6 @@ export async function createPiSessionFactory(
           logger,
           trustKey: `admin:${state.epoch}`,
           cleanup: () => mcp?.close() ?? Promise.resolve(),
-          refreshTools,
         })
         await session.setModel(selectedModel)
         await session.setThinkingLevel(policy.thinking)
