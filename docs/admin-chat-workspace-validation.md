@@ -54,7 +54,7 @@ Review of the desktop before screenshot confirms footer/list overlap and a wrapp
 
 ## PR #126 review ledger
 
-The checkout remote is `narumiruna/sumire`. The current branch is the head of open PR #126. The review contains two inline findings and one later finding in a submitted review body. The review receipt and summary add no separate change request. All review and conversation pages were fetched.
+The checkout remote is `narumiruna/sumire`. PR #126 was the target for this review. It merged during validation of the later finding. That fix is on follow-up branch `narumi/fix/admin-unobserved-chat-scroll`, created from the latest remote `main`. The review contains two inline findings and one later finding in a submitted review body. The review receipt and summary add no separate change request. All review and conversation pages were fetched.
 
 | Item | Severity and scope | Independent evidence | Outcome |
 | --- | --- | --- | --- |
