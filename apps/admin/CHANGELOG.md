@@ -1,5 +1,12 @@
 # @narumitw/sumire-admin
 
+## 0.4.1
+
+### Patch Changes
+
+- 9c7774a: Restore directory scroll when returning from chat details without a current directory row.
+- 1dea978: Separate the chat directory list and footer, stabilize chat headers and long titles, and prioritize readiness blockers with expandable status details. Keep directories usable below tall page content and retain directory scroll through footer actions. Add responsive layout and tab navigation regression tests.
+
 ## 0.4.0
 
 ### Minor Changes
