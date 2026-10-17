@@ -69,7 +69,7 @@ describe("durable reply-tree behavior", () => {
       steps: [{ text: "persistent progress", status: "pending" }],
     })
     await fixture.script(session, "store('marker', 'persistent store')")
-    const leaf = session.sessionManager.getLeafId()
+    const leaf = session.getCheckpoint()
     if (!leaf) throw new Error("Missing checkpoint")
     const saved = await session.harness.snapshot(BotSessionDoc, context)
     const conversation = await session.harness.conversation(

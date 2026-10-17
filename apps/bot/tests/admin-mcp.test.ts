@@ -52,6 +52,66 @@ it("imports MCP once, replaces secret fields explicitly, and never echoes their 
   }
 })
 
+for (const operation of ["save", "remove"] as const) {
+  it.each(["mutation", "audit", "commit"])(
+    `rolls back MCP ${operation}, revision, epoch, and audit after a %s failure`,
+    async (stage) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-mcp-rollback-"))
+      const store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([42]), 42)
+      const mcp = new McpAdmin(store, directory)
+      try {
+        mcp.save("fixture", { command: "node", enabled: false }, 1, "42")
+        store.applied(2, true)
+        mcp.discovered.set("fixture", { status: "connected", tools: ["fixture-tool"] })
+        const before = store.snapshot()
+        const entries = mcp.raw()
+        const audit = store.listAudit(0)
+        if (stage === "commit") {
+          store.db.exec(`
+            CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);
+            CREATE TABLE commit_child (
+              id INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED
+            );
+            CREATE TEMP TRIGGER fail_mcp_write AFTER INSERT ON audit
+            BEGIN INSERT INTO commit_child VALUES (1); END;
+          `)
+        } else {
+          const event = stage === "audit" ? "INSERT" : operation === "save" ? "UPDATE" : "DELETE"
+          const table = stage === "audit" ? "audit" : "mcp"
+          store.db.exec(`
+            CREATE TEMP TRIGGER fail_mcp_write BEFORE ${event} ON ${table}
+            BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;
+          `)
+        }
+        const change = () =>
+          operation === "save"
+            ? mcp.save("fixture", { description: "updated" }, 2, "42")
+            : mcp.remove("fixture", 2, "42")
+        expect(change).toThrow(
+          stage === "commit" ? "FOREIGN KEY constraint failed" : "injected write failure",
+        )
+        expect(store.snapshot()).toEqual(before)
+        expect(mcp.raw()).toEqual(entries)
+        expect(store.listAudit(0)).toEqual(audit)
+        // Save invalidates discovery before commit; removal invalidates only after commit.
+        expect(mcp.discovered.has("fixture")).toBe(!(stage === "commit" && operation === "save"))
+        store.db.exec("DROP TRIGGER fail_mcp_write")
+        change()
+        expect(store.snapshot()).toMatchObject({
+          revision: before.revision + 1,
+          epoch: before.epoch + 1,
+          status: "pending",
+        })
+        expect(mcp.discovered.has("fixture")).toBe(false)
+      } finally {
+        await mcp.close()
+        store.close()
+        await rm(directory, { recursive: true, force: true })
+      }
+    },
+  )
+}
+
 it("keeps patch preservation and transport cleanup consistent with the field preview", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-patch-"))
   const store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([42]), 42)

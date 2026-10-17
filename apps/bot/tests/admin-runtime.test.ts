@@ -102,11 +102,7 @@ describe("admin durable runtime integration", () => {
     const factory = await createPiSessionFactory(settings, logger)
     for (const id of [42, 43]) {
       const session = await factory.create(id)
-      await session.sendCustomMessage({
-        customType: "fixture",
-        content: "No model turn",
-        display: false,
-      })
+      await session.appendPassiveContext("No model turn")
       await session.setThinkingLevel(id === 42 ? "low" : "high")
       await session.dispose()
     }

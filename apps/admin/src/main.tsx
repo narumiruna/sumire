@@ -1,3 +1,4 @@
+import { effectivePolicy, inherited as inherit } from "@narumitw/sumire-policy"
 import { ExitIcon, ReloadIcon } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
@@ -44,7 +45,6 @@ import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
-const inherit: Selection = { tools: null, servers: null, models: null, model: null, thinking: null }
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 function Check({
   label,
@@ -330,6 +330,7 @@ function ModelAvailability({
 function Choices({
   value,
   policy,
+  effective,
   inventory,
   onChange,
   defaults = false,
@@ -337,6 +338,7 @@ function Choices({
 }: {
   value: Selection
   policy: Policy
+  effective: ReturnType<typeof effectivePolicy>
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
@@ -364,12 +366,7 @@ function Choices({
               value={value[key]}
               onChange={(v) => onChange({ ...value, [key]: v })}
               inheritable={!defaults}
-              effective={(value[key] ?? policy.defaults[key] ?? []).filter(
-                (name) =>
-                  policy[key].includes(name) &&
-                  (key !== "models" ||
-                    policy.providers.find((p) => p.id === name.split("/")[0])?.enabled !== false),
-              )}
+              effective={effective[key]}
             />
           ),
         )}
@@ -465,13 +462,8 @@ function Choices({
           </label>
           <Text as="p" size="2">
             {value.model === null ? "Inherited" : "Customized"} model:{" "}
-            {(value.models ?? policy.defaults.models ?? []).includes(model ?? "") &&
-            policy.models.includes(model ?? "") &&
-            policy.providers.find((p) => p.id === model?.split("/")[0])?.enabled !== false
-              ? model
-              : "No allowed model"}{" "}
-            · {value.thinking === null ? "Inherited" : "Customized"} thinking:{" "}
-            {value.thinking ?? policy.defaults.thinking ?? "off"}
+            {effective.model ?? "No allowed model"} ·{" "}
+            {value.thinking === null ? "Inherited" : "Customized"} thinking: {effective.thinking}
           </Text>
           {(value.model !== null || value.thinking !== null) && (
             <Button
@@ -1191,6 +1183,7 @@ function App() {
                   navigate={setPage}
                   value={selected ?? inherit}
                   policy={policy}
+                  effective={effectivePolicy(policy, Number(chat))}
                   inventory={inventory}
                   onChange={(value) =>
                     update({
@@ -1371,6 +1364,7 @@ function App() {
               defaults
               value={policy.defaults}
               policy={policy}
+              effective={effectivePolicy(policy, 0)}
               inventory={inventory}
               onChange={(v) => update({ ...policy, defaults: v })}
             />
