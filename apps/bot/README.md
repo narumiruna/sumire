@@ -165,7 +165,7 @@ The bot updates its Telegram command menu at startup. Menu-registration failures
 
 ## Polymarket
 
-Sumire bundles the public tools from [`@narumitw/sumire-pi-polymarket`](../../packages/pi-polymarket/README.md). Each chat has an isolated client and handle registry. The administrator must approve the `polymarket_*` tool names in the global capability policy and the chat's effective tool selection. Existing policies receive no automatic grants. Approved tools are available directly and through codemode; saved tool references still check current policy before execution.
+Sumire bundles the public tools from [`@narumitw/sumire-pi-polymarket`](../../packages/pi-polymarket/README.md). Each chat has an isolated client and handle registry. First-seen `polymarket_*` tool names are automatically enabled in global and default chat permissions, like other built-in tools. Manual removals and explicit chat overrides are preserved. Tools already registered as disabled must be enabled manually through **Tool permissions**. Approved tools are available directly and through codemode; saved tool references still check current policy before execution.
 
 The bot exposes API discovery, market/event search, prices, order books, trades, public account data, rewards, analytics, Perps market data, subscriptions, and bounded handle access. It does not configure a wallet, authenticated client, private keys, or trading tools. Sessions close their handles and subscriptions on shutdown and failed startup. Network calls remain replay-unsafe in Pi Durable. No keyword routing, additional agent loop, or Polymarket environment variables are required.
 
