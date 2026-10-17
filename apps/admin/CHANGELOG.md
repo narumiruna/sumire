@@ -1,5 +1,11 @@
 # @narumitw/sumire-admin
 
+## 0.4.2
+
+### Patch Changes
+
+- 1823bd5: Use the shared policy resolver in the administration editor, replace the bot's legacy session representation with explicit checkpoint and passive-context operations, and share MCP revision transactions and market batch-result handling without changing external behavior.
+
 ## 0.4.1
 
 ### Patch Changes
