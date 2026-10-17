@@ -1,5 +1,30 @@
 # @narumitw/sumire
 
+## 0.12.0
+
+### Minor Changes
+
+- 2798cbf: Bundle public Polymarket tools in each bot chat's Pi Durable session, with the existing capability policy, isolated handles, replay-unsafe network execution, and client cleanup. Include the package in dependency builds and production Docker resources. Trading remains disabled.
+- 2798cbf: Require Node.js 26 or newer across all workspaces. CI, release workflows, and Docker stages now use Node.js 26. Node.js versions below 26 are no longer supported.
+- 6ed89a5: Remove the Miyu CNA news tool, its Telegram integration, and its workspace package.
+
+### Patch Changes
+
+- 3875f5d: Enable first-seen public Polymarket tools in global and default chat permissions, like other built-in tools. Preserve manual removals and explicit chat overrides.
+- d99a168: Keep new Polymarket capabilities denied until administrator approval. Reject delegated Perps credentials in tool requests and show only the new-session request schema. Keep at most ten full-output files per runtime and remove them on disposal. Check the Node.js baseline only for directories with workspace manifests.
+- Updated dependencies [2798cbf]
+- Updated dependencies [2798cbf]
+- Updated dependencies [369adbd]
+- Updated dependencies [d99a168]
+- Updated dependencies [c1fd21a]
+  - @narumitw/sumire-pi-polymarket@0.2.0
+  - @narumitw/sumire-contracts@0.3.0
+  - @narumitw/sumire-policy@0.3.0
+  - @narumitw/sumire-login@0.2.0
+  - @narumitw/sumire-progress@0.3.0
+  - @narumitw/sumire-url-reader@0.25.0
+  - @narumitw/sumire-pi-url-reader@0.6.0
+
 ## 0.11.1
 
 ### Patch Changes

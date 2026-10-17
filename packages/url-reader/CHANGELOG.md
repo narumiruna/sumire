@@ -1,5 +1,11 @@
 # @narumitw/sumire-url-reader
 
+## 0.25.0
+
+### Minor Changes
+
+- 2798cbf: Require Node.js 26 or newer across all workspaces. CI, release workflows, and Docker stages now use Node.js 26. Node.js versions below 26 are no longer supported.
+
 ## 0.24.0
 
 ### Minor Changes
