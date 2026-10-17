@@ -1,0 +1,58 @@
+{
+  "name": "@narumitw/sumire-pi-polymarket",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi tools for the official Polymarket client",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "polymarket"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "generate": "node scripts/generate-api.mjs",
+    "generate:check": "node scripts/generate-api.mjs --check",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run generate:check",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@polymarket/client": "0.13.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@types/node": "26.6.4",
+    "typescript": "6.0.2",
+    "vitest": "5.0.3"
+  }
+}

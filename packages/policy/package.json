@@ -5,7 +5,7 @@
   "description": "Shared Sumire policy schemas and pure authorization rules",
   "type": "module",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=26"
   },
   "exports": {
     ".": {

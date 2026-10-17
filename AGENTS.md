@@ -7,7 +7,7 @@
 
 ## Commands
 
-- Work from the repository root with Node.js 22.19 or newer unless a documented command requires another directory.
+- [UNREVIEWED] Work from the repository root with Node.js 26 or newer unless a documented command requires another directory.
 - Run `npm ci` to install workspace dependencies and configure Husky.
 - Apply formatting with `npm run format`; run a focused script with `npm run <script> --workspace <package-name>` when only one workspace is affected.
 - Run the bot through `docker compose ...` from the repository root so the build can access all workspaces and shared runtime resources.

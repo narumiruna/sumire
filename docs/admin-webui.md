@@ -277,7 +277,7 @@ For rollback, restore the compatible image and matching state backup together wh
 
 ## Development and verification
 
-Use Node.js 22.19 or newer from the repository root:
+Use Node.js 26 or newer from the repository root:
 
 ```sh
 npm ci

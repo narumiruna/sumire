@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=26"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 17466 --strictPort",
