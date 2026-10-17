@@ -243,12 +243,25 @@ describe("admin durable runtime integration", () => {
       { control: store },
     )
     try {
-      await registry.setThinkingLevel(42, "low")
+      const state = store.snapshot()
+      state.policy.chats["42"] = {
+        enabled: true,
+        tools: null,
+        servers: null,
+        models: null,
+        model: null,
+        thinking: "low",
+      }
+      const changed = store.save(state.policy, state.revision, "42")
+      await registry.invalidatePolicies()
+      store.applied(changed.revision, true)
       const saved = store.snapshot().policy.chats["42"]
       expect(saved?.thinking).toBe("low")
       await registry.reset(42)
       expect(store.snapshot().policy.chats["42"]).toEqual(saved)
-      expect((await registry.getModelSettings(42)).thinkingLevel).toBe("low")
+      const restored = await factory.create(42)
+      expect(restored.thinkingLevel).toBe("low")
+      await restored.dispose()
       const before = await readFile(
         path.join(settings.botSessionLogDir, "42/durable/session.sqlite"),
       )

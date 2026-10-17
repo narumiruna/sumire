@@ -5,8 +5,10 @@ import path from "node:path"
 import type { Credential, OAuthAuth, OAuthCredential } from "@earendil-works/pi-ai"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { ProviderAdmin } from "../src/admin/providers.js"
 import { createBotModelRuntime } from "../src/agent/model-runtime.js"
 import { loadSettings } from "../src/config/settings.js"
+import { closeTestStores, TestAdminStore } from "./helpers/admin-store.js"
 
 async function setup(environment: NodeJS.ProcessEnv = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-oauth-model-"))
@@ -29,19 +31,38 @@ async function storeCredential(agentDir: string, credential: Credential) {
   })
 }
 
+function providerAdmin(
+  agentDir: string,
+  runtime: Awaited<ReturnType<typeof createBotModelRuntime>>["modelRuntime"],
+) {
+  return new ProviderAdmin(
+    runtime,
+    new TestAdminStore(path.join(agentDir, "admin.sqlite"), new Set([7]), 7),
+  )
+}
+
+async function login(admin: ProviderAdmin) {
+  const id = admin.startLogin("openai", "7")
+  const state = admin.loginState(id, "7")
+  await state.done
+  return state
+}
+
 describe("bot model authentication", () => {
   beforeEach(() => {
     vi.stubEnv("OPENAI_API_KEY", "")
     vi.stubEnv("HF_TOKEN", "")
   })
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    closeTestStores()
+  })
 
   it("allows local WebUI bootstrap without a key and uses the native Responses model", async () => {
     const { settings, agentDir } = await setup()
     expect(settings.admin?.origin).toBe("http://localhost:17465")
-    const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
+    const { modelRuntime, model } = await createBotModelRuntime(agentDir)
     expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-6.1-sol" })
-    expect(login).toBeDefined()
     expect(await modelRuntime.checkAuth("openai")).toBeUndefined()
     expect(modelRuntime.getProvider("openai")?.auth.apiKey).toBeDefined()
     expect(modelRuntime.getProvider("openai")?.auth.oauth).toBeDefined()
@@ -49,14 +70,13 @@ describe("bot model authentication", () => {
 
   it("leaves credential resolution to Pi instead of applying bot OpenAI settings", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-env-key")
-    const { settings, agentDir } = await setup({
+    const { agentDir } = await setup({
       OPENAI_API_KEY: "ignored-settings-key",
       OPENAI_BASE_URL: "not-a-url",
       OPENAI_MODEL: "not-a-real-model",
     })
-    const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
+    const { modelRuntime, model } = await createBotModelRuntime(agentDir)
     expect(model).toMatchObject({ provider: "openai", api: "openai-responses", id: "gpt-6.1-sol" })
-    expect(login).toBeDefined()
     expect(modelRuntime.getRegisteredProviderConfig("openai")).toBeUndefined()
     expect(modelRuntime.getProvider("telegramagent-openai")).toBeUndefined()
     expect(await modelRuntime.checkAuth("openai")).toMatchObject({ type: "api_key" })
@@ -69,8 +89,8 @@ describe("bot model authentication", () => {
 
   it("retains Pi's environment API-key authentication", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-env-key")
-    const { settings, agentDir } = await setup()
-    const { modelRuntime } = await createBotModelRuntime(settings, agentDir)
+    const { agentDir } = await setup()
+    const { modelRuntime } = await createBotModelRuntime(agentDir)
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
       auth: { apiKey: "fixture-env-key" },
       source: "OPENAI_API_KEY",
@@ -80,16 +100,15 @@ describe("bot model authentication", () => {
   it.each(["8", "-100", ""])(
     "ignores obsolete access values during model setup: %j",
     async (value) => {
-      const { settings, agentDir } = await setup({ BOT_WHITELIST: value })
-      await expect(createBotModelRuntime(settings, agentDir)).resolves.toHaveProperty("login")
+      const { agentDir } = await setup({ BOT_WHITELIST: value })
+      await expect(createBotModelRuntime(agentDir)).resolves.toHaveProperty("modelRuntime")
     },
   )
 
   it("uses stored native credentials with required administrator setup", async () => {
-    const { settings, agentDir } = await setup()
+    const { agentDir } = await setup()
     await storeCredential(agentDir, credential)
-    const { modelRuntime, login } = await createBotModelRuntime(settings, agentDir)
-    expect(login).toBeDefined()
+    const { modelRuntime } = await createBotModelRuntime(agentDir)
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
       auth: { apiKey: "fixture-access" },
       source: "OAuth",
@@ -98,23 +117,22 @@ describe("bot model authentication", () => {
 
   it("leaves stored credential priority over ambient keys to Pi", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-key")
-    const { settings, agentDir } = await setup()
+    const { agentDir } = await setup()
     await storeCredential(agentDir, { type: "api_key", key: "fixture-stored-key" })
-    const { modelRuntime } = await createBotModelRuntime(settings, agentDir)
+    const { modelRuntime } = await createBotModelRuntime(agentDir)
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
       auth: { apiKey: "fixture-stored-key" },
     })
   })
 
-  it("keeps Telegram login and stored Pi credentials independent of ignored endpoint settings", async () => {
-    const { settings, agentDir } = await setup({
+  it("keeps WebUI authentication and stored Pi credentials independent of ignored endpoint settings", async () => {
+    const { agentDir } = await setup({
       OPENAI_API_KEY: "ignored-key",
       OPENAI_BASE_URL: "https://proxy.example.test/v1",
       OPENAI_MODEL: "custom-model",
     })
     await storeCredential(agentDir, credential)
-    const runtime = await createBotModelRuntime(settings, agentDir)
-    expect(runtime.login).toBeDefined()
+    const runtime = await createBotModelRuntime(agentDir)
     expect(runtime.model).toMatchObject({
       provider: "openai",
       api: "openai-responses",
@@ -129,10 +147,10 @@ describe("bot model authentication", () => {
 
   it("lets Pi prefer OAuth after login and restart, then return to ambient credentials after logout", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-key")
-    const { settings, agentDir } = await setup()
-    const { modelRuntime, model, login } = await createBotModelRuntime(settings, agentDir)
+    const { agentDir } = await setup()
+    const { modelRuntime, model } = await createBotModelRuntime(agentDir)
     const provider = modelRuntime.getProvider("openai")
-    if (!provider?.auth.oauth || !login) throw new Error("Missing OAuth provider")
+    if (!provider?.auth.oauth) throw new Error("Missing OAuth provider")
     modelRuntime.registerNativeProvider({
       ...provider,
       auth: {
@@ -141,18 +159,18 @@ describe("bot model authentication", () => {
       },
     })
     expect(await modelRuntime.getAuth(model)).toMatchObject({ auth: { apiKey: "fixture-key" } })
-    await login.login({ prompt: vi.fn(), notify: vi.fn() })
+    expect((await login(providerAdmin(agentDir, modelRuntime))).status).toBe("completed")
     expect(await modelRuntime.checkAuth("openai")).toMatchObject({ type: "oauth" })
     expect(await modelRuntime.getAuth(model)).toMatchObject({
       auth: { apiKey: "fixture-access" },
       source: "OAuth",
     })
 
-    const restarted = await createBotModelRuntime(settings, agentDir)
+    const restarted = await createBotModelRuntime(agentDir)
     expect(await restarted.modelRuntime.getAuth(restarted.model)).toMatchObject({
       auth: { apiKey: "fixture-access" },
     })
-    await restarted.modelRuntime.logout("openai")
+    await providerAdmin(agentDir, restarted.modelRuntime).credential("openai", null)
     expect(await restarted.modelRuntime.getAuth(restarted.model)).toMatchObject({
       auth: { apiKey: "fixture-key" },
     })
@@ -160,9 +178,9 @@ describe("bot model authentication", () => {
 
   it("does not fall back to a key when stored OAuth refresh fails", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-env-key")
-    const { settings, agentDir } = await setup()
+    const { agentDir } = await setup()
     await storeCredential(agentDir, { ...credential, expires: 0 })
-    const { modelRuntime, model } = await createBotModelRuntime(settings, agentDir)
+    const { modelRuntime, model } = await createBotModelRuntime(agentDir)
     const provider = modelRuntime.getProvider("openai")
     if (!provider?.auth.oauth) throw new Error("Missing OAuth provider")
     const refresh = vi.fn(async () => {
@@ -184,45 +202,30 @@ describe("bot model authentication", () => {
     })
   })
 
-  it("persists Pi credentials and a stable device ID across bot restarts", async () => {
-    const { settings, agentDir } = await setup()
-    const runtime = await createBotModelRuntime(settings, agentDir)
-    const provider = runtime.modelRuntime.getProvider("openai")
-    if (!provider?.auth.oauth || !runtime.login) throw new Error("Missing OAuth provider")
-    const deviceIds: Array<string | undefined> = []
-    const auth: OAuthAuth = {
-      ...provider.auth.oauth,
-      login: vi.fn(async (_interaction, options) => {
-        deviceIds.push(options?.getDeviceId?.())
-        return credential
-      }),
-      refresh: vi.fn(async () => credential),
-      toAuth: async (value) => ({ apiKey: value.access }),
-    }
-    runtime.modelRuntime.registerNativeProvider({ ...provider, auth: { oauth: auth } })
-    await runtime.login.login({ prompt: vi.fn(), notify: vi.fn() })
-    expect(JSON.parse(await readFile(path.join(agentDir, "auth.json"), "utf8")).openai.type).toBe(
-      "oauth",
-    )
-    expect(await runtime.modelRuntime.getAuth("openai")).toMatchObject({
-      auth: { apiKey: "fixture-access" },
+  it("persists administrator API-key changes across restarts and removes them on logout", async () => {
+    const { agentDir } = await setup()
+    const runtime = await createBotModelRuntime(agentDir)
+    const admin = providerAdmin(agentDir, runtime.modelRuntime)
+    await admin.credential("openai", "fixture-admin-key")
+    expect(await admin.test("openai")).toMatchObject({ configured: true, generatedTokens: false })
+    expect(JSON.parse(await readFile(path.join(agentDir, "auth.json"), "utf8")).openai).toEqual({
+      type: "api_key",
+      key: "fixture-admin-key",
     })
-
-    const restarted = await createBotModelRuntime(settings, agentDir)
-    expect(await restarted.modelRuntime.checkAuth("openai")).toMatchObject({ type: "oauth" })
-    restarted.modelRuntime.registerNativeProvider({ ...provider, auth: { oauth: auth } })
-    await restarted.login?.login({ prompt: vi.fn(), notify: vi.fn() })
-    expect(deviceIds).toHaveLength(2)
-    expect(deviceIds[0]).toMatch(/^[0-9a-f-]{36}$/u)
-    expect(deviceIds[1]).toBe(deviceIds[0])
-    expect(auth.refresh).not.toHaveBeenCalled()
+    const restarted = await createBotModelRuntime(agentDir)
+    expect(await restarted.modelRuntime.getAuth("openai")).toMatchObject({
+      auth: { apiKey: "fixture-admin-key" },
+    })
+    await providerAdmin(agentDir, restarted.modelRuntime).credential("openai", null)
+    const loggedOut = await createBotModelRuntime(agentDir)
+    expect(await loggedOut.modelRuntime.checkAuth("openai")).toBeUndefined()
   })
 
   it("preserves the existing credential when re-login fails", async () => {
-    const { settings, agentDir } = await setup()
-    const { modelRuntime, login } = await createBotModelRuntime(settings, agentDir)
+    const { agentDir } = await setup()
+    const { modelRuntime } = await createBotModelRuntime(agentDir)
     const provider = modelRuntime.getProvider("openai")
-    if (!provider?.auth.oauth || !login) throw new Error("Missing OAuth provider")
+    if (!provider?.auth.oauth) throw new Error("Missing OAuth provider")
     const authenticate = vi
       .fn<OAuthAuth["login"]>()
       .mockResolvedValueOnce(credential)
@@ -237,20 +240,18 @@ describe("bot model authentication", () => {
         },
       },
     })
-    await login.login({ prompt: vi.fn(), notify: vi.fn() })
-    await expect(login.login({ prompt: vi.fn(), notify: vi.fn() })).rejects.toMatchObject({
-      kind: "failed",
-    })
+    expect((await login(providerAdmin(agentDir, modelRuntime))).status).toBe("completed")
+    expect((await login(providerAdmin(agentDir, modelRuntime))).status).toBe("failed")
     expect(await modelRuntime.getAuth("openai")).toMatchObject({
       auth: { apiKey: "fixture-access" },
     })
   })
 
   it("leaves token refresh and concurrent rotation to Pi", async () => {
-    const { settings, agentDir } = await setup()
-    const { modelRuntime, login } = await createBotModelRuntime(settings, agentDir)
+    const { agentDir } = await setup()
+    const { modelRuntime } = await createBotModelRuntime(agentDir)
     const provider = modelRuntime.getProvider("openai")
-    if (!provider?.auth.oauth || !login) throw new Error("Missing OAuth provider")
+    if (!provider?.auth.oauth) throw new Error("Missing OAuth provider")
     const refresh = vi.fn(async () => ({
       ...credential,
       access: "rotated-access",
@@ -267,7 +268,7 @@ describe("bot model authentication", () => {
         },
       },
     })
-    await login.login({ prompt: vi.fn(), notify: vi.fn() })
+    expect((await login(providerAdmin(agentDir, modelRuntime))).status).toBe("completed")
     const results = await Promise.all([
       modelRuntime.getAuth("openai"),
       modelRuntime.getAuth("openai"),

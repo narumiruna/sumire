@@ -16,7 +16,6 @@ it("rejects unapproved chats before attachments, commands, callbacks, or passive
   const sessions = {
     submit: vi.fn(),
     appendPassiveContext: vi.fn(),
-    getModelSettings: vi.fn(),
     reset: vi.fn(),
   } as unknown as ChatSessionRegistry
   const converter = { convert: vi.fn() } as unknown as DocumentConverter
@@ -85,7 +84,6 @@ it("rejects unapproved chats before attachments, commands, callbacks, or passive
     } as Update)
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
-    expect(sessions.getModelSettings).not.toHaveBeenCalled()
     expect(sessions.reset).not.toHaveBeenCalled()
     expect(converter.convert).not.toHaveBeenCalled()
     expect(api).not.toHaveBeenCalled()

@@ -170,14 +170,14 @@ describe("admin policy and persistence", () => {
     expect(s.snapshot().revision).toBe(2)
     expect(s.snapshot().policy.defaults.model).toBe("fixture/model")
   })
-  it("advances the authorization epoch for administration writes but not serialized model commands", () => {
+  it("advances the authorization epoch for every policy write", () => {
     const { s } = store()
     const policy = s.snapshot().policy
     expect(s.snapshot().epoch).toBe(1)
     s.save(policy, 1, "42")
     expect(s.snapshot().epoch).toBe(2)
     s.save(policy, 2, "chat:42", "chat.model.update", "chat:42")
-    expect(s.snapshot().epoch).toBe(2)
+    expect(s.snapshot().epoch).toBe(3)
     expect(s.snapshot().revision).toBe(3)
   })
   it("rejects invalid references before changing persisted state", () => {

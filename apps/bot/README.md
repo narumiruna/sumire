@@ -8,7 +8,6 @@ Sumire's Telegram bot service, built on Pi and isolated under `./apps/bot`.
 - `@earendil-works/pi-coding-agent`: shared ModelRuntime/OAuth, Agent Skills discovery, image-capable coding tools, and the native codemode sandbox; the bot does not create an AgentSession.
 - `@earendil-works/pi-agent-core`: official agent message and event contracts.
 - `@earendil-works/pi-ai`: provider/model and media primitives.
-- `@narumitw/sumire-login`: repository-owned Pi package for UI-neutral OAuth login.
 - `@narumitw/sumire-progress`: repository-owned Pi package for structured multi-step progress.
 - `@narumitw/sumire-pi-url-reader`: repository-owned Pi package for agent-driven public URL loading.
 - grammY: Telegram Bot API.

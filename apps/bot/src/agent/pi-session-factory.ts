@@ -10,7 +10,6 @@ import {
 } from "@earendil-works/pi-coding-agent"
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
-import type { OAuthLoginClient } from "@narumitw/sumire-login"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy } from "@narumitw/sumire-policy"
@@ -36,7 +35,6 @@ const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "f
 const soulSectionPlaceholder = "{{SOUL_SECTION}}"
 
 export interface PiSessionFactory {
-  login?: OAuthLoginClient
   modelRuntime?: ModelRuntime
   toolNames?: string[]
   create(chatId: number): Promise<DurableSession>
@@ -53,11 +51,7 @@ export async function createPiSessionFactory(
   if (!control) throw new Error("Database authorization is required")
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
 
-  const { modelRuntime, login } = await createBotModelRuntime(
-    settings,
-    agentDir,
-    modelRuntimeOverride,
-  )
+  const { modelRuntime } = await createBotModelRuntime(agentDir, modelRuntimeOverride)
   const loader = new DefaultResourceLoader({
     cwd: settings.botWorkdir,
     agentDir,
@@ -111,7 +105,6 @@ export async function createPiSessionFactory(
   })
 
   return {
-    login,
     modelRuntime,
     toolNames,
 
