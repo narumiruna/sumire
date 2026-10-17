@@ -1,0 +1,4003 @@
+[
+  {
+    "group": "Paginated",
+    "method": "firstPage",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<Page<T>>",
+    "description": "",
+    "args": []
+  },
+  {
+    "group": "Paginated",
+    "method": "from",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(cursor?: PaginationCursor): Paginated<T>",
+    "description": "",
+    "args": [
+      {
+        "name": "cursor",
+        "optional": true,
+        "type": "_polymarket_bindings.PaginationCursor | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "TransactionHandle",
+    "method": "wait",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<TransactionOutcome>",
+    "description": "Waits for the submitted transaction to settle.",
+    "args": []
+  },
+  {
+    "group": "SubscriptionHandle",
+    "method": "close",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(): Promise<void>",
+    "description": "Closes the subscription. Idempotent: subsequent calls resolve without\neffect. Best-effort — errors from the first call propagate, later calls\nare no-ops.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "connect",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(): Promise<void>",
+    "description": "Connects and authenticates the session WebSocket.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "close",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(): Promise<void>",
+    "description": "Closes the session and releases pending requests.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "approveBuilderFee",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: ApprovePerpsBuilderFeeRequest): Promise<PerpsBuilderApproval>",
+    "description": "Approves and adopts builder fees with the parent client's owner signer.\nRequires an explicit maximum fee. The builder address defaults to the selected builder.\nApproval is needed once and remains valid until revoked or replaced.\nThe SDK increments the saved approval version automatically. Only a\nconfirmed approval refreshes the builder cap and stores the lower of that\ncap and the approved maximum for future orders. If the cap read fails,\nconsent may already be committed; local terms stay unchanged and the error propagates.\nA zero effective fee disables attribution while retaining the selected builder.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "ApprovePerpsBuilderFeeRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "builderAddress": {
+              "anyOf": [
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "maxFeeRate": {
+              "type": "string"
+            }
+          },
+          "required": ["maxFeeRate"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "revokeBuilderFee",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(builderAddress?: string): Promise<PerpsBuilderApproval>",
+    "description": "Revokes builder consent with the parent client's owner signer.\nThe address defaults to the session's active builder. Confirmation clears\nthat builder from future orders; accepted orders retain their saved terms.\nRevocation remains available when the builder is inactive.",
+    "args": [
+      {
+        "name": "builderAddress",
+        "optional": true,
+        "type": "string | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchBuilderApprovals",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: FetchPerpsBuilderApprovalsRequest): Promise<PerpsBuilderApproval[]>",
+    "description": "Fetches this trader's builder grants, including revoked grants.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "FetchPerpsBuilderApprovalsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "builder": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listBuilderEarnings",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsBuilderEarningsRequest): Paginated<PerpsBuilderEarning[]>",
+    "description": "Lists fee receipts earned by this authenticated account as a builder.\nTo reconcile with totals, call `fetchBuilderEarningsSummary` first and pass\nits `snapshot` here; the snapshot pins the window and indexed sequence cutoff.\nContinuations keep the original window and cutoff.\nThe configured order builder does not change whose earnings are read.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsBuilderEarningsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "asOfSequence": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchBuilderEarningsSummary",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: FetchPerpsBuilderEarningsSummaryRequest): Promise<PerpsBuilderEarningsSummary>",
+    "description": "Fetches this builder account's earnings totals at a reporting cutoff.\nPass the returned `snapshot` to `listBuilderEarnings` to page the matching history.\nActive approval count reflects current grants, independently of the cutoff.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "FetchPerpsBuilderEarningsSummaryRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "asOfSequence": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchBalances",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsBalance[]>",
+    "description": "Fetches current Perps balances for the authenticated account.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchPortfolio",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsPortfolio>",
+    "description": "Fetches the current Perps portfolio for the authenticated account.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchPositionSnapshots",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request: PerpsPositionSnapshotSelection): Promise<PerpsPositionSnapshots>",
+    "description": "Fetches snapshots for this session's authenticated account. Owner-only\nleverage and PnL percentage remain null when historical values are unavailable.\nThis direct batch read does not paginate or retry item statuses.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "PerpsPositionSnapshotSelection",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "activeInstrumentIds": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              ]
+            },
+            "historyFills": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "description": "PerpsPositionSnapshotFill"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchStats",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsAccountStats>",
+    "description": "Fetches account-level Perps statistics for the authenticated account.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchAccountConfig",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: FetchPerpsAccountConfigRequest): Promise<PerpsAccountConfig[]>",
+    "description": "Fetches Perps account configuration, optionally filtered by instrument.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "FetchPerpsAccountConfigRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchAutoCancelStatus",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsAutoCancelStatus>",
+    "description": "Fetches the auto-cancel status for the authenticated account, including\nthe armed deadline, today's trigger count, the daily trigger limit, and\nwhen the daily counter resets.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchOpenOrders",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: FetchPerpsOpenOrdersRequest): Promise<PerpsOrder[]>",
+    "description": "Fetches currently open Perps orders, optionally filtered by instrument.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "FetchPerpsOpenOrdersRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchOrders",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: FetchPerpsOrdersRequest): Promise<PerpsOrder[]>",
+    "description": "Fetches Perps orders for the authenticated account.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "FetchPerpsOrdersRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "orderId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listFills",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsFillsRequest): Paginated<PerpsAccountFill[]>",
+    "description": "Lists Perps fills",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsFillsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "sort": {
+                  "anyOf": [
+                    {
+                      "const": "desc",
+                      "type": "string"
+                    },
+                    {
+                      "const": "asc",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listFundingPayments",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsFundingPaymentsRequest): Paginated<PerpsAccountFundingPayment[]>",
+    "description": "Lists Perps funding payments with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsFundingPaymentsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listDeposits",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsDepositsRequest): Paginated<PerpsDeposit[]>",
+    "description": "Lists Perps deposits with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsDepositsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "depositStatus": {
+                  "anyOf": [
+                    {
+                      "const": "pending",
+                      "type": "string"
+                    },
+                    {
+                      "const": "confirmed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "removed",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listInternalTransfers",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsInternalTransfersRequest): Paginated<PerpsInternalTransfer[]>",
+    "description": "Lists settled Perps internal transfers with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsInternalTransfersRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listWithdrawals",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsWithdrawalsRequest): Paginated<PerpsWithdrawal[]>",
+    "description": "Lists Perps withdrawals with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsWithdrawalsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "withdrawalStatus": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "pending",
+                      "type": "string"
+                    },
+                    {
+                      "const": "confirmed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "removed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listEquityHistory",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request: ListPerpsEquityHistoryRequest): Paginated<PerpsEquityPoint[]>",
+    "description": "Lists Perps equity history with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "ListPerpsEquityHistoryRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "interval": {
+                  "anyOf": [
+                    {
+                      "const": "1h",
+                      "type": "string"
+                    },
+                    {
+                      "const": "4h",
+                      "type": "string"
+                    },
+                    {
+                      "const": "1d",
+                      "type": "string"
+                    },
+                    {
+                      "const": "1w",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": ["interval", "start"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listPnlHistory",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request: ListPerpsPnlHistoryRequest): Paginated<PerpsPnlPoint[]>",
+    "description": "Lists Perps PnL history with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "ListPerpsPnlHistoryRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "interval": {
+                  "anyOf": [
+                    {
+                      "const": "1h",
+                      "type": "string"
+                    },
+                    {
+                      "const": "4h",
+                      "type": "string"
+                    },
+                    {
+                      "const": "1d",
+                      "type": "string"
+                    },
+                    {
+                      "const": "1w",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": ["interval", "start"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "listNotifications",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(request?: ListPerpsNotificationsRequest): Paginated<PerpsNotificationEntry[]>",
+    "description": "Lists Perps notifications, newest first, with SDK-owned pagination.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListPerpsNotificationsRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "sinceSeq": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "limit": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "string"
+                }
+              },
+              "required": ["cursor"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchUnreadNotificationsCount",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<number>",
+    "description": "Fetches the account's count of unread Perps notifications.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "markNotificationsRead",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: MarkPerpsNotificationsReadRequest): Promise<void>",
+    "description": "Marks Perps notifications read, either by id or up to a notification.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "MarkPerpsNotificationsReadRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["ids"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "upTo": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "timestamp"],
+                  "additionalProperties": true
+                }
+              },
+              "required": ["upTo"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "placeOrder",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: PlacePerpsOrderWithTpSlRequest): Promise<PlacePerpsOrderWithTpSlResult>",
+    "description": "Places one Perps order and resolves with the first matching orders update.\nGTD orders require a limit price and gtdExpiry in Unix milliseconds.\nThe order expiry is separate from the expiresAt command deadline.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "PlacePerpsOrderWithTpSlRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "gtd",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "type": "number"
+                },
+                "postOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "instrumentId",
+                "side",
+                "price",
+                "quantity",
+                "timeInForce",
+                "gtdExpiry",
+                "stopLoss"
+              ],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "gtd",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "type": "number"
+                },
+                "postOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "type": "object",
+                  "properties": {
+                    "triggerPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "limitPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "gtdExpiry": {
+                      "description": "undefined"
+                    },
+                    "trailingBps": {
+                      "description": "undefined"
+                    },
+                    "activationPrice": {
+                      "description": "undefined"
+                    }
+                  },
+                  "required": ["triggerPrice"],
+                  "additionalProperties": true
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "instrumentId",
+                "side",
+                "price",
+                "quantity",
+                "timeInForce",
+                "gtdExpiry",
+                "takeProfit"
+              ],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "gtc",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "type": "object",
+                  "properties": {
+                    "triggerPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "limitPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "gtdExpiry": {
+                      "description": "undefined"
+                    },
+                    "trailingBps": {
+                      "description": "undefined"
+                    },
+                    "activationPrice": {
+                      "description": "undefined"
+                    }
+                  },
+                  "required": ["triggerPrice"],
+                  "additionalProperties": true
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "instrumentId",
+                "side",
+                "price",
+                "quantity",
+                "timeInForce",
+                "takeProfit"
+              ],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "gtc",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "side", "price", "quantity", "timeInForce", "stopLoss"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "ioc",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "description": "undefined"
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "type": "object",
+                  "properties": {
+                    "triggerPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "limitPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "gtdExpiry": {
+                      "description": "undefined"
+                    },
+                    "trailingBps": {
+                      "description": "undefined"
+                    },
+                    "activationPrice": {
+                      "description": "undefined"
+                    }
+                  },
+                  "required": ["triggerPrice"],
+                  "additionalProperties": true
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "side", "quantity", "timeInForce", "takeProfit"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "ioc",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "description": "undefined"
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "side", "quantity", "timeInForce", "stopLoss"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "fok",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "description": "undefined"
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "type": "object",
+                  "properties": {
+                    "triggerPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "limitPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "gtdExpiry": {
+                      "description": "undefined"
+                    },
+                    "trailingBps": {
+                      "description": "undefined"
+                    },
+                    "activationPrice": {
+                      "description": "undefined"
+                    }
+                  },
+                  "required": ["triggerPrice"],
+                  "additionalProperties": true
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "side", "quantity", "timeInForce", "takeProfit"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "side": {
+                  "anyOf": [
+                    {
+                      "const": "BUY",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SELL",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "price": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "quantity": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "timeInForce": {
+                  "const": "fok",
+                  "type": "string"
+                },
+                "gtdExpiry": {
+                  "description": "undefined"
+                },
+                "postOnly": {
+                  "description": "undefined"
+                },
+                "reduceOnly": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "takeProfit": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "limitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "side", "quantity", "timeInForce", "stopLoss"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "postOrders",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: PostPerpsOrdersRequest): Promise<PerpsPostOrderAck[]>",
+    "description": "Posts one or more Perps orders and returns queue-entry acknowledgements.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "PostPerpsOrdersRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "orders": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "description": "PerpsPlaceGtcOrderRequest"
+                  },
+                  {
+                    "description": "PerpsPlaceGtdOrderRequest"
+                  },
+                  {
+                    "description": "PerpsPlaceIocOrderRequest"
+                  },
+                  {
+                    "description": "PerpsPlaceFokOrderRequest"
+                  }
+                ]
+              }
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["orders"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "placePositionTpSl",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: PlacePerpsPositionTpSlRequest): Promise<PlacePerpsPositionTpSlResult>",
+    "description": "Places take-profit and/or stop-loss protection for the current position.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "PlacePerpsPositionTpSlRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "takeProfit": {
+                  "type": "object",
+                  "properties": {
+                    "triggerPrice": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "trailingBps": {
+                      "description": "undefined"
+                    },
+                    "activationPrice": {
+                      "description": "undefined"
+                    },
+                    "gtdExpiry": {
+                      "description": "undefined"
+                    },
+                    "quantity": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["triggerPrice"],
+                  "additionalProperties": true
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "quantity": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "quantity": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "takeProfit"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "type": "number"
+                },
+                "takeProfit": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "quantity": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "stopLoss": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "triggerPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "trailingBps": {
+                          "description": "undefined"
+                        },
+                        "activationPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "quantity": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["triggerPrice"],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "trailingBps": {
+                          "type": "number"
+                        },
+                        "activationPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "triggerPrice": {
+                          "description": "undefined"
+                        },
+                        "limitPrice": {
+                          "description": "undefined"
+                        },
+                        "gtdExpiry": {
+                          "description": "undefined"
+                        },
+                        "quantity": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["trailingBps"],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": ["instrumentId", "stopLoss"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "cancelOrder",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CancelPerpsOrderRequest): Promise<PerpsCancelOrderResult>",
+    "description": "Cancels one Perps order and returns the cancel result.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CancelPerpsOrderRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "retry": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "maxAttempts": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "maxElapsedMs": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "aborted": {
+                          "type": "boolean"
+                        },
+                        "onabort": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "description": "(this: AbortSignal, ev: Event) => any"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "description": "any"
+                        },
+                        "throwIfAborted": {
+                          "description": "() => void"
+                        },
+                        "addEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "removeEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "dispatchEvent": {
+                          "description": "(event: Event) => boolean"
+                        }
+                      },
+                      "required": [
+                        "aborted",
+                        "onabort",
+                        "reason",
+                        "throwIfAborted",
+                        "addEventListener",
+                        "removeEventListener",
+                        "dispatchEvent"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "orderId": {
+                  "type": "number"
+                },
+                "clientOrderId": {
+                  "description": "undefined"
+                }
+              },
+              "required": ["orderId"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "retry": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "maxAttempts": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "maxElapsedMs": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "aborted": {
+                          "type": "boolean"
+                        },
+                        "onabort": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "description": "(this: AbortSignal, ev: Event) => any"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "description": "any"
+                        },
+                        "throwIfAborted": {
+                          "description": "() => void"
+                        },
+                        "addEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "removeEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "dispatchEvent": {
+                          "description": "(event: Event) => boolean"
+                        }
+                      },
+                      "required": [
+                        "aborted",
+                        "onabort",
+                        "reason",
+                        "throwIfAborted",
+                        "addEventListener",
+                        "removeEventListener",
+                        "dispatchEvent"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "clientOrderId": {
+                  "type": "string"
+                },
+                "orderId": {
+                  "description": "undefined"
+                }
+              },
+              "required": ["clientOrderId"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "cancelOrders",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CancelPerpsOrdersRequest): Promise<PerpsCancelOrderResult[]>",
+    "description": "Cancels one or more Perps orders and returns one result per requested order.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CancelPerpsOrdersRequest",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "retry": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "maxAttempts": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "maxElapsedMs": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "aborted": {
+                          "type": "boolean"
+                        },
+                        "onabort": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "description": "(this: AbortSignal, ev: Event) => any"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "description": "any"
+                        },
+                        "throwIfAborted": {
+                          "description": "() => void"
+                        },
+                        "addEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "removeEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "dispatchEvent": {
+                          "description": "(event: Event) => boolean"
+                        }
+                      },
+                      "required": [
+                        "aborted",
+                        "onabort",
+                        "reason",
+                        "throwIfAborted",
+                        "addEventListener",
+                        "removeEventListener",
+                        "dispatchEvent"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "orderIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "clientOrderIds": {
+                  "description": "undefined"
+                }
+              },
+              "required": ["orderIds"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "retry": {
+                  "anyOf": [
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "maxAttempts": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "maxElapsedMs": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "aborted": {
+                          "type": "boolean"
+                        },
+                        "onabort": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "description": "(this: AbortSignal, ev: Event) => any"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "description": "any"
+                        },
+                        "throwIfAborted": {
+                          "description": "() => void"
+                        },
+                        "addEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "removeEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "dispatchEvent": {
+                          "description": "(event: Event) => boolean"
+                        }
+                      },
+                      "required": [
+                        "aborted",
+                        "onabort",
+                        "reason",
+                        "throwIfAborted",
+                        "addEventListener",
+                        "removeEventListener",
+                        "dispatchEvent"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "clientOrderIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "orderIds": {
+                  "description": "undefined"
+                }
+              },
+              "required": ["clientOrderIds"],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "cancelAllOrders",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request?: CancelAllPerpsOrdersRequest): Promise<void>",
+    "description": "Cancels all open Perps orders for the authenticated account.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "CancelAllPerpsOrdersRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "armAutoCancel",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: ArmPerpsAutoCancelRequest): Promise<void>",
+    "description": "Arms the auto-cancel switch that cancels all open Perps orders for the\nauthenticated account at `cancelAt`.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "ArmPerpsAutoCancelRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cancelAt": {
+              "type": "number"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["cancelAt"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "disarmAutoCancel",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request?: DisarmPerpsAutoCancelRequest): Promise<void>",
+    "description": "Disarms the auto-cancel schedule for the authenticated account without\ntriggering it.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "DisarmPerpsAutoCancelRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "updateLeverage",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: UpdatePerpsLeverageRequest): Promise<PerpsUpdateLeverageResult>",
+    "description": "Updates Perps leverage and margin mode for an instrument.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "UpdatePerpsLeverageRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "instrumentId": {
+              "type": "number"
+            },
+            "leverage": {
+              "type": "number"
+            },
+            "crossMargin": {
+              "type": "boolean"
+            }
+          },
+          "required": ["instrumentId", "leverage", "crossMargin"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "updateLeverages",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: UpdatePerpsLeveragesRequest): Promise<PerpsUpdateLeverageBatchResult[]>",
+    "description": "Updates Perps leverage and margin mode for one or more instruments.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "UpdatePerpsLeveragesRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "updates": {
+              "type": "array",
+              "items": {
+                "description": "UpdatePerpsLeverageRequest"
+              }
+            }
+          },
+          "required": ["updates"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "updateMargin",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: UpdatePerpsMarginRequest): Promise<void>",
+    "description": "Adjusts isolated margin for an instrument position.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "UpdatePerpsMarginRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "instrumentId": {
+              "type": "number"
+            },
+            "amount": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["instrumentId", "amount"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "createChase",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CreatePerpsChaseRequest): Promise<PerpsChaseAccepted>",
+    "description": "Create a chase using this session. Reconcile uncertain submissions before trying again.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CreatePerpsChaseRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "instrumentId": {
+              "type": "number"
+            },
+            "side": {
+              "anyOf": [
+                {
+                  "const": "BUY",
+                  "type": "string"
+                },
+                {
+                  "const": "SELL",
+                  "type": "string"
+                }
+              ]
+            },
+            "quantity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "limitPrice": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "maxDistance": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "maxDistanceBps": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "postOnly": {
+              "anyOf": [
+                {
+                  "const": false,
+                  "type": "boolean"
+                },
+                {
+                  "const": true,
+                  "type": "boolean"
+                }
+              ]
+            },
+            "reduceOnly": {
+              "anyOf": [
+                {
+                  "const": false,
+                  "type": "boolean"
+                },
+                {
+                  "const": true,
+                  "type": "boolean"
+                }
+              ]
+            },
+            "clientOrderId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["instrumentId", "side", "quantity"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "cancelChase",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CancelPerpsChaseRequest): Promise<void>",
+    "description": "End a chase and cancel its resting child; completed fills remain.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CancelPerpsChaseRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chaseId": {
+              "type": "number"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["chaseId"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchChases",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsChase[]>",
+    "description": "Fetch all running chases without pagination. Ended chases are absent.",
+    "args": []
+  },
+  {
+    "group": "PerpsSession",
+    "method": "createTwap",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CreatePerpsTwapRequest): Promise<PerpsTwapAccepted>",
+    "description": "Create a TWAP using this session's credentials.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CreatePerpsTwapRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "instrumentId": {
+              "type": "number"
+            },
+            "side": {
+              "anyOf": [
+                {
+                  "const": "BUY",
+                  "type": "string"
+                },
+                {
+                  "const": "SELL",
+                  "type": "string"
+                }
+              ]
+            },
+            "quantity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "intervalMs": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "randomize": {
+              "anyOf": [
+                {
+                  "const": false,
+                  "type": "boolean"
+                },
+                {
+                  "const": true,
+                  "type": "boolean"
+                }
+              ]
+            },
+            "slippageBps": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "minPrice": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "maxPrice": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "reduceOnly": {
+              "anyOf": [
+                {
+                  "const": false,
+                  "type": "boolean"
+                },
+                {
+                  "const": true,
+                  "type": "boolean"
+                }
+              ]
+            },
+            "clientOrderId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["instrumentId", "side", "quantity", "durationMs"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "pauseTwap",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: PausePerpsTwapRequest): Promise<void>",
+    "description": "Pause a TWAP using this session's credentials.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "PausePerpsTwapRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "twapId": {
+              "type": "number"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["twapId"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "resumeTwap",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: ResumePerpsTwapRequest): Promise<void>",
+    "description": "Resume a TWAP using this session's credentials.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "ResumePerpsTwapRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "twapId": {
+              "type": "number"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["twapId"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "cancelTwap",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(request: CancelPerpsTwapRequest): Promise<void>",
+    "description": "Cancel a TWAP using this session's credentials.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CancelPerpsTwapRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "twapId": {
+              "type": "number"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": ["twapId"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "PerpsSession",
+    "method": "fetchTwaps",
+    "secure": false,
+    "readOnly": true,
+    "signature": "(): Promise<PerpsTwap[]>",
+    "description": "Fetch all active TWAPs. Ended runs are absent; no pagination.",
+    "args": []
+  },
+  {
+    "group": "RfqSession",
+    "method": "cancelQuote",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(reference: RfqQuoteReference): Promise<RfqCancelQuoteAck>",
+    "description": "Requests cancellation of a submitted RFQ quote.",
+    "args": [
+      {
+        "name": "reference",
+        "optional": false,
+        "type": "RfqQuoteReference",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "quoteId": {
+              "type": "string"
+            },
+            "rfqId": {
+              "type": "string"
+            }
+          },
+          "required": ["quoteId", "rfqId"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "RfqSession",
+    "method": "close",
+    "secure": false,
+    "readOnly": false,
+    "signature": "(): Promise<void>",
+    "description": "Closes the RFQ quoter stream.",
+    "args": []
+  }
+]
