@@ -122,10 +122,9 @@ export function ChatWorkspace({
     if (showDirectory) {
       const selected =
         directoryRef.current?.querySelector<HTMLButtonElement>('[aria-current="true"]')
-      if (selected) {
-        selected.focus({ preventScroll: true })
-        window.scrollTo({ top: directoryScroll.current, behavior: "instant" })
-      } else searchRef.current?.focus()
+      const target = selected ?? searchRef.current
+      target?.focus({ preventScroll: true })
+      window.scrollTo({ top: directoryScroll.current, behavior: "instant" })
     } else headerRef.current?.focus()
   }, [showDirectory])
   const changeTab = (value: string) => {

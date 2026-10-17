@@ -21,12 +21,12 @@ The final suite repeats these checks. Inspection found controlled Radix tabs wit
 
 ## Regression evidence
 
-`apps/admin/tests/chat-workspace.spec.ts` adds 13 tests:
+`apps/admin/tests/chat-workspace.spec.ts` adds 15 tests:
 
 - Desktop/narrow screenshots of an approved long emoji/CJK supergroup, a short unapproved group, and two same-name groups with different IDs. Additional after screenshots cover an unbroken title.
 - Click and keyboard tab selection, one visible matching panel, retained tab on chat switch, no requests from navigation, and no dirty policy.
 - Layout/readiness at 1440, 390, and 320 CSS pixels: no horizontal overflow, stable desktop copy-action alignment, narrow stacking, full title accessibility, selected-row ID, visible keyboard focus, explicit missing-authentication action, both actions for unapproved chats, and distinct expandable status fields.
-- All 100 desktop rows can be fully revealed above the footer. Clicking visible rows preserves list scroll position. Returning to the narrow directory preserves document scroll position and focuses the selected row.
+- All 100 desktop rows can be fully revealed above the footer. Clicking visible rows preserves list scroll position. Returning to the narrow directory preserves document scroll position and focuses the selected row. If the chat has no current row, search receives focus without changing the restored scroll position.
 - Expanded onboarding remains outside the list. At 600 pixels high, the desktop directory uses natural document scrolling. Disabled previous-page controls remain disabled; screenshot review confirms their disabled appearance.
 
 The existing narrow keyboard-navigation test now expects focus on the selected row when returning from details, rather than resetting focus to search. Other existing tests retain filter, pagination, policy editing, application, draft, and session-expiry coverage.
@@ -37,7 +37,7 @@ Node.js 26.10.0:
 
 - Root `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm run build`: passed.
 - Root `npm test`: final full rerun passed, 1,475 tests. During initial implementation, two bot MCP SIGTERM cases timed out. During review fixes, five bot process-recovery cases timed out at their existing 5-second limit, followed by cleanup assertions. A focused review rerun passed all 35 MCP-session and durable-runtime tests; the subsequent complete root rerun passed. No bot code or timeout was changed.
-- `npm run test:browser --workspace @narumitw/sumire-admin -- --output=/tmp/sumire-pr126-browser`: 134 passed. No ResizeObserver errors were reported in the final run.
+- `npm run test:browser --workspace @narumitw/sumire-admin -- --output=/tmp/sumire-pr126-final-browser`: 136 passed. No ResizeObserver errors were reported in the final run.
 - `git diff --check`: passed.
 
 The initial new layout tests failed because the test refocused Copy chat ID before pressing Shift+Tab. Using the page keyboard corrected the test. An early measurement implementation also generated ResizeObserver notifications; deferred, change-only updates corrected that issue. Final layout tests assert no page errors.
@@ -54,14 +54,16 @@ Review of the desktop before screenshot confirms footer/list overlap and a wrapp
 
 ## PR #126 review ledger
 
-The checkout remote is `narumiruna/sumire`. The current branch is the head of open PR #126. The review contains two inline findings. The review receipt and summary add no separate change request. All review and conversation pages were fetched.
+The checkout remote is `narumiruna/sumire`. PR #126 was the target for this review. It merged during validation of the later finding. That fix is on follow-up branch `narumi/fix/admin-unobserved-chat-scroll`, created from the latest remote `main`. The review contains two inline findings and one later finding in a submitted review body. The review receipt and summary add no separate change request. All review and conversation pages were fetched.
 
 | Item | Severity and scope | Independent evidence | Outcome |
 | --- | --- | --- | --- |
 | `4302968966` | P2; the new directory height bound defeated the PR goal of accessible rows. | A real fixture API error pushed the workspace below the 900-pixel viewport. The new regression test failed before the fix: the list had only 8 pixels of height. | Already addressed. A measured natural-scroll fallback keeps a full row usable. The test now selects rows 0, 50, and 99 after document scrolling, checks footer separation, and confirms bounded sticky scrolling returns after the error clears. |
 | `4302968969` | P2; the new mobile scroll restore did not cover all detail entry actions. | Before the fix, both footer buttons restored the old row-selection scroll position. Four tests failed at 390 and 850 pixels; for example, Show selected chat restored 3029 instead of 5604 at 390 pixels. | Already addressed. `showChatDetails` records scroll before hiding the directory. Row selection and both footer actions use it. All four regression cases now restore the footer position, keep the selected ID and focus, and make no API requests or dirty settings. |
 
-All five new regression cases failed before source changes and passed after the fix. The full browser suite passed 134 tests. Root format, lint, typecheck, build, and the final complete test rerun passed. No item was deferred. The original manual tab check remains separate and blocked as documented above.
+| Review `5558211471` | P2; scroll restoration for a chat with no current directory row is required by the PR goal. | Before the fix, tests for unobserved ID `-9999` returned to 0 instead of 5739 pixels at 390 pixels, and 122 instead of 5636 pixels at 850 pixels. The return effect restored scroll only when a selected row existed. | Already addressed. Scroll restoration now runs outside the selected-row branch. The selected row or search receives focus with `preventScroll`. Both new cases pass for two return visits, retain the ID, and make no API requests or dirty settings. This finding is in a review body, not a resolvable review thread. |
+
+All five new regression cases from the first review failed before source changes and passed after the fix. The two later unobserved-chat cases also failed before the fix and passed after it. The final browser suite passed 136 tests. Root format, lint, typecheck, build, and all 1,475 root tests passed in this later validation run. No item was deferred. The original manual tab check remains separate and blocked as documented above.
 
 ## Limits
 
