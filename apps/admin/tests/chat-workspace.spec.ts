@@ -118,6 +118,30 @@ test("keeps a directory below a tall API error usable after document scrolling",
 })
 
 for (const width of [390, 850]) {
+  test(`restores directory scroll for an unobserved chat at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const requests = await fixture(page)
+    await page.locator(".configure-id summary").click()
+    const id = page.getByLabel("Chat ID (can configure before first message)")
+    await id.fill("-9999")
+    const open = page.getByRole("button", { name: "Open chat details", exact: true })
+    await open.scrollIntoViewIfNeeded()
+    const expected = await page.evaluate(() => window.scrollY)
+    expect(expected).toBeGreaterThan(0)
+    requests.length = 0
+    for (let visit = 0; visit < 2; visit++) {
+      await open.click()
+      await expect(page.locator(".chat-header code")).toHaveText("-9999")
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      await expect(page.getByLabel(/^Search these/)).toBeFocused()
+      expect(await page.evaluate(() => window.scrollY)).toBe(expected)
+      await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(0)
+      await expect(id).toHaveValue("-9999")
+      await expect(page.locator(".pending-bar")).toHaveCount(0)
+    }
+    expect(requests).toEqual([])
+  })
+
   for (const action of ["Show selected chat", "Open chat details"]) {
     test(`restores directory scroll after ${action} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
