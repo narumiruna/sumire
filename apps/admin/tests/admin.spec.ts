@@ -2362,7 +2362,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
   await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true })
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await expect(search).toBeFocused()
+  await expect(row).toBeFocused()
   await expect(search).toHaveValue("Fixture")
   await navigate(page, "Defaults")
   await navigate(page, "Chats")

@@ -1,5 +1,6 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
+import { CheckCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Badge, Button, Card, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
@@ -65,13 +66,46 @@ export function ChatWorkspace({
   const [access, setAccess] = useState("all")
   const [tab, setTab] = useState("overview")
   const [showDirectory, setShowDirectory] = useState(!chat)
+  const directoryRef = useRef<HTMLElement>(null)
+  const directoryScroll = useRef(0)
   const searchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const directory = directoryRef.current
+    const main = directory?.closest("main")
+    if (!directory || !main) return
+    let frame = 0
+    const resize = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!directory.getClientRects().length) return
+        // Measure the non-sticky workspace so document scrolling does not change the bound.
+        const top = `${directory.parentElement!.getBoundingClientRect().top + window.scrollY}px`
+        if (directory.style.getPropertyValue("--directory-start") !== top)
+          directory.style.setProperty("--directory-start", top)
+      })
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(main)
+    window.addEventListener("resize", resize)
+    resize()
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+      window.removeEventListener("resize", resize)
+    }
+  }, [])
   const headerRef = useRef<HTMLHeadingElement>(null)
   const tabsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!window.matchMedia("(max-width: 850px)").matches) return
-    if (showDirectory) searchRef.current?.focus()
-    else headerRef.current?.focus()
+    if (showDirectory) {
+      const selected =
+        directoryRef.current?.querySelector<HTMLButtonElement>('[aria-current="true"]')
+      if (selected) {
+        selected.focus({ preventScroll: true })
+        window.scrollTo({ top: directoryScroll.current, behavior: "instant" })
+      } else searchRef.current?.focus()
+    } else headerRef.current?.focus()
   }, [showDirectory])
   const changeTab = (value: string) => {
     setTab(value)
@@ -142,6 +176,7 @@ export function ChatWorkspace({
       : []),
   ]
   const openChat = (value: string) => {
+    if (window.matchMedia("(max-width: 850px)").matches) directoryScroll.current = window.scrollY
     onSelect(value)
     setShowDirectory(false)
   }
@@ -151,154 +186,170 @@ export function ChatWorkspace({
       data-directory-visible={showDirectory}
       data-selected={Boolean(chat)}
     >
-      <aside className="chat-directory" aria-label="Find a chat">
-        <Heading size="3">Chat directory</Heading>
-        <label htmlFor="chat-search">
-          Search these {chats.length} chats
-          <TextField.Root
-            id="chat-search"
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Name, type, or ID"
-          />
-        </label>
-        <div className="directory-filters">
-          <div>
-            <label htmlFor="chat-type-filter">Chat type</label>
-            <select id="chat-type-filter" value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="all">All types</option>
-              <option value="private">Private</option>
-              <option value="group">Group / supergroup</option>
-              <option value="channel">Channel</option>
-              <option value="unknown">Unknown type</option>
-            </select>
+      <aside ref={directoryRef} className="chat-directory" aria-label="Find a chat">
+        <div className="directory-header">
+          <Heading size="3">Chat directory</Heading>
+          <label htmlFor="chat-search">
+            Search these {chats.length} chats
+            <TextField.Root
+              id="chat-search"
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Name, type, or ID"
+            />
+          </label>
+          <div className="directory-filters">
+            <div>
+              <label htmlFor="chat-type-filter">Chat type</label>
+              <select id="chat-type-filter" value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="all">All types</option>
+                <option value="private">Private</option>
+                <option value="group">Group / supergroup</option>
+                <option value="channel">Channel</option>
+                <option value="unknown">Unknown type</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="chat-access-filter">Access status</label>
+              <select
+                id="chat-access-filter"
+                value={access}
+                onChange={(e) => setAccess(e.target.value)}
+              >
+                <option value="all">All access</option>
+                <option value="allowed">Approved and enabled</option>
+                <option value="denied">Not approved or disabled</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label htmlFor="chat-access-filter">Access status</label>
-            <select
-              id="chat-access-filter"
-              value={access}
-              onChange={(e) => setAccess(e.target.value)}
-            >
-              <option value="all">All access</option>
-              <option value="allowed">Approved and enabled</option>
-              <option value="denied">Not approved or disabled</option>
-            </select>
+          <details className="directory-help">
+            <summary>Search scope and access labels</summary>
+            <Text as="p" size="1" color="gray">
+              Search and filters cover this page of observed chats (up to 100), not all chats.
+              Access labels show {preview ? "the policy draft" : "saved policy"}, not verified
+              runtime readiness. Names reflect observed Telegram metadata; ID-only records have no
+              known name.
+            </Text>
+          </details>
+          <div aria-live="polite">
+            {loading ? (
+              <Text as="p">Loading chats…</Text>
+            ) : error ? (
+              <>
+                <Text as="p" role="alert">
+                  {error}
+                </Text>
+                <Button onClick={onRetry}>Retry chats</Button>
+              </>
+            ) : !chats.length ? (
+              <Text as="p">
+                No chats observed on this page. Configure a Telegram ID below or return to the
+                previous page.
+              </Text>
+            ) : !filtered.length ? (
+              <>
+                <Text as="p">
+                  No chats match on this page. Clear the search and filters or try another page.
+                </Text>
+                <Button
+                  variant="soft"
+                  onClick={() => {
+                    setQuery("")
+                    setType("all")
+                    setAccess("all")
+                  }}
+                >
+                  Clear search and filters
+                </Button>
+              </>
+            ) : (
+              <Text as="p" size="1" color="gray">
+                {filtered.length} of {chats.length} chats on this page
+              </Text>
+            )}
           </div>
         </div>
-        <details className="directory-help">
-          <summary>Search scope and access labels</summary>
-          <Text as="p" size="1" color="gray">
-            Search and filters cover this page of observed chats (up to 100), not all chats. Access
-            labels show {preview ? "the policy draft" : "saved policy"}, not verified runtime
-            readiness. Names reflect observed Telegram metadata; ID-only records have no known name.
-          </Text>
-        </details>
-        <div aria-live="polite">
-          {loading ? (
-            <Text as="p">Loading chats…</Text>
-          ) : error ? (
-            <>
-              <Text as="p" role="alert">
-                {error}
-              </Text>
-              <Button onClick={onRetry}>Retry chats</Button>
-            </>
-          ) : !chats.length ? (
-            <Text as="p">
-              No chats observed on this page. Configure a Telegram ID below or return to the
-              previous page.
-            </Text>
-          ) : !filtered.length ? (
-            <>
-              <Text as="p">
-                No chats match on this page. Clear the search and filters or try another page.
-              </Text>
-              <Button
-                variant="soft"
-                onClick={() => {
-                  setQuery("")
-                  setType("all")
-                  setAccess("all")
-                }}
-              >
-                Clear search and filters
-              </Button>
-            </>
-          ) : (
-            <Text as="p" size="1" color="gray">
-              {filtered.length} of {chats.length} chats on this page
-            </Text>
+        <div className="directory-list-region">
+          {!loading && !error && (
+            <ul className="chat-list" aria-label="Chats on this page">
+              {filtered.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    aria-current={chat === String(c.id) ? "true" : undefined}
+                    onClick={() => openChat(String(c.id))}
+                  >
+                    <strong title={chatName(c)}>{chatName(c)}</strong>
+                    <small title={`${c.type || "Type not known"} · ${c.id}`}>
+                      {c.type || "Type not known"} · {c.id}
+                    </small>
+                    <Badge color="gray">
+                      {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) ? (
+                        <CheckCircledIcon aria-hidden="true" />
+                      ) : (
+                        <MinusCircledIcon aria-hidden="true" />
+                      )}
+                      {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
+                        ? "Approved"
+                        : "Not approved"}
+                      {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
+                      {preview ? " · Draft" : ""}
+                    </Badge>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-        {!loading && !error && (
-          <ul className="chat-list" aria-label="Chats on this page">
-            {filtered.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  aria-current={chat === String(c.id) ? "true" : undefined}
-                  onClick={() => openChat(String(c.id))}
-                >
-                  <strong>{chatName(c)}</strong>
-                  <small title={`${c.type || "Type not known"} · ${c.id}`}>
-                    {c.type || "Type not known"} · {c.id}
-                  </small>
-                  <Badge color="gray">
-                    {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                      ? "Approved"
-                      : "Not approved"}
-                    {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
-                    {preview ? " · Draft" : ""}
-                  </Badge>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <Flex gap="2" wrap="wrap" mt="3" align="center">
-          <Button
-            variant="soft"
-            disabled={loading || offset === 0}
-            onClick={() => onPage(Math.max(0, offset - 100))}
-          >
-            Previous chats
-          </Button>
-          <Button
-            variant="soft"
-            disabled={loading || chats.length < 100}
-            onClick={() => onPage(offset + 100)}
-          >
-            Next chats
-          </Button>
-          <Text size="1" color="gray">
-            Page {Math.floor(offset / 100) + 1}
-          </Text>
-        </Flex>
-        {chat && (
-          <Button
-            className="mobile-directory-action"
-            variant="soft"
-            mt="3"
-            onClick={() => setShowDirectory(false)}
-          >
-            Show selected chat
-          </Button>
-        )}
-        <details className="configure-id">
-          <summary>Configure a chat before its first message</summary>
-          <Text as="p" size="2">
-            This creates settings, not access approval.
-          </Text>
-          <label htmlFor="chat-id">
-            Chat ID (can configure before first message)
-            <TextField.Root id="chat-id" value={chat} onChange={(e) => onSelect(e.target.value)} />
-          </label>
-          <Button variant="soft" disabled={!valid} onClick={() => setShowDirectory(false)}>
-            Open chat details
-          </Button>
-        </details>
+        <footer className="directory-footer">
+          <Flex gap="2" wrap="wrap" align="center">
+            <Button
+              variant="soft"
+              disabled={loading || offset === 0}
+              onClick={() => onPage(Math.max(0, offset - 100))}
+            >
+              Previous chats
+            </Button>
+            <Button
+              variant="soft"
+              disabled={loading || chats.length < 100}
+              onClick={() => onPage(offset + 100)}
+            >
+              Next chats
+            </Button>
+            <Text size="1" color="gray">
+              Page {Math.floor(offset / 100) + 1}
+            </Text>
+          </Flex>
+          {chat && (
+            <Button
+              className="mobile-directory-action"
+              variant="soft"
+              mt="3"
+              onClick={() => setShowDirectory(false)}
+            >
+              Show selected chat
+            </Button>
+          )}
+          <details className="configure-id">
+            <summary>Configure a chat before its first message</summary>
+            <Text as="p" size="2">
+              This creates settings, not access approval.
+            </Text>
+            <label htmlFor="chat-id">
+              Chat ID (can configure before first message)
+              <TextField.Root
+                id="chat-id"
+                value={chat}
+                onChange={(e) => onSelect(e.target.value)}
+              />
+            </label>
+            <Button variant="soft" disabled={!valid} onClick={() => setShowDirectory(false)}>
+              Open chat details
+            </Button>
+          </details>
+        </footer>
       </aside>
       <section className="chat-detail" aria-label="Chat details">
         {!chat ? (
@@ -368,30 +419,6 @@ export function ChatWorkspace({
                       ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
                       : "Runtime status unchecked"}
                   </Heading>
-                  <dl className="effective-settings readiness">
-                    <dt>Access</dt>
-                    <dd>
-                      {savedApproval ? "Approved" : "Not approved"}
-                      {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
-                    </dd>
-                    <dt>Chat</dt>
-                    <dd>
-                      {override?.enabled === false ? "Disabled" : "Enabled"}
-                      {preview ? " · Policy draft" : ""}
-                    </dd>
-                    <dt>Configuration</dt>
-                    <dd>
-                      {!provider
-                        ? "Unknown"
-                        : effective.model && provider.configured
-                          ? "Configured locally"
-                          : "Setup required"}
-                    </dd>
-                    <dt>Verification</dt>
-                    <dd>Not checked — no remote model request</dd>
-                    <dt>Application</dt>
-                    <dd>{application}</dd>
-                  </dl>
                   {blockers.map((blocker) => (
                     <div className="blocker" key={blocker.text}>
                       <Text size="2">{blocker.text}</Text>
@@ -400,26 +427,49 @@ export function ChatWorkspace({
                       </Button>
                     </div>
                   ))}
-                  <Text as="p" size="2" color="gray">
-                    {effective.enabled
-                      ? "This chat is approved by policy."
-                      : "Policy access is not allowed."}{" "}
-                    {effective.model && provider?.configured
-                      ? "Configured locally; remote authentication not checked here."
-                      : "Remote authentication not checked here."}{" "}
-                    Runtime availability is unchecked; policy approval does not establish readiness.
-                  </Text>
-                  {blockers.length > 1 && (
-                    <details className="setup-details">
-                      <summary>Setup details</summary>
-                      <Text as="p" size="2">
-                        Approval and the chat enabled switch are independent. Model availability
-                        follows global policy and chat settings. Authentication status comes from
-                        the loaded local inventory, not a remote model request. Each action keeps
-                        its own save boundary.
-                      </Text>
-                    </details>
-                  )}
+                  <details className="setup-details">
+                    <summary>Readiness details</summary>
+                    <dl className="effective-settings readiness">
+                      <dt>Access</dt>
+                      <dd>
+                        {savedApproval ? "Approved" : "Not approved"}
+                        {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
+                      </dd>
+                      <dt>Chat</dt>
+                      <dd>
+                        {override?.enabled === false ? "Disabled" : "Enabled"}
+                        {preview ? " · Policy draft" : ""}
+                      </dd>
+                      <dt>Configuration</dt>
+                      <dd>
+                        {!provider
+                          ? "Unknown"
+                          : effective.model && provider.configured
+                            ? "Configured locally"
+                            : "Setup required"}
+                      </dd>
+                      <dt>Verification</dt>
+                      <dd>Not checked — no remote model request</dd>
+                      <dt>Application</dt>
+                      <dd>{application}</dd>
+                    </dl>
+                    <Text as="p" size="2" color="gray">
+                      {effective.enabled
+                        ? "This chat is approved by policy."
+                        : "Policy access is not allowed."}{" "}
+                      {effective.model && provider?.configured
+                        ? "Configured locally; remote authentication not checked here."
+                        : "Remote authentication not checked here."}{" "}
+                      Runtime availability is unchecked; policy approval does not establish
+                      readiness.
+                    </Text>
+                    <Text as="p" size="2">
+                      Approval and the chat enabled switch are independent. Model availability
+                      follows global policy and chat settings. Authentication status comes from the
+                      loaded local inventory, not a remote model request. Each action keeps its own
+                      save boundary.
+                    </Text>
+                  </details>
                   {effective.model && !provider && (
                     <Flex gap="2" align="center" wrap="wrap" mt="2">
                       <Text size="2">
