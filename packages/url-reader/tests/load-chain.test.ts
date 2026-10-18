@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  FailureDiagnosticError,
   FirecrawlApiHttpError,
   LoaderContentError,
   LoaderError,
@@ -10,6 +11,7 @@ import {
   TargetHttpError,
 } from "../src/core/errors.js"
 import { withDeadline } from "../src/core/execution.js"
+import { getInterruptedAttempts } from "../src/core/interruption.js"
 import type { Loader } from "../src/core/loader.js"
 import { AttemptStatus } from "../src/core/results.js"
 import {
@@ -132,18 +134,21 @@ describe("load chain", () => {
         status: "failed",
         errorType: "FirecrawlApiHttpError",
         errorCode: "firecrawl_api_http_403",
+        diagnostic: { code: "service_http_error", phase: "loading", httpStatus: 403 },
       },
       {
         loaderId: "httpx",
         status: "failed",
         errorType: "TargetHttpError",
         errorCode: "target_http_403",
+        diagnostic: { code: "target_http_error", phase: "loading", httpStatus: 403 },
       },
       {
         loaderId: "curl-cffi",
         status: "failed",
         errorType: "LoaderContentError",
         errorCode: "tls_certificate",
+        diagnostic: { code: "tls_certificate", phase: "loading" },
       },
     ])
     expect(error.attempts.some((attempt) => attempt.message?.includes("private"))).toBe(false)
@@ -167,6 +172,103 @@ describe("load chain", () => {
         getRequirements: () => ["FIRECRAWL_API_KEY"],
       }),
     ).toThrow(MissingRequirementError)
+  })
+
+  it("preserves caption and confirmed fallback facts before a configuration skip", async () => {
+    delete process.env.FIRECRAWL_API_KEY
+    const chain = resolveExplicitLoadChain(
+      "https://example.com",
+      ["youtube", "youtube-ytdlp", "firecrawl"],
+      {
+        getFactory: (name) => () => ({
+          load: async (url) => {
+            throw new FailureDiagnosticError(
+              name,
+              url,
+              name === "youtube"
+                ? { code: "captions_unavailable", phase: "captions" }
+                : { code: "media_duration_limit", phase: "metadata", limit: 3600, observed: 5198 },
+            )
+          },
+        }),
+        getRequirements: (name) => (name === "firecrawl" ? ["FIRECRAWL_API_KEY"] : []),
+      },
+    )
+    const error = await chain.loadDetailed().catch((caught: unknown) => caught as LoaderError)
+    expect(error.attempts).toMatchObject([
+      { loaderId: "youtube", diagnostic: { code: "captions_unavailable", phase: "captions" } },
+      {
+        loaderId: "youtube-ytdlp",
+        diagnostic: {
+          code: "media_duration_limit",
+          phase: "metadata",
+          limit: 3600,
+          observed: 5198,
+        },
+      },
+      { loaderId: "firecrawl", status: "skipped", diagnostic: { code: "configuration_missing" } },
+    ])
+  })
+
+  it.each([false, true])(
+    "retains ordered interrupted attempts without changing the reason (deadline: %s)",
+    async (deadline) => {
+      const controller = new AbortController()
+      const reason = deadline
+        ? new DOMException("private deadline details", "TimeoutError")
+        : new Error("private cancellation details")
+      let started = false
+      const chain = resolveExplicitLoadChain(
+        "https://example.com",
+        ["youtube", "youtube-ytdlp", "unused"],
+        {
+          getFactory: (name) => () => ({
+            load: async (url) => {
+              if (name === "youtube")
+                throw new FailureDiagnosticError(name, url, {
+                  code: "captions_unavailable",
+                  phase: "captions",
+                })
+              started = true
+              return new Promise<string>(() => undefined)
+            },
+          }),
+        },
+      )
+      const loading = chain.loadDetailed(controller.signal)
+      await vi.waitFor(() => expect(started).toBe(true))
+      controller.abort(reason)
+      await expect(loading).rejects.toBe(reason)
+      const attempts = getInterruptedAttempts(reason, "https://example.com")
+      expect(attempts).toMatchObject([
+        { loaderId: "youtube", diagnostic: { code: "captions_unavailable", phase: "captions" } },
+        {
+          loaderId: "youtube-ytdlp",
+          status: deadline ? "timeout" : "cancelled",
+          diagnostic: { code: deadline ? "deadline_exceeded" : "cancelled", phase: "loading" },
+        },
+      ])
+      expect(JSON.stringify(attempts)).not.toContain("private")
+    },
+  )
+
+  it("records a deadline reached before construction without inventing caption evidence", async () => {
+    const chain = resolveExplicitLoadChain("https://example.com", ["youtube", "youtube-ytdlp"], {
+      getFactory: () => () => {
+        throw new Error("must not construct")
+      },
+    })
+    const error = await withDeadline(performance.now() - 1, () => chain.loadDetailed()).catch(
+      (caught: unknown) => caught as LoaderError,
+    )
+    expect(error.attempts).toMatchObject([
+      {
+        loaderId: "youtube",
+        status: "timeout",
+        diagnostic: { code: "deadline_exceeded", phase: "loading" },
+      },
+    ])
+    expect(error.attempts).toHaveLength(1)
   })
 
   it("stops after a shared deadline", async () => {

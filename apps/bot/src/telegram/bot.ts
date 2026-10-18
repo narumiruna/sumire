@@ -9,11 +9,13 @@ import { AdminError } from "../admin/store.js"
 import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
 import { buildBlogPostPrompt } from "../blog-post/prompt.js"
 import {
+  ArticleSourceUrlError,
   ArticleUrlBudgetError,
   type ArticleUrlContent,
   loadArticleSourceUrls,
   TooManyArticleUrlsError,
 } from "../blog-post/source.js"
+import { formatArticleSourceFailure } from "../blog-post/source-failure.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
@@ -712,14 +714,18 @@ export function createTelegramAgentBot(
           "Article source URL loading failed",
           error instanceof TooManyArticleUrlsError
             ? undefined
-            : { name: error instanceof Error ? error.name : "unknown" },
+            : error instanceof ArticleSourceUrlError
+              ? { sourceIndex: error.sourceIndex, ...error.failure }
+              : { code: "unknown" },
         )
         const text =
           error instanceof TooManyArticleUrlsError
             ? "每篇文章最多可處理 4 個網址，請減少網址後再試。"
             : error instanceof ArticleUrlBudgetError
               ? "網址內容長度上限不足，請減少來源網址後再試。"
-              : "無法載入文章來源網址，請確認網址可公開存取後再試。"
+              : error instanceof ArticleSourceUrlError
+                ? formatArticleSourceFailure(error.failure, error.sourceIndex)
+                : formatArticleSourceFailure({ code: "unknown", attempts: [] })
         if (preparedStatus)
           await delivery.editOrReply(
             context,

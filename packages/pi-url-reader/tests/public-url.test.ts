@@ -65,7 +65,7 @@ describe("public URL loading", () => {
 
     await expect(
       tool.execute("call", { url, loader: "built-in" }, undefined, undefined, undefined as never),
-    ).rejects.toThrow("URL loader is not selectable")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unknown" } })
     expect(traceLoad).not.toHaveBeenCalled()
 
     const result = await tool.execute("call", { url }, undefined, undefined, undefined as never)
@@ -76,7 +76,7 @@ describe("public URL loading", () => {
     load.mockRejectedValueOnce(new Error("load failed"))
     await expect(
       tool.execute("call", { url }, undefined, undefined, undefined as never),
-    ).rejects.toThrow("load failed")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unknown" } })
     expect(traceLoad).toHaveBeenCalledTimes(2)
   })
 

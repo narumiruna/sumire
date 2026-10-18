@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { createPublicUrlLoader, type LoadedUrl } from "@narumitw/sumire-pi-url-reader"
 import type { ProgressStep } from "@narumitw/sumire-progress"
-import { LoaderContentError, resolveLoadChain } from "@narumitw/sumire-url-reader"
+import { LoaderContentError, LoaderError, resolveLoadChain } from "@narumitw/sumire-url-reader"
 import type { Transformer } from "grammy"
 import type { Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
@@ -599,7 +599,7 @@ describe("Telegram bot update routing", () => {
     await Promise.resolve()
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[1]?.payload.text).toContain("無法載入文章來源網址")
+    expect(calls[1]?.payload.text).toContain("整體時間上限")
   })
 
   it("does not submit or publish /f when a source URL fails to load", async () => {
@@ -628,7 +628,75 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
     expect(calls[0]?.payload.text).toBe("正在載入文章來源…")
-    expect(calls[1]?.payload.text).toContain("無法載入文章來源網址")
+    expect(calls[1]?.payload.text).toContain("無法載入第 1 個來源")
+    expect(calls[1]?.payload.text).toContain("無法確認具體原因")
+  })
+
+  it("reports the second source's caption and fallback failure without submitting or publishing", async () => {
+    const sessions = createSessions()
+    const publish = vi.fn(async () => "https://morsel.example/s/article")
+    const load = vi.fn(async (url: string) => {
+      if (url.endsWith("/good"))
+        return {
+          url,
+          finalUrl: url,
+          source: "url-content" as const,
+          contentType: "text/plain",
+          text: "first source",
+          truncated: false,
+        }
+      throw new LoaderError(
+        url,
+        ["secret upstream text"],
+        [
+          {
+            loaderId: "youtube",
+            status: "failed",
+            elapsedSeconds: 1,
+            diagnostic: { code: "captions_unavailable", phase: "captions" },
+          },
+          {
+            loaderId: "youtube-ytdlp",
+            status: "failed",
+            elapsedSeconds: 2,
+            diagnostic: {
+              code: "media_duration_limit",
+              phase: "metadata",
+              observed: 5_198,
+              limit: 3_600,
+            },
+          },
+        ],
+      )
+    })
+    const warn = vi.fn()
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token", MORSEL_API_KEY: "secret" }),
+      sessions,
+      { ...logger, warn },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        articleUrlLoader: { load },
+        morselPublisher: { isConfigured: true, publish },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(
+      commandMessage(21, "/f https://example.com/good https://example.com/bad?token=private"),
+    )
+    const text = calls[1]?.payload.text
+    expect(text).toContain("無法載入第 2 個來源")
+    expect(text).toContain("未取得可用字幕")
+    expect(text).toContain("1 小時 26 分 38 秒")
+    expect(text).not.toMatch(/secret|private|https:/u)
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(
+      "Article source URL loading failed",
+      expect.objectContaining({ sourceIndex: 2, code: "media_duration_limit" }),
+    )
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/secret|private|https:/u)
   })
 
   it("rejects an insufficient article content budget without misreporting the URL count", async () => {

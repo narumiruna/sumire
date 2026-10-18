@@ -45,13 +45,13 @@ A host can expose an allowlisted exact override:
 
 Omitting `loader` delegates directly to the automatic `@narumitw/sumire-url-reader` plan after public-target validation. The tool does not try built-in extraction or route by hostname or warning text first. `built-in` runs only the bounded text/HTML path; another approved ID runs exactly that `@narumitw/sumire-url-reader` loader without automatic fallback. The tool schema contains `loader` only when the host configures at least one `selectableLoaders` entry, and execution enforces the same allowlist even if schema validation is bypassed.
 
-`read_url_content` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, elapsed seconds, error types/codes; no upstream error messages). For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
+On success, `read_url_content` returns readable text or Markdown plus source metadata in both text content and typed result details. Results include `url`, `finalUrl`, `source`, `contentType`, `text`, and `truncated`; optional fields include `title`, `status`, `loaderId`, and per-loader `attempts` (IDs, statuses, elapsed seconds, error types/codes, and optional safe `diagnostic` fields; no upstream error messages). Existing success fields are unchanged. For source-aware loading, `finalUrl` remains the requested URL because that loader does not expose a final target.
 
-Failures, including unknown, disallowed, inapplicable, or unavailable explicit loaders, throw through Pi's native tool error path. Cancellation is passed to the loader. Fetched content is untrusted reference data, not instructions or authorization.
+Failures return Pi's supported error result: `isError: true`, safe JSON in text `content`, and the same `UrlFailure` object in `details`. A failed load is not extracted content. Invalid or disallowed explicit loader selections return a safe `unknown` failure without invoking the loader. Caller cancellation still throws the original abort reason unchanged. Fetched content is untrusted reference data, not instructions or authorization.
 
 Automatic source selection belongs to `url-reader`. It chooses source loaders for Threads posts and share links, Google Docs, documents, videos, and other supported sources; generic pages use its ordered local loader chain. WallHop and other generic hosts follow the same path without tool-owned exceptions.
 
-Threads share links retain the verified-post contract: generic-web results cannot succeed as a post, and explicit `built-in` selection is rejected without fetching. Open Graph text may be an excerpt rather than the full post. Document and source errors retain their original error details; there is no automatic return to built-in extraction. No hosted OCR is enabled.
+Threads share links retain the verified-post contract: generic-web results cannot succeed as a post, and explicit `built-in` selection is rejected without fetching. Open Graph text may be an excerpt rather than the full post. Internal loading methods retain original exceptions; the tool normalizes them before returning a failure. There is no automatic return to built-in extraction. No hosted OCR is enabled.
 
 Automatic results use `source: "url-content"` and include the selected loader and attempt records. Their content may be Markdown rather than the built-in path's plain text; `title` and HTTP `status` are not supplied by the source-aware result adapter. The result schema and output character limit are unchanged.
 
@@ -67,6 +67,31 @@ flowchart LR
     Explicit --> Result
     Auto --> Result
 ```
+
+## Safe failure contract
+
+Use `normalizeUrlFailure(error, url?)` for user-facing failures and `sanitizeUrlAttempts(attempts)` for telemetry. Both functions are exported. Supply `url` when one abort reason can belong to several concurrent URL loads; this selects that URL's retained attempts and excludes other `LoaderError` targets.
+
+```typescript
+interface UrlFailure {
+  code: UrlFailureCode
+  attempts: readonly SafeFailureAttempt[]
+  diagnostic?: SafeFailureDiagnostic
+}
+
+interface SafeFailureAttempt {
+  loaderId: string
+  status: AttemptRecord["status"]
+  elapsedSeconds?: number
+  diagnostic?: SafeFailureDiagnostic
+}
+```
+
+`SafeFailureDiagnostic` contains only `code`, optional `phase`, `limit`, `observed`, `dependency`, and `httpStatus`. `UrlFailureCode` includes URL reader's `FailureCode` plus `invalid_url`, `unsafe_url`, `unsupported_content_type`, `response_size_limit`, and `redirect_limit`. `PublicUrlError` gives package-owned validation failures typed codes at their source. Classification uses typed exceptions and structured facts, not message fragments. For older attempt records without `diagnostic`, the sanitizer also accepts the existing bounded HTTP, TLS, and transport `errorCode` values. An explicit diagnostic remains authoritative; legacy curl transport codes do not override an unknown content-extraction diagnostic.
+
+The normalizer keeps ordered caption and fallback attempts. Its top-level diagnostic selects a useful observed failure; whole-operation expiry and cancellation take precedence. Missing fallback configuration or a later unknown failure does not replace an earlier specific cause. Direct typed errors retain their diagnostic even without attempts. Codes distinguish caption outcomes, metadata/download/transcription failures, phase timeouts, whole-operation expiry, cancellation, confirmed media limits, missing dependencies, target HTTP errors, service HTTP errors, transport/TLS failures, configuration, and unknown failures. A target HTTP 403 does not prove that a source is private. Missing captions do not prove that the author disabled them.
+
+Safe results exclude exception messages, stderr, stack traces, URLs, local paths, arbitrary error types/codes, and unrecognized string fields. Loader IDs use the registered loader allowlist; other IDs become `unknown`. Phases and dependencies use fixed allowlists. Numeric fields must be finite, non-negative, and at most `Number.MAX_SAFE_INTEGER`; HTTP status must be an integer from 100 through 599. Invalid fields are omitted, and unknown diagnostic codes become `unknown`. Normalization visits at most 64 errors across eight aggregate levels and returns at most 32 attempts. Cyclic aggregates do not recurse. These limits also apply to malformed metadata.
 
 ## Bounds and safety
 
@@ -111,7 +136,7 @@ npm run typecheck --workspace @narumitw/sumire-pi-url-reader
 npm test --workspace @narumitw/sumire-pi-url-reader
 ```
 
-Tests cover the compiled Pi manifest and bundled skill, registration, host allowlists, explicit and automatic routing, cancellation forwarding, native tool errors, public-target validation, DNS pinning, output limits, and automatic source-aware loading.
+Tests cover the compiled Pi manifest and bundled skill, registration, host allowlists, explicit and automatic routing, cancellation identity, explicit Pi error results, typed public-target failures, DNS pinning, output limits, success compatibility, safe diagnostics, malformed fields, secret redaction, URL-specific interrupted attempts, and bounded cyclic or deep aggregates.
 
 ## License
 

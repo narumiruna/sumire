@@ -76,6 +76,39 @@ A deadline starts before target validation and includes loader construction and 
 
 Cancellation is propagated through `AbortSignal`; waiting is bounded even if an operation ignores cancellation. Browser navigation is interrupted and its context is closed. The one-shot API allows up to five additional seconds for client cleanup; cleanup continues if that wait expires, and never replaces an original load failure. Reusable clients remain responsible for awaiting `close()`. `getInterruptedAttempts(error, url)` exposes safe attempt records for that URL while preserving the caller's original cancellation reason and identity, including concurrent URLs sharing a signal. Omitting `url` returns the most recently stored records; interruption statuses distinguish `cancelled` from `timeout`.
 
+## Failure diagnostics
+
+`LoaderError.attempts` retains ordered loader outcomes. Each failed attempt can include an additive `diagnostic: FailureDiagnostic` field. `getInterruptedAttempts(error, url)` retains the same fields for cancellation and shared deadlines without changing the original abort reason. Existing `errorCode` values, including `target_http_403`, `firecrawl_api_http_403`, `tls_certificate`, and `transport_failure`, remain compatible.
+
+`FailureDiagnostic` contains only these facts:
+
+- `code: FailureCode`: a stable category from the table below.
+- `phase?`: `captions`, `metadata`, `download`, `transcription`, `loading`, or `validation`.
+- `limit?` and `observed?`: finite, nonnegative numeric facts. Duration uses seconds; media size uses bytes.
+- `dependency?`: `yt-dlp`, `whisper`, or `ffmpeg`, when established by structured evidence.
+- `httpStatus?`: the HTTP status, when known. The code distinguishes a service API status from a target status.
+
+| Code | Evidence |
+| --- | --- |
+| `captions_unavailable` | The caption library did not obtain usable caption tracks; this does not establish an author setting. |
+| `caption_language_unavailable` | The caption library reported that the requested language was unavailable. |
+| `captions_empty` | Caption extraction returned no non-whitespace text. |
+| `caption_extraction_failed` | Caption extraction failed without a more specific established cause. |
+| `media_duration_limit` | Valid numeric metadata exceeded the configured duration limit. |
+| `media_size_limit` | The downloaded audio file exceeded the configured byte limit. |
+| `dependency_missing` | A required executable was missing, as reported by a structured system error. |
+| `metadata_failed`, `download_failed`, `transcription_failed` | The corresponding phase failed; no source restriction or limit rejection is implied. |
+| `download_timeout`, `transcription_timeout` | The corresponding local budget expired. The download budget includes metadata. |
+| `loader_timeout` | A local loader budget expired. `limit` uses seconds; this is not a shared deadline. |
+| `target_http_error`, `service_http_error` | A typed HTTP failure from the target website or service API, respectively. |
+| `transport_failure`, `tls_certificate` | A structured transport or certificate failure. |
+| `deadline_exceeded`, `cancelled` | A shared deadline or caller cancellation, respectively. Neither establishes missing captions or a Whisper timeout. |
+| `empty_content`, `configuration_missing`, `unknown` | Empty output, missing configuration, or no established specific cause. |
+
+`FailureDiagnosticError extends LoaderContentError` accepts `(loaderName, url, diagnostic)` and exposes `.diagnostic`. `getFailureDiagnostic(error)` classifies typed facts; use aggregate attempts rather than classifying a `LoaderError` as one cause. `LoaderTimeoutError` and `MissingDependencyError` accept an optional final diagnostic argument and retain their existing class identities.
+
+`attemptRecordToObject` adds `diagnostic` (or `null`) to its existing serialized fields. The nested diagnostic uses the TypeScript field names, including `httpStatus`. Do not use raw exception messages, `LoaderError.details`, or attempt `message` fields as a user-facing or logging contract. Presentation boundaries must allowlist and validate diagnostic fields. Classification does not match upstream messages or command stderr.
+
 ## CLI
 
 ```bash
@@ -163,6 +196,10 @@ YouTube captions use `youtube-transcript`. The `youtube-ytdlp`, `ytdlp`, and `re
 - FFmpeg
 
 The transcription loader writes only to an isolated temporary directory and removes it after each attempt. YouTube and Reel audio downloads strip arbitrary URL query parameters and use canonical video URLs; the CLI is launched without user-level yt-dlp configuration.
+
+Before download, yt-dlp emits only a JSON duration field. Metadata and download share the existing 120-second download budget and cancellation signal. Valid finite duration metadata above 3,600 seconds rejects the media before download. Missing, negative, nonnumeric, or unsafe duration values do not establish a duration rejection; download filters remain enabled. Malformed metadata or a failed metadata command reports `metadata_failed`. An absent filtered audio file reports `download_failed`, not a duration or size rejection. Metadata does not provide a reliable final MP3 byte size; the loader retains the 100 MiB download filter and checks the actual audio file before Whisper starts.
+
+Every external command has a combined 1 MiB stdout/stderr cap; exceeding it terminates the process group. Whisper retains its separate 300-second budget. Missing executables are identified only from `ENOENT` at command invocation; stderr does not establish a missing FFmpeg dependency or a source restriction. The existing limitation on independent inspection of third-party media redirects also applies to metadata.
 
 ## Extraction policy
 

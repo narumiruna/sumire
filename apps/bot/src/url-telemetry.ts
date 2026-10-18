@@ -1,11 +1,9 @@
 import { createHmac, randomBytes } from "node:crypto"
-import type { LoadedUrl } from "@narumitw/sumire-pi-url-reader"
 import {
-  type AttemptRecord,
-  getInterruptedAttempts,
-  getLoaderDef,
-  LoaderError,
-} from "@narumitw/sumire-url-reader"
+  type LoadedUrl,
+  normalizeUrlFailure,
+  sanitizeUrlAttempts,
+} from "@narumitw/sumire-pi-url-reader"
 
 import { type Logger, withLogSpan } from "./logging.js"
 
@@ -50,7 +48,8 @@ export function traceUrlLoad(
         span.setAttribute("url.loader", result.loaderId ?? "none")
         span.setAttribute("url.truncated", result.truncated)
         span.setAttribute("url.content_chars", result.text.length)
-        recordAttempts(span, result.attempts)
+        const attempts = sanitizeUrlAttempts(result.attempts)
+        if (attempts.length) span.setAttribute("url.attempts", JSON.stringify(attempts))
         if (result.status !== undefined) span.setAttribute("url.http_status", result.status)
         const host = loadedUrlHost(result.finalUrl)
         if (host) {
@@ -59,96 +58,17 @@ export function traceUrlLoad(
         }
         return result
       } catch (error) {
+        const failure = normalizeUrlFailure(error, url)
         span.setAttribute("url.outcome", "error")
-        span.setAttribute("url.error_type", safeErrorType(error))
-        recordAttempts(span, errorAttempts(error, url))
+        span.setAttribute("url.error_code", failure.code)
+        if (failure.attempts.length)
+          span.setAttribute("url.attempts", JSON.stringify(failure.attempts))
+        if (failure.diagnostic)
+          span.setAttribute("url.diagnostic", JSON.stringify(failure.diagnostic))
         throw error
       }
     },
   )
-}
-
-const attemptStatuses = new Set([
-  "success",
-  "failed",
-  "skipped",
-  "not_applicable",
-  "timeout",
-  "cancelled",
-  "empty",
-  "rejected",
-])
-const safeErrorTypes = new Set([
-  "LoaderContentError",
-  "LoaderError",
-  "AggregateError",
-  "FirecrawlApiHttpError",
-  "TargetHttpError",
-  "AbortError",
-  "LoaderTimeoutError",
-  "LoaderNotApplicableError",
-  "TimeoutError",
-  "MissingRequirementError",
-  "TypeError",
-  "Error",
-])
-
-function safeErrorType(error: unknown): string {
-  return error instanceof Error ? safeErrorName(error.name) : "other"
-}
-
-function safeErrorName(name: string | undefined): string {
-  return name && safeErrorTypes.has(name) ? name : "other"
-}
-
-function errorAttempts(error: unknown, url: string): readonly AttemptRecord[] | undefined {
-  const interrupted = getInterruptedAttempts(error, url)
-  if (interrupted?.length) return interrupted
-  if (error instanceof LoaderError) return error.attempts
-  if (error instanceof AggregateError) {
-    for (const nested of error.errors as unknown[]) {
-      const attempts = errorAttempts(nested, url)
-      if (attempts?.length) return attempts
-    }
-  }
-  return undefined
-}
-
-function recordAttempts(
-  span: { setAttribute(key: string, value: string): void },
-  attempts:
-    | readonly (Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode"> &
-        Partial<Pick<AttemptRecord, "elapsedSeconds">>)[]
-    | undefined,
-): void {
-  if (!attempts?.length) return
-  const safe = attempts.slice(0, 24).flatMap((attempt) => {
-    try {
-      getLoaderDef(attempt.loaderId)
-    } catch {
-      return []
-    }
-    if (!attemptStatuses.has(attempt.status)) return []
-    const code = attempt.errorCode
-    return [
-      {
-        loader: attempt.loaderId,
-        status: attempt.status,
-        ...(Number.isFinite(attempt.elapsedSeconds) &&
-        (attempt.elapsedSeconds ?? -1) >= 0 &&
-        (attempt.elapsedSeconds ?? Infinity) <= 3_600
-          ? { elapsedSeconds: attempt.elapsedSeconds }
-          : {}),
-        ...(attempt.errorType ? { errorType: safeErrorName(attempt.errorType) } : {}),
-        ...(code === "tls_certificate" ||
-        code === "transport_failure" ||
-        /^(?:firecrawl_api|target)_http_[1-5]\d\d$/u.test(code ?? "")
-          ? { code }
-          : {}),
-      },
-    ]
-  })
-  if (safe.length) span.setAttribute("url.attempts", JSON.stringify(safe))
 }
 
 export function loadedUrlHost(value: string): string | undefined {

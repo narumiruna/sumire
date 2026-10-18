@@ -1,6 +1,10 @@
 export {
   ConfigurationError,
+  type FailureCode,
+  type FailureDiagnostic,
+  FailureDiagnosticError,
   FirecrawlApiKeyNotSetError,
+  getFailureDiagnostic,
   InvalidUrlError,
   LoaderContentError,
   LoaderError,
