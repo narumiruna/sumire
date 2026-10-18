@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-pi-polymarket",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Pi tools for the official Polymarket client",
   "license": "MIT",

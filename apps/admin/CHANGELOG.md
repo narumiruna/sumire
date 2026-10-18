@@ -1,5 +1,14 @@
 # @narumitw/sumire-admin
 
+## 0.4.3
+
+### Patch Changes
+
+- b0384ec: Update dependencies and restore compatibility with Pi 1.3 and TypeScript 7. Preserve durable tool output, MCP namespace discovery, and API generation. Remove lint, install, build, and experimental passkey warnings.
+- Updated dependencies [b0384ec]
+  - @narumitw/sumire-contracts@0.3.1
+  - @narumitw/sumire-policy@0.3.1
+
 ## 0.4.2
 
 ### Patch Changes

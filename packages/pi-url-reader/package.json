@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-pi-url-reader",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Pi URL-reading tool and skills backed by the Sumire URL reader",
   "license": "MIT",
@@ -61,7 +61,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@narumitw/sumire-url-reader": "0.25.1",
+    "@narumitw/sumire-url-reader": "0.25.2",
     "ipaddr.js": "2.5.0",
     "undici": "8.12.2"
   },
