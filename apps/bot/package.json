@@ -35,7 +35,7 @@
     "@earendil-works/pi-mcp": "1.1.0",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
-    "@narumitw/otter-cli": "0.3.1",
+    "@narumitw/otter-cli": "0.4.0",
     "@narumitw/sumire-contracts": "0.3.0",
     "@narumitw/sumire-policy": "0.3.0",
     "@narumitw/sumire-progress": "0.3.0",
