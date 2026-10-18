@@ -262,7 +262,7 @@ describe("MCP through durable sessions", () => {
             expect(child.exitCode, stderr).toBeNull()
             expect(await readFile(effects, "utf8")).toBe("called\n")
           },
-          { timeout: 5000 },
+          { timeout: 10_000 },
         )
         const mcpDirectory = path.join(fixture.settings.botSessionLogDir, "123", "durable", "mcp")
         const oldHomes = (await readdir(mcpDirectory)).filter((name) => name.startsWith("process-"))
@@ -288,5 +288,7 @@ describe("MCP through durable sessions", () => {
         await exited
       }
     },
+    // Allow child startup, shutdown, and durable recovery under full-suite load.
+    30_000,
   )
 })

@@ -33,6 +33,26 @@ async function setup() {
   return { store, login, secret, fixture, register }
 }
 
+it("offers only stable passkey algorithms", async () => {
+  const { login, secret } = await setup()
+  const { options } = await login.beginRegistration(secret)
+  expect(options.pubKeyCredParams).toEqual([
+    { type: "public-key", alg: -8 },
+    { type: "public-key", alg: -7 },
+    { type: "public-key", alg: -257 },
+  ])
+})
+
+it("rejects registration with an algorithm outside the stable list", async () => {
+  const { login, secret, store } = await setup()
+  const fixture = createPasskeyFixture(-48)
+  const start = await login.beginRegistration(secret)
+  await expect(
+    login.finishRegistration(start.browser, fixture.registration(start.options.challenge)),
+  ).rejects.toThrow("Passkey verification failed or expired")
+  expect(store.db.prepare("SELECT * FROM passkeys").all()).toEqual([])
+})
+
 it("registers a verified passkey, authenticates, updates its counter, and closes bootstrap", async () => {
   const { store, login, secret, fixture, register } = await setup()
   expect(JSON.stringify(store.db.prepare("SELECT * FROM passkey_setup").all())).not.toContain(

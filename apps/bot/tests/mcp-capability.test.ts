@@ -96,11 +96,36 @@ describe("MCP capability", () => {
       echo?.execute("revoked", {}, undefined, undefined, undefined as never),
     ).rejects.toThrow("not allowed")
   })
+  it("omits aliases that collide with canonical namespaces", async () => {
+    const server = { command: process.execPath, args: [fixturePath] }
+    const { capability } = await setup({ foo: server, mcp__foo: server })
+    const namespaces = capability.tools.map((tool) => tool.namespace)
+    expect(namespaces.find((namespace) => namespace?.name === "mcp__foo")?.aliases).toEqual(["foo"])
+    expect(
+      namespaces.find((namespace) => namespace?.name === "mcp__mcp__foo")?.aliases,
+    ).toBeUndefined()
+  })
+
+  it("does not publish credential-bearing server names as aliases", async () => {
+    const secret = "private-fixture-key"
+    const { capability } = await setup({
+      [`server-${secret}`]: {
+        command: process.execPath,
+        args: [fixturePath],
+        env: { API_KEY: secret },
+      },
+    })
+    expect(capability.tools.length).toBeGreaterThan(0)
+    expect(capability.tools.every((tool) => tool.namespace?.aliases === undefined)).toBe(true)
+    expect(JSON.stringify(capability.tools)).not.toContain(secret)
+    expect(capability.summary()).not.toContain(secret)
+  })
+
   it("uses real stdio, preserves structured content and errors, and exposes namespace instructions", async () => {
     const { capability, call } = await setup()
     expect(capability.tools[0]).toMatchObject({
       exposure: "deferred",
-      namespace: { name: "mcp__fake", instructions: "Use echo for testing" },
+      namespace: { name: "mcp__fake", aliases: ["fake"], instructions: "Use echo for testing" },
     })
     expect(capability.summary()).toContain("Discover with codemode")
     expect(await call("echo", { text: "hello" })).toMatchObject({

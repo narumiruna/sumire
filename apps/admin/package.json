@@ -24,12 +24,12 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "vitest": "5.0.3"
+    "vitest": "5.0.5"
   },
   "dependencies": {
     "@narumitw/sumire-contracts": "0.3.0",

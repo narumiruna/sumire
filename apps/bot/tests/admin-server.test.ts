@@ -125,8 +125,8 @@ describe("admin HTTP security", () => {
       time: number
       actor: string
     }[]
-    const second = JSON.parse((await call(query + "&offset=100", "GET", undefined, auth())).body)
-    const last = JSON.parse((await call(query + "&offset=200", "GET", undefined, auth())).body)
+    const second = JSON.parse((await call(`${query}&offset=100`, "GET", undefined, auth())).body)
+    const last = JSON.parse((await call(`${query}&offset=200`, "GET", undefined, auth())).body)
     expect(first).toHaveLength(100)
     expect(second).toHaveLength(100)
     expect(last).toHaveLength(5)
@@ -140,7 +140,7 @@ describe("admin HTTP security", () => {
       JSON.parse(
         (
           await call(
-            "/api/audit?actor=" + encodeURIComponent("' OR 1=1 --"),
+            `/api/audit?actor=${encodeURIComponent("' OR 1=1 --")}`,
             "GET",
             undefined,
             auth(),
@@ -154,7 +154,7 @@ describe("admin HTTP security", () => {
     for (const suffix of [
       "actor=",
       "actor=42&actor=system",
-      "actor=" + "x".repeat(129),
+      `actor=${"x".repeat(129)}`,
       "from=-1",
       "from=NaN",
       "from=1.5",
@@ -163,7 +163,7 @@ describe("admin HTTP security", () => {
       "offset=10001",
       "outcome=%00",
     ]) {
-      expect((await call("/api/audit?" + suffix, "GET", undefined, auth())).status, suffix).toBe(
+      expect((await call(`/api/audit?${suffix}`, "GET", undefined, auth())).status, suffix).toBe(
         400,
       )
     }

@@ -14,12 +14,12 @@ import {
   defineTool,
   type Harness,
   section,
-  type ToolExecutionResult,
 } from "@earendil-works/pi-durable"
 import { createBotCodemodeExtension } from "./codemode.js"
 import { CodemodeStoreDoc } from "./durable-state.js"
 import {
   collectTools,
+  durableToolResult,
   executeNative,
   isCodemodeCallable,
   jsonValue,
@@ -253,7 +253,7 @@ export async function createDurableCodemode(
           }
         }, context)
       }
-      return jsonValue(result) as ToolExecutionResult
+      return durableToolResult(result)
     },
   })
   return defineExtension({

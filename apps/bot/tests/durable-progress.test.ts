@@ -23,6 +23,7 @@ describe("durable progress replay", () => {
     // ToolTask recovery bypasses prepareArguments and calls execute with its saved intent.
     const result = await tool.execute(savedArguments, api, context)
     expect(authorize).toHaveBeenCalledOnce()
+    expect(result.output).toEqual([{ type: "text", text: "Progress updated: 0 of 1 complete." }])
     expect(result.details).toEqual({
       version: 2,
       steps: [{ text: "Deploy — Waiting for approval", status: "blocked" }],

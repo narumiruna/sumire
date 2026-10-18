@@ -274,6 +274,9 @@ export class McpCapability {
         const name = `mcp__${c.config.name}__${tool.name}`.replace(/[^A-Za-z0-9_]/g, "_")
         counts.set(name, (counts.get(name) ?? 0) + 1)
       }
+    const namespaceNames = new Set(
+      this.#connections.map((c) => mcpNamespace(c.config.name, this.config.redact)),
+    )
     const namespaceBytes = new Map<Connection, number>()
     for (const c of this.#connections) {
       const names = mcpToolNames(
@@ -284,6 +287,10 @@ export class McpCapability {
       )
       const namespace = {
         name: mcpNamespace(c.config.name, this.config.redact),
+        aliases:
+          this.config.redact(c.config.name) === c.config.name && !namespaceNames.has(c.config.name)
+            ? [c.config.name]
+            : undefined,
         description: this.config.redact(c.config.description ?? "MCP server").slice(0, 4096),
         instructions: this.config.redact(c.client?.instructions ?? "").slice(0, 4096),
       }
