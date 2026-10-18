@@ -1,4 +1,8 @@
-import type { PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
+import {
+  normalizeUrlFailure,
+  type PublicUrlLoader,
+  type UrlFailure,
+} from "@narumitw/sumire-pi-url-reader"
 
 const maxArticleUrls = 4
 const urlPattern = /https?:\/\/[^\s<>"]+/giu
@@ -45,6 +49,16 @@ export interface ArticleUrlContent {
 export class TooManyArticleUrlsError extends Error {}
 export class ArticleUrlBudgetError extends Error {}
 
+export class ArticleSourceUrlError extends Error {
+  constructor(
+    public readonly failure: UrlFailure,
+    public readonly sourceIndex?: number,
+  ) {
+    super("Article source loading failed")
+    this.name = "ArticleSourceUrlError"
+  }
+}
+
 export async function loadArticleSourceUrls(
   source: string,
   loader: PublicUrlLoader,
@@ -76,13 +90,50 @@ export async function loadArticleSourceUrls(
     ...(options.signal ? [options.signal] : []),
   ])
   if (signal.aborted) throw signal.reason
+  const timeoutFailure = () => {
+    const recorded = urls.map((url, index) => ({
+      failure: normalizeUrlFailure(signal.reason, url),
+      sourceIndex: index + 1,
+    }))
+    const source = recorded.find(({ failure }) => failure.attempts.length > 0)
+    return source
+      ? new ArticleSourceUrlError(source.failure, source.sourceIndex)
+      : new ArticleSourceUrlError(
+          normalizeUrlFailure(signal.reason, urls[0]),
+          urls.length === 1 ? 1 : undefined,
+        )
+  }
+  let onAbort: (() => void) | undefined
+  let abortFallback: ReturnType<typeof setImmediate> | undefined
   try {
     const results = await Promise.race([
-      Promise.all(urls.map((url) => loader.load(url, { signal }))),
+      Promise.all(
+        urls.map(async (url, index) => {
+          try {
+            return await loader.load(url, { signal })
+          } catch (error) {
+            if (options.signal?.aborted) throw options.signal.reason
+            // Capture the source and its diagnostics before finally cancels siblings.
+            throw new ArticleSourceUrlError(normalizeUrlFailure(error, url), index + 1)
+          }
+        }),
+      ),
       new Promise<never>((_, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+        onAbort = () => {
+          if (options.signal?.aborted) {
+            reject(options.signal.reason)
+            return
+          }
+          // Allow cooperative loaders to retain their attempts and source position.
+          // An abort-ignoring loader still stops waiting after this event-loop turn.
+          abortFallback = setImmediate(() => reject(timeoutFailure()))
+        }
+        signal.addEventListener("abort", onAbort, { once: true })
+        if (signal.aborted) onAbort()
       }),
     ])
+    if (options.signal?.aborted) throw options.signal.reason
+    if (signal.aborted) throw timeoutFailure()
     const share = Math.floor(options.maxChars / results.length)
     const allocated = results.map((result) => Math.min(share, result.text.length))
     let remaining = options.maxChars - allocated.reduce((sum, chars) => sum + chars, 0)
@@ -98,6 +149,8 @@ export async function loadArticleSourceUrls(
       }
     })
   } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort)
+    if (abortFallback) clearImmediate(abortFallback)
     controller.abort()
   }
 }

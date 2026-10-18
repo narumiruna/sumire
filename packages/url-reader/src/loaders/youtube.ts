@@ -1,4 +1,4 @@
-import { LoaderContentError } from "../core/errors.js"
+import { type FailureCode, FailureDiagnosticError } from "../core/errors.js"
 import type { Loader } from "../core/loader.js"
 import { parseYouTubeVideoTarget, requireLoaderApplicability } from "../sources/applicability.js"
 
@@ -43,8 +43,12 @@ export class YouTubeLoader implements Loader {
       url,
       parseYouTubeVideoTarget,
     ).videoId
-    const { fetchTranscript } = await import("youtube-transcript")
-    const failures: unknown[] = []
+    const {
+      fetchTranscript,
+      YoutubeTranscriptDisabledError,
+      YoutubeTranscriptNotAvailableLanguageError,
+    } = await import("youtube-transcript")
+    let code: FailureCode = "caption_extraction_failed"
     for (const language of [...this.languages, undefined]) {
       signal?.throwIfAborted()
       try {
@@ -55,18 +59,20 @@ export class YouTubeLoader implements Loader {
           .filter(Boolean)
           .join("\n")
         if (result) return result
+        code = "captions_empty"
       } catch (error) {
         signal?.throwIfAborted()
-        failures.push(error)
+        // DisabledError is also used when no caption tracks were obtained. It does not
+        // establish an author setting. NotAvailableError includes ambiguous HTTP failures.
+        code =
+          error instanceof YoutubeTranscriptDisabledError
+            ? "captions_unavailable"
+            : error instanceof YoutubeTranscriptNotAvailableLanguageError
+              ? "caption_language_unavailable"
+              : "caption_extraction_failed"
       }
     }
-    const last = failures.at(-1)
-    throw new LoaderContentError(
-      "YouTubeLoader",
-      url,
-      `Failed to fetch transcript: ${String(last ?? "Transcript is empty")}`,
-      "The video may not have captions available, or captions may be disabled.",
-    )
+    throw new FailureDiagnosticError("YouTubeLoader", url, { code, phase: "captions" })
   }
 }
 

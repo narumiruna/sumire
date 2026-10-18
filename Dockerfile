@@ -208,6 +208,9 @@ RUN --network=none node /app/apps/bot/scripts/check-browser.mjs
 # Check Chrome fingerprint compatibility offline, using the runtime user's library.
 RUN --network=none node /app/apps/bot/scripts/check-curl-impersonate.mjs
 
+# Verify URL diagnostics and installed media tools without external requests or model downloads.
+RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs
+
 # Fail the build if Git or SSH tools are unavailable to the bot user.
 RUN git --version && ssh -V && command -v ssh-keygen
 

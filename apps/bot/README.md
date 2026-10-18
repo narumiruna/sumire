@@ -309,6 +309,20 @@ Both the tool and `/f` enable a final generic Firecrawl fallback (30-second cap)
 
 Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `read_url_content`; the Telegram router does not prefetch URLs or retain pending URL state. For URL-only messages, the system prompt instructs the agent to read the URL in the current message first and not substitute an older or unrelated page. Tool results and follow-up context use Pi Durable's conversation lifecycle.
 
+### URL failure messages
+
+`/f` reports the failed source by its position in the input. It uses the same safe failure facts as `read_url_content` and diagnostic logs. A failure does not submit an incomplete article to Pi or publish it. Ordinary URL tool failures return `isError: true` with structured details; Pi uses those details to answer the user.
+
+Messages distinguish unavailable captions, caption extraction failure, media limits, missing server tools, phase timeouts, overall deadline expiry, source HTTP errors, and unknown failures. Missing caption tracks mean that this request obtained no usable captions, not proof that the author disabled them. A source HTTP 403 means that the source refused this request, not proof that the URL is private. Unknown failures explicitly state that the cause could not be determined.
+
+Audio fallback accepts media up to 3,600 seconds and 100 MiB. Validated numeric metadata can establish a duration rejection before download. Metadata loading and download share the existing 120-second download budget; all phases remain subject to the bot's 180-second total URL deadline. An absent audio file is not evidence of a duration rejection. A total timeout does not imply a Whisper timeout.
+
+For example, when no captions were obtained and metadata confirms a 5,198-second video, `/f` reports both facts: `無法載入第 1 個來源：未取得可用字幕；音訊轉錄備援僅支援 1 小時內的影片，這支影片長 1 小時 26 分 38 秒。請提供逐字稿或較短的來源。`
+
+User messages and URL failure diagnostics exclude raw upstream errors, command stderr, local paths, source URLs, and credentials. Logs retain allowlisted loader IDs, phase codes, elapsed time, numeric facts, and keyed URL fingerprints. Skipped optional fallbacks do not change the displayed reason or next action. Cancellation and reset keep their existing responses. Logfire receives redacted text through a fixed message template, so braces in structured details cannot be interpreted as template fields.
+
+The production image build runs `apps/bot/scripts/check-url-failures.mjs` with networking disabled. This checks caption success, unavailable captions, the installed yt-dlp JSON template against local metadata, confirmed duration rejection, the Telegram message, the Pi error result, and the installed Whisper CLI. It does not start the bot, contact Telegram, or download model weights.
+
 ## Docker
 
 Build and run from the repository root so the Dockerfile can copy `apps/bot/` and `instructions/`:

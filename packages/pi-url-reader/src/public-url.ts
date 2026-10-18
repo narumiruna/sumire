@@ -13,6 +13,8 @@ import {
 import ipaddr from "ipaddr.js"
 import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
 
+import { PublicUrlError, type SafeFailureDiagnostic, sanitizeUrlAttempts } from "./url-failure.js"
+
 const redirectStatuses = new Set([301, 302, 303, 307, 308])
 const acceptedContentTypes = [
   "text/",
@@ -69,7 +71,7 @@ export interface LoadedUrl {
   status?: number
   loaderId?: string
   attempts?: readonly (Pick<AttemptRecord, "loaderId" | "status" | "errorType" | "errorCode"> &
-    Partial<Pick<AttemptRecord, "elapsedSeconds">>)[]
+    Partial<Pick<AttemptRecord, "elapsedSeconds">> & { diagnostic?: SafeFailureDiagnostic })[]
 }
 
 export interface FetchedUrl {
@@ -141,11 +143,12 @@ export async function loadPublicUrl(
   const validationSignal = options.signal
     ? AbortSignal.any([options.signal, validationTimeout])
     : validationTimeout
-  await assertPublicUrl(
-    urlValue,
-    options.allowedSchemes,
-    options.resolve ?? lookup,
-    validationSignal,
+  await withPhaseTimeout(
+    assertPublicUrl(urlValue, options.allowedSchemes, options.resolve ?? lookup, validationSignal),
+    validationTimeout,
+    options.signal,
+    options.timeoutMs,
+    "validation",
   )
 
   if (options.loader === BUILT_IN_URL_LOADER) {
@@ -203,7 +206,8 @@ async function loadSourceUrl(
   })
   assertWithinBudget(options)
   const content = result.content.trim()
-  if (!content) throw new Error("URL content loader returned no content")
+  if (!content)
+    throw new PublicUrlError("empty_content", "URL content loader returned no content", "loading")
   if (
     isThreadsShareUrl(urlValue) &&
     (result.loaderId !== "threads" || result.contentType !== "social_post")
@@ -225,13 +229,18 @@ async function loadSourceUrl(
       : content,
     truncated,
     loaderId: result.loaderId,
-    attempts: result.attempts.map(({ loaderId, status, elapsedSeconds, errorType, errorCode }) => ({
-      loaderId,
-      status,
-      elapsedSeconds,
-      ...(errorType ? { errorType } : {}),
-      ...(errorCode ? { errorCode } : {}),
-    })),
+    attempts: result.attempts.map(
+      ({ loaderId, status, elapsedSeconds, errorType, errorCode, diagnostic }) => ({
+        loaderId,
+        status,
+        elapsedSeconds,
+        ...(errorType ? { errorType } : {}),
+        ...(errorCode ? { errorCode } : {}),
+        ...(diagnostic
+          ? { diagnostic: sanitizeUrlAttempts([{ loaderId, status, diagnostic }])[0]?.diagnostic }
+          : {}),
+      }),
+    ),
   }
 }
 
@@ -243,43 +252,69 @@ export async function fetchPublicUrl(
     options.fetchImplementation ?? (undiciFetch as unknown as UrlFetchImplementation)
   const timeoutSignal = AbortSignal.timeout(options.timeoutMs)
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal
+  const withTimeout = <T>(operation: Promise<T>) =>
+    withPhaseTimeout(operation, timeoutSignal, options.signal, options.timeoutMs, "loading")
   let currentValue = urlValue
 
   for (let redirects = 0; redirects <= 5; redirects += 1) {
-    const current = await resolvePublicUrl(
-      currentValue,
-      options.allowedSchemes,
-      options.resolve ?? lookup,
-      signal,
+    const current = await withTimeout(
+      resolvePublicUrl(currentValue, options.allowedSchemes, options.resolve ?? lookup, signal),
     )
     const dispatcher = new Agent({ connect: { lookup: createPinnedLookup(current.addresses) } })
     try {
-      const response = await fetchImplementation(current.url, {
-        dispatcher,
-        headers: { "user-agent": "telegramagent/0.0 (+public URL text loader)" },
-        redirect: "manual",
-        signal,
-      })
+      const response = await withTimeout(
+        fetchImplementation(current.url, {
+          dispatcher,
+          headers: { "user-agent": "telegramagent/0.0 (+public URL text loader)" },
+          redirect: "manual",
+          signal,
+        }),
+      )
       if (redirectStatuses.has(response.status)) {
         await response.body?.cancel()
-        if (redirects === 5) throw new Error("URL exceeded the redirect limit")
+        if (redirects === 5)
+          throw new PublicUrlError("redirect_limit", "URL exceeded the redirect limit", "loading")
         const location = response.headers.get("location")
-        if (!location) throw new Error("URL redirect did not include a Location header")
-        currentValue = new URL(location, current.url).toString()
+        if (!location)
+          throw new PublicUrlError(
+            "invalid_url",
+            "URL redirect did not include a Location header",
+            "loading",
+          )
+        try {
+          currentValue = new URL(location, current.url).toString()
+        } catch {
+          throw new PublicUrlError("invalid_url", "URL redirect target is invalid", "loading")
+        }
         continue
       }
       if (!response.ok) {
         await response.body?.cancel()
-        throw new Error(`URL returned HTTP ${response.status}`)
+        throw new PublicUrlError(
+          "target_http_error",
+          `URL returned HTTP ${response.status}`,
+          "loading",
+          {
+            code: "target_http_error",
+            phase: "loading",
+            httpStatus: response.status,
+          },
+        )
       }
 
       const contentType =
         (response.headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase() ?? ""
       if (!acceptedContentTypes.some((accepted) => contentType.startsWith(accepted))) {
         await response.body?.cancel()
-        throw new Error(`URL returned unsupported content type: ${contentType || "unknown"}`)
+        throw new PublicUrlError(
+          "unsupported_content_type",
+          "URL returned unsupported content type",
+          "loading",
+        )
       }
-      const bytes = await readBoundedBody(response, Math.max(options.maxChars * 4, 64_000))
+      const bytes = await withTimeout(
+        readBoundedBody(response, Math.max(options.maxChars * 4, 64_000)),
+      )
       const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes)
       const title = contentType.includes("html") ? htmlTitle(decoded) : undefined
       const extracted = contentType.includes("html") ? htmlToText(decoded) : decoded.trim()
@@ -297,7 +332,7 @@ export async function fetchPublicUrl(
       await dispatcher.close()
     }
   }
-  throw new Error("URL loader ended unexpectedly")
+  throw new PublicUrlError("unknown", "URL loader ended unexpectedly", "loading")
 }
 
 export async function assertPublicUrl(
@@ -315,15 +350,18 @@ async function resolvePublicUrl(
   resolve: PublicUrlResolver,
   signal?: AbortSignal,
 ): Promise<ResolvedPublicUrl> {
+  signal?.throwIfAborted()
   let url: URL
   try {
     url = new URL(urlValue)
   } catch {
-    throw new Error("URL is invalid")
+    throw new PublicUrlError("invalid_url", "URL is invalid")
   }
   const scheme = url.protocol.replace(/:$/, "").toLowerCase()
-  if (!allowedSchemes.has(scheme)) throw new Error(`URL scheme is not allowed: ${scheme}`)
-  if (url.username || url.password) throw new Error("URL credentials are not allowed")
+  if (!allowedSchemes.has(scheme))
+    throw new PublicUrlError("unsafe_url", "URL scheme is not allowed")
+  if (url.username || url.password)
+    throw new PublicUrlError("unsafe_url", "URL credentials are not allowed")
   const hostname = normalizeHostname(url.hostname)
   if (
     !hostname ||
@@ -331,18 +369,21 @@ async function resolvePublicUrl(
     hostname.endsWith(".localhost") ||
     hostname.endsWith(".local")
   ) {
-    throw new Error("Local URL targets are not allowed")
+    throw new PublicUrlError("unsafe_url", "Local URL targets are not allowed")
   }
 
   const family = isIP(hostname)
   if (family) {
     if (!isPublicIp(hostname))
-      throw new Error("Private or non-routable URL targets are not allowed")
+      throw new PublicUrlError("unsafe_url", "Private or non-routable URL targets are not allowed")
     return { url, addresses: [{ address: hostname, family }] }
   }
   const addresses = await withAbortSignal(resolve(hostname, { all: true, verbatim: true }), signal)
   if (addresses.length === 0 || addresses.some((entry) => !isPublicIp(entry.address))) {
-    throw new Error("URL hostname resolved to a private or non-routable address")
+    throw new PublicUrlError(
+      "unsafe_url",
+      "URL hostname resolved to a private or non-routable address",
+    )
   }
   return { url, addresses }
 }
@@ -382,6 +423,30 @@ export function isPublicIp(address: string): boolean {
   return ipaddr.process(address).range() === "unicast"
 }
 
+async function withPhaseTimeout<T>(
+  operation: Promise<T>,
+  timeout: AbortSignal,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  phase: "loading" | "validation",
+): Promise<T> {
+  try {
+    return await operation
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (timeout.aborted) {
+      const failure = new PublicUrlError("loader_timeout", "URL loading phase timed out", phase, {
+        code: "loader_timeout",
+        phase,
+        limit: timeoutMs / 1_000,
+      })
+      failure.name = "TimeoutError"
+      throw failure
+    }
+    throw error
+  }
+}
+
 function withAbortSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return operation
   if (signal.aborted)
@@ -409,7 +474,12 @@ function withAbortSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promis
 async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
   const declaredLength = Number(response.headers.get("content-length"))
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes)
-    throw new Error("URL response is too large")
+    throw new PublicUrlError("response_size_limit", "URL response is too large", "loading", {
+      code: "response_size_limit",
+      phase: "loading",
+      limit: maxBytes,
+      observed: declaredLength,
+    })
   if (!response.body) return new Uint8Array()
 
   const reader = response.body.getReader()
@@ -421,7 +491,12 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<Ui
     total += value.byteLength
     if (total > maxBytes) {
       await reader.cancel()
-      throw new Error("URL response is too large")
+      throw new PublicUrlError("response_size_limit", "URL response is too large", "loading", {
+        code: "response_size_limit",
+        phase: "loading",
+        limit: maxBytes,
+        observed: total,
+      })
     }
     chunks.push(value)
   }

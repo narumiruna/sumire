@@ -391,7 +391,7 @@ describe("createPiSessionFactory", () => {
           undefined,
           undefined as never,
         ),
-      ).rejects.toThrow("URL scheme is not allowed: http")
+      ).resolves.toMatchObject({ isError: true, details: { code: "unsafe_url" } })
       expect(spans).toEqual([
         {
           name: "url.load",
@@ -400,7 +400,8 @@ describe("createPiSessionFactory", () => {
             "url.requested_loader": "auto",
             "pi.tool_call_id": "url-call",
             "url.outcome": "error",
-            "url.error_type": "Error",
+            "url.error_code": "unsafe_url",
+            "url.diagnostic": JSON.stringify({ code: "unsafe_url", phase: "validation" }),
           },
         },
       ])

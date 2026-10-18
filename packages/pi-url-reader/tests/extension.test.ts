@@ -33,7 +33,7 @@ describe("URL tool Pi package", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("Private")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unsafe_url" } })
   })
 
   it("accepts host configuration and exposes only its loader allowlist", async () => {
@@ -51,7 +51,7 @@ describe("URL tool Pi package", () => {
     expect(loaderSchema.enum).toEqual(["built-in", "httpx"])
     await expect(
       tool.execute("scheme", { url: "http://8.8.8.8/" }, undefined, undefined, undefined as never),
-    ).rejects.toThrow("URL scheme is not allowed: http")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unsafe_url" } })
   })
 
   it("forwards approved loader selections and cancellation in an options object", async () => {
@@ -86,7 +86,7 @@ describe("URL tool Pi package", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("URL loader is not selectable: firecrawl")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unknown" } })
     expect(load).not.toHaveBeenCalled()
   })
 
@@ -102,7 +102,7 @@ describe("URL tool Pi package", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("URL loader must be a string")
+    ).resolves.toMatchObject({ isError: true, details: { code: "unknown" } })
     expect(load).not.toHaveBeenCalled()
   })
 
@@ -112,8 +112,8 @@ describe("URL tool Pi package", () => {
     ).toThrow("Unknown loader: definitely-not-a-loader")
   })
 
-  it("propagates loader failures through Pi's tool error path", async () => {
-    const error = new Error("URL loading failed")
+  it("returns safe structured failures through Pi's tool error result contract", async () => {
+    const error = new Error("URL loading failed: secret-token https://user:password@127.0.0.1/")
     const tool = createUrlTool({
       load: async () => {
         throw error
@@ -127,7 +127,11 @@ describe("URL tool Pi package", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toBe(error)
+    ).resolves.toMatchObject({
+      isError: true,
+      details: { code: "unknown", attempts: [] },
+      content: [{ type: "text", text: '{"code":"unknown","attempts":[]}' }],
+    })
   })
 
   it("loads the compiled extension and bundled skill through its Pi manifest", async () => {

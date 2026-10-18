@@ -1,3 +1,5 @@
+import type { FailureDiagnostic } from "./errors.js"
+
 export const AttemptStatus = {
   Success: "success",
   Failed: "failed",
@@ -17,6 +19,7 @@ export interface AttemptRecord {
   elapsedSeconds: number
   errorType?: string
   errorCode?: string
+  diagnostic?: FailureDiagnostic
   message?: string
 }
 
@@ -35,6 +38,7 @@ export function attemptRecordToObject(record: AttemptRecord): Record<string, unk
     elapsed_seconds: record.elapsedSeconds,
     error_type: record.errorType ?? null,
     error_code: record.errorCode ?? null,
+    diagnostic: record.diagnostic ? { ...record.diagnostic } : null,
     message: record.message ?? null,
   }
 }

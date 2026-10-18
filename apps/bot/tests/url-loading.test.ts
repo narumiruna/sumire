@@ -6,7 +6,10 @@ import { createBotUrlLoader } from "../src/url-loader.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const mocks = vi.hoisted(() => ({ fetchTranscript: vi.fn(), lookup: vi.fn() }))
-vi.mock("youtube-transcript", () => ({ fetchTranscript: mocks.fetchTranscript }))
+vi.mock("youtube-transcript", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("youtube-transcript")>()),
+  fetchTranscript: mocks.fetchTranscript,
+}))
 vi.mock("node:dns/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:dns/promises")>()
   return { ...original, lookup: mocks.lookup }
@@ -69,6 +72,26 @@ describe("shared bot URL loading", () => {
     await expect(
       loadArticleSourceUrls(url, loader, { maxChars: 12_000, timeoutMs: 5_000, signal }),
     ).rejects.toThrow("cancelled")
+    expect(mocks.fetchTranscript).not.toHaveBeenCalled()
+  })
+
+  it("preserves a structured tool failure through durable storage and the next model turn", async () => {
+    const fixture = await createPiFixture()
+    fixtures.push(fixture)
+    const session = await fixture.createSession()
+    const result = await fixture.call(session, "read_url_content", {
+      url: "http://127.0.0.1/?token=secret",
+    })
+    expect(result.isError).toBe(true)
+    expect(result.details).toMatchObject({ code: "unsafe_url" })
+    const text = toolResultText(result)
+    expect(text).toContain("unsafe_url")
+    expect(text).not.toMatch(/127\.0\.0\.1|token=secret/u)
+    const nextToolMessage = fixture.requests[1]?.messages
+      .filter((message) => message.role === "tool")
+      .at(-1)
+    expect(JSON.stringify(nextToolMessage)).toContain("unsafe_url")
+    expect(JSON.stringify(nextToolMessage)).not.toContain("token=secret")
     expect(mocks.fetchTranscript).not.toHaveBeenCalled()
   })
 

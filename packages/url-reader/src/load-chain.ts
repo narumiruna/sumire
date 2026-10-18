@@ -1,5 +1,7 @@
 import {
+  type FailureDiagnostic,
   FirecrawlApiHttpError,
+  getFailureDiagnostic,
   LoaderContentError,
   LoaderError,
   LoaderNotApplicableError,
@@ -119,6 +121,7 @@ export class LoadChain {
           status: AttemptStatus.Skipped,
           elapsedSeconds: 0,
           errorType: "MissingRequirementError",
+          diagnostic: { code: "configuration_missing" },
           message,
         })
         continue
@@ -131,6 +134,7 @@ export class LoadChain {
           status: AttemptStatus.Timeout,
           elapsedSeconds: 0,
           errorType: "TimeoutError",
+          diagnostic: { code: "deadline_exceeded", phase: "loading" },
           message: "Deadline expired",
         })
         errors.push(`${plannedLoaderName}: Deadline expired before attempt`)
@@ -227,6 +231,13 @@ export class LoadChain {
             started,
             signal.reason instanceof Error ? signal.reason : undefined,
             "Load interrupted",
+            {
+              code:
+                signal.reason instanceof DOMException && signal.reason.name === "TimeoutError"
+                  ? "deadline_exceeded"
+                  : "cancelled",
+              phase: "loading",
+            },
           )
           throw signal.reason
         }
@@ -288,14 +299,21 @@ function appendAttempt(
   started: number,
   error?: Error,
   message?: string,
+  diagnostic?: FailureDiagnostic,
 ): void {
   const errorCode = error ? classifyFailure(error) : undefined
+  diagnostic ??= error
+    ? getFailureDiagnostic(error)
+    : status === AttemptStatus.Empty
+      ? { code: "empty_content", phase: "loading" }
+      : undefined
   recordAttempt({
     loaderId,
     status,
     elapsedSeconds: Math.round(Math.max(0, performance.now() - started) * 1_000) / 1_000_000,
     ...(error ? { errorType: error.name } : {}),
     ...(errorCode ? { errorCode } : {}),
+    ...(diagnostic ? { diagnostic } : {}),
     ...(message ? { message } : {}),
   })
 }
@@ -304,6 +322,7 @@ function classifyFailure(error: Error): string | undefined {
   if (error instanceof FirecrawlApiHttpError) return `firecrawl_api_http_${error.status}`
   if (error instanceof TargetHttpError) return `target_http_${error.status}`
   if (error instanceof LoaderContentError && error.loaderName === "CurlCffiLoader") {
+    // Preserve the legacy provenance code; new factual diagnostics are independent.
     const cause = error.cause
     if (
       cause instanceof Error &&

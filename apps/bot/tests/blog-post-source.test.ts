@@ -1,6 +1,8 @@
 import type { LoadedUrl, PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
+import { FailureDiagnosticError, resolveExplicitLoadChain } from "@narumitw/sumire-url-reader"
 import { describe, expect, it, vi } from "vitest"
 import {
+  ArticleSourceUrlError,
   ArticleUrlBudgetError,
   loadArticleSourceUrls,
   TooManyArticleUrlsError,
@@ -189,8 +191,61 @@ describe("article source URLs", () => {
           timeoutMs: 1_000,
         },
       ),
-    ).rejects.toThrow("unavailable")
+    ).rejects.toMatchObject({
+      sourceIndex: 1,
+      failure: { code: "unknown" },
+    })
     expect(pendingSignal?.aborted).toBe(true)
+  })
+
+  it("preserves the failing second source before cancelling the first source", async () => {
+    let siblingCancelled = false
+    const load: PublicUrlLoader["load"] = vi.fn(async (url, options) => {
+      if (url.endsWith("/bad")) throw new Error("sensitive upstream details")
+      return new Promise<LoadedUrl>((_, reject) => {
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            siblingCancelled = true
+            reject(options.signal?.reason)
+          },
+          { once: true },
+        )
+      })
+    })
+    const failure = await loadArticleSourceUrls(
+      "https://example.com/pending https://example.com/bad",
+      { load },
+      { maxChars: 12_000, timeoutMs: 1_000 },
+    ).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(ArticleSourceUrlError)
+    expect(failure).toMatchObject({ sourceIndex: 2, failure: { code: "unknown" } })
+    expect(siblingCancelled).toBe(true)
+    expect(JSON.stringify(failure)).not.toContain("sensitive")
+  })
+
+  it("preserves a custom caller cancellation reason", async () => {
+    const controller = new AbortController()
+    const reason = new Error("user cancellation")
+    const load: PublicUrlLoader["load"] = vi.fn(
+      async (_url, options) =>
+        new Promise<LoadedUrl>((_, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+            once: true,
+          })
+        }),
+    )
+    const pending = loadArticleSourceUrls(
+      "https://example.com/slow",
+      { load },
+      {
+        maxChars: 100,
+        timeoutMs: 1_000,
+        signal: controller.signal,
+      },
+    )
+    controller.abort(reason)
+    await expect(pending).rejects.toBe(reason)
   })
 
   it("stops waiting when a caller cancels even if a loader ignores abort", async () => {
@@ -209,6 +264,50 @@ describe("article source URLs", () => {
     await expect(pending).rejects.toThrow()
   })
 
+  it("retains completed caption failures when the shared deadline interrupts audio fallback", async () => {
+    const entered = vi.fn()
+    const target = "https://example.com/video"
+    const chain = resolveExplicitLoadChain(target, ["youtube", "youtube-ytdlp"], {
+      getFactory: (name) => () => ({
+        load: async () => {
+          if (name === "youtube")
+            throw new FailureDiagnosticError("YouTubeLoader", target, {
+              code: "captions_unavailable",
+              phase: "captions",
+            })
+          entered()
+          return new Promise<string>(() => {})
+        },
+      }),
+    })
+    const result = loadArticleSourceUrls(
+      "https://example.com/ignores-abort https://example.com/video",
+      {
+        load: async (url, options) => {
+          if (url !== target) return new Promise<LoadedUrl>(() => {})
+          await chain.loadDetailed(options?.signal)
+          throw new Error("unreachable")
+        },
+      },
+      { maxChars: 100, timeoutMs: 100 },
+    )
+    await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce())
+    await expect(result).rejects.toMatchObject({
+      sourceIndex: 2,
+      failure: {
+        code: "deadline_exceeded",
+        attempts: [
+          { loaderId: "youtube", diagnostic: { code: "captions_unavailable" } },
+          {
+            loaderId: "youtube-ytdlp",
+            status: "timeout",
+            diagnostic: { code: "deadline_exceeded" },
+          },
+        ],
+      },
+    })
+  })
+
   it("applies one deadline to all four sources and rejects late results", async () => {
     const signals: (AbortSignal | undefined)[] = []
     const finishes: ((value: LoadedUrl) => void)[] = []
@@ -222,7 +321,10 @@ describe("article source URLs", () => {
         { load },
         { maxChars: 100, timeoutMs: 10 },
       ),
-    ).rejects.toMatchObject({ name: "TimeoutError" })
+    ).rejects.toMatchObject({
+      name: "ArticleSourceUrlError",
+      failure: { code: "deadline_exceeded" },
+    })
     expect(load).toHaveBeenCalledTimes(4)
     expect(new Set(signals).size).toBe(1)
     expect(signals.every((signal) => signal?.aborted)).toBe(true)
@@ -235,6 +337,25 @@ describe("article source URLs", () => {
         text: "late",
         truncated: false,
       })
+  })
+
+  it("rejects a late success delivered during the timeout event with a timeout diagnostic", async () => {
+    const load: PublicUrlLoader["load"] = async (url, options) =>
+      new Promise<LoadedUrl>((resolve) => {
+        options?.signal?.addEventListener("abort", () => resolve(loaded(url, "too late")), {
+          once: true,
+        })
+      })
+    await expect(
+      loadArticleSourceUrls(
+        "https://example.com/late",
+        { load },
+        {
+          maxChars: 100,
+          timeoutMs: 10,
+        },
+      ),
+    ).rejects.toMatchObject({ sourceIndex: 1, failure: { code: "deadline_exceeded" } })
   })
 
   it("enforces a single deadline even if a URL loader ignores abort", async () => {

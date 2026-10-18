@@ -56,10 +56,10 @@ export interface LogfireClient {
     console: false
     nodeAutoInstrumentations: typeof safeNodeAutoInstrumentations
   }): void
-  debug(message: string): void
-  info(message: string): void
-  warning(message: string): void
-  error(message: string): void
+  debug(message: string, attributes?: Record<string, unknown>): void
+  info(message: string, attributes?: Record<string, unknown>): void
+  warning(message: string, attributes?: Record<string, unknown>): void
+  error(message: string, attributes?: Record<string, unknown>): void
   shutdown(options?: { timeoutMillis?: number }): Promise<void>
   span?: <T>(
     name: string,
@@ -117,10 +117,12 @@ export function createLogger(
     process.stderr.write(`${new Date().toISOString()} | ${level} | ${redacted}\n`)
     if (!logfireEnabled) return
     try {
-      if (level === "DEBUG") logfireClient.debug(redacted)
-      else if (level === "INFO") logfireClient.info(redacted)
-      else if (level === "WARN") logfireClient.warning(redacted)
-      else logfireClient.error(redacted)
+      // Keep inspected braces and external text out of the SDK's message template.
+      const attributes = { message: redacted }
+      if (level === "DEBUG") logfireClient.debug("{message}", attributes)
+      else if (level === "INFO") logfireClient.info("{message}", attributes)
+      else if (level === "WARN") logfireClient.warning("{message}", attributes)
+      else logfireClient.error("{message}", attributes)
     } catch (error) {
       writeLocal("WARN", "Logfire write failed", error)
     }

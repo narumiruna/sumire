@@ -12,9 +12,13 @@ export {
 } from "./client.js"
 export {
   ConfigurationError,
+  type FailureCode,
+  type FailureDiagnostic,
+  FailureDiagnosticError,
   FirecrawlApiHttpError,
   FirecrawlApiKeyNotSetError,
   FirecrawlApiKeyNotSetError as FirecrawlAPIKeyNotSetError,
+  getFailureDiagnostic,
   InvalidUrlError,
   InvalidUrlError as InvalidURLError,
   LoaderContentError,
