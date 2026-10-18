@@ -1,5 +1,15 @@
 # @narumitw/sumire
 
+## 0.12.2
+
+### Patch Changes
+
+- 1823bd5: Use the shared policy resolver in the administration editor, replace the bot's legacy session representation with explicit checkpoint and passive-context operations, and share MCP revision transactions and market batch-result handling without changing external behavior.
+- 5193918: Report safe, structured URL failure reasons across Telegram article loading, URL tools, and diagnostic logs. Preserve caption and audio fallback failures, confirm media duration limits from bounded metadata, and distinguish phase timeouts, missing tools, source refusal, and unknown failures without exposing upstream text or credentials.
+- Updated dependencies [5193918]
+  - @narumitw/sumire-url-reader@0.25.1
+  - @narumitw/sumire-pi-url-reader@0.6.1
+
 ## 0.12.1
 
 ### Patch Changes

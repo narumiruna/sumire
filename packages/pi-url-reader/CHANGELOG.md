@@ -1,5 +1,13 @@
 # @narumitw/sumire-pi-url-reader
 
+## 0.6.1
+
+### Patch Changes
+
+- 5193918: Report safe, structured URL failure reasons across Telegram article loading, URL tools, and diagnostic logs. Preserve caption and audio fallback failures, confirm media duration limits from bounded metadata, and distinguish phase timeouts, missing tools, source refusal, and unknown failures without exposing upstream text or credentials.
+- Updated dependencies [5193918]
+  - @narumitw/sumire-url-reader@0.25.1
+
 ## 0.6.0
 
 ### Minor Changes

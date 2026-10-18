@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -39,8 +39,8 @@
     "@narumitw/sumire-contracts": "0.3.0",
     "@narumitw/sumire-policy": "0.3.0",
     "@narumitw/sumire-progress": "0.3.0",
-    "@narumitw/sumire-url-reader": "0.25.0",
-    "@narumitw/sumire-pi-url-reader": "0.6.0",
+    "@narumitw/sumire-url-reader": "0.25.1",
+    "@narumitw/sumire-pi-url-reader": "0.6.1",
     "@narumitw/sumire-pi-polymarket": "0.2.0",
     "@pydantic/logfire-node": "0.18.27",
     "@simplewebauthn/server": "14.0.3",
