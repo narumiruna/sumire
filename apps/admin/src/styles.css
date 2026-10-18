@@ -375,9 +375,6 @@ html {
   border-top: 1px solid var(--slate-5);
   padding-top: 12px;
 }
-.directory-footer .configure-id {
-  margin: 12px 0 0;
-}
 .chat-list strong {
   min-width: 0;
   display: -webkit-box;
@@ -550,6 +547,9 @@ html {
 .permission-details {
   margin: 20px 0;
   font-size: var(--font-size-2);
+}
+.directory-footer .configure-id {
+  margin: 12px 0 0;
 }
 .permission-details li {
   margin: 8px 0;

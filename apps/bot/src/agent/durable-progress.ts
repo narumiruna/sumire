@@ -49,7 +49,7 @@ export function createProgressExtension(authorize: () => void = () => {}) {
           }, context)
           const completed = details.steps.filter((step) => step.status === "completed").length
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text: details.steps.length

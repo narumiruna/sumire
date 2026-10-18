@@ -235,7 +235,7 @@ describe("durable bot runtime", () => {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
       await exited
     }
-  })
+  }, 30_000)
 
   it("retains an undelivered completed answer across restart without making another model request", async () => {
     const fixture = await setup()

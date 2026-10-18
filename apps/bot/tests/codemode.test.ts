@@ -39,9 +39,23 @@ describe("Bot codemode policy", () => {
     const timers = vi.spyOn(globalThis, "setTimeout")
     const bounded = await registeredTool(createBotCodemodeExtension(300_000))
     expect(timers).not.toHaveBeenCalled()
-    const { execute: _nativeExecute, prepareLoadout: nativeLoadout, ...nativeMetadata } = native
-    const { execute: _boundedExecute, prepareLoadout: boundedLoadout, ...boundedMetadata } = bounded
+    const {
+      execute: _nativeExecute,
+      prepareLoadout: nativeLoadout,
+      reachesTools: nativeReachesTools,
+      ...nativeMetadata
+    } = native
+    const {
+      execute: _boundedExecute,
+      prepareLoadout: boundedLoadout,
+      reachesTools: boundedReachesTools,
+      ...boundedMetadata
+    } = bounded
     expect(boundedMetadata).toEqual(nativeMetadata)
+    expect(boundedReachesTools).toBeTypeOf("function")
+    expect(boundedReachesTools?.({ code: "return 1" })).toEqual(
+      nativeReachesTools?.({ code: "return 1" }),
+    )
     const emptyLoadout: ToolLoadout = {
       declared: [],
       callable: [],

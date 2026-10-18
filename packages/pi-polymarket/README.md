@@ -168,6 +168,6 @@ npm run typecheck --workspace @narumitw/sumire-pi-polymarket
 npm run build --workspace @narumitw/sumire-pi-polymarket
 ```
 
-`generate` reads the pinned installed SDK declarations and updates `src/api.json` and `src/handles-api.json`. It checks coverage against both default action types. Tests check that these generated files match the installed SDK. Regenerate them when changing the SDK version. This workspace uses TypeScript 6 for its compiler API; other workspaces retain their existing compiler versions.
+`generate` reads the pinned installed SDK declarations and updates `src/api.json` and `src/handles-api.json`. It checks coverage against both default action types. Tests check that these generated files match the installed SDK. Regenerate them when changing the SDK version. The generator uses the compiler API exported by `ts-morph`. TypeScript 7 does not provide this API. Type checking and builds use the TypeScript 7 CLI.
 
 Tests use client doubles or construct a public client without sending requests. They do not authenticate, sign, approve, or submit live transactions.

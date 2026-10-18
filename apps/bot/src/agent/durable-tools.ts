@@ -43,8 +43,21 @@ export function adaptTool(tool: NativeTool) {
     prepareArguments: "prepareArguments" in tool ? tool.prepareArguments : undefined,
     async execute(args, api, context) {
       const result = await executeNative(tool, args, api.callId, context)
-      return jsonValue(result) as ToolExecutionResult
+      return durableToolResult(result)
     },
+  })
+}
+
+/** Map the coding-agent result to durable's model-output contract. */
+export function durableToolResult(
+  result: Awaited<ReturnType<NativeTool["execute"]>>,
+): ToolExecutionResult {
+  return jsonValue({
+    output: result.content,
+    details: result.details === undefined ? undefined : jsonValue(result.details),
+    isError: result.isError,
+    usage: result.usage,
+    control: result.terminate ? { terminate: true } : undefined,
   })
 }
 

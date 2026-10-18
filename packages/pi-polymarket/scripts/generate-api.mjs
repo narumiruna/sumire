@@ -1,16 +1,20 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, resolve } from "node:path"
-import ts from "typescript"
+import { Project, ts } from "ts-morph"
 
 const require = createRequire(import.meta.url)
 const entry = resolve(dirname(require.resolve("@polymarket/client")), "index.d.ts")
-const program = ts.createProgram([entry], {
-  skipLibCheck: true,
-  target: ts.ScriptTarget.ESNext,
-  module: ts.ModuleKind.NodeNext,
-  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+const project = new Project({
+  compilerOptions: {
+    skipLibCheck: true,
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  },
 })
+project.addSourceFileAtPath(entry)
+const program = project.getProgram().compilerObject
 const checker = program.getTypeChecker()
 const source = program.getSourceFile(entry)
 const exports = checker.getExportsOfModule(checker.getSymbolAtLocation(source))

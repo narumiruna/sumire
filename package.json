@@ -6,6 +6,13 @@
   "engines": {
     "node": ">=26"
   },
+  "allowScripts": {
+    "@google/genai": false,
+    "esbuild@0.28.2": true,
+    "fsevents": false,
+    "koffi@3.3.1": true,
+    "protobufjs": false
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

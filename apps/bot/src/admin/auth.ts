@@ -6,6 +6,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server"
+import { COSEALG } from "@simplewebauthn/server/helpers"
 import { AdminError, type AdminStore, digest, token } from "./store.js"
 
 export interface AdminConfig {
@@ -28,6 +29,8 @@ type Credential = {
   counter: number
   user_handle: string
 }
+// Use stable Web Crypto algorithms for both registration and verification.
+const supportedAlgorithmIDs = [COSEALG.EdDSA, COSEALG.ES256, COSEALG.RS256]
 const denied = () => new AdminError(403, "Passkey verification failed or expired")
 
 /** Called only after the Telegram transport verifies the private bootstrap administrator. */
@@ -95,6 +98,7 @@ export class PasskeyAdminLogin {
       rpID: this.rpID,
       userName: "Administrator",
       attestationType: "none",
+      supportedAlgorithmIDs,
       timeout: 60_000,
       authenticatorSelection: { residentKey: "required", userVerification: "required" },
     })
@@ -115,6 +119,7 @@ export class PasskeyAdminLogin {
         expectedOrigin: this.config.origin,
         expectedRPID: this.rpID,
         requireUserVerification: true,
+        supportedAlgorithmIDs,
       })
     } catch {
       throw denied()

@@ -4,14 +4,14 @@ import { isoCBOR } from "@simplewebauthn/server/helpers"
 
 export const passkeyOrigin = "https://admin.example.test"
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest()
-export function createPasskeyFixture() {
+export function createPasskeyFixture(algorithm = -7) {
   const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" })
   const jwk = keys.publicKey.export({ format: "jwk" })
   const id = randomBytes(32)
   const publicKey = isoCBOR.encode(
     new Map<number, number | Uint8Array>([
       [1, 2],
-      [3, -7],
+      [3, algorithm],
       [-1, 1],
       [-2, new Uint8Array(Buffer.from(jwk.x as string, "base64url"))],
       [-3, new Uint8Array(Buffer.from(jwk.y as string, "base64url"))],
