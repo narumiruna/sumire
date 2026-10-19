@@ -149,7 +149,7 @@ export function IdList({
               <Table.Cell>
                 <StatusBadge
                   status={savedValues.includes(id) ? "approved" : "pending"}
-                  style={{ whiteSpace: "normal" }}
+                  style={{ whiteSpace: "normal", overflowWrap: "normal" }}
                 >
                   {savedValues.includes(id) ? "Approved" : "Pending approval"}
                 </StatusBadge>

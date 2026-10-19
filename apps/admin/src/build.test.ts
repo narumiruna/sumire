@@ -14,7 +14,7 @@ it("builds the browser application without warnings and splits the React runtime
     throw new Error("Expected one production build output")
 
   const html = result.output.find((output) => output.fileName === "index.html")
-  if (!html || html.type !== "asset") throw new Error("Missing production HTML")
+  if (html?.type !== "asset") throw new Error("Missing production HTML")
   const icon = String(html.source).match(/<link[^>]*rel="icon"[^>]*href="([^"]+)"/)
   // The bot serves SVG only from its existing /assets allowlist, not the app root.
   expect(icon?.[1]).toMatch(/^\/assets\/[A-Za-z0-9_.-]+\.svg$/)
