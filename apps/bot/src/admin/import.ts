@@ -87,7 +87,7 @@ export async function importLegacyModels(store: AdminStore, root: string, runtim
     scanned++
     const id = Number(name)
     if (!Number.isSafeInteger(id) || id === 0 || String(id) !== name) continue
-    store.observe(id, id > 0 ? "private" : "group", name)
+    store.observe(id, id > 0 ? "private" : "group", name, "inferred")
     try {
       const value = await readLegacySelection(path.join(root, name, "durable/session.sqlite"))
       const split = value.model.indexOf("/")

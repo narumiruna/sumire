@@ -59,7 +59,9 @@ export function useNavigation() {
       setState((current) => ({ ...current, page }))
     },
     setChat: (chat: string) => {
-      window.history.replaceState(null, "", navigationHref(state.page, chat))
+      const href = navigationHref(state.page, chat)
+      if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
+        window.history.pushState(null, "", href)
       setState((current) => ({ ...current, chat }))
     },
   }

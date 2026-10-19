@@ -52,6 +52,28 @@ describe("admin navigation", () => {
     expect(navigationHref("Durable", "42", new URL(href))).toBe("/?section=Durable&chat=42")
     expect(navigationHref("Chats", "-100", new URL(href))).toBe("/?section=Chats&chat=-100")
   })
+  it("preserves all same-chat inspector fields but clears every old-chat field on selection", () => {
+    const source = new URL(
+      "https://example.com/admin?section=Durable&chat=-9001&view=documents&scope=task&conversationId=7&taskId=8&objectId=9&existing=1#details",
+    )
+    const same = new URL(navigationHref("Durable", "-9001", new URL(source)), source)
+    for (const key of ["view", "scope", "conversationId", "taskId", "objectId"])
+      expect(same.searchParams.get(key)).toBe(source.searchParams.get(key))
+    const changed = new URL(navigationHref("Durable", "-9002", new URL(source)), source)
+    expect(readNavigation(changed)).toEqual({ page: "Durable", chat: "-9002" })
+    for (const key of ["view", "scope", "conversationId", "taskId", "objectId"])
+      expect(changed.searchParams.has(key)).toBe(false)
+    expect(changed.pathname).toBe("/admin")
+    expect(changed.searchParams.get("existing")).toBe("1")
+    expect(changed.hash).toBe("#details")
+  })
+  it("accepts safe complete IDs at both numeric limits", () => {
+    for (const chat of ["9007199254740991", "-9007199254740991"]) {
+      const url = new URL(`https://example.com/admin?section=Durable&chat=${chat}`)
+      expect(readNavigation(url)).toEqual({ page: "Durable", chat })
+      expect(navigationHref("Chats", chat, url)).toBe(`/admin?section=Chats&chat=${chat}`)
+    }
+  })
   it("creates compatible same-path section links while retaining other URL state", () => {
     expect(
       navigationHref("Tool permissions", "42", new URL("https://example.com/?existing=1")),

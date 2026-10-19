@@ -58,3 +58,22 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Test administration browser flows
+        run: npm run test:browser --workspace @narumitw/sumire-admin
+      - name: Capture Durable comparison
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          node apps/admin/scripts/capture-durable-comparison.ts "$BASE_SHA" apps/admin/test-results/durable-comparison
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-browser-evidence
+          path: apps/admin/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

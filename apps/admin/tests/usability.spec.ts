@@ -110,6 +110,9 @@ async function fixture(page: Page) {
     fail: () => {
       status = "failed"
     },
+    pending: () => {
+      status = "pending"
+    },
     expire: () => {
       expire = true
     },
@@ -149,9 +152,10 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
 }) => {
   await fixture(page)
   const bar = page.getByRole("region", { name: "Save status and pending changes" })
-  const tour = async () => {
+  const tour = async (attention = true) => {
     for (const section of [
       "Chats",
+      "Durable",
       "Access",
       "Defaults",
       "Tool permissions",
@@ -160,6 +164,10 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
       "Audit",
     ]) {
       await navigate(page, section)
+      if (section === "Durable" && !attention) {
+        await expect(bar).toBeHidden()
+        continue
+      }
       await expect(bar).toBeVisible()
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
       const box = await bar.boundingBox()
@@ -168,7 +176,7 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
       expect(await bar.evaluate((element) => getComputedStyle(element).position)).toBe("sticky")
     }
   }
-  await tour()
+  await tour(false)
   await stageProvider(page)
   await expect(bar).toContainText("Provider: Unsaved")
   await tour()
@@ -191,6 +199,58 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
   await expect(bar).toContainText("Policy: No changes")
   await expect(bar).toContainText("MCP: Unsaved")
   await expect(bar).toContainText("Provider: Unsaved")
+})
+
+test("Durable retains unfinished editor input and shows save chrome until it is cleared", async ({
+  page,
+}) => {
+  await fixture(page)
+  await navigate(page, "Access")
+  const input = page.getByLabel("Private user ID to add", { exact: true })
+  await input.fill("1234")
+  await navigate(page, "Durable")
+  const bar = page.getByRole("region", { name: "Save status and pending changes" })
+  await expect(bar).toBeVisible()
+  await expect(bar).toContainText("Unstaged editor input")
+  await navigate(page, "Access")
+  await expect(input).toHaveValue("1234")
+  await input.clear()
+  await navigate(page, "Durable")
+  await expect(bar).toBeHidden()
+})
+
+test("Durable keeps pending or failed application and busy actions visible, then hides clean chrome", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  state.pending()
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await navigate(page, "Durable")
+  await expect(page.getByRole("region", { name: "Save status and pending changes" })).toContainText(
+    "Saved changes are waiting to apply.",
+  )
+  state.fail()
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await navigate(page, "Durable")
+  const bar = page.getByRole("region", { name: "Save status and pending changes" })
+  await expect(bar).toContainText("Saved, but application failed.")
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route("**/api/apply", async (route) => {
+    await gate
+    await route.fallback()
+  })
+  try {
+    await bar.getByRole("button", { name: "Retry application", exact: true }).click()
+    await expect(bar).toContainText("Saving or checking…")
+    await expect(bar.getByRole("button", { name: "Retry application", exact: true })).toBeDisabled()
+  } finally {
+    release()
+  }
+  await expect(bar).toBeHidden()
+  await expect(page.getByRole("heading", { name: "Durable", exact: true })).toBeVisible()
 })
 
 test("guided and advanced MCP edits share a draft and a redacted transport-aware preview", async ({

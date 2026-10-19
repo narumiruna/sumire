@@ -1,4 +1,5 @@
 import type {
+  DurableConversationItem,
   DurableInspectionItem,
   DurableInspectionResponse,
   DurableInspectionView,
@@ -98,6 +99,15 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
     failed: false,
     empty: false,
     documentLimit: false,
+    taskTruncated: false,
+    selectedConversation: conversations[0] as DurableConversationItem | null | undefined,
+    failures: new Map<DurableInspectionView, number>(),
+    taskItems: tasks,
+    chats: [
+      { id: 42, name: "Loaded chat", type: "private" },
+      { id: 43, name: "Idle chat", type: "private" },
+      { id: 44, name: "Unloaded chat", type: "private" },
+    ],
     requests: [] as URL[],
     methods: [] as string[],
     gates: new Map<string, Promise<void>>(),
@@ -120,6 +130,14 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         return
       }
       const view = url.searchParams.get("view") as DurableInspectionView
+      const failure = state.failures.get(view)
+      if (failure) {
+        await route.fulfill({
+          status: failure,
+          json: { error: failure === 403 ? "Forbidden" : "Read failed" },
+        })
+        return
+      }
       if (url.pathname.includes("/44/")) {
         await route.fulfill({
           json: {
@@ -133,7 +151,13 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         })
         return
       }
-      let items = { conversations, tasks, documents, entries }[view]
+      let items = { conversations, tasks: state.taskItems, documents, entries }[view]
+      if (view === "conversations")
+        items = items.map((item) =>
+          item.type === "conversation"
+            ? { ...item, active: item.id === state.selectedConversation?.id }
+            : item,
+        )
       if (url.pathname.includes("/43/") && view === "conversations")
         items = [{ type: "conversation", id: 17, active: false }]
       if (url.searchParams.has("cursor")) items = [{ type: "conversation", id: 9, active: false }]
@@ -189,13 +213,22 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         }
       }
       await route.fulfill({
-        json: response(
-          view,
-          state.empty ? [] : items,
-          view === "conversations" && !objectId && !url.searchParams.has("cursor")
+        json: response(view, state.empty ? [] : items, {
+          readAt: view === "tasks" ? "2026-10-19T12:00:01.000Z" : readAt,
+          ...(view === "tasks" && state.taskTruncated
+            ? { truncated: true, nextCursor: "task-history-cursor" }
+            : {}),
+          ...(view === "conversations"
+            ? {
+                selectedConversation: url.pathname.includes("/43/")
+                  ? null
+                  : state.selectedConversation,
+              }
+            : {}),
+          ...(view === "conversations" && !objectId && !url.searchParams.has("cursor")
             ? { nextCursor: "opaque+/=token", truncated: true }
-            : {},
-        ),
+            : {}),
+        }),
       })
       return
     }
@@ -217,11 +250,15 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         },
       },
       "/api/inventory": { tools: [], builtInTools: [], mcp: [], providers: [] },
-      "/api/chats": [
-        { id: 42, name: "Loaded chat", type: "private" },
-        { id: 43, name: "Idle chat", type: "private" },
-        { id: 44, name: "Unloaded chat", type: "private" },
-      ],
+      "/api/chats": url.searchParams.has("id")
+        ? state.chats.filter((chat) => String(chat.id) === url.searchParams.get("id"))
+        : state.chats.filter(
+            (chat) =>
+              !url.searchParams.get("q") ||
+              `${chat.name} ${chat.id}`
+                .toLowerCase()
+                .includes(url.searchParams.get("q")?.toLowerCase() ?? ""),
+          ),
       "/api/audit": [],
       "/api/imports": [],
     }

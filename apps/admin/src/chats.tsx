@@ -5,34 +5,25 @@ import { Badge, Button, Card, Flex, Heading, Tabs, Text, TextField } from "@radi
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
+import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
 import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
-export function chatName(chat: Chat) {
-  return chat.name?.trim() && chat.name !== String(chat.id)
-    ? chat.name
-    : `Unnamed ${chat.type || "chat"} ${chat.id}`
-}
+export { chatName } from "./chat-directory.js"
 function chatType(chat: Chat) {
   if (chat.type === "supergroup") return "group"
   return ["private", "group", "channel"].includes(chat.type) ? chat.type : "unknown"
 }
 
 export function ChatWorkspace({
-  chats,
-  knownChats,
+  directory,
   chat,
   onSelect,
   policy,
   savedPolicy,
   application,
   inventory,
-  offset,
-  loading,
-  error,
-  onPage,
-  onRetry,
   onAccess,
   onProviders,
   onTools,
@@ -42,19 +33,13 @@ export function ChatWorkspace({
   onAudit,
   children,
 }: {
-  chats: Chat[]
-  knownChats: Chat[]
+  directory: ChatDirectory
   chat: string
   onSelect(value: string): void
   policy: Policy
   savedPolicy: Policy
   application: string
   inventory: Inventory
-  offset: number
-  loading: boolean
-  error: string
-  onPage(offset: number): void
-  onRetry(): void
   onAccess(): void
   onProviders(): void
   onTools(): void
@@ -64,7 +49,10 @@ export function ChatWorkspace({
   onAudit(): void
   children: ReactNode
 }) {
-  const [query, setQuery] = useState("")
+  const { chats, selected: metadataState } = directory
+  const [chatDraft, setChatDraft] = useState(chat)
+  useEffect(() => setChatDraft(chat), [chat])
+  const validDraft = /^-?[1-9]\d*$/.test(chatDraft) && Number.isSafeInteger(Number(chatDraft))
   const [type, setType] = useState("all")
   const [access, setAccess] = useState("all")
   const [tab, setTab] = useState("overview")
@@ -137,11 +125,10 @@ export function ChatWorkspace({
   const [copyStatus, setCopyStatus] = useState({ chat: "", message: "" })
   const filtered = chats.filter(
     (c) =>
-      `${chatName(c)} ${c.id} ${c.type}`.toLowerCase().includes(query.toLowerCase()) &&
       (type === "all" || chatType(c) === type) &&
       (access === "all" || effectivePolicy(policy, c.id).enabled === (access === "allowed")),
   )
-  const metadata = knownChats.find((c) => String(c.id) === chat)
+  const metadata = metadataState.chat
   const valid = /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat))
   const id = Number(chat)
   const effective = effectivePolicy(policy, id)
@@ -213,169 +200,112 @@ export function ChatWorkspace({
       data-selected={Boolean(chat)}
     >
       <aside ref={directoryRef} className="chat-directory" aria-label="Find a chat">
-        <div className="directory-header">
-          <Heading size="3">Chat directory</Heading>
-          <label htmlFor="chat-search">
-            Search these {chats.length} chats
-            <TextField.Root
-              id="chat-search"
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name, type, or ID"
-            />
-          </label>
-          <div className="directory-filters">
-            <div>
-              <label htmlFor="chat-type-filter">Chat type</label>
-              <select id="chat-type-filter" value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="all">All types</option>
-                <option value="private">Private</option>
-                <option value="group">Group / supergroup</option>
-                <option value="channel">Channel</option>
-                <option value="unknown">Unknown type</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="chat-access-filter">Access status</label>
-              <select
-                id="chat-access-filter"
-                value={access}
-                onChange={(e) => setAccess(e.target.value)}
-              >
-                <option value="all">All access</option>
-                <option value="allowed">Approved and enabled</option>
-                <option value="denied">Not approved or disabled</option>
-              </select>
-            </div>
-          </div>
-          <details className="directory-help">
-            <summary>Search scope and access labels</summary>
-            <Text as="p" size="1" color="gray">
-              Search and filters cover this page of observed chats (up to 100), not all chats.
-              Access labels show {preview ? "the policy draft" : "saved policy"}, not verified
-              runtime readiness. Names reflect observed Telegram metadata; ID-only records have no
-              known name.
-            </Text>
-          </details>
-          <div aria-live="polite">
-            {loading ? (
-              <Text as="p">Loading chats…</Text>
-            ) : error ? (
-              <>
-                <Text as="p" role="alert">
-                  {error}
-                </Text>
-                <Button onClick={onRetry}>Retry chats</Button>
-              </>
-            ) : !chats.length ? (
-              <Text as="p">
-                No chats observed on this page. Configure a Telegram ID below or return to the
-                previous page.
-              </Text>
-            ) : !filtered.length ? (
-              <>
-                <Text as="p">
-                  No chats match on this page. Clear the search and filters or try another page.
-                </Text>
+        <ChatSelector
+          directory={directory}
+          chat={chat}
+          onSelect={openChat}
+          searchRef={searchRef}
+          title="Chat directory"
+          visibleChats={filtered}
+          filters={
+            <>
+              <div className="directory-filters">
+                <div>
+                  <label htmlFor="chat-type-filter">Chat type</label>
+                  <select
+                    id="chat-type-filter"
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                  >
+                    <option value="all">All types</option>
+                    <option value="private">Private</option>
+                    <option value="group">Group / supergroup</option>
+                    <option value="channel">Channel</option>
+                    <option value="unknown">Unknown type</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="chat-access-filter">Access status</label>
+                  <select
+                    id="chat-access-filter"
+                    value={access}
+                    onChange={(e) => setAccess(e.target.value)}
+                  >
+                    <option value="all">All access</option>
+                    <option value="allowed">Approved and enabled</option>
+                    <option value="denied">Not approved or disabled</option>
+                  </select>
+                </div>
+              </div>
+              {(directory.query || type !== "all" || access !== "all") && (
                 <Button
-                  variant="soft"
+                  variant="ghost"
                   onClick={() => {
-                    setQuery("")
+                    directory.setQuery("")
                     setType("all")
                     setAccess("all")
                   }}
                 >
                   Clear search and filters
                 </Button>
-              </>
-            ) : (
-              <Text as="p" size="1" color="gray">
-                {filtered.length} of {chats.length} chats on this page
-              </Text>
-            )}
-          </div>
-        </div>
-        <div className="directory-list-region">
-          {!loading && !error && (
-            <ul className="chat-list" aria-label="Chats on this page">
-              {filtered.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    aria-current={chat === String(c.id) ? "true" : undefined}
-                    onClick={() => openChat(String(c.id))}
-                  >
-                    <strong title={chatName(c)}>{chatName(c)}</strong>
-                    <small title={`${c.type || "Type not known"} · ${c.id}`}>
-                      {c.type || "Type not known"} · {c.id}
-                    </small>
-                    <Badge color="gray">
-                      {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) ? (
-                        <CheckCircledIcon aria-hidden="true" />
-                      ) : (
-                        <MinusCircledIcon aria-hidden="true" />
-                      )}
-                      {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                        ? "Approved"
-                        : "Not approved"}
-                      {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
-                      {preview ? " · Draft" : ""}
-                    </Badge>
-                  </button>
-                </li>
-              ))}
-            </ul>
+              )}
+              <details className="directory-help">
+                <summary>Search scope and access labels</summary>
+                <Text as="p" size="1" color="gray">
+                  Search covers stored chats. Type and access filters cover this page only. Access
+                  labels show {preview ? "the policy draft" : "saved policy"}, not verified runtime
+                  readiness. Names reflect observed Telegram metadata; ID-only records have no known
+                  name.
+                </Text>
+              </details>
+            </>
+          }
+          badge={(c) => (
+            <Badge color="gray">
+              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) ? (
+                <CheckCircledIcon aria-hidden="true" />
+              ) : (
+                <MinusCircledIcon aria-hidden="true" />
+              )}
+              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
+                ? "Approved"
+                : "Not approved"}
+              {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
+              {preview ? " · Draft" : ""}
+            </Badge>
           )}
-        </div>
-        <footer className="directory-footer">
-          <Flex gap="2" wrap="wrap" align="center">
-            <Button
-              variant="soft"
-              disabled={loading || offset === 0}
-              onClick={() => onPage(Math.max(0, offset - 100))}
-            >
-              Previous chats
-            </Button>
-            <Button
-              variant="soft"
-              disabled={loading || chats.length < 100}
-              onClick={() => onPage(offset + 100)}
-            >
-              Next chats
-            </Button>
-            <Text size="1" color="gray">
-              Page {Math.floor(offset / 100) + 1}
-            </Text>
-          </Flex>
-          {chat && (
-            <Button
-              className="mobile-directory-action"
-              variant="soft"
-              mt="3"
-              onClick={showChatDetails}
-            >
-              Show selected chat
-            </Button>
-          )}
-          <details className="configure-id">
-            <summary>Configure a chat before its first message</summary>
-            <Text as="p" size="2">
-              This creates settings, not access approval.
-            </Text>
-            <label htmlFor="chat-id">
-              Chat ID (can configure before first message)
-              <TextField.Root
-                id="chat-id"
-                value={chat}
-                onChange={(e) => onSelect(e.target.value)}
-              />
-            </label>
-            <Button variant="soft" disabled={!valid} onClick={showChatDetails}>
-              Open chat details
-            </Button>
-          </details>
-        </footer>
+          footer={
+            <>
+              <Button
+                className="mobile-directory-action"
+                variant="soft"
+                mt="3"
+                disabled={!chat}
+                style={{ visibility: chat ? undefined : "hidden" }}
+                onClick={showChatDetails}
+              >
+                Show selected chat
+              </Button>
+              <details className="configure-id">
+                <summary>Configure a chat before its first message</summary>
+                <Text as="p" size="2">
+                  This creates settings, not access approval.
+                </Text>
+                <label htmlFor="chat-id">
+                  Chat ID (can configure before first message)
+                  <TextField.Root
+                    id="chat-id"
+                    value={chatDraft}
+                    onChange={(e) => setChatDraft(e.target.value)}
+                  />
+                </label>
+                <Button variant="soft" disabled={!validDraft} onClick={() => openChat(chatDraft)}>
+                  Open chat details
+                </Button>
+              </details>
+            </>
+          }
+        />
       </aside>
       <section className="chat-detail" aria-label="Chat details">
         {!chat ? (
@@ -396,12 +326,24 @@ export function ChatWorkspace({
             >
               Back to chat directory
             </Button>
+            {metadataState.error && (
+              <>
+                <Text role="alert">{metadataState.error}</Text>
+                <Button variant="soft" onClick={directory.refresh}>
+                  Retry chat metadata
+                </Button>
+              </>
+            )}
             <header className="chat-header">
               <div>
                 <Heading size="5" ref={headerRef} tabIndex={-1}>
-                  {chatName(
-                    metadata ?? { id, name: "", type: id > 0 ? "private" : "group or channel" },
-                  )}
+                  {metadataState.loading
+                    ? "Loading chat name…"
+                    : metadataState.error
+                      ? "Chat name unavailable"
+                      : metadata
+                        ? chatName(metadata)
+                        : "Chat name unknown"}
                 </Heading>
                 <Text size="2" color="gray">
                   {metadata?.type || "Type not known"} · <code>{chat}</code>

@@ -14,6 +14,7 @@ import type {
   TaskId,
 } from "@earendil-works/pi-durable"
 import type {
+  DurableConversationItem,
   DurableDocumentItem,
   DurableDocumentProjection,
   DurableInspectionItem,
@@ -247,7 +248,7 @@ function documentMetadata(doc: DocumentRecord): DurableDocumentItem {
 function conversationMetadata(
   value: ConversationRecord,
   active: number | undefined,
-): DurableInspectionItem {
+): DurableConversationItem {
   return {
     type: "conversation",
     id: integer(value.id, true),
@@ -403,6 +404,17 @@ export function createDurableInspector(
             items: values.items.map((value) => conversationMetadata(value, active)),
             next: values.next,
           }
+        }
+        const selected = page.items.find(
+          (item): item is DurableConversationItem =>
+            item.type === "conversation" && item.id === active,
+        )
+        response.selectedConversation = selected ?? null
+        if (!selected && active !== undefined && active !== query.objectId) {
+          const value = await read(() =>
+            storage.conversation(integer(active, true) as ConversationId, context),
+          )
+          if (value) response.selectedConversation = conversationMetadata(value, active)
         }
       } else if (query.view === "tasks") {
         const values =

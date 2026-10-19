@@ -216,7 +216,7 @@ async function fixture(chatId = 123) {
       return [name, method]
     }),
   ) as unknown as DurableInspectionStorage
-  const active = vi.fn(async () => fork.id)
+  const active = vi.fn(async (): Promise<number | undefined> => fork.id)
   const inspect = createDurableInspector(subset, active, chatId)
   return {
     storage,
@@ -262,6 +262,115 @@ async function snapshot(storage: Storage) {
     )
   return JSON.stringify({ conversations, tasks, documents, entries })
 }
+
+describe("persisted conversation selection", () => {
+  it("returns off-page selection with one targeted read, without scanning extra pages or values", async () => {
+    const f = await fixture()
+    const before = await snapshot(f.storage)
+    const first = (await f.storage.scanConversations({}, 1, undefined, context)).items[0]
+    const selected = [f.root, f.fork, f.other].find((item) => item.id !== first?.id)
+    assert(selected)
+    f.active.mockResolvedValue(selected.id)
+    const page = await f.inspect(query({ limit: 1 }), signal())
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.id).not.toBe(selected.id)
+    expect(page.selectedConversation).toMatchObject({
+      type: "conversation",
+      id: selected.id,
+      active: true,
+    })
+    expect(f.active).toHaveBeenCalledOnce()
+    expect(f.reads.scanConversations).toHaveBeenCalledOnce()
+    expect(f.reads.conversation).toHaveBeenCalledOnce()
+    expect(f.reads.conversation.mock.calls[0]?.[0]).toBe(selected.id)
+    expect(f.reads.document).not.toHaveBeenCalled()
+    expect(JSON.stringify(page)).not.toContain(secret)
+    expect(await snapshot(f.storage)).toBe(before)
+
+    f.reads.conversation.mockClear()
+    const full = await f.inspect(query(), signal())
+    expect(full.selectedConversation).toEqual(full.items.find((item) => item.id === selected.id))
+    expect(f.reads.conversation).not.toHaveBeenCalled()
+    f.reads.conversation.mockClear()
+    const direct = await f.inspect(query({ objectId: selected.id }), signal())
+    expect(direct.selectedConversation).toEqual(direct.items[0])
+    expect(f.reads.conversation).toHaveBeenCalledOnce()
+  })
+
+  it("distinguishes persisted selection from inspection target, with known-none and missing as null", async () => {
+    const f = await fixture()
+    const direct = await f.inspect(query({ objectId: f.root.id }), signal())
+    expect(direct.items).toEqual([expect.objectContaining({ id: f.root.id, active: false })])
+    expect(direct.selectedConversation).toMatchObject({ id: f.fork.id, active: true })
+    expect(f.reads.conversation).toHaveBeenCalledTimes(2)
+    f.active.mockResolvedValue(undefined)
+    f.reads.conversation.mockClear()
+    expect(await f.inspect(query(), signal())).toHaveProperty("selectedConversation", null)
+    expect(f.reads.conversation).not.toHaveBeenCalled()
+    f.active.mockResolvedValue(99999)
+    expect(await f.inspect(query(), signal())).toHaveProperty("selectedConversation", null)
+    expect(f.reads.conversation).toHaveBeenCalledOnce()
+    f.reads.conversation.mockClear()
+    expect(await f.inspect(query({ objectId: 99999 }), signal())).toMatchObject({
+      selectedConversation: null,
+      items: [],
+    })
+    expect(f.reads.conversation).toHaveBeenCalledOnce()
+    for (const request of [
+      query({ view: "tasks", conversationId: f.root.id }),
+      query({ view: "entries", conversationId: f.root.id }),
+      query({ view: "documents", scope: "session" }),
+    ])
+      expect(await f.inspect(request, signal())).not.toHaveProperty("selectedConversation")
+  })
+
+  it("reports selected-metadata read failure instead of claiming no selection, and recovers", async () => {
+    const f = await fixture()
+    f.reads.conversation.mockRejectedValueOnce(new Error(secret))
+    await expect(f.inspect(query({ limit: 1 }), signal())).rejects.toMatchObject({
+      status: 503,
+      message: "Durable inspection read failed",
+    })
+    f.active.mockResolvedValue(f.root.id)
+    expect(await f.inspect(query(), signal())).toHaveProperty("selectedConversation.id", f.root.id)
+  })
+
+  it("retains cancellation and the one-reader guard during the extra selected-record read", async () => {
+    const f = await fixture()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    f.reads.conversation.mockImplementationOnce(async () => {
+      await gate
+      return f.storage.conversation(f.fork.id, context)
+    })
+    const controller = new AbortController()
+    const pending = f.inspect(query({ limit: 1 }), controller.signal)
+    const rejected = expect(pending).rejects.toMatchObject({ status: 409 })
+    try {
+      await vi.waitFor(() => expect(f.reads.conversation).toHaveBeenCalledOnce())
+      controller.abort()
+      await expect(f.inspect(query(), signal())).rejects.toMatchObject({ status: 429 })
+    } finally {
+      release()
+      await rejected
+    }
+    expect(await f.inspect(query(), signal())).toHaveProperty("selectedConversation.id", f.fork.id)
+  })
+
+  it("reads selection once per request and returns later selection changes only on the next read", async () => {
+    const f = await fixture()
+    f.active.mockResolvedValueOnce(f.fork.id).mockResolvedValueOnce(f.other.id)
+    const first = await f.inspect(query({ limit: 1 }), signal())
+    const second = await f.inspect(query({ limit: 1 }), signal())
+    expect(first.selectedConversation?.id).toBe(f.fork.id)
+    expect(second.selectedConversation?.id).toBe(f.other.id)
+    expect(f.active).toHaveBeenCalledTimes(2)
+    expect(f.reads.scanConversations).toHaveBeenCalledTimes(2)
+    expect(f.reads.conversation.mock.calls.length).toBeLessThanOrEqual(2)
+  })
+})
 
 describe("durable metadata field allowlists", () => {
   it("does not spread unknown parent, owner, or document-scope properties", async () => {

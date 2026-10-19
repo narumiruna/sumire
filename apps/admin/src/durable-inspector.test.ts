@@ -1,7 +1,178 @@
+import type {
+  DurableConversationItem,
+  DurableInspectionResponse,
+  DurableInspectionView,
+} from "@narumitw/sumire-contracts"
 import { describe, expect, it } from "vitest"
-import { durableHref, inspectionPath, readDurableLocation } from "./durable-inspector.js"
+import {
+  durableHref,
+  inspectionPath,
+  persistedSelection,
+  readDurableContext,
+  readDurableLocation,
+} from "./durable-inspector.js"
 
 const base = "https://example.com/admin?section=Durable&chat=-100"
+const selected: DurableConversationItem = { type: "conversation", id: 99, active: true }
+const loaded = (
+  view: DurableInspectionView,
+  selection: DurableConversationItem | null = selected,
+): DurableInspectionResponse => ({
+  version: 1,
+  state: "loaded",
+  view,
+  items: view === "conversations" ? [{ type: "conversation", id: 7, active: false }] : [],
+  selectedConversation: selection,
+  readAt: `2026-10-19T12:00:0${view === "conversations" ? 1 : 2}.000Z`,
+  truncated: false,
+})
+
+describe("bounded Durable overview reads", () => {
+  it("uses off-page persisted selection without inferring from rows or the URL", async () => {
+    const calls: string[] = []
+    const published = new Map<string, { data?: DurableInspectionResponse }>()
+    await readDurableContext(
+      "42",
+      { view: "conversations", conversationId: 7 },
+      undefined,
+      async (path) => {
+        calls.push(path)
+        return { data: loaded(path.includes("view=tasks") ? "tasks" : "conversations") }
+      },
+      (name, block) => {
+        published.set(name, block)
+      },
+    )
+    expect(calls).toEqual([
+      "chats/42/durable?view=conversations&limit=25",
+      "chats/42/durable?view=tasks&limit=25&conversationId=99",
+    ])
+    expect(published.get("inspection")).toBe(published.get("selection"))
+    expect(persistedSelection(published.get("selection")?.data)?.id).toBe(99)
+    expect(published.get("selection")?.data?.readAt).not.toBe(
+      published.get("history")?.data?.readAt,
+    )
+  })
+  it("reuses an identical requested task page and sequences every read", async () => {
+    const order: string[] = []
+    let active = false
+    await readDurableContext(
+      "42",
+      { view: "tasks", conversationId: 99 },
+      undefined,
+      async (path) => {
+        expect(active).toBe(false)
+        active = true
+        order.push(path)
+        await Promise.resolve()
+        active = false
+        return { data: loaded(path.includes("view=tasks") ? "tasks" : "conversations") }
+      },
+      (name) => {
+        order.push(name)
+      },
+    )
+    expect(order).toEqual([
+      "chats/42/durable?view=conversations&limit=25",
+      "selection",
+      "chats/42/durable?view=tasks&limit=25&conversationId=99",
+      "history",
+      "inspection",
+    ])
+  })
+  it("reads at most three bounded pages and preserves an independent partial error", async () => {
+    const calls: string[] = []
+    const published: Record<string, { error?: string; data?: DurableInspectionResponse }> = {}
+    await readDurableContext(
+      "42",
+      { view: "documents", scope: "session", objectId: 201 },
+      undefined,
+      async (path) => {
+        calls.push(path)
+        return path.includes("view=tasks")
+          ? { error: "Read failed" }
+          : { data: loaded(path.includes("view=documents") ? "documents" : "conversations") }
+      },
+      (name, block) => {
+        published[name] = block
+      },
+    )
+    expect(calls).toHaveLength(3)
+    expect(calls.every((path) => path.includes("limit=25"))).toBe(true)
+    expect(published.history?.error).toBe("Read failed")
+    expect(published.selection?.data).toBeDefined()
+    expect(published.inspection?.data?.view).toBe("documents")
+  })
+  it("never scans for absent selection and does not infer it from active markers", async () => {
+    const data = loaded("conversations", null)
+    if (data.state === "loaded") data.items = [{ type: "conversation", id: 7, active: true }]
+    expect(persistedSelection(data)).toBeNull()
+    if (data.state === "loaded") delete data.selectedConversation
+    expect(persistedSelection(data)).toBeUndefined()
+    let calls = 0
+    await readDurableContext(
+      "42",
+      { view: "conversations" },
+      undefined,
+      async () => {
+        calls++
+        return { data }
+      },
+      () => {},
+    )
+    expect(calls).toBe(1)
+  })
+  it("keeps opaque pagination bounded while selection remains independent", async () => {
+    const calls: string[] = []
+    await readDurableContext(
+      "42",
+      { view: "conversations" },
+      "opaque+/=token",
+      async (path) => {
+        calls.push(path)
+        return { data: loaded("conversations") }
+      },
+      () => {},
+    )
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toContain("cursor=opaque%2B%2F%3Dtoken")
+    expect(calls[1]).not.toContain("cursor=")
+  })
+  it("stops after an unloaded session or cancellation without speculative reads", async () => {
+    let calls = 0
+    await readDurableContext(
+      "42",
+      { view: "documents", scope: "session" },
+      undefined,
+      async () => {
+        calls++
+        return {
+          data: {
+            version: 1,
+            state: "not-loaded",
+            view: "conversations",
+            items: [],
+            readAt: "2026-10-19T12:00:00Z",
+            truncated: false,
+          },
+        }
+      },
+      () => {},
+    )
+    expect(calls).toBe(1)
+    await expect(
+      readDurableContext(
+        "42",
+        { view: "conversations" },
+        undefined,
+        async () => {
+          throw new DOMException("Cancelled", "AbortError")
+        },
+        () => {},
+      ),
+    ).rejects.toThrow("Cancelled")
+  })
+})
 describe("Durable Inspector navigation", () => {
   it("restores object and scope context from a deep link", () => {
     expect(

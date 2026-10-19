@@ -144,6 +144,24 @@ export function createTelegramAgentBot(
         onError: (provider, error) => logger.warn(`${provider} market-data query failed`, error),
       }))
 
+  const observedName = (context: Context): string | undefined => {
+    const chat = context.chat
+    if (!chat) return undefined
+    if (chat.type === "private") {
+      if (!chat.first_name?.trim()) return undefined
+      return [chat.first_name.trim(), chat.last_name?.trim()].filter(Boolean).join(" ")
+    }
+    return context.msg?.new_chat_title ?? chat.title
+  }
+
+  // Metadata observation must not depend on command short-circuiting or admission.
+  bot.use(async (context, next) => {
+    const chat = context.chat
+    if (chat && Boolean(context.update.channel_post) === (chat.type === "channel"))
+      dependencies.control.observe(chat.id, chat.type, observedName(context))
+    await next()
+  })
+
   bot.command("allow", async (context) => {
     const chat = context.chat
     if (!["private", "group", "supergroup"].includes(chat.type)) return
@@ -157,7 +175,7 @@ export function createTelegramAgentBot(
         {
           id: chat.id,
           type: chat.type,
-          name: ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
+          name: observedName(context) ?? "",
         },
         settings.admin.origin,
       )
@@ -228,11 +246,6 @@ export function createTelegramAgentBot(
   bot.use(async (context, next) => {
     const chat = context.chat
     if (!chat || Boolean(context.update.channel_post) !== (chat.type === "channel")) return
-    dependencies.control.observe(
-      chat.id,
-      chat.type,
-      ("title" in chat ? chat.title : chat.first_name) ?? String(chat.id),
-    )
     if (!dependencies.control.allows(chat.id)) return
     if (chat.type === "private" && context.from?.id !== chat.id) return
     if (
