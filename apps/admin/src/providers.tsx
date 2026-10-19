@@ -7,6 +7,7 @@ import {
   Dialog,
   Flex,
   Heading,
+  Link,
   Popover,
   Text,
   TextField,
@@ -808,9 +809,9 @@ export function Providers({
             {login?.event?.message && <Text>{login.event.message}</Text>}
             {authLink && (
               <Button asChild variant="soft">
-                <a href={authLink} target="_blank" rel="noopener noreferrer">
+                <Link href={authLink} target="_blank" rel="noopener noreferrer">
                   Open provider sign-in
-                </a>
+                </Link>
               </Button>
             )}
             {login?.event?.userCode && (

@@ -1,7 +1,18 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import { CheckCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
+import {
+  Badge,
+  Button,
+  DataList,
+  Flex,
+  Heading,
+  Link,
+  SegmentedControl,
+  Tabs,
+  Text,
+  TextField,
+} from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
@@ -9,7 +20,6 @@ import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
 import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
-import { SectionSelect } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
@@ -222,30 +232,52 @@ export function ChatWorkspace({
             <>
               <div className="directory-filters">
                 <div>
-                  <label htmlFor="chat-type-filter">Chat type</label>
-                  <SectionSelect.Root value={type} onValueChange={setType}>
-                    <SectionSelect.Trigger id="chat-type-filter" />
-                    <SectionSelect.Content>
-                      <SectionSelect.Item value="all">All types</SectionSelect.Item>
-                      <SectionSelect.Item value="private">Private</SectionSelect.Item>
-                      <SectionSelect.Item value="group">Group / supergroup</SectionSelect.Item>
-                      <SectionSelect.Item value="channel">Channel</SectionSelect.Item>
-                      <SectionSelect.Item value="unknown">Unknown type</SectionSelect.Item>
-                    </SectionSelect.Content>
-                  </SectionSelect.Root>
+                  <Text as="div" size="2">
+                    Chat type
+                  </Text>
+                  <SegmentedControl.Root
+                    className="directory-segments"
+                    aria-label="Chat type"
+                    value={type}
+                    onValueChange={setType}
+                  >
+                    <SegmentedControl.Item value="all" aria-label="All types">
+                      All
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="private" aria-label="Private">
+                      Private
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="group" aria-label="Group / supergroup">
+                      Groups
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="channel" aria-label="Channel">
+                      Channels
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="unknown" aria-label="Unknown type">
+                      Unknown
+                    </SegmentedControl.Item>
+                  </SegmentedControl.Root>
                 </div>
                 <div>
-                  <label htmlFor="chat-access-filter">Access status</label>
-                  <SectionSelect.Root value={access} onValueChange={setAccess}>
-                    <SectionSelect.Trigger id="chat-access-filter" />
-                    <SectionSelect.Content>
-                      <SectionSelect.Item value="all">All access</SectionSelect.Item>
-                      <SectionSelect.Item value="allowed">Approved and enabled</SectionSelect.Item>
-                      <SectionSelect.Item value="denied">
-                        Not approved or disabled
-                      </SectionSelect.Item>
-                    </SectionSelect.Content>
-                  </SectionSelect.Root>
+                  <Text as="div" size="2">
+                    Access status
+                  </Text>
+                  <SegmentedControl.Root
+                    className="directory-segments"
+                    aria-label="Access status"
+                    value={access}
+                    onValueChange={setAccess}
+                  >
+                    <SegmentedControl.Item value="all" aria-label="All access">
+                      All
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="allowed" aria-label="Approved and enabled">
+                      Approved
+                    </SegmentedControl.Item>
+                    <SegmentedControl.Item value="denied" aria-label="Not approved or disabled">
+                      Blocked
+                    </SegmentedControl.Item>
+                  </SegmentedControl.Root>
                 </div>
               </div>
               {(directory.query || type !== "all" || access !== "all") && (
@@ -363,7 +395,7 @@ export function ChatWorkspace({
               <Flex gap="2" align="center" wrap="wrap">
                 {valid && (
                   <Button variant="soft" asChild>
-                    <a
+                    <Link
                       href={navigationHref("Durable", chat)}
                       onClick={(event) => {
                         if (
@@ -379,7 +411,7 @@ export function ChatWorkspace({
                       }}
                     >
                       Inspect Durable
-                    </a>
+                    </Link>
                   </Button>
                 )}
                 <Button
@@ -429,30 +461,45 @@ export function ChatWorkspace({
                   ))}
                   <details className="setup-details">
                     <summary>Readiness details</summary>
-                    <dl className="effective-settings readiness">
-                      <dt>Access</dt>
-                      <dd>
-                        {savedApproval ? "Approved" : "Not approved"}
-                        {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
-                      </dd>
-                      <dt>Chat</dt>
-                      <dd>
-                        {override?.enabled === false ? "Disabled" : "Enabled"}
-                        {preview ? " · Policy draft" : ""}
-                      </dd>
-                      <dt>Configuration</dt>
-                      <dd>
-                        {!provider
-                          ? "Unknown"
-                          : effective.model && provider.configured
-                            ? "Configured locally"
-                            : "Setup required"}
-                      </dd>
-                      <dt>Verification</dt>
-                      <dd>Not checked — no remote model request</dd>
-                      <dt>Application</dt>
-                      <dd>{application}</dd>
-                    </dl>
+                    <DataList.Root
+                      className="effective-settings readiness"
+                      orientation="horizontal"
+                    >
+                      <DataList.Item>
+                        <DataList.Label>Access</DataList.Label>
+                        <DataList.Value>
+                          {savedApproval ? "Approved" : "Not approved"}
+                          {accessPending
+                            ? ` · Draft: ${approved ? "Approved" : "Not approved"}`
+                            : ""}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Chat</DataList.Label>
+                        <DataList.Value>
+                          {override?.enabled === false ? "Disabled" : "Enabled"}
+                          {preview ? " · Policy draft" : ""}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Configuration</DataList.Label>
+                        <DataList.Value>
+                          {!provider
+                            ? "Unknown"
+                            : effective.model && provider.configured
+                              ? "Configured locally"
+                              : "Setup required"}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Verification</DataList.Label>
+                        <DataList.Value>Not checked — no remote model request</DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Application</DataList.Label>
+                        <DataList.Value>{application}</DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
                     <Text as="p" size="2" color="gray">
                       {effective.enabled
                         ? "This chat is approved by policy."
@@ -509,55 +556,73 @@ export function ChatWorkspace({
                     <Heading size="3" mb="3">
                       Effective settings
                     </Heading>
-                    <dl className="overview-settings">
-                      <div>
-                        <dt>Access</dt>
-                        <dd>
-                          {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
-                          <small>
-                            Approval {approved ? "granted" : "not granted"} · Chat{" "}
-                            {override?.enabled === false ? "disabled" : "enabled"}
-                          </small>
-                        </dd>
-                        <Button type="button" variant="ghost" onClick={() => changeTab("access")}>
-                          Manage access
-                        </Button>
-                      </div>
-                      <div>
-                        <dt>Model</dt>
-                        <dd>
-                          {effective.model ?? "No allowed model"}
-                          <small>
-                            {effective.sources.model === "chat"
-                              ? "Chat override"
-                              : "Shared default"}
-                          </small>
-                        </dd>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => changeTab("configuration")}
-                        >
-                          Change model
-                        </Button>
-                      </div>
-                      <div>
-                        <dt>Tools</dt>
-                        <dd>
-                          {effective.tools.length} allowed
-                          <small>
-                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                          </small>
-                        </dd>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => changeTab("configuration")}
-                        >
-                          View tool permissions
-                        </Button>
-                      </div>
-                    </dl>
+                    <DataList.Root className="overview-settings" orientation="horizontal">
+                      <DataList.Item align="center">
+                        <DataList.Label>Access</DataList.Label>
+                        <DataList.Value>
+                          <Flex gap="3" align="center" justify="between" wrap="wrap" width="100%">
+                            <div>
+                              {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
+                              <small>
+                                Approval {approved ? "granted" : "not granted"} · Chat{" "}
+                                {override?.enabled === false ? "disabled" : "enabled"}
+                              </small>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => changeTab("access")}
+                            >
+                              Manage access
+                            </Button>
+                          </Flex>
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item align="center">
+                        <DataList.Label>Model</DataList.Label>
+                        <DataList.Value>
+                          <Flex gap="3" align="center" justify="between" wrap="wrap" width="100%">
+                            <div>
+                              {effective.model ?? "No allowed model"}
+                              <small>
+                                {effective.sources.model === "chat"
+                                  ? "Chat override"
+                                  : "Shared default"}
+                              </small>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => changeTab("configuration")}
+                            >
+                              Change model
+                            </Button>
+                          </Flex>
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item align="center">
+                        <DataList.Label>Tools</DataList.Label>
+                        <DataList.Value>
+                          <Flex gap="3" align="center" justify="between" wrap="wrap" width="100%">
+                            <div>
+                              {effective.tools.length} allowed
+                              <small>
+                                {effective.sources.tools === "chat"
+                                  ? "Explicit override"
+                                  : "Inherited"}
+                              </small>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => changeTab("configuration")}
+                            >
+                              View tool permissions
+                            </Button>
+                          </Flex>
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
                     {unavailableTools.length > 0 && (
                       <div className="blocker">
                         <Text size="2">
@@ -574,25 +639,33 @@ export function ChatWorkspace({
                     )}
                     <details className="permission-details">
                       <summary>Advanced configuration / Check details</summary>
-                      <dl className="effective-settings">
-                        <dt>Tools</dt>
-                        <dd>
-                          {effective.tools.join(", ") || "None"} ·{" "}
-                          {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                        </dd>
-                        <dt>MCP servers</dt>
-                        <dd>
-                          {effective.servers.join(", ") || "None"} ·{" "}
-                          {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
-                        </dd>
-                        <dt>Thinking</dt>
-                        <dd>
-                          {effective.thinking} ·{" "}
-                          {effective.sources.thinking === "chat"
-                            ? "Explicit override"
-                            : "Inherited"}
-                        </dd>
-                      </dl>
+                      <DataList.Root className="effective-settings" orientation="horizontal">
+                        <DataList.Item>
+                          <DataList.Label>Tools</DataList.Label>
+                          <DataList.Value>
+                            {effective.tools.join(", ") || "None"} ·{" "}
+                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                          </DataList.Value>
+                        </DataList.Item>
+                        <DataList.Item>
+                          <DataList.Label>MCP servers</DataList.Label>
+                          <DataList.Value>
+                            {effective.servers.join(", ") || "None"} ·{" "}
+                            {effective.sources.servers === "chat"
+                              ? "Explicit override"
+                              : "Inherited"}
+                          </DataList.Value>
+                        </DataList.Item>
+                        <DataList.Item>
+                          <DataList.Label>Thinking</DataList.Label>
+                          <DataList.Value>
+                            {effective.thinking} ·{" "}
+                            {effective.sources.thinking === "chat"
+                              ? "Explicit override"
+                              : "Inherited"}
+                          </DataList.Value>
+                        </DataList.Item>
+                      </DataList.Root>
                       <Text as="p" size="2">
                         Remote authentication and runtime availability are not verified here.
                         Connection checks require an explicit action.
@@ -621,19 +694,27 @@ export function ChatWorkspace({
                         {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
                         never grants access in other chats.
                       </Text>
-                      <dl className="effective-settings">
-                        <dt>Saved approval</dt>
-                        <dd>{savedApproval ? "Approved" : "Not approved"}</dd>
-                        <dt>Draft approval</dt>
-                        <dd>{approved ? "Approved" : "Not approved"}</dd>
-                        <dt>Policy access</dt>
-                        <dd>
-                          {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
-                          {override?.enabled === false
-                            ? " · Chat disabled independently of approval"
-                            : ""}
-                        </dd>
-                      </dl>
+                      <DataList.Root className="effective-settings" orientation="horizontal">
+                        <DataList.Item>
+                          <DataList.Label>Saved approval</DataList.Label>
+                          <DataList.Value>
+                            {savedApproval ? "Approved" : "Not approved"}
+                          </DataList.Value>
+                        </DataList.Item>
+                        <DataList.Item>
+                          <DataList.Label>Draft approval</DataList.Label>
+                          <DataList.Value>{approved ? "Approved" : "Not approved"}</DataList.Value>
+                        </DataList.Item>
+                        <DataList.Item>
+                          <DataList.Label>Policy access</DataList.Label>
+                          <DataList.Value>
+                            {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
+                            {override?.enabled === false
+                              ? " · Chat disabled independently of approval"
+                              : ""}
+                          </DataList.Value>
+                        </DataList.Item>
+                      </DataList.Root>
                       <Text as="p" role="status">
                         {accessPending
                           ? approved
@@ -675,30 +756,44 @@ export function ChatWorkspace({
                   </Tabs.Content>
                   <Tabs.Content value="configuration" forceMount hidden={tab !== "configuration"}>
                     <Heading size="3">Model &amp; Tools</Heading>
-                    <dl className="effective-settings">
-                      <dt>Effective model</dt>
-                      <dd>
-                        {effective.model ?? "No allowed model"} ·{" "}
-                        {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
-                      </dd>
-                      <dt>Chat model override</dt>
-                      <dd>{override?.model ?? "Inherit from defaults"}</dd>
-                      <dt>Tools</dt>
-                      <dd>
-                        {effective.tools.join(", ") || "None"} ·{" "}
-                        {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                      <dt>MCP servers</dt>
-                      <dd>
-                        {effective.servers.join(", ") || "None"} ·{" "}
-                        {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                      <dt>Thinking</dt>
-                      <dd>
-                        {effective.thinking} ·{" "}
-                        {effective.sources.thinking === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                    </dl>
+                    <DataList.Root className="effective-settings" orientation="horizontal">
+                      <DataList.Item>
+                        <DataList.Label>Effective model</DataList.Label>
+                        <DataList.Value>
+                          {effective.model ?? "No allowed model"} ·{" "}
+                          {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Chat model override</DataList.Label>
+                        <DataList.Value>
+                          {override?.model ?? "Inherit from defaults"}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Tools</DataList.Label>
+                        <DataList.Value>
+                          {effective.tools.join(", ") || "None"} ·{" "}
+                          {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>MCP servers</DataList.Label>
+                        <DataList.Value>
+                          {effective.servers.join(", ") || "None"} ·{" "}
+                          {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Thinking</DataList.Label>
+                        <DataList.Value>
+                          {effective.thinking} ·{" "}
+                          {effective.sources.thinking === "chat"
+                            ? "Explicit override"
+                            : "Inherited"}
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
                     <Flex gap="3" wrap="wrap">
                       <Button variant="soft" onClick={onProviders}>
                         Manage model authentication

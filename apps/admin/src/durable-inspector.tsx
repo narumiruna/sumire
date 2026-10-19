@@ -8,7 +8,7 @@ import type {
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
-import { Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
+import { Button, DataList, Flex, Heading, Link, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
@@ -199,21 +199,21 @@ function UsageFields({ usage }: { usage: DurableNumericUsage }) {
     ["total", "Total"],
   ] as const
   return (
-    <dl className="durable-metadata durable-usage">
+    <DataList.Root className="durable-metadata durable-usage" orientation="horizontal">
       {fields.map(([key, label]) => (
-        <div className="durable-usage-field" key={key}>
-          <dt>{label} tokens</dt>
-          <dd>{usage[key] ?? "Not recorded"}</dd>
-        </div>
+        <DataList.Item className="durable-usage-field" key={key}>
+          <DataList.Label>{label} tokens</DataList.Label>
+          <DataList.Value>{usage[key] ?? "Not recorded"}</DataList.Value>
+        </DataList.Item>
       ))}
       {usage.cost &&
         fields.map(([key, label]) => (
-          <div className="durable-usage-field" key={`cost:${key}`}>
-            <dt>{label} cost (reported)</dt>
-            <dd>{usage.cost?.[key] ?? "Not recorded"}</dd>
-          </div>
+          <DataList.Item className="durable-usage-field" key={`cost:${key}`}>
+            <DataList.Label>{label} cost (reported)</DataList.Label>
+            <DataList.Value>{usage.cost?.[key] ?? "Not recorded"}</DataList.Value>
+          </DataList.Item>
         ))}
-    </dl>
+    </DataList.Root>
   )
 }
 
@@ -318,7 +318,7 @@ export function DurableInspector({
     setPages([undefined])
   }
   const link = (label: string, next: DurableLocation) => (
-    <a
+    <Link
       href={durableHref(chat, next)}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -328,7 +328,7 @@ export function DurableInspector({
       }}
     >
       {label}
-    </a>
+    </Link>
   )
   const selectContext = (event: FormEvent) => {
     event.preventDefault()
@@ -396,71 +396,87 @@ export function DurableInspector({
       <Text as="p" className="durable-record-summary">
         {recordSummary(item)}
       </Text>
-      <dl className="durable-metadata">
+      <DataList.Root className="durable-metadata" orientation="horizontal">
         {item.type === "conversation" && (
           <>
-            <dt>Selection marker</dt>
-            <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
-            <dt>Parent conversation</dt>
-            <dd>
-              {item.parent ? (
-                <>
-                  {link(`Conversation ${item.parent.conversationId}`, {
-                    view: "conversations",
-                    objectId: item.parent.conversationId,
-                  })}{" "}
-                  ·{" "}
-                  {link(`Fork entry ${item.parent.at}`, {
-                    view: "entries",
-                    conversationId: item.parent.conversationId,
-                    objectId: item.parent.at,
-                  })}
-                </>
-              ) : (
-                "No parent recorded"
-              )}
-            </dd>
-            <dt>Owning task</dt>
-            <dd>
-              {item.owner
-                ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
-                    view: "tasks",
-                    conversationId: item.owner.conversationId,
-                    objectId: item.owner.taskId,
-                  })
-                : "No owner recorded"}
-            </dd>
+            <DataList.Item>
+              <DataList.Label>Selection marker</DataList.Label>
+              <DataList.Value>
+                {item.active ? "Persisted selected conversation" : "Historical conversation"}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Parent conversation</DataList.Label>
+              <DataList.Value>
+                {item.parent ? (
+                  <span>
+                    {link(`Conversation ${item.parent.conversationId}`, {
+                      view: "conversations",
+                      objectId: item.parent.conversationId,
+                    })}{" "}
+                    ·{" "}
+                    {link(`Fork entry ${item.parent.at}`, {
+                      view: "entries",
+                      conversationId: item.parent.conversationId,
+                      objectId: item.parent.at,
+                    })}
+                  </span>
+                ) : (
+                  "No parent recorded"
+                )}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Owning task</DataList.Label>
+              <DataList.Value>
+                {item.owner
+                  ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
+                      view: "tasks",
+                      conversationId: item.owner.conversationId,
+                      objectId: item.owner.taskId,
+                    })
+                  : "No owner recorded"}
+              </DataList.Value>
+            </DataList.Item>
           </>
         )}
         {item.type === "task" && (
           <>
-            <dt>Conversation</dt>
-            <dd>
-              {link(`Conversation ${item.conversationId}`, {
-                view: "conversations",
-                objectId: item.conversationId,
-              })}
-            </dd>
-            <dt>Owning task</dt>
-            <dd>
-              {item.ownerTaskId
-                ? link(`Task ${item.ownerTaskId}`, {
-                    view: "tasks",
-                    conversationId: item.conversationId,
-                    objectId: item.ownerTaskId,
-                  })
-                : "No owner recorded"}
-            </dd>
-            <dt>Started</dt>
-            <dd>{formatDurableTime(item.startedAt)}</dd>
-            <dt>Ended</dt>
-            <dd>{formatDurableTime(item.endedAt)}</dd>
+            <DataList.Item>
+              <DataList.Label>Conversation</DataList.Label>
+              <DataList.Value>
+                {link(`Conversation ${item.conversationId}`, {
+                  view: "conversations",
+                  objectId: item.conversationId,
+                })}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Owning task</DataList.Label>
+              <DataList.Value>
+                {item.ownerTaskId
+                  ? link(`Task ${item.ownerTaskId}`, {
+                      view: "tasks",
+                      conversationId: item.conversationId,
+                      objectId: item.ownerTaskId,
+                    })
+                  : "No owner recorded"}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Started</DataList.Label>
+              <DataList.Value>{formatDurableTime(item.startedAt)}</DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Ended</DataList.Label>
+              <DataList.Value>{formatDurableTime(item.endedAt)}</DataList.Value>
+            </DataList.Item>
           </>
         )}
         {item.type === "document" && (
-          <>
-            <dt>Applies to</dt>
-            <dd>
+          <DataList.Item>
+            <DataList.Label>Applies to</DataList.Label>
+            <DataList.Value>
               {item.scope.kind === "conversation"
                 ? link(`Conversation ${item.scope.conversationId}`, {
                     view: "conversations",
@@ -473,43 +489,51 @@ export function DurableInspector({
                       objectId: item.scope.taskId,
                     })
                   : "This session"}
-            </dd>
-          </>
+            </DataList.Value>
+          </DataList.Item>
         )}
         {item.type === "entry" && (
           <>
-            <dt>Recorded at</dt>
-            <dd>{formatDurableTime(item.timestamp)}</dd>
-            <dt>Conversation</dt>
-            <dd>
-              {link(`Conversation ${item.conversationId}`, {
-                view: "conversations",
-                objectId: item.conversationId,
-              })}
-            </dd>
-            <dt>Recorded by</dt>
-            <dd>
-              {item.byTaskId
-                ? link(`Task ${item.byTaskId}`, {
-                    view: "tasks",
-                    conversationId: item.conversationId,
-                    objectId: item.byTaskId,
-                  })
-                : "Not recorded"}
-            </dd>
-            <dt>Head entry</dt>
-            <dd>
-              {item.head
-                ? link(`Entry ${item.head}`, {
-                    view: "entries",
-                    conversationId: item.conversationId,
-                    objectId: item.head,
-                  })
-                : "Not recorded"}
-            </dd>
+            <DataList.Item>
+              <DataList.Label>Recorded at</DataList.Label>
+              <DataList.Value>{formatDurableTime(item.timestamp)}</DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Conversation</DataList.Label>
+              <DataList.Value>
+                {link(`Conversation ${item.conversationId}`, {
+                  view: "conversations",
+                  objectId: item.conversationId,
+                })}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Recorded by</DataList.Label>
+              <DataList.Value>
+                {item.byTaskId
+                  ? link(`Task ${item.byTaskId}`, {
+                      view: "tasks",
+                      conversationId: item.conversationId,
+                      objectId: item.byTaskId,
+                    })
+                  : "Not recorded"}
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.Label>Head entry</DataList.Label>
+              <DataList.Value>
+                {item.head
+                  ? link(`Entry ${item.head}`, {
+                      view: "entries",
+                      conversationId: item.conversationId,
+                      objectId: item.head,
+                    })
+                  : "Not recorded"}
+              </DataList.Value>
+            </DataList.Item>
           </>
         )}
-      </dl>
+      </DataList.Root>
       {item.type === "document" && item.valueState === "available" && !item.value && (
         <Text as="p">Approved fields were not included in this response.</Text>
       )}
@@ -519,14 +543,20 @@ export function DurableInspector({
             Approved fields
           </Heading>
           {item.value.kind === "pi.agent" ? (
-            <dl className="durable-metadata">
-              <dt>Model provider</dt>
-              <dd>{item.value.model?.provider ?? "Not recorded"}</dd>
-              <dt>Model</dt>
-              <dd>{item.value.model?.modelId ?? "Not recorded"}</dd>
-              <dt>Thinking level</dt>
-              <dd>{item.value.thinkingLevel ?? "Not recorded"}</dd>
-            </dl>
+            <DataList.Root className="durable-metadata" orientation="horizontal">
+              <DataList.Item>
+                <DataList.Label>Model provider</DataList.Label>
+                <DataList.Value>{item.value.model?.provider ?? "Not recorded"}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Model</DataList.Label>
+                <DataList.Value>{item.value.model?.modelId ?? "Not recorded"}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Thinking level</DataList.Label>
+                <DataList.Value>{item.value.thinkingLevel ?? "Not recorded"}</DataList.Value>
+              </DataList.Item>
+            </DataList.Root>
           ) : item.value.kind === "pi.usage" ? (
             <>
               <Heading as="h5" size="2">
@@ -554,17 +584,19 @@ export function DurableInspector({
               ))}
             </>
           ) : (
-            <dl className="durable-metadata">
-              <dt>Persisted selected conversation</dt>
-              <dd>
-                {item.value.activeConversation
-                  ? link(`Conversation ${item.value.activeConversation}`, {
-                      view: "conversations",
-                      objectId: item.value.activeConversation,
-                    })
-                  : "Not recorded"}
-              </dd>
-            </dl>
+            <DataList.Root className="durable-metadata" orientation="horizontal">
+              <DataList.Item>
+                <DataList.Label>Persisted selected conversation</DataList.Label>
+                <DataList.Value>
+                  {item.value.activeConversation
+                    ? link(`Conversation ${item.value.activeConversation}`, {
+                        view: "conversations",
+                        objectId: item.value.activeConversation,
+                      })
+                    : "Not recorded"}
+                </DataList.Value>
+              </DataList.Item>
+            </DataList.Root>
           )}
         </Panel>
       )}
@@ -593,50 +625,66 @@ export function DurableInspector({
       </Flex>
       <details className="durable-technical">
         <summary>Technical details</summary>
-        <dl className="durable-metadata">
+        <DataList.Root className="durable-metadata" orientation="horizontal">
           {item.type !== "conversation" && (
-            <>
-              <dt>Stored kind</dt>
-              <dd>{item.kind}</dd>
-            </>
+            <DataList.Item>
+              <DataList.Label>Stored kind</DataList.Label>
+              <DataList.Value>{item.kind}</DataList.Value>
+            </DataList.Item>
           )}
           {item.type === "task" && (
             <>
-              <dt>Version</dt>
-              <dd>{item.version}</dd>
-              <dt>Stored status</dt>
-              <dd>{item.status}</dd>
-              <dt>Background</dt>
-              <dd>{String(item.background)}</dd>
-              <dt>Abort requested</dt>
-              <dd>{String(item.abortRequested)}</dd>
+              <DataList.Item>
+                <DataList.Label>Version</DataList.Label>
+                <DataList.Value>{item.version}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Stored status</DataList.Label>
+                <DataList.Value>{item.status}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Background</DataList.Label>
+                <DataList.Value>{String(item.background)}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Abort requested</DataList.Label>
+                <DataList.Value>{String(item.abortRequested)}</DataList.Value>
+              </DataList.Item>
             </>
           )}
           {item.type === "document" && (
             <>
-              <dt>Family member</dt>
-              <dd>{item.family ? "Yes" : "No"}</dd>
-              <dt>Created sequence</dt>
-              <dd>{item.createdAt}</dd>
-              <dt>Retired sequence</dt>
-              <dd>{item.retiredAt ?? "Not retired"}</dd>
-              <dt>Definition version</dt>
-              <dd>{item.version ?? "Not recorded"}</dd>
+              <DataList.Item>
+                <DataList.Label>Family member</DataList.Label>
+                <DataList.Value>{item.family ? "Yes" : "No"}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Created sequence</DataList.Label>
+                <DataList.Value>{item.createdAt}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Retired sequence</DataList.Label>
+                <DataList.Value>{item.retiredAt ?? "Not retired"}</DataList.Value>
+              </DataList.Item>
+              <DataList.Item>
+                <DataList.Label>Definition version</DataList.Label>
+                <DataList.Value>{item.version ?? "Not recorded"}</DataList.Value>
+              </DataList.Item>
             </>
           )}
           {item.type === "entry" && (
-            <>
-              <dt>Stored role</dt>
-              <dd>{item.role ?? "Not recorded"}</dd>
-            </>
+            <DataList.Item>
+              <DataList.Label>Stored role</DataList.Label>
+              <DataList.Value>{item.role ?? "Not recorded"}</DataList.Value>
+            </DataList.Item>
           )}
           {item.type === "conversation" && (
-            <>
-              <dt>Persisted selection marker</dt>
-              <dd>{String(item.active)}</dd>
-            </>
+            <DataList.Item>
+              <DataList.Label>Persisted selection marker</DataList.Label>
+              <DataList.Value>{String(item.active)}</DataList.Value>
+            </DataList.Item>
           )}
-        </dl>
+        </DataList.Root>
       </details>
       <JsonDetails
         key={`metadata:${item.type}:${item.id}`}
