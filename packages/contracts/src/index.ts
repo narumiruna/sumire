@@ -1,5 +1,20 @@
 import type { effectivePolicy, Policy } from "@narumitw/sumire-policy"
 
+export type {
+  DurableConversationItem,
+  DurableDocumentItem,
+  DurableDocumentProjection,
+  DurableDocumentScope,
+  DurableEntryItem,
+  DurableInspectionItem,
+  DurableInspectionLoadedResponse,
+  DurableInspectionQuery,
+  DurableInspectionResponse,
+  DurableInspectionView,
+  DurableNumericUsage,
+  DurableTaskItem,
+} from "./durable-inspector.js"
+
 export type Snapshot = {
   revision: number
   applied: number

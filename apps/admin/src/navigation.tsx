@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 
 export const pages = [
   "Chats",
+  "Durable",
   "Access",
   "Defaults",
   "Tool permissions",
@@ -28,6 +29,10 @@ export function readNavigation(url: URL) {
 }
 
 export function navigationHref(page: Page, chat: string, url = new URL(window.location.href)) {
+  if (page !== "Durable" || url.searchParams.get("chat") !== chat) {
+    for (const key of ["view", "conversationId", "scope", "taskId", "objectId"])
+      url.searchParams.delete(key)
+  }
   url.searchParams.set("section", page)
   if (/^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat)))
     url.searchParams.set("chat", chat)

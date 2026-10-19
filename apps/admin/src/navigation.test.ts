@@ -44,6 +44,14 @@ describe("admin navigation", () => {
       readNavigation(new URL("https://example.com/?section=Model%20Providers&chat=-100")),
     ).toEqual({ page: "Model Providers", chat: "-100" })
   })
+  it("preserves chat-scoped Durable deep links but clears stale object context on chat or page changes", () => {
+    const href =
+      "https://example.com/?section=Durable&chat=-100&view=documents&scope=task&conversationId=7&taskId=8&objectId=9"
+    expect(readNavigation(new URL(href))).toEqual({ page: "Durable", chat: "-100" })
+    expect(navigationHref("Durable", "-100", new URL(href))).toContain("objectId=9")
+    expect(navigationHref("Durable", "42", new URL(href))).toBe("/?section=Durable&chat=42")
+    expect(navigationHref("Chats", "-100", new URL(href))).toBe("/?section=Chats&chat=-100")
+  })
   it("creates compatible same-path section links while retaining other URL state", () => {
     expect(
       navigationHref("Tool permissions", "42", new URL("https://example.com/?existing=1")),

@@ -34,6 +34,7 @@ import {
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
 import { type Chat, ChatWorkspace, chatName } from "./chats.js"
+import { DurableInspector } from "./durable-inspector.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { navigationHref, pageLabel, SideNavigation, useNavigation } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
@@ -774,6 +775,10 @@ function App() {
     setChats([])
     setKnownChats([])
   }, [])
+  const expireInspectorSession = useCallback(() => {
+    expireSession()
+    setError("Administrator session expired. Sign in again.")
+  }, [expireSession])
   const run = useCallback(
     async (action: () => Promise<void>) => {
       setBusy(true)
@@ -1167,6 +1172,7 @@ function App() {
               }}
               onProviders={() => setPage("Model Providers")}
               onTools={() => setPage("Tool permissions")}
+              onDurable={() => setPage("Durable")}
             >
               <Card>
                 <Check
@@ -1198,6 +1204,14 @@ function App() {
               </Card>
             </ChatWorkspace>
           </EditorSection>
+          {page === "Durable" && (
+            <DurableInspector
+              key={chat}
+              chat={chat}
+              onChats={() => setPage("Chats")}
+              onSessionExpired={expireInspectorSession}
+            />
+          )}
           <EditorSection active={page === "Access"} aria-label="Access settings">
             {accessTarget && (
               <Card>
