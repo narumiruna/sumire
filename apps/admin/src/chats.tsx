@@ -1,14 +1,13 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { CheckCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import {
-  Badge,
   Button,
   DataList,
   Flex,
   Heading,
   Link,
   SegmentedControl,
+  Spinner,
   Tabs,
   Text,
   TextField,
@@ -20,7 +19,8 @@ import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
 import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
-import { Panel, Prose } from "./surfaces.js"
+import { StatusBadge } from "./semantic-status.js"
+import { EmptyState, Panel } from "./surfaces.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
@@ -282,6 +282,7 @@ export function ChatWorkspace({
               </div>
               {(directory.query || type !== "all" || access !== "all") && (
                 <Button
+                  color="gray"
                   variant="ghost"
                   onClick={() => {
                     directory.setQuery("")
@@ -303,23 +304,29 @@ export function ChatWorkspace({
               </details>
             </>
           }
-          badge={(c) => (
-            <Badge color="gray">
-              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) ? (
-                <CheckCircledIcon aria-hidden="true" />
-              ) : (
-                <MinusCircledIcon aria-hidden="true" />
-              )}
-              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                ? "Approved"
-                : "Not approved"}
-              {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
-              {preview ? " · Draft" : ""}
-            </Badge>
-          )}
+          badge={(c) => {
+            const list = c.id > 0 ? "privateUsers" : "groups"
+            const approved = policy[list].includes(c.id)
+            const pending = approved !== savedPolicy[list].includes(c.id)
+            return (
+              <Flex gap="1" wrap="wrap">
+                <StatusBadge status={approved ? "approved" : "disabled"}>
+                  {approved ? "Approved" : "Not approved"}
+                  {preview ? " · Draft" : ""}
+                </StatusBadge>
+                {policy.chats[String(c.id)]?.enabled === false && <StatusBadge status="disabled" />}
+                {pending && (
+                  <StatusBadge status="pending">
+                    {approved ? "Grant pending" : "Revocation pending"}
+                  </StatusBadge>
+                )}
+              </Flex>
+            )
+          }}
           footer={
             <>
               <Button
+                color="gray"
                 className="mobile-directory-action"
                 variant="soft"
                 mt="3"
@@ -342,7 +349,12 @@ export function ChatWorkspace({
                     onChange={(e) => setChatDraft(e.target.value)}
                   />
                 </label>
-                <Button variant="soft" disabled={!validDraft} onClick={() => openChat(chatDraft)}>
+                <Button
+                  color="gray"
+                  variant="soft"
+                  disabled={!validDraft}
+                  onClick={() => openChat(chatDraft)}
+                >
                   Open chat details
                 </Button>
               </details>
@@ -352,16 +364,15 @@ export function ChatWorkspace({
       </aside>
       <section className="chat-detail" aria-label="Chat details">
         {!chat ? (
-          <Panel className="chat-initial">
-            <Heading size="4">Select a chat</Heading>
-            <Prose color="gray">
-              Choose a chat from the directory to review access, effective settings, and overrides.
-              Selecting a chat does not grant access.
-            </Prose>
-          </Panel>
+          <EmptyState
+            className="chat-initial"
+            title="Select a chat"
+            description="Choose a chat from the directory to review access, effective settings, and overrides. Selecting a chat does not grant access."
+          />
         ) : (
           <>
             <Button
+              color="gray"
               className="mobile-directory-action"
               variant="ghost"
               mb="3"
@@ -371,8 +382,10 @@ export function ChatWorkspace({
             </Button>
             {metadataState.error && (
               <>
-                <Text role="alert">{metadataState.error}</Text>
-                <Button variant="soft" onClick={directory.refresh}>
+                <Text className="error-state" data-status="failed" role="alert">
+                  {metadataState.error}
+                </Text>
+                <Button color="gray" variant="soft" onClick={directory.refresh}>
                   Retry chat metadata
                 </Button>
               </>
@@ -386,16 +399,31 @@ export function ChatWorkspace({
                   ref={headerRef}
                   tabIndex={-1}
                 >
+                  {metadataState.loading && <Spinner aria-hidden="true" mr="2" />}
                   {detailName}
                 </Heading>
                 <Text size="2" color="gray">
                   {metadata?.type || "Type not known"} · <code>{chat}</code>
                 </Text>
+                {valid && (
+                  <Flex gap="2" wrap="wrap" mt="2">
+                    <StatusBadge status={approved ? "approved" : "disabled"}>
+                      {approved ? "Approved" : "Not approved"}
+                    </StatusBadge>
+                    {override?.enabled === false && <StatusBadge status="disabled" />}
+                    {accessPending && (
+                      <StatusBadge status="pending">
+                        {approved ? "Grant pending" : "Revocation pending"}
+                      </StatusBadge>
+                    )}
+                  </Flex>
+                )}
               </div>
               <Flex gap="2" align="center" wrap="wrap">
                 {valid && (
-                  <Button variant="soft" asChild>
+                  <Button color="gray" variant="soft" asChild>
                     <Link
+                      color="gray"
                       href={navigationHref("Durable", chat)}
                       onClick={(event) => {
                         if (
@@ -415,6 +443,7 @@ export function ChatWorkspace({
                   </Button>
                 )}
                 <Button
+                  color="gray"
                   variant="surface"
                   onClick={async () => {
                     try {
@@ -432,11 +461,11 @@ export function ChatWorkspace({
                 </Button>
               </Flex>
             </header>
-            <Text role="status" size="2">
+            <Text as="p" className="copy-confirmation" role="status" size="2">
               {copyStatus.chat === chat ? copyStatus.message : ""}
             </Text>
             {!valid ? (
-              <Text as="p" role="alert">
+              <Text as="p" className="error-state" data-status="failed" role="alert">
                 Enter a valid, non-zero Telegram ID.
               </Text>
             ) : (
@@ -454,7 +483,7 @@ export function ChatWorkspace({
                   {blockers.map((blocker) => (
                     <div className="blocker" key={blocker.text}>
                       <Text size="2">{blocker.text}</Text>
-                      <Button type="button" variant="soft" onClick={blocker.run}>
+                      <Button color="gray" type="button" variant="soft" onClick={blocker.run}>
                         {blocker.action}
                       </Button>
                     </div>
@@ -468,32 +497,50 @@ export function ChatWorkspace({
                       <DataList.Item>
                         <DataList.Label>Access</DataList.Label>
                         <DataList.Value>
-                          {savedApproval ? "Approved" : "Not approved"}
-                          {accessPending
-                            ? ` · Draft: ${approved ? "Approved" : "Not approved"}`
-                            : ""}
+                          <StatusBadge status={savedApproval ? "approved" : "disabled"}>
+                            {savedApproval ? "Approved" : "Not approved"}
+                          </StatusBadge>
+                          {accessPending && (
+                            <StatusBadge status="pending">
+                              Draft: {approved ? "Approved" : "Not approved"}
+                            </StatusBadge>
+                          )}
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Chat</DataList.Label>
                         <DataList.Value>
-                          {override?.enabled === false ? "Disabled" : "Enabled"}
+                          <StatusBadge
+                            status={override?.enabled === false ? "disabled" : "approved"}
+                          >
+                            {override?.enabled === false ? "Disabled" : "Enabled"}
+                          </StatusBadge>
                           {preview ? " · Policy draft" : ""}
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Configuration</DataList.Label>
                         <DataList.Value>
-                          {!provider
-                            ? "Unknown"
-                            : effective.model && provider.configured
-                              ? "Configured locally"
-                              : "Setup required"}
+                          <StatusBadge
+                            status={
+                              effective.model && provider?.configured ? "approved" : "unknown"
+                            }
+                          >
+                            {!provider
+                              ? "Unknown"
+                              : effective.model && provider.configured
+                                ? "Configured locally"
+                                : "Setup required"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Verification</DataList.Label>
-                        <DataList.Value>Not checked — no remote model request</DataList.Value>
+                        <DataList.Value>
+                          <StatusBadge status="unknown">
+                            Not checked — no remote model request
+                          </StatusBadge>
+                        </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Application</DataList.Label>
@@ -521,7 +568,7 @@ export function ChatWorkspace({
                       <Text size="2">
                         Configuration status unknown; remote authentication not checked here.
                       </Text>
-                      <Button type="button" variant="soft" onClick={onProviders}>
+                      <Button color="gray" type="button" variant="soft" onClick={onProviders}>
                         Review authentication configuration
                       </Button>
                     </Flex>
@@ -569,6 +616,7 @@ export function ChatWorkspace({
                               </small>
                             </div>
                             <Button
+                              color="gray"
                               type="button"
                               variant="ghost"
                               onClick={() => changeTab("access")}
@@ -585,12 +633,19 @@ export function ChatWorkspace({
                             <div>
                               {effective.model ?? "No allowed model"}
                               <small>
-                                {effective.sources.model === "chat"
-                                  ? "Chat override"
-                                  : "Shared default"}
+                                <StatusBadge
+                                  status={
+                                    effective.sources.model === "chat" ? "overridden" : "inherited"
+                                  }
+                                >
+                                  {effective.sources.model === "chat"
+                                    ? "Chat override"
+                                    : "Shared default"}
+                                </StatusBadge>
                               </small>
                             </div>
                             <Button
+                              color="gray"
                               type="button"
                               variant="ghost"
                               onClick={() => changeTab("configuration")}
@@ -607,12 +662,19 @@ export function ChatWorkspace({
                             <div>
                               {effective.tools.length} allowed
                               <small>
-                                {effective.sources.tools === "chat"
-                                  ? "Explicit override"
-                                  : "Inherited"}
+                                <StatusBadge
+                                  status={
+                                    effective.sources.tools === "chat" ? "overridden" : "inherited"
+                                  }
+                                >
+                                  {effective.sources.tools === "chat"
+                                    ? "Explicit override"
+                                    : "Inherited"}
+                                </StatusBadge>
                               </small>
                             </div>
                             <Button
+                              color="gray"
                               type="button"
                               variant="ghost"
                               onClick={() => changeTab("configuration")}
@@ -629,6 +691,7 @@ export function ChatWorkspace({
                           Selected tools excluded by global policy: {unavailableTools.join(", ")}
                         </Text>
                         <Button
+                          color="gray"
                           type="button"
                           variant="soft"
                           onClick={() => changeTab("configuration")}
@@ -644,25 +707,45 @@ export function ChatWorkspace({
                           <DataList.Label>Tools</DataList.Label>
                           <DataList.Value>
                             {effective.tools.join(", ") || "None"} ·{" "}
-                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                            <StatusBadge
+                              status={
+                                effective.sources.tools === "chat" ? "overridden" : "inherited"
+                              }
+                            >
+                              {effective.sources.tools === "chat"
+                                ? "Explicit override"
+                                : "Inherited"}
+                            </StatusBadge>
                           </DataList.Value>
                         </DataList.Item>
                         <DataList.Item>
                           <DataList.Label>MCP servers</DataList.Label>
                           <DataList.Value>
                             {effective.servers.join(", ") || "None"} ·{" "}
-                            {effective.sources.servers === "chat"
-                              ? "Explicit override"
-                              : "Inherited"}
+                            <StatusBadge
+                              status={
+                                effective.sources.servers === "chat" ? "overridden" : "inherited"
+                              }
+                            >
+                              {effective.sources.servers === "chat"
+                                ? "Explicit override"
+                                : "Inherited"}
+                            </StatusBadge>
                           </DataList.Value>
                         </DataList.Item>
                         <DataList.Item>
                           <DataList.Label>Thinking</DataList.Label>
                           <DataList.Value>
                             {effective.thinking} ·{" "}
-                            {effective.sources.thinking === "chat"
-                              ? "Explicit override"
-                              : "Inherited"}
+                            <StatusBadge
+                              status={
+                                effective.sources.thinking === "chat" ? "overridden" : "inherited"
+                              }
+                            >
+                              {effective.sources.thinking === "chat"
+                                ? "Explicit override"
+                                : "Inherited"}
+                            </StatusBadge>
                           </DataList.Value>
                         </DataList.Item>
                       </DataList.Root>
@@ -671,13 +754,14 @@ export function ChatWorkspace({
                         Connection checks require an explicit action.
                       </Text>
                       <Flex gap="3" wrap="wrap" mt="2">
-                        <Button type="button" variant="soft" onClick={onProviders}>
+                        <Button color="gray" type="button" variant="soft" onClick={onProviders}>
                           Manage authentication
                         </Button>
-                        <Button type="button" variant="soft" onClick={onTools}>
+                        <Button color="gray" type="button" variant="soft" onClick={onTools}>
                           Manage tool permissions
                         </Button>
                         <Button
+                          color="gray"
                           type="button"
                           variant="soft"
                           onClick={() => changeTab("configuration")}
@@ -698,12 +782,22 @@ export function ChatWorkspace({
                         <DataList.Item>
                           <DataList.Label>Saved approval</DataList.Label>
                           <DataList.Value>
-                            {savedApproval ? "Approved" : "Not approved"}
+                            <StatusBadge status={savedApproval ? "approved" : "disabled"}>
+                              {savedApproval ? "Approved" : "Not approved"}
+                            </StatusBadge>
                           </DataList.Value>
                         </DataList.Item>
                         <DataList.Item>
                           <DataList.Label>Draft approval</DataList.Label>
-                          <DataList.Value>{approved ? "Approved" : "Not approved"}</DataList.Value>
+                          <DataList.Value>
+                            <StatusBadge
+                              status={
+                                accessPending ? "pending" : approved ? "approved" : "disabled"
+                              }
+                            >
+                              {approved ? "Approved" : "Not approved"}
+                            </StatusBadge>
+                          </DataList.Value>
                         </DataList.Item>
                         <DataList.Item>
                           <DataList.Label>Policy access</DataList.Label>
@@ -716,16 +810,18 @@ export function ChatWorkspace({
                         </DataList.Item>
                       </DataList.Root>
                       <Text as="p" role="status">
-                        {accessPending
-                          ? approved
-                            ? "Pending access grant"
-                            : "Pending access revocation"
-                          : "No pending approval change for this chat."}
+                        {accessPending ? (
+                          <StatusBadge status="pending">
+                            {approved ? "Pending access grant" : "Pending access revocation"}
+                          </StatusBadge>
+                        ) : (
+                          "No pending approval change for this chat."
+                        )}
                       </Text>
                       <Flex gap="3" wrap="wrap" mt="3">
                         <Button
-                          color={approved ? "red" : "teal"}
-                          variant={approved ? "soft" : "solid"}
+                          color={approved ? "red" : "gray"}
+                          variant="soft"
                           onClick={() => onPolicyChange(withChatAccess(policy, id, !approved))}
                         >
                           {approved
@@ -736,6 +832,7 @@ export function ChatWorkspace({
                         </Button>
                         {accessPending && approved && (
                           <Button
+                            color="gray"
                             variant="soft"
                             onClick={() =>
                               onPolicyChange(withChatAccess(policy, id, savedApproval))
@@ -744,7 +841,7 @@ export function ChatWorkspace({
                             Undo pending grant
                           </Button>
                         )}
-                        <Button variant="ghost" onClick={onAccess}>
+                        <Button color="gray" variant="ghost" onClick={onAccess}>
                           Open global Access
                         </Button>
                       </Flex>
@@ -761,44 +858,70 @@ export function ChatWorkspace({
                         <DataList.Label>Effective model</DataList.Label>
                         <DataList.Value>
                           {effective.model ?? "No allowed model"} ·{" "}
-                          {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
+                          <StatusBadge
+                            status={effective.sources.model === "chat" ? "overridden" : "inherited"}
+                          >
+                            {effective.sources.model === "chat"
+                              ? "Chat override"
+                              : "Shared default"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Chat model override</DataList.Label>
                         <DataList.Value>
-                          {override?.model ?? "Inherit from defaults"}
+                          <StatusBadge status={override?.model ? "overridden" : "inherited"}>
+                            {override?.model ?? "Inherit from defaults"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Tools</DataList.Label>
                         <DataList.Value>
                           {effective.tools.join(", ") || "None"} ·{" "}
-                          {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                          <StatusBadge
+                            status={effective.sources.tools === "chat" ? "overridden" : "inherited"}
+                          >
+                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>MCP servers</DataList.Label>
                         <DataList.Value>
                           {effective.servers.join(", ") || "None"} ·{" "}
-                          {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                          <StatusBadge
+                            status={
+                              effective.sources.servers === "chat" ? "overridden" : "inherited"
+                            }
+                          >
+                            {effective.sources.servers === "chat"
+                              ? "Explicit override"
+                              : "Inherited"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>Thinking</DataList.Label>
                         <DataList.Value>
                           {effective.thinking} ·{" "}
-                          {effective.sources.thinking === "chat"
-                            ? "Explicit override"
-                            : "Inherited"}
+                          <StatusBadge
+                            status={
+                              effective.sources.thinking === "chat" ? "overridden" : "inherited"
+                            }
+                          >
+                            {effective.sources.thinking === "chat"
+                              ? "Explicit override"
+                              : "Inherited"}
+                          </StatusBadge>
                         </DataList.Value>
                       </DataList.Item>
                     </DataList.Root>
                     <Flex gap="3" wrap="wrap">
-                      <Button variant="soft" onClick={onProviders}>
+                      <Button color="gray" variant="soft" onClick={onProviders}>
                         Manage model authentication
                       </Button>
-                      <Button variant="soft" onClick={onTools}>
+                      <Button color="gray" variant="soft" onClick={onTools}>
                         Manage tool permissions
                       </Button>
                     </Flex>
@@ -854,9 +977,28 @@ export function ChatWorkspace({
                             return (
                               <li key={name}>
                                 {name}:{" "}
-                                {server
-                                  ? `${server.enabled === false ? "Disabled · " : ""}${server.connection}`
-                                  : "Not present in loaded inventory"}
+                                {server ? (
+                                  <>
+                                    {server.enabled === false && (
+                                      <StatusBadge status="disabled">Disabled · </StatusBadge>
+                                    )}
+                                    <StatusBadge
+                                      status={
+                                        server.connection === "failed"
+                                          ? "failed"
+                                          : server.connection === "connected"
+                                            ? "approved"
+                                            : "unknown"
+                                      }
+                                    >
+                                      {server.connection}
+                                    </StatusBadge>
+                                  </>
+                                ) : (
+                                  <StatusBadge status="unknown">
+                                    Not present in loaded inventory
+                                  </StatusBadge>
+                                )}
                               </li>
                             )
                           })}
@@ -876,9 +1018,9 @@ export function ChatWorkspace({
                         <Activity entries={history} />
                       </SectionErrorBoundary>
                     ) : (
-                      <Text as="p">No chat-targeted records in the loaded audit page.</Text>
+                      <EmptyState title="No chat-targeted records in the loaded audit page." />
                     )}
-                    <Button variant="soft" mt="3" onClick={onAudit}>
+                    <Button color="gray" variant="soft" mt="3" onClick={onAudit}>
                       Open global Audit
                     </Button>
                   </Tabs.Content>

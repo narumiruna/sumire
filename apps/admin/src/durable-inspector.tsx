@@ -8,7 +8,17 @@ import type {
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
-import { Button, DataList, Flex, Heading, Link, Tabs, Text, TextField } from "@radix-ui/themes"
+import {
+  Button,
+  DataList,
+  Flex,
+  Heading,
+  Link,
+  Spinner,
+  Tabs,
+  Text,
+  TextField,
+} from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
@@ -22,7 +32,7 @@ import {
 import { navigationHref } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { EmptyState, LoadingState, Panel, Prose } from "./surfaces.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
 const labels = {
@@ -167,6 +177,7 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
     <details className="durable-json">
       <summary>{label}</summary>
       <Button
+        color="gray"
         variant="soft"
         size="1"
         onClick={() => {
@@ -180,11 +191,9 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
       >
         Copy {label}
       </Button>
-      {copyState && (
-        <Text as="p" role="status">
-          {copyState}
-        </Text>
-      )}
+      <Text as="p" className="copy-confirmation" role="status">
+        {copyState}
+      </Text>
       <pre>{json}</pre>
     </details>
   )
@@ -266,6 +275,15 @@ export function DurableInspector({
     setInputError("")
   }, [draftConversationId, location.taskId])
   const validChat = /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat))
+  const detailName = !validChat
+    ? "Choose a chat"
+    : metadataLoading
+      ? "Loading chat name…"
+      : metadataError
+        ? "Chat name unavailable"
+        : metadata
+          ? chatName(metadata)
+          : "Chat name unknown"
   const missing = contextNeeded(location)
   const path = inspectionPath(chat, location, pages.at(-1))
   const key = `${path}:${refresh}`
@@ -705,16 +723,9 @@ export function DurableInspector({
     <section className="durable-inspector" aria-label="Durable Inspector">
       <header className="durable-summary-header">
         <div>
-          <Heading as="h2" size="5">
-            {!validChat
-              ? "Choose a chat"
-              : metadataLoading
-                ? "Loading chat name…"
-                : metadataError
-                  ? "Chat name unavailable"
-                  : metadata
-                    ? chatName(metadata)
-                    : "Chat name unknown"}
+          <Heading as="h2" size="5" title={detailName}>
+            {validChat && metadataLoading && <Spinner aria-hidden="true" mr="2" />}
+            {detailName}
           </Heading>
           {validChat && (
             <Flex gap="2" align="center" wrap="wrap">
@@ -723,6 +734,7 @@ export function DurableInspector({
                 {metadata ? ` · ${metadata.type}` : ""}
               </Text>
               <Button
+                color="gray"
                 size="1"
                 variant="ghost"
                 onClick={() => {
@@ -736,21 +748,22 @@ export function DurableInspector({
               >
                 Copy chat ID
               </Button>
-              {copyIdState && (
-                <Text role="status" size="1">
-                  {copyIdState}
-                </Text>
-              )}
             </Flex>
+          )}
+          {validChat && (
+            <Text as="p" className="copy-confirmation" role="status" size="1">
+              {copyIdState}
+            </Text>
           )}
         </div>
         <Flex gap="3" wrap="wrap" align="center">
           {validChat && (
-            <Button variant="ghost" onClick={onChats}>
+            <Button color="gray" variant="ghost" onClick={onChats}>
               Open chat settings
             </Button>
           )}
           <Button
+            color="gray"
             variant="soft"
             disabled={!validChat || (!current && !selection)}
             onClick={() => {
@@ -764,11 +777,11 @@ export function DurableInspector({
       </header>
       {metadataError && (
         <div>
-          <Text as="p" role="alert">
+          <Text as="p" className="error-state" data-status="failed" role="alert">
             {metadataError}
           </Text>
           {onMetadataRetry && (
-            <Button variant="soft" onClick={onMetadataRetry}>
+            <Button color="gray" variant="soft" onClick={onMetadataRetry}>
               Retry chat metadata
             </Button>
           )}
@@ -784,6 +797,11 @@ export function DurableInspector({
           aria-live="polite"
         >
           <Heading as="h3" size="4">
+            {data?.state !== "not-loaded" &&
+              !sessionDocuments &&
+              location.view === "conversations" &&
+              !current &&
+              !location.objectId && <Spinner aria-hidden="true" mr="2" />}
             {data?.state === "not-loaded"
               ? "No loaded session to inspect"
               : sessionDocuments
@@ -863,11 +881,9 @@ export function DurableInspector({
                 Selected conversation
               </Heading>
               {!selection ? (
-                <Text as="p" role="status">
-                  Loading selection…
-                </Text>
+                <LoadingState label="Loading selection…" />
               ) : selection.error ? (
-                <Text as="p" role="alert">
+                <Text as="p" className="error-state" data-status="failed" role="alert">
                   {selection.error}
                 </Text>
               ) : selection.data?.state === "not-loaded" ? (
@@ -941,11 +957,9 @@ export function DurableInspector({
               </Heading>
               {selected ? (
                 !history ? (
-                  <Text as="p" role="status">
-                    Loading task history…
-                  </Text>
+                  <LoadingState label="Loading task history…" />
                 ) : history.error ? (
-                  <Text as="p" role="alert">
+                  <Text as="p" className="error-state" data-status="failed" role="alert">
                     {history.error}
                   </Text>
                 ) : history.data?.state === "not-loaded" ? (
@@ -960,9 +974,7 @@ export function DurableInspector({
                       .
                     </Text>
                     {!history.data?.items.length ? (
-                      <Text as="p" size="2">
-                        No task history on this page.
-                      </Text>
+                      <EmptyState title="No task history on this page." />
                     ) : (
                       <ul className="durable-history">
                         {history.data.items.map(
@@ -998,9 +1010,7 @@ export function DurableInspector({
         </Panel>
       )}
       {!validChat ? (
-        <Panel>
-          <Text as="p">Select a chat above to inspect Durable.</Text>
-        </Panel>
+        <EmptyState title="Select a chat" description="Select a chat above to inspect Durable." />
       ) : (
         <>
           <Heading as="h3" size="3">
@@ -1065,15 +1075,13 @@ export function DurableInspector({
                 {missing ? (
                   <Text as="p">{missing}</Text>
                 ) : !current ? (
-                  <Text as="p" role="status">
-                    Loading Durable…
-                  </Text>
+                  <LoadingState label="Loading Durable…" />
                 ) : current.unavailable ? (
                   <Text as="p" role="status">
                     Retired or unavailable. The object is no longer available in this scope.
                   </Text>
                 ) : current.error ? (
-                  <Text as="p" role="alert">
+                  <Text as="p" className="error-state" data-status="failed" role="alert">
                     {current.error}
                   </Text>
                 ) : (
@@ -1081,15 +1089,10 @@ export function DurableInspector({
                     <>
                       {current !== selection && current !== history && readTime(current)}
                       {data.state === "not-loaded" ? (
-                        <Panel>
-                          <Heading as="h3" size="3">
-                            Not loaded
-                          </Heading>
-                          <Text as="p">
-                            This chat has no loaded session. Inspection will not open its database
-                            or start a session.
-                          </Text>
-                        </Panel>
+                        <EmptyState
+                          title="Not loaded"
+                          description="This chat has no loaded session. Inspection will not open its database or start a session."
+                        />
                       ) : (
                         <>
                           {data.truncated && (
@@ -1099,11 +1102,13 @@ export function DurableInspector({
                             </Text>
                           )}
                           {!data.items.length ? (
-                            <Text as="p">
-                              {location.objectId
-                                ? "Retired or unavailable"
-                                : "Empty · no records in this view."}
-                            </Text>
+                            <EmptyState
+                              title={
+                                location.objectId
+                                  ? "Retired or unavailable"
+                                  : "Empty · no records in this view."
+                              }
+                            />
                           ) : (
                             <div className="durable-browser">
                               <ul
@@ -1142,6 +1147,7 @@ export function DurableInspector({
                           )}
                           <Flex gap="3" wrap="wrap" align="center">
                             <Button
+                              color="gray"
                               variant="soft"
                               disabled={pages.length === 1}
                               onClick={() => setPages((value) => value.slice(0, -1))}
@@ -1149,6 +1155,7 @@ export function DurableInspector({
                               Previous objects
                             </Button>
                             <Button
+                              color="gray"
                               variant="soft"
                               disabled={!data.nextCursor}
                               onClick={() => setPages((value) => [...value, data.nextCursor])}
@@ -1186,10 +1193,14 @@ export function DurableInspector({
                   onChange={(event) => setTaskDraft(event.target.value)}
                 />
               </label>
-              <Button variant="soft" type="submit">
+              <Button color="gray" variant="soft" type="submit">
                 Inspect IDs
               </Button>
-              {inputError && <Text role="alert">{inputError}</Text>}
+              {inputError && (
+                <Text className="error-state" data-status="failed" role="alert">
+                  {inputError}
+                </Text>
+              )}
             </form>
           </details>
         </>

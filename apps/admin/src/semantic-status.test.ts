@@ -216,7 +216,9 @@ describe("semantic status consumers", () => {
   it.each([
     ["connected", "approved"],
     ["not tested", "unknown"],
-    ["no visible tools or unavailable", "failed"],
+    // An empty catalog is not proof that the connection failed.
+    ["no visible tools or unavailable", "unknown"],
+    ["failed", "failed"],
     ["future result", "unknown"],
   ])("preserves MCP result %s and the repeated edit action name", (connection, status) => {
     const html = mcpMarkup([

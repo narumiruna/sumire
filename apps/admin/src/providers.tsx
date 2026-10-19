@@ -16,7 +16,8 @@ import { useContext, useEffect, useId, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
-import { Panel, Prose } from "./surfaces.js"
+import { StatusBadge } from "./semantic-status.js"
+import { EmptyState, Panel, Prose } from "./surfaces.js"
 
 type Option = { id: string; label: string; detail?: string }
 export function SearchChoice({
@@ -64,8 +65,14 @@ export function SearchChoice({
         }}
       >
         <Popover.Trigger>
-          <Button variant="surface" disabled={disabled} aria-label={label} aria-haspopup="dialog">
-            <MagnifyingGlassIcon />
+          <Button
+            color="gray"
+            variant="surface"
+            disabled={disabled}
+            aria-label={label}
+            aria-haspopup="dialog"
+          >
+            <MagnifyingGlassIcon aria-hidden="true" />
             {options.find((v) => v.id === value)?.label ??
               (value || `Choose ${label.toLowerCase()}`)}
           </Button>
@@ -118,11 +125,7 @@ export function SearchChoice({
               </button>
             ))}
           </div>
-          {!filtered.length && (
-            <Text as="p" size="2">
-              No matches.
-            </Text>
-          )}
+          {!filtered.length && <EmptyState title="No matches." />}
         </Popover.Content>
       </Popover.Root>
     </div>
@@ -202,6 +205,10 @@ export function Providers({
       ? discoveryCheck
       : undefined
   const discovered = currentDiscovery?.models ?? []
+  const currentCredential =
+    credentialCheck?.provider === provider && credentialCheck.revision === snapshot.revision
+      ? credentialCheck
+      : undefined
   const blocked = busy || dirty || Boolean(oauth)
   const ref = provider && model ? `${provider}/${model}` : ""
   const useDefault = defaultChoice ?? (Boolean(ref) && ref === snapshot.policy.defaults.model)
@@ -316,7 +323,7 @@ export function Providers({
       {snapshot.policy.defaults.model && (
         <AlertDialog.Root>
           <AlertDialog.Trigger>
-            <Button variant="ghost" disabled={blocked}>
+            <Button color="gray" variant="ghost" disabled={blocked}>
               Clear shared default model
             </Button>
           </AlertDialog.Trigger>
@@ -328,10 +335,14 @@ export function Providers({
             </AlertDialog.Description>
             <Flex gap="3" mt="4">
               <AlertDialog.Cancel>
-                <Button variant="soft">Cancel</Button>
+                <Button color="gray" variant="soft">
+                  Cancel
+                </Button>
               </AlertDialog.Cancel>
               <AlertDialog.Action>
                 <Button
+                  variant="soft"
+                  color="gray"
                   onClick={() =>
                     void run(async () => {
                       await request(
@@ -359,9 +370,10 @@ export function Providers({
         </AlertDialog.Root>
       )}
       {!inventory.providers.length && (
-        <Text as="p">
-          No providers available. Add a custom endpoint below or check the host provider setup.
-        </Text>
+        <EmptyState
+          title="No providers available."
+          description="Add a custom endpoint below or check the host provider setup."
+        />
       )}
       {!snapshot.policy.defaults.model && (
         <Text as="p" size="2" color="gray" mt="2">
@@ -388,6 +400,7 @@ export function Providers({
       )}
       {(draft || defaultChoice !== undefined) && (
         <Button
+          color="gray"
           variant="soft"
           mt="2"
           disabled={busy || Boolean(oauth)}
@@ -402,9 +415,11 @@ export function Providers({
         </Button>
       )}
       {dirty && (
-        <Text as="p" color="orange" role="status">
-          Save or discard the unsaved settings above before changing provider credentials or
-          applying a model.
+        <Text as="p" role="status">
+          <StatusBadge status="pending">
+            Save or discard the unsaved settings above before changing provider credentials or
+            applying a model.
+          </StatusBadge>
         </Text>
       )}
       <ol className="provider-steps" aria-label="Provider setup steps">
@@ -433,22 +448,25 @@ export function Providers({
           }}
         />
         {provider && !selected && (
-          <Text as="p" color="orange" mt="3">
-            The selected provider {provider} is no longer in the catalog. Choose another provider.
-            No replacement is selected automatically.
+          <Text as="p" mt="3">
+            <StatusBadge status="unknown">
+              The selected provider {provider} is no longer in the catalog. Choose another provider.
+              No replacement is selected automatically.
+            </StatusBadge>
           </Text>
         )}
         {selected && (
           <>
             <Flex align="center" gap="2" wrap="wrap" mt="3">
-              <Badge color={selected.configured ? "teal" : "orange"}>
+              <StatusBadge status={selected.configured ? "approved" : "unknown"}>
                 {selected.configured
                   ? "Authentication configured locally"
                   : "Authentication not configured"}
-              </Badge>
+              </StatusBadge>
+              {custom?.enabled === false && <StatusBadge status="disabled" />}
               {selected.apiKey || selected.oauth ? (
                 <Dialog.Trigger>
-                  <Button variant="soft" disabled={blocked} onClick={configureAuth}>
+                  <Button color="gray" variant="soft" disabled={blocked} onClick={configureAuth}>
                     Configure authentication
                   </Button>
                 </Dialog.Trigger>
@@ -458,6 +476,7 @@ export function Providers({
                 </Text>
               )}
               <Button
+                color="gray"
                 variant="ghost"
                 disabled={blocked}
                 onClick={() =>
@@ -505,7 +524,9 @@ export function Providers({
                     </AlertDialog.Description>
                     <Flex gap="3" mt="4">
                       <AlertDialog.Cancel>
-                        <Button variant="soft">Cancel</Button>
+                        <Button color="gray" variant="soft">
+                          Cancel
+                        </Button>
                       </AlertDialog.Cancel>
                       <AlertDialog.Action>
                         <Button
@@ -533,14 +554,21 @@ export function Providers({
             </Heading>
             <Text as="p" size="2" role="status">
               Local credential check:{" "}
-              {credentialCheck?.provider === provider &&
-              credentialCheck.revision === snapshot.revision
-                ? credentialCheck.status
-                : "Not checked"}
+              <StatusBadge
+                status={
+                  currentCredential?.status === "Check failed"
+                    ? "failed"
+                    : currentCredential?.status === "Configured locally"
+                      ? "approved"
+                      : "unknown"
+                }
+              >
+                {currentCredential?.status ?? "Not checked"}
+              </StatusBadge>
             </Text>
             <Text as="p" size="2">
-              Remote verification: Not checked. Local credential checks do not verify remote
-              acceptance.
+              Remote verification: <StatusBadge status="unknown">Not checked.</StatusBadge> Local
+              credential checks do not verify remote acceptance.
             </Text>
             <Text as="p" size="2" color="gray" mt="2">
               Model availability is unverified. Check authentication resolves credentials without
@@ -570,15 +598,17 @@ export function Providers({
             }}
           />
           {model && !selectedModel && (
-            <Text as="p" color="orange">
-              The selected model is no longer in the catalog. Choose another model before saving.
+            <Text as="p">
+              <StatusBadge status="unknown">
+                The selected model is no longer in the catalog. Choose another model before saving.
+              </StatusBadge>
             </Text>
           )}
           {selectedModel && (
             <>
               <Flex gap="2" my="3" wrap="wrap">
-                <Badge>{selectedModel.reasoning ? "Reasoning" : "No reasoning"}</Badge>
-                <Badge>{selectedModel.image ? "Image input" : "Text input"}</Badge>
+                <Badge color="gray">{selectedModel.reasoning ? "Reasoning" : "No reasoning"}</Badge>
+                <Badge color="gray">{selectedModel.image ? "Image input" : "Text input"}</Badge>
               </Flex>
               {(supported.length > 1 || (!thinkingValid && supported.length > 0)) && (
                 <label htmlFor="provider-thinking">
@@ -601,8 +631,10 @@ export function Providers({
                 </label>
               )}
               {!thinkingValid && (
-                <Text as="p" color="orange">
-                  The selected thinking level is unavailable. Choose a supported level.
+                <Text as="p">
+                  <StatusBadge status="unknown">
+                    The selected thinking level is unavailable. Choose a supported level.
+                  </StatusBadge>
                 </Text>
               )}
               <label className="check" htmlFor="provider-default">
@@ -633,6 +665,8 @@ export function Providers({
               <AlertDialog.Root>
                 <AlertDialog.Trigger>
                   <Button
+                    variant="soft"
+                    color="gray"
                     mt="3"
                     disabled={
                       blocked || !thinkingValid || !modelChanged || custom?.enabled === false
@@ -652,10 +686,14 @@ export function Providers({
                   </AlertDialog.Description>
                   <Flex gap="3" mt="4">
                     <AlertDialog.Cancel>
-                      <Button variant="soft">Cancel</Button>
+                      <Button color="gray" variant="soft">
+                        Cancel
+                      </Button>
                     </AlertDialog.Cancel>
                     <AlertDialog.Action>
                       <Button
+                        variant="soft"
+                        color="gray"
                         onClick={() =>
                           void run(async () => {
                             await request(
@@ -693,6 +731,7 @@ export function Providers({
                 capabilities. Add their metadata under Custom endpoint.
               </Text>
               <Button
+                color="gray"
                 variant="soft"
                 disabled={blocked || !custom.api?.startsWith("openai-")}
                 onClick={() =>
@@ -722,7 +761,18 @@ export function Providers({
                 Discover custom models
               </Button>
               <Text as="p" role="status">
-                Model-list check: {currentDiscovery?.status ?? "Not checked"}
+                Model-list check:{" "}
+                <StatusBadge
+                  status={
+                    !currentDiscovery
+                      ? "unknown"
+                      : currentDiscovery.status === "Check failed"
+                        ? "failed"
+                        : "approved"
+                  }
+                >
+                  {currentDiscovery?.status ?? "Not checked"}
+                </StatusBadge>
               </Text>
               {discovered.length > 0 && (
                 <ul>
@@ -752,16 +802,16 @@ export function Providers({
           Credentials are stored by Pi on the server. Existing secrets are never displayed.
         </Dialog.Description>
         {error && (
-          <Text as="p" color="red" role="alert">
+          <Text as="p" className="error-state" data-status="failed" role="alert">
             {error}
           </Text>
         )}
         {method === "choose" && (
           <Flex direction="column" gap="3" mt="4">
-            <Button disabled={busy} onClick={startAccount}>
+            <Button variant="soft" color="gray" disabled={busy} onClick={startAccount}>
               Sign in with account
             </Button>
-            <Button variant="soft" disabled={busy} onClick={() => setMethod("key")}>
+            <Button color="gray" variant="soft" disabled={busy} onClick={() => setMethod("key")}>
               Use API key
             </Button>
           </Flex>
@@ -780,6 +830,8 @@ export function Providers({
               />
             </label>
             <Button
+              variant="soft"
+              color="gray"
               disabled={busy || !key || dirty}
               onClick={() =>
                 void run(async () => {
@@ -802,14 +854,14 @@ export function Providers({
           <Flex direction="column" gap="3" mt="3">
             <Text role="status">Provider login: {login?.status ?? "starting"}</Text>
             {!oauth && (
-              <Button variant="soft" disabled={busy || dirty} onClick={startAccount}>
+              <Button color="gray" variant="soft" disabled={busy || dirty} onClick={startAccount}>
                 Retry account sign-in
               </Button>
             )}
             {login?.event?.message && <Text>{login.event.message}</Text>}
             {authLink && (
-              <Button asChild variant="soft">
-                <Link href={authLink} target="_blank" rel="noopener noreferrer">
+              <Button color="gray" asChild variant="soft">
+                <Link color="gray" href={authLink} target="_blank" rel="noopener noreferrer">
                   Open provider sign-in
                 </Link>
               </Button>
@@ -850,6 +902,8 @@ export function Providers({
                   </label>
                 )}
                 <Button
+                  variant="soft"
+                  color="gray"
                   disabled={busy || !answer}
                   onClick={() =>
                     void run(async () => {
@@ -865,7 +919,7 @@ export function Providers({
           </Flex>
         )}
         <Flex justify="end" mt="4">
-          <Button variant="soft" disabled={busy} onClick={closeAuth}>
+          <Button color="gray" variant="soft" disabled={busy} onClick={closeAuth}>
             {oauth ? "Cancel provider login" : "Close"}
           </Button>
         </Flex>

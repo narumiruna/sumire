@@ -1,9 +1,10 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { Badge, Button, Callout, Checkbox, Flex, Heading, Text } from "@radix-ui/themes"
+import { Button, Callout, Checkbox, Flex, Heading, Text } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { semanticStatuses } from "./semantic-status.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel, Prose, StatusBadge } from "./surfaces.js"
 
 export function defaultPermissionSummary(policy: Policy) {
   const effective = effectivePolicy(policy, 0)
@@ -93,6 +94,7 @@ function PermissionGroup({
     <Panel className="permission-group" aria-label={group.label}>
       <Heading as="h4" size="2">
         <Button
+          color="gray"
           variant="ghost"
           className="permission-group-toggle"
           aria-expanded={expanded}
@@ -189,12 +191,13 @@ export function ToolPermissions({
           {key === "tools" && (
             <Flex gap="3" my="3" wrap="wrap">
               <Button
+                color="gray"
                 variant="soft"
                 onClick={() => changeExpansion(groups.map((group) => group.id))}
               >
                 Expand all
               </Button>
-              <Button variant="soft" onClick={() => changeExpansion([])}>
+              <Button color="gray" variant="soft" onClick={() => changeExpansion([])}>
                 Collapse all
               </Button>
             </Flex>
@@ -299,7 +302,10 @@ export function ToolPermissions({
                       <Text as="p" size="2" weight="medium" className="permission-mobile-label">
                         Effective for inheriting chats
                       </Text>
-                      <Text as="p" size="2" id={`${id}-status`}>
+                      <StatusBadge
+                        id={`${id}-status`}
+                        status={!global || !selected ? "disabled" : "inherited"}
+                      >
                         {!global
                           ? "Unavailable globally"
                           : selected
@@ -310,7 +316,7 @@ export function ToolPermissions({
                         {!global && selected
                           ? " · stored default selection retained; clear it explicitly to resolve the save conflict"
                           : ""}
-                      </Text>
+                      </StatusBadge>
                       {servers.map((server) => (
                         <Text key={server.name} as="p" size="2">
                           {server.name}:{" "}
@@ -323,19 +329,35 @@ export function ToolPermissions({
                       ))}
                     </div>
                     {removed && (
-                      <Text as="p" size="2" color="orange" className="permission-impact">
+                      <Text
+                        as="p"
+                        size="2"
+                        color={semanticStatuses.pending.color}
+                        className="permission-impact"
+                        data-status="pending"
+                      >
                         Global removal blocks this capability for every chat after a valid policy
                         save.
                       </Text>
                     )}
                     {restored && (
-                      <Text as="p" size="2" color="orange" className="permission-impact">
+                      <Text
+                        as="p"
+                        size="2"
+                        color={semanticStatuses.pending.color}
+                        className="permission-impact"
+                        data-status="pending"
+                      >
                         Global approval makes retained default or explicit chat selections effective
                         again, subject to other required gates.
                       </Text>
                     )}
                     {!global && (selected || refs.length > 0) && (
-                      <Callout.Root color="orange" className="permission-impact">
+                      <Callout.Root
+                        color={semanticStatuses.pending.color}
+                        className="permission-impact"
+                        data-status="pending"
+                      >
                         <Callout.Text>
                           Cannot save while this name remains selected:{" "}
                           {selected ? "shared defaults; " : ""}
@@ -345,7 +367,12 @@ export function ToolPermissions({
                           Clear these selections explicitly or restore global permission. No
                           selections were deleted.
                           {refs.map(([id]) => (
-                            <Button key={id} variant="ghost" onClick={() => onChat(id)}>
+                            <Button
+                              color="gray"
+                              key={id}
+                              variant="ghost"
+                              onClick={() => onChat(id)}
+                            >
                               Review chat {id}
                             </Button>
                           ))}
@@ -354,9 +381,9 @@ export function ToolPermissions({
                     )}
                     {(global !== saved[key].includes(name) ||
                       selected !== (saved.defaults[key]?.includes(name) ?? false)) && (
-                      <Badge color="orange" className="permission-pending">
+                      <StatusBadge status="pending" className="permission-pending">
                         Pending policy change
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </li>
                 )

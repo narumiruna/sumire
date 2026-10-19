@@ -1,7 +1,8 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
-import { Badge, Heading, Text } from "@radix-ui/themes"
+import { Heading, Separator, Text } from "@radix-ui/themes"
+import type { SemanticStatus } from "./semantic-status.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { EmptyState, Panel, Prose, StatusBadge } from "./surfaces.js"
 
 export type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 
@@ -10,7 +11,13 @@ function failedImports(report: ImportReport["report"]) {
 }
 
 export function ImportHistory({ reports }: { reports: ImportReport[] }) {
-  if (!reports.length) return <Text as="p">No import history.</Text>
+  if (!reports.length)
+    return (
+      <EmptyState
+        title="No import history."
+        description="Import reports appear here after configuration is imported."
+      />
+    )
   return (
     <>
       <Prose>
@@ -27,14 +34,14 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
           <Panel key={name}>
             <Heading size="3">{name}</Heading>
             {failedImports(report) > 0 && (
-              <Badge color="red">Import failures — review details</Badge>
+              <StatusBadge status="failed">Import failures — review details</StatusBadge>
             )}
             {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
               (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
-              <Badge color="orange">Incomplete import</Badge>
+              <StatusBadge status="pending">Incomplete import</StatusBadge>
             )}
             {report.reviewRequired === true && (
-              <Badge color="orange">Review required at import</Badge>
+              <StatusBadge status="pending">Review required at import</StatusBadge>
             )}
             <Text as="p" size="2">
               {typeof report.servers === "number" &&
@@ -107,6 +114,26 @@ export function groupActivity(entries: AuditEntry[]) {
   return groups
 }
 
+function auditStatus(outcome: string): SemanticStatus {
+  switch (outcome) {
+    case "failed":
+    case "partial; review import report":
+      return "failed"
+    case "pending":
+    case "imported; review required":
+      return "pending"
+    case "saved":
+    case "applied":
+    case "completed":
+    case "enabled":
+    case "deleted":
+    case "revoked":
+      return "approved"
+    default:
+      return "unknown"
+  }
+}
+
 function AuditRecord({ entry }: { entry: AuditEntry }) {
   if (typeof entry.time !== "number" || !Number.isFinite(entry.time)) {
     throw new Error("Audit record time is missing or invalid.")
@@ -114,10 +141,15 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
   const time = new Date(entry.time)
   return (
     <>
-      <strong>{operationNames[entry.operation] ?? entry.operation}</strong> — {entry.outcome}
+      <strong>{operationNames[entry.operation] ?? entry.operation}</strong> —{" "}
+      <StatusBadge status={auditStatus(entry.outcome)}>{entry.outcome}</StatusBadge>
       <Text as="p" size="2">
         <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
-        {` · Actor ${entry.actor} · Revision ${entry.revision} · ${entry.target}`}
+        {" · Actor "}
+        <span className="numeric">{entry.actor}</span>
+        {" · Revision "}
+        <span className="numeric">{entry.revision}</span>
+        {` · ${entry.target}`}
       </Text>
       <details>
         <summary>Raw audit record</summary>
@@ -128,7 +160,13 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
 }
 
 export function Activity({ entries }: { entries: AuditEntry[] }) {
-  if (!entries.length) return <Text as="p">No audit records on this page.</Text>
+  if (!entries.length)
+    return (
+      <EmptyState
+        title="No audit records on this page."
+        description="Recorded configuration and access changes appear here."
+      />
+    )
   return (
     <ol className="activity" aria-label="Configuration activity">
       {groupActivity(entries).map((group) => (
@@ -137,13 +175,21 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
           data-outcome={
             group.some((entry) => entry.outcome === "failed") ? "failed" : group[0]?.outcome
           }
+          data-status={
+            group.some((entry) => auditStatus(entry.outcome) === "failed")
+              ? "failed"
+              : auditStatus(group[0]?.outcome ?? "")
+          }
         >
           {group.length === 1 ? (
             group[0] && <AuditRecord entry={group[0]} />
           ) : (
             <>
               <strong>
-                Revision {group[0]?.revision}: {countText(group.length, "save/application record")}
+                Revision <span className="numeric">{group[0]?.revision}</span>:{" "}
+                <span className="numeric">
+                  {countText(group.length, "save/application record")}
+                </span>
               </strong>
               <Text as="p">
                 {countText(
@@ -164,6 +210,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
               </details>
             </>
           )}
+          <Separator size="4" mt="3" />
         </li>
       ))}
     </ol>
