@@ -63,9 +63,9 @@ jobs:
       - name: Test administration browser flows
         run: npm run test:browser --workspace @narumitw/sumire-admin
       - name: Capture Durable comparison
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'push'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           node apps/admin/scripts/capture-durable-comparison.ts "$BASE_SHA" apps/admin/test-results/durable-comparison
