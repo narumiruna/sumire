@@ -2128,23 +2128,33 @@ test("filters the loaded directory by type and effective policy access without t
   const directory = page.getByRole("list", { name: "Chats on this page" })
   await expect(directory.getByRole("button")).toHaveCount(4)
   await expect(page.getByRole("button", { name: "Known chat", exact: true })).toHaveCount(0)
-  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
-  await page.getByRole("option", { name: "Group / supergroup", exact: true }).click()
+  await page
+    .getByRole("radiogroup", { name: "Chat type", exact: true })
+    .getByRole("radio", { name: "Group / supergroup", exact: true })
+    .click()
   await expect(directory.getByRole("button")).toHaveCount(1)
   await expect(directory).toContainText("Team")
-  await expect(directory).toContainText("Approved · Disabled")
-  await page.getByRole("combobox", { name: "Access status", exact: true }).click()
-  await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
+  // Approval and enabled state now use separate semantic badges.
+  await expect(directory.locator('[data-status="approved"]')).toHaveText("Approved")
+  await expect(directory.locator('[data-status="disabled"]')).toHaveText("Disabled")
+  await page
+    .getByRole("radiogroup", { name: "Access status", exact: true })
+    .getByRole("radio", { name: "Approved and enabled", exact: true })
+    .click()
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "Clear search and filters" }).click()
-  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
-  await page.getByRole("option", { name: "Channel", exact: true }).click()
+  await page
+    .getByRole("radiogroup", { name: "Chat type", exact: true })
+    .getByRole("radio", { name: "Channel", exact: true })
+    .click()
   await directory.getByRole("button").click()
   await expect(page.getByRole("region", { name: "Chat details" })).toContainText("News")
-  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
-  await page.getByRole("option", { name: "All types", exact: true }).click()
+  await page
+    .getByRole("radiogroup", { name: "Chat type", exact: true })
+    .getByRole("radio", { name: "All types", exact: true })
+    .click()
   await page.screenshot({ path: testInfo.outputPath("desktop.png"), fullPage: true })
 })
 

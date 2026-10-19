@@ -131,7 +131,33 @@ Configure providers, credentials, chat models, and thinking levels in the WebUI.
 
 ## Presentation
 
-The app uses an explicit light appearance, including when the operating system prefers dark mode. Dark mode is not supported in this presentation pass. Teal identifies links and navigation controls; destructive controls have a visible boundary. Shared panels use one border, radius, spacing, and heading rhythm. Paragraphs have a maximum measure of 72ch. Control groups retain fieldset semantics without a border notch. Selectors use the section-aware Radix control; date fields retain native date semantics within Radix text fields.
+The app uses an explicit light appearance, including when the operating system prefers dark mode. Dark mode is not supported. It uses the Radix system font stack, 95% scaling, and solid bordered panels. No font or runtime asset loads from a third-party host. Body, secondary, and caption text use Radix sizes 3, 2, and 1. Identifiers, revisions, counts, and token totals use tabular numerals; identifiers use the system monospace stack.
+
+Teal identifies the primary action and current location. Secondary actions use neutral treatments; destructive controls retain a visible boundary. Panels use `--radius-3`; controls retain the Radix radius scale. Elevation is reserved for floating layers, including the sticky save bar and Radix popovers. Paragraphs have a maximum measure of 72ch. Control groups retain fieldset semantics without a border notch.
+
+Definition lists use Radix DataList and become one column at 650 pixels. Access lists use named Radix tables with content-sized columns. Chat type and access filters use labelled Radix segmented controls; arrow keys move focus, and Space or Enter selects a filter. Other selectors use the section-aware Radix control. Date fields retain native date semantics within Radix text fields. Buttons and selectors retain a minimum 44-pixel height despite the smaller text scale. Icon-only row actions retain an accessible name and tooltip.
+
+Navigation icons identify the eight sections. Status icons have the meanings below. Icons beside labels are decorative. The document title uses `<section> · Sumire`; the favicon, description, and theme color are served with the app.
+
+### Status semantics
+
+`apps/admin/src/semantic-status.tsx` owns the status tokens. Context can change a label, but cannot change its color or icon. Color supplements the label and icon; it is never the only state indicator.
+
+| Token | Radix color | Radix icon | Default label and meaning |
+| --- | --- | --- | --- |
+| `approved` | green | `CheckCircledIcon` | Approved: an explicit approval or successful named check. Local configuration is not remote verification. |
+| `pending` | orange | `ClockIcon` | Pending: a browser draft, staged change, or unfinished application. |
+| `failed` | red | `CrossCircledIcon` | Failed: a failed request, check, or application. |
+| `inherited` | blue | `Link2Icon` | Inherited: a value comes from shared defaults. |
+| `overridden` | violet | `Pencil2Icon` | Overridden: an explicit chat value replaces a default. |
+| `disabled` | gray | `MinusCircledIcon` | Disabled: a switch or permission blocks use. This also labels explicit lack of approval. |
+| `unknown` | gray | `QuestionMarkCircledIcon` | Unknown: data is absent, unchecked, or insufficient to identify success or failure. |
+
+The chat directory, detail header, access tables, permission matrix, and save bar share these tokens. Failed audit records, failed applications, and failed checks use the same red treatment. An ambiguous MCP result such as “no visible tools or unavailable” remains unknown, not a confirmed failure. Neutral capability tags are not status badges.
+
+Loading blocks use Spinner and Skeleton with named status announcements. Busy actions show a Spinner without changing control names or enabling configuration controls. Copy confirmations have a reserved status slot. Empty states use a heading, explanation, and next action where available. Request, validation, partial-read, and contained section errors retain their existing alert semantics and use the same red surface treatment.
+
+Transitions last 120 milliseconds and affect only color, background, border, and opacity. Focus outlines appear immediately. `prefers-reduced-motion: reduce` disables component animation and transitions without removing state labels. See [visual verification evidence](admin-visual-validation.md) for fixture screenshots, contrast results, and review limits.
 
 Each section has an error boundary. A malformed record shows a local error and a retry action, not a blank app. Navigation, the save bar, and other sections remain available. Chat History has its own boundary, independent of Audit. Retrying a display does not submit a mutation.
 
