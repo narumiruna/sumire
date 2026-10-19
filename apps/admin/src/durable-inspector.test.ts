@@ -138,6 +138,34 @@ describe("bounded Durable overview reads", () => {
     expect(calls[0]).toContain("cursor=opaque%2B%2F%3Dtoken")
     expect(calls[1]).not.toContain("cursor=")
   })
+  it("reads an off-page conversation by object ID without changing persisted selection", async () => {
+    const calls: string[] = []
+    const published = new Map<string, { data?: DurableInspectionResponse }>()
+    await readDurableContext(
+      "42",
+      { view: "conversations", objectId: 9 },
+      undefined,
+      async (path) => {
+        calls.push(path)
+        const data = loaded(path.includes("view=tasks") ? "tasks" : "conversations")
+        if (path.includes("objectId=9"))
+          data.items = [{ type: "conversation", id: 9, active: false }]
+        return { data }
+      },
+      (name, block) => {
+        published.set(name, block)
+      },
+    )
+    expect(calls).toEqual([
+      "chats/42/durable?view=conversations&limit=25",
+      "chats/42/durable?view=tasks&limit=25&conversationId=99",
+      "chats/42/durable?view=conversations&limit=25&objectId=9",
+    ])
+    expect(persistedSelection(published.get("selection")?.data)?.id).toBe(99)
+    expect(published.get("inspection")?.data?.items).toEqual([
+      { type: "conversation", id: 9, active: false },
+    ])
+  })
   it("stops after an unloaded session or cancellation without speculative reads", async () => {
     let calls = 0
     await readDurableContext(
@@ -197,6 +225,16 @@ describe("Durable Inspector navigation", () => {
         new URL(`${base}&view=documents&scope=task&objectId=8&taskId=9`),
       ),
     ).toBe("/admin?section=Durable&chat=-100&view=entries&conversationId=7")
+  })
+  it("keeps a conversation object deep link separate from the persisted selection context", () => {
+    const location = readDurableLocation(new URL(`${base}&view=conversations&objectId=9`))
+    expect(location).toEqual({ view: "conversations", objectId: 9 })
+    expect(inspectionPath("-100", location)).toBe(
+      "chats/-100/durable?view=conversations&limit=25&objectId=9",
+    )
+    expect(durableHref("-100", { view: "tasks", conversationId: 9 }, new URL(base))).toBe(
+      "/admin?section=Durable&chat=-100&view=tasks&conversationId=9",
+    )
   })
   it("sends only scope-relevant IDs and an encoded opaque cursor at a fixed page size", () => {
     const context = { conversationId: 7, taskId: 8, objectId: 9 }

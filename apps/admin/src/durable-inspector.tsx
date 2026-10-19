@@ -6,11 +6,19 @@ import type {
   DurableInspectionQuery,
   DurableInspectionResponse,
   DurableInspectionView,
+  DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
 import { Button, Card, Flex, Heading, Tabs, Text } from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
+import {
+  formatDurableTime,
+  formatReadTime,
+  recordSummary,
+  recordTitle,
+  taskObservation,
+} from "./durable-presentation.js"
 import { navigationHref } from "./navigation.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
@@ -179,6 +187,33 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
   )
 }
 
+function UsageFields({ usage }: { usage: DurableNumericUsage }) {
+  const fields = [
+    ["input", "Input"],
+    ["output", "Output"],
+    ["cacheRead", "Cache read"],
+    ["cacheWrite", "Cache write"],
+    ["total", "Total"],
+  ] as const
+  return (
+    <dl className="durable-metadata durable-usage">
+      {fields.map(([key, label]) => (
+        <div className="durable-usage-field" key={key}>
+          <dt>{label} tokens</dt>
+          <dd>{usage[key] ?? "Not recorded"}</dd>
+        </div>
+      ))}
+      {usage.cost &&
+        fields.map(([key, label]) => (
+          <div className="durable-usage-field" key={`cost:${key}`}>
+            <dt>{label} cost (reported)</dt>
+            <dd>{usage.cost?.[key] ?? "Not recorded"}</dd>
+          </div>
+        ))}
+    </dl>
+  )
+}
+
 export function DurableInspector({
   chat,
   metadata,
@@ -207,7 +242,11 @@ export function DurableInspector({
   }>()
   const [detailId, setDetailId] = useState<number>()
   const [copyIdState, setCopyIdState] = useState("")
-  const [conversationDraft, setConversationDraft] = useState(String(location.conversationId ?? ""))
+  const draftConversationId =
+    location.view === "conversations"
+      ? (location.objectId ?? location.conversationId)
+      : location.conversationId
+  const [conversationDraft, setConversationDraft] = useState(String(draftConversationId ?? ""))
   const [taskDraft, setTaskDraft] = useState(String(location.taskId ?? ""))
   const [inputError, setInputError] = useState("")
   useEffect(() => {
@@ -219,10 +258,10 @@ export function DurableInspector({
     return () => window.removeEventListener("popstate", restore)
   }, [])
   useEffect(() => {
-    setConversationDraft(String(location.conversationId ?? ""))
+    setConversationDraft(String(draftConversationId ?? ""))
     setTaskDraft(String(location.taskId ?? ""))
     setInputError("")
-  }, [location.conversationId, location.taskId])
+  }, [draftConversationId, location.taskId])
   const validChat = /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat))
   const missing = contextNeeded(location)
   const path = inspectionPath(chat, location, pages.at(-1))
@@ -300,7 +339,11 @@ export function DurableInspector({
     navigate({
       view: location.view,
       ...(location.scope ? { scope: location.scope } : {}),
-      ...(conversationId ? { conversationId } : {}),
+      ...(conversationId
+        ? location.view === "conversations"
+          ? { objectId: conversationId }
+          : { conversationId }
+        : {}),
       ...(taskId ? { taskId } : {}),
     })
   }
@@ -310,15 +353,29 @@ export function DurableInspector({
   const selection = activeBlocks?.selection
   const history = activeBlocks?.history
   const selected = persistedSelection(selection?.data)
-  const inspectedConversation =
-    location.view === "conversations" && location.objectId
-      ? location.objectId
-      : location.conversationId
   const detail = data?.items.find((item) => item.id === detailId) ?? data?.items[0]
+  const inspectedConversation =
+    location.view === "conversations"
+      ? (location.objectId ??
+        (detail?.type === "conversation" ? detail.id : location.conversationId))
+      : location.conversationId
+  const sessionDocuments = location.view === "documents" && location.scope === "session"
+  const conversation = sessionDocuments
+    ? undefined
+    : detail?.type === "conversation"
+      ? detail
+      : selected?.id === inspectedConversation
+        ? selected
+        : selection?.data?.state === "loaded"
+          ? selection.data.items.find(
+              (item): item is DurableConversationItem =>
+                item.type === "conversation" && item.id === inspectedConversation,
+            )
+          : undefined
   const readTime = (block: ReadBlock | undefined) =>
     block?.data && (
       <Text as="p" size="1" className="durable-read-time">
-        Read time: <time dateTime={block.data.readAt}>{block.data.readAt}</time>
+        Read time: <time dateTime={block.data.readAt}>{formatReadTime(block.data.readAt)}</time>
       </Text>
     )
   const row = (item: DurableInspectionItem) => (
@@ -327,15 +384,21 @@ export function DurableInspector({
       className="durable-detail"
       aria-label="Selected item details"
     >
-      <Heading as="h3" size="3">
-        {item.type} #{item.id}
+      <Heading as="h3" size="4">
+        {recordTitle(item)}
       </Heading>
+      <Text as="p" size="2" className="durable-record-id">
+        {item.type} #{item.id}
+      </Text>
+      <Text as="p" className="durable-record-summary">
+        {recordSummary(item)}
+      </Text>
       <dl className="durable-metadata">
         {item.type === "conversation" && (
           <>
-            <dt>Conversation marker</dt>
+            <dt>Selection marker</dt>
             <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
-            <dt>Parent</dt>
+            <dt>Parent conversation</dt>
             <dd>
               {item.parent ? (
                 <>
@@ -343,18 +406,18 @@ export function DurableInspector({
                     view: "conversations",
                     objectId: item.parent.conversationId,
                   })}{" "}
-                  · Fork entry{" "}
-                  {link(String(item.parent.at), {
+                  ·{" "}
+                  {link(`Fork entry ${item.parent.at}`, {
                     view: "entries",
                     conversationId: item.parent.conversationId,
                     objectId: item.parent.at,
                   })}
                 </>
               ) : (
-                "None"
+                "No parent recorded"
               )}
             </dd>
-            <dt>Owner</dt>
+            <dt>Owning task</dt>
             <dd>
               {item.owner
                 ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
@@ -362,134 +425,146 @@ export function DurableInspector({
                     conversationId: item.owner.conversationId,
                     objectId: item.owner.taskId,
                   })
-                : "None"}
+                : "No owner recorded"}
             </dd>
           </>
         )}
         {item.type === "task" && (
           <>
-            <dt>Kind / version</dt>
-            <dd>
-              {item.kind} · {item.version}
-            </dd>
-            <dt>Historical status / outcome</dt>
-            <dd>
-              {item.status}
-              {item.outcome ? ` · ${item.outcome}` : ""}
-            </dd>
             <dt>Conversation</dt>
             <dd>
-              {link(String(item.conversationId), {
+              {link(`Conversation ${item.conversationId}`, {
                 view: "conversations",
                 objectId: item.conversationId,
               })}
             </dd>
-            <dt>Owner task</dt>
+            <dt>Owning task</dt>
             <dd>
               {item.ownerTaskId
-                ? link(String(item.ownerTaskId), {
+                ? link(`Task ${item.ownerTaskId}`, {
                     view: "tasks",
                     conversationId: item.conversationId,
                     objectId: item.ownerTaskId,
                   })
-                : "None"}
+                : "No owner recorded"}
             </dd>
-            <dt>Background / abort requested</dt>
-            <dd>
-              {String(item.background)} / {String(item.abortRequested)}
-            </dd>
-            <dt>Started / ended</dt>
-            <dd>
-              {item.startedAt ?? "Not available"} / {item.endedAt ?? "Not available"}
-            </dd>
+            <dt>Started</dt>
+            <dd>{formatDurableTime(item.startedAt)}</dd>
+            <dt>Ended</dt>
+            <dd>{formatDurableTime(item.endedAt)}</dd>
           </>
         )}
         {item.type === "document" && (
           <>
-            <dt>Kind</dt>
-            <dd>{item.kind}</dd>
-            <dt>Scope</dt>
+            <dt>Applies to</dt>
             <dd>
-              {item.scope.kind}
-              {item.scope.kind === "conversation" ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  {link(`Conversation ${item.scope.conversationId}`, {
+              {item.scope.kind === "conversation"
+                ? link(`Conversation ${item.scope.conversationId}`, {
                     view: "conversations",
                     objectId: item.scope.conversationId,
-                  })}
-                </>
-              ) : item.scope.kind === "task" ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  {link(`Task ${item.scope.taskId}`, {
-                    view: "tasks",
-                    conversationId: location.conversationId,
-                    objectId: item.scope.taskId,
-                  })}
-                </>
-              ) : null}
-            </dd>
-            <dt>Family member</dt>
-            <dd>{item.family ? "Yes" : "No"}</dd>
-            <dt>Created / retired</dt>
-            <dd>
-              {item.createdAt} / {item.retiredAt ?? "Not retired"}
-            </dd>
-            <dt>Version</dt>
-            <dd>{item.version ?? "Not available"}</dd>
-            <dt>Value</dt>
-            <dd>
-              {item.valueState === "withheld"
-                ? `Value withheld · ${item.withheldReason === "limit" ? "Truncated: value exceeds limits" : item.withheldReason === "invalid-value" ? "Unsupported value" : "Kind is not approved"}`
-                : item.valueState === "unavailable"
-                  ? "Retired or unavailable"
-                  : item.valueState === "metadata-only"
-                    ? "Not loaded · inspect document for approved fields"
-                    : "Server-approved projection"}
+                  })
+                : item.scope.kind === "task"
+                  ? link(`Task ${item.scope.taskId}`, {
+                      view: "tasks",
+                      conversationId: location.conversationId,
+                      objectId: item.scope.taskId,
+                    })
+                  : "This session"}
             </dd>
           </>
         )}
         {item.type === "entry" && (
           <>
-            <dt>Kind / role</dt>
-            <dd>
-              {item.kind} / {item.role ?? "Not available"}
-            </dd>
-            <dt>Timestamp</dt>
-            <dd>{item.timestamp ?? "Not available"}</dd>
+            <dt>Recorded at</dt>
+            <dd>{formatDurableTime(item.timestamp)}</dd>
             <dt>Conversation</dt>
             <dd>
-              {link(String(item.conversationId), {
+              {link(`Conversation ${item.conversationId}`, {
                 view: "conversations",
                 objectId: item.conversationId,
               })}
             </dd>
-            <dt>Owner task</dt>
+            <dt>Recorded by</dt>
             <dd>
               {item.byTaskId
-                ? link(String(item.byTaskId), {
+                ? link(`Task ${item.byTaskId}`, {
                     view: "tasks",
                     conversationId: item.conversationId,
                     objectId: item.byTaskId,
                   })
-                : "Not available"}
+                : "Not recorded"}
             </dd>
             <dt>Head entry</dt>
             <dd>
               {item.head
-                ? link(String(item.head), {
+                ? link(`Entry ${item.head}`, {
                     view: "entries",
                     conversationId: item.conversationId,
                     objectId: item.head,
                   })
-                : "Not available"}
+                : "Not recorded"}
             </dd>
           </>
         )}
       </dl>
+      {item.type === "document" && item.valueState === "available" && !item.value && (
+        <Text as="p">Approved fields were not included in this response.</Text>
+      )}
+      {item.type === "document" && item.valueState === "available" && item.value && (
+        <section aria-label="Approved document fields" className="durable-projection">
+          <Heading as="h4" size="3">
+            Approved fields
+          </Heading>
+          {item.value.kind === "pi.agent" ? (
+            <dl className="durable-metadata">
+              <dt>Model provider</dt>
+              <dd>{item.value.model?.provider ?? "Not recorded"}</dd>
+              <dt>Model</dt>
+              <dd>{item.value.model?.modelId ?? "Not recorded"}</dd>
+              <dt>Thinking level</dt>
+              <dd>{item.value.thinkingLevel ?? "Not recorded"}</dd>
+            </dl>
+          ) : item.value.kind === "pi.usage" ? (
+            <>
+              <Heading as="h5" size="2">
+                Total usage
+              </Heading>
+              <UsageFields usage={item.value.total} />
+              <Heading as="h5" size="2">
+                Per-model usage
+              </Heading>
+              {Object.keys(item.value.models).length === 0 && (
+                <Text as="p" size="2">
+                  No per-model usage recorded.
+                </Text>
+              )}
+              {Object.entries(item.value.models).map(([model, usage]) => (
+                <details key={model} className="durable-model-usage">
+                  <summary>
+                    {model} ·{" "}
+                    {usage.total === undefined
+                      ? "Total not recorded"
+                      : `${usage.total} total tokens`}
+                  </summary>
+                  <UsageFields usage={usage} />
+                </details>
+              ))}
+            </>
+          ) : (
+            <dl className="durable-metadata">
+              <dt>Persisted selected conversation</dt>
+              <dd>
+                {item.value.activeConversation
+                  ? link(`Conversation ${item.value.activeConversation}`, {
+                      view: "conversations",
+                      objectId: item.value.activeConversation,
+                    })
+                  : "Not recorded"}
+              </dd>
+            </dl>
+          )}
+        </section>
+      )}
       <Flex gap="3" wrap="wrap" className="durable-links">
         {item.type === "conversation" && (
           <>
@@ -513,12 +588,59 @@ export function DurableInspector({
             taskId: item.id,
           })}
       </Flex>
+      <details className="durable-technical">
+        <summary>Technical details</summary>
+        <dl className="durable-metadata">
+          {item.type !== "conversation" && (
+            <>
+              <dt>Stored kind</dt>
+              <dd>{item.kind}</dd>
+            </>
+          )}
+          {item.type === "task" && (
+            <>
+              <dt>Version</dt>
+              <dd>{item.version}</dd>
+              <dt>Stored status</dt>
+              <dd>{item.status}</dd>
+              <dt>Background</dt>
+              <dd>{String(item.background)}</dd>
+              <dt>Abort requested</dt>
+              <dd>{String(item.abortRequested)}</dd>
+            </>
+          )}
+          {item.type === "document" && (
+            <>
+              <dt>Family member</dt>
+              <dd>{item.family ? "Yes" : "No"}</dd>
+              <dt>Created sequence</dt>
+              <dd>{item.createdAt}</dd>
+              <dt>Retired sequence</dt>
+              <dd>{item.retiredAt ?? "Not retired"}</dd>
+              <dt>Definition version</dt>
+              <dd>{item.version ?? "Not recorded"}</dd>
+            </>
+          )}
+          {item.type === "entry" && (
+            <>
+              <dt>Stored role</dt>
+              <dd>{item.role ?? "Not recorded"}</dd>
+            </>
+          )}
+          {item.type === "conversation" && (
+            <>
+              <dt>Persisted selection marker</dt>
+              <dd>{String(item.active)}</dd>
+            </>
+          )}
+        </dl>
+      </details>
       <JsonDetails
         key={`metadata:${item.type}:${item.id}`}
         label={`Metadata JSON for ${item.type} ${item.id}`}
         value={item.type === "document" ? { ...item, value: undefined } : item}
       />
-      {item.type === "document" && item.valueState === "available" && (
+      {item.type === "document" && item.valueState === "available" && item.value && (
         <JsonDetails
           key={`value:${item.id}`}
           label={`Approved value JSON for document ${item.id}`}
@@ -601,13 +723,88 @@ export function DurableInspector({
           )}
         </div>
       )}
-      <Text as="p" size="2" className="durable-notice">
+      <Text as="p" size="2" className="durable-notice" id="durable-history-warning">
         Read-only persisted data; not live execution state
       </Text>
       {validChat && (
+        <section
+          className="durable-inspection-context"
+          aria-label="Inspection context"
+          aria-live="polite"
+        >
+          <Heading as="h3" size="4">
+            {data?.state === "not-loaded"
+              ? "No loaded session to inspect"
+              : sessionDocuments
+                ? "Inspecting session documents"
+                : location.view === "conversations" && !current && !location.objectId
+                  ? "Loading conversation list…"
+                  : inspectedConversation
+                    ? `Inspecting conversation ${inspectedConversation}`
+                    : "Choose a conversation to inspect"}
+          </Heading>
+          <Text as="p">
+            {data?.state === "not-loaded"
+              ? "Inspection will not load a session or start work."
+              : sessionDocuments
+                ? "These documents apply to the session, not one conversation."
+                : inspectedConversation
+                  ? selected
+                    ? inspectedConversation === selected.id
+                      ? "This is the persisted selected conversation. Selection does not mean work is running."
+                      : "This is not the persisted selected conversation (conversation " +
+                        selected.id +
+                        "). Inspecting it does not change selection."
+                    : "Persisted selection cannot be confirmed from the available metadata."
+                  : "Use the conversation list or a related-record link. Message content is not included."}
+          </Text>
+          {conversation?.parent && (
+            <Text as="p">
+              Branched from{" "}
+              {link(`conversation ${conversation.parent.conversationId}`, {
+                view: "conversations",
+                objectId: conversation.parent.conversationId,
+              })}{" "}
+              at{" "}
+              {link(`entry ${conversation.parent.at}`, {
+                view: "entries",
+                conversationId: conversation.parent.conversationId,
+                objectId: conversation.parent.at,
+              })}
+              .
+            </Text>
+          )}
+          {!sessionDocuments &&
+            inspectedConversation &&
+            !conversation &&
+            selection?.data?.state === "loaded" && (
+              <Text as="p" size="2">
+                Relationship metadata is not on the loaded conversation page.
+              </Text>
+            )}
+          {conversation?.owner && (
+            <Text as="p">
+              Owned by{" "}
+              {link(
+                "task " +
+                  conversation.owner.taskId +
+                  " in conversation " +
+                  conversation.owner.conversationId,
+                {
+                  view: "tasks",
+                  conversationId: conversation.owner.conversationId,
+                  objectId: conversation.owner.taskId,
+                },
+              )}
+              .
+            </Text>
+          )}
+        </section>
+      )}
+      {validChat && (
         <section className="durable-overview" aria-label="Durable overview">
           <Heading as="h3" size="3">
-            Overview
+            Persisted session context
           </Heading>
           <div className="durable-overview-grid">
             <section aria-label="Persisted selection" aria-live="polite" aria-busy={!selection}>
@@ -635,34 +832,37 @@ export function DurableInspector({
                     {link("View selected tasks", { view: "tasks", conversationId: selected.id })}
                   </Flex>
                   {(selected.parent || selected.owner) && (
-                    <Text as="p" size="2">
-                      {selected.parent && (
-                        <>
-                          Parent{" "}
-                          {link(`conversation ${selected.parent.conversationId}`, {
-                            view: "conversations",
-                            objectId: selected.parent.conversationId,
-                          })}{" "}
-                          · fork{" "}
-                          {link(`entry ${selected.parent.at}`, {
-                            view: "entries",
-                            conversationId: selected.parent.conversationId,
-                            objectId: selected.parent.at,
-                          })}
-                        </>
-                      )}
-                      {selected.parent && selected.owner ? " · " : ""}
-                      {selected.owner && (
-                        <>
-                          Owner{" "}
-                          {link(`task ${selected.owner.taskId}`, {
-                            view: "tasks",
-                            conversationId: selected.owner.conversationId,
-                            objectId: selected.owner.taskId,
-                          })}
-                        </>
-                      )}
-                    </Text>
+                    <details className="durable-selection-relationships">
+                      <summary>Selection relationships</summary>
+                      <Text as="p" size="2">
+                        {selected.parent && (
+                          <>
+                            Parent{" "}
+                            {link(`conversation ${selected.parent.conversationId}`, {
+                              view: "conversations",
+                              objectId: selected.parent.conversationId,
+                            })}{" "}
+                            · fork{" "}
+                            {link(`entry ${selected.parent.at}`, {
+                              view: "entries",
+                              conversationId: selected.parent.conversationId,
+                              objectId: selected.parent.at,
+                            })}
+                          </>
+                        )}
+                        {selected.parent && selected.owner ? " · " : ""}
+                        {selected.owner && (
+                          <>
+                            Owner{" "}
+                            {link(`task ${selected.owner.taskId}`, {
+                              view: "tasks",
+                              conversationId: selected.owner.conversationId,
+                              objectId: selected.owner.taskId,
+                            })}
+                          </>
+                        )}
+                      </Text>
+                    </details>
                   )}
                 </>
               ) : (
@@ -686,7 +886,7 @@ export function DurableInspector({
               aria-busy={Boolean(selected && !history)}
             >
               <Heading as="h4" size="2">
-                Task history
+                Task history of persisted selection
               </Heading>
               {selected ? (
                 !history ? (
@@ -724,8 +924,8 @@ export function DurableInspector({
                                   conversationId: item.conversationId,
                                   objectId: item.id,
                                 })}
-                                : historical {item.status}
-                                {item.outcome ? ` · ${item.outcome}` : ""}
+                                {" · "}
+                                {recordTitle(item)} · {taskObservation(item)}
                               </li>
                             ),
                         )}
@@ -747,17 +947,6 @@ export function DurableInspector({
           </div>
         </section>
       )}
-      <details className="durable-limits">
-        <summary>Data scope and limits</summary>
-        <Text as="p" size="2">
-          Inspection does not load chats or start work. Refresh is manual; there is no polling. Each
-          context or refresh reads at most one conversation page, one selected-conversation task
-          page, and one requested inspection page, in sequence. Pages contain at most 25 records.
-          Reads are separate, not one atomic snapshot. Active marks persisted selection, not running
-          work. Task status and outcome are historical observations, not live scheduling state.
-          Retired task documents can be unavailable. Message bodies and tool output are excluded.
-        </Text>
-      </details>
       {!validChat ? (
         <Card>
           <Text as="p">Select a chat above to inspect Durable.</Text>
@@ -765,41 +954,16 @@ export function DurableInspector({
       ) : (
         <>
           <Heading as="h3" size="3">
-            Inspect records
+            Explore related records
           </Heading>
-          <details className="durable-advanced">
-            <summary>Advanced inspection</summary>
-            <form onSubmit={selectContext} className="durable-context">
-              <label htmlFor="durable-conversation">
-                Conversation ID
-                <input
-                  id="durable-conversation"
-                  inputMode="numeric"
-                  value={conversationDraft}
-                  onChange={(event) => setConversationDraft(event.target.value)}
-                />
-              </label>
-              <label htmlFor="durable-task">
-                Task ID (for task documents)
-                <input
-                  id="durable-task"
-                  inputMode="numeric"
-                  value={taskDraft}
-                  onChange={(event) => setTaskDraft(event.target.value)}
-                />
-              </label>
-              <Button variant="soft" type="submit">
-                Inspect IDs
-              </Button>
-              {inputError && <Text role="alert">{inputError}</Text>}
-            </form>
-          </details>
           <Tabs.Root
             value={location.view}
             onValueChange={(view) =>
               navigate({
                 view: view as DurableInspectionView,
-                conversationId: inspectedConversation ?? selected?.id,
+                ...(view === "conversations"
+                  ? { objectId: inspectedConversation ?? selected?.id }
+                  : { conversationId: inspectedConversation ?? selected?.id }),
                 taskId: location.taskId,
                 ...(view === "documents"
                   ? { scope: inspectedConversation || selected ? "conversation" : "session" }
@@ -864,7 +1028,7 @@ export function DurableInspector({
                   data && (
                     <>
                       <Text as="p" size="2">
-                        Read time: <time dateTime={data.readAt}>{data.readAt}</time>
+                        Read time: <time dateTime={data.readAt}>{formatReadTime(data.readAt)}</time>
                       </Text>
                       {data.state === "not-loaded" ? (
                         <Card>
@@ -901,22 +1065,16 @@ export function DurableInspector({
                                     <button
                                       type="button"
                                       aria-pressed={detail?.id === item.id}
-                                      aria-label={`Select ${item.type} ${item.id}`}
+                                      aria-label={`Select ${recordTitle(item)} (${item.type} ${item.id})`}
                                       onClick={() => setDetailId(item.id)}
+                                      aria-describedby={`durable-summary-${item.type}-${item.id}${item.type === "task" ? " durable-history-warning" : ""}`}
                                     >
-                                      <strong>
+                                      <strong>{recordTitle(item)}</strong>
+                                      <span id={`durable-summary-${item.type}-${item.id}`}>
+                                        {recordSummary(item)}
+                                      </span>
+                                      <span className="durable-record-id">
                                         {item.type} #{item.id}
-                                      </strong>
-                                      <span>
-                                        {item.type === "conversation"
-                                          ? item.active
-                                            ? "Persisted selection"
-                                            : "Historical"
-                                          : item.type === "task"
-                                            ? `Historical ${item.status}${item.outcome ? ` · ${item.outcome}` : ""}`
-                                            : item.type === "document"
-                                              ? `${item.kind} · ${item.valueState}`
-                                              : `${item.kind}${item.role ? ` · ${item.role}` : ""}`}
                                       </span>
                                     </button>
                                     {item.type === "document" &&
@@ -957,8 +1115,46 @@ export function DurableInspector({
               </div>
             </Tabs.Content>
           </Tabs.Root>
+          <details className="durable-advanced">
+            <summary>Advanced inspection</summary>
+            <form onSubmit={selectContext} className="durable-context">
+              <label htmlFor="durable-conversation">
+                Conversation ID
+                <input
+                  id="durable-conversation"
+                  inputMode="numeric"
+                  value={conversationDraft}
+                  onChange={(event) => setConversationDraft(event.target.value)}
+                />
+              </label>
+              <label htmlFor="durable-task">
+                Task ID (for task documents)
+                <input
+                  id="durable-task"
+                  inputMode="numeric"
+                  value={taskDraft}
+                  onChange={(event) => setTaskDraft(event.target.value)}
+                />
+              </label>
+              <Button variant="soft" type="submit">
+                Inspect IDs
+              </Button>
+              {inputError && <Text role="alert">{inputError}</Text>}
+            </form>
+          </details>
         </>
       )}
+      <details className="durable-limits">
+        <summary>Data scope and limits</summary>
+        <Text as="p" size="2">
+          Inspection does not load chats or start work. Refresh is manual; there is no polling. Each
+          context or refresh reads at most one conversation page, one selected-conversation task
+          page, and one requested inspection page, in sequence. Pages contain at most 25 records.
+          Reads are separate, not one atomic snapshot. Active marks persisted selection, not running
+          work. Task status and outcome are historical observations, not live scheduling state.
+          Retired task documents can be unavailable. Message bodies and tool output are excluded.
+        </Text>
+      </details>
     </section>
   )
 }

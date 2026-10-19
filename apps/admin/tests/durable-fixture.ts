@@ -9,6 +9,11 @@ import type { Page } from "@playwright/test"
 export const readAt = "2026-10-19T12:00:00.000Z"
 export const untrusted =
   '<img src="https://untrusted.invalid/pixel" onerror="window.inspectorInjected=true">'
+export const historicalConversation: DurableConversationItem = {
+  type: "conversation",
+  id: 9,
+  active: false,
+}
 export const conversations: DurableInspectionItem[] = [
   {
     type: "conversation",
@@ -23,15 +28,16 @@ export const tasks: DurableInspectionItem[] = [
     type: "task",
     id: 8,
     conversationId: 7,
-    kind: "model",
+    kind: "pi.generation",
     version: 1,
     background: false,
     abortRequested: false,
     status: "terminal",
     outcome: "completed",
     ownerTaskId: 5,
-    startedAt: 100,
-    endedAt: 200,
+    // Durable task and entry times are Unix milliseconds; document times below are sequences.
+    startedAt: Date.UTC(2026, 9, 19, 11, 59, 0),
+    endedAt: Date.UTC(2026, 9, 19, 11, 59, 30),
   },
 ]
 export const documents: DurableInspectionItem[] = [
@@ -80,7 +86,7 @@ export const entries: DurableInspectionItem[] = [
     conversationId: 7,
     kind: "message",
     role: "assistant",
-    timestamp: 100,
+    timestamp: Date.UTC(2026, 9, 19, 11, 59, 30),
     byTaskId: 8,
     head: 60,
   },
@@ -99,10 +105,18 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
     failed: false,
     empty: false,
     documentLimit: false,
+    usageAvailable: false,
+    usageFieldsAbsent: false,
+    agentFieldsAbsent: false,
+    sessionActiveAbsent: false,
+    approvedValueAbsent: false,
     taskTruncated: false,
     selectedConversation: conversations[0] as DurableConversationItem | null | undefined,
     failures: new Map<DurableInspectionView, number>(),
+    conversationItems: conversations,
     taskItems: tasks,
+    documentItems: documents,
+    entryItems: entries,
     chats: [
       { id: 42, name: "Loaded chat", type: "private" },
       { id: 43, name: "Idle chat", type: "private" },
@@ -151,25 +165,41 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         })
         return
       }
-      let items = { conversations, tasks: state.taskItems, documents, entries }[view]
-      if (view === "conversations")
+      const cursor = url.searchParams.get("cursor")
+      let items = {
+        conversations: state.conversationItems,
+        tasks: state.taskItems,
+        documents: state.documentItems,
+        entries: state.entryItems,
+      }[view]
+      if (view === "conversations") {
+        if (url.pathname.includes("/43/")) items = [{ type: "conversation", id: 17, active: false }]
+        else if (objectId === "9" && !items.some((item) => item.id === 9))
+          items = [historicalConversation]
+        else if (cursor) items = [historicalConversation]
         items = items.map((item) =>
           item.type === "conversation"
             ? { ...item, active: item.id === state.selectedConversation?.id }
             : item,
         )
-      if (url.pathname.includes("/43/") && view === "conversations")
-        items = [{ type: "conversation", id: 17, active: false }]
-      if (url.searchParams.has("cursor")) items = [{ type: "conversation", id: 9, active: false }]
+      } else if (cursor) items = []
+      if (view === "tasks" || view === "entries")
+        items = items.filter(
+          (item) =>
+            (item.type === "task" || item.type === "entry") &&
+            item.conversationId === Number(url.searchParams.get("conversationId")),
+        )
       if (view === "documents") {
         const scope = url.searchParams.get("scope") ?? "conversation"
-        items = documents.filter(
+        items = items.filter(
           (item) =>
             item.type === "document" &&
             item.scope.kind === scope &&
             (item.scope.kind === "session" ||
               (item.scope.kind === "conversation" &&
-                item.scope.conversationId === Number(url.searchParams.get("conversationId")))),
+                item.scope.conversationId === Number(url.searchParams.get("conversationId"))) ||
+              (item.scope.kind === "task" &&
+                item.scope.taskId === Number(url.searchParams.get("taskId")))),
         )
       }
       if (objectId) {
@@ -194,28 +224,67 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
                       valueState: "available",
                       value: {
                         kind: "pi.agent",
-                        model: { provider: "fixture", modelId: untrusted },
-                        thinkingLevel: "low",
+                        ...(state.agentFieldsAbsent
+                          ? {}
+                          : {
+                              model: { provider: "fixture", modelId: untrusted },
+                              thinkingLevel: "low",
+                            }),
                       },
                     }),
               },
             ]
-          if (item.id === 103) items = [{ ...item, valueState: "unavailable" }]
+          if (item.id === 103)
+            items = [
+              state.usageAvailable
+                ? {
+                    ...item,
+                    version: 1,
+                    valueState: "available",
+                    value: {
+                      kind: "pi.usage",
+                      total: state.usageFieldsAbsent
+                        ? {}
+                        : { input: 0, total: 0, cost: { total: 0 } },
+                      models: state.usageFieldsAbsent
+                        ? {}
+                        : {
+                            "fixture/model-a": {
+                              input: 12,
+                              output: 3,
+                              total: 15,
+                              cost: { input: 0.001, output: 0.002, total: 0.003 },
+                            },
+                            "fixture/model-b": { output: 0, cost: { output: 0 } },
+                          },
+                    },
+                  }
+                : { ...item, valueState: "unavailable" },
+            ]
           if (item.id === 201)
             items = [
               {
                 ...item,
                 version: 1,
                 valueState: "available",
-                value: { kind: "sumire.session", activeConversation: 7 },
+                value: {
+                  kind: "sumire.session",
+                  ...(state.sessionActiveAbsent ? {} : { activeConversation: 7 }),
+                },
               },
             ]
+          if (state.approvedValueAbsent)
+            items = items.map((item) =>
+              item.type === "document" && item.valueState === "available"
+                ? { ...item, value: undefined }
+                : item,
+            )
         }
       }
       await route.fulfill({
         json: response(view, state.empty ? [] : items, {
           readAt: view === "tasks" ? "2026-10-19T12:00:01.000Z" : readAt,
-          ...(view === "tasks" && state.taskTruncated
+          ...(view === "tasks" && state.taskTruncated && !cursor
             ? { truncated: true, nextCursor: "task-history-cursor" }
             : {}),
           ...(view === "conversations"
