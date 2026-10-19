@@ -69,9 +69,6 @@ export function McpConnections({
       </Button>
       <Panel className="mcp-step">
         <Heading size="3">1. Choose or create a server</Heading>
-        <Prose size="2">
-          Choose Edit fields to update a saved server. Enter a new name to create a server.
-        </Prose>
         {!inventory.mcp.length && (
           <Prose>
             No MCP connections configured. Add a server below, then test it and approve its tools
@@ -264,7 +261,7 @@ export function McpConnections({
           Pending secret fields:{" "}
           {[...Object.keys(mcpSecrets.env), ...Object.keys(mcpSecrets.headers)].join(", ") ||
             "none"}
-          . Enter new secret values only in the masked field, not the JSON editor.
+          .
         </Prose>
         <details>
           <summary>Secret preservation and transport rules</summary>

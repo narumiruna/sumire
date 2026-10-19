@@ -113,7 +113,7 @@ export function AuditHistory({
               </div>
             ))}
           </div>
-          <Flex gap="2">
+          <Flex gap="2" wrap="wrap">
             <Button type="submit" disabled={loading}>
               Apply audit filters
             </Button>

@@ -438,7 +438,7 @@ export function SecretFields({
   return (
     <Panel as="fieldset">
       <legend>MCP secret replacement</legend>
-      <Prose size="2">Enter only the secret values to replace.</Prose>
+      <Prose size="2">Enter only values to replace in the masked field, not the JSON editor.</Prose>
       <label htmlFor="secret-scope">
         Field map
         <Select.Root value={scope} onValueChange={(v) => setScope(v as "env" | "headers")}>
