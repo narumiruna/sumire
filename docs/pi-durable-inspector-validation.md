@@ -4,7 +4,7 @@
 
 The read-only Inspector is implemented for already loaded chat sessions. It exposes metadata for Conversations, Tasks, Documents, and Entries, plus three approved singleton document projections. It adds no storage migration, session-opening path, or model/tool loop.
 
-Base: `969f9ee` on `main`. Implementation branch: `narumi/feat/pi-durable-inspector`.
+Base: `969f9ee` on `main`. Implementation branch: `narumi/feat/pi-durable-inspector`; source implementation: `4db4191`. Delivered as [PR #147](https://github.com/narumiruna/sumire/pull/147). GitHub CI passed on the implementation at [run 39268675818](https://github.com/narumiruna/sumire/actions/runs/39268675818).
 
 ## Read and ownership evidence
 
@@ -51,6 +51,8 @@ Initial parallel browser runs had intermittent failures in existing MCP save/del
 Browser interaction tests use the real frontend with API fixtures. Backend tests separately use the real HTTP server, session registry, Pi Harness, and disposable SQLite storage. These checks do not claim live Telegram, real provider acceptance, production deployment, or a new OS credential-isolation boundary.
 
 ## Handoff and rollback
+
+All implementation-plan tasks and completion checks passed. The completed plan `docs/plans/2026-10-19_pi-durable-inspector-plan.md` was removed after PR handoff and CI verification; this report retains its verification evidence and limitations.
 
 Operator behavior, endpoints, limits, units, error states, and rollback are documented in `docs/admin-webui.md` under **Durable Inspector**. The feature requires no database conversion; roll back the matching bot/admin/contracts build together after reads drain. Do not abort agent work or restore an old database snapshot for a display-only rollback.
 
