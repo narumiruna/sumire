@@ -295,6 +295,7 @@ export function chatModelRuntime(
   runtime: ModelRuntime,
   store: AdminStore,
   chatId: number,
+  assertAdmission?: () => void,
 ): ModelRuntime {
   const assertModel = (model: { provider: string; id: string }, level?: ModelThinkingLevel) => {
     store.assertChat(chatId)
@@ -339,6 +340,7 @@ export function chatModelRuntime(
           context: Parameters<ModelRuntime["streamSimple"]>[1],
           options?: Parameters<ModelRuntime["streamSimple"]>[2],
         ) => {
+          assertAdmission?.()
           assertModel(model, options?.reasoning)
           const custom = store
             .snapshot()

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { chmod, mkdir, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 
@@ -9,6 +9,7 @@ import {
   type ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
@@ -23,10 +24,16 @@ import { buildMorselTools, createMorselPublisher } from "../morsel.js"
 import { ChannelImageIndex } from "../telegram/channel-images.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { traceUrlLoad } from "../url-telemetry.js"
-import { createDurableCodemode } from "./durable-codemode.js"
+import {
+  createDurableCodemode,
+  createToolSelectionExtension,
+  guardDurableTool,
+  type ToolNamespace,
+} from "./durable-codemode.js"
+import { migrateCodemodeStores } from "./durable-migration.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
-import { adaptTool, codingTools, collectTools, isCodemodeCallable } from "./durable-tools.js"
+import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable-tools.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -82,8 +89,8 @@ export async function createPiSessionFactory(
     traceLoad: (url, requestedLoader, toolCallId, load) =>
       traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
   })
+  const coding = await nativeCodingTools(adminShellEnvironment(process.env))
   const baseTools = [
-    ...codingTools(settings.botWorkdir, adminShellEnvironment(process.env)),
     urlTool,
     ...buildMorselTools(createMorselPublisher(settings), settings.morselMode, logger),
     ...(settings.botChannelImageInputEnabled && settings.botImageInputEnabled
@@ -92,6 +99,7 @@ export async function createPiSessionFactory(
   ]
 
   const toolNames = [
+    ...coding.map((tool) => tool.name),
     ...baseTools.map((tool) => tool.name),
     ...publicPolymarketToolNames,
     "codemode",
@@ -154,12 +162,22 @@ export async function createPiSessionFactory(
         (await modelRuntime.checkAuth(requested.provider))
           ? requested
           : undefined
-      const runtime = chatModelRuntime(modelRuntime, control.store, chatId)
+      // Conversation.abort() can resume the whole scheduler while legacy scopes are still pending.
+      // Keep model requests and capabilities closed until every scope and restored setting is ready.
+      let admissionReady = false
+      const assertAdmission = () => {
+        if (!admissionReady) throw new Error("Durable session startup admission is not ready")
+      }
+      const authorize = (name: string) => {
+        assertAdmission()
+        control.store.assertChat(chatId)
+        if (!control.store.allowsTool(chatId, name)) throw new Error("Tool is not allowed")
+      }
+      const runtime = chatModelRuntime(modelRuntime, control.store, chatId, assertAdmission)
       const guard = (tool: import("./durable-tools.js").NativeTool) => ({
         ...tool,
         execute: (...args: Parameters<typeof tool.execute>) => {
-          control.store.assertChat(chatId)
-          if (!control.store.allowsTool(chatId, tool.name)) throw new Error("Tool is not allowed")
+          authorize(tool.name)
           return tool.execute(...args)
         },
       })
@@ -177,12 +195,40 @@ export async function createPiSessionFactory(
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
       const polymarket = createPolymarketTools()
+      const chatCoding = coding.filter((tool) => control.store.allowsTool(chatId, tool.name))
       const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
       const nativeTools = [...chatBaseTools]
       let mcpTools: import("./durable-tools.js").NativeTool[] = []
+      let currentGenerations: Record<string, string> = {}
+      const generations = () => ({ ...currentGenerations })
+      const guardedTool = (tool: import("@earendil-works/pi-durable").ToolRegistration) =>
+        guardDurableTool(tool, currentGenerations[tool.name] as string, generations, authorize)
       const updateNativeTools = () => {
         nativeTools.splice(0, nativeTools.length, ...chatBaseTools, ...mcpTools)
+        currentGenerations = Object.fromEntries([
+          ...chatCoding.map((tool) => [tool.name, `coding-v1:${tool.name}`]),
+          ...chatBaseTools.map((tool) => [tool.name, `capability-v1:${tool.name}`]),
+          ...mcpTools.map((tool) => [tool.name, randomUUID()]),
+        ])
       }
+      const namespaces = (): ToolNamespace[] => {
+        const entries = new Map<string, ToolNamespace>()
+        for (const tool of nativeTools) {
+          if (!tool.namespace) continue
+          entries.set(tool.namespace.name, {
+            ...tool.namespace,
+            prefix: `${tool.namespace.name}__`,
+          })
+        }
+        return [...entries.values()]
+      }
+      updateNativeTools()
+      registry.install(
+        createToolSelectionExtension(() => {
+          if (!harness) throw new Error("Durable harness is not open")
+          return harness
+        }),
+      )
       const mcp: McpCapability | undefined =
         permittedMcp.servers.length > 0
           ? new McpCapability(
@@ -198,7 +244,7 @@ export async function createPiSessionFactory(
                 registry.install(
                   defineExtension({
                     name: "sumire-mcp",
-                    tools: tools.filter((tool) => tool.exposure === "direct").map(adaptTool),
+                    tools: tools.map(adaptTool).map(guardedTool),
                     sections: [section("mcp_servers", () => mcp?.summary())],
                   }),
                 )
@@ -219,7 +265,7 @@ export async function createPiSessionFactory(
       registry.install(
         defineExtension({
           name: "sumire",
-          tools: chatBaseTools.map(adaptTool),
+          tools: [...chatCoding, ...chatBaseTools.map(adaptTool)].map(guardedTool),
           sections: [
             section("system", () => systemPrompt, { tag: false }),
             section("tool_access", ({ agent }) => {
@@ -250,25 +296,22 @@ export async function createPiSessionFactory(
           ],
         }),
       )
-      const assertTool = (name: string) => {
-        if (!control.store.allowsTool(chatId, name)) throw new Error("Tool is not allowed")
-      }
       if (control.store.allowsTool(chatId, "update_progress"))
-        registry.install(createProgressExtension(() => assertTool("update_progress")))
+        registry.install(createProgressExtension(() => authorize("update_progress")))
       let harness: Harness | undefined
       let session: DurableSession | undefined
       let storage: Awaited<ReturnType<typeof openNodeSqliteStorage>> | undefined
       try {
-        const codemode = await createDurableCodemode(
-          nativeTools,
+        const codemode = createDurableCodemode(
           Math.round(settings.botCodemodeTimeoutSeconds * 1_000),
           () => {
             if (!harness) throw new Error("Durable harness is not open")
             return harness
           },
-          (event) => session?.emit(event),
+          generations,
+          namespaces,
           (signal) => mcp?.ready(signal) ?? Promise.resolve(),
-          () => assertTool("codemode"),
+          () => authorize("codemode"),
         )
         registry.install({
           ...codemode,
@@ -284,6 +327,7 @@ export async function createPiSessionFactory(
           {
             models: runtime,
             registry,
+            env: () => new NodeExecutionEnv({ cwd: settings.botWorkdir }),
             settings: {
               compaction: {
                 enabled: true,
@@ -308,6 +352,7 @@ export async function createPiSessionFactory(
           },
           context,
         )
+        await migrateCodemodeStores(harness, context)
         await harness.root(context, {
           agent: {
             model: { provider: selectedModel.provider, modelId: selectedModel.id },
@@ -331,10 +376,14 @@ export async function createPiSessionFactory(
         })
         await session.setModel(selectedModel)
         await session.setThinkingLevel(policy.thinking)
+        admissionReady = true
         logger.info(`Pi chat tool access chat_id=${chatId}`, {
           tools: session.getActiveToolNames(),
           codemodeTools: control.store.allowsTool(chatId, "codemode")
-            ? nativeTools.filter(isCodemodeCallable).map((tool) => tool.name)
+            ? [
+                ...chatCoding.map((tool) => tool.name),
+                ...nativeTools.filter(isCodemodeCallable).map((tool) => tool.name),
+              ]
             : [],
         })
         return session

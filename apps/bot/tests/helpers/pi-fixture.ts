@@ -17,7 +17,7 @@ interface CompletionRequest {
   messages: Array<{ role: string; content: unknown }>
 }
 
-type Reply = { tool: string; args: unknown } | { text: string } | { error: string }
+type Reply = { tool: string; args: unknown } | { text: string } | { error: string; status: number }
 
 /** A local fixture speaks the real Chat Completions wire contract, without calling a model. */
 export async function createPiFixture(overrides: Partial<Settings> = {}) {
@@ -51,7 +51,7 @@ export async function createPiFixture(overrides: Partial<Settings> = {}) {
       const reply = replies.shift()
       assert.ok(reply, "Unexpected model request")
       if ("error" in reply) {
-        response.writeHead(400, { "content-type": "application/json" })
+        response.writeHead(reply.status, { "content-type": "application/json" })
         response.end(
           JSON.stringify({ error: { message: reply.error, type: "invalid_request_error" } }),
         )
@@ -159,8 +159,8 @@ export async function createPiFixture(overrides: Partial<Settings> = {}) {
       enqueueAnswer: (text = "Recovered answer.") => {
         replies.push({ text })
       },
-      enqueueFailure: () => {
-        replies.push({ error: "Offline provider failure" })
+      enqueueFailure: (status = 400) => {
+        replies.push({ error: "Offline provider failure", status })
       },
       get disconnectedRequests() {
         return disconnectedRequests

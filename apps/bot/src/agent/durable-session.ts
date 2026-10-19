@@ -31,6 +31,7 @@ import {
 } from "@earendil-works/pi-durable"
 
 import type { Logger } from "../logging.js"
+import { forkCodemodeConversation } from "./durable-migration.js"
 import {
   BotSessionDoc,
   OutboxDoc,
@@ -231,6 +232,7 @@ export class DurableSession implements SessionHandle {
     return this.registry
       .snapshot()
       .tools()
+      .filter(({ tool }) => tool.callers?.includes("model") !== false && !tool.deferred)
       .map(({ tool }) => tool.name)
   }
 
@@ -344,7 +346,7 @@ export class DurableSession implements SessionHandle {
     await this.#conversation.waitForIdle(context)
     const source = await this.harness.conversation(target.conversationId, context)
     if (!source || !(await this.findEntry(id))) throw new Error("Durable checkpoint is missing")
-    const fork = await source.fork(target.entryId, { ownership: { kind: "ownerless" } }, context)
+    const fork = await forkCodemodeConversation(this.harness, source, target.entryId, context)
     await fork.configure(
       {
         model: { provider: this.model.provider, modelId: this.model.id },
@@ -509,13 +511,15 @@ export class DurableSession implements SessionHandle {
     else if (event.type === "turn_start") this.emit({ type: "turn_start" })
     else if (event.type === "tool_execution_start") this.emit(event)
     else if (event.type === "tool_execution_end") {
-      const result = event.entry?.model?.find((message) => message.role === "toolResult")
+      const result =
+        event.result ?? event.entry?.model?.find((message) => message.role === "toolResult")
       this.emit({
         type: "tool_execution_end",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
         result,
-        isError: !result || result.isError,
+        isError: !result || result.isError === true,
       })
     } else if (event.type === "auto_retry_start") {
       this.logger.info(`Durable retry session_id=${this.sessionId} attempt=${event.attempt}`)

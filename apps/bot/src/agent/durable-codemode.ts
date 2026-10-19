@@ -1,270 +1,322 @@
-import { randomUUID } from "node:crypto"
-import type { JsonValue } from "@earendil-works/chord"
-import { withoutAbortSignal } from "@earendil-works/chord/context"
-import type { AgentToolCallOutcome } from "@earendil-works/pi-agent-core"
-import type {
-  AgentSessionEvent,
-  ExtensionAPI,
-  ExtensionToolContext,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent"
+import type { Context } from "@earendil-works/chord"
+import { withAbortSignal } from "@earendil-works/chord/context"
+import { getCurrentTools } from "@earendil-works/pi-ai/utils/transcript"
 import {
+  type CodemodeResult,
+  type CodemodeRunOptions,
+  CodemodeSandbox,
+} from "@earendil-works/pi-codemode"
+import {
+  defineDoc,
   defineExtension,
-  defineTask,
-  defineTool,
+  GenerationTask,
   type Harness,
+  hook,
   section,
+  type ToolExecutionApi,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable"
-import { createBotCodemodeExtension } from "./codemode.js"
-import { CodemodeStoreDoc } from "./durable-state.js"
 import {
-  collectTools,
-  durableToolResult,
-  executeNative,
-  isCodemodeCallable,
-  jsonValue,
-  type NativeTool,
-} from "./durable-tools.js"
+  type CodemodeNamespace,
+  createCodemodeExtension,
+  createCodemodeTool,
+} from "@earendil-works/pi-durable/codemode"
+import { LegacyCodemodeCallTask } from "./durable-migration.js"
 
-export async function createDurableCodemode(
-  nativeTools: NativeTool[],
+const policyMemo = "sumire.codemode-policy.v1"
+export const ToolSelectionDoc = defineDoc({
+  kind: "sumire.tool-selection",
+  version: 1,
+  scope: "task",
+  initial: () => ({ generations: {} as Record<string, string> }),
+})
+const generationField = "x-sumire-tool-generation"
+type PreparedSchema = ToolRegistration["parameters"] & { [generationField]?: string }
+
+/** Bind to the declarations committed during prepare, not the later live registry. */
+export function createToolSelectionExtension(getHarness: () => Harness) {
+  return defineExtension({
+    name: "sumire-tool-selection",
+    hooks: [
+      hook(GenerationTask, {
+        async beforeRequest(request, api, context) {
+          const selected = Object.fromEntries(
+            getCurrentTools(request.messages).flatMap((tool) => {
+              const generation = (tool.parameters as PreparedSchema)[generationField]
+              return typeof generation === "string" ? [[tool.name, generation]] : []
+            }),
+          )
+          // A retry prepares a new request in the same generation task. Replace
+          // its selection atomically; replay of the same cutoff restores the same IDs.
+          await getHarness().commit(async (tx) => {
+            ;(await tx.doc(ToolSelectionDoc, api.taskId)).generations = selected
+          }, context)
+          // The annotation binds persisted intent only. Do not send it to providers.
+          return {
+            messages: request.messages.map((message) =>
+              message.role === "system" && message.toolsAdded
+                ? {
+                    ...message,
+                    toolsAdded: message.toolsAdded.map((tool) => {
+                      const { [generationField]: _generation, ...parameters } =
+                        tool.parameters as PreparedSchema
+                      return { ...tool, parameters }
+                    }),
+                  }
+                : message,
+            ),
+          }
+        },
+      }),
+    ],
+  })
+}
+type ScriptPolicy = {
+  deadline: number
+  generations: Record<string, string>
+  aliases: Record<string, string>
+}
+export type ToolNamespace = CodemodeNamespace & { aliases?: readonly string[] }
+
+/** Only adapt host policy. Pi owns the VM journal and all nested task scheduling. */
+class HostDeadlineSandbox extends CodemodeSandbox {
+  readonly exits: Promise<void>[]
+  succeeded = false
+  constructor(private readonly policy: ScriptPolicy) {
+    const exits: Promise<void>[] = []
+    super({
+      memoryLimitBytes: 256 * 1024 * 1024,
+      onWorkerStarted: (exited) => {
+        exits.push(exited)
+      },
+    })
+    this.exits = exits
+  }
+
+  override start(code: string, options: CodemodeRunOptions) {
+    const remaining = this.policy.deadline - Date.now()
+    if (remaining <= 0) throw new Error("Codemode host deadline passed while interrupted")
+    const run = super.start(code, {
+      ...options,
+      timeoutMs: Math.min(options.timeoutMs ?? remaining, remaining),
+      // Preserve MCP namespace aliases without replacing native discovery or its journal.
+      onCall: (call) => {
+        if (call.target === "global" && Array.isArray(call.args)) {
+          const args: unknown[] = [...call.args]
+          if (call.name === "describeNamespace" && typeof args[0] === "string")
+            args[0] = this.policy.aliases[args[0]] ?? args[0]
+          if (call.name === "searchTools" && args[1] && typeof args[1] === "object") {
+            const search = args[1] as Record<string, unknown>
+            if (typeof search.namespace === "string")
+              args[1] = {
+                ...search,
+                namespace: this.policy.aliases[search.namespace] ?? search.namespace,
+              }
+          }
+          options.onCall({ ...call, args })
+        } else options.onCall(call)
+      },
+    })
+    return {
+      get finished() {
+        return run.finished
+      },
+      deliver: run.deliver.bind(run),
+      result: run.result.then((result): CodemodeResult => {
+        if (result.ok && Date.now() >= this.policy.deadline)
+          return {
+            ok: false,
+            error: { kind: "timeout", message: "Codemode host deadline exceeded" },
+            output: result.output,
+            calls: result.calls,
+          }
+        this.succeeded = result.ok
+        return result
+      }),
+    }
+  }
+}
+
+/** Execution guards also run on recovery, where native beforeTool hooks do not run. */
+export function guardDurableTool(
+  tool: ToolRegistration,
+  generation: string,
+  generations: () => Record<string, string>,
+  authorize: (name: string) => void,
+): ToolRegistration {
+  return {
+    ...tool,
+    parameters: { ...tool.parameters, [generationField]: generation },
+    async execute(args, api, context) {
+      authorize(tool.name)
+      if (generations()[tool.name] !== generation)
+        throw new Error("Tool selection is stale; discover tools again")
+      const policy = await callingPolicy(api, context)
+      if (policy && policy.generations[tool.name] !== generation)
+        throw new Error("Tool selection is stale; discover tools again")
+      if (!policy && tool.name.startsWith("mcp__"))
+        throw new Error("Tool selection is stale; discover tools again")
+      if (policy?.deadline !== undefined) {
+        const remaining = policy.deadline - Date.now()
+        if (remaining <= 0) throw new Error("Codemode host deadline passed while interrupted")
+        context = withAbortSignal(AbortSignal.timeout(remaining), context)
+      }
+      context.abortSignal?.throwIfAborted()
+      // Recheck after asynchronous policy reads, immediately before the capability runs.
+      authorize(tool.name)
+      if (generations()[tool.name] !== generation)
+        throw new Error("Tool selection is stale; discover tools again")
+      return tool.execute(args, api, context)
+    },
+  }
+}
+
+async function callingPolicy(
+  api: ToolExecutionApi,
+  context: Context,
+): Promise<{ generations: Record<string, string>; deadline?: number } | undefined> {
+  let task = await api.getTask(api.taskId, context)
+  const nested =
+    task?.input &&
+    typeof task.input === "object" &&
+    !Array.isArray(task.input) &&
+    task.input.kind === "nested"
+  while (task?.owner !== undefined) {
+    task = await api.getTask(task.owner, context)
+    if (!task || task.state.status === "terminal" || task.state.status === "completing")
+      throw new Error("Calling task is no longer active")
+    const policy = task.memos?.["sumire.codemode-manifest.v1"] ?? task.memos?.[policyMemo]
+    if (policy !== undefined) return policy as ScriptPolicy
+    const selected = await api.snapshot(ToolSelectionDoc, task.id, context)
+    if (selected !== undefined) return selected
+  }
+  if (nested) throw new Error("Nested call has no host policy")
+  return undefined
+}
+
+export function createDurableCodemode(
   timeoutMs: number,
   getHarness: () => Harness,
-  emit: (event: AgentSessionEvent) => void,
-  ready: (signal?: AbortSignal) => Promise<void> = () => Promise.resolve(),
-  authorize: () => void = () => {},
+  generations: () => Record<string, string>,
+  namespaces: () => ToolNamespace[],
+  ready: (signal?: AbortSignal) => Promise<void>,
+  authorize: () => void,
 ) {
-  const callableTools = () => nativeTools.filter(isCodemodeCallable)
-  const generations = new WeakMap<NativeTool, string>()
-  const generationOf = (tool: NativeTool) => {
-    let generation = generations.get(tool)
-    if (!generation) {
-      generation = randomUUID()
-      generations.set(tool, generation)
-    }
-    return generation
-  }
-  type NestedInput = {
-    name: string
-    generation?: string
-    args: JsonValue
-    callId: string
-    parentCallId: string
-  }
-  type NestedPhase = { phase: "call" } | { phase: "interrupted" }
-  type NestedResult = {
-    content: AgentToolCallOutcome["result"]["content"]
-    details?: JsonValue
-    structuredContent?: JsonValue
-    isError?: boolean
-  }
-  const failed = (text: string): NestedResult => ({
-    content: [{ type: "text", text }],
-    isError: true,
-  })
-  const nestedTask = defineTask<NestedInput, NestedPhase, NestedResult>({
-    name: "sumire.codemode-call",
-    version: 1,
-    initial: () => ({ phase: "call" }),
-    phases: {
-      async call(task, runtime, context) {
-        // Persist a non-replayable intent before executing any nested side effect.
-        await runtime.commit(
-          () => ({ status: "running", checkpoint: { phase: "interrupted" } }),
-          context,
-        )
-        let result: NestedResult
-        const tool = callableTools().find((tool) => tool.name === task.input.name)
-        emit({
-          type: "tool_execution_start",
-          toolCallId: task.input.callId,
-          parentToolCallId: task.input.parentCallId,
-          toolName: task.input.name,
-          args: task.input.args,
-        })
-        try {
-          if (!tool) throw new Error(`Tool is not callable: ${task.input.name}`)
-          if (!task.input.generation || generationOf(tool) !== task.input.generation)
-            throw new Error("Tool selection is stale; discover tools again")
-          result = jsonValue(
-            await executeNative(tool, task.input.args, task.input.callId, context),
-          ) as NestedResult
-        } catch (error) {
-          result = failed(error instanceof Error ? error.message : "Nested tool failed")
-        }
-        emit({
-          type: "tool_execution_end",
-          toolCallId: task.input.callId,
-          parentToolCallId: task.input.parentCallId,
-          toolName: task.input.name,
-          result,
-          isError: result.isError === true,
-        })
-        await runtime.commit(
-          () => ({ status: "terminal", outcome: { status: "completed", result } }),
-          context,
-        )
-      },
-      async interrupted(_task, runtime, context) {
-        await runtime.commit(
-          () => ({
-            status: "terminal",
-            outcome: {
-              status: "completed",
-              result: failed("Nested tool was interrupted; inspect side effects before retrying."),
-            },
-          }),
-          context,
-        )
-      },
-    },
-    async abort(_task, runtime, context) {
-      await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context)
-    },
-  })
-
-  const [metadata] = await collectTools(createBotCodemodeExtension(timeoutMs))
-  if (!metadata) throw new Error("Codemode was not registered")
-  const loadout = metadata.prepareLoadout?.({
-    declared: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
-    callable: callableTools() as unknown as ExtensionToolContext["tools"],
-    registered: [metadata, ...nativeTools] as unknown as ExtensionToolContext["tools"],
-    getExposure: (name) =>
-      name === "codemode"
-        ? "model-only"
-        : ((nativeTools.find((tool) => tool.name === name) as ToolDefinition | undefined)
-            ?.exposure ?? "direct"),
-    getNamespace: (name) => nativeTools.find((tool) => tool.name === name)?.namespace,
-    getPromptGuidelines: (name) =>
-      nativeTools.find((tool) => tool.name === name)?.promptGuidelines ?? [],
-  })
-  const tool = defineTool({
-    name: metadata.name,
-    description: loadout?.descriptions?.codemode ?? metadata.description,
-    parameters: metadata.parameters,
-    constrainedSampling: metadata.constrainedSampling,
-    replay: "unsafe",
-    executionMode: "sequential",
-    async execute(args, api, context) {
-      authorize()
-      const deadline = AbortSignal.timeout(timeoutMs)
-      const executionSignal = context.abortSignal
-        ? AbortSignal.any([context.abortSignal, deadline])
-        : deadline
-      await ready(executionSignal)
-      executionSignal.throwIfAborted()
-      const state = await api.snapshot(CodemodeStoreDoc, api.conversationId, context)
-      const writes: Array<{ set: Record<string, JsonValue>; delete: string[] }> = []
-      let definition: ToolDefinition | undefined
-      await createBotCodemodeExtension(timeoutMs)({
-        getSettings: () => ({}),
-        getAllTools: () => nativeTools,
-        registerTool: (registered: ToolDefinition) => {
-          definition = registered
-        },
-        appendEntry: (
-          _type: string,
-          data: { set: Record<string, JsonValue>; delete: string[] },
-        ) => {
-          writes.push(data)
-        },
-      } as unknown as ExtensionAPI)
-      if (!definition) throw new Error("Codemode was not registered")
-      let sequence = 0
-      const snapshot = callableTools()
-      const selectedTools = new Map(snapshot.map((tool) => [tool.name, tool]))
-      const ctx = {
-        tools: snapshot,
-        sessionManager: {
-          getBranch: () => [
-            {
-              type: "custom",
-              customType: "codemode-store",
-              data: { set: state?.values ?? {}, delete: [] },
-            },
-          ],
-        },
-        executeTool: async (
-          name: string,
-          nestedArgs: unknown,
-          options: { signal?: AbortSignal } = {},
-        ) => {
-          options.signal?.throwIfAborted()
-          executionSignal.throwIfAborted()
-          const selected = selectedTools.get(name)
-          if (!selected) throw new Error(`Tool is not callable: ${name}`)
-          const callId = `${api.callId}/${++sequence}`
-          const toolCall = {
-            type: "toolCall" as const,
-            id: callId,
-            name,
-            arguments: nestedArgs as Record<string, unknown>,
-          }
-          const taskId = await api.createTask(
-            nestedTask,
-            {
-              name,
-              generation: generationOf(selected),
-              args: jsonValue(nestedArgs),
-              callId,
-              parentCallId: api.callId,
-            },
-            { ownership: { kind: "task", taskId: api.taskId } },
-            context,
-          )
-          const harness = getHarness()
-          const signal = options.signal ?? executionSignal
-          const cancel = () => {
-            void harness.abortTask(taskId, withoutAbortSignal(context)).catch(() => {})
-          }
-          signal?.addEventListener("abort", cancel, { once: true })
-          if (signal?.aborted) cancel()
-          try {
-            const settled = await harness.waitForTask(taskId, withoutAbortSignal(context))
-            const outcome = settled.state.outcome
-            const result =
-              outcome.status === "completed" ? outcome.result : failed("Nested tool was cancelled")
-            return {
-              toolCall,
-              result: { ...result, details: result.details },
-              isError: result.isError === true,
-            }
-          } finally {
-            signal?.removeEventListener("abort", cancel)
-          }
-        },
-      } as unknown as ExtensionToolContext
-      let result = await definition.execute(api.callId, args, executionSignal, undefined, ctx)
-      if (deadline.aborted)
-        result = {
-          ...result,
-          isError: true,
-          content: [
-            ...result.content,
-            { type: "text", text: `Codemode exceeded its ${timeoutMs}ms host deadline.` },
-          ],
-        }
-      if (!result.isError && writes.length) {
-        await api.commit(async (tx) => {
-          const store = await tx.doc(CodemodeStoreDoc, api.conversationId)
-          for (const change of writes) {
-            for (const key of change.delete) delete store.values[key]
-            for (const [key, value] of Object.entries(change.set)) store.values[key] = value
-          }
-        }, context)
-      }
-      return durableToolResult(result)
-    },
-  })
+  // No VM is created by construction; every invocation owns and closes its own sandbox.
+  const descriptionSandbox = new CodemodeSandbox()
+  const native = createCodemodeExtension({ sandbox: descriptionSandbox, models: false })
+  const metadata = native.tools?.find((tool) => tool.name === "codemode")
+  if (!metadata) throw new Error("Native codemode was not registered")
   return defineExtension({
     name: "sumire-codemode",
-    tools: [tool],
-    tasks: [nestedTask],
+    tasks: [LegacyCodemodeCallTask],
+    tools: [
+      {
+        ...metadata,
+        executionMode: "sequential",
+        async execute(args, api, context) {
+          authorize()
+          const policy = await api.memo<ScriptPolicy>(
+            policyMemo,
+            {
+              deadline: Date.now() + timeoutMs,
+              generations: {},
+              aliases: {},
+            },
+            context,
+          )
+          const remaining = policy.deadline - Date.now()
+          // An expired run may already have a committed native result. Let native
+          // return it; only a VM start or new capability execution must refuse.
+          if (remaining > 0)
+            await ready(
+              AbortSignal.any([
+                AbortSignal.timeout(remaining),
+                ...(context.abortSignal ? [context.abortSignal] : []),
+              ]),
+            )
+          authorize()
+          // Discovery can replace the registry during ready(). Resolve a fresh agent once.
+          const conversation = await getHarness().conversation(api.conversationId, context)
+          if (!conversation) throw new Error("Codemode conversation is missing")
+          const agent = await conversation.agent(context)
+          // A failed initial MCP connection may have become ready before any VM was admitted.
+          const admitted = await api.memo<ScriptPolicy>(
+            "sumire.codemode-manifest.v1",
+            {
+              ...policy,
+              generations: generations(),
+              aliases: Object.fromEntries(
+                namespaces().flatMap((namespace) =>
+                  (namespace.aliases ?? []).map((alias) => [alias, namespace.name]),
+                ),
+              ),
+            },
+            context,
+          )
+          const sandbox = new HostDeadlineSandbox(admitted)
+          try {
+            const tool = createCodemodeTool({ sandbox, models: false, namespaces: namespaces() })
+            const result = await tool.execute(
+              args as { code: string },
+              {
+                ...api,
+                agent: async () => agent,
+                commit: (change, commitContext) =>
+                  api.commit(async (tx) => {
+                    const checkDeadline = () => {
+                      if (sandbox.succeeded && Date.now() >= admitted.deadline)
+                        throw new Error("Codemode host deadline exceeded before success commit")
+                    }
+                    // Formatting can await file writes after the VM finished.
+                    // Roll back late success, but allow errors and saved receipts.
+                    checkDeadline()
+                    const value = await change(tx)
+                    checkDeadline()
+                    return value
+                  }, commitContext),
+              },
+              context,
+            )
+            if (result.isError && Date.now() >= policy.deadline)
+              return {
+                ...result,
+                output: [
+                  ...(result.output ?? []),
+                  {
+                    type: "text" as const,
+                    text: `Codemode exceeded its ${timeoutMs}ms host deadline.`,
+                  },
+                ],
+              }
+            return result
+          } finally {
+            // Upstream termination unreferences the worker before its exit event.
+            // Keep shutdown alive until the VM really exits and SQLite can close.
+            const keepAlive = setInterval(() => {}, 1000)
+            try {
+              await sandbox.close()
+              await Promise.all(sandbox.exits)
+            } finally {
+              clearInterval(keepAlive)
+            }
+          }
+        },
+      },
+    ],
     sections: [
+      section("codemode", (input, context) => {
+        const extension = createCodemodeExtension({
+          sandbox: descriptionSandbox,
+          models: false,
+          namespaces: namespaces(),
+        })
+        return extension.sections?.[0]?.render(input, context)
+      }),
       section(
-        "codemode",
+        "codemode_policy",
         () =>
-          "Use codemode to batch independent tool calls with Promise.allSettled, chain tools, or filter results. Never run dependent writes or publication in parallel. update_progress and read_image are model-only; call them directly. Nested results do not enter the transcript. Scripts do not undo completed side effects.",
+          "Use codemode to batch independent calls, chain tools, or filter results. Never run dependent writes or publication in parallel. update_progress and read_image are model-only. Bash results use exitCode and fullOutputPath. Scripts do not undo completed side effects. Interrupted unsafe tools are not retried automatically.",
       ),
     ],
   })

@@ -5,11 +5,13 @@ import { request as httpRequest } from "node:http"
 import { request as httpsRequest, createServer as httpsServer } from "node:https"
 import os from "node:os"
 import path from "node:path"
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
+import { createReadTool } from "@earendil-works/pi-durable/tools"
 import { McpAdmin } from "../dist/admin/mcp.js"
 import { ProviderAdmin } from "../dist/admin/providers.js"
 import { createAdminServer } from "../dist/admin/server.js"
 import { AdminStore } from "../dist/admin/store.js"
-import { codingTools } from "../dist/agent/durable-tools.js"
 
 // Offline image smoke test. No bot token, provider credentials, or persistent volumes are used.
 const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-smoke-"))
@@ -41,8 +43,11 @@ try {
   const cert = await readFile(path.join(directory, "cert.pem"))
   const privateFixture = path.join(directory, "private-fixture")
   await writeFile(privateFixture, "isolation-sentinel", { mode: 0o600 })
-  const read = codingTools(directory).find((tool) => tool.name === "read")
-  const visible = await read.execute("isolation-fixture", { path: privateFixture })
+  const visible = await createReadTool().execute(
+    { path: privateFixture },
+    { env: new NodeExecutionEnv({ cwd: directory }) },
+    BACKGROUND_CONTEXT,
+  )
   assert.match(JSON.stringify(visible), /isolation-sentinel/)
   store = new AdminStore(file, 42)
   store.applied(1, true)
