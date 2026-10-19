@@ -5,8 +5,8 @@ import {
   parseProgressDetails,
   validateProgressArguments,
 } from "@narumitw/sumire-progress"
-import { ProgressDoc } from "./durable-state.js"
-import { jsonValue } from "./durable-tools.js"
+import { ProgressDoc } from "./state.js"
+import { jsonValue } from "./tools.js"
 
 export function createProgressExtension(authorize: () => void = () => {}) {
   return defineExtension({

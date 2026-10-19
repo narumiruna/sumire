@@ -3,8 +3,9 @@ import { once } from "node:events"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import type { ConversationId } from "@earendil-works/pi-durable"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { OutboxDoc } from "../src/agent/durable-state.js"
+import { BotSessionDoc, OutboxDoc } from "../src/agent/durable/state.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
@@ -236,6 +237,36 @@ describe("durable bot runtime", () => {
       await exited
     }
   }, 30_000)
+
+  it("withdraws an unsubmitted delivery intent when cancelled during recovery", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const saved = await session.harness.snapshot(BotSessionDoc, context)
+    if (!saved) throw new Error("Missing session state")
+    await session.harness.commit(async (tx) => {
+      ;(await tx.doc(OutboxDoc)).pending.push({
+        requestId: "unsubmitted-request",
+        conversationId: saved.activeConversation as ConversationId,
+        content: "recover this input",
+        delivery: { sourceMessageId: 30, mode: "default" },
+      })
+    }, context)
+    const release = fixture.pauseNextRequest()
+    fixture.enqueueAnswer("Cancelled recovery answer")
+    const deliver = vi.fn(async () => {})
+    const recovery = session.recoverPending(deliver)
+    try {
+      await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+      await session.abort()
+      await recovery
+      expect(deliver).not.toHaveBeenCalled()
+      expect(await session.hasPendingResponses()).toBe(false)
+      expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1)
+    } finally {
+      release()
+      await recovery
+    }
+  })
 
   it("retains an undelivered completed answer across restart without making another model request", async () => {
     const fixture = await setup()

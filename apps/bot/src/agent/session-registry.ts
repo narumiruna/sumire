@@ -10,8 +10,8 @@ import {
 } from "@narumitw/sumire-progress"
 import { AdminError, type AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
-import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"
-import type { ResponseDelivery } from "./durable-state.js"
+import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable/outbox.js"
+import type { ResponseDelivery } from "./durable/state.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
 
 export interface SubmissionCheckpoint extends PiReplyCheckpoint {

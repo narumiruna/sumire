@@ -27,7 +27,7 @@ import {
   isCodemodeCallable,
   type NativeTool,
   nativeCodingTools,
-} from "../src/agent/durable-tools.js"
+} from "../src/agent/durable/tools.js"
 
 const usage = {
   input: 1,

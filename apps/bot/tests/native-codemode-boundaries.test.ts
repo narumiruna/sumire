@@ -6,7 +6,7 @@ import { defineExtension, wrapTool } from "@earendil-works/pi-durable"
 import { CodemodeStoreDoc } from "@earendil-works/pi-durable/codemode"
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { DurableSession } from "../src/agent/durable-session.js"
+import type { DurableSession } from "../src/agent/durable/session.js"
 import { currentConversation } from "./helpers/durable-session.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 

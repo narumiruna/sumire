@@ -3,8 +3,8 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { JsonObject, Message } from "@earendil-works/pi-ai"
 import { AssistantEntry, type ConversationId, ToolTask } from "@earendil-works/pi-durable"
 
-import type { DurableSession } from "../../src/agent/durable-session.js"
-import { BotSessionDoc } from "../../src/agent/durable-state.js"
+import type { DurableSession } from "../../src/agent/durable/session.js"
+import { BotSessionDoc } from "../../src/agent/durable/state.js"
 
 export async function currentConversation(session: DurableSession) {
   const state = await session.harness.snapshot(BotSessionDoc, context)

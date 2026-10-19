@@ -10,7 +10,7 @@ import {
   type Tool,
 } from "@earendil-works/pi-mcp"
 import type { Logger } from "../logging.js"
-import type { NativeTool } from "./durable-tools.js"
+import type { NativeTool } from "./durable/tools.js"
 import { type McpConfig, type McpServer, toolExposure } from "./mcp-config.js"
 import { listBoundedMcpTools } from "./mcp-discovery.js"
 import { boundedMcpFetch } from "./mcp-http.js"

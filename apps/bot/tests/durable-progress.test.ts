@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { ToolExecutionApi } from "@earendil-works/pi-durable"
 import { describe, expect, it, vi } from "vitest"
 
-import { createProgressExtension } from "../src/agent/durable-progress.js"
+import { createProgressExtension } from "../src/agent/durable/progress.js"
 
 describe("durable progress replay", () => {
   it("migrates saved legacy execution arguments but rejects new legacy calls", async () => {

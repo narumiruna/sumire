@@ -21,7 +21,7 @@ import {
   createCodemodeExtension,
   createCodemodeTool,
 } from "@earendil-works/pi-durable/codemode"
-import { LegacyCodemodeCallTask } from "./durable-migration.js"
+import { LegacyCodemodeCallTask } from "./migration.js"
 
 const policyMemo = "sumire.codemode-policy.v1"
 export const ToolSelectionDoc = defineDoc({

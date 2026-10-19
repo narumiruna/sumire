@@ -17,39 +17,32 @@ import type {
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
 import {
-  type AgentEvent,
   type AgentEventStream,
   type Conversation,
   type ConversationId,
   type ConversationView,
-  type EntryId,
   type EntryRecord,
   type Harness,
   type Registry,
-  type UserInput,
   watchEvents,
 } from "@earendil-works/pi-durable"
 
 import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
-import type { DurableInspectionReader } from "../admin/durable-inspector.js"
-import { AdminError } from "../admin/store.js"
-import type { Logger } from "../logging.js"
-import { forkCodemodeConversation } from "./durable-migration.js"
-import {
-  BotSessionDoc,
-  OutboxDoc,
-  type PendingResponse,
-  type ResponseDelivery,
-} from "./durable-state.js"
-import { jsonValue, type NativeTool } from "./durable-tools.js"
-import type { SessionHandle } from "./session-registry.js"
-
-export type DurableAnswer = { text: string; entryId?: string; requestId?: string }
-export const NO_RESPONSE_TEXT = "模型沒有回覆內容，請稍後再試。"
+import type { DurableInspectionReader } from "../../admin/durable-inspector.js"
+import { AdminError } from "../../admin/store.js"
+import type { Logger } from "../../logging.js"
+import type { SessionHandle } from "../session-registry.js"
+import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
+import { forwardDurableEvent } from "./events.js"
+import { forkCodemodeConversation } from "./migration.js"
+import { type DurableAnswer, DurableOutbox } from "./outbox.js"
+import { BotSessionDoc, OutboxDoc, type PendingResponse, type ResponseDelivery } from "./state.js"
+import { jsonValue, type NativeTool } from "./tools.js"
 
 /** Transport adapter only: Harness owns every model turn and tool task. */
 export class DurableSession implements SessionHandle {
   readonly #listeners = new Set<AgentSessionEventListener>()
+  readonly #outbox: DurableOutbox
   #conversation: Conversation
   #view?: AttachedReplicatedState<ConversationView>
   #events?: AgentEventStream
@@ -60,25 +53,6 @@ export class DurableSession implements SessionHandle {
   sessionId = ""
   #model: Model<Api>
   #thinkingLevel: ModelThinkingLevel = "off"
-
-  getCheckpoint(): string | null {
-    const entry = this.entries.at(-1)
-    return entry ? checkpointId(entry) : null
-  }
-
-  async hasCheckpoint(id: string): Promise<boolean> {
-    return Boolean(await this.findEntry(id))
-  }
-
-  recentPassiveContext(): string[] {
-    const contexts: string[] = []
-    for (const entry of this.entries.toReversed()) {
-      if (entry.kind === "telegram-passive-context") {
-        contexts.unshift(String((entry.data as { content: string }).content))
-      } else if (entry.model?.[0]) break
-    }
-    return contexts
-  }
 
   private constructor(
     readonly harness: Harness,
@@ -96,6 +70,7 @@ export class DurableSession implements SessionHandle {
   ) {
     this.#conversation = conversation
     this.#model = model
+    this.#outbox = new DurableOutbox(harness)
   }
 
   static async open(options: {
@@ -216,17 +191,6 @@ export class DurableSession implements SessionHandle {
     this.#thinkingLevel = thinkingLevel
   }
 
-  private async configureInput(): Promise<void> {
-    if (!this.messages.length)
-      await this.#conversation.configure(
-        {
-          model: { provider: this.model.provider, modelId: this.model.id },
-          thinkingLevel: this.thinkingLevel,
-        },
-        context,
-      )
-  }
-
   get entries(): readonly EntryRecord[] {
     return this.#lastEntries
   }
@@ -291,10 +255,7 @@ export class DurableSession implements SessionHandle {
     try {
       await this.configureInput()
       // Write recovery intent first. submit's request ID closes the crash window between the two commits.
-      if (pending)
-        await this.harness.commit(async (tx) => {
-          ;(await tx.doc(OutboxDoc)).pending.push(pending)
-        }, context)
+      if (pending) await this.#outbox.record(pending)
       if (epoch !== this.#epoch || this.#closing) {
         await this.acknowledge(requestId)
         return { text: "" }
@@ -321,7 +282,7 @@ export class DurableSession implements SessionHandle {
       )
       const text = assistantText(answer)
       // An empty answer still needs its Telegram fallback delivered and acknowledged.
-      if (pending && answer) await this.captureAnswer(requestId, answer.id)
+      if (pending && answer) await this.#outbox.captureAnswer(requestId, answer.id)
       return {
         text,
         ...(answer ? { entryId: checkpointId(answer) } : {}),
@@ -353,6 +314,25 @@ export class DurableSession implements SessionHandle {
     await this.configureInput()
     await this.#conversation.submit({ type: "write", entry }, context)
     await this.refresh()
+  }
+
+  getCheckpoint(): string | null {
+    const entry = this.entries.at(-1)
+    return entry ? checkpointId(entry) : null
+  }
+
+  async hasCheckpoint(id: string): Promise<boolean> {
+    return Boolean(await this.findEntry(id))
+  }
+
+  recentPassiveContext(): string[] {
+    const contexts: string[] = []
+    for (const entry of this.entries.toReversed()) {
+      if (entry.kind === "telegram-passive-context") {
+        contexts.unshift(String((entry.data as { content: string }).content))
+      } else if (entry.model?.[0]) break
+    }
+    return contexts
   }
 
   async restoreBranch(id: string): Promise<void> {
@@ -388,9 +368,7 @@ export class DurableSession implements SessionHandle {
     if (this.#closing) return
     this.#epoch++
     // Invalidate delivery intents before cancellation can settle any waiting recovery handler.
-    await this.harness.commit(async (tx) => {
-      ;(await tx.doc(OutboxDoc)).pending = []
-    }, context)
+    await this.#outbox.clear()
     await this.#conversation.abort(context)
     await this.refresh()
   }
@@ -417,69 +395,34 @@ export class DurableSession implements SessionHandle {
 
   async acknowledge(requestId: string): Promise<void> {
     if (this.#closing) return
-    await this.harness.commit(async (tx) => {
-      const outbox = await tx.doc(OutboxDoc)
-      outbox.pending = outbox.pending.filter((pending) => pending.requestId !== requestId)
-    }, context)
+    await this.#outbox.acknowledge(requestId)
   }
 
   async hasPendingResponses(): Promise<boolean> {
-    return Boolean((await this.harness.snapshot(OutboxDoc, context))?.pending.length)
+    return this.#outbox.hasPendingResponses()
   }
 
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
-    if (this.#closing) return
-    this.harness.resume()
-    const outbox = await this.harness.snapshot(OutboxDoc, context)
-    for (const pending of outbox?.pending ?? []) {
-      const conversation = await this.harness.conversation(pending.conversationId, context)
-      if (!conversation) throw new Error("Durable outbox conversation is missing")
-      let entry: EntryRecord | undefined
-      if (pending.answerEntryId !== undefined) {
-        entry = await this.harness.commit(
-          (tx) => tx.entry(pending.answerEntryId as EntryId),
-          context,
-        )
-      } else {
-        const submission = await conversation.submit(
-          { type: "input", requestId: pending.requestId, content: pending.content as UserInput },
-          context,
-        )
-        const settled = await submission.wait(context)
-        if (this.#closing) return
-        await conversation.waitForIdle(context)
-        if (settled.status === "done" && settled.type === "input") {
-          const view = await conversation.context(context)
-          entry = view.entries.findLast((candidate) =>
-            candidate.model?.some((message) => message.role === "assistant"),
-          )
-          if (entry) await this.captureAnswer(pending.requestId, entry.id)
-        }
-      }
-      if (this.#closing) return
-      const current = await this.harness.snapshot(OutboxDoc, context)
-      if (!current?.pending.some((item) => item.requestId === pending.requestId)) continue
-
-      await this.refresh()
-      const text = assistantText(entry)
-      await deliver(
-        {
-          text: text || (entry ? NO_RESPONSE_TEXT : "AI 服務暫時無法使用，請稍後再試。"),
-          requestId: pending.requestId,
-          ...(entry ? { entryId: checkpointId(entry) } : {}),
-        },
-        text ? pending.delivery : { ...pending.delivery, mode: "default" },
-      )
-    }
+    await this.#outbox.recoverPending(
+      async (answer, delivery) => {
+        await this.refresh()
+        await deliver(answer, delivery)
+      },
+      () => Boolean(this.#closing),
+    )
   }
 
-  private async captureAnswer(requestId: string, entryId: EntryId): Promise<void> {
-    await this.harness.commit(async (tx) => {
-      const pending = (await tx.doc(OutboxDoc)).pending.find((item) => item.requestId === requestId)
-      if (pending) pending.answerEntryId = entryId
-    }, context)
+  private async configureInput(): Promise<void> {
+    if (!this.messages.length)
+      await this.#conversation.configure(
+        {
+          model: { provider: this.model.provider, modelId: this.model.id },
+          thinkingLevel: this.thinkingLevel,
+        },
+        context,
+      )
   }
 
   private async queue(text: string, images: ImageContent[], whenBusy: "steer" | "followUp") {
@@ -512,7 +455,7 @@ export class DurableSession implements SessionHandle {
     })
     this.#events = await watchEvents(this.harness, this.#conversation.id, context)
     this.#events.start(async (events) => {
-      for (const event of events) this.onEvent(event)
+      for (const event of events) forwardDurableEvent(event, this.emit, this.logger, this.sessionId)
     })
     await this.refresh()
   }
@@ -520,61 +463,4 @@ export class DurableSession implements SessionHandle {
   private async refresh(): Promise<void> {
     this.#lastEntries = (await this.#conversation.context(context)).entries
   }
-
-  private onEvent(event: AgentEvent): void {
-    if (event.type === "run_start") this.emit({ type: "agent_start" })
-    else if (event.type === "turn_start") this.emit({ type: "turn_start" })
-    else if (event.type === "tool_execution_start") this.emit(event)
-    else if (event.type === "tool_execution_end") {
-      const result =
-        event.result ?? event.entry?.model?.find((message) => message.role === "toolResult")
-      this.emit({
-        type: "tool_execution_end",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-        result,
-        isError: !result || result.isError === true,
-      })
-    } else if (event.type === "auto_retry_start") {
-      this.logger.info(`Durable retry session_id=${this.sessionId} attempt=${event.attempt}`)
-    } else if (event.type === "compaction_start" || event.type === "compaction_end") {
-      this.logger.info(
-        `Durable ${event.type} session_id=${this.sessionId} task_id=${event.taskId} reason=${event.reason}`,
-      )
-    } else if (event.type === "message_end") {
-      const message = event.entry.model?.[0]
-      if (message) this.emit({ type: "message_end", message })
-    }
-  }
-}
-
-function checkpointId(entry: EntryRecord): string {
-  return `${entry.conversationId}:${entry.id}`
-}
-
-function parseCheckpoint(
-  id: string,
-): { conversationId: ConversationId; entryId: EntryId } | undefined {
-  const [conversation, entry, extra] = id.split(":")
-  const conversationId = Number(conversation)
-  const entryId = Number(entry)
-  return extra === undefined &&
-    Number.isSafeInteger(conversationId) &&
-    conversationId > 0 &&
-    Number.isSafeInteger(entryId) &&
-    entryId > 0
-    ? { conversationId: conversationId as ConversationId, entryId: entryId as EntryId }
-    : undefined
-}
-
-function assistantText(entry: EntryRecord | undefined): string {
-  const message = entry?.model?.find((message) => message.role === "assistant")
-  return message?.role === "assistant"
-    ? message.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-        .trim()
-    : ""
 }
