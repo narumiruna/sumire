@@ -774,6 +774,51 @@ html {
 .durable-read-time {
   color: var(--slate-11);
 }
+.durable-inspection-context {
+  margin-top: 20px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--accent-9);
+  border-radius: 4px;
+  background: var(--accent-2);
+}
+.durable-inspection-context p {
+  margin-block: 8px 0;
+  max-width: 80ch;
+}
+.durable-record-id {
+  color: var(--slate-11);
+  font-size: var(--font-size-1);
+}
+.durable-record-summary {
+  margin-block: 12px 16px;
+  line-height: 1.6;
+}
+.durable-projection {
+  margin-block: 16px;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--slate-2);
+}
+.durable-projection h5 {
+  margin-top: 16px;
+}
+.durable-detail .durable-metadata.durable-usage {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.durable-usage-field {
+  display: contents;
+}
+.durable-model-usage {
+  margin-top: 12px;
+}
+.durable-model-usage summary {
+  font-size: var(--font-size-2);
+}
+.durable-technical {
+  margin-top: 20px;
+  color: var(--slate-11);
+  font-size: var(--font-size-2);
+}
 .durable-overview {
   margin-block: 16px;
   padding: 16px;
@@ -790,7 +835,13 @@ html {
 .durable-overview-grid p {
   margin-block: 8px;
 }
+.durable-selection-relationships {
+  margin-top: 8px;
+  font-size: var(--font-size-2);
+}
 .durable-history {
+  max-height: 12rem;
+  overflow-y: auto;
   margin-block: 8px;
   padding-left: 20px;
   font-size: var(--font-size-2);
@@ -840,6 +891,12 @@ html {
   background: var(--accent-3);
   border-left-color: var(--accent-9);
 }
+.durable-compact-list strong {
+  font-size: var(--font-size-2);
+}
+.durable-compact-list span {
+  line-height: 1.5;
+}
 .durable-compact-list span,
 .durable-compact-list a {
   font-size: var(--font-size-1);
@@ -875,6 +932,7 @@ html {
   .durable-detail .durable-metadata {
     grid-template-columns: minmax(0, 1fr);
   }
+  .durable-inspection-context,
   .durable-overview,
   .durable-detail {
     padding: 12px;

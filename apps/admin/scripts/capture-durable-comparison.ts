@@ -72,7 +72,10 @@ try {
         })
         try {
           await durableFixture(page, "/?section=Durable&chat=42")
-          await page.getByRole("heading", { name: "conversation #7", exact: true }).waitFor()
+          await page
+            .getByRole("region", { name: "Selected item details", exact: true })
+            .getByText("conversation #7", { exact: true })
+            .waitFor()
           await page.screenshot({
             path: path.join(output, `${phase}-${width}.png`),
             fullPage: true,

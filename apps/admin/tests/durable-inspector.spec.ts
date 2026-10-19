@@ -1,19 +1,37 @@
-import { expect, test } from "@playwright/test"
-import { durableFixture, navigateSection, untrusted } from "./durable-fixture.js"
+import { expect, type Locator, type Page, test } from "@playwright/test"
+import {
+  conversations,
+  durableFixture,
+  historicalConversation,
+  navigateSection,
+  untrusted,
+} from "./durable-fixture.js"
+
+const inspectorFor = (page: Page) =>
+  page.getByRole("region", { name: "Durable Inspector", exact: true })
+const detailsFor = (page: Page) =>
+  inspectorFor(page).getByRole("region", { name: "Selected item details", exact: true })
+const contextFor = (page: Page) =>
+  inspectorFor(page).getByRole("region", { name: "Inspection context", exact: true })
+const field = (scope: Locator, label: string) =>
+  scope
+    .locator("dt")
+    .filter({ hasText: new RegExp(`^${label}$`) })
+    .locator("+ dd")
+const expectRecord = async (page: Page, title: string, identifier: string) => {
+  await expect(detailsFor(page).getByRole("heading", { name: title, exact: true })).toBeVisible()
+  await expect(detailsFor(page).getByText(identifier, { exact: true })).toBeVisible()
+}
 
 for (const width of [1440, 390, 320]) {
   test(`loaded, idle, and unloaded chat smoke at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const state = await durableFixture(page)
-    const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+    const inspector = inspectorFor(page)
+    await expectRecord(page, "Selected conversation", "conversation #7")
     await expect(
-      inspector.getByText("Persisted selected conversation", { exact: true }),
-    ).toBeVisible()
-    await expect(
-      inspector
-        .getByRole("region", { name: "Persisted selection", exact: true })
-        .getByText(/Read time:/),
-    ).toContainText("2026-10-19T12:00:00.000Z")
+      inspector.getByRole("region", { name: "Persisted selection", exact: true }),
+    ).toContainText("2026-10-19 12:00:00 UTC")
     await expect(inspector.getByRole("heading", { name: "Loaded chat", exact: true })).toBeVisible()
     await expect(
       inspector.getByRole("region", { name: "Selected conversation task history", exact: true }),
@@ -27,8 +45,7 @@ for (const width of [1440, 390, 320]) {
       .getByRole("button", { name: /Idle chat/ })
       .click()
     await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
-    await expect(inspector.getByText("Historical conversation", { exact: true })).toBeVisible()
-    await expect(inspector.getByRole("heading", { name: "conversation #17" })).toBeVisible()
+    await expectRecord(page, "Historical conversation", "conversation #17")
     await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
     if (await back.isVisible()) await back.click()
     await page
@@ -45,19 +62,66 @@ for (const width of [1440, 390, 320]) {
   })
 }
 
-test("all four views, approved JSON, scope, owner and parent links, and safe text", async ({
+test("default reading answers context, selection, recorded outcomes, and related navigation without JSON or new reads", async ({
   page,
 }) => {
   const state = await durableFixture(page)
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+  const inspector = inspectorFor(page)
+  const context = contextFor(page)
+  const detail = detailsFor(page)
+  const history = inspector.getByRole("region", {
+    name: "Selected conversation task history",
+    exact: true,
+  })
+  await expect(context.getByRole("heading", { name: "Inspecting conversation 7" })).toBeVisible()
+  await expect(context).toContainText("This is the persisted selected conversation.")
+  await expect(context).toContainText("Selection does not mean work is running.")
+  await expect(history).toContainText("Model response · Recorded outcome: Completed")
+  await expect(history).toContainText("1 task record on the loaded page")
+  await expect(history.getByRole("link", { name: "Task 8", exact: true })).toHaveAttribute(
+    "href",
+    /view=tasks&conversationId=7&objectId=8/,
+  )
+  await expect(detail).toContainText("Branched from conversation 6 at entry 60.")
+  for (const name of ["Tasks", "Documents", "Entries"])
+    await expect(
+      detail.getByRole("link", { name: `${name} in conversation 7`, exact: true }),
+    ).toBeVisible()
+  await expect(detail.getByRole("link", { name: "Fork entry 60", exact: true })).toBeVisible()
+  await expect(
+    detail.getByRole("link", { name: "Task 4 in conversation 6", exact: true }),
+  ).toBeVisible()
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  await expect(inspector.getByLabel("Conversation ID", { exact: true })).toBeHidden()
+  expect(state.requests).toHaveLength(2)
+  for (const label of ["Data scope and limits", "Advanced inspection", "Technical details"])
+    await inspector.getByText(label, { exact: true }).click()
+  await expect(inspector).toContainText("at most one conversation page")
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  await inspector.getByText("Metadata JSON for conversation 7", { exact: true }).click()
+  await expect(inspector.locator("pre")).toContainText('"active": true')
+  await page.waitForTimeout(150)
+  expect(state.requests).toHaveLength(2)
+  expect(state.requests.every((url) => !url.searchParams.has("objectId"))).toBe(true)
+})
+
+test("all four views, approved fields and JSON, scopes, named relationships, and safe text", async ({
+  page,
+}) => {
+  const state = await durableFixture(page)
+  const inspector = inspectorFor(page)
   await inspector.getByText("Metadata JSON for conversation 7", { exact: true }).click()
   await expect(inspector.locator("pre")).toContainText('"active": true')
   await expect(
-    inspector.getByRole("link", { name: "Conversation 6", exact: true }),
+    detailsFor(page).getByRole("link", { name: "Conversation 6", exact: true }),
   ).toHaveAttribute("href", /view=conversations&objectId=6/)
   await inspector.getByRole("link", { name: "Tasks in conversation 7", exact: true }).click()
   await expect(page).toHaveURL(/view=tasks&conversationId=7/)
-  await expect(inspector.getByText("terminal · completed", { exact: true })).toBeVisible()
+  await expectRecord(page, "Model response", "task #8")
+  await expect(detailsFor(page)).toContainText("Recorded outcome: Completed")
+  await expect(field(detailsFor(page), "Started")).toHaveText("2026-10-19 11:59:00 UTC")
+  await expect(field(detailsFor(page), "Ended")).toHaveText("2026-10-19 11:59:30 UTC")
+  await expect(detailsFor(page).getByRole("link", { name: "Task 5", exact: true })).toBeVisible()
   await inspector.getByText("Metadata JSON for task 8", { exact: true }).click()
   await expect(inspector.locator("pre")).toContainText('"outcome": "completed"')
   await inspector.getByRole("link", { name: "Documents for task 8", exact: true }).click()
@@ -72,8 +136,12 @@ test("all four views, approved JSON, scope, owner and parent links, and safe tex
   await inspector
     .getByRole("combobox", { name: "Document scope", exact: true })
     .selectOption("conversation")
-  await inspector.getByRole("button", { name: "Select document 102", exact: true }).click()
-  await expect(inspector.getByText(/Value withheld · Kind is not approved/)).toBeVisible()
+  await inspector
+    .getByRole("button", { name: "Select Document (document 102)", exact: true })
+    .click()
+  await expect(detailsFor(page)).toContainText(
+    "This document is not approved for value inspection.",
+  )
   await expect(
     inspector.getByRole("link", { name: "Inspect document 102", exact: true }),
   ).toHaveCount(0)
@@ -84,114 +152,244 @@ test("all four views, approved JSON, scope, owner and parent links, and safe tex
   )
   expect(state.requests).toHaveLength(beforeExpand)
   await inspector.getByRole("link", { name: "Inspect document 103", exact: true }).click()
-  await expect(inspector.getByText("Retired or unavailable", { exact: true })).toBeVisible()
+  await expectRecord(page, "Model usage", "document #103")
+  await expect(detailsFor(page)).toContainText("The document value is unavailable.")
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toHaveCount(0)
   await inspector.getByRole("link", { name: "Back to documents", exact: true }).click()
   await inspector.getByRole("link", { name: "Inspect document 101", exact: true }).click()
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expectRecord(page, "Model settings", "document #101")
+  const approved = inspector.getByRole("region", { name: "Approved document fields", exact: true })
+  await expect(field(approved, "Model provider")).toHaveText("fixture")
+  await expect(field(approved, "Model")).toHaveText(untrusted)
+  await expect(field(approved, "Thinking level")).toHaveText("low")
   await inspector.getByText("Approved value JSON for document 101", { exact: true }).click()
   await expect(inspector.locator("pre").last()).toContainText("untrusted.invalid")
   expect(await inspector.locator("img, iframe, script").count()).toBe(0)
   expect(await page.evaluate(() => Object.hasOwn(window, "inspectorInjected"))).toBe(false)
   state.documentLimit = true
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
-  await expect(inspector.getByText(/Truncated: value exceeds limits/)).toBeVisible()
+  await expect(detailsFor(page)).toContainText(
+    "The document value is withheld because it exceeds inspection limits.",
+  )
+  await expect(approved).toHaveCount(0)
   await inspector.getByRole("tab", { name: "Entries", exact: true }).click()
-  await expect(inspector.getByText("message / assistant", { exact: true })).toBeVisible()
+  await expectRecord(page, "Assistant message record", "entry #70")
+  await expect(detailsFor(page)).toContainText("Message content is not included.")
+  await expect(field(detailsFor(page), "Recorded at")).toHaveText("2026-10-19 11:59:30 UTC")
   await inspector.getByText("Metadata JSON for entry 70", { exact: true }).click()
   await expect(inspector.locator("pre")).toContainText('"role": "assistant"')
-  await inspector.getByRole("link", { name: "8", exact: true }).click()
+  await detailsFor(page).getByRole("link", { name: "Task 8", exact: true }).click()
   await expect(page).toHaveURL(/view=tasks&conversationId=7&objectId=8/)
   expect(state.requests.every((url) => url.searchParams.get("limit") === "25")).toBe(true)
   expect(state.methods.every((method) => method === "GET")).toBe(true)
-  expect(untrusted).toContain("untrusted.invalid")
 })
 
-for (const selected of [true, false]) {
+for (const selected of ["persisted", "null", "undefined"] as const) {
   for (const view of ["tasks", "documents", "entries"] as const) {
-    test(`historical conversation remains the ${view} target with persisted selection ${selected}`, async ({
+    test(`historical second-page conversation 9 remains the ${view} target with ${selected} selection metadata`, async ({
       page,
     }) => {
       const state = await durableFixture(page, "/?section=Durable")
-      if (!selected) state.selectedConversation = null
-      await page.route("**/api/chats/42/durable?*", async (route) => {
-        const url = new URL(route.request().url())
-        if (
-          url.searchParams.get("view") === "conversations" &&
-          url.searchParams.get("objectId") === "6"
-        ) {
-          await route.fulfill({
-            json: {
-              version: 1,
-              state: "loaded",
-              readAt: "2026-10-19T12:00:02.000Z",
-              view: "conversations",
-              items: [{ type: "conversation", id: 6, active: false }],
-              selectedConversation: selected ? { type: "conversation", id: 7, active: true } : null,
-              truncated: false,
-            },
-          })
-          return
-        }
-        if (url.searchParams.get("conversationId") === "6") {
-          state.requests.push(url)
-          state.methods.push(route.request().method())
-          await route.fulfill({
-            json: {
-              version: 1,
-              state: "loaded",
-              readAt: "2026-10-19T12:00:03.000Z",
-              view: url.searchParams.get("view"),
-              items: [],
-              truncated: false,
-            },
-          })
-          return
-        }
-        await route.fallback()
-      })
-      await page.goto("/?section=Durable&chat=42&view=conversations&objectId=6")
-      const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-      await expect(
-        inspector.getByRole("heading", { name: "conversation #6", exact: true }),
-      ).toBeVisible()
-      await expect(inspector).toContainText("Inspection target: conversation 6.")
+      if (selected !== "persisted")
+        state.selectedConversation = selected === "null" ? null : undefined
+      await page.goto("/?section=Durable&chat=42")
+      const inspector = inspectorFor(page)
+      await inspector.getByRole("button", { name: "Next objects", exact: true }).click()
+      await expectRecord(page, "Historical conversation", "conversation #9")
+      await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+      await expect(contextFor(page)).toContainText(
+        selected === "persisted"
+          ? "This is not the persisted selected conversation (conversation 7)."
+          : "Persisted selection cannot be confirmed from the available metadata.",
+      )
       await inspector
-        .getByRole("tab", { name: view[0]?.toUpperCase() + view.slice(1), exact: true })
+        .getByRole("tab", {
+          name: view[0]?.toUpperCase() + view.slice(1),
+          exact: true,
+        })
         .click()
-      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=6`))
+      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=9`))
       await expect(page).not.toHaveURL(/objectId=/)
-      await expect
-        .poll(() =>
-          state.requests.some(
-            (url) =>
-              url.searchParams.get("view") === view &&
-              url.searchParams.get("conversationId") === "6",
-          ),
-        )
-        .toBe(true)
+      await expect(
+        inspector.getByText("Empty · no records in this view.", { exact: true }),
+      ).toBeVisible()
+      expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
       if (view === "documents")
-        expect(
-          state.requests
-            .find(
-              (url) =>
-                url.searchParams.get("view") === view &&
-                url.searchParams.get("conversationId") === "6",
-            )
-            ?.searchParams.get("scope"),
-        ).toBe("conversation")
-      await expect(inspector).toContainText("Inspection target: conversation 6.")
+        expect(state.requests.at(-1)?.searchParams.get("scope")).toBe("conversation")
+      await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+      await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+      await expect(
+        inspector.getByText("Empty · no records in this view.", { exact: true }),
+      ).toBeVisible()
+      expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
+      await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+      const selection = inspector.getByRole("region", { name: "Persisted selection", exact: true })
+      await expect(selection).toContainText(
+        selected === "persisted"
+          ? "Conversation 7"
+          : selected === "null"
+            ? "No selected-conversation metadata available."
+            : "Selection data unavailable.",
+      )
       expect(state.methods.every((method) => method === "GET")).toBe(true)
     })
   }
 }
 
+test("direct Conversation ID lookup retrieves off-page conversation 9 by objectId and survives refresh, reload, back, and forward", async ({
+  page,
+}) => {
+  const state = await durableFixture(page)
+  const inspector = inspectorFor(page)
+  await expectRecord(page, "Selected conversation", "conversation #7")
+  await inspector.getByText("Advanced inspection", { exact: true }).click()
+  await inspector.getByLabel("Conversation ID", { exact: true }).fill("9")
+  await inspector.getByRole("button", { name: "Inspect IDs", exact: true }).click()
+  await expect(page).toHaveURL(/view=conversations&objectId=9/)
+  await expectRecord(page, "Historical conversation", "conversation #9")
+  expect(state.requests.at(-1)?.searchParams.get("objectId")).toBe("9")
+  expect(state.requests.at(-1)?.searchParams.has("conversationId")).toBe(false)
+  expect(state.requests.at(-1)?.searchParams.has("cursor")).toBe(false)
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expectRecord(page, "Historical conversation", "conversation #9")
+  await page.reload()
+  await expectRecord(page, "Historical conversation", "conversation #9")
+  await detailsFor(page)
+    .getByRole("link", { name: "Entries in conversation 9", exact: true })
+    .click()
+  await expect(page).toHaveURL(/view=entries&conversationId=9/)
+  await expect(
+    inspector.getByText("Empty · no records in this view.", { exact: true }),
+  ).toBeVisible()
+  await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+  await page.goBack()
+  await expectRecord(page, "Historical conversation", "conversation #9")
+  await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+  await page.goForward()
+  await expect(page).toHaveURL(/view=entries&conversationId=9/)
+  await expect(
+    inspector.getByText("Empty · no records in this view.", { exact: true }),
+  ).toBeVisible()
+  await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+  await expect(
+    inspector.getByRole("region", { name: "Persisted selection", exact: true }),
+  ).toContainText("Conversation 7")
+})
+
+for (const view of ["Tasks", "Documents", "Entries"]) {
+  test(`changing the selected row on a multi-item page targets that row in ${view}`, async ({
+    page,
+  }) => {
+    const state = await durableFixture(page, "/?section=Durable")
+    state.conversationItems = [
+      ...conversations,
+      historicalConversation,
+      { type: "conversation", id: 10, active: false },
+    ]
+    await page.goto("/?section=Durable&chat=42")
+    const inspector = inspectorFor(page)
+    await expectRecord(page, "Selected conversation", "conversation #7")
+    const reads = state.requests.length
+    await inspector
+      .getByRole("button", { name: "Select Historical conversation (conversation 9)", exact: true })
+      .click()
+    await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+    await expectRecord(page, "Historical conversation", "conversation #9")
+    await inspector
+      .getByRole("button", {
+        name: "Select Historical conversation (conversation 10)",
+        exact: true,
+      })
+      .click()
+    await expect(contextFor(page)).toContainText("Inspecting conversation 10")
+    await expectRecord(page, "Historical conversation", "conversation #10")
+    expect(state.requests).toHaveLength(reads)
+    await inspector.getByRole("tab", { name: view, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`view=${view.toLowerCase()}&conversationId=10`))
+    await expect(
+      inspector.getByText("Empty · no records in this view.", { exact: true }),
+    ).toBeVisible()
+    expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("10")
+    await expect(contextFor(page)).toContainText("Inspecting conversation 10")
+  })
+}
+
+for (const view of ["tasks", "documents", "entries"] as const) {
+  for (const hasSelection of [true, false]) {
+    test(`historical target survives ${view} to Conversations and back with selection ${hasSelection}`, async ({
+      page,
+    }) => {
+      const state = await durableFixture(page, "/?section=Durable")
+      if (!hasSelection) state.selectedConversation = null
+      await page.goto("/?section=Durable&chat=42&view=conversations&objectId=9")
+      await expectRecord(page, "Historical conversation", "conversation #9")
+      const inspector = inspectorFor(page)
+      const tab = view[0]?.toUpperCase() + view.slice(1)
+      await inspector.getByRole("tab", { name: tab, exact: true }).click()
+      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=9`))
+      await expect(
+        inspector.getByText("Empty · no records in this view.", { exact: true }),
+      ).toBeVisible()
+      await inspector.getByRole("tab", { name: "Conversations", exact: true }).click()
+      await expectRecord(page, "Historical conversation", "conversation #9")
+      await expect(page).toHaveURL(/view=conversations&objectId=9/)
+      await expect(contextFor(page)).toContainText("Inspecting conversation 9")
+      await inspector.getByRole("tab", { name: tab, exact: true }).click()
+      await expect(
+        inspector.getByText("Empty · no records in this view.", { exact: true }),
+      ).toBeVisible()
+      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=9`))
+      expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
+    })
+  }
+}
+
+test("record buttons expose readable names and stored observations to assistive technology", async ({
+  page,
+}) => {
+  await durableFixture(page, "/?section=Durable&chat=42&view=tasks&conversationId=7")
+  const button = inspectorFor(page).getByRole("button", {
+    name: "Select Model response (task 8)",
+    exact: true,
+  })
+  await expect(button).toHaveAccessibleDescription(/Recorded outcome: Completed/)
+  await expect(button).toHaveAccessibleDescription(/not live execution state/)
+})
+
+test("approved document kinds with family membership explain value restrictions without blaming the kind", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.documentItems = [
+    {
+      type: "document",
+      id: 401,
+      kind: "pi.agent",
+      family: true,
+      scope: { kind: "conversation", conversationId: 7 },
+      createdAt: 110,
+      valueState: "withheld",
+      withheldReason: "unknown-kind",
+    },
+  ]
+  await page.goto("/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7")
+  await expectRecord(page, "Model settings", "document #401")
+  await expect(detailsFor(page)).toContainText(
+    "This document is not approved for value inspection.",
+  )
+  await expect(inspectorFor(page).getByRole("link", { name: /Inspect document/ })).toHaveCount(0)
+  await inspectorFor(page).getByText("Technical details", { exact: true }).click()
+  await expect(field(detailsFor(page), "Family member")).toHaveText("Yes")
+  expect(state.requests).toHaveLength(3)
+})
+
 test("opaque pagination, previous page, manual refresh, and browser back", async ({ page }) => {
   const state = await durableFixture(page)
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+  const inspector = inspectorFor(page)
   const previous = inspector.getByRole("button", { name: "Previous objects", exact: true })
   await expect(previous).toBeDisabled()
   await inspector.getByRole("button", { name: "Next objects", exact: true }).click()
-  await expect(inspector.getByRole("heading", { name: "conversation #9" })).toBeVisible()
+  await expectRecord(page, "Historical conversation", "conversation #9")
   expect(
     state.requests
       .filter((url) => url.searchParams.get("view") === "conversations")
@@ -200,19 +398,19 @@ test("opaque pagination, previous page, manual refresh, and browser back", async
   ).toBe("opaque+/=token")
   await expect(inspector.getByRole("button", { name: "Next objects", exact: true })).toBeDisabled()
   await previous.click()
-  await expect(inspector.getByRole("heading", { name: "conversation #7" })).toBeVisible()
+  await expectRecord(page, "Selected conversation", "conversation #7")
   await inspector.getByRole("button", { name: "Next objects", exact: true }).click()
-  await expect(inspector.getByRole("heading", { name: "conversation #9" })).toBeVisible()
+  await expectRecord(page, "Historical conversation", "conversation #9")
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
-  await expect(inspector.getByRole("heading", { name: "conversation #7" })).toBeVisible()
+  await expectRecord(page, "Selected conversation", "conversation #7")
   await expect(previous).toBeDisabled()
   const count = state.requests.length
   await page.waitForTimeout(250)
   expect(state.requests).toHaveLength(count)
   await inspector.getByRole("link", { name: "Entries in conversation 7", exact: true }).click()
-  await expect(inspector.getByRole("heading", { name: "entry #70" })).toBeVisible()
+  await expectRecord(page, "Assistant message record", "entry #70")
   await page.goBack()
-  await expect(inspector.getByRole("heading", { name: "conversation #7" })).toBeVisible()
+  await expectRecord(page, "Selected conversation", "conversation #7")
 })
 
 test("deep links, context validation, distinct empty and read failure states", async ({ page }) => {
@@ -220,8 +418,8 @@ test("deep links, context validation, distinct empty and read failure states", a
     page,
     "/?section=Durable&chat=42&view=documents&scope=session&objectId=201",
   )
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  const inspector = inspectorFor(page)
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toBeVisible()
   state.selectedConversation = null
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
   await expect(
@@ -252,7 +450,210 @@ test("deep links, context validation, distinct empty and read failure states", a
   state.failed = false
   state.empty = false
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
-  await expect(inspector.getByRole("heading", { name: "task #8" })).toBeVisible()
+  await expectRecord(page, "Model response", "task #8")
+})
+
+test("approved usage fields keep zero, missing totals, per-model values, and reported costs distinct without JSON", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.usageAvailable = true
+  await page.goto("/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7")
+  const inspector = inspectorFor(page)
+  await expect(
+    inspector.getByRole("link", { name: "Inspect document 103", exact: true }),
+  ).toBeVisible()
+  expect(state.requests).toHaveLength(3)
+  expect(state.requests.some((url) => url.searchParams.has("objectId"))).toBe(false)
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toHaveCount(0)
+  await inspector.getByRole("link", { name: "Inspect document 103", exact: true }).click()
+  await expectRecord(page, "Model usage", "document #103")
+  const approved = inspector.getByRole("region", { name: "Approved document fields", exact: true })
+  await expect(approved.getByRole("heading", { name: "Total usage", exact: true })).toBeVisible()
+  // The first fields are the total; the remaining groups belong to each named model.
+  await expect(field(approved, "Input tokens").nth(0)).toHaveText("0")
+  await expect(field(approved, "Output tokens").nth(0)).toHaveText("Not recorded")
+  await expect(field(approved, "Total tokens").nth(0)).toHaveText("0")
+  await expect(field(approved, "Total cost \\(reported\\)").nth(0)).toHaveText("0")
+  const modelA = approved.locator("details").filter({
+    has: page.getByText("fixture/model-a · 15 total tokens", { exact: true }),
+  })
+  await modelA.locator("summary").click()
+  await expect(field(modelA, "Input tokens")).toHaveText("12")
+  await expect(field(modelA, "Output tokens")).toHaveText("3")
+  await expect(field(modelA, "Total tokens")).toHaveText("15")
+  await expect(field(modelA, "Cache read tokens")).toHaveText("Not recorded")
+  await expect(field(modelA, "Input cost \\(reported\\)")).toHaveText("0.001")
+  await expect(field(modelA, "Output cost \\(reported\\)")).toHaveText("0.002")
+  await expect(field(modelA, "Total cost \\(reported\\)")).toHaveText("0.003")
+  const modelB = approved.locator("details").filter({
+    has: page.getByText("fixture/model-b · Total not recorded", { exact: true }),
+  })
+  await modelB.locator("summary").click()
+  await expect(field(modelB, "Input tokens")).toHaveText("Not recorded")
+  await expect(field(modelB, "Output tokens")).toHaveText("0")
+  await expect(field(modelB, "Total tokens")).toHaveText("Not recorded")
+  await expect(field(modelB, "Output cost \\(reported\\)")).toHaveText("0")
+  await expect(field(modelB, "Total cost \\(reported\\)")).toHaveText("Not recorded")
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(6)
+  await inspector.getByText("Technical details", { exact: true }).click()
+  await expect(field(detailsFor(page), "Created sequence")).toHaveText("102")
+  await expect(detailsFor(page)).not.toContainText("1970-")
+  await inspector.getByText("Approved value JSON for document 103", { exact: true }).click()
+  await expect(inspector.locator("details[open] pre")).toContainText('"total": 0')
+  expect(state.requests).toHaveLength(6)
+})
+
+test("empty approved usage explains missing model records without inventing zero totals", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.usageAvailable = true
+  state.usageFieldsAbsent = true
+  await page.goto(
+    "/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7&objectId=103",
+  )
+  await expectRecord(page, "Model usage", "document #103")
+  const approved = inspectorFor(page).getByRole("region", {
+    name: "Approved document fields",
+    exact: true,
+  })
+  await expect(approved).toContainText("No per-model usage recorded.")
+  await expect(field(approved, "Input tokens")).toHaveText("Not recorded")
+  await expect(field(approved, "Total tokens")).toHaveText("Not recorded")
+  await expect(approved.locator("details")).toHaveCount(0)
+  await expect(inspectorFor(page).locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(3)
+})
+
+test("approved model and session fields explain absent values and retain session scope", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.agentFieldsAbsent = true
+  await page.goto(
+    "/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7&objectId=101",
+  )
+  const inspector = inspectorFor(page)
+  const approved = inspector.getByRole("region", { name: "Approved document fields", exact: true })
+  await expectRecord(page, "Model settings", "document #101")
+  for (const label of ["Model provider", "Model", "Thinking level"])
+    await expect(field(approved, label)).toHaveText("Not recorded")
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(3)
+  await page.goto("/?section=Durable&chat=42&view=documents&scope=session&objectId=201")
+  await expectRecord(page, "Session selection", "document #201")
+  await expect(field(detailsFor(page), "Applies to")).toHaveText("This session")
+  await expect(approved.getByRole("link", { name: "Conversation 7", exact: true })).toHaveAttribute(
+    "href",
+    /view=conversations&objectId=7/,
+  )
+  await expect(contextFor(page)).toContainText("Inspecting session documents")
+  state.sessionActiveAbsent = true
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(field(approved, "Persisted selected conversation")).toHaveText("Not recorded")
+  await expect(approved.getByRole("link")).toHaveCount(0)
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(9)
+})
+
+test("an available document without its approved projection explains the missing response fields", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.approvedValueAbsent = true
+  await page.goto(
+    "/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7&objectId=101",
+  )
+  const inspector = inspectorFor(page)
+  await expectRecord(page, "Model settings", "document #101")
+  await expect(detailsFor(page)).toContainText(
+    "Approved fields were not included in this response.",
+  )
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toHaveCount(0)
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(3)
+})
+
+test("unknown task kinds stay generic and nonterminal records do not claim an outcome", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable")
+  state.taskItems = [
+    {
+      type: "task",
+      id: 81,
+      conversationId: 7,
+      kind: "fixture.unknown-task-kind",
+      version: 1,
+      status: "waiting",
+      background: false,
+      abortRequested: false,
+    },
+  ]
+  await page.goto("/?section=Durable&chat=42&view=tasks&conversationId=7")
+  const inspector = inspectorFor(page)
+  await expectRecord(page, "Task", "task #81")
+  await expect(detailsFor(page)).toContainText("Recorded status: Waiting · no outcome recorded")
+  await expect(field(detailsFor(page), "Started")).toHaveText("Not recorded")
+  await expect(field(detailsFor(page), "Ended")).toHaveText("Not recorded")
+  await expect(field(detailsFor(page), "Owning task")).toHaveText("No owner recorded")
+  await expect(inspector.getByText("fixture.unknown-task-kind", { exact: true })).toBeHidden()
+  await expect(inspector).not.toContainText(
+    /Recorded outcome:|healthy|currently running|successfully completed/i,
+  )
+  await inspector.getByText("Technical details", { exact: true }).click()
+  await expect(field(detailsFor(page), "Stored kind")).toHaveText("fixture.unknown-task-kind")
+  await expect(field(detailsFor(page), "Stored status")).toHaveText("waiting")
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  expect(state.requests).toHaveLength(2)
+})
+
+test("absent conversation and entry relationships and task document scope stay explicit", async ({
+  page,
+}) => {
+  const state = await durableFixture(
+    page,
+    "/?section=Durable&chat=42&view=conversations&objectId=9",
+  )
+  const inspector = inspectorFor(page)
+  await expectRecord(page, "Historical conversation", "conversation #9")
+  await expect(detailsFor(page)).toContainText("No parent relationship recorded.")
+  await expect(field(detailsFor(page), "Parent conversation")).toHaveText("No parent recorded")
+  await expect(field(detailsFor(page), "Owning task")).toHaveText("No owner recorded")
+  state.entryItems = [{ type: "entry", id: 90, conversationId: 9, kind: "custom" }]
+  await inspector.getByRole("link", { name: "Entries in conversation 9", exact: true }).click()
+  await expectRecord(page, "Entry record", "entry #90")
+  for (const label of ["Recorded at", "Recorded by", "Head entry"])
+    await expect(field(detailsFor(page), label)).toHaveText("Not recorded")
+  state.documentItems = [
+    {
+      type: "document",
+      id: 301,
+      kind: "custom",
+      scope: { kind: "task", taskId: 8 },
+      family: false,
+      createdAt: 109,
+      valueState: "withheld",
+      withheldReason: "invalid-value",
+    },
+  ]
+  await page.goto("/?section=Durable&chat=42&view=documents&scope=task&conversationId=7&taskId=8")
+  await expectRecord(page, "Document", "document #301")
+  await expect(field(detailsFor(page), "Applies to")).toHaveText("Task 8")
+  await expect(detailsFor(page).getByRole("link", { name: "Task 8", exact: true })).toHaveAttribute(
+    "href",
+    /view=tasks&conversationId=7&objectId=8/,
+  )
+  await expect(detailsFor(page)).toContainText(
+    "The document value is withheld because it does not match the approved format.",
+  )
+  await expect(
+    inspector.getByRole("link", { name: "Inspect document 301", exact: true }),
+  ).toHaveCount(0)
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toHaveCount(0)
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
 })
 
 test("session expiry clears loaded metadata and asks App to reauthenticate", async ({ page }) => {
@@ -296,7 +697,7 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
       .poll(() => state.requests.filter((url) => url.searchParams.get("objectId") === "101").length)
       .toBe(1)
     await page.getByRole("tab", { name: "Entries", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "entry #70" })).toBeVisible()
+    await expectRecord(page, "Assistant message record", "entry #70")
     await expect.poll(() => aborted.length).toBe(1)
     await page.getByRole("tab", { name: "Documents", exact: true }).click()
     await page.getByRole("link", { name: "Inspect document 101", exact: true }).click()
@@ -311,14 +712,16 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
       .getByRole("button", { name: /Idle chat/ })
       .click()
     await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "conversation #17" })).toBeVisible()
+    await expectRecord(page, "Historical conversation", "conversation #17")
   } finally {
     release()
   }
   await expect(page.getByText("Approved value JSON for document 101", { exact: true })).toHaveCount(
     0,
   )
-  await expect(page.getByRole("heading", { name: "entry #70" })).toHaveCount(0)
+  await expect(
+    page.getByRole("heading", { name: "Assistant message record", exact: true }),
+  ).toHaveCount(0)
 })
 
 test("policy drafts and the discard confirmation survive Inspector navigation", async ({
@@ -329,7 +732,7 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await page.getByRole("button", { name: "Revoke access", exact: true }).click()
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "conversation #7" })).toBeVisible()
+  await expectRecord(page, "Selected conversation", "conversation #7")
   await expect(page.locator(".pending-bar")).toContainText("pending policy changes")
   await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
@@ -341,7 +744,7 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   expect(prompt.message()).toBe("Discard pending changes and leave?")
   await prompt.dismiss()
   await clicking
-  await expect(page.getByRole("region", { name: "Durable Inspector", exact: true })).toBeVisible()
+  await expect(inspectorFor(page)).toBeVisible()
   await expect(page.locator(".pending-bar")).toContainText("pending policy changes")
 })
 
@@ -372,7 +775,7 @@ test("a chat change in history cancels the old chat read and clears object conte
       window.history.pushState(null, "", "?section=Durable&chat=43")
       window.dispatchEvent(new PopStateEvent("popstate"))
     })
-    await expect(page.getByRole("heading", { name: "conversation #17" })).toBeVisible()
+    await expectRecord(page, "Historical conversation", "conversation #17")
     await aborted
   } finally {
     release()
@@ -410,10 +813,8 @@ test("off-page persisted selection is separate from the inspection target and us
   page,
 }) => {
   const state = await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-  await expect(
-    inspector.getByRole("heading", { name: "conversation #7", exact: true }),
-  ).toBeVisible()
+  const inspector = inspectorFor(page)
+  await expectRecord(page, "Selected conversation", "conversation #7")
   expect(state.requests).toHaveLength(2)
   state.taskTruncated = true
   state.selectedConversation = {
@@ -427,7 +828,7 @@ test("off-page persisted selection is separate from the inspection target and us
       type: "task",
       id: 8,
       conversationId: 99,
-      kind: "model",
+      kind: "pi.generation",
       version: 1,
       status: "running",
       background: false,
@@ -442,13 +843,14 @@ test("off-page persisted selection is separate from the inspection target and us
   })
   await expect(selection.getByText("Conversation 99", { exact: true })).toBeVisible()
   await expect(selection).toContainText("Inspection target: conversation 7")
+  await expect(contextFor(page)).toContainText(
+    "This is not the persisted selected conversation (conversation 99).",
+  )
   await expect(history).toContainText("1 task record on the loaded page · more may exist")
-  await expect(history).toContainText("historical running")
-  await expect(history).toContainText("2026-10-19T12:00:01.000Z")
-  await expect(selection).toContainText("2026-10-19T12:00:00.000Z")
-  await expect(
-    inspector.getByRole("heading", { name: "conversation #7", exact: true }),
-  ).toBeVisible()
+  await expect(history).toContainText("Recorded status: Running · no outcome recorded")
+  await expect(history).toContainText("2026-10-19 12:00:01 UTC")
+  await expect(selection).toContainText("2026-10-19 12:00:00 UTC")
+  await expectRecord(page, "Conversation branch", "conversation #7")
   expect(state.requests).toHaveLength(4)
   expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("99")
   await expect(inspector.getByLabel("Conversation ID", { exact: true })).toBeHidden()
@@ -471,8 +873,9 @@ test("a partial history failure keeps selection and inspection with independent 
     page,
     "/?section=Durable&chat=42&view=documents&scope=session&objectId=201",
   )
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  const inspector = inspectorFor(page)
+  const approved = inspector.getByRole("region", { name: "Approved document fields" })
+  await expect(approved).toBeVisible()
   expect(state.requests).toHaveLength(3)
   state.failures.set("tasks", 503)
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
@@ -484,7 +887,7 @@ test("a partial history failure keeps selection and inspection with independent 
   await expect(
     inspector.getByRole("region", { name: "Persisted selection", exact: true }),
   ).toContainText("Conversation 7")
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expect(approved).toBeVisible()
   await expect(history.locator("time")).toHaveCount(0)
   expect(state.requests).toHaveLength(6)
   await page.waitForTimeout(250)
@@ -499,7 +902,7 @@ test("a partial history failure keeps selection and inspection with independent 
   await expect(history.getByRole("alert")).toHaveText(
     "Permission denied. This data could not be read.",
   )
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expect(approved).toBeVisible()
   expect(state.requests).toHaveLength(12)
   state.failures.delete("tasks")
   state.failures.set("conversations", 503)
@@ -508,7 +911,7 @@ test("a partial history failure keeps selection and inspection with independent 
     inspector.getByRole("region", { name: "Persisted selection", exact: true }).getByRole("alert"),
   ).toHaveText("Read failed. Refresh to retry.")
   await expect(history).toContainText("Unavailable: selection could not be read.")
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expect(approved).toBeVisible()
   expect(state.requests).toHaveLength(14)
 })
 
@@ -519,8 +922,8 @@ test("chat IDs and collapsed approved JSON can be copied, with explicit copy fai
     page,
     "/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7&objectId=101",
   )
-  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  const inspector = inspectorFor(page)
+  await expect(inspector.getByRole("region", { name: "Approved document fields" })).toBeVisible()
   await expect(inspector.locator("pre:visible")).toHaveCount(0)
   await page.evaluate(() =>
     Object.defineProperty(navigator, "clipboard", {
@@ -582,7 +985,7 @@ for (const width of [390, 320])
   test(`long names and safe-integer IDs wrap at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const state = await durableFixture(page)
-    await expect(page.getByRole("heading", { name: "conversation #7", exact: true })).toBeVisible()
+    await expectRecord(page, "Selected conversation", "conversation #7")
     const id = 9007199254740991
     const name = `A persisted chat name with a very long uninterrupted suffix ${"long".repeat(35)}`
     state.chats.push({ id: -id, name, type: "supergroup" })
@@ -592,7 +995,7 @@ for (const width of [390, 320])
         type: "task",
         id,
         conversationId: id,
-        kind: "model",
+        kind: "pi.generation",
         version: 1,
         status: "terminal",
         outcome: "completed",
@@ -602,28 +1005,89 @@ for (const width of [390, 320])
     ]
     await page.goto(`/?section=Durable&chat=-${id}&view=tasks&conversationId=${id}`)
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible()
-    await expect(page.getByRole("heading", { name: `task #${id}`, exact: true })).toBeVisible()
+    await expectRecord(page, "Model response", `task #${id}`)
     await page.getByText(`Metadata JSON for task ${id}`, { exact: true }).click()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 
-test("keyboard tabs, JSON expansion, and narrow layout are usable", async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 900 })
-  await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
-  const tab = page.getByRole("tab", { name: "Conversations", exact: true })
-  await tab.focus()
-  await tab.press("ArrowRight")
-  await expect(page.getByRole("tab", { name: "Tasks", exact: true })).toBeFocused()
-  await expect(page.getByRole("heading", { name: "task #8" })).toBeVisible()
-  const summary = page.getByText("Metadata JSON for task 8", { exact: true })
-  await summary.focus()
-  await summary.press("Enter")
-  await expect(page.locator(".durable-inspector pre")).toBeVisible()
-  expect(await summary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
-    "none",
-  )
-  await page.getByRole("tab", { name: "Tasks", exact: true }).press("End")
-  await expect(page.getByRole("tab", { name: "Entries", exact: true })).toBeFocused()
-  await expect(page.getByRole("heading", { name: "entry #70" })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-})
+for (const width of [1440, 390, 320])
+  test(`context, named relationship links, keyboard tabs, disclosures, and copy work at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
+    const inspector = inspectorFor(page)
+    await expectRecord(page, "Selected conversation", "conversation #7")
+    const owner = detailsFor(page).getByRole("link", {
+      name: "Task 4 in conversation 6",
+      exact: true,
+    })
+    await owner.focus()
+    await expect(owner).toBeFocused()
+    expect(await owner.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
+      "none",
+    )
+    await expect(owner).toHaveAttribute("href", /view=tasks&conversationId=6&objectId=4/)
+    const tab = inspector.getByRole("tab", { name: "Conversations", exact: true })
+    await tab.focus()
+    await tab.press("ArrowRight")
+    await expect(inspector.getByRole("tab", { name: "Tasks", exact: true })).toBeFocused()
+    await expectRecord(page, "Model response", "task #8")
+    await expect(contextFor(page)).toContainText("Inspecting conversation 7")
+    const summary = inspector.getByText("Metadata JSON for task 8", { exact: true })
+    const beforeDisclosure = state.requests.length
+    await summary.focus()
+    await summary.press("Enter")
+    await expect(inspector.locator("pre")).toBeVisible()
+    expect(await summary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
+      "none",
+    )
+    expect(state.requests).toHaveLength(beforeDisclosure)
+    await inspector.getByRole("tab", { name: "Tasks", exact: true }).press("End")
+    await expect(inspector.getByRole("tab", { name: "Entries", exact: true })).toBeFocused()
+    await expectRecord(page, "Assistant message record", "entry #70")
+    await expect(contextFor(page)).toContainText("Inspecting conversation 7")
+    const task = detailsFor(page).getByRole("link", { name: "Task 8", exact: true })
+    await task.focus()
+    await task.press("Enter")
+    await expect(page).toHaveURL(/view=tasks&conversationId=7&objectId=8/)
+    await expectRecord(page, "Model response", "task #8")
+    await inspector.getByRole("link", { name: "Documents for task 8", exact: true }).focus()
+    await inspector.getByRole("link", { name: "Documents for task 8", exact: true }).press("Enter")
+    await expect(
+      inspector.getByText("Empty · no records in this view.", { exact: true }),
+    ).toBeVisible()
+    await expect(contextFor(page)).toContainText("Inspecting conversation 7")
+    await inspector
+      .getByRole("combobox", { name: "Document scope", exact: true })
+      .selectOption("conversation")
+    const inspect = inspector.getByRole("link", { name: "Inspect document 101", exact: true })
+    await inspect.focus()
+    await inspect.press("Enter")
+    await expect(inspector.getByRole("region", { name: "Approved document fields" })).toBeVisible()
+    await page.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            sessionStorage.setItem("copied-fixture", text)
+          },
+        },
+      }),
+    )
+    const json = inspector.getByText("Approved value JSON for document 101", { exact: true })
+    await json.focus()
+    await json.press("Enter")
+    const copy = inspector.getByRole("button", {
+      name: "Copy Approved value JSON for document 101",
+      exact: true,
+    })
+    await copy.focus()
+    await copy.press("Enter")
+    await expect(inspector.getByText("JSON copied.", { exact: true })).toBeVisible()
+    expect(
+      JSON.parse((await page.evaluate(() => sessionStorage.getItem("copied-fixture"))) ?? "null")
+        .kind,
+    ).toBe("pi.agent")
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
