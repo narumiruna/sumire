@@ -5,7 +5,7 @@ import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { DurableSession } from "../src/agent/durable-session.js"
+import type { DurableSession } from "../src/agent/durable/session.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []

@@ -30,12 +30,12 @@ import {
   createToolSelectionExtension,
   guardDurableTool,
   type ToolNamespace,
-} from "./durable-codemode.js"
-import { migrateCodemodeStores } from "./durable-migration.js"
-import { createProgressExtension } from "./durable-progress.js"
-import { DurableSession } from "./durable-session.js"
-import { BotSessionDoc } from "./durable-state.js"
-import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable-tools.js"
+} from "./durable/codemode.js"
+import { migrateCodemodeStores } from "./durable/migration.js"
+import { createProgressExtension } from "./durable/progress.js"
+import { DurableSession } from "./durable/session.js"
+import { BotSessionDoc } from "./durable/state.js"
+import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -176,14 +176,14 @@ export async function createPiSessionFactory(
         if (!control.store.allowsTool(chatId, name)) throw new Error("Tool is not allowed")
       }
       const runtime = chatModelRuntime(modelRuntime, control.store, chatId, assertAdmission)
-      const guard = (tool: import("./durable-tools.js").NativeTool) => ({
+      const guard = (tool: import("./durable/tools.js").NativeTool) => ({
         ...tool,
         execute: (...args: Parameters<typeof tool.execute>) => {
           authorize(tool.name)
           return tool.execute(...args)
         },
       })
-      const allowed = (tool: import("./durable-tools.js").NativeTool) =>
+      const allowed = (tool: import("./durable/tools.js").NativeTool) =>
         control.store.allowsTool(chatId, tool.name)
       const chatMcpConfig = control.mcp.config()
       const permittedMcp = {
@@ -200,7 +200,7 @@ export async function createPiSessionFactory(
       const chatCoding = coding.filter((tool) => control.store.allowsTool(chatId, tool.name))
       const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
       const nativeTools = [...chatBaseTools]
-      let mcpTools: import("./durable-tools.js").NativeTool[] = []
+      let mcpTools: import("./durable/tools.js").NativeTool[] = []
       let currentGenerations: Record<string, string> = {}
       const generations = () => ({ ...currentGenerations })
       const guardedTool = (tool: import("@earendil-works/pi-durable").ToolRegistration) =>

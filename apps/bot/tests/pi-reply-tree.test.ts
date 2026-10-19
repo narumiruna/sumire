@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable"
 import { afterEach, describe, expect, it } from "vitest"
-import { BotSessionDoc } from "../src/agent/durable-state.js"
+import { BotSessionDoc } from "../src/agent/durable/state.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"

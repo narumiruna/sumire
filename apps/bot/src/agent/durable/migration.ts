@@ -10,7 +10,7 @@ import {
   type Harness,
 } from "@earendil-works/pi-durable"
 import { CodemodeStoreDoc as NativeCodemodeStoreDoc } from "@earendil-works/pi-durable/codemode"
-import { CodemodeStoreDoc as LegacyCodemodeStoreDoc } from "./durable-state.js"
+import { CodemodeStoreDoc as LegacyCodemodeStoreDoc } from "./state.js"
 
 export const CodemodeMigrationDoc = defineDoc<{ migrated: boolean }>({
   kind: "sumire.codemode-migration",

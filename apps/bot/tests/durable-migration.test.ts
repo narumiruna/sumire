@@ -29,8 +29,8 @@ import {
   forkCodemodeConversation,
   LegacyCodemodeCallTask,
   migrateCodemodeStores,
-} from "../src/agent/durable-migration.js"
-import { CodemodeStoreDoc as LegacyStore } from "../src/agent/durable-state.js"
+} from "../src/agent/durable/migration.js"
+import { CodemodeStoreDoc as LegacyStore } from "../src/agent/durable/state.js"
 
 const harnesses = new Set<Harness>()
 const directories: string[] = []

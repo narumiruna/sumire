@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { createDurableCodemode } from "../src/agent/durable-codemode.js"
+import { createDurableCodemode } from "../src/agent/durable/codemode.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []

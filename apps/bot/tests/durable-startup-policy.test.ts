@@ -14,8 +14,8 @@ import {
 import { createUrlTool } from "@narumitw/sumire-pi-url-reader"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { chatModelRuntime } from "../src/admin/providers.js"
-import { DurableSession } from "../src/agent/durable-session.js"
-import { OutboxDoc, ProgressDoc } from "../src/agent/durable-state.js"
+import { DurableSession } from "../src/agent/durable/session.js"
+import { OutboxDoc, ProgressDoc } from "../src/agent/durable/state.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
