@@ -5,6 +5,7 @@ import { Badge, Button, Card, Flex, Heading, Tabs, Text, TextField } from "@radi
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
+import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
@@ -35,6 +36,7 @@ export function ChatWorkspace({
   onAccess,
   onProviders,
   onTools,
+  onDurable,
   onPolicyChange,
   audit,
   onAudit,
@@ -56,6 +58,7 @@ export function ChatWorkspace({
   onAccess(): void
   onProviders(): void
   onTools(): void
+  onDurable(): void
   onPolicyChange(value: Policy): void
   audit: AuditEntry[]
   onAudit(): void
@@ -405,6 +408,27 @@ export function ChatWorkspace({
                 </Text>
               </div>
               <Flex gap="2" align="center" wrap="wrap">
+                {valid && (
+                  <Button variant="soft" asChild>
+                    <a
+                      href={navigationHref("Durable", chat)}
+                      onClick={(event) => {
+                        if (
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        )
+                          return
+                        event.preventDefault()
+                        onDurable()
+                      }}
+                    >
+                      Inspect Durable
+                    </a>
+                  </Button>
+                )}
                 <Button
                   variant="surface"
                   onClick={async () => {

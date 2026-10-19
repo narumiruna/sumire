@@ -14,17 +14,19 @@ export async function request<T>(
   csrf?: string,
   value?: unknown,
   method = "POST",
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(
     `/api/${path}`,
     csrf
       ? {
           method,
+          signal,
           credentials: "same-origin",
           headers: { "content-type": "application/json", "x-csrf-token": csrf },
           body: JSON.stringify(value ?? {}),
         }
-      : { credentials: "same-origin" },
+      : { credentials: "same-origin", signal },
   )
   const data = await response.json()
   if (!response.ok) throw new ApiError(response.status, data.error ?? "Request failed")

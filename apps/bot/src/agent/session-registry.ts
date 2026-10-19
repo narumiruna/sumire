@@ -1,14 +1,14 @@
 import { rm } from "node:fs/promises"
 import path from "node:path"
-
 import type { ImageContent } from "@earendil-works/pi-ai"
 import type { AgentSessionEvent, AgentSessionEventListener } from "@earendil-works/pi-coding-agent"
+import type { DurableInspectionQuery, DurableInspectionResponse } from "@narumitw/sumire-contracts"
 import {
   PROGRESS_TOOL_NAME,
   type ProgressStep,
   parseProgressDetails,
 } from "@narumitw/sumire-progress"
-import type { AdminStore } from "../admin/store.js"
+import { AdminError, type AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable-session.js"
 import type { ResponseDelivery } from "./durable-state.js"
@@ -46,6 +46,10 @@ export interface SessionHandle {
   restoreBranch(targetId: string): Promise<void>
   waitForIdle(): Promise<void>
   abort(): Promise<void>
+  inspectDurable?(
+    query: DurableInspectionQuery,
+    signal: AbortSignal,
+  ): Promise<DurableInspectionResponse>
   dispose(): void | Promise<void>
   acknowledge(requestId: string): Promise<void>
   hasPendingResponses(): Promise<boolean>
@@ -70,6 +74,11 @@ export class ChatSessionRegistry {
   readonly #evicting = new Map<number, Promise<void>>()
   #closed = false
   #disposing?: Promise<void>
+  #inspectionBlocked = 0
+  readonly #inspectionReads = new Map<
+    number,
+    { controller: AbortController; done: Promise<void> }
+  >()
 
   readonly #creating = new Map<number, Promise<SessionHandle>>()
   readonly #generations = new Map<number, number>()
@@ -94,6 +103,69 @@ export class ChatSessionRegistry {
       options.replyTreeMaxIndexBytes ?? 1_000_000,
       logger,
     )
+  }
+
+  /** Inspect loaded owners only. Cancellation never releases a still-running native read. */
+  async inspectDurable(
+    chatId: number,
+    query: DurableInspectionQuery,
+    signal: AbortSignal,
+  ): Promise<DurableInspectionResponse> {
+    if (
+      this.#closed ||
+      this.#inspectionBlocked ||
+      this.#resets.has(chatId) ||
+      this.#evicting.has(chatId)
+    )
+      throw new AdminError(409, "Durable inspection is unavailable during session changes")
+    signal.throwIfAborted()
+    if (this.#inspectionReads.has(chatId))
+      throw new AdminError(409, "A durable inspection is already running")
+    const session = this.#sessions.get(chatId)
+    if (!session?.inspectDurable)
+      return {
+        version: 1,
+        state: "not-loaded",
+        readAt: new Date().toISOString(),
+        view: query.view,
+        items: [],
+        truncated: false,
+      }
+    const generation = this.#generations.get(chatId) ?? 0
+    const controller = new AbortController()
+    const combined = AbortSignal.any([signal, controller.signal])
+    let finish = () => {}
+    const lease = {
+      controller,
+      done: new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+    }
+    this.#inspectionReads.set(chatId, lease)
+    try {
+      const result = await session.inspectDurable(query, combined)
+      combined.throwIfAborted()
+      if (
+        this.#closed ||
+        this.#inspectionBlocked ||
+        this.#sessions.get(chatId) !== session ||
+        (this.#generations.get(chatId) ?? 0) !== generation
+      )
+        throw new AdminError(409, "Durable inspection was invalidated")
+      return result
+    } catch (error) {
+      if (combined.aborted) throw new AdminError(409, "Durable inspection was cancelled")
+      throw error
+    } finally {
+      if (this.#inspectionReads.get(chatId) === lease) this.#inspectionReads.delete(chatId)
+      finish()
+    }
+  }
+
+  async #cancelInspection(chatId: number): Promise<void> {
+    const lease = this.#inspectionReads.get(chatId)
+    lease?.controller.abort()
+    await lease?.done
   }
 
   async submit(
@@ -338,7 +410,7 @@ export class ChatSessionRegistry {
     this.#sessions.delete(chatId)
     this.#recoveryOnly.delete(session)
     // A live caller must wait for storage close before becoming its new owner.
-    const closing = Promise.resolve().then(() => session.dispose())
+    const closing = this.#cancelInspection(chatId).then(() => session.dispose())
     this.#evicting.set(chatId, closing)
     try {
       await closing
@@ -387,6 +459,7 @@ export class ChatSessionRegistry {
   async #resetChat(chatId: number): Promise<void> {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
+    await this.#cancelInspection(chatId)
     await this.#evicting.get(chatId)
     await this.#creating.get(chatId)?.catch(() => undefined)
     const session = this.#sessions.get(chatId)
@@ -408,9 +481,19 @@ export class ChatSessionRegistry {
 
   /** Invalidate policy snapshots without removing transcripts or reply indexes. */
   async invalidatePolicies(): Promise<void> {
-    const ids = new Set([...this.#sessions.keys(), ...this.#creating.keys()])
-    for (const chatId of ids)
-      this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
+    this.#inspectionBlocked++
+    try {
+      const ids = new Set([...this.#sessions.keys(), ...this.#creating.keys()])
+      for (const chatId of ids)
+        this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
+      await Promise.all([...this.#inspectionReads.keys()].map((id) => this.#cancelInspection(id)))
+      await this.#invalidatePolicies()
+    } finally {
+      this.#inspectionBlocked--
+    }
+  }
+
+  async #invalidatePolicies(): Promise<void> {
     await Promise.allSettled([
       ...this.#creating.values(),
       ...this.#resets.values(),
@@ -439,6 +522,7 @@ export class ChatSessionRegistry {
 
   async #dispose(): Promise<void> {
     this.#closed = true
+    await Promise.all([...this.#inspectionReads.keys()].map((id) => this.#cancelInspection(id)))
     this.#pendingReplyCheckpoints.clear()
     for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)

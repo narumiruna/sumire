@@ -30,6 +30,9 @@ import {
   watchEvents,
 } from "@earendil-works/pi-durable"
 
+import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
+import type { DurableInspectionReader } from "../admin/durable-inspector.js"
+import { AdminError } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import { forkCodemodeConversation } from "./durable-migration.js"
 import {
@@ -89,6 +92,7 @@ export class DurableSession implements SessionHandle {
     readonly nativeTools: NativeTool[],
     private readonly logger: Logger,
     private readonly cleanup: () => Promise<void>,
+    private readonly inspection?: DurableInspectionReader,
   ) {
     this.#conversation = conversation
     this.#model = model
@@ -106,6 +110,7 @@ export class DurableSession implements SessionHandle {
     trustKey: string
     logger: Logger
     cleanup?: () => Promise<void>
+    inspection?: DurableInspectionReader
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -154,6 +159,7 @@ export class DurableSession implements SessionHandle {
       options.nativeTools,
       options.logger,
       options.cleanup ?? (() => Promise.resolve()),
+      options.inspection,
     )
     session.sessionId = saved.sessionId
     session.#thinkingLevel = clampThinkingLevel(selected, agent.thinkingLevel ?? "off")
@@ -167,6 +173,15 @@ export class DurableSession implements SessionHandle {
     )
     await session.attach()
     return session
+  }
+
+  async inspectDurable(query: DurableInspectionQuery, signal: AbortSignal) {
+    if (this.#closing || !this.inspection)
+      throw new AdminError(409, "Durable inspection is unavailable")
+    const result = await this.inspection(query, signal)
+    signal.throwIfAborted()
+    if (this.#closing) throw new AdminError(409, "Durable inspection was invalidated")
+    return result
   }
 
   get model(): Model<Api> {

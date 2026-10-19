@@ -14,6 +14,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy } from "@narumitw/sumire-policy"
+import { createDurableInspector } from "../admin/durable-inspector.js"
 import type { McpAdmin } from "../admin/mcp.js"
 import { chatModelRuntime } from "../admin/providers.js"
 import { adminShellEnvironment } from "../admin/shell.js"
@@ -33,6 +34,7 @@ import {
 import { migrateCodemodeStores } from "./durable-migration.js"
 import { createProgressExtension } from "./durable-progress.js"
 import { DurableSession } from "./durable-session.js"
+import { BotSessionDoc } from "./durable-state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable-tools.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
@@ -361,8 +363,26 @@ export async function createPiSessionFactory(
           },
         })
 
+        const inspectionOwner = harness
+        const inspection = createDurableInspector(
+          {
+            conversation: storage.conversation.bind(storage),
+            scanConversations: storage.scanConversations.bind(storage),
+            task: storage.task.bind(storage),
+            scanTasks: storage.scanTasks.bind(storage),
+            entry: storage.entry.bind(storage),
+            scanEntries: storage.scanEntries.bind(storage),
+            scanDocuments: storage.scanDocuments.bind(storage),
+            findDocument: storage.findDocument.bind(storage),
+            document: storage.document.bind(storage),
+          },
+          async (readContext) =>
+            (await inspectionOwner.snapshot(BotSessionDoc, readContext))?.activeConversation,
+          chatId,
+        )
         session = await DurableSession.open({
           harness,
+          inspection,
           sessionFile,
           cwd: settings.botWorkdir,
           model: selectedModel,

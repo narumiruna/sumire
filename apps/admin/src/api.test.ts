@@ -1,5 +1,41 @@
-import { describe, expect, it } from "vitest"
-import { parseIds } from "./api.js"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { ApiError, parseIds, request } from "./api.js"
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe("cancellable API reads", () => {
+  it("passes the abort signal without changing GET credentials", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ state: "loaded" }) })
+    vi.stubGlobal("fetch", fetch)
+    const controller = new AbortController()
+    await expect(
+      request(
+        "chats/42/durable?view=conversations",
+        undefined,
+        undefined,
+        "GET",
+        controller.signal,
+      ),
+    ).resolves.toEqual({ state: "loaded" })
+    expect(fetch).toHaveBeenCalledWith("/api/chats/42/durable?view=conversations", {
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+  })
+  it("keeps authentication failures structured", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: "Session expired" }),
+      }),
+    )
+    await expect(request("chats/42/durable?view=conversations")).rejects.toEqual(
+      new ApiError(401, "Session expired"),
+    )
+  })
+})
 
 describe("Telegram access IDs", () => {
   it("normalizes explicit private-user and group lists independently", () => {

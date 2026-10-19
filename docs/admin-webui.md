@@ -131,7 +131,7 @@ Configure providers, credentials, chat models, and thinking levels in the WebUI.
 
 ## Navigation and chat details
 
-The desktop sidebar links to Chats, Access, Defaults, Tool permissions, MCP connections, Model providers, and Audit. Existing `section=Model+Providers` links remain valid; `section=Model+providers` is also accepted. On narrow screens, use **Sections** to open navigation. The current section is highlighted. Within Chats, selecting a row opens its details; **Back to chat directory** restores the directory on narrow screens without clearing search or filters.
+The desktop sidebar links to Chats, Durable, Access, Defaults, Tool permissions, MCP connections, Model providers, and Audit. Existing `section=Model+Providers` links remain valid; `section=Model+providers` is also accepted. On narrow screens, use **Sections** to open navigation. The current section is highlighted. Within Chats, selecting a row opens its details; **Back to chat directory** restores the directory on narrow screens without clearing search or filters.
 
 Section and selected-chat links use the existing root route with `section` and `chat` query parameters. Browser back and forward retain in-memory drafts. Reload retains the linked section and chat, but not unsaved drafts or directory filters. Chat names and types can be unavailable when the linked chat is outside loaded directory pages; this does not change access policy.
 
@@ -140,6 +140,41 @@ Chat details put known setup blockers and their actions before configuration. Di
 Names come from observed Telegram metadata or retained imports. Bootstrap records can contain only an ID. Chats and Access use the same fallback: `Unnamed <type> <ID>`. For unobserved IDs, the type is `private` or `group or channel`, based on the ID sign. The directory shows a single-line metadata ID; it does not fetch remote names on view. On desktop, the whole directory uses one viewport-bounded scroll area below the persistent save bar. Narrow screens use page scrolling. Administrator aliases require a backend storage and API change. There is no durable alias editor or client-only alias.
 
 The History view shows only structured audit targets that exactly match `chat:<id>` in the loaded audit page. Global policy saves are recorded under `settings`, not attributed to individual chats. The API has no per-chat audit query. Use global Audit for pagination and broader context; an empty History view is not evidence that a chat has no changes.
+
+## Durable Inspector
+
+Select a chat in **Chats**, then use **Inspect Durable**, or open **Durable** with that chat selected. Deep links use `section=Durable`, `chat`, `view`, and optional conversation, task, scope, and object IDs. Moving between sections preserves policy drafts and the existing discard confirmation. Inspector requests stop when its view closes or its chat/object changes; late responses do not replace the new view.
+
+The Inspector is read-only and works only with an already loaded chat session, whether running or idle. **Not loaded** means no session is available for inspection. Viewing or refreshing does not open a database, authenticate a provider, start MCP, restore a branch, resume work, call tools/models, or deliver Telegram responses. It does not grant chat access. There are no execution or mutation controls.
+
+| View | Displayed data |
+| --- | --- |
+| Conversations | IDs, active-conversation marker, parent/fork point, and task ownership links. Active identifies the selected conversation, not running work. |
+| Tasks | Persisted current and completed task metadata, status/outcome, owner, and available timestamps. This is not a live task graph or a scheduler readiness diagnosis. |
+| Documents | Current metadata, scope, family-membership indicator, and commit sequences. Created/retired values are sequence numbers, not dates. Expand approved singleton values explicitly. |
+| Entries | Fork-visible record metadata, role and available timestamp, with task/head references. Message bodies, images, instructions, and tool output remain hidden. |
+
+Only version 1 of these singleton document projections has value access:
+
+- `pi.agent`: model provider/ID and thinking level, not instructions, working directory, credentials, or provider session identity.
+- `pi.usage`: numeric model usage and aggregate numeric usage, including tool contributions without tool payloads.
+- `sumire.session`: active conversation ID, not the session ID or trust key.
+
+Unknown kinds, family members, task-scoped values, codemode stores/journals, and outbox content are withheld. Metadata JSON does not include arbitrary object fields. **Value withheld** is different from **Retired or unavailable**: the latter can follow task completion, retirement, or a missing object in the selected scope. Current reads do not reconstruct retired task documents or provide an exhaustive journal archive.
+
+Refresh is manual; there is no polling or subscription. **Previous objects** and **Next objects** use chat/query-bound continuation tokens. Refresh returns to the first page. Cursor tokens expire when their loaded owner is replaced; refresh after a reset, policy application, or session close. Each panel shows its read time. Records can change or retire between pages; refresh to read the new state. Separate reads are not one atomic cross-object snapshot.
+
+### Inspection API and limits
+
+Authenticated `GET /api/chats/:chatId/durable` accepts `view=conversations|tasks|documents|entries`, `limit`, `cursor`, and optional `objectId`. Tasks and entries require `conversationId`. Documents require `scope=session|conversation|task` (default conversation); conversation scope requires `conversationId`, task scope also requires `taskId`, and session scope excludes those IDs. Document values require an explicit `objectId` detail read. IDs are resolved only in the selected chat and verified against the selected scope/entry ancestry. No route accepts a database path, SQL, arbitrary document address, or write operation.
+
+- Pages default to 25 and allow at most 100 records. Encoded cursors are limited to 4 KiB; projected responses to 256 KiB; projected strings to 16 KiB. Fixed-schema JSON projections remain below depth 12. Truncation/withholding is explicit and does not produce partial JSON.
+- One inspection read per chat is admitted at a time. Session creation, reset, recovery eviction, policy invalidation, and shutdown coordinate with the same storage owner. A changing/busy owner returns a read error; refresh after the change finishes.
+- Requests expire after five seconds or the remaining administrator-session lifetime, whichever is shorter. Disconnect/shutdown also cancels the request. Authentication is checked again before delivery; expired/revoked sessions receive no object data and the frontend clears its Inspector state.
+- **Native allocation limit:** public Pi Storage scans materialize complete task/entry records, and an approved `document()` read materializes its complete value before projection. Response limits do not bound that native allocation. Cancellation cannot interrupt synchronous SQLite/JSON work. The read lease remains held until the underlying read actually settles; a deadline does not release it early or allow storage to close underneath it.
+- API errors are sanitized. Invalid filters/cursors return 400, missing/unavailable document details 404, owner conflicts 409, deadline cancellation 408, oversized metadata 413, and failed reads 503. Session expiry returns 401. No raw payload, SQL, or database path is included in an error.
+
+The feature adds no durable schema migration. Roll back the matching bot, admin, and contracts build together after inspection reads drain. Do not abort agent work or restore an older database snapshot for a display-only rollback.
 
 ## Save status and scope
 
@@ -292,6 +327,8 @@ npm run test:browser --workspace @narumitw/sumire-admin
 After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and database-only access. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
 
 `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
+
+Inspector-specific evidence and read-boundary limits are recorded in [Pi Durable Inspector validation](pi-durable-inspector-validation.md).
 
 The browser suite uses API fixtures and a strict-port development server. It includes a Chromium virtual-authenticator registration and sign-in flow. It does not prove real device enrollment, real provider OAuth, or public TLS. For a local authenticated session, use the production build at the default localhost origin. For remote access, use the configured HTTPS origin. Keep Secure cookies and all authentication checks enabled.
 

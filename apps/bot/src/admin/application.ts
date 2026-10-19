@@ -78,6 +78,7 @@ export async function startAdmin(
     providers,
     apply,
     tools: () => factory.toolNames ?? [],
+    inspectDurable: (chatId, query, signal) => sessions.inspectDurable(chatId, query, signal),
   })
   await server.start()
   return server

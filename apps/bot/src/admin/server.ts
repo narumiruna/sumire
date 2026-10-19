@@ -1,12 +1,19 @@
 import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
-import type { ChatResponse, ImportReport, Inventory } from "@narumitw/sumire-contracts"
+import type {
+  ChatResponse,
+  DurableInspectionQuery,
+  DurableInspectionResponse,
+  ImportReport,
+  Inventory,
+} from "@narumitw/sumire-contracts"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import { z } from "zod"
 import { accessTokenPattern, ChatAccess } from "./access.js"
 import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
+import { parseDurableInspectionQuery } from "./durable-inspector.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
 import { AdminError, type AdminStore, digest, sessionMaxAgeMs } from "./store.js"
@@ -17,6 +24,11 @@ interface AdminServices {
   mcp: McpAdmin
   apply(): Promise<void>
   tools(): string[]
+  inspectDurable?(
+    chatId: number,
+    query: DurableInspectionQuery,
+    signal: AbortSignal,
+  ): Promise<DurableInspectionResponse>
 }
 const cookie = (name: string, value: string, seconds: number) =>
   `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`
@@ -101,6 +113,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       })
     },
   )
+  const inspectionShutdown = new AbortController()
   let stopping = false
   let closing: Promise<void> | undefined
   server.keepAliveTimeout = 5000
@@ -280,6 +293,49 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       reply(res, 200, store.snapshot())
       return
     }
+    const durableRoute = /^\/api\/chats\/(-?[1-9]\d*)\/durable$/.exec(url.pathname)
+    if (durableRoute) {
+      if (method !== "GET") throw new AdminError(405, "Durable inspection is read-only")
+      const chatId = Number(durableRoute[1])
+      if (!Number.isSafeInteger(chatId)) throw new AdminError(400, "Invalid chat ID")
+      const query = parseDurableInspectionQuery(url.searchParams)
+      if (!services.inspectDurable) throw new AdminError(503, "Durable inspection is unavailable")
+      const remaining = session.created + sessionMaxAgeMs - Date.now()
+      if (remaining <= 0) throw new AdminError(401, "Administrator session expired")
+      const disconnected = new AbortController()
+      const signal = AbortSignal.any([
+        disconnected.signal,
+        inspectionShutdown.signal,
+        AbortSignal.timeout(Math.min(5000, remaining)),
+      ])
+      const abort = () => disconnected.abort()
+      const close = () => {
+        if (!res.writableEnded) abort()
+      }
+      req.once("aborted", abort)
+      res.once("close", close)
+      try {
+        let result: DurableInspectionResponse
+        try {
+          result = await services.inspectDurable(chatId, query, signal)
+        } catch (error) {
+          if (!store.session(sessionToken))
+            throw new AdminError(401, "Administrator session expired")
+          if (stopping) throw new AdminError(503, "Server is stopping")
+          if (signal.aborted)
+            throw new AdminError(408, "Durable inspection was cancelled or expired")
+          throw error
+        }
+        if (!store.session(sessionToken)) throw new AdminError(401, "Administrator session expired")
+        if (stopping) throw new AdminError(503, "Server is stopping")
+        if (signal.aborted) throw new AdminError(408, "Durable inspection was cancelled or expired")
+        if (!res.destroyed) reply(res, 200, result)
+      } finally {
+        req.off("aborted", abort)
+        res.off("close", close)
+      }
+      return
+    }
     if (url.pathname === "/api/chats" && method === "GET") {
       reply(
         res,
@@ -446,6 +502,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     stop() {
       closing ??= (async () => {
         stopping = true
+        inspectionShutdown.abort()
         const drained = new Promise<void>((resolve, reject) => {
           if (!server.listening) {
             resolve()
