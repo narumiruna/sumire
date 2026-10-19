@@ -1,12 +1,27 @@
 import type { effectivePolicy } from "@narumitw/sumire-policy"
-import { Badge, Button, Callout, Checkbox, Flex, Heading, Text, TextField } from "@radix-ui/themes"
+import { MinusCircledIcon } from "@radix-ui/react-icons"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
+import {
+  Button,
+  Callout,
+  Checkbox,
+  Flex,
+  Heading,
+  IconButton,
+  Link,
+  Table,
+  Text,
+  TextField,
+  Tooltip,
+} from "@radix-ui/themes"
 import { useEffect, useId, useState } from "react"
 import { type Inventory, type Policy, parseIds, type Selection } from "./api.js"
 import { type Chat, chatName } from "./chats.js"
 import { pageLabel } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
+import { StatusBadge } from "./semantic-status.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { EmptyState, Panel, Prose } from "./surfaces.js"
 
 export function Check({
   label,
@@ -90,24 +105,34 @@ export function IdList({
     <Panel as="fieldset">
       <legend>{label}</legend>
       <Field label={`Search ${label.toLowerCase()}`} value={query} onChange={setQuery} />
-      {!!values.length && !visible.length && <Prose>No matching access entries.</Prose>}
+      {!!values.length && !visible.length && (
+        <EmptyState
+          title="No matching access entries."
+          description="Change or clear the search to find an approved chat or ID."
+        />
+      )}
       <Prose size="2">
-        {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
-        {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.{" "}
-        <a href="#save-status">Review pending changes</a>
+        <span className="numeric">
+          {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
+          {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.
+        </span>{" "}
+        <Link href="#save-status">Review pending changes</Link>
       </Prose>
-      <table className="access-table" aria-label={label}>
-        <thead>
-          <tr>
-            <th scope="col">Chat / ID</th>
-            <th scope="col">Approval</th>
-            <th scope="col">Action</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table.Root size="1" layout="auto" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+        <VisuallyHidden.Root asChild>
+          <caption>{label}</caption>
+        </VisuallyHidden.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeaderCell>Chat / ID</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Approval</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
           {visible.map((id) => (
-            <tr key={id}>
-              <td>
+            <Table.Row key={id}>
+              <Table.Cell>
                 <Prose weight="medium">
                   {chatName(
                     metadata.get(id) ?? {
@@ -118,45 +143,59 @@ export function IdList({
                   )}
                 </Prose>
                 <Text size="2">
-                  <code>{id}</code>
+                  <code className="numeric">{id}</code>
                 </Text>
-              </td>
-              <td>
-                {!savedValues.includes(id) ? (
-                  <Badge color="orange">Pending approval</Badge>
-                ) : (
-                  "Approved"
-                )}
-              </td>
-              <td>
-                <Button
-                  variant="ghost"
-                  color="red"
-                  aria-label={`Revoke access for ID ${id}`}
-                  onClick={() => onChange(values.filter((v) => v !== id))}
+              </Table.Cell>
+              <Table.Cell>
+                <StatusBadge
+                  status={savedValues.includes(id) ? "approved" : "pending"}
+                  style={{ whiteSpace: "normal" }}
                 >
-                  Revoke access
-                </Button>
-              </td>
-            </tr>
+                  {savedValues.includes(id) ? "Approved" : "Pending approval"}
+                </StatusBadge>
+              </Table.Cell>
+              <Table.Cell>
+                <Tooltip content={`Revoke access for ID ${id}`}>
+                  <IconButton
+                    variant="soft"
+                    color="red"
+                    size="3"
+                    style={{ minWidth: 44, minHeight: 44 }}
+                    aria-label={`Revoke access for ID ${id}`}
+                    onClick={() => onChange(values.filter((v) => v !== id))}
+                  >
+                    <MinusCircledIcon aria-hidden="true" />
+                  </IconButton>
+                </Tooltip>
+              </Table.Cell>
+            </Table.Row>
           ))}
-        </tbody>
-      </table>
+        </Table.Body>
+      </Table.Root>
       {revoked.filter(matches).map((id) => (
         <Flex key={id} gap="2" align="center" wrap="wrap">
           <Text>
             {chatName(
               metadata.get(id) ?? { id, name: "", type: id > 0 ? "private" : "group or channel" },
             )}{" "}
-            · {id}
+            · <code className="numeric">{id}</code>
           </Text>
-          <Badge color="orange">Pending revocation</Badge>
-          <Button variant="soft" onClick={() => onChange([...values, id])}>
+          <StatusBadge status="pending">Pending revocation</StatusBadge>
+          <Button color="gray" variant="soft" onClick={() => onChange([...values, id])}>
             Undo revocation for {id}
           </Button>
         </Flex>
       ))}
-      {!values.length && <Prose>No access approved in the policy draft.</Prose>}
+      {!values.length && (
+        <EmptyState
+          title="No access approved in the policy draft."
+          description={
+            positive
+              ? "Enter a private user ID below, then add it to pending settings."
+              : "Enter a group or channel ID below, then add it to pending settings."
+          }
+        />
+      )}
       <Field
         label={positive ? "Private user ID to add" : "Group or channel ID to add"}
         value={draft}
@@ -166,6 +205,7 @@ export function IdList({
         }}
       />
       <Button
+        color="gray"
         variant="soft"
         disabled={!draft}
         onClick={() => {
@@ -235,7 +275,10 @@ export function List({
             />
           ))
         ) : (
-          <Text>No approved options.</Text>
+          <EmptyState
+            title="No approved options."
+            description="Approve options in the global settings before selecting them here."
+          />
         ))}
       {value === null && !inheritable && <Prose size="2">None selected.</Prose>}
       {value?.length === 0 && (
@@ -248,7 +291,7 @@ export function List({
         </Prose>
       )}
       {inheritable && value !== null && (
-        <Button variant="soft" onClick={() => onChange(null)}>
+        <Button color="gray" variant="soft" onClick={() => onChange(null)}>
           Reset {label.toLowerCase()} to default
         </Button>
       )}
@@ -318,7 +361,7 @@ export function Choices({
         )}
       </div>
       {!defaults && (
-        <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+        <Button color="gray" variant="ghost" onClick={() => navigate("Tool permissions")}>
           Manage global and default tool permissions
         </Button>
       )}
@@ -344,7 +387,7 @@ export function Choices({
             Allowed models limit what chats can use. The default model selects one for chats without
             an override.
           </Prose>
-          <Button variant="soft" onClick={() => navigate("Model Providers")}>
+          <Button color="gray" variant="soft" onClick={() => navigate("Model Providers")}>
             Edit default model in {pageLabel("Model Providers")}
           </Button>
         </Panel>
@@ -414,6 +457,7 @@ export function Choices({
           </Prose>
           {(value.model !== null || value.thinking !== null) && (
             <Button
+              color="gray"
               variant="soft"
               onClick={() => onChange({ ...value, model: null, thinking: null })}
             >
@@ -467,6 +511,7 @@ export function SecretFields({
         }}
       />
       <Button
+        color="gray"
         variant="soft"
         disabled={!name || !value}
         onClick={() => {

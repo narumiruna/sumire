@@ -66,6 +66,14 @@ async function choose(page: Page, name: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click()
 }
 
+async function chooseFilter(page: Page, name: string, option: string) {
+  const group = page.getByRole("radiogroup", { name, exact: true })
+  const optionControl = group.getByRole("radio", { name: option, exact: true })
+  await optionControl.click()
+  await expect(optionControl).toBeChecked()
+  await expect(group.getByRole("radio", { checked: true })).toHaveCount(1)
+}
+
 for (const width of [1440, 390]) {
   test(`chat controls retain filter semantics and the full two-line heading at ${width}px`, async ({
     page,
@@ -74,12 +82,27 @@ for (const width of [1440, 390]) {
     const { writes } = await fixture(page)
     const rows = page.locator(".chat-list button")
     await expect(rows).toHaveCount(3)
-    await choose(page, "Chat type", "Group / supergroup")
+    for (const [name, options] of [
+      ["Chat type", ["All types", "Private", "Group / supergroup", "Channel", "Unknown type"]],
+      ["Access status", ["All access", "Approved and enabled", "Not approved or disabled"]],
+    ] as const) {
+      const group = page.getByRole("radiogroup", { name, exact: true })
+      await expect(group).toBeVisible()
+      await expect(group.getByRole("radio")).toHaveCount(options.length)
+      for (const option of options) {
+        const optionControl = group.getByRole("radio", { name: option, exact: true })
+        await expect(optionControl).toHaveAccessibleName(option)
+        await expect(optionControl).toHaveAttribute("aria-checked", String(option === options[0]))
+      }
+    }
+    await chooseFilter(page, "Chat type", "Group / supergroup")
     await expect(rows).toHaveCount(1)
-    await choose(page, "Access status", "Not approved or disabled")
+    await expect(rows).toContainText(longName)
+    await chooseFilter(page, "Access status", "Not approved or disabled")
     await expect(rows).toHaveCount(0)
-    await choose(page, "Access status", "Approved and enabled")
+    await chooseFilter(page, "Access status", "Approved and enabled")
     await expect(rows).toHaveCount(1)
+    await expect(rows).toContainText(longName)
     await rows.click()
     const heading = page.getByRole("heading", { name: longName, exact: true })
     await expect(heading).toHaveAttribute("title", longName)
@@ -185,13 +208,52 @@ test("MCP field replacement selectors stay distinct from values and preserve pat
   expect(writes).toEqual([])
 })
 
-for (const name of [
-  "Chat type",
-  "Access status",
-  "Transport update",
-  "MCP exposure replacement",
-  "MCP type replacement",
+for (const filter of [
+  { name: "Chat type", initial: "All types", next: "Private", count: 1 },
+  { name: "Access status", initial: "All access", next: "Approved and enabled", count: 2 },
 ]) {
+  test(`${filter.name} supports arrow navigation and retains its selection through history`, async ({
+    page,
+  }) => {
+    const { writes } = await fixture(page, "Access")
+    await page.getByRole("link", { name: "Chats", exact: true }).click()
+    const group = page.getByRole("radiogroup", { name: filter.name, exact: true })
+    const initial = group.getByRole("radio", { name: filter.initial, exact: true })
+    const next = group.getByRole("radio", { name: filter.next, exact: true })
+    const rows = page.locator(".chat-list button")
+    await initial.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(next).toBeFocused()
+    await expect(next).not.toBeChecked()
+    await expect(initial).toBeChecked()
+    await expect(rows).toHaveCount(3)
+    await page.keyboard.press("Space")
+    await expect(next).toBeChecked()
+    await expect(initial).not.toBeChecked()
+    await expect(rows).toHaveCount(filter.count)
+    await page.keyboard.press("ArrowLeft")
+    await expect(initial).toBeFocused()
+    await page.keyboard.press("Enter")
+    await expect(initial).toBeChecked()
+    await expect(rows).toHaveCount(3)
+    await chooseFilter(page, filter.name, filter.next)
+    await page.goBack()
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible()
+    await expect(group).toBeHidden()
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest("[hidden]")))).toBe(
+      false,
+    )
+    await page.goForward()
+    await expect(group).toBeVisible()
+    await expect(next).toBeChecked()
+    await expect(initial).not.toBeChecked()
+    await expect(rows).toHaveCount(filter.count)
+    await expect(page.getByRole("listbox")).toHaveCount(0)
+    expect(writes).toEqual([])
+  })
+}
+
+for (const name of ["Transport update", "MCP exposure replacement", "MCP type replacement"]) {
   test(`${name} closes on Escape and when its section becomes inactive`, async ({ page }) => {
     await fixture(page, "Access")
     const mcp = name.startsWith("MCP") || name === "Transport update"

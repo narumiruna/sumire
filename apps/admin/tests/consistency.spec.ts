@@ -89,9 +89,46 @@ async function navigate(page: Page, name: string) {
   await link.click()
 }
 
+for (const filter of [
+  { name: "Chat type", initial: "All types", selected: "Group / supergroup", count: 1 },
+  { name: "Access status", initial: "All access", selected: "Not approved or disabled", count: 0 },
+]) {
+  test(`${filter.name} retains filtering when history hides its section`, async ({ page }) => {
+    const requests = await fixture(page)
+    const group = page.getByRole("radiogroup", { name: filter.name, exact: true })
+    const initial = group.getByRole("radio", { name: filter.initial, exact: true })
+    const selected = group.getByRole("radio", { name: filter.selected, exact: true })
+    const rows = page.getByRole("list", { name: "Chats on this page" }).getByRole("button")
+    await expect(initial).toBeChecked()
+    await expect(rows).toHaveCount(3)
+    await selected.click()
+    await expect(selected).toBeChecked()
+    await expect(initial).not.toBeChecked()
+    await expect(rows).toHaveCount(filter.count)
+    await navigate(page, "Defaults")
+    await page.goBack()
+    await expect(group).toBeVisible()
+    await expect(selected).toBeChecked()
+    await expect(rows).toHaveCount(filter.count)
+    await selected.focus()
+    await page.goForward()
+    await expect(page.getByRole("heading", { name: "Defaults", exact: true })).toBeVisible()
+    await expect(group).toBeHidden()
+    await expect(page.getByRole("listbox")).toHaveCount(0)
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest("[hidden]")))).toBe(
+      false,
+    )
+    await page.goBack()
+    await expect(group).toBeVisible()
+    await expect(selected).toBeChecked()
+    await expect(initial).not.toBeChecked()
+    await expect(rows).toHaveCount(filter.count)
+    await expect(page.getByRole("listbox")).toHaveCount(0)
+    expect(requests.every((request) => request.startsWith("GET "))).toBe(true)
+  })
+}
+
 for (const control of [
-  { section: "Chats", name: "Chat type" },
-  { section: "Chats", name: "Access status" },
   { section: "MCP connections", name: "Transport update" },
   { section: "MCP connections", name: "MCP exposure replacement", field: "exposure" },
   { section: "MCP connections", name: "MCP type replacement", field: "type" },
@@ -148,7 +185,16 @@ for (const width of [1440, 390, 320]) {
         expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2054)
       const panels = page.locator("main .panel:visible")
       for (const panel of await panels.all()) {
-        await expect(panel).toHaveCSS("border-radius", "8px")
+        const radius = await panel.evaluate((element) => {
+          const probe = document.createElement("div")
+          probe.style.borderRadius = getComputedStyle(element).getPropertyValue("--radius-3")
+          probe.style.display = "none"
+          document.body.append(probe)
+          const value = getComputedStyle(probe).borderRadius
+          probe.remove()
+          return value
+        })
+        await expect(panel).toHaveCSS("border-radius", radius)
         await expect(panel).toHaveCSS("border-top-style", "solid")
         await expect(panel).toHaveCSS("border-top-width", "1px")
       }
