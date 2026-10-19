@@ -435,7 +435,8 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await row.click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Unnamed group")
   await search.fill("Same name")
-  await page.getByLabel("Access status", { exact: true }).selectOption("allowed")
+  await page.getByRole("combobox", { name: "Access status", exact: true }).click()
+  await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(rows(page).getByRole("button")).toHaveCount(1)
   await expect(rows(page)).toContainText("-9001")
   await rows(page).getByRole("button").click()
@@ -447,7 +448,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
-  await expect(page.locator(".pending-bar")).toContainText("1 pending policy changes")
+  await expect(page.locator(".pending-bar")).toContainText("1 pending policy change")
 })
 
 test("manual ID input stays a local draft until an explicit chat choice", async ({ page }) => {

@@ -193,7 +193,7 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
   await stageProvider(page)
   await tour()
   await expect(bar).toContainText("MCP: Unsaved")
-  await expect(bar).toContainText("1 pending policy changes")
+  await expect(bar).toContainText("1 pending policy change")
   page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
   await expect(bar).toContainText("Policy: No changes")
@@ -309,7 +309,7 @@ test("audit filters query all records without clearing cross-section policy draf
   expect(state.auditQueries.at(-1)?.get("offset")).toBe("100")
   expect(state.auditQueries.at(-1)?.get("outcome")).toBe("failed")
   await expect(page.getByRole("region", { name: "Save status and pending changes" })).toContainText(
-    "1 pending policy changes",
+    "1 pending policy change",
   )
 })
 
@@ -393,7 +393,7 @@ test("failed and stale audit queries cannot replace the current result or discar
   await expect(page.getByRole("list", { name: "Configuration activity" })).not.toContainText(
     "STALE",
   )
-  await expect(page.locator("#save-status")).toContainText("1 pending policy changes")
+  await expect(page.locator("#save-status")).toContainText("1 pending policy change")
 })
 
 test("audit retry clears the local error and HTTP 401 still clears the session", async ({
@@ -526,7 +526,7 @@ test("audit groups show failed retries without hiding the underlying records", a
   )
   await page.reload()
   await navigate(page, "Audit")
-  await expect(page.getByText("1 failed applications.", { exact: false })).toBeVisible()
+  await expect(page.getByText("1 failed application.", { exact: false })).toBeVisible()
   await page.getByText("Individual save and application records", { exact: true }).click()
   await expect(page.getByText("Raw audit record", { exact: true })).toHaveCount(3)
   await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("failed")
@@ -558,7 +558,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   })
   await stagePolicy(page)
   measurements.pending = await contrast(
-    page.locator("#save-status .rt-Badge").filter({ hasText: "pending policy changes" }),
+    page.locator("#save-status .rt-Badge").filter({ hasText: /pending policy changes?/ }),
   )
   state.conflict()
   await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()

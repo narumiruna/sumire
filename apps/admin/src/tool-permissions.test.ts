@@ -90,7 +90,24 @@ describe("tool permission presentation and existing policy rules", () => {
     policy.servers = ["fixture"]
     policy.defaults.servers = ["fixture", "offline"]
     expect(defaultPermissionSummary(policy)).toBe(
-      "1 default tool names within global permission · 1 default MCP server gates within global permission",
+      "1 default tool name within global permission · 1 default MCP server gate within global permission",
+    )
+  })
+  it("uses plural permission names for zero and multiple defaults", () => {
+    const policy = initialPolicy()
+    policy.tools = []
+    policy.defaults.tools = []
+    policy.servers = []
+    policy.defaults.servers = []
+    expect(defaultPermissionSummary(policy)).toBe(
+      "0 default tool names within global permission · 0 default MCP server gates within global permission",
+    )
+    policy.tools = ["read", "bash"]
+    policy.defaults.tools = ["read", "bash"]
+    policy.servers = ["first", "second"]
+    policy.defaults.servers = ["first", "second"]
+    expect(defaultPermissionSummary(policy)).toBe(
+      "2 default tool names within global permission · 2 default MCP server gates within global permission",
     )
   })
   it("preserves explicit empty overrides and global restrictions; reference conflicts require explicit resolution", () => {

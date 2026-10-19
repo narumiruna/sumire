@@ -78,6 +78,8 @@ test("default reading answers context, selection, recorded outcomes, and related
   await expect(context).toContainText("Selection does not mean work is running.")
   await expect(history).toContainText("Model response · Recorded outcome: Completed")
   await expect(history).toContainText("1 task record on the loaded page")
+  // The requested conversation page reuses the selection response, not a third read block.
+  await expect(inspector.locator(".durable-read-time")).toHaveCount(2)
   await expect(history.getByRole("link", { name: "Task 8", exact: true })).toHaveAttribute(
     "href",
     /view=tasks&conversationId=7&objectId=8/,
@@ -125,17 +127,16 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   await inspector.getByText("Metadata JSON for task 8", { exact: true }).click()
   await expect(inspector.locator("pre")).toContainText('"outcome": "completed"')
   await inspector.getByRole("link", { name: "Documents for task 8", exact: true }).click()
-  await expect(
-    inspector.getByRole("combobox", { name: "Document scope", exact: true }),
-  ).toHaveValue("task")
+  await expect(inspector.getByRole("combobox", { name: "Document scope", exact: true })).toHaveText(
+    "Task",
+  )
   await expect(
     inspector.getByText("Empty · no records in this view.", { exact: true }),
   ).toBeVisible()
   expect(state.requests.at(-1)?.searchParams.get("taskId")).toBe("8")
   await expect(inspector.getByRole("link", { name: /Inspect document/ })).toHaveCount(0)
-  await inspector
-    .getByRole("combobox", { name: "Document scope", exact: true })
-    .selectOption("conversation")
+  await inspector.getByRole("combobox", { name: "Document scope", exact: true }).click()
+  await page.getByRole("option", { name: "Conversation", exact: true }).click()
   await inspector
     .getByRole("button", { name: "Select Document (document 102)", exact: true })
     .click()
@@ -1058,9 +1059,8 @@ for (const width of [1440, 390, 320])
       inspector.getByText("Empty · no records in this view.", { exact: true }),
     ).toBeVisible()
     await expect(contextFor(page)).toContainText("Inspecting conversation 7")
-    await inspector
-      .getByRole("combobox", { name: "Document scope", exact: true })
-      .selectOption("conversation")
+    await inspector.getByRole("combobox", { name: "Document scope", exact: true }).click()
+    await page.getByRole("option", { name: "Conversation", exact: true }).click()
     const inspect = inspector.getByRole("link", { name: "Inspect document 101", exact: true })
     await inspect.focus()
     await inspect.press("Enter")

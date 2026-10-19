@@ -1,7 +1,8 @@
-import { Button, Flex, Text, TextField } from "@radix-ui/themes"
+import { Button, Flex, Heading, TextField } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import { ApiError, request } from "./api.js"
+import { Panel, Prose } from "./surfaces.js"
 
 const empty = { actor: "", operation: "", outcome: "", from: "", to: "" }
 export function auditSearch(filters: typeof empty, offset: number) {
@@ -78,32 +79,41 @@ export function AuditHistory({
           }
         }}
       >
-        <fieldset>
-          <legend>Filter all retained audit records</legend>
-          <div className="grid">
-            {(["actor", "operation", "outcome", "from", "to"] as const).map((key) => (
-              <label key={key} htmlFor={`audit-${key}`}>
-                {
-                  {
-                    actor: "Actor (exact)",
-                    operation: "Operation type (exact)",
-                    outcome: "Result (exact)",
-                    from: "From date (UTC)",
-                    to: "Through date (UTC)",
-                  }[key]
-                }
-                <TextField.Root
-                  id={`audit-${key}`}
-                  aria-label={`Audit ${key}`}
-                  type={key === "from" || key === "to" ? "date" : "text"}
-                  maxLength={128}
-                  value={draft[key]}
-                  onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-                />
-              </label>
+        <Panel as="fieldset" aria-labelledby="audit-filter-heading">
+          <Heading as="h3" size="3" id="audit-filter-heading">
+            Filter all retained audit records
+          </Heading>
+          <div className="audit-filters">
+            {[
+              { className: "audit-text-filters", keys: ["actor", "operation", "outcome"] as const },
+              { className: "audit-date-filters", keys: ["from", "to"] as const },
+            ].map(({ className, keys }) => (
+              <div className={className} key={className}>
+                {keys.map((key) => (
+                  <label key={key} htmlFor={`audit-${key}`}>
+                    {
+                      {
+                        actor: "Actor (exact)",
+                        operation: "Operation type (exact)",
+                        outcome: "Result (exact)",
+                        from: "From date (UTC)",
+                        to: "Through date (UTC)",
+                      }[key]
+                    }
+                    <TextField.Root
+                      id={`audit-${key}`}
+                      aria-label={`Audit ${key}`}
+                      type={key === "from" || key === "to" ? "date" : "text"}
+                      maxLength={128}
+                      value={draft[key]}
+                      onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                    />
+                  </label>
+                ))}
+              </div>
             ))}
           </div>
-          <Flex gap="2">
+          <Flex gap="2" wrap="wrap">
             <Button type="submit" disabled={loading}>
               Apply audit filters
             </Button>
@@ -118,24 +128,18 @@ export function AuditHistory({
               Clear audit filters
             </Button>
           </Flex>
-        </fieldset>
+        </Panel>
       </form>
-      {error && (
-        <Text as="p" role="alert">
-          {error}
-        </Text>
-      )}
+      {error && <Prose role="alert">{error}</Prose>}
       {error && <Button onClick={() => setRetry((value) => value + 1)}>Retry audit</Button>}
-      <Text as="p" size="2">
+      <Prose size="2">
         Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
         Older records may be available; the server retains up to 10,000 records. Filters cover all
         retained records. Groups cover this page only and can continue on adjacent pages; filtered
         views can omit related events. Field-level change details are unavailable.
-      </Text>
+      </Prose>
       {loading ? (
-        <Text as="p" role="status">
-          Loading audit records…
-        </Text>
+        <Prose role="status">Loading audit records…</Prose>
       ) : (
         !error && <Activity entries={entries} />
       )}

@@ -1,13 +1,16 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import { CheckCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Card, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
+import { Badge, Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
 import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
 import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
+import { SectionErrorBoundary } from "./section-error-boundary.js"
+import { SectionSelect } from "./sections.js"
+import { Panel, Prose } from "./surfaces.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
@@ -130,6 +133,13 @@ export function ChatWorkspace({
       (access === "all" || effectivePolicy(policy, c.id).enabled === (access === "allowed")),
   )
   const metadata = metadataState.chat
+  const detailName = metadataState.loading
+    ? "Loading chat name…"
+    : metadataState.error
+      ? "Chat name unavailable"
+      : metadata
+        ? chatName(metadata)
+        : "Chat name unknown"
   const valid = /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat))
   const id = Number(chat)
   const effective = effectivePolicy(policy, id)
@@ -213,29 +223,29 @@ export function ChatWorkspace({
               <div className="directory-filters">
                 <div>
                   <label htmlFor="chat-type-filter">Chat type</label>
-                  <select
-                    id="chat-type-filter"
-                    value={type}
-                    onChange={(e) => setType(e.target.value)}
-                  >
-                    <option value="all">All types</option>
-                    <option value="private">Private</option>
-                    <option value="group">Group / supergroup</option>
-                    <option value="channel">Channel</option>
-                    <option value="unknown">Unknown type</option>
-                  </select>
+                  <SectionSelect.Root value={type} onValueChange={setType}>
+                    <SectionSelect.Trigger id="chat-type-filter" />
+                    <SectionSelect.Content>
+                      <SectionSelect.Item value="all">All types</SectionSelect.Item>
+                      <SectionSelect.Item value="private">Private</SectionSelect.Item>
+                      <SectionSelect.Item value="group">Group / supergroup</SectionSelect.Item>
+                      <SectionSelect.Item value="channel">Channel</SectionSelect.Item>
+                      <SectionSelect.Item value="unknown">Unknown type</SectionSelect.Item>
+                    </SectionSelect.Content>
+                  </SectionSelect.Root>
                 </div>
                 <div>
                   <label htmlFor="chat-access-filter">Access status</label>
-                  <select
-                    id="chat-access-filter"
-                    value={access}
-                    onChange={(e) => setAccess(e.target.value)}
-                  >
-                    <option value="all">All access</option>
-                    <option value="allowed">Approved and enabled</option>
-                    <option value="denied">Not approved or disabled</option>
-                  </select>
+                  <SectionSelect.Root value={access} onValueChange={setAccess}>
+                    <SectionSelect.Trigger id="chat-access-filter" />
+                    <SectionSelect.Content>
+                      <SectionSelect.Item value="all">All access</SectionSelect.Item>
+                      <SectionSelect.Item value="allowed">Approved and enabled</SectionSelect.Item>
+                      <SectionSelect.Item value="denied">
+                        Not approved or disabled
+                      </SectionSelect.Item>
+                    </SectionSelect.Content>
+                  </SectionSelect.Root>
                 </div>
               </div>
               {(directory.query || type !== "all" || access !== "all") && (
@@ -310,13 +320,13 @@ export function ChatWorkspace({
       </aside>
       <section className="chat-detail" aria-label="Chat details">
         {!chat ? (
-          <Card className="chat-initial">
+          <Panel className="chat-initial">
             <Heading size="4">Select a chat</Heading>
-            <Text as="p" color="gray">
+            <Prose color="gray">
               Choose a chat from the directory to review access, effective settings, and overrides.
               Selecting a chat does not grant access.
-            </Text>
-          </Card>
+            </Prose>
+          </Panel>
         ) : (
           <>
             <Button
@@ -337,14 +347,14 @@ export function ChatWorkspace({
             )}
             <header className="chat-header">
               <div>
-                <Heading size="5" ref={headerRef} tabIndex={-1}>
-                  {metadataState.loading
-                    ? "Loading chat name…"
-                    : metadataState.error
-                      ? "Chat name unavailable"
-                      : metadata
-                        ? chatName(metadata)
-                        : "Chat name unknown"}
+                <Heading
+                  size="5"
+                  className="chat-detail-name"
+                  title={detailName}
+                  ref={headerRef}
+                  tabIndex={-1}
+                >
+                  {detailName}
                 </Heading>
                 <Text size="2" color="gray">
                   {metadata?.type || "Type not known"} · <code>{chat}</code>
@@ -456,8 +466,7 @@ export function ChatWorkspace({
                     <Text as="p" size="2">
                       Approval and the chat enabled switch are independent. Model availability
                       follows global policy and chat settings. Authentication status comes from the
-                      loaded local inventory, not a remote model request. Each action keeps its own
-                      save boundary.
+                      loaded local inventory, not a remote model request.
                     </Text>
                   </details>
                   {effective.model && !provider && (
@@ -606,7 +615,7 @@ export function ChatWorkspace({
                     </details>
                   </Tabs.Content>
                   <Tabs.Content value="access" forceMount hidden={tab !== "access"}>
-                    <Card>
+                    <Panel>
                       <Heading size="3">Access for this chat</Heading>
                       <Text as="p" size="2" mt="2">
                         {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
@@ -659,11 +668,10 @@ export function ChatWorkspace({
                         </Button>
                       </Flex>
                       <Text as="p" size="2" color="gray" mt="3">
-                        These actions stage policy edits only. Apply policy changes saves all
-                        pending policy edits across sections, not provider authentication or MCP
-                        connection drafts. Granting approval does not enable a disabled chat.
+                        These actions stage access changes for this chat only. Granting approval
+                        does not enable a disabled chat or configure authentication.
                       </Text>
-                    </Card>
+                    </Panel>
                   </Tabs.Content>
                   <Tabs.Content value="configuration" forceMount hidden={tab !== "configuration"}>
                     <Heading size="3">Model &amp; Tools</Heading>
@@ -702,10 +710,6 @@ export function ChatWorkspace({
                     <Heading size="3" mt="4">
                       Chat overrides
                     </Heading>
-                    <Text as="p" size="2" color="gray">
-                      Model, tool, and enabled-switch edits share the policy save boundary. Apply
-                      policy changes saves these and all other staged policy changes.
-                    </Text>
                     {children}
                     <details className="permission-details">
                       <summary>Inspect individual tool permissions</summary>
@@ -744,7 +748,7 @@ export function ChatWorkspace({
                       </ul>
                     </details>
                     {!!effective.servers.length && (
-                      <Card mt="3">
+                      <Panel mt="3">
                         <Heading size="2">Loaded MCP connection status</Heading>
                         <Text as="p" size="2">
                           Connection checks do not run automatically and do not grant permission.
@@ -762,7 +766,7 @@ export function ChatWorkspace({
                             )
                           })}
                         </ul>
-                      </Card>
+                      </Panel>
                     )}
                   </Tabs.Content>
                   <Tabs.Content value="history" forceMount hidden={tab !== "history"}>
@@ -773,7 +777,9 @@ export function ChatWorkspace({
                       is not a complete chat history.
                     </Text>
                     {history.length ? (
-                      <Activity entries={history} />
+                      <SectionErrorBoundary label="Chat history">
+                        <Activity entries={history} />
+                      </SectionErrorBoundary>
                     ) : (
                       <Text as="p">No chat-targeted records in the loaded audit page.</Text>
                     )}

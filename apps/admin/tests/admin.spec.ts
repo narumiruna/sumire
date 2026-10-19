@@ -159,7 +159,7 @@ for (const width of [1440, 390]) {
       .getByRole("button", { name: "Revoke access", exact: true })
       .click()
     const bar = page.locator(".pending-bar")
-    await expect(bar).toContainText("1 pending policy changes")
+    await expect(bar).toContainText("1 pending policy change")
     await bar.scrollIntoViewIfNeeded()
     expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("sticky")
     const barBox = await bar.boundingBox()
@@ -386,7 +386,7 @@ for (const existing of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Apply policy changes", exact: true }),
     ).toBeEnabled()
-    await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
+    await expect(page.getByText(/\d+ pending policy changes?/).first()).toBeVisible()
     await navigate(page, "Access")
     await expect(page.getByRole("button", { name: "Revoke access for ID 42" })).toHaveCount(0)
     expect(mutations).toEqual([])
@@ -641,7 +641,7 @@ test("shows inherited chat settings and supported thinking levels", async ({ pag
   await expect(page.getByRole("option", { name: "low", exact: true })).toBeVisible()
   await expect(page.getByRole("option", { name: "high", exact: true })).toHaveCount(0)
   await page.getByRole("option", { name: "low", exact: true }).click()
-  await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
+  await expect(page.getByText(/\d+ pending policy changes?/).first()).toBeVisible()
 })
 for (const state of ["inherited", "empty", "globally unavailable", "disabled provider"] as const) {
   test(`keeps raw model selections and shared effective values when ${state}`, async ({ page }) => {
@@ -1209,7 +1209,7 @@ test("retains edits and reports revision conflicts", async ({ page }) => {
   await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
   await page.getByRole("button", { name: "Save and apply" }).click()
   await expect(page.getByRole("alert")).toContainText("Settings changed")
-  await expect(page.getByText(/\d+ pending policy changes/).first()).toBeVisible()
+  await expect(page.getByText(/\d+ pending policy changes?/).first()).toBeVisible()
   await expect(
     page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }),
   ).toBeChecked()
@@ -1289,6 +1289,7 @@ test("uses masked MCP secret replacements instead of displaying them in JSON", a
   await page.getByLabel("MCP server name").fill("fixture")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await page.getByLabel("Server configuration JSON").fill('{"command":"fixture-server"}')
+  await page.getByText("Replace secrets", { exact: true }).click()
   await page.getByLabel("Secret field name").fill("TOKEN")
   const secret = page.getByLabel("New secret value")
   await expect(secret).toHaveAttribute("type", "password")
@@ -1459,7 +1460,7 @@ test("shows readable audit and import summaries with raw details and server pagi
   await page.reload()
   await navigate(page, "Audit")
   await expect(page.getByText("Review required at import")).toBeVisible()
-  await expect(page.getByText(/3 model settings imported/)).toContainText("1 chats failed")
+  await expect(page.getByText(/3 model settings imported/)).toContainText("1 chat failed")
   await expect(
     page.getByRole("list", { name: "Configuration activity" }).getByRole("listitem").first(),
   ).toContainText("Settings application — failed")
@@ -1502,6 +1503,7 @@ test("edits MCP fields without exposing secrets and preserves omitted replacemen
   await expect(page.getByText("Connection test:", { exact: false })).toContainText("not tested")
   await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
   await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
+  await page.getByText("Replace secrets", { exact: true }).click()
   await page.getByLabel("Secret field name").fill("TOKEN")
   await page.getByLabel("New secret value").fill("replacement-fixture")
   await expect(
@@ -1583,6 +1585,7 @@ test("locks configuration inputs while policy submission is in flight", async ({
 test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ page }) => {
   await setup(page)
   await navigate(page, "MCP connections")
+  await page.getByText("Replace secrets", { exact: true }).click()
   await page.getByLabel("Secret field name").fill("TOKEN")
   await page.getByLabel("New secret value").fill("discard-fixture")
   page.once("dialog", (dialog) => dialog.accept())
@@ -1704,6 +1707,7 @@ for (const scenario of [
       .click()
     await openMcpJson(page)
     await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
+    await page.getByText("Replace secrets", { exact: true }).click()
     await page.getByLabel("Secret field name").fill("TOKEN")
     await page.getByLabel("New secret value").fill("pending-fixture")
     await page.getByRole("button", { name: "Set pending secret replacement", exact: true }).click()
@@ -1793,6 +1797,7 @@ for (const method of ["PUT", "DELETE"] as const) {
     await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
     await openMcpJson(page)
     await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
+    await page.getByText("Replace secrets", { exact: true }).click()
     await page.getByLabel("Secret field name").fill("TOKEN")
     await page.getByLabel("New secret value").fill("uncertain-fixture")
     await page.getByRole("button", { name: "Set pending secret replacement", exact: true }).click()
@@ -1966,7 +1971,7 @@ test("summarizes effective draft states without remote checks or implicit writes
   await detail.getByRole("checkbox", { name: "Chat enabled", exact: true }).check()
   await expect(detail).toContainText("Policy draft preview")
   await expect(detail).toContainText("Saved access: Blocked by policy")
-  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 pending policy change", { exact: true })).toBeVisible()
   page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
   await expect(
@@ -1993,7 +1998,7 @@ test("paginates chats without reloading settings or dropping cross-section draft
   await navigate(page, "Chats")
   await page.getByRole("button", { name: "Next chats", exact: true }).click()
   await expect(page.getByRole("button").filter({ hasText: "Next page chat" })).toBeVisible()
-  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 pending policy change", { exact: true })).toBeVisible()
   await navigate(page, "Access")
   await expect(page.getByText("Pending revocation", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Undo revocation for 42", exact: true }).click()
@@ -2123,19 +2128,23 @@ test("filters the loaded directory by type and effective policy access without t
   const directory = page.getByRole("list", { name: "Chats on this page" })
   await expect(directory.getByRole("button")).toHaveCount(4)
   await expect(page.getByRole("button", { name: "Known chat", exact: true })).toHaveCount(0)
-  await page.getByLabel("Chat type", { exact: true }).selectOption("group")
+  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
+  await page.getByRole("option", { name: "Group / supergroup", exact: true }).click()
   await expect(directory.getByRole("button")).toHaveCount(1)
   await expect(directory).toContainText("Team")
   await expect(directory).toContainText("Approved · Disabled")
-  await page.getByLabel("Access status", { exact: true }).selectOption("allowed")
+  await page.getByRole("combobox", { name: "Access status", exact: true }).click()
+  await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "Clear search and filters" }).click()
-  await page.getByLabel("Chat type", { exact: true }).selectOption("channel")
+  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
+  await page.getByRole("option", { name: "Channel", exact: true }).click()
   await directory.getByRole("button").click()
   await expect(page.getByRole("region", { name: "Chat details" })).toContainText("News")
-  await page.getByLabel("Chat type", { exact: true }).selectOption("all")
+  await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
+  await page.getByRole("option", { name: "All types", exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath("desktop.png"), fullPage: true })
 })
 
@@ -2172,7 +2181,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
     "aria-current",
     "page",
   )
-  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 pending policy change", { exact: true })).toBeVisible()
 })
 
 test("opens compatible chat deep links without granting access or inventing metadata", async ({
@@ -2403,7 +2412,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
     .getByRole("tabpanel", { name: "Access", exact: true })
     .getByRole("button", { name: "Revoke access", exact: true })
     .click()
-  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 pending policy change", { exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true })
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(row).toBeFocused()
@@ -2463,12 +2472,12 @@ test("global access undo leaves no pending changes when only ID order differs", 
     if (request.method() !== "GET") writes++
   })
   await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
-  await expect(page.getByText("1 pending policy changes", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 pending policy change", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Undo revocation for 42", exact: true }).click()
   await expect(page.getByRole("button", { name: "Apply policy changes", exact: true })).toHaveCount(
     0,
   )
-  await expect(page.getByText(/\d+ pending policy changes/)).toHaveCount(0)
+  await expect(page.getByText(/\d+ pending policy changes?/)).toHaveCount(0)
   expect(
     await page.evaluate(() => {
       const event = new Event("beforeunload", { cancelable: true })
@@ -2588,6 +2597,7 @@ for (const trigger of ["initial load", "pagination", "retry"]) {
       await chooseModel(page)
       await navigate(page, "MCP connections")
       await page.getByLabel("MCP server name", { exact: true }).fill("expired-draft")
+      await page.getByText("Replace secrets", { exact: true }).click()
       await page.getByLabel("Secret field name", { exact: true }).fill("TOKEN")
       await page.getByLabel("New secret value", { exact: true }).fill("masked-fixture-value")
       await page

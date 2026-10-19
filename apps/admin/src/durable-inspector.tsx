@@ -8,7 +8,7 @@ import type {
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
-import { Button, Card, Flex, Heading, Tabs, Text } from "@radix-ui/themes"
+import { Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
@@ -20,6 +20,9 @@ import {
   taskObservation,
 } from "./durable-presentation.js"
 import { navigationHref } from "./navigation.js"
+import { SectionSelect as Select } from "./sections.js"
+import { countText } from "./status-text.js"
+import { Panel, Prose } from "./surfaces.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
 const labels = {
@@ -379,7 +382,7 @@ export function DurableInspector({
       </Text>
     )
   const row = (item: DurableInspectionItem) => (
-    <section
+    <Panel
       key={`${item.type}:${item.id}`}
       className="durable-detail"
       aria-label="Selected item details"
@@ -511,7 +514,7 @@ export function DurableInspector({
         <Text as="p">Approved fields were not included in this response.</Text>
       )}
       {item.type === "document" && item.valueState === "available" && item.value && (
-        <section aria-label="Approved document fields" className="durable-projection">
+        <Panel aria-label="Approved document fields" className="durable-projection">
           <Heading as="h4" size="3">
             Approved fields
           </Heading>
@@ -544,7 +547,7 @@ export function DurableInspector({
                     {model} ·{" "}
                     {usage.total === undefined
                       ? "Total not recorded"
-                      : `${usage.total} total tokens`}
+                      : countText(usage.total, "total token")}
                   </summary>
                   <UsageFields usage={usage} />
                 </details>
@@ -563,7 +566,7 @@ export function DurableInspector({
               </dd>
             </dl>
           )}
-        </section>
+        </Panel>
       )}
       <Flex gap="3" wrap="wrap" className="durable-links">
         {item.type === "conversation" && (
@@ -647,7 +650,7 @@ export function DurableInspector({
           value={item.value}
         />
       )}
-    </section>
+    </Panel>
   )
 
   return (
@@ -723,11 +726,11 @@ export function DurableInspector({
           )}
         </div>
       )}
-      <Text as="p" size="2" className="durable-notice" id="durable-history-warning">
+      <Prose size="2" className="durable-notice" id="durable-history-warning">
         Read-only persisted data; not live execution state
-      </Text>
+      </Prose>
       {validChat && (
-        <section
+        <Panel
           className="durable-inspection-context"
           aria-label="Inspection context"
           aria-live="polite"
@@ -799,15 +802,15 @@ export function DurableInspector({
               .
             </Text>
           )}
-        </section>
+        </Panel>
       )}
       {validChat && (
-        <section className="durable-overview" aria-label="Durable overview">
+        <Panel className="durable-overview" aria-label="Durable overview">
           <Heading as="h3" size="3">
             Persisted session context
           </Heading>
           <div className="durable-overview-grid">
-            <section aria-label="Persisted selection" aria-live="polite" aria-busy={!selection}>
+            <Panel aria-label="Persisted selection" aria-live="polite" aria-busy={!selection}>
               <Heading as="h4" size="2">
                 Selected conversation
               </Heading>
@@ -879,8 +882,8 @@ export function DurableInspector({
                   persisted selection.
                 </Text>
               )}
-            </section>
-            <section
+            </Panel>
+            <Panel
               aria-label="Selected conversation task history"
               aria-live="polite"
               aria-busy={Boolean(selected && !history)}
@@ -902,8 +905,7 @@ export function DurableInspector({
                 ) : (
                   <>
                     <Text as="p">
-                      {history.data?.items.length ?? 0} task{" "}
-                      {history.data?.items.length === 1 ? "record" : "records"} on the loaded page
+                      {countText(history.data?.items.length ?? 0, "task record")} on the loaded page
                       {history.data?.nextCursor || history.data?.truncated
                         ? " · more may exist"
                         : ""}
@@ -943,14 +945,14 @@ export function DurableInspector({
                 </Text>
               )}
               {readTime(history)}
-            </section>
+            </Panel>
           </div>
-        </section>
+        </Panel>
       )}
       {!validChat ? (
-        <Card>
+        <Panel>
           <Text as="p">Select a chat above to inspect Durable.</Text>
-        </Card>
+        </Panel>
       ) : (
         <>
           <Heading as="h3" size="3">
@@ -982,22 +984,24 @@ export function DurableInspector({
               {location.view === "documents" && (
                 <label htmlFor="durable-scope">
                   Document scope
-                  <select
-                    id="durable-scope"
+                  <Select.Root
                     value={location.scope ?? "conversation"}
-                    onChange={(event) =>
+                    onValueChange={(scope) =>
                       navigate({
                         view: "documents",
                         conversationId: location.conversationId,
                         taskId: location.taskId,
-                        scope: event.target.value as DurableDocumentScope,
+                        scope: scope as DurableDocumentScope,
                       })
                     }
                   >
-                    <option value="session">Session</option>
-                    <option value="conversation">Conversation</option>
-                    <option value="task">Task</option>
-                  </select>
+                    <Select.Trigger id="durable-scope" aria-label="Document scope" />
+                    <Select.Content>
+                      <Select.Item value="session">Session</Select.Item>
+                      <Select.Item value="conversation">Conversation</Select.Item>
+                      <Select.Item value="task">Task</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
                 </label>
               )}
               {location.objectId && (
@@ -1027,11 +1031,9 @@ export function DurableInspector({
                 ) : (
                   data && (
                     <>
-                      <Text as="p" size="2">
-                        Read time: <time dateTime={data.readAt}>{formatReadTime(data.readAt)}</time>
-                      </Text>
+                      {current !== selection && current !== history && readTime(current)}
                       {data.state === "not-loaded" ? (
-                        <Card>
+                        <Panel>
                           <Heading as="h3" size="3">
                             Not loaded
                           </Heading>
@@ -1039,7 +1041,7 @@ export function DurableInspector({
                             This chat has no loaded session. Inspection will not open its database
                             or start a session.
                           </Text>
-                        </Card>
+                        </Panel>
                       ) : (
                         <>
                           {data.truncated && (
@@ -1120,7 +1122,7 @@ export function DurableInspector({
             <form onSubmit={selectContext} className="durable-context">
               <label htmlFor="durable-conversation">
                 Conversation ID
-                <input
+                <TextField.Root
                   id="durable-conversation"
                   inputMode="numeric"
                   value={conversationDraft}
@@ -1129,7 +1131,7 @@ export function DurableInspector({
               </label>
               <label htmlFor="durable-task">
                 Task ID (for task documents)
-                <input
+                <TextField.Root
                   id="durable-task"
                   inputMode="numeric"
                   value={taskDraft}

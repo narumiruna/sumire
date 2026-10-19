@@ -1,6 +1,7 @@
-import { Button, Card, Flex, Heading, Text } from "@radix-ui/themes"
+import { Button, Flex, Heading } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request, type Snapshot } from "./api.js"
+import { Panel, Prose } from "./surfaces.js"
 
 type Props = {
   csrf: string
@@ -58,17 +59,17 @@ export function AccessApproval({
     return () => window.clearTimeout(timer)
   }, [chat, clear])
   return (
-    <Card>
+    <Panel>
       <Heading size="4">Review chat access</Heading>
       {chat ? (
         <>
-          <Text as="p">
+          <Prose>
             {chat.name} · {chat.type} · {chat.id}
-          </Text>
-          <Text as="p">
+          </Prose>
+          <Prose>
             Approve only this chat. Existing capability limits remain unchanged. Application cancels
             active work.
-          </Text>
+          </Prose>
           <Button
             disabled={disabled || chat.expires <= Date.now()}
             onClick={() =>
@@ -95,7 +96,7 @@ export function AccessApproval({
           </Button>
         </>
       ) : (
-        <Text as="p">Load and review the chat before approval.</Text>
+        <Prose>Load and review the chat before approval.</Prose>
       )}
       <Flex gap="2" mt="2">
         <Button variant="soft" disabled={disabled} onClick={() => setReload((v) => v + 1)}>
@@ -105,6 +106,6 @@ export function AccessApproval({
           Dismiss request
         </Button>
       </Flex>
-    </Card>
+    </Panel>
   )
 }

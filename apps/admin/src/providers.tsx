@@ -3,7 +3,6 @@ import {
   AlertDialog,
   Badge,
   Button,
-  Card,
   Checkbox,
   Dialog,
   Flex,
@@ -16,6 +15,7 @@ import { useContext, useEffect, useId, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
+import { Panel, Prose } from "./surfaces.js"
 
 type Option = { id: string; label: string; detail?: string }
 export function SearchChoice({
@@ -305,10 +305,9 @@ export function Providers({
         if (!open && !busy) closeAuth()
       }}
     >
-      <Text as="p" color="gray">
-        Select a provider and configure its credentials, then choose a model. Authentication is
-        saved separately. Model selection does not save policy drafts, authentication, or MCP edits.
-      </Text>
+      <Prose color="gray">
+        Select a provider and configure its credentials, then choose a model.
+      </Prose>
       <Text as="p" size="2" color="gray" className="provider-current" mt="2">
         Shared bot default in current settings: {snapshot.policy.defaults.model ?? "Not set"} ·
         Thinking: {snapshot.policy.defaults.thinking ?? "off"}
@@ -413,7 +412,7 @@ export function Providers({
         <li>Choose model</li>
         <li>Save model explicitly</li>
       </ol>
-      <Card mt="4">
+      <Panel mt="4">
         <Heading size="3">1. Provider and authentication</Heading>
         <SearchChoice
           label="Provider"
@@ -548,9 +547,9 @@ export function Providers({
             </Text>
           </>
         )}
-      </Card>
+      </Panel>
       {selected && (
-        <Card mt="3">
+        <Panel mt="3">
           <Heading size="3">3. Choose model</Heading>
           <SearchChoice
             label="Model"
@@ -648,7 +647,7 @@ export function Providers({
                     {useDefault
                       ? ` Set it as the bot default with thinking ${thinking}.`
                       : " Keep the current bot default."}{" "}
-                    Active work will be cancelled. Other unsaved settings must be saved separately.
+                    Active work will be cancelled.
                   </AlertDialog.Description>
                   <Flex gap="3" mt="4">
                     <AlertDialog.Cancel>
@@ -733,7 +732,7 @@ export function Providers({
               )}
             </details>
           )}
-        </Card>
+        </Panel>
       )}
       {notice && (
         <Text as="p" role="status" mt="3">
