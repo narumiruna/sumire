@@ -53,7 +53,7 @@ Local final checks on Node.js 26.10.0:
 | `npm run typecheck` | Passed across all workspaces, including the screenshot script |
 | `npm test` | Passed: 131 test files, 1,736 tests; bot 1,174, admin 73 |
 | `npm run build` | Passed across all workspaces |
-| `npm run test:browser --workspace @narumitw/sumire-admin` | Passed: 176 Chromium browser tests |
+| `npm run test:browser --workspace @narumitw/sumire-admin` | Passed: 182 Chromium browser tests |
 | `node apps/admin/scripts/capture-durable-comparison.ts origin/main apps/admin/test-results/durable-comparison` | Passed; six synthetic before/after screenshots generated |
 | `git diff --check` | Passed |
 
@@ -69,7 +69,7 @@ PR CI runs the full browser suite and regenerates the six comparisons against th
 
 ## Review and release handoff
 
-Review scope: correctness, query validation/SQL binding, source precedence, backwards-compatible array/projection fields, authorization, session ownership/cancellation, stale-result isolation, draft protection, and no unapproved payload expansion. The change does not add a model loop or execution controls.
+Review scope: correctness, query validation/SQL binding, source precedence, backwards-compatible array/projection fields, authorization, session ownership/cancellation, stale-result isolation, draft protection, and no unapproved payload expansion. The [PR feedback ledger](chat-centered-durable-review.md) records the historical-conversation tab fix and its six regression cases. The change does not add a model loop or execution controls.
 
 Production deployment, real Telegram metadata updates, real device/screen-reader verification, and provider acceptance were not performed. Browser keyboard and semantic-role checks do not replace a real screen-reader check. These are handoff limits, not claims of verified live state.
 

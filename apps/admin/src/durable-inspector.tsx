@@ -799,10 +799,10 @@ export function DurableInspector({
             onValueChange={(view) =>
               navigate({
                 view: view as DurableInspectionView,
-                conversationId: location.conversationId ?? selected?.id,
+                conversationId: inspectedConversation ?? selected?.id,
                 taskId: location.taskId,
                 ...(view === "documents"
-                  ? { scope: location.conversationId || selected ? "conversation" : "session" }
+                  ? { scope: inspectedConversation || selected ? "conversation" : "session" }
                   : {}),
               })
             }

@@ -106,6 +106,85 @@ test("all four views, approved JSON, scope, owner and parent links, and safe tex
   expect(untrusted).toContain("untrusted.invalid")
 })
 
+for (const selected of [true, false]) {
+  for (const view of ["tasks", "documents", "entries"] as const) {
+    test(`historical conversation remains the ${view} target with persisted selection ${selected}`, async ({
+      page,
+    }) => {
+      const state = await durableFixture(page, "/?section=Durable")
+      if (!selected) state.selectedConversation = null
+      await page.route("**/api/chats/42/durable?*", async (route) => {
+        const url = new URL(route.request().url())
+        if (
+          url.searchParams.get("view") === "conversations" &&
+          url.searchParams.get("objectId") === "6"
+        ) {
+          await route.fulfill({
+            json: {
+              version: 1,
+              state: "loaded",
+              readAt: "2026-10-19T12:00:02.000Z",
+              view: "conversations",
+              items: [{ type: "conversation", id: 6, active: false }],
+              selectedConversation: selected ? { type: "conversation", id: 7, active: true } : null,
+              truncated: false,
+            },
+          })
+          return
+        }
+        if (url.searchParams.get("conversationId") === "6") {
+          state.requests.push(url)
+          state.methods.push(route.request().method())
+          await route.fulfill({
+            json: {
+              version: 1,
+              state: "loaded",
+              readAt: "2026-10-19T12:00:03.000Z",
+              view: url.searchParams.get("view"),
+              items: [],
+              truncated: false,
+            },
+          })
+          return
+        }
+        await route.fallback()
+      })
+      await page.goto("/?section=Durable&chat=42&view=conversations&objectId=6")
+      const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+      await expect(
+        inspector.getByRole("heading", { name: "conversation #6", exact: true }),
+      ).toBeVisible()
+      await expect(inspector).toContainText("Inspection target: conversation 6.")
+      await inspector
+        .getByRole("tab", { name: view[0]?.toUpperCase() + view.slice(1), exact: true })
+        .click()
+      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=6`))
+      await expect(page).not.toHaveURL(/objectId=/)
+      await expect
+        .poll(() =>
+          state.requests.some(
+            (url) =>
+              url.searchParams.get("view") === view &&
+              url.searchParams.get("conversationId") === "6",
+          ),
+        )
+        .toBe(true)
+      if (view === "documents")
+        expect(
+          state.requests
+            .find(
+              (url) =>
+                url.searchParams.get("view") === view &&
+                url.searchParams.get("conversationId") === "6",
+            )
+            ?.searchParams.get("scope"),
+        ).toBe("conversation")
+      await expect(inspector).toContainText("Inspection target: conversation 6.")
+      expect(state.methods.every((method) => method === "GET")).toBe(true)
+    })
+  }
+}
+
 test("opaque pagination, previous page, manual refresh, and browser back", async ({ page }) => {
   const state = await durableFixture(page)
   const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
