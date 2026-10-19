@@ -1,6 +1,6 @@
 # Pi Durable Native Integration Plan
 
-Status: Implementation and local verification passed on `narumi/refactor/pi-durable-native-integration`; pull request delivery is in progress. Production deployment and operator release acceptance remain open and are not reported as complete. Package publication, version tags, and release workflow dispatch are excluded by the user.
+Status: Implementation and local verification passed on `narumi/refactor/pi-durable-native-integration`, delivered as draft [PR #145](https://github.com/narumiruna/sumire/pull/145). Production deployment and operator release acceptance remain open and are not reported as complete. Package publication, version tags, and release workflow dispatch are excluded by the user.
 
 ## Goal
 
@@ -109,7 +109,7 @@ GO for native execution with the following supported adapters, not for unadapted
 - Review covered correctness, security, lifecycle, compatibility, regressions, and scope. Regression tests cover the startup cancellation race, request/preparation/retry/restart selection changes, delayed formatting/store commit, and native committed-result/outer-settlement recovery.
 - Docker build-stage images (Node 26.12.0), built with `docker build --target build`:
   - Base `21a4439`: `sumire-native-baseline:21a4439`, image `sha256:f70875928105fdbc2911a10585ec16b93966a2c3790d927b4b2e00032c7f8f84`.
-  - Candidate: `sumire-native-integration:fixture`, image `sha256:97024199da9269333ef72124c0f1423ca714688f303aa7feca8bb5e28f596ab1`.
+  - Candidate implementation `abcc490`: `sumire-native-integration:fixture`, image `sha256:97024199da9269333ef72124c0f1423ca714688f303aa7feca8bb5e28f596ab1`.
   - `native-image-upgrade.mjs seed` on the base, `upgrade` on the candidate, and `rollback` on the base all pass with `--network=none`, matching source test helpers, mounted instructions, and a disposable fixture directory. The fixture proves latest/historical values, a closed SQLite backup, pending-response recovery without another model request, and restoration of the old backup. No production volumes or credentials were used.
   - Docker emitted only an npm update notice. These are build-stage fixture images, not full production runtime acceptance.
 - Operator procedure and limitations: `docs/pi-durable-native-upgrade.md`. Production Telegram delivery, real external publication, a controlled production restart, and operator release acceptance remain unverified. No packages, Git version tags, or release workflows were published or dispatched.
