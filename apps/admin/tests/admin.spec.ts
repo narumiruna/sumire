@@ -1,6 +1,19 @@
 import { generateKeyPairSync } from "node:crypto"
 import { effectivePolicy, inherited } from "@narumitw/sumire-policy"
-import { expect, type Page, test } from "@playwright/test"
+import { expect, type Page, type Route, test } from "@playwright/test"
+
+function chatResponse(route: Route, chats: { id: number; name: string; type: string }[]) {
+  const url = new URL(route.request().url())
+  const id = url.searchParams.get("id")
+  if (id !== null) return route.fulfill({ json: chats.filter((chat) => String(chat.id) === id) })
+  const query = (url.searchParams.get("q") ?? "").trim().toLowerCase()
+  const offset = Number(url.searchParams.get("offset") ?? 0)
+  return route.fulfill({
+    json: chats
+      .filter((chat) => chat.name.toLowerCase().includes(query) || String(chat.id) === query)
+      .slice(offset, offset + 100),
+  })
+}
 
 const policy = {
   tools: ["read_url_content"],
@@ -81,16 +94,10 @@ async function setup(page: Page, signedIn = true) {
       }
       data = { revision, applied: revision, status: "applied", policy: saved }
     } else if (url.pathname === "/api/inventory") data = inventory
-    else if (url.pathname === "/api/chats")
-      data = [
-        {
-          id: 42,
-          name: "Fixture chat",
-          type: "private",
-          effective: { enabled: true, tools: ["read_url_content"], sources: { tools: "default" } },
-        },
-      ]
-    else if (url.pathname === "/api/audit") data = []
+    else if (url.pathname === "/api/chats") {
+      await chatResponse(route, [{ id: 42, name: "Fixture chat", type: "private" }])
+      return
+    } else if (url.pathname === "/api/audit") data = []
     else if (url.pathname === "/api/providers/fixture/credential") {
       expect(route.request().postDataJSON().revision).toBe(revision)
       expect(route.request().headers()["x-csrf-token"]).toBe("browser-fixture")
@@ -113,12 +120,10 @@ for (const width of [1440, 390]) {
       }),
     )
     await page.route("**/api/chats?*", (route) =>
-      route.fulfill({
-        json: [
-          { id: 42, name: "Fixture chat", type: "private" },
-          { id: -1001234567890, name: "", type: "supergroup" },
-        ],
-      }),
+      chatResponse(route, [
+        { id: 42, name: "Fixture chat", type: "private" },
+        { id: -1001234567890, name: "", type: "supergroup" },
+      ]),
     )
     await page.reload()
     await expect(page.locator(".pending-bar")).toHaveCount(0)
@@ -169,12 +174,10 @@ test("keeps the selected tab coherent when switching chats and supports tab keys
 }) => {
   await setup(page)
   await page.route("**/api/chats?*", (route) =>
-    route.fulfill({
-      json: [
-        { id: 42, name: "Fixture chat", type: "private" },
-        { id: -100, name: "Other chat", type: "supergroup" },
-      ],
-    }),
+    chatResponse(route, [
+      { id: 42, name: "Fixture chat", type: "private" },
+      { id: -100, name: "Other chat", type: "supergroup" },
+    ]),
   )
   await page.reload()
   const writes: string[] = []
@@ -1882,20 +1885,22 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
   await page.setViewportSize({ width: 390, height: 844 })
   await setup(page)
   await page.route("**/api/chats?*", (route) =>
-    route.fulfill({
-      json: [
-        { id: 42, name: "42", type: "private" },
-        { id: -100, name: "", type: "supergroup" },
-      ],
-    }),
+    chatResponse(route, [
+      { id: 42, name: "42", type: "private" },
+      { id: -100, name: "", type: "supergroup" },
+    ]),
   )
   await page.reload()
   await expect(page.getByRole("heading", { name: "Chat directory", exact: true })).toBeVisible()
   await page.getByText("Search scope and access labels", { exact: true }).click()
-  await expect(page.getByText("Search and filters cover this page", { exact: false })).toBeVisible()
-  const search = page.getByLabel(/^Search these \d+ chats$/)
+  await expect(
+    page.getByText("Search covers stored chats. Type and access filters cover this page only.", {
+      exact: false,
+    }),
+  ).toBeVisible()
+  const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("missing")
-  await expect(page.getByText("No chats match on this page.", { exact: false })).toBeVisible()
+  await expect(page.getByText("No stored chats match this search.", { exact: true })).toBeVisible()
   await search.fill("-100")
   const row = page.getByRole("button").filter({ hasText: "Unnamed supergroup" })
   await row.focus()
@@ -1980,12 +1985,7 @@ test("paginates chats without reloading settings or dropping cross-section draft
     type: "private",
   }))
   await page.route("**/api/chats?*", (route) =>
-    route.fulfill({
-      json:
-        new URL(route.request().url()).searchParams.get("offset") === "100"
-          ? [{ id: 101, name: "Next page chat", type: "private" }]
-          : first,
-    }),
+    chatResponse(route, [...first, { id: 101, name: "Next page chat", type: "private" }]),
   )
   await page.reload()
   await navigate(page, "Access")
@@ -2037,7 +2037,7 @@ test("handles chat loading, errors, retry, and empty results independently of se
   await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
   await expect(page.getByRole("link", { name: "Access", exact: true })).toBeEnabled()
   finish()
-  await expect(page.getByRole("alert")).toContainText("Chat list unavailable")
+  await expect(page.getByRole("alert")).toContainText("Could not read chat metadata. Retry chats.")
   await page.route("**/api/chats?*", (route) => route.fulfill({ json: [] }))
   await page.getByRole("button", { name: "Retry chats", exact: true }).click()
   await expect(page.getByText("No chats observed on this page.", { exact: false })).toBeVisible()
@@ -2089,14 +2089,12 @@ test("filters the loaded directory by type and effective policy access without t
 }, testInfo) => {
   await setup(page)
   await page.route("**/api/chats?*", (route) =>
-    route.fulfill({
-      json: [
-        { id: 42, name: "Fixture chat", type: "private" },
-        { id: -100, name: "Team", type: "supergroup" },
-        { id: -200, name: "News", type: "channel" },
-        { id: -300, name: "", type: "" },
-      ],
-    }),
+    chatResponse(route, [
+      { id: 42, name: "Fixture chat", type: "private" },
+      { id: -100, name: "Team", type: "supergroup" },
+      { id: -200, name: "News", type: "channel" },
+      { id: -300, name: "", type: "" },
+    ]),
   )
   await page.route("**/api/settings", (route) =>
     route.fulfill({
@@ -2130,7 +2128,9 @@ test("filters the loaded directory by type and effective policy access without t
   await expect(directory).toContainText("Team")
   await expect(directory).toContainText("Approved · Disabled")
   await page.getByLabel("Access status", { exact: true }).selectOption("allowed")
-  await expect(page.getByText("No chats match on this page.", { exact: false })).toBeVisible()
+  await expect(
+    page.getByText("No chats match the filters on this page.", { exact: true }),
+  ).toBeVisible()
   await page.getByRole("button", { name: "Clear search and filters" }).click()
   await page.getByLabel("Chat type", { exact: true }).selectOption("channel")
   await directory.getByRole("button").click()
@@ -2143,7 +2143,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
   page,
 }) => {
   await setup(page)
-  const search = page.getByLabel(/^Search these \d+ chats$/)
+  const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("Fixture")
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
@@ -2184,9 +2184,7 @@ test("opens compatible chat deep links without granting access or inventing meta
     if (request.method() !== "GET") writes.push(request.url())
   })
   await page.goto("/?section=Chats&chat=-100")
-  await expect(
-    page.getByRole("heading", { name: "Unnamed group or channel -100", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chat name unknown", exact: true })).toBeVisible()
   const detail = page.getByRole("region", { name: "Chat details" })
   await expect(detail).toContainText("Type not known")
   await expect(detail).toContainText("Access approval is missing.")
@@ -2194,9 +2192,7 @@ test("opens compatible chat deep links without granting access or inventing meta
     0,
   )
   await page.reload()
-  await expect(
-    page.getByRole("heading", { name: "Unnamed group or channel -100", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chat name unknown", exact: true })).toBeVisible()
   expect(writes).toEqual([])
 })
 
@@ -2391,7 +2387,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await setup(page)
-  const search = page.getByLabel(/^Search these \d+ chats$/)
+  const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("Fixture")
   const row = page.getByRole("list", { name: "Chats on this page" }).getByRole("button")
   await row.focus()
@@ -2492,16 +2488,16 @@ test("Reload refreshes current chat names and new chats while retaining provider
   ).toHaveCount(1)
   let reads = 0
   await page.route("**/api/chats?*", (route) => {
-    reads++
-    return route.fulfill({
-      json:
-        reads === 1
-          ? [{ id: 42, name: "Original name", type: "private" }]
-          : [
-              { id: 42, name: "Updated name", type: "private" },
-              { id: 43, name: "New chat", type: "private" },
-            ],
-    })
+    if (!new URL(route.request().url()).searchParams.has("id")) reads++
+    return chatResponse(
+      route,
+      reads === 1
+        ? [{ id: 42, name: "Original name", type: "private" }]
+        : [
+            { id: 42, name: "Updated name", type: "private" },
+            { id: 43, name: "New chat", type: "private" },
+          ],
+    )
   })
   await page.reload()
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
@@ -2535,21 +2531,32 @@ test("Reload does not let an older chat response replace fresh metadata", async 
     finish = resolve
   })
   let reads = 0
+  let oldFulfilled!: () => void
+  const oldHandlerDone = new Promise<void>((resolve) => {
+    oldFulfilled = resolve
+  })
   await page.route("**/api/chats?*", async (route) => {
     const current = ++reads
     if (current === 1) await oldRequest
-    await route.fulfill({
-      json: [{ id: 42, name: current === 1 ? "Old name" : "Fresh name", type: "private" }],
-    })
+    try {
+      await route.fulfill({
+        json: [{ id: 42, name: current === 1 ? "Old name" : "Fresh name", type: "private" }],
+      })
+    } finally {
+      if (current === 1) oldFulfilled()
+    }
   })
   await page.reload()
   await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+  const aborted = page.waitForEvent("requestfailed", (request) =>
+    request.url().includes("/api/chats?"),
+  )
   await page.getByRole("button", { name: "Reload", exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("Fresh name")
-  const oldResponse = page.waitForResponse((response) => response.url().includes("/api/chats?"))
+  await aborted
   finish()
-  await (await oldResponse).finished()
+  await oldHandlerDone
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("Fresh name")
 })
@@ -2633,22 +2640,18 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
     }),
   )
   await page.route("**/api/chats?*", (route) =>
-    route.fulfill({
-      json:
-        new URL(route.request().url()).searchParams.get("offset") === "100"
-          ? [
-              {
-                id: 201,
-                name: signIns ? "Updated off-page name" : "Previous session name",
-                type: "private",
-              },
-            ]
-          : Array.from({ length: 100 }, (_, index) => ({
-              id: index + 1,
-              name: `Session ${signIns} user ${index + 1}`,
-              type: "private",
-            })),
-    }),
+    chatResponse(route, [
+      ...Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1,
+        name: `Session ${signIns} user ${index + 1}`,
+        type: "private",
+      })),
+      {
+        id: 201,
+        name: signIns ? "Updated off-page name" : "Previous session name",
+        type: "private",
+      },
+    ]),
   )
   const client = await context.newCDPSession(page)
   await client.send("WebAuthn.enable")
@@ -2711,7 +2714,8 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
   await navigate(page, "Access")
   const users = page.getByRole("group", { name: "Private-message access", exact: true })
   const offPage = users.getByRole("row").filter({ hasText: "201" })
-  await expect(offPage).toContainText("Unnamed private 201")
+  await expect(offPage).toContainText("Unnamed private")
+  await expect(offPage.locator("code")).toHaveText("201")
   await expect(users).not.toContainText("Previous session name")
   await navigate(page, "Chats")
   await page.getByRole("button", { name: "Next chats", exact: true }).click()

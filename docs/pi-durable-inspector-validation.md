@@ -1,5 +1,7 @@
 # Pi Durable Inspector validation
 
+This report records the original Inspector delivery. For the current chat-centered workspace, name-persistence correction, and comparison screenshots, see [chat-centered Durable validation](chat-centered-durable-validation.md).
+
 ## Result
 
 The read-only Inspector is implemented for already loaded chat sessions. It exposes metadata for Conversations, Tasks, Documents, and Entries, plus three approved singleton document projections. It adds no storage migration, session-opening path, or model/tool loop.

@@ -11,6 +11,7 @@ import {
   validateReferences,
 } from "@narumitw/sumire-policy"
 import type { AuditFilters } from "./audit-query.js"
+import type { ChatFilters } from "./chat-query.js"
 
 export class AdminError extends Error {
   constructor(
@@ -43,6 +44,10 @@ export class AdminStore {
     }
     this.db.exec("PRAGMA journal_mode = DELETE; PRAGMA foreign_keys = ON; BEGIN IMMEDIATE")
     try {
+      // Preserve the JavaScript case folding used by the directory before server search.
+      this.db.function("chat_lower", { deterministic: true }, (value) =>
+        typeof value === "string" ? value.toLowerCase() : "",
+      )
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS known_tools (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS imports (name TEXT PRIMARY KEY, report TEXT NOT NULL);
@@ -115,7 +120,7 @@ export class AdminStore {
       for (const key of Object.keys(policy.chats)) {
         const id = Number(key)
         if (!this.db.prepare("SELECT id FROM chats WHERE id=?").get(id))
-          this.observe(id, id > 0 ? "private" : "group", key)
+          this.observe(id, id > 0 ? "private" : "group", key, "inferred")
       }
       persist?.()
       this.db.exec("COMMIT")
@@ -219,20 +224,42 @@ export class AdminStore {
     const policy = effectivePolicy(this.snapshot().policy, chatId)
     return policy.tools.includes(name) && (!server || policy.servers.includes(server))
   }
-  observe(id: number, type: string, name: string) {
+  /** Inferred inventory only creates rows. Missing observed fields preserve known metadata. */
+  observe(id: number, type?: string, name?: string, source: "observed" | "inferred" = "observed") {
     if (!Number.isSafeInteger(id) || id === 0) return
     const count = this.db.prepare("SELECT COUNT(*) AS n FROM chats").get() as { n: number }
     if (count.n >= 1000 && !this.db.prepare("SELECT id FROM chats WHERE id=?").get(id)) return
+    const observedName = name?.trim()
+    const knownName = observedName && observedName !== String(id) ? observedName.slice(0, 128) : ""
+    const knownType = type?.trim().slice(0, 32) ?? ""
     this.db
       .prepare(
-        "INSERT INTO chats VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET type=excluded.type,name=excluded.name",
+        `INSERT INTO chats VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET
+          type=CASE WHEN ?='observed' AND excluded.type<>'' THEN excluded.type ELSE chats.type END,
+          name=CASE WHEN ?='observed' AND excluded.name<>'' THEN excluded.name ELSE chats.name END`,
       )
-      .run(id, type.slice(0, 32), name.slice(0, 128))
+      .run(id, knownType, knownName, source, source)
   }
-  listChats(offset: number): Chat[] {
+  listChats(offset: number, filters?: ChatFilters): Chat[] {
+    const clauses: string[] = []
+    const values: (string | number)[] = []
+    if (filters?.id !== undefined) {
+      clauses.push("id=?")
+      values.push(filters.id)
+    }
+    if (filters?.q) {
+      // instr treats %, _, and backslash literally. IDs are complete canonical numeric values.
+      const numeric = /^-?[1-9]\d*$/.test(filters.q) && Number.isSafeInteger(Number(filters.q))
+      clauses.push(
+        "((trim(name)<>CAST(id AS TEXT) AND instr(chat_lower(name),chat_lower(?))>0) OR id=?)",
+      )
+      values.push(filters.q, numeric ? Number(filters.q) : 0)
+    }
     return this.db
-      .prepare("SELECT * FROM chats ORDER BY id LIMIT 100 OFFSET ?")
-      .all(offset) as Chat[]
+      .prepare(
+        `SELECT * FROM chats ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY id LIMIT 100 OFFSET ?`,
+      )
+      .all(...values, offset) as Chat[]
   }
   listAudit(offset: number, filters: AuditFilters = {}): AuditEntry[] {
     const clauses: string[] = []

@@ -1,4 +1,6 @@
 import type {
+  Chat,
+  DurableConversationItem,
   DurableDocumentScope,
   DurableInspectionItem,
   DurableInspectionQuery,
@@ -8,6 +10,7 @@ import type {
 import { Button, Card, Flex, Heading, Tabs, Text } from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { chatName } from "./chat-directory.js"
 import { navigationHref } from "./navigation.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
@@ -84,24 +87,126 @@ function contextNeeded(location: DurableLocation) {
   return ""
 }
 
+type ReadBlock = {
+  data?: DurableInspectionResponse
+  error?: string
+  unavailable?: boolean
+}
+type BlockName = "selection" | "history" | "inspection"
+
+export function persistedSelection(
+  data?: DurableInspectionResponse,
+): DurableConversationItem | null | undefined {
+  return data?.state === "loaded" ? data.selectedConversation : undefined
+}
+
+// One conversation page, at most one selected-conversation task page, and one requested page.
+// No page scans or polling. Every block keeps its own response and read time.
+export async function readDurableContext(
+  chat: string,
+  location: DurableLocation,
+  cursor: string | undefined,
+  read: (path: string) => Promise<ReadBlock>,
+  publish: (name: BlockName, block: ReadBlock) => void,
+) {
+  const requestedPath = inspectionPath(chat, location, cursor)
+  const selectionPath = inspectionPath(
+    chat,
+    { view: "conversations" },
+    location.view === "conversations" && !location.objectId ? cursor : undefined,
+  )
+  const selection = await read(selectionPath)
+  publish("selection", selection)
+  const selected = persistedSelection(selection.data)
+  let history: ReadBlock | undefined
+  let historyPath: string | undefined
+  if (selected) {
+    historyPath = inspectionPath(chat, { view: "tasks", conversationId: selected.id })
+    history = await read(historyPath)
+    publish("history", history)
+  }
+  if (contextNeeded(location)) return
+  const inspection =
+    requestedPath === selectionPath || selection.data?.state === "not-loaded"
+      ? selection
+      : requestedPath === historyPath && history
+        ? history
+        : await read(requestedPath)
+  publish("inspection", inspection)
+}
+
+// Serialize old and new client reads for the same chat, including component remounts.
+const chatReads = new Map<string, Promise<unknown>>()
+function sequenceRead<T>(chat: string, read: () => Promise<T>): Promise<T> {
+  const previous = chatReads.get(chat) ?? Promise.resolve()
+  const next = previous.catch(() => {}).then(read)
+  chatReads.set(chat, next)
+  void next
+    .finally(() => {
+      if (chatReads.get(chat) === next) chatReads.delete(chat)
+    })
+    .catch(() => {})
+  return next
+}
+
+function JsonDetails({ label, value }: { label: string; value: unknown }) {
+  const [copyState, setCopyState] = useState("")
+  const json = JSON.stringify(value, null, 2)
+  return (
+    <details className="durable-json">
+      <summary>{label}</summary>
+      <Button
+        variant="soft"
+        size="1"
+        onClick={() => {
+          void Promise.resolve()
+            .then(() => navigator.clipboard.writeText(json))
+            .then(
+              () => setCopyState("JSON copied."),
+              () => setCopyState("Copy failed. Select and copy the JSON below."),
+            )
+        }}
+      >
+        Copy {label}
+      </Button>
+      {copyState && (
+        <Text as="p" role="status">
+          {copyState}
+        </Text>
+      )}
+      <pre>{json}</pre>
+    </details>
+  )
+}
+
 export function DurableInspector({
   chat,
+  metadata,
+  metadataLoading,
+  metadataError,
+  onMetadataRetry,
   onChats,
   onSessionExpired,
 }: {
   chat: string
+  metadata?: Chat
+  metadataLoading?: boolean
+  metadataError?: string
+  onMetadataRetry?(): void
   onChats(): void
   onSessionExpired(): void
 }) {
   const [location, setLocation] = useState(() => readDurableLocation(new URL(window.location.href)))
   const [pages, setPages] = useState<(string | undefined)[]>([undefined])
   const [refresh, setRefresh] = useState(0)
-  const [result, setResult] = useState<{
+  const [blocks, setBlocks] = useState<{
     key: string
-    data?: DurableInspectionResponse
-    error?: string
-    unavailable?: boolean
+    selection?: ReadBlock
+    history?: ReadBlock
+    inspection?: ReadBlock
   }>()
+  const [detailId, setDetailId] = useState<number>()
+  const [copyIdState, setCopyIdState] = useState("")
   const [conversationDraft, setConversationDraft] = useState(String(location.conversationId ?? ""))
   const [taskDraft, setTaskDraft] = useState(String(location.taskId ?? ""))
   const [inputError, setInputError] = useState("")
@@ -123,36 +228,47 @@ export function DurableInspector({
   const path = inspectionPath(chat, location, pages.at(-1))
   const key = `${path}:${refresh}`
   useEffect(() => {
-    setResult(undefined)
-    if (!validChat || missing) return
+    setBlocks(undefined)
+    setDetailId(undefined)
+    if (!validChat) return
     const controller = new AbortController()
-    void request<DurableInspectionResponse>(
-      path,
-      undefined,
-      undefined,
-      "GET",
-      controller.signal,
-    ).then(
-      (data) => {
-        if (!controller.signal.aborted) setResult({ key, data })
-      },
-      (error: unknown) => {
-        if (controller.signal.aborted) return
-        if (error instanceof ApiError && error.status === 401) {
-          setResult(undefined)
-          onSessionExpired()
-          return
+    const read = (nextPath: string) =>
+      sequenceRead(chat, async (): Promise<ReadBlock> => {
+        controller.signal.throwIfAborted()
+        try {
+          return {
+            data: await request<DurableInspectionResponse>(
+              nextPath,
+              undefined,
+              undefined,
+              "GET",
+              controller.signal,
+            ),
+          }
+        } catch (error) {
+          controller.signal.throwIfAborted()
+          if (error instanceof ApiError && error.status === 401) throw error
+          return {
+            error:
+              error instanceof ApiError && error.status === 403
+                ? "Permission denied. This data could not be read."
+                : "Read failed. Refresh to retry.",
+            unavailable:
+              error instanceof ApiError && error.status === 404 && nextPath.includes("objectId="),
+          }
         }
-        setResult({
-          key,
-          error: "Read failed. Refresh to retry.",
-          unavailable:
-            error instanceof ApiError && error.status === 404 && location.objectId !== undefined,
-        })
-      },
-    )
+      })
+    void readDurableContext(chat, location, pages.at(-1), read, (name, block) => {
+      if (!controller.signal.aborted)
+        setBlocks((value) => ({ ...(value?.key === key ? value : { key }), [name]: block }))
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted && error instanceof ApiError && error.status === 401) {
+        setBlocks(undefined)
+        onSessionExpired()
+      }
+    })
     return () => controller.abort()
-  }, [key, path, validChat, missing, location.objectId, onSessionExpired])
+  }, [key, validChat, chat, location, pages, onSessionExpired])
 
   const navigate = (next: DurableLocation) => {
     window.history.pushState(null, "", durableHref(chat, next))
@@ -188,10 +304,29 @@ export function DurableInspector({
       ...(taskId ? { taskId } : {}),
     })
   }
-  const current = result?.key === key ? result : undefined
+  const activeBlocks = blocks?.key === key ? blocks : undefined
+  const current = activeBlocks?.inspection
   const data = current?.data
+  const selection = activeBlocks?.selection
+  const history = activeBlocks?.history
+  const selected = persistedSelection(selection?.data)
+  const inspectedConversation =
+    location.view === "conversations" && location.objectId
+      ? location.objectId
+      : location.conversationId
+  const detail = data?.items.find((item) => item.id === detailId) ?? data?.items[0]
+  const readTime = (block: ReadBlock | undefined) =>
+    block?.data && (
+      <Text as="p" size="1" className="durable-read-time">
+        Read time: <time dateTime={block.data.readAt}>{block.data.readAt}</time>
+      </Text>
+    )
   const row = (item: DurableInspectionItem) => (
-    <li key={`${item.type}:${item.id}`}>
+    <section
+      key={`${item.type}:${item.id}`}
+      className="durable-detail"
+      aria-label="Selected item details"
+    >
       <Heading as="h3" size="3">
         {item.type} #{item.id}
       </Heading>
@@ -199,7 +334,7 @@ export function DurableInspector({
         {item.type === "conversation" && (
           <>
             <dt>Conversation marker</dt>
-            <dd>{item.active ? "Active conversation" : "Historical conversation"}</dd>
+            <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
             <dt>Parent</dt>
             <dd>
               {item.parent ? (
@@ -237,7 +372,7 @@ export function DurableInspector({
             <dd>
               {item.kind} · {item.version}
             </dd>
-            <dt>Status</dt>
+            <dt>Historical status / outcome</dt>
             <dd>
               {item.status}
               {item.outcome ? ` · ${item.outcome}` : ""}
@@ -377,96 +512,297 @@ export function DurableInspector({
             conversationId: item.conversationId,
             taskId: item.id,
           })}
-        {item.type === "document" &&
-          item.valueState === "metadata-only" &&
-          !location.objectId &&
-          link(`Inspect document ${item.id}`, { ...location, objectId: item.id })}
       </Flex>
-      <details>
-        <summary>
-          Metadata JSON for {item.type} {item.id}
-        </summary>
-        <pre>
-          {JSON.stringify(item.type === "document" ? { ...item, value: undefined } : item, null, 2)}
-        </pre>
-      </details>
+      <JsonDetails
+        key={`metadata:${item.type}:${item.id}`}
+        label={`Metadata JSON for ${item.type} ${item.id}`}
+        value={item.type === "document" ? { ...item, value: undefined } : item}
+      />
       {item.type === "document" && item.valueState === "available" && (
-        <details>
-          <summary>Approved value JSON for document {item.id}</summary>
-          <pre>{JSON.stringify(item.value, null, 2)}</pre>
-        </details>
+        <JsonDetails
+          key={`value:${item.id}`}
+          label={`Approved value JSON for document ${item.id}`}
+          value={item.value}
+        />
       )}
-    </li>
+    </section>
   )
 
   return (
     <section className="durable-inspector" aria-label="Durable Inspector">
-      <Flex gap="3" wrap="wrap" align="center">
-        <Heading as="h2" size="4">
-          Chat {chat || "not selected"}
-        </Heading>
-        <Button variant="soft" onClick={onChats}>
-          Back to chats
-        </Button>
-        <Button
-          variant="soft"
-          disabled={!validChat || Boolean(missing) || (!current && !data)}
-          onClick={() => {
-            setPages([undefined])
-            setRefresh((value) => value + 1)
-          }}
-        >
-          Refresh Durable
-        </Button>
-      </Flex>
-      <Text as="p" size="2">
-        Read-only persisted metadata from an already loaded session. Inspection does not load chats
-        or start work. Refresh is manual.
+      <header className="durable-summary-header">
+        <div>
+          <Heading as="h2" size="5">
+            {!validChat
+              ? "Choose a chat"
+              : metadataLoading
+                ? "Loading chat name…"
+                : metadataError
+                  ? "Chat name unavailable"
+                  : metadata
+                    ? chatName(metadata)
+                    : "Chat name unknown"}
+          </Heading>
+          {validChat && (
+            <Flex gap="2" align="center" wrap="wrap">
+              <Text size="2">
+                <code>{chat}</code>
+                {metadata ? ` · ${metadata.type}` : ""}
+              </Text>
+              <Button
+                size="1"
+                variant="ghost"
+                onClick={() => {
+                  void Promise.resolve()
+                    .then(() => navigator.clipboard.writeText(chat))
+                    .then(
+                      () => setCopyIdState("Chat ID copied."),
+                      () => setCopyIdState("Copy failed. Select and copy the chat ID."),
+                    )
+                }}
+              >
+                Copy chat ID
+              </Button>
+              {copyIdState && (
+                <Text role="status" size="1">
+                  {copyIdState}
+                </Text>
+              )}
+            </Flex>
+          )}
+        </div>
+        <Flex gap="3" wrap="wrap" align="center">
+          {validChat && (
+            <Button variant="ghost" onClick={onChats}>
+              Open chat settings
+            </Button>
+          )}
+          <Button
+            variant="soft"
+            disabled={!validChat || (!current && !selection)}
+            onClick={() => {
+              setPages([undefined])
+              setRefresh((value) => value + 1)
+            }}
+          >
+            Refresh Durable
+          </Button>
+        </Flex>
+      </header>
+      {metadataError && (
+        <div>
+          <Text as="p" role="alert">
+            {metadataError}
+          </Text>
+          {onMetadataRetry && (
+            <Button variant="soft" onClick={onMetadataRetry}>
+              Retry chat metadata
+            </Button>
+          )}
+        </div>
+      )}
+      <Text as="p" size="2" className="durable-notice">
+        Read-only persisted data; not live execution state
       </Text>
-      <Text as="p" size="2">
-        Panels read separately are not one atomic snapshot. Active marks the selected conversation,
-        not running work. Task history is not live scheduling state. Retired task documents can be
-        unavailable. Message bodies and tool output are excluded.
-      </Text>
+      {validChat && (
+        <section className="durable-overview" aria-label="Durable overview">
+          <Heading as="h3" size="3">
+            Overview
+          </Heading>
+          <div className="durable-overview-grid">
+            <section aria-label="Persisted selection" aria-live="polite" aria-busy={!selection}>
+              <Heading as="h4" size="2">
+                Selected conversation
+              </Heading>
+              {!selection ? (
+                <Text as="p" role="status">
+                  Loading selection…
+                </Text>
+              ) : selection.error ? (
+                <Text as="p" role="alert">
+                  {selection.error}
+                </Text>
+              ) : selection.data?.state === "not-loaded" ? (
+                <Text as="p">No loaded session.</Text>
+              ) : selected ? (
+                <>
+                  <Text as="p">Conversation {selected.id}</Text>
+                  <Flex gap="3" wrap="wrap">
+                    {link("Inspect selected conversation", {
+                      view: "conversations",
+                      objectId: selected.id,
+                    })}
+                    {link("View selected tasks", { view: "tasks", conversationId: selected.id })}
+                  </Flex>
+                  {(selected.parent || selected.owner) && (
+                    <Text as="p" size="2">
+                      {selected.parent && (
+                        <>
+                          Parent{" "}
+                          {link(`conversation ${selected.parent.conversationId}`, {
+                            view: "conversations",
+                            objectId: selected.parent.conversationId,
+                          })}{" "}
+                          · fork{" "}
+                          {link(`entry ${selected.parent.at}`, {
+                            view: "entries",
+                            conversationId: selected.parent.conversationId,
+                            objectId: selected.parent.at,
+                          })}
+                        </>
+                      )}
+                      {selected.parent && selected.owner ? " · " : ""}
+                      {selected.owner && (
+                        <>
+                          Owner{" "}
+                          {link(`task ${selected.owner.taskId}`, {
+                            view: "tasks",
+                            conversationId: selected.owner.conversationId,
+                            objectId: selected.owner.taskId,
+                          })}
+                        </>
+                      )}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text as="p">
+                  {selected === null
+                    ? "No selected-conversation metadata available."
+                    : "Selection data unavailable."}
+                </Text>
+              )}
+              {readTime(selection)}
+              {inspectedConversation && inspectedConversation !== selected?.id && (
+                <Text as="p" size="2">
+                  Inspection target: conversation {inspectedConversation}. This does not change
+                  persisted selection.
+                </Text>
+              )}
+            </section>
+            <section
+              aria-label="Selected conversation task history"
+              aria-live="polite"
+              aria-busy={Boolean(selected && !history)}
+            >
+              <Heading as="h4" size="2">
+                Task history
+              </Heading>
+              {selected ? (
+                !history ? (
+                  <Text as="p" role="status">
+                    Loading task history…
+                  </Text>
+                ) : history.error ? (
+                  <Text as="p" role="alert">
+                    {history.error}
+                  </Text>
+                ) : history.data?.state === "not-loaded" ? (
+                  <Text as="p">Session no longer loaded.</Text>
+                ) : (
+                  <>
+                    <Text as="p">
+                      {history.data?.items.length ?? 0} task{" "}
+                      {history.data?.items.length === 1 ? "record" : "records"} on the loaded page
+                      {history.data?.nextCursor || history.data?.truncated
+                        ? " · more may exist"
+                        : ""}
+                      .
+                    </Text>
+                    {!history.data?.items.length ? (
+                      <Text as="p" size="2">
+                        No task history on this page.
+                      </Text>
+                    ) : (
+                      <ul className="durable-history">
+                        {history.data.items.map(
+                          (item) =>
+                            item.type === "task" && (
+                              <li key={item.id}>
+                                {link(`Task ${item.id}`, {
+                                  view: "tasks",
+                                  conversationId: item.conversationId,
+                                  objectId: item.id,
+                                })}
+                                : historical {item.status}
+                                {item.outcome ? ` · ${item.outcome}` : ""}
+                              </li>
+                            ),
+                        )}
+                      </ul>
+                    )}
+                  </>
+                )
+              ) : (
+                <Text as="p">
+                  {selection?.error
+                    ? "Unavailable: selection could not be read."
+                    : selected === null
+                      ? "No selected-conversation metadata to read."
+                      : "Task history unavailable."}
+                </Text>
+              )}
+              {readTime(history)}
+            </section>
+          </div>
+        </section>
+      )}
+      <details className="durable-limits">
+        <summary>Data scope and limits</summary>
+        <Text as="p" size="2">
+          Inspection does not load chats or start work. Refresh is manual; there is no polling. Each
+          context or refresh reads at most one conversation page, one selected-conversation task
+          page, and one requested inspection page, in sequence. Pages contain at most 25 records.
+          Reads are separate, not one atomic snapshot. Active marks persisted selection, not running
+          work. Task status and outcome are historical observations, not live scheduling state.
+          Retired task documents can be unavailable. Message bodies and tool output are excluded.
+        </Text>
+      </details>
       {!validChat ? (
         <Card>
-          <Text as="p">Select a chat in Chats to inspect Durable.</Text>
+          <Text as="p">Select a chat above to inspect Durable.</Text>
         </Card>
       ) : (
         <>
-          <form onSubmit={selectContext} className="durable-context">
-            <label htmlFor="durable-conversation">
-              Conversation ID
-              <input
-                id="durable-conversation"
-                inputMode="numeric"
-                value={conversationDraft}
-                onChange={(event) => setConversationDraft(event.target.value)}
-              />
-            </label>
-            <label htmlFor="durable-task">
-              Task ID (for task documents)
-              <input
-                id="durable-task"
-                inputMode="numeric"
-                value={taskDraft}
-                onChange={(event) => setTaskDraft(event.target.value)}
-              />
-            </label>
-            <Button variant="soft" type="submit">
-              Inspect IDs
-            </Button>
-            {inputError && <Text role="alert">{inputError}</Text>}
-          </form>
+          <Heading as="h3" size="3">
+            Inspect records
+          </Heading>
+          <details className="durable-advanced">
+            <summary>Advanced inspection</summary>
+            <form onSubmit={selectContext} className="durable-context">
+              <label htmlFor="durable-conversation">
+                Conversation ID
+                <input
+                  id="durable-conversation"
+                  inputMode="numeric"
+                  value={conversationDraft}
+                  onChange={(event) => setConversationDraft(event.target.value)}
+                />
+              </label>
+              <label htmlFor="durable-task">
+                Task ID (for task documents)
+                <input
+                  id="durable-task"
+                  inputMode="numeric"
+                  value={taskDraft}
+                  onChange={(event) => setTaskDraft(event.target.value)}
+                />
+              </label>
+              <Button variant="soft" type="submit">
+                Inspect IDs
+              </Button>
+              {inputError && <Text role="alert">{inputError}</Text>}
+            </form>
+          </details>
           <Tabs.Root
             value={location.view}
             onValueChange={(view) =>
               navigate({
                 view: view as DurableInspectionView,
-                conversationId: location.conversationId,
+                conversationId: inspectedConversation ?? selected?.id,
                 taskId: location.taskId,
                 ...(view === "documents"
-                  ? { scope: location.conversationId ? "conversation" : "session" }
+                  ? { scope: inspectedConversation || selected ? "conversation" : "session" }
                   : {}),
               })
             }
@@ -555,12 +891,46 @@ export function DurableInspector({
                                 : "Empty · no records in this view."}
                             </Text>
                           ) : (
-                            <ul
-                              className="durable-objects"
-                              aria-label={`${labels[location.view]} metadata`}
-                            >
-                              {data.items.map(row)}
-                            </ul>
+                            <div className="durable-browser">
+                              <ul
+                                className="durable-objects durable-compact-list"
+                                aria-label={`${labels[location.view]} metadata`}
+                              >
+                                {data.items.map((item) => (
+                                  <li key={`${item.type}:${item.id}`}>
+                                    <button
+                                      type="button"
+                                      aria-pressed={detail?.id === item.id}
+                                      aria-label={`Select ${item.type} ${item.id}`}
+                                      onClick={() => setDetailId(item.id)}
+                                    >
+                                      <strong>
+                                        {item.type} #{item.id}
+                                      </strong>
+                                      <span>
+                                        {item.type === "conversation"
+                                          ? item.active
+                                            ? "Persisted selection"
+                                            : "Historical"
+                                          : item.type === "task"
+                                            ? `Historical ${item.status}${item.outcome ? ` · ${item.outcome}` : ""}`
+                                            : item.type === "document"
+                                              ? `${item.kind} · ${item.valueState}`
+                                              : `${item.kind}${item.role ? ` · ${item.role}` : ""}`}
+                                      </span>
+                                    </button>
+                                    {item.type === "document" &&
+                                      item.valueState === "metadata-only" &&
+                                      !location.objectId &&
+                                      link(`Inspect document ${item.id}`, {
+                                        ...location,
+                                        objectId: item.id,
+                                      })}
+                                  </li>
+                                ))}
+                              </ul>
+                              {detail && row(detail)}
+                            </div>
                           )}
                           <Flex gap="3" wrap="wrap" align="center">
                             <Button

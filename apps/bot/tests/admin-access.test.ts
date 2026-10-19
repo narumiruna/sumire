@@ -113,6 +113,37 @@ it("atomically approves exactly one chat, preserves selections, and rejects repl
   expect(store.snapshot().revision).toBe(4)
   expect(JSON.stringify(store.listAudit(0))).not.toContain(token)
 })
+it("observes already-approved requests without policy changes and never replays stale approval metadata", () => {
+  const { store, access } = fixture()
+  const before = store.snapshot()
+  access.issue({ id: 42, type: "private", name: "Full Private Name" }, origin)
+  expect(store.snapshot()).toEqual(before)
+  expect(store.listChats(0)).toContainEqual({ id: 42, type: "private", name: "Full Private Name" })
+  const token = issue(access)
+  store.observe(-100, "channel", "Newer observation")
+  const reopened = new AdminStore(store.file, new Set(), 42)
+  try {
+    new ChatAccess(reopened).approve(token, origin, before.revision, "42")
+    expect(reopened.listChats(0)).toContainEqual({
+      id: -100,
+      type: "channel",
+      name: "Newer observation",
+    })
+    expect(reopened.snapshot().policy.groups).toContain(-100)
+  } finally {
+    reopened.close()
+  }
+})
+
+it("retains metadata from a legacy pending approval only when the directory row is missing", () => {
+  const { store, access } = fixture()
+  const token = issue(access)
+  store.db.prepare("DELETE FROM chats WHERE id=?").run(-100)
+  access.approve(token, origin, store.snapshot().revision, "42")
+  expect(store.listChats(0)).toContainEqual({ id: -100, type: "supergroup", name: "<untrusted>" })
+  expect(store.snapshot().policy.groups).toContain(-100)
+})
+
 it("rolls back consumption, revision, and audit if persistence fails", () => {
   const { store, access } = fixture()
   const token = issue(access)

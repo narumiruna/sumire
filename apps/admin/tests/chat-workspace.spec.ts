@@ -19,7 +19,27 @@ async function fixture(page: Page) {
   const requests: string[] = []
   await page.route("**/api/**", async (route) => {
     const request = route.request()
-    const path = new URL(request.url()).pathname
+    const url = new URL(request.url())
+    const path = url.pathname
+    if (path === "/api/chats") {
+      expect(request.method()).toBe("GET")
+      const id = url.searchParams.get("id")
+      if (id !== null) {
+        // Explicit selection now reads exact metadata; other requests remain forbidden below.
+        expect([...url.searchParams.keys()]).toEqual(["id"])
+        await route.fulfill({ json: chats.filter((chat) => String(chat.id) === id) })
+        return
+      }
+      const query = (url.searchParams.get("q") ?? "").toLowerCase()
+      const offset = Number(url.searchParams.get("offset") ?? 0)
+      requests.push(`${request.method()} ${path}`)
+      await route.fulfill({
+        json: chats
+          .filter((chat) => chat.name.toLowerCase().includes(query) || String(chat.id) === query)
+          .slice(offset, offset + 100),
+      })
+      return
+    }
     requests.push(`${request.method()} ${path}`)
     const data: Record<string, unknown> = {
       "/api/session": { csrf: "fixture", actor: "42" },
@@ -133,7 +153,7 @@ for (const width of [390, 850]) {
       await open.click()
       await expect(page.locator(".chat-header code")).toHaveText("-9999")
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(page.getByLabel(/^Search these/)).toBeFocused()
+      await expect(page.getByLabel("Search stored chats", { exact: true })).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(expected)
       await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(0)
       await expect(id).toHaveValue("-9999")
@@ -238,7 +258,7 @@ for (const width of [1440, 390, 320]) {
     const list = page.locator(".directory-list-region")
     const footer = page.locator(".directory-footer")
     await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeDisabled()
-    await expect(rows.first().locator("strong")).toHaveAttribute("title", longName)
+    await expect(rows.first().locator("strong")).toHaveAttribute("title", longName.trim())
     expect(
       await rows
         .first()

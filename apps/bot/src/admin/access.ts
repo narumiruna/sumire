@@ -24,6 +24,7 @@ export class ChatAccess {
       (chat.type === "private" ? chat.id < 0 : chat.id > 0)
     )
       throw new AdminError(400, "Invalid chat")
+    this.store.observe(chat.id, chat.type, chat.name)
     const { policy } = this.store.snapshot()
     if (effectivePolicy(policy, chat.id).enabled) return { approved: true as const }
     const db = this.store.db
@@ -74,7 +75,9 @@ export class ChatAccess {
           .run(digest(value), origin, Date.now())
         if (!result.changes)
           throw new AdminError(410, "Approval link expired or is no longer valid")
-        this.store.observe(chat.id, chat.type, chat.name)
+        // Legacy requests can predate observation at issuance. Only fill a missing row;
+        // replaying request metadata over an observed row could undo a later rename.
+        this.store.observe(chat.id, chat.type, chat.name, "inferred")
       },
     )
   }

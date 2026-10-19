@@ -13,6 +13,7 @@ import { z } from "zod"
 import { accessTokenPattern, ChatAccess } from "./access.js"
 import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
+import { parseChatQuery } from "./chat-query.js"
 import { parseDurableInspectionQuery } from "./durable-inspector.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
@@ -337,13 +338,15 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       return
     }
     if (url.pathname === "/api/chats" && method === "GET") {
+      const { offset, ...filters } = parseChatQuery(url.searchParams)
+      const { policy } = store.snapshot()
       reply(
         res,
         200,
-        store.listChats(offset(url)).map(
+        store.listChats(offset, filters).map(
           (c): ChatResponse => ({
             ...c,
-            effective: effectivePolicy(store.snapshot().policy, Number(c.id)),
+            effective: effectivePolicy(policy, c.id),
           }),
         ),
       )

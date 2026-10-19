@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ChatAccess } from "../src/admin/access.js"
 import { createPasskeySetup } from "../src/admin/auth.js"
@@ -109,6 +110,122 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("searches the persisted directory before pagination and supports exact off-page metadata lookup", async () => {
+    for (let id = 1; id <= 205; id++) store.observe(id, "private", `Chat ${id}`)
+    store.observe(201, "private", "Duplicate Name")
+    store.observe(202, "private", "Duplicate Name")
+    store.observe(203, "private", "Literal %_\\ name")
+    store.db.prepare("UPDATE chats SET name='205' WHERE id=205").run()
+    store.observe(-1001234567890, "supergroup", "Named group")
+    store.observe(-200, "channel", "Named channel")
+    store.observe(-300, "", "Unknown type")
+    const policy = store.snapshot().policy
+    policy.privateUsers = [42, 201, 202]
+    policy.chats["202"] = { ...inherited, enabled: false }
+    store.save(policy, store.snapshot().revision, "42")
+    const before = store.snapshot()
+    const get = async (suffix = "") => {
+      const response = await call(`/api/chats${suffix}`, "GET", undefined, auth())
+      expect(response.status).toBe(200)
+      return JSON.parse(response.body) as Array<{
+        id: number
+        name: string
+        effective: { enabled: boolean }
+      }>
+    }
+    const first = await get()
+    expect(Array.isArray(first)).toBe(true)
+    expect(first).toHaveLength(100)
+    expect(first.some((chat) => chat.id === 201)).toBe(false)
+    expect(await get("?q=duplicate%20NAME")).toEqual([
+      expect.objectContaining({ id: 201, name: "Duplicate Name" }),
+      expect.objectContaining({ id: 202, name: "Duplicate Name" }),
+    ])
+    expect(await get("?q=%25_")).toEqual([expect.objectContaining({ id: 203 })])
+    expect(await get("?q=%5C")).toEqual([expect.objectContaining({ id: 203 })])
+    expect(await get("?q=-1001234567890")).toEqual([
+      expect.objectContaining({ id: -1001234567890 }),
+    ])
+    expect(await get("?q=-100123")).toEqual([])
+    expect(await get("?q=205")).toEqual([expect.objectContaining({ id: 205 })])
+    expect((await get("?q=20")).some((chat) => chat.id === 205)).toBe(false)
+    expect(await get("?q=absent")).toEqual([])
+    expect(await get("?q=%27%20OR%201%3D1--")).toEqual([])
+    expect(await get("?id=201")).toEqual([
+      expect.objectContaining({ id: 201, effective: expect.objectContaining({ enabled: true }) }),
+    ])
+    expect(await get("?id=-1001234567890")).toEqual([
+      expect.objectContaining({ name: "Named group" }),
+    ])
+    expect(await get("?id=99999")).toEqual([])
+    store.observe(204, "private", "測試名稱")
+    expect(await get(`?q=${encodeURIComponent("測試")}`)).toEqual([
+      expect.objectContaining({ id: 204 }),
+    ])
+    store.observe(204, "private", "Müller")
+    expect(await get(`?q=${encodeURIComponent("MÜLLER")}`)).toEqual([
+      expect.objectContaining({ id: 204, name: "Müller" }),
+    ])
+    expect((await get("?id=202"))[0]?.effective.enabled).toBe(false)
+    const pages = await Promise.all([get("?offset=100"), get("?q=duplicate"), get("?id=-200")])
+    expect(pages[0]).toHaveLength(100)
+    expect(pages[1]).toHaveLength(2)
+    expect(pages[2]).toEqual([expect.objectContaining({ id: -200 })])
+    expect(await get("?offset=1000")).toEqual([])
+    expect(await get("?q=%20%20")).toEqual(first)
+    expect(store.snapshot()).toEqual(before)
+    expect(apply).not.toHaveBeenCalled()
+  })
+
+  it("validates directory parameters and requires authentication for all query forms", async () => {
+    for (const query of ["q=secret", "id=-100", "offset=100"]) {
+      expect((await call(`/api/chats?${query}`)).status).toBe(401)
+    }
+    for (const query of [
+      "q=x&q=y",
+      "id=1&id=2",
+      "offset=0&offset=1",
+      "type=group&type=channel",
+      "access=all&access=allowed",
+      "q=%00",
+      `q=${"x".repeat(129)}`,
+      "unknown=1",
+      "id=0",
+      "id=-0",
+      "id=01",
+      "id=%2B1",
+      "id=1.5",
+      "id=9007199254740992",
+      "id=",
+      "id=NaN",
+      "id=1&q=",
+      "id=1&type=group",
+      "id=1&access=allowed",
+      "id=1&offset=1",
+      "offset=-1",
+      "offset=1001",
+      "offset=1.5",
+      "offset=Infinity",
+      "offset=01",
+      "offset=",
+      "type=invalid",
+      "access=invalid",
+      "__proto__=x",
+    ])
+      expect((await call(`/api/chats?${query}`, "GET", undefined, auth())).status, query).toBe(400)
+    for (let id = 1; id <= 1001; id++) store.observe(id, "private", `Bounded ${id}`)
+    const get = async (offset: number) =>
+      JSON.parse(
+        (await call(`/api/chats?offset=${offset}`, "GET", undefined, auth())).body,
+      ) as unknown[]
+    expect(await get(0)).toHaveLength(100)
+    expect(await get(900)).toHaveLength(100)
+    expect(await get(1000)).toEqual([])
+    expect(JSON.parse((await call("/api/chats?id=1001", "GET", undefined, auth())).body)).toEqual(
+      [],
+    )
+  })
+
   it("filters all retained audit records with bounded, inclusive, parameterized queries", async () => {
     store.db.exec("DELETE FROM audit")
     const insert = store.db.prepare(

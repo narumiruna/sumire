@@ -33,6 +33,7 @@ import {
   type Snapshot,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
+import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { type Chat, ChatWorkspace, chatName } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
@@ -727,10 +728,6 @@ function App() {
     }
   }, [savedRevision])
   const [dirty, setDirty] = useState(false)
-  const [chats, setChats] = useState<Chat[]>([])
-  const [knownChats, setKnownChats] = useState<Chat[]>([])
-  const [chatsLoading, setChatsLoading] = useState(false)
-  const [chatsError, setChatsError] = useState("")
   const [accessTarget, setAccessTarget] = useState("")
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [imports, setImports] = useState<ImportReport[]>([])
@@ -743,8 +740,6 @@ function App() {
     setEditorPending((previous) => ({ ...previous, [key]: value }))
   const pending = dirty || mcpDirty || providerPending || localPending
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
-  const [chatPage, setChatPage] = useState({ offset: 0 })
-  const refreshChats = () => setChatPage((page) => ({ offset: page.offset }))
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
   const [toolName, setToolName] = useState("")
@@ -772,8 +767,6 @@ function App() {
     setDirty(false)
     setSnapshot(undefined)
     setSavedPolicy(undefined)
-    setChats([])
-    setKnownChats([])
   }, [])
   const expireInspectorSession = useCallback(() => {
     expireSession()
@@ -808,37 +801,9 @@ function App() {
     setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
   }, [])
-  const loadChats = useCallback(
-    async (signal: AbortSignal) => {
-      setChatsLoading(true)
-      setChatsError("")
-      try {
-        const result = await request<Chat[]>(`chats?offset=${chatPage.offset}`)
-        if (signal.aborted) return
-        setChats(result)
-        setKnownChats((previous) => [
-          ...new Map([...previous, ...result].map((c) => [c.id, c])).values(),
-        ])
-      } catch (error) {
-        if (signal.aborted) return
-        if (error instanceof ApiError && error.status === 401) {
-          expireSession()
-          setError("Administrator session expired. Sign in again.")
-        } else {
-          setChatsError(error instanceof Error ? error.message : "Could not load chats")
-        }
-      } finally {
-        if (!signal.aborted) setChatsLoading(false)
-      }
-    },
-    [chatPage, expireSession],
-  )
-  useEffect(() => {
-    if (!session) return
-    const controller = new AbortController()
-    void loadChats(controller.signal)
-    return () => controller.abort()
-  }, [session, loadChats])
+  const directory = useChatDirectory(Boolean(session), chat, expireInspectorSession)
+  const { knownChats } = directory
+  const refreshChats = directory.refresh
   useEffect(() => {
     const capture = () => {
       const params = new URLSearchParams(window.location.hash.slice(1))
@@ -1007,6 +972,13 @@ function App() {
           id="save-status"
           role="region"
           className={`save-status ${dirty ? "pending-bar" : "saved-state"}`}
+          hidden={
+            page === "Durable" &&
+            !pending &&
+            !busy &&
+            snapshot.status === "applied" &&
+            snapshot.revision === snapshot.applied
+          }
           data-pending={dirty}
           gap="3"
           align="center"
@@ -1144,8 +1116,7 @@ function App() {
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
             <ChatWorkspace
-              chats={chats}
-              knownChats={knownChats}
+              directory={directory}
               chat={chat}
               onSelect={setChat}
               policy={policy}
@@ -1158,11 +1129,6 @@ function App() {
                     : "Pending"
               }
               inventory={inventory}
-              offset={chatPage.offset}
-              loading={chatsLoading}
-              error={chatsError}
-              onPage={(offset) => setChatPage({ offset })}
-              onRetry={refreshChats}
               audit={audit}
               onPolicyChange={update}
               onAudit={() => setPage("Audit")}
@@ -1205,12 +1171,24 @@ function App() {
             </ChatWorkspace>
           </EditorSection>
           {page === "Durable" && (
-            <DurableInspector
-              key={chat}
-              chat={chat}
-              onChats={() => setPage("Chats")}
-              onSessionExpired={expireInspectorSession}
-            />
+            <>
+              <section className="durable-chat-selector" aria-label="Find a chat">
+                <details open={!chat}>
+                  <summary>Find or switch chat</summary>
+                  <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
+                </details>
+              </section>
+              <DurableInspector
+                key={chat}
+                chat={chat}
+                metadata={directory.selected.chat}
+                metadataLoading={directory.selected.loading}
+                metadataError={directory.selected.error}
+                onMetadataRetry={directory.refresh}
+                onChats={() => setPage("Chats")}
+                onSessionExpired={expireInspectorSession}
+              />
+            </>
           )}
           <EditorSection active={page === "Access"} aria-label="Access settings">
             {accessTarget && (

@@ -102,6 +102,8 @@ export type DurableInspectionLoadedResponse = {
   readAt: string
   view: DurableInspectionView
   items: DurableInspectionItem[]
+  /** Persisted selection on conversations reads; null means no selection or missing record. */
+  selectedConversation?: DurableConversationItem | null
   nextCursor?: string
   truncated: boolean
 }

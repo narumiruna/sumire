@@ -71,7 +71,7 @@ export async function startAdmin(
   // A failed application must not prevent the administrator from repairing settings.
   await apply().catch(() => {})
   for (const id of await factory.listChats())
-    store.observe(id, id > 0 ? "private" : "group", String(id))
+    store.observe(id, id > 0 ? "private" : "group", String(id), "inferred")
   const server = createAdminServer(config, {
     store,
     mcp,

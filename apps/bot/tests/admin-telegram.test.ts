@@ -9,6 +9,105 @@ import type { DocumentConverter } from "../src/documents/converter.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 
+it("observes full private names, partial updates, renames, callbacks, and short-circuit commands without granting access", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sumire-observe-telegram-"))
+  const store = new AdminStore(path.join(root, "admin.sqlite"), new Set([42]), 42)
+  const sessions = {
+    submit: vi.fn(),
+    appendPassiveContext: vi.fn(),
+  } as unknown as ChatSessionRegistry
+  const telegram = createTelegramAgentBot(
+    loadSettings(
+      { BOT_ADMIN_ID: "42", BOT_TOKEN: "fixture", ADMIN_ORIGIN: "https://admin.example.test" },
+      root,
+    ),
+    sessions,
+    { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    {
+      control: store,
+      botInfo: {
+        id: 999,
+        is_bot: true,
+        username: "fixture_bot",
+        first_name: "Fixture",
+      } as UserFromGetMe,
+    },
+  )
+  telegram.bot.api.config.use(async () => ({ ok: true, result: { message_id: 99 } }) as never)
+  const before = store.snapshot()
+  let updateId = 0
+  const send = async (chat: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
+    await telegram.bot.handleUpdate({
+      update_id: ++updateId,
+      message: {
+        message_id: updateId,
+        date: 1,
+        from: { id: chat.id, is_bot: false, first_name: "Sender" },
+        chat,
+        ...extra,
+      },
+    } as unknown as Update)
+  }
+  const name = (id: number) => store.listChats(0).find((chat) => chat.id === id)?.name
+  try {
+    await send({ id: 43, type: "private", first_name: " First ", last_name: " Last " })
+    expect(name(43)).toBe("First Last")
+    await send({ id: 43, type: "private", first_name: "New", last_name: "Surname" })
+    expect(name(43)).toBe("New Surname")
+    await send({ id: 43, type: "private", first_name: "New" })
+    expect(name(43)).toBe("New")
+    await send({ id: 43, type: "private" })
+    expect(name(43)).toBe("New")
+    await send({ id: -100, type: "supergroup", title: "Old title" })
+    await send(
+      { id: -100, type: "supergroup", title: "Old title" },
+      { new_chat_title: "Renamed group" },
+    )
+    expect(name(-100)).toBe("Renamed group")
+    await send({ id: -100, type: "supergroup", title: " " })
+    expect(name(-100)).toBe("Renamed group")
+    await telegram.bot.handleUpdate({
+      update_id: ++updateId,
+      callback_query: {
+        id: "fixture",
+        from: { id: 43, is_bot: false, first_name: "Sender" },
+        chat_instance: "fixture",
+        data: "fixture",
+        message: {
+          message_id: 1,
+          date: 1,
+          chat: { id: -100, type: "supergroup", title: "Callback title" },
+        },
+      },
+    } as Update)
+    expect(name(-100)).toBe("Callback title")
+    await send(
+      { id: -100, type: "supergroup", title: "Allow title" },
+      { text: "/allow", entities: [{ type: "bot_command", offset: 0, length: 6 }] },
+    )
+    expect(name(-100)).toBe("Allow title")
+    await send(
+      { id: 42, type: "private", first_name: "Admin", last_name: "Full" },
+      { text: "/admin", entities: [{ type: "bot_command", offset: 0, length: 6 }] },
+    )
+    expect(name(42)).toBe("Admin Full")
+    await send(
+      { id: 42, type: "private", first_name: "Approved", last_name: "Name" },
+      { text: "/allow", entities: [{ type: "bot_command", offset: 0, length: 6 }] },
+    )
+    expect(name(42)).toBe("Approved Name")
+    expect(store.snapshot()).toEqual(before)
+    expect(store.allows(-100)).toBe(false)
+    expect(store.allows(43)).toBe(false)
+    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
+  } finally {
+    await telegram.stop()
+    store.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 it("rejects unapproved chats before attachments, commands, callbacks, or passive context", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-telegram-"))
   const store = new AdminStore(path.join(root, "admin.sqlite"), new Set([42]), 42)
@@ -82,6 +181,7 @@ it("rejects unapproved chats before attachments, commands, callbacks, or passive
         },
       },
     } as Update)
+    expect(store.listChats(0)).toContainEqual({ id: -100, type: "supergroup", name: "Denied" })
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(sessions.appendPassiveContext).not.toHaveBeenCalled()
     expect(sessions.reset).not.toHaveBeenCalled()

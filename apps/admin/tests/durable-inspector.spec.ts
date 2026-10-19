@@ -6,10 +6,20 @@ for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
     const state = await durableFixture(page)
     const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
-    await expect(inspector.getByText("Active conversation", { exact: true })).toBeVisible()
-    await expect(inspector.getByText(/Read time:/)).toContainText("2026-10-19T12:00:00.000Z")
+    await expect(
+      inspector.getByText("Persisted selected conversation", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      inspector
+        .getByRole("region", { name: "Persisted selection", exact: true })
+        .getByText(/Read time:/),
+    ).toContainText("2026-10-19T12:00:00.000Z")
+    await expect(inspector.getByRole("heading", { name: "Loaded chat", exact: true })).toBeVisible()
+    await expect(
+      inspector.getByRole("region", { name: "Selected conversation task history", exact: true }),
+    ).toContainText("1 task record on the loaded page")
     await expect(inspector.getByText(/Truncated · the server read limit/)).toBeVisible()
-    await page.getByRole("button", { name: "Back to chats", exact: true }).click()
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
     if (await back.isVisible()) await back.click()
     await page
@@ -19,7 +29,7 @@ for (const width of [1440, 390, 320]) {
     await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
     await expect(inspector.getByText("Historical conversation", { exact: true })).toBeVisible()
     await expect(inspector.getByRole("heading", { name: "conversation #17" })).toBeVisible()
-    await page.getByRole("button", { name: "Back to chats", exact: true }).click()
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
     if (await back.isVisible()) await back.click()
     await page
       .getByRole("list", { name: "Chats on this page" })
@@ -30,7 +40,7 @@ for (const width of [1440, 390, 320]) {
     await expect(inspector).toContainText("Inspection will not open its database")
     expect(state.methods.every((method) => method === "GET")).toBe(true)
     await page.waitForTimeout(150)
-    expect(state.requests).toHaveLength(3)
+    expect(state.requests).toHaveLength(4)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }
@@ -54,14 +64,15 @@ test("all four views, approved JSON, scope, owner and parent links, and safe tex
   await expect(
     inspector.getByRole("combobox", { name: "Document scope", exact: true }),
   ).toHaveValue("task")
-  expect(state.requests.at(-1)?.searchParams.get("taskId")).toBe("8")
   await expect(
     inspector.getByText("Empty · no records in this view.", { exact: true }),
   ).toBeVisible()
+  expect(state.requests.at(-1)?.searchParams.get("taskId")).toBe("8")
   await expect(inspector.getByRole("link", { name: /Inspect document/ })).toHaveCount(0)
   await inspector
     .getByRole("combobox", { name: "Document scope", exact: true })
     .selectOption("conversation")
+  await inspector.getByRole("button", { name: "Select document 102", exact: true }).click()
   await expect(inspector.getByText(/Value withheld · Kind is not approved/)).toBeVisible()
   await expect(
     inspector.getByRole("link", { name: "Inspect document 102", exact: true }),
@@ -95,6 +106,85 @@ test("all four views, approved JSON, scope, owner and parent links, and safe tex
   expect(untrusted).toContain("untrusted.invalid")
 })
 
+for (const selected of [true, false]) {
+  for (const view of ["tasks", "documents", "entries"] as const) {
+    test(`historical conversation remains the ${view} target with persisted selection ${selected}`, async ({
+      page,
+    }) => {
+      const state = await durableFixture(page, "/?section=Durable")
+      if (!selected) state.selectedConversation = null
+      await page.route("**/api/chats/42/durable?*", async (route) => {
+        const url = new URL(route.request().url())
+        if (
+          url.searchParams.get("view") === "conversations" &&
+          url.searchParams.get("objectId") === "6"
+        ) {
+          await route.fulfill({
+            json: {
+              version: 1,
+              state: "loaded",
+              readAt: "2026-10-19T12:00:02.000Z",
+              view: "conversations",
+              items: [{ type: "conversation", id: 6, active: false }],
+              selectedConversation: selected ? { type: "conversation", id: 7, active: true } : null,
+              truncated: false,
+            },
+          })
+          return
+        }
+        if (url.searchParams.get("conversationId") === "6") {
+          state.requests.push(url)
+          state.methods.push(route.request().method())
+          await route.fulfill({
+            json: {
+              version: 1,
+              state: "loaded",
+              readAt: "2026-10-19T12:00:03.000Z",
+              view: url.searchParams.get("view"),
+              items: [],
+              truncated: false,
+            },
+          })
+          return
+        }
+        await route.fallback()
+      })
+      await page.goto("/?section=Durable&chat=42&view=conversations&objectId=6")
+      const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+      await expect(
+        inspector.getByRole("heading", { name: "conversation #6", exact: true }),
+      ).toBeVisible()
+      await expect(inspector).toContainText("Inspection target: conversation 6.")
+      await inspector
+        .getByRole("tab", { name: view[0]?.toUpperCase() + view.slice(1), exact: true })
+        .click()
+      await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=6`))
+      await expect(page).not.toHaveURL(/objectId=/)
+      await expect
+        .poll(() =>
+          state.requests.some(
+            (url) =>
+              url.searchParams.get("view") === view &&
+              url.searchParams.get("conversationId") === "6",
+          ),
+        )
+        .toBe(true)
+      if (view === "documents")
+        expect(
+          state.requests
+            .find(
+              (url) =>
+                url.searchParams.get("view") === view &&
+                url.searchParams.get("conversationId") === "6",
+            )
+            ?.searchParams.get("scope"),
+        ).toBe("conversation")
+      await expect(inspector).toContainText("Inspection target: conversation 6.")
+      expect(state.methods.every((method) => method === "GET")).toBe(true)
+    })
+  }
+}
+
 test("opaque pagination, previous page, manual refresh, and browser back", async ({ page }) => {
   const state = await durableFixture(page)
   const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
@@ -102,7 +192,12 @@ test("opaque pagination, previous page, manual refresh, and browser back", async
   await expect(previous).toBeDisabled()
   await inspector.getByRole("button", { name: "Next objects", exact: true }).click()
   await expect(inspector.getByRole("heading", { name: "conversation #9" })).toBeVisible()
-  expect(state.requests.at(-1)?.searchParams.get("cursor")).toBe("opaque+/=token")
+  expect(
+    state.requests
+      .filter((url) => url.searchParams.get("view") === "conversations")
+      .at(-1)
+      ?.searchParams.get("cursor"),
+  ).toBe("opaque+/=token")
   await expect(inspector.getByRole("button", { name: "Next objects", exact: true })).toBeDisabled()
   await previous.click()
   await expect(inspector.getByRole("heading", { name: "conversation #7" })).toBeVisible()
@@ -127,15 +222,24 @@ test("deep links, context validation, distinct empty and read failure states", a
   )
   const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
   await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  state.selectedConversation = null
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(
+    inspector.getByText("No selected-conversation metadata available.", { exact: true }),
+  ).toBeVisible()
   await inspector.getByRole("tab", { name: "Tasks", exact: true }).click()
   await expect(
     inspector.getByText("Select a conversation to inspect this view.", { exact: true }),
   ).toBeVisible()
-  expect(state.requests).toHaveLength(1)
+  await expect(
+    inspector.getByText("No selected-conversation metadata available.", { exact: true }),
+  ).toBeVisible()
+  const beforeInvalid = state.requests.length
+  await inspector.getByText("Advanced inspection", { exact: true }).click()
   await inspector.getByLabel("Conversation ID", { exact: true }).fill("07")
   await inspector.getByRole("button", { name: "Inspect IDs", exact: true }).click()
   await expect(inspector.getByRole("alert")).toContainText("positive whole-number")
-  expect(state.requests).toHaveLength(1)
+  expect(state.requests).toHaveLength(beforeInvalid)
   state.empty = true
   await inspector.getByLabel("Conversation ID", { exact: true }).fill("7")
   await inspector.getByRole("button", { name: "Inspect IDs", exact: true }).click()
@@ -144,7 +248,7 @@ test("deep links, context validation, distinct empty and read failure states", a
   ).toBeVisible()
   state.failed = true
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
-  await expect(inspector.getByRole("alert")).toHaveText("Read failed. Refresh to retry.")
+  await expect(inspector.getByRole("alert").last()).toHaveText("Read failed. Refresh to retry.")
   state.failed = false
   state.empty = false
   await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
@@ -188,13 +292,19 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
   try {
     await page.getByRole("link", { name: "Inspect document 101", exact: true }).click()
     await expect(page.getByText("Loading Durable…", { exact: true })).toBeVisible()
+    await expect
+      .poll(() => state.requests.filter((url) => url.searchParams.get("objectId") === "101").length)
+      .toBe(1)
     await page.getByRole("tab", { name: "Entries", exact: true }).click()
     await expect(page.getByRole("heading", { name: "entry #70" })).toBeVisible()
     await expect.poll(() => aborted.length).toBe(1)
     await page.getByRole("tab", { name: "Documents", exact: true }).click()
     await page.getByRole("link", { name: "Inspect document 101", exact: true }).click()
     await expect(page.getByText("Loading Durable…", { exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Back to chats", exact: true }).click()
+    await expect
+      .poll(() => state.requests.filter((url) => url.searchParams.get("objectId") === "101").length)
+      .toBe(2)
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
     await expect.poll(() => aborted.length).toBe(2)
     await page
       .getByRole("list", { name: "Chats on this page" })
@@ -221,7 +331,7 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
   await expect(page.getByRole("heading", { name: "conversation #7" })).toBeVisible()
   await expect(page.locator(".pending-bar")).toContainText("pending policy changes")
-  await page.getByRole("button", { name: "Back to chats", exact: true }).click()
+  await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await expect(page.locator(".chat-header code")).toHaveText("42")
   await navigateSection(page, "Durable")
@@ -255,6 +365,9 @@ test("a chat change in history cancels the old chat read and clears object conte
   try {
     await page.getByRole("link", { name: "Inspect document 101", exact: true }).click()
     await expect(page.getByText("Loading Durable…", { exact: true })).toBeVisible()
+    await expect
+      .poll(() => state.requests.some((url) => url.searchParams.get("objectId") === "101"))
+      .toBe(true)
     await page.evaluate(() => {
       window.history.pushState(null, "", "?section=Durable&chat=43")
       window.dispatchEvent(new PopStateEvent("popstate"))
@@ -264,7 +377,8 @@ test("a chat change in history cancels the old chat read and clears object conte
   } finally {
     release()
   }
-  await expect(page.getByRole("heading", { name: "Chat 43", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Idle chat", exact: true })).toBeVisible()
+  await page.getByText("Advanced inspection", { exact: true }).click()
   await expect(page.getByLabel("Conversation ID", { exact: true })).toHaveValue("")
   await expect(page.getByText("Approved value JSON for document 101", { exact: true })).toHaveCount(
     0,
@@ -276,7 +390,7 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
 }) => {
   const state = await durableFixture(page, "/?section=Durable")
   await expect(
-    page.getByText("Select a chat in Chats to inspect Durable.", { exact: true }),
+    page.getByText("Select a chat above to inspect Durable.", { exact: true }),
   ).toBeVisible()
   expect(state.requests).toHaveLength(0)
   await page.goto("/?section=Durable&chat=42&view=tasks&conversationId=7&objectId=999")
@@ -291,6 +405,207 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
     }),
   ).toBeVisible()
 })
+
+test("off-page persisted selection is separate from the inspection target and uses bounded historical evidence", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
+  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+  await expect(
+    inspector.getByRole("heading", { name: "conversation #7", exact: true }),
+  ).toBeVisible()
+  expect(state.requests).toHaveLength(2)
+  state.taskTruncated = true
+  state.selectedConversation = {
+    type: "conversation",
+    id: 99,
+    active: true,
+    parent: { conversationId: 6, at: 60 },
+  }
+  state.taskItems = [
+    {
+      type: "task",
+      id: 8,
+      conversationId: 99,
+      kind: "model",
+      version: 1,
+      status: "running",
+      background: false,
+      abortRequested: false,
+    },
+  ]
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  const selection = inspector.getByRole("region", { name: "Persisted selection", exact: true })
+  const history = inspector.getByRole("region", {
+    name: "Selected conversation task history",
+    exact: true,
+  })
+  await expect(selection.getByText("Conversation 99", { exact: true })).toBeVisible()
+  await expect(selection).toContainText("Inspection target: conversation 7")
+  await expect(history).toContainText("1 task record on the loaded page · more may exist")
+  await expect(history).toContainText("historical running")
+  await expect(history).toContainText("2026-10-19T12:00:01.000Z")
+  await expect(selection).toContainText("2026-10-19T12:00:00.000Z")
+  await expect(
+    inspector.getByRole("heading", { name: "conversation #7", exact: true }),
+  ).toBeVisible()
+  expect(state.requests).toHaveLength(4)
+  expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("99")
+  await expect(inspector.getByLabel("Conversation ID", { exact: true })).toBeHidden()
+  await expect(inspector.locator("pre")).toBeHidden()
+  await expect(
+    inspector.getByText("Read-only persisted data; not live execution state", { exact: true }),
+  ).toBeVisible()
+  await expect(inspector).not.toContainText(/healthy|idle execution|currently running/i)
+  state.selectedConversation = null
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(selection).toContainText("No selected-conversation metadata available.")
+  await expect(history).toContainText("No selected-conversation metadata to read.")
+  expect(state.requests).toHaveLength(5)
+})
+
+test("a partial history failure keeps selection and inspection with independent read times and a three-read budget", async ({
+  page,
+}) => {
+  const state = await durableFixture(
+    page,
+    "/?section=Durable&chat=42&view=documents&scope=session&objectId=201",
+  )
+  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  expect(state.requests).toHaveLength(3)
+  state.failures.set("tasks", 503)
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  const history = inspector.getByRole("region", {
+    name: "Selected conversation task history",
+    exact: true,
+  })
+  await expect(history.getByRole("alert")).toHaveText("Read failed. Refresh to retry.")
+  await expect(
+    inspector.getByRole("region", { name: "Persisted selection", exact: true }),
+  ).toContainText("Conversation 7")
+  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expect(history.locator("time")).toHaveCount(0)
+  expect(state.requests).toHaveLength(6)
+  await page.waitForTimeout(250)
+  expect(state.requests).toHaveLength(6)
+  state.failures.delete("tasks")
+  state.taskItems = []
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(history).toContainText("No task history on this page.")
+  expect(state.requests).toHaveLength(9)
+  state.failures.set("tasks", 403)
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(history.getByRole("alert")).toHaveText(
+    "Permission denied. This data could not be read.",
+  )
+  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  expect(state.requests).toHaveLength(12)
+  state.failures.delete("tasks")
+  state.failures.set("conversations", 503)
+  await inspector.getByRole("button", { name: "Refresh Durable", exact: true }).click()
+  await expect(
+    inspector.getByRole("region", { name: "Persisted selection", exact: true }).getByRole("alert"),
+  ).toHaveText("Read failed. Refresh to retry.")
+  await expect(history).toContainText("Unavailable: selection could not be read.")
+  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  expect(state.requests).toHaveLength(14)
+})
+
+test("chat IDs and collapsed approved JSON can be copied, with explicit copy failures and no extra reads", async ({
+  page,
+}) => {
+  const state = await durableFixture(
+    page,
+    "/?section=Durable&chat=42&view=documents&scope=conversation&conversationId=7&objectId=101",
+  )
+  const inspector = page.getByRole("region", { name: "Durable Inspector", exact: true })
+  await expect(inspector.getByText("Server-approved projection", { exact: true })).toBeVisible()
+  await expect(inspector.locator("pre:visible")).toHaveCount(0)
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          sessionStorage.setItem("copied-fixture", text)
+        },
+      },
+    }),
+  )
+  await inspector.getByRole("button", { name: "Copy chat ID", exact: true }).click()
+  await expect(inspector.getByText("Chat ID copied.", { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem("copied-fixture"))).toBe("42")
+  await inspector.getByText("Approved value JSON for document 101", { exact: true }).click()
+  await inspector
+    .getByRole("button", { name: "Copy Approved value JSON for document 101", exact: true })
+    .click()
+  await expect(inspector.getByText("JSON copied.", { exact: true })).toBeVisible()
+  const copied = await page.evaluate(() => sessionStorage.getItem("copied-fixture"))
+  expect(JSON.parse(copied ?? "null")).toEqual({
+    kind: "pi.agent",
+    model: { provider: "fixture", modelId: untrusted },
+    thinkingLevel: "low",
+  })
+  await inspector.getByText("Metadata JSON for document 101", { exact: true }).click()
+  await inspector
+    .getByRole("button", { name: "Copy Metadata JSON for document 101", exact: true })
+    .click()
+  const metadata = JSON.parse(
+    (await page.evaluate(() => sessionStorage.getItem("copied-fixture"))) ?? "null",
+  )
+  expect(metadata.id).toBe(101)
+  expect(metadata.value).toBeUndefined()
+  expect(metadata.body).toBeUndefined()
+  expect(metadata.output).toBeUndefined()
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard denied")
+        },
+      },
+    }),
+  )
+  await inspector
+    .getByRole("button", { name: "Copy Approved value JSON for document 101", exact: true })
+    .click()
+  await expect(
+    inspector.getByText("Copy failed. Select and copy the JSON below.", { exact: true }),
+  ).toBeVisible()
+  await expect(inspector.locator("details[open] pre").last()).toBeVisible()
+  expect(state.requests).toHaveLength(3)
+  expect(await inspector.locator("img, iframe, script").count()).toBe(0)
+})
+
+for (const width of [390, 320])
+  test(`long names and safe-integer IDs wrap at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await durableFixture(page)
+    await expect(page.getByRole("heading", { name: "conversation #7", exact: true })).toBeVisible()
+    const id = 9007199254740991
+    const name = `A persisted chat name with a very long uninterrupted suffix ${"long".repeat(35)}`
+    state.chats.push({ id: -id, name, type: "supergroup" })
+    state.selectedConversation = { type: "conversation", id, active: true }
+    state.taskItems = [
+      {
+        type: "task",
+        id,
+        conversationId: id,
+        kind: "model",
+        version: 1,
+        status: "terminal",
+        outcome: "completed",
+        background: false,
+        abortRequested: false,
+      },
+    ]
+    await page.goto(`/?section=Durable&chat=-${id}&view=tasks&conversationId=${id}`)
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: `task #${id}`, exact: true })).toBeVisible()
+    await page.getByText(`Metadata JSON for task ${id}`, { exact: true }).click()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
 
 test("keyboard tabs, JSON expansion, and narrow layout are usable", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 })

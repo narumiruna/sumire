@@ -139,6 +139,7 @@ describe("authenticated durable inspection HTTP", () => {
     const unloaded = await f.get(route)
     expect(unloaded.status).toBe(200)
     expect(unloaded.data).toMatchObject({ version: 1, state: "not-loaded", items: [] })
+    expect(unloaded.data).not.toHaveProperty("selectedConversation")
     expect(f.create).not.toHaveBeenCalled()
     for (const method of ["POST", "PUT", "DELETE"])
       expect((await f.get(route, method)).status).toBe(405)
@@ -234,6 +235,54 @@ describe("authenticated durable inspection HTTP", () => {
     } finally {
       stop()
     }
+  })
+
+  it("returns persisted off-page selection separately from URL inspection target without mutation", async () => {
+    const f = await setup()
+    const session = await f.loaded()
+    const root = await currentConversation(session)
+    const selected = await session.harness.createConversation(
+      { ownership: { kind: "ownerless" } },
+      context,
+    )
+    await session.harness.commit(async (tx) => {
+      ;(await tx.doc(BotSessionDoc)).activeConversation = selected.id
+    }, context)
+    const before = await session.harness.inspect(context)
+    const commits = vi.fn()
+    const unsubscribe = session.harness.subscribeCommits(commits)
+    try {
+      const page = await f.get(`${route}?limit=1`)
+      expect(page.status).toBe(200)
+      expect(page.data).toMatchObject({
+        state: "loaded",
+        items: [{ id: root.id, active: false }],
+        selectedConversation: { id: selected.id, active: true },
+      })
+      const direct = await f.get(`${route}?objectId=${root.id}`)
+      expect(direct.data).toMatchObject({
+        items: [{ id: root.id, active: false }],
+        selectedConversation: { id: selected.id, active: true },
+      })
+      const tasks = await f.get(`${route}?view=tasks&conversationId=${selected.id}`)
+      expect(tasks.status).toBe(200)
+      expect(tasks.data.items).toEqual([])
+      expect(tasks.data).not.toHaveProperty("selectedConversation")
+      expect(await session.harness.inspect(context)).toEqual(before)
+      expect(commits).not.toHaveBeenCalled()
+      expect(f.create).toHaveBeenCalledOnce()
+      expect(f.fixture.requests).toEqual([])
+    } finally {
+      unsubscribe()
+    }
+    await session.harness.commit(async (tx) => {
+      ;(await tx.doc(BotSessionDoc)).activeConversation = 99999
+    }, context)
+    expect((await f.get(route)).data).toHaveProperty("selectedConversation", null)
+    await session.harness.commit(async (tx) => {
+      Reflect.deleteProperty(await tx.doc(BotSessionDoc), "activeConversation")
+    }, context)
+    expect((await f.get(route)).data).toHaveProperty("selectedConversation", null)
   })
 
   it("binds pagination to the chat and query and conceals read failures", async () => {
