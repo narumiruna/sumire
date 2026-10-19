@@ -79,6 +79,7 @@ export function ProviderEditor({
           </Text>
           <Flex gap="2">
             <Button
+              color="gray"
               variant="soft"
               onClick={() => {
                 setModel(m.id)
@@ -133,6 +134,7 @@ export function ProviderEditor({
       </details>
       <Flex gap="2" wrap="wrap">
         <Button
+          color="gray"
           variant="soft"
           disabled={!model}
           onClick={() => {
@@ -145,6 +147,8 @@ export function ProviderEditor({
           Add / update model
         </Button>
         <Button
+          color="gray"
+          variant="soft"
           disabled={!id}
           onClick={() =>
             onAdd({
@@ -157,7 +161,7 @@ export function ProviderEditor({
         >
           Set provider configuration
         </Button>
-        <Button variant="soft" onClick={onDiscard}>
+        <Button color="gray" variant="soft" onClick={onDiscard}>
           Discard custom endpoint draft
         </Button>
       </Flex>

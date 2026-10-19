@@ -99,10 +99,15 @@ export function AccessApproval({
         <Prose>Load and review the chat before approval.</Prose>
       )}
       <Flex gap="2" mt="2">
-        <Button variant="soft" disabled={disabled} onClick={() => setReload((v) => v + 1)}>
+        <Button
+          color="gray"
+          variant="soft"
+          disabled={disabled}
+          onClick={() => setReload((v) => v + 1)}
+        >
           Reload request
         </Button>
-        <Button variant="soft" disabled={disabled} onClick={clear}>
+        <Button color="gray" variant="soft" disabled={disabled} onClick={clear}>
           Dismiss request
         </Button>
       </Flex>
