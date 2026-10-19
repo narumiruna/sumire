@@ -18,7 +18,7 @@ import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-regi
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
-import { appendMessage, currentConversation } from "./helpers/durable-session.js"
+import { appendMessage, callDurableTool, currentConversation } from "./helpers/durable-session.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
@@ -495,45 +495,26 @@ describe("createPiSessionFactory", () => {
         "codemode",
       ])
       for (const name of ["read", "bash", "edit", "write"]) {
-        expect(session.nativeTools.find((tool) => tool.name === name)).toBeDefined()
+        expect(
+          session.registry
+            .snapshot()
+            .tools()
+            .find(({ tool }) => tool.name === name),
+        ).toBeDefined()
       }
-      const write = session.nativeTools.find((tool) => tool.name === "write")
-      const edit = session.nativeTools.find((tool) => tool.name === "edit")
-      const read = session.nativeTools.find((tool) => tool.name === "read")
-      const bash = session.nativeTools.find((tool) => tool.name === "bash")
-      if (!write || !edit || !read || !bash) throw new Error("Pi coding tools were not registered")
-
-      await write.execute(
-        "write-call",
-        { path: "scratch/note.txt", content: "before\n" },
-        undefined,
-        undefined,
-        undefined as never,
-      )
-      await edit.execute(
-        "edit-call",
-        { path: "scratch/note.txt", edits: [{ oldText: "before", newText: "after" }] },
-        undefined,
-        undefined,
-        undefined as never,
-      )
-      const readResult = await read.execute(
-        "read-call",
-        { path: "scratch/note.txt" },
-        undefined,
-        undefined,
-        undefined as never,
-      )
+      await callDurableTool(session, "write", { path: "scratch/note.txt", content: "before\n" })
+      await callDurableTool(session, "edit", {
+        path: "scratch/note.txt",
+        edits: [{ oldText: "before", newText: "after" }],
+      })
+      const readResult = await callDurableTool(session, "read", { path: "scratch/note.txt" })
       expect(readResult.content).toContainEqual({ type: "text", text: "after\n" })
       expect(existsSync(path.join(workdir, "scratch/note.txt"))).toBe(true)
       expect(existsSync(path.join(root, "scratch/note.txt"))).toBe(false)
-      const bashResult = await bash.execute(
-        "bash-call",
-        { command: "test -f scratch/note.txt && printf tool-ok", timeout: 5 },
-        undefined,
-        undefined,
-        undefined as never,
-      )
+      const bashResult = await callDurableTool(session, "bash", {
+        command: "test -f scratch/note.txt && printf tool-ok",
+        timeout: 5,
+      })
       expect(bashResult.content).toContainEqual({ type: "text", text: "tool-ok" })
 
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")

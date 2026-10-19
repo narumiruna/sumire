@@ -11,6 +11,7 @@ import { McpProcessHomes } from "../src/agent/mcp-process-homes.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
+import { callDurableTool } from "./helpers/durable-session.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -216,21 +217,19 @@ describe("admin durable runtime integration", () => {
       mcp,
     })
     const session = await factory.create(42)
-    const read = session.nativeTools.find((tool) => tool.name === "read")
-    expect(read).toBeDefined()
+    expect(session.getActiveToolNames()).toContain("read")
     const file = path.join(root, "fixture.txt")
     await writeFile(file, "fixture content")
-    expect(
-      await read?.execute("read-1", { path: file }, undefined, undefined, undefined as never),
-    ).toMatchObject({ content: expect.any(Array) })
+    expect(await callDurableTool(session, "read", { path: file })).toMatchObject({
+      content: expect.any(Array),
+      isError: false,
+    })
     const changed = store.snapshot().policy
     changed.tools = []
     changed.defaults.tools = []
     const revoked = store.save(changed, store.snapshot().revision, "42")
     store.applied(revoked.revision, true)
-    expect(() =>
-      read?.execute("read-2", { path: file }, undefined, undefined, undefined as never),
-    ).toThrow("not allowed")
+    expect(await callDurableTool(session, "read", { path: file })).toMatchObject({ isError: true })
     await session.dispose()
     const registry = new ChatSessionRegistry(
       asSessionCreator(factory),

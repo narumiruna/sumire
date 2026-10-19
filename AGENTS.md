@@ -14,7 +14,7 @@
 
 ## Boundaries
 
-- Pi's `AgentSession`, created through `@earendil-works/pi-coding-agent`, owns model turns, retries, compaction, transcript persistence, and the tool-call loop; submit work through `prompt`, `steer`, or `followUp` instead of implementing another agent loop.
+- Pi Durable's `Harness` owns model turns, retries, compaction, transcript persistence, and tool scheduling; use durable submissions, waits, forks, and aborts instead of constructing an `AgentSession` or another model loop.
 - The Telegram bot owns transport and orchestration around Pi, including command and addressing rules, context assembly, the per-chat session registry, cancellation, progress delivery, reply-tree restoration, and response delivery.
 - Extensions and custom tools implement capabilities, while Pi decides when to invoke them and continues the model turn with their results.
 - Pass ordinary natural-language intent, including summary requests, to Pi without keyword or regex routing unless a feature explicitly requires deterministic routing.

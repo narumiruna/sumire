@@ -32,6 +32,7 @@ export function createProgressExtension(authorize: () => void = () => {}) {
           "Replace the current progress with the complete supplied steps; keep at most one in_progress step, and send an empty steps array to clear it.",
         parameters: ProgressParameters,
         prepareArguments: validateProgressArguments,
+        callers: ["model"],
         replay: "safe",
         executionMode: "sequential",
         async execute(args, api, context) {

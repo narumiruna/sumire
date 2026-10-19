@@ -52,7 +52,7 @@ Docker BuildKit caches npm, pip, and apt downloads. Each workspace compiles in i
 
 Keep the same Docker builder to reuse local cache; avoid `--no-cache` or pruning build cache unless a clean build is intended. Container publishing exports all intermediate layers to GitHub Actions cache (`mode=max`) for reuse on later runs. GitHub Actions cache does not preserve cache-mount contents, so changed dependency inputs may still require downloads on a fresh runner.
 
-See the [TypeScript app README](apps/bot/README.md) for local development, configuration, and behavior.
+See the [TypeScript app README](apps/bot/README.md) for local development, configuration, and behavior. Before upgrading existing durable conversations, read the [native Pi Durable upgrade and recovery procedure](docs/pi-durable-native-upgrade.md).
 
 ## Node workspaces
 

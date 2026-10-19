@@ -1,28 +1,29 @@
-import { expect, it } from "vitest"
+import { expect, it, vi } from "vitest"
 import { adminShellEnvironment } from "../src/admin/shell.js"
-import { codingTools } from "../src/agent/durable-tools.js"
+import { callDurableTool } from "./helpers/durable-session.js"
+import { createPiFixture } from "./helpers/pi-fixture.js"
 
-it("does not inherit administrator or provider secrets into WebUI-managed shell tools", async () => {
-  const environment = adminShellEnvironment({
-    ...process.env,
-    OPENAI_API_KEY: "provider-fixture",
-    BOT_TOKEN: "bot-fixture",
-    TELEGRAM_LOGIN_CLIENT_SECRET: "login-fixture",
-    OTTER_TOKEN: "skill-fixture",
-  })
-  expect(environment).not.toHaveProperty("OPENAI_API_KEY")
-  expect(environment).not.toHaveProperty("BOT_TOKEN")
-  expect(environment).not.toHaveProperty("TELEGRAM_LOGIN_CLIENT_SECRET")
-  const bash = codingTools(process.cwd(), environment).find((tool) => tool.name === "bash")
-  const result = await bash?.execute(
-    "fixture",
-    {
-      command:
-        'printf "%s" "$OPENAI_API_KEY|$BOT_TOKEN|$TELEGRAM_LOGIN_CLIENT_SECRET|$OTTER_TOKEN"',
-    },
-    undefined,
-    undefined,
-    undefined as never,
-  )
-  expect(result?.content).toMatchObject([{ type: "text", text: "|||skill-fixture" }])
+it("does not inherit administrator or provider secrets into native shell tools", async () => {
+  vi.stubEnv("OPENAI_API_KEY", "provider-fixture")
+  vi.stubEnv("BOT_TOKEN", "bot-fixture")
+  vi.stubEnv("TELEGRAM_LOGIN_CLIENT_SECRET", "login-fixture")
+  vi.stubEnv("OTTER_TOKEN", "skill-fixture")
+  try {
+    const environment = adminShellEnvironment(process.env)
+    for (const name of ["OPENAI_API_KEY", "BOT_TOKEN", "TELEGRAM_LOGIN_CLIENT_SECRET"])
+      expect(environment).not.toHaveProperty(name)
+    const fixture = await createPiFixture()
+    try {
+      const session = await fixture.createSession()
+      const result = await callDurableTool(session, "bash", {
+        command:
+          'printf "%s" "$OPENAI_API_KEY|$BOT_TOKEN|$TELEGRAM_LOGIN_CLIENT_SECRET|$OTTER_TOKEN"',
+      })
+      expect(result.content).toMatchObject([{ type: "text", text: "|||skill-fixture" }])
+    } finally {
+      await fixture.cleanup()
+    }
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
