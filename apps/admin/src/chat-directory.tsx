@@ -2,6 +2,8 @@ import type { Chat } from "@narumitw/sumire-contracts"
 import { Button, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, type Ref, useEffect, useId, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { countText } from "./status-text.js"
+import { Prose } from "./surfaces.js"
 
 export function chatName(chat: Chat) {
   const name = chat.name?.trim()
@@ -145,9 +147,9 @@ export function ChatSelector({
             placeholder="Name or complete chat ID"
           />
         </label>
-        <Text as="p" size="1" color="gray">
+        <Prose size="1" color="gray">
           Search covers the stored directory, not all Telegram chats. Up to 100 matches per page.
-        </Text>
+        </Prose>
         {filters}
         <div aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
@@ -171,7 +173,7 @@ export function ChatSelector({
             <Text as="p">No chats match the filters on this page.</Text>
           ) : (
             <Text as="p" size="1" color="gray">
-              {visibleChats.length} of {directory.chats.length} chats on this page
+              {visibleChats.length} of {countText(directory.chats.length, "chat")} on this page
             </Text>
           )}
         </div>
@@ -216,7 +218,12 @@ export function ChatSelector({
           <Text size="1" color="gray">
             Page {Math.floor(directory.offset / 100) + 1}
           </Text>
-          <Button variant="ghost" disabled={directory.loading} onClick={directory.refresh}>
+          <Button
+            variant="ghost"
+            className="navigation-control"
+            disabled={directory.loading}
+            onClick={directory.refresh}
+          >
             Refresh chats
           </Button>
         </Flex>

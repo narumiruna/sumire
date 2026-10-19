@@ -1,5 +1,6 @@
 import { Select } from "@radix-ui/themes"
 import { type ComponentProps, createContext, useContext, useEffect, useState } from "react"
+import { SectionErrorBoundary } from "./section-error-boundary.js"
 
 export const SectionActive = createContext(true)
 
@@ -12,7 +13,9 @@ export function EditorSection({
   return (
     <SectionActive value={active}>
       <section {...props} hidden={!active}>
-        {children}
+        <SectionErrorBoundary label={props["aria-label"] ?? "Section"}>
+          {children}
+        </SectionErrorBoundary>
       </section>
     </SectionActive>
   )

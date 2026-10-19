@@ -2,10 +2,12 @@ import { effectivePolicy } from "@narumitw/sumire-policy"
 import { Badge, Button, Callout, Checkbox, Flex, Heading, Text } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { countText } from "./status-text.js"
+import { Panel, Prose } from "./surfaces.js"
 
 export function defaultPermissionSummary(policy: Policy) {
   const effective = effectivePolicy(policy, 0)
-  return `${effective.tools.length} default tool names within global permission · ${effective.servers.length} default MCP server gates within global permission`
+  return `${countText(effective.tools.length, "default tool name")} within global permission · ${countText(effective.servers.length, "default MCP server gate")} within global permission`
 }
 
 export function permissionNames(
@@ -88,7 +90,7 @@ function PermissionGroup({
   )
   if (!group) return content
   return (
-    <section className="permission-group" aria-label={group.label}>
+    <Panel className="permission-group" aria-label={group.label}>
       <Heading as="h4" size="2">
         <Button
           variant="ghost"
@@ -98,13 +100,13 @@ function PermissionGroup({
           onClick={onToggle}
         >
           <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-          {group.label} · {group.names.length} {group.names.length === 1 ? "tool" : "tools"}
+          {group.label} · {countText(group.names.length, "tool")}
         </Button>
       </Heading>
       <div id={id} hidden={!expanded}>
         {content}
       </div>
-    </section>
+    </Panel>
   )
 }
 
@@ -144,7 +146,7 @@ export function ToolPermissions({
   }, [defaultContext])
   return (
     <>
-      <Text as="p">Choose global and default permissions, then apply policy changes.</Text>
+      <Prose>Choose global and default permissions.</Prose>
       <details>
         <summary>Permission rules and inheritance</summary>
         <Text as="p">
@@ -166,7 +168,7 @@ export function ToolPermissions({
         </Text>
       )}
       {(["tools", "servers"] as const).map((key) => (
-        <section
+        <Panel
           key={key}
           aria-label={key === "tools" ? "Individual tool permissions" : "MCP server permissions"}
         >
@@ -337,9 +339,11 @@ export function ToolPermissions({
                         <Callout.Text>
                           Cannot save while this name remains selected:{" "}
                           {selected ? "shared defaults; " : ""}
-                          {refs.length > 0 ? `${refs.length} explicit chat override(s). ` : ""}Clear
-                          these selections explicitly or restore global permission. No selections
-                          were deleted.
+                          {refs.length > 0
+                            ? `${countText(refs.length, "explicit chat override")}. `
+                            : ""}
+                          Clear these selections explicitly or restore global permission. No
+                          selections were deleted.
                           {refs.map(([id]) => (
                             <Button key={id} variant="ghost" onClick={() => onChat(id)}>
                               Review chat {id}
@@ -350,14 +354,16 @@ export function ToolPermissions({
                     )}
                     {(global !== saved[key].includes(name) ||
                       selected !== (saved.defaults[key]?.includes(name) ?? false)) && (
-                      <Badge color="orange">Pending policy change</Badge>
+                      <Badge color="orange" className="permission-pending">
+                        Pending policy change
+                      </Badge>
                     )}
                   </li>
                 )
               })}
             </PermissionGroup>
           ))}
-        </section>
+        </Panel>
       ))}
     </>
   )

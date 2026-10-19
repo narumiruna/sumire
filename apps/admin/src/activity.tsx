@@ -1,5 +1,7 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
-import { Badge, Card, Heading, Text } from "@radix-ui/themes"
+import { Badge, Heading, Text } from "@radix-ui/themes"
+import { countText } from "./status-text.js"
+import { Panel, Prose } from "./surfaces.js"
 
 export type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 
@@ -11,10 +13,10 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
   if (!reports.length) return <Text as="p">No import history.</Text>
   return (
     <>
-      <Text as="p">
+      <Prose>
         Import history is read-only. It does not approve IDs or restore revoked access. Environment
         review history is limited to the latest 10 reviews.
-      </Text>
+      </Prose>
       {[...reports]
         .sort(
           (a, b) =>
@@ -22,7 +24,7 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
             Number(b.report.reviewRequired === true) - Number(a.report.reviewRequired === true),
         )
         .map(({ name, report }) => (
-          <Card key={name}>
+          <Panel key={name}>
             <Heading size="3">{name}</Heading>
             {failedImports(report) > 0 && (
               <Badge color="red">Import failures — review details</Badge>
@@ -35,23 +37,24 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
               <Badge color="orange">Review required at import</Badge>
             )}
             <Text as="p" size="2">
-              {typeof report.servers === "number" && `${report.servers} servers imported. `}
+              {typeof report.servers === "number" &&
+                `${countText(report.servers, "server")} imported. `}
               {typeof report.imported === "number" &&
-                `${report.imported} model settings imported. `}
+                `${countText(report.imported, "model setting")} imported. `}
               {Array.isArray(report.failedChatIds) &&
-                `${report.failedChatIds.length} chats failed. `}
+                `${countText(report.failedChatIds.length, "chat")} failed. `}
               {typeof report.skippedServers === "number" &&
-                `${report.skippedServers} servers skipped. `}
+                `${countText(report.skippedServers, "server")} skipped. `}
               {typeof report.unscannedEntries === "number" &&
-                `${report.unscannedEntries} entries not scanned. `}
+                `${countText(report.unscannedEntries, "entry", "entries")} not scanned. `}
               {Array.isArray(report.decisions) &&
-                `${report.decisions.length} recorded access decisions. `}
+                `${countText(report.decisions.length, "recorded access decision")}. `}
             </Text>
             <details>
               <summary>Imported IDs and review details</summary>
               <pre>{JSON.stringify(report, null, 2)}</pre>
             </details>
-          </Card>
+          </Panel>
         ))}
     </>
   )
@@ -105,13 +108,15 @@ export function groupActivity(entries: AuditEntry[]) {
 }
 
 function AuditRecord({ entry }: { entry: AuditEntry }) {
+  if (typeof entry.time !== "number" || !Number.isFinite(entry.time)) {
+    throw new Error("Audit record time is missing or invalid.")
+  }
+  const time = new Date(entry.time)
   return (
     <>
       <strong>{operationNames[entry.operation] ?? entry.operation}</strong> — {entry.outcome}
       <Text as="p" size="2">
-        <time dateTime={new Date(entry.time).toISOString()}>
-          {new Date(entry.time).toLocaleString()}
-        </time>
+        <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
         {` · Actor ${entry.actor} · Revision ${entry.revision} · ${entry.target}`}
       </Text>
       <details>
@@ -138,11 +143,14 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
           ) : (
             <>
               <strong>
-                Revision {group[0]?.revision}: {group.length} save/application records
+                Revision {group[0]?.revision}: {countText(group.length, "save/application record")}
               </strong>
               <Text as="p">
-                {group.filter((entry) => entry.outcome === "failed").length} failed applications.
-                Field-level changes were not recorded.
+                {countText(
+                  group.filter((entry) => entry.outcome === "failed").length,
+                  "failed application",
+                )}
+                . Field-level changes were not recorded.
               </Text>
               <details>
                 <summary>Individual save and application records</summary>

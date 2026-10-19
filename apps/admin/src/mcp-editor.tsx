@@ -1,6 +1,8 @@
-import { Button, Checkbox, Heading, Text, TextField } from "@radix-ui/themes"
+import { Button, Checkbox, Heading, TextField } from "@radix-ui/themes"
 import { useId } from "react"
 import type { Inventory } from "./api.js"
+import { SectionSelect } from "./sections.js"
+import { Panel, Prose } from "./surfaces.js"
 
 const fields = [
   "type",
@@ -141,9 +143,9 @@ export function McpGuidedEditor({
       throw new Error("Edit invalid arguments in advanced JSON. The draft is unchanged.")
   } catch (error) {
     return (
-      <Text as="p" role="alert">
+      <Prose role="alert">
         {error instanceof Error ? error.message : "Correct advanced JSON to use guided fields."}
-      </Text>
+      </Prose>
     )
   }
   const set = (key: string, value: unknown) =>
@@ -154,113 +156,134 @@ export function McpGuidedEditor({
     onChange(JSON.stringify(next, null, 2))
   }
   return (
-    <fieldset id="mcp-guided" tabIndex={-1}>
-      <legend>Guided connection fields</legend>
-      <Text as="p" size="2">
+    <Panel as="fieldset" id="mcp-guided" tabIndex={-1} aria-labelledby={`${prefix}-heading`}>
+      <Heading as="h3" size="3" id={`${prefix}-heading`}>
+        Guided connection fields
+      </Heading>
+      <Prose size="2" id={`${prefix}-replacement-help`}>
         Only selected fields change. Omitted fields stay saved. Existing values are not returned;
         enter replacements only.
-      </Text>
+      </Prose>
       <label htmlFor={`${prefix}-transport`}>
         Transport update
-        <select
-          id={`${prefix}-transport`}
+        <SectionSelect.Root
           value={
             patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : "preserve"
           }
-          onChange={(event) => {
+          onValueChange={(value) => {
             const next = { ...patch }
             delete next.command
             delete next.url
             delete next.type
-            if (event.target.value === "http") {
+            if (value === "http") {
               next.url = ""
               next.type = "http"
             }
-            if (event.target.value === "stdio") {
+            if (value === "stdio") {
               next.command = ""
               next.type = "stdio"
             }
             onChange(JSON.stringify(next, null, 2))
           }}
         >
-          <option value="preserve">Keep saved transport</option>
-          <option value="stdio">Replace with stdio command</option>
-          <option value="http">Replace with HTTP endpoint</option>
-        </select>
+          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label="Transport update" />
+          <SectionSelect.Content>
+            <SectionSelect.Item value="preserve">Keep saved transport</SectionSelect.Item>
+            <SectionSelect.Item value="stdio">Replace with stdio command</SectionSelect.Item>
+            <SectionSelect.Item value="http">Replace with HTTP endpoint</SectionSelect.Item>
+          </SectionSelect.Content>
+        </SectionSelect.Root>
       </label>
-      {(
-        ["command", "url", "cwd", "description", "timeout", "enabled", "exposure", "type"] as const
-      ).map((key) => (
-        <div key={key}>
-          <label className="check" htmlFor={`${prefix}-${key}-edit`}>
-            <Checkbox
-              id={`${prefix}-${key}-edit`}
-              aria-label={`Edit MCP ${key}`}
-              checked={key in patch}
-              onCheckedChange={(checked) =>
-                checked === true
-                  ? set(
-                      key,
-                      key === "enabled"
-                        ? true
-                        : key === "timeout"
-                          ? 30
-                          : key === "exposure"
-                            ? "codemode"
-                            : key === "type"
-                              ? "stdio"
-                              : "",
-                    )
-                  : omit(key)
-              }
-            />
-            Edit {key}
-          </label>
-          {key in patch &&
-            (key === "enabled" ? (
-              <label className="check" htmlFor={`${prefix}-enabled-value`}>
-                <Checkbox
-                  id={`${prefix}-enabled-value`}
-                  aria-label="MCP enabled value"
-                  checked={patch.enabled === true}
-                  onCheckedChange={(v) => set(key, v === true)}
-                />
-                Enabled
-              </label>
-            ) : key === "exposure" || key === "type" ? (
-              <label>
-                Replacement {key}
-                <select
-                  aria-label={`MCP ${key} replacement`}
-                  value={String(patch[key])}
-                  onChange={(e) => set(key, e.target.value)}
-                >
-                  {(key === "exposure"
-                    ? ["codemode", "direct", "hidden"]
-                    : ["stdio", "http", "streamable-http"]
-                  ).map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label htmlFor={`${prefix}-${key}-value`}>
-                Replacement {key}
-                <TextField.Root
-                  id={`${prefix}-${key}-value`}
-                  aria-label={`MCP ${key} replacement`}
-                  type={key === "timeout" ? "number" : "text"}
-                  value={String(patch[key] ?? "")}
-                  onChange={(e) =>
-                    set(key, key === "timeout" ? Number(e.target.value) : e.target.value)
-                  }
-                />
-              </label>
-            ))}
-        </div>
-      ))}
+      <div className="mcp-field-grid">
+        {(
+          [
+            "command",
+            "url",
+            "cwd",
+            "description",
+            "timeout",
+            "enabled",
+            "exposure",
+            "type",
+          ] as const
+        ).map((key) => (
+          <div key={key} className="mcp-field">
+            <label className="check mcp-field-toggle" htmlFor={`${prefix}-${key}-edit`}>
+              <Checkbox
+                id={`${prefix}-${key}-edit`}
+                aria-label={`Edit MCP ${key}`}
+                aria-describedby={`${prefix}-replacement-help`}
+                checked={key in patch}
+                onCheckedChange={(checked) =>
+                  checked === true
+                    ? set(
+                        key,
+                        key === "enabled"
+                          ? true
+                          : key === "timeout"
+                            ? 30
+                            : key === "exposure"
+                              ? "codemode"
+                              : key === "type"
+                                ? "stdio"
+                                : "",
+                      )
+                    : omit(key)
+                }
+              />
+              Replace {key}
+            </label>
+            {key in patch &&
+              (key === "enabled" ? (
+                <label className="check mcp-field-value" htmlFor={`${prefix}-enabled-value`}>
+                  <Checkbox
+                    id={`${prefix}-enabled-value`}
+                    aria-label="MCP enabled value"
+                    checked={patch.enabled === true}
+                    onCheckedChange={(v) => set(key, v === true)}
+                  />
+                  Enabled after save
+                </label>
+              ) : key === "exposure" || key === "type" ? (
+                <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
+                  Replacement {key}
+                  <SectionSelect.Root
+                    value={String(patch[key])}
+                    onValueChange={(value) => set(key, value)}
+                  >
+                    <SectionSelect.Trigger
+                      id={`${prefix}-${key}-value`}
+                      aria-label={`MCP ${key} replacement`}
+                    />
+                    <SectionSelect.Content>
+                      {(key === "exposure"
+                        ? ["codemode", "direct", "hidden"]
+                        : ["stdio", "http", "streamable-http"]
+                      ).map((value) => (
+                        <SectionSelect.Item key={value} value={value}>
+                          {value}
+                        </SectionSelect.Item>
+                      ))}
+                    </SectionSelect.Content>
+                  </SectionSelect.Root>
+                </label>
+              ) : (
+                <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
+                  Replacement {key}
+                  <TextField.Root
+                    id={`${prefix}-${key}-value`}
+                    aria-label={`MCP ${key} replacement`}
+                    type={key === "timeout" ? "number" : "text"}
+                    value={String(patch[key] ?? "")}
+                    onChange={(e) =>
+                      set(key, key === "timeout" ? Number(e.target.value) : e.target.value)
+                    }
+                  />
+                </label>
+              ))}
+          </div>
+        ))}
+      </div>
       <Heading size="2">Arguments</Heading>
       {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
         // Arguments are controlled positional fields with no row state; additions append only.
@@ -304,10 +327,10 @@ export function McpGuidedEditor({
           Keep saved arguments
         </Button>
       )}
-      <Text as="p" size="2">
+      <Prose size="2">
         Use masked fields below for secret replacements. Use advanced JSON for secret-map removal,
         preservation markers, and per-tool exposure; guided edits retain those fields.
-      </Text>
-    </fieldset>
+      </Prose>
+    </Panel>
   )
 }
