@@ -917,7 +917,7 @@ html {
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 12px;
+    padding: 0 12px;
     border-right: 0;
     border-bottom: 1px solid var(--slate-5);
     gap: 8px;
@@ -939,7 +939,7 @@ html {
     display: none;
   }
   main {
-    padding: 4px 12px;
+    padding: 2px 12px;
   }
   .workspace-header {
     justify-content: flex-end;
@@ -953,8 +953,8 @@ html {
     margin-bottom: 0;
   }
   .save-status {
-    margin-block: 4px;
-    padding: 4px;
+    margin-block: 2px;
+    padding: 2px;
   }
   #current-section-heading {
     margin-bottom: 6px;
@@ -978,7 +978,7 @@ html {
   }
   .save-scopes {
     gap: 4px;
-    margin-top: 6px;
+    margin-top: 4px;
   }
   .save-scopes .rt-Button {
     min-height: 44px;

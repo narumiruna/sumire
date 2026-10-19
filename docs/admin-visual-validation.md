@@ -36,7 +36,7 @@ Deliberate assertion updates:
 3. Approval and disabled states now have separate badges. Tests check both labels and semantic tokens.
 4. Panel radius checks resolve `--radius-3` in the browser instead of requiring a literal 8 pixels. All panels must still have the same border and radius.
 
-Initial integration runs found a JavaScript chunk over 500 KB, directory geometry failures, and pending-badge overflow. These were fixed without raising the limits. React and Radix use separate production chunks; each JavaScript chunk remains below 500 KB. Static review also found and fixed a favicon path outside the production asset allowlist and an ambiguous MCP result incorrectly shown as failed. The production build test verifies that the emitted favicon exists under `/assets/*.svg`.
+Initial integration runs found a JavaScript chunk over 500 KB, directory geometry failures, and pending-badge overflow. These were fixed without raising the limits. React and Radix use separate production chunks; each JavaScript chunk remains below 500 KB. Static review also found and fixed a favicon path outside the production asset allowlist and an ambiguous MCP result incorrectly shown as failed. The production build test verifies that the emitted favicon exists under `/assets/*.svg`. The first Linux CI run exposed different caption metrics: the 320-pixel workspace started at 258.98 pixels, above the existing 250-pixel limit. Narrow-screen chrome padding was reduced; button and selector targets remain 44 pixels, and the original height assertion is unchanged.
 
 ## Contrast
 
