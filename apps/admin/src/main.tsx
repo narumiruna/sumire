@@ -33,8 +33,8 @@ import {
   type Snapshot,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
-import { type Chat, ChatWorkspace, chatName } from "./chats.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
+import { type Chat, ChatWorkspace, chatName } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { navigationHref, pageLabel, SideNavigation, useNavigation } from "./navigation.js"

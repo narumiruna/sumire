@@ -11,6 +11,7 @@ import { policyChanges, withChatAccess } from "./policy-changes.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
+
 function chatType(chat: Chat) {
   if (chat.type === "supergroup") return "group"
   return ["private", "group", "channel"].includes(chat.type) ? chat.type : "unknown"

@@ -1,8 +1,8 @@
 import { execFileSync, spawn } from "node:child_process"
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises"
+import { once } from "node:events"
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { once } from "node:events"
 import { type Browser, chromium } from "@playwright/test"
 import { durableFixture } from "../tests/durable-fixture.ts"
 
