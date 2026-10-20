@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -37,7 +37,7 @@ jobs:
       - name: Deploy TypeScript bot with Docker Compose
         run: |
           docker compose build
-          docker compose up -d --no-build --remove-orphans
+          sh apps/bot/scripts/deploy.sh
           docker image prune -f
 
       - name: Remove environment file
