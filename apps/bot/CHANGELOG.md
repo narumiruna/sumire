@@ -1,5 +1,21 @@
 # @narumitw/sumire
 
+## 0.13.0
+
+### Minor Changes
+
+- 8072e66: Add shared stored-directory search and exact chat metadata lookup. Let Durable select chats directly with history-safe URLs, then show persisted conversation selection and bounded task history before compact object inspection. Preserve the inspected conversation across tab changes, approved raw metadata, manual refresh, per-block read times, draft protection, and read-only session ownership.
+- 4db4191: Add a read-only, chat-scoped Pi Durable Inspector for already loaded sessions. Show bounded object metadata and approved document projections with authenticated reads, query-bound pagination, and lifecycle-safe storage leases. Inspection does not load chats, change durable state, or start model/tool work.
+
+### Patch Changes
+
+- 8072e66: Preserve observed chat names and types across startup, imports, partial updates, and delayed access approvals. Persist group renames and complete private display names without changing access policy or loading sessions. Show unknown names separately from metadata read states.
+- 55bbe3e: Group the bot durable integration by responsibility and separate response recovery, event translation, and transcript helpers from the session adapter without changing storage formats or runtime behavior.
+- abcc490: Use Pi Durable's native coding tools and codemode journal with live execution guards, persistent host deadlines, historical store migration, and safe settlement of interrupted legacy tasks. Preserve Telegram delivery and MCP namespace aliases.
+- Updated dependencies [8072e66]
+- Updated dependencies [4db4191]
+  - @narumitw/sumire-contracts@0.4.0
+
 ## 0.12.3
 
 ### Patch Changes

@@ -1,5 +1,21 @@
 # @narumitw/sumire-admin
 
+## 0.5.0
+
+### Minor Changes
+
+- 8072e66: Add shared stored-directory search and exact chat metadata lookup. Let Durable select chats directly with history-safe URLs, then show persisted conversation selection and bounded task history before compact object inspection. Preserve the inspected conversation across tab changes, approved raw metadata, manual refresh, per-block read times, draft protection, and read-only session ownership.
+- 4db4191: Add a read-only, chat-scoped Pi Durable Inspector for already loaded sessions. Show bounded object metadata and approved document projections with authenticated reads, query-bound pagination, and lifecycle-safe storage leases. Inspection does not load chats, change durable state, or start model/tool work.
+
+### Patch Changes
+
+- 8072e66: Preserve observed chat names and types across startup, imports, partial updates, and delayed access approvals. Persist group renames and complete private display names without changing access policy or loading sessions. Show unknown names separately from metadata read states.
+- ed32d1c: Make Durable inspection context-first, with readable record labels, recorded task outcomes, UTC dates, and labeled approved document values after explicit inspection. Keep historical conversation targets across related views and make direct Conversation ID lookup retrieve the requested record. Preserve read-only access, bounded manual reads, and secondary technical details without new API fields or automatic value reads.
+- e6865d6: Unify administration panels, controls, and status hierarchy. Add guided MCP steps and contain malformed-record failures without changing save or permission behavior.
+- Updated dependencies [8072e66]
+- Updated dependencies [4db4191]
+  - @narumitw/sumire-contracts@0.4.0
+
 ## 0.4.3
 
 ### Patch Changes
