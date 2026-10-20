@@ -85,7 +85,7 @@ npm run test:browser --workspace @narumitw/sumire-admin -- tests/durable-visual-
 ```
 
 - [x] Build the static preview and capture both record types at 1440, 768, 390, and 320 px. All eight preview browser checks pass.
-- [ ] Update the current PR with the validated preview without changing production interactions.
+- [x] Update PR #157 with the validated preview and reproduction steps without changing production interactions.
 - [ ] Receive user approval before starting the remaining implementation tasks.
 
 Phase 1 validation passes: root formatting, lint, typecheck, 1,854 unit tests, build, all 248 Admin browser tests, and `git diff --check`. Browser checks verify no API requests, no horizontal overflow, desktop selection contrast, a closed mobile navigator, body-font user text, and monospace tool output without an internal vertical scrollbar. These checks do not replace the production interaction checks in the completion checklist.
