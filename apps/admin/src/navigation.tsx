@@ -1,15 +1,5 @@
-import {
-  ChatBubbleIcon,
-  Component2Icon,
-  CubeIcon,
-  GearIcon,
-  HamburgerMenuIcon,
-  LayersIcon,
-  LockClosedIcon,
-  MixerHorizontalIcon,
-  ReaderIcon,
-} from "@radix-ui/react-icons"
-import { Button, Heading, Link, Text } from "@radix-ui/themes"
+import { GearIcon, HamburgerMenuIcon } from "@radix-ui/react-icons"
+import { Button, Heading, Text } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 
 export const pages = [
@@ -24,17 +14,6 @@ export const pages = [
 ] as const
 export type Page = (typeof pages)[number]
 export const pageLabel = (page: Page) => (page === "Model Providers" ? "Model providers" : page)
-
-const sectionIcons = {
-  Chats: ChatBubbleIcon,
-  Durable: LayersIcon,
-  Access: LockClosedIcon,
-  Defaults: MixerHorizontalIcon,
-  "Tool permissions": GearIcon,
-  "MCP connections": Component2Icon,
-  "Model Providers": CubeIcon,
-  Audit: ReaderIcon,
-} satisfies Record<Page, typeof GearIcon>
 
 export function readNavigation(url: URL) {
   const raw = url.searchParams.get("section")
@@ -63,9 +42,6 @@ export function navigationHref(page: Page, chat: string, url = new URL(window.lo
 
 export function useNavigation() {
   const [state, setState] = useState(() => readNavigation(new URL(window.location.href)))
-  useEffect(() => {
-    document.title = `${pageLabel(state.page)} · Sumire`
-  }, [state.page])
   useEffect(() => {
     const restore = () => setState(readNavigation(new URL(window.location.href)))
     window.addEventListener("popstate", restore)
@@ -107,13 +83,9 @@ export function SideNavigation({
   return (
     <aside className="sidebar" aria-label="Administration navigation">
       <Heading size="5" className="brand">
-        <span className="brand-mark">
-          <GearIcon aria-hidden />
-        </span>{" "}
-        Sumire
+        <GearIcon aria-hidden /> Sumire
       </Heading>
       <Button
-        color="gray"
         ref={trigger}
         className="mobile-menu"
         variant="soft"
@@ -124,35 +96,32 @@ export function SideNavigation({
         <HamburgerMenuIcon aria-hidden /> Sections · {pageLabel(page)}
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
-        {pages.map((item) => {
-          const Icon = sectionIcons[item]
-          return (
-            <Link
-              key={item}
-              href={navigationHref(item, chat)}
-              aria-current={page === item ? "page" : undefined}
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                )
-                  return
-                event.preventDefault()
-                onNavigate(item)
-                setOpen(false)
-                if (open) trigger.current?.focus()
-              }}
-            >
-              <Icon aria-hidden /> {pageLabel(item)}
-            </Link>
-          )
-        })}
+        {pages.map((item) => (
+          <a
+            key={item}
+            href={navigationHref(item, chat)}
+            aria-current={page === item ? "page" : undefined}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              )
+                return
+              event.preventDefault()
+              onNavigate(item)
+              setOpen(false)
+              if (open) trigger.current?.focus()
+            }}
+          >
+            {pageLabel(item)}
+          </a>
+        ))}
       </nav>
       <Text className="sidebar-account" size="2">
-        Administrator <span className="numeric">{actor}</span>
+        Administrator <span>{actor}</span>
       </Text>
     </aside>
   )

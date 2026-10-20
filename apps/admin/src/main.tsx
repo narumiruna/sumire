@@ -1,18 +1,7 @@
 import { effectivePolicy, inherited as inherit } from "@narumitw/sumire-policy"
 import { ExitIcon, ReloadIcon } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import {
-  AlertDialog,
-  Button,
-  Callout,
-  Flex,
-  Heading,
-  Link,
-  Separator,
-  Spinner,
-  Text,
-  Theme,
-} from "@radix-ui/themes"
+import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
 import { useCallback, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
@@ -44,7 +33,7 @@ import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
 import { countText } from "./status-text.js"
-import { LoadingState, Panel, Prose } from "./surfaces.js"
+import { Panel, Prose } from "./surfaces.js"
 import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js"
 
 const accessStorage = tabStorage(window)
@@ -166,7 +155,7 @@ function App() {
   if (session === undefined)
     return (
       <main>
-        <LoadingState label="Loading administrator session…" />
+        <Text>Loading administrator session…</Text>
       </main>
     )
   if (!session)
@@ -207,10 +196,8 @@ function App() {
   if (!snapshot)
     return (
       <main>
-        {error ? <Prose role="alert">{error}</Prose> : <LoadingState label="Loading settings…" />}
-        <Button color="gray" variant="soft" disabled={busy} onClick={() => void run(load)}>
-          Retry
-        </Button>
+        <Text>{error || "Loading settings…"}</Text>
+        <Button onClick={() => void run(load)}>Retry</Button>
       </main>
     )
   const policy = snapshot.policy
@@ -226,7 +213,6 @@ function App() {
           </Text>
           <Flex gap="2">
             <Button
-              color="gray"
               variant="soft"
               disabled={busy || dirty || localPending}
               onClick={() => {
@@ -234,11 +220,10 @@ function App() {
                 void run(load)
               }}
             >
-              {busy ? <Spinner aria-hidden /> : <ReloadIcon aria-hidden />}
+              <ReloadIcon />
               Reload
             </Button>
             <Button
-              color="gray"
               variant="soft"
               disabled={busy}
               onClick={() =>
@@ -250,12 +235,11 @@ function App() {
                 })
               }
             >
-              <ExitIcon aria-hidden />
+              <ExitIcon />
               Sign out
             </Button>
           </Flex>
         </header>
-        <Separator size="4" className="workspace-rule" />
         {error && (
           <Callout.Root color="red" role="alert">
             <Callout.Text>
@@ -411,10 +395,10 @@ function App() {
                   Review its access entry below. If approval is missing, add this ID to the
                   appropriate list.
                 </Prose>
-                <Button color="gray" variant="soft" onClick={() => setPage("Chats")}>
+                <Button variant="soft" onClick={() => setPage("Chats")}>
                   Back to chat details
                 </Button>
-                <Button color="gray" variant="ghost" onClick={() => setAccessTarget("")}>
+                <Button variant="ghost" onClick={() => setAccessTarget("")}>
                   Show all access entries
                 </Button>
               </Panel>
@@ -434,7 +418,7 @@ function App() {
                 Read-only history is available in Audit. Review current access below; no imported ID
                 is approved automatically.
               </Prose>
-              <Button color="gray" variant="soft" onClick={() => setPage("Audit")}>
+              <Button variant="soft" onClick={() => setPage("Audit")}>
                 Open import history in Audit
               </Button>
             </details>
@@ -478,7 +462,6 @@ function App() {
             <AlertDialog.Root>
               <AlertDialog.Trigger>
                 <Button
-                  color="gray"
                   variant="soft"
                   disabled={
                     !Object.values(policy.chats).some((choice) =>
@@ -507,9 +490,7 @@ function App() {
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4">
                   <AlertDialog.Cancel>
-                    <Button color="gray" variant="soft">
-                      Cancel
-                    </Button>
+                    <Button variant="soft">Cancel</Button>
                   </AlertDialog.Cancel>
                   <AlertDialog.Action>
                     <Button
@@ -539,9 +520,8 @@ function App() {
               </Prose>
               <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
               {dirty && <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>}
-              <Button color="gray" variant="soft" asChild>
-                <Link
-                  color="gray"
+              <Button variant="soft" asChild>
+                <a
                   href={navigationHref(
                     "Tool permissions",
                     chat,
@@ -561,7 +541,7 @@ function App() {
                   }}
                 >
                   Manage default tool permissions
-                </Link>
+                </a>
               </Button>
             </Panel>
             <Prose size="2">
@@ -629,8 +609,6 @@ function App() {
               }}
             />
             <Button
-              variant="soft"
-              color="gray"
               disabled={!toolName}
               onClick={() => {
                 update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
@@ -644,7 +622,7 @@ function App() {
               Enter an exact tool name even if discovery is unavailable. This stages global approval
               only; default and chat permissions remain unchanged.
             </Prose>
-            <Button color="gray" variant="soft" onClick={() => setPage("MCP connections")}>
+            <Button variant="soft" onClick={() => setPage("MCP connections")}>
               Manage MCP connections
             </Button>
           </EditorSection>
@@ -701,7 +679,6 @@ function App() {
                   />
                   <Flex gap="2" wrap="wrap">
                     <Button
-                      color="gray"
                       variant="soft"
                       onClick={() => {
                         if (
@@ -795,14 +772,7 @@ function App() {
 const root = document.getElementById("root")
 if (root)
   createRoot(root).render(
-    <Theme
-      appearance="light"
-      accentColor="teal"
-      grayColor="slate"
-      radius="medium"
-      scaling="95%"
-      panelBackground="solid"
-    >
+    <Theme appearance="light" accentColor="teal" grayColor="slate" radius="medium">
       <App />
     </Theme>,
   )

@@ -8,17 +8,7 @@ import type {
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
-import {
-  Button,
-  DataList,
-  Flex,
-  Heading,
-  Link,
-  Spinner,
-  Tabs,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type FormEvent, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
@@ -32,7 +22,7 @@ import {
 import { navigationHref } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
-import { EmptyState, LoadingState, Panel, Prose } from "./surfaces.js"
+import { Panel, Prose } from "./surfaces.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
 const labels = {
@@ -177,7 +167,6 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
     <details className="durable-json">
       <summary>{label}</summary>
       <Button
-        color="gray"
         variant="soft"
         size="1"
         onClick={() => {
@@ -191,9 +180,11 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
       >
         Copy {label}
       </Button>
-      <Text as="p" className="copy-confirmation" role="status">
-        {copyState}
-      </Text>
+      {copyState && (
+        <Text as="p" role="status">
+          {copyState}
+        </Text>
+      )}
       <pre>{json}</pre>
     </details>
   )
@@ -208,21 +199,21 @@ function UsageFields({ usage }: { usage: DurableNumericUsage }) {
     ["total", "Total"],
   ] as const
   return (
-    <DataList.Root className="durable-metadata durable-usage" orientation="horizontal">
+    <dl className="durable-metadata durable-usage">
       {fields.map(([key, label]) => (
-        <DataList.Item className="durable-usage-field" key={key}>
-          <DataList.Label>{label} tokens</DataList.Label>
-          <DataList.Value>{usage[key] ?? "Not recorded"}</DataList.Value>
-        </DataList.Item>
+        <div className="durable-usage-field" key={key}>
+          <dt>{label} tokens</dt>
+          <dd>{usage[key] ?? "Not recorded"}</dd>
+        </div>
       ))}
       {usage.cost &&
         fields.map(([key, label]) => (
-          <DataList.Item className="durable-usage-field" key={`cost:${key}`}>
-            <DataList.Label>{label} cost (reported)</DataList.Label>
-            <DataList.Value>{usage.cost?.[key] ?? "Not recorded"}</DataList.Value>
-          </DataList.Item>
+          <div className="durable-usage-field" key={`cost:${key}`}>
+            <dt>{label} cost (reported)</dt>
+            <dd>{usage.cost?.[key] ?? "Not recorded"}</dd>
+          </div>
         ))}
-    </DataList.Root>
+    </dl>
   )
 }
 
@@ -275,15 +266,6 @@ export function DurableInspector({
     setInputError("")
   }, [draftConversationId, location.taskId])
   const validChat = /^-?[1-9]\d*$/.test(chat) && Number.isSafeInteger(Number(chat))
-  const detailName = !validChat
-    ? "Choose a chat"
-    : metadataLoading
-      ? "Loading chat name…"
-      : metadataError
-        ? "Chat name unavailable"
-        : metadata
-          ? chatName(metadata)
-          : "Chat name unknown"
   const missing = contextNeeded(location)
   const path = inspectionPath(chat, location, pages.at(-1))
   const key = `${path}:${refresh}`
@@ -336,7 +318,7 @@ export function DurableInspector({
     setPages([undefined])
   }
   const link = (label: string, next: DurableLocation) => (
-    <Link
+    <a
       href={durableHref(chat, next)}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -346,7 +328,7 @@ export function DurableInspector({
       }}
     >
       {label}
-    </Link>
+    </a>
   )
   const selectContext = (event: FormEvent) => {
     event.preventDefault()
@@ -414,87 +396,71 @@ export function DurableInspector({
       <Text as="p" className="durable-record-summary">
         {recordSummary(item)}
       </Text>
-      <DataList.Root className="durable-metadata" orientation="horizontal">
+      <dl className="durable-metadata">
         {item.type === "conversation" && (
           <>
-            <DataList.Item>
-              <DataList.Label>Selection marker</DataList.Label>
-              <DataList.Value>
-                {item.active ? "Persisted selected conversation" : "Historical conversation"}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Parent conversation</DataList.Label>
-              <DataList.Value>
-                {item.parent ? (
-                  <span>
-                    {link(`Conversation ${item.parent.conversationId}`, {
-                      view: "conversations",
-                      objectId: item.parent.conversationId,
-                    })}{" "}
-                    ·{" "}
-                    {link(`Fork entry ${item.parent.at}`, {
-                      view: "entries",
-                      conversationId: item.parent.conversationId,
-                      objectId: item.parent.at,
-                    })}
-                  </span>
-                ) : (
-                  "No parent recorded"
-                )}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Owning task</DataList.Label>
-              <DataList.Value>
-                {item.owner
-                  ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
-                      view: "tasks",
-                      conversationId: item.owner.conversationId,
-                      objectId: item.owner.taskId,
-                    })
-                  : "No owner recorded"}
-              </DataList.Value>
-            </DataList.Item>
+            <dt>Selection marker</dt>
+            <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
+            <dt>Parent conversation</dt>
+            <dd>
+              {item.parent ? (
+                <>
+                  {link(`Conversation ${item.parent.conversationId}`, {
+                    view: "conversations",
+                    objectId: item.parent.conversationId,
+                  })}{" "}
+                  ·{" "}
+                  {link(`Fork entry ${item.parent.at}`, {
+                    view: "entries",
+                    conversationId: item.parent.conversationId,
+                    objectId: item.parent.at,
+                  })}
+                </>
+              ) : (
+                "No parent recorded"
+              )}
+            </dd>
+            <dt>Owning task</dt>
+            <dd>
+              {item.owner
+                ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
+                    view: "tasks",
+                    conversationId: item.owner.conversationId,
+                    objectId: item.owner.taskId,
+                  })
+                : "No owner recorded"}
+            </dd>
           </>
         )}
         {item.type === "task" && (
           <>
-            <DataList.Item>
-              <DataList.Label>Conversation</DataList.Label>
-              <DataList.Value>
-                {link(`Conversation ${item.conversationId}`, {
-                  view: "conversations",
-                  objectId: item.conversationId,
-                })}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Owning task</DataList.Label>
-              <DataList.Value>
-                {item.ownerTaskId
-                  ? link(`Task ${item.ownerTaskId}`, {
-                      view: "tasks",
-                      conversationId: item.conversationId,
-                      objectId: item.ownerTaskId,
-                    })
-                  : "No owner recorded"}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Started</DataList.Label>
-              <DataList.Value>{formatDurableTime(item.startedAt)}</DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Ended</DataList.Label>
-              <DataList.Value>{formatDurableTime(item.endedAt)}</DataList.Value>
-            </DataList.Item>
+            <dt>Conversation</dt>
+            <dd>
+              {link(`Conversation ${item.conversationId}`, {
+                view: "conversations",
+                objectId: item.conversationId,
+              })}
+            </dd>
+            <dt>Owning task</dt>
+            <dd>
+              {item.ownerTaskId
+                ? link(`Task ${item.ownerTaskId}`, {
+                    view: "tasks",
+                    conversationId: item.conversationId,
+                    objectId: item.ownerTaskId,
+                  })
+                : "No owner recorded"}
+            </dd>
+            <dt>Started</dt>
+            <dd>{formatDurableTime(item.startedAt)}</dd>
+            <dt>Ended</dt>
+            <dd>{formatDurableTime(item.endedAt)}</dd>
           </>
         )}
         {item.type === "document" && (
-          <DataList.Item>
-            <DataList.Label>Applies to</DataList.Label>
-            <DataList.Value>
+          <>
+            <dt>Applies to</dt>
+            <dd>
               {item.scope.kind === "conversation"
                 ? link(`Conversation ${item.scope.conversationId}`, {
                     view: "conversations",
@@ -507,51 +473,43 @@ export function DurableInspector({
                       objectId: item.scope.taskId,
                     })
                   : "This session"}
-            </DataList.Value>
-          </DataList.Item>
+            </dd>
+          </>
         )}
         {item.type === "entry" && (
           <>
-            <DataList.Item>
-              <DataList.Label>Recorded at</DataList.Label>
-              <DataList.Value>{formatDurableTime(item.timestamp)}</DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Conversation</DataList.Label>
-              <DataList.Value>
-                {link(`Conversation ${item.conversationId}`, {
-                  view: "conversations",
-                  objectId: item.conversationId,
-                })}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Recorded by</DataList.Label>
-              <DataList.Value>
-                {item.byTaskId
-                  ? link(`Task ${item.byTaskId}`, {
-                      view: "tasks",
-                      conversationId: item.conversationId,
-                      objectId: item.byTaskId,
-                    })
-                  : "Not recorded"}
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.Label>Head entry</DataList.Label>
-              <DataList.Value>
-                {item.head
-                  ? link(`Entry ${item.head}`, {
-                      view: "entries",
-                      conversationId: item.conversationId,
-                      objectId: item.head,
-                    })
-                  : "Not recorded"}
-              </DataList.Value>
-            </DataList.Item>
+            <dt>Recorded at</dt>
+            <dd>{formatDurableTime(item.timestamp)}</dd>
+            <dt>Conversation</dt>
+            <dd>
+              {link(`Conversation ${item.conversationId}`, {
+                view: "conversations",
+                objectId: item.conversationId,
+              })}
+            </dd>
+            <dt>Recorded by</dt>
+            <dd>
+              {item.byTaskId
+                ? link(`Task ${item.byTaskId}`, {
+                    view: "tasks",
+                    conversationId: item.conversationId,
+                    objectId: item.byTaskId,
+                  })
+                : "Not recorded"}
+            </dd>
+            <dt>Head entry</dt>
+            <dd>
+              {item.head
+                ? link(`Entry ${item.head}`, {
+                    view: "entries",
+                    conversationId: item.conversationId,
+                    objectId: item.head,
+                  })
+                : "Not recorded"}
+            </dd>
           </>
         )}
-      </DataList.Root>
+      </dl>
       {item.type === "document" && item.valueState === "available" && !item.value && (
         <Text as="p">Approved fields were not included in this response.</Text>
       )}
@@ -561,20 +519,14 @@ export function DurableInspector({
             Approved fields
           </Heading>
           {item.value.kind === "pi.agent" ? (
-            <DataList.Root className="durable-metadata" orientation="horizontal">
-              <DataList.Item>
-                <DataList.Label>Model provider</DataList.Label>
-                <DataList.Value>{item.value.model?.provider ?? "Not recorded"}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Model</DataList.Label>
-                <DataList.Value>{item.value.model?.modelId ?? "Not recorded"}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Thinking level</DataList.Label>
-                <DataList.Value>{item.value.thinkingLevel ?? "Not recorded"}</DataList.Value>
-              </DataList.Item>
-            </DataList.Root>
+            <dl className="durable-metadata">
+              <dt>Model provider</dt>
+              <dd>{item.value.model?.provider ?? "Not recorded"}</dd>
+              <dt>Model</dt>
+              <dd>{item.value.model?.modelId ?? "Not recorded"}</dd>
+              <dt>Thinking level</dt>
+              <dd>{item.value.thinkingLevel ?? "Not recorded"}</dd>
+            </dl>
           ) : item.value.kind === "pi.usage" ? (
             <>
               <Heading as="h5" size="2">
@@ -602,19 +554,17 @@ export function DurableInspector({
               ))}
             </>
           ) : (
-            <DataList.Root className="durable-metadata" orientation="horizontal">
-              <DataList.Item>
-                <DataList.Label>Persisted selected conversation</DataList.Label>
-                <DataList.Value>
-                  {item.value.activeConversation
-                    ? link(`Conversation ${item.value.activeConversation}`, {
-                        view: "conversations",
-                        objectId: item.value.activeConversation,
-                      })
-                    : "Not recorded"}
-                </DataList.Value>
-              </DataList.Item>
-            </DataList.Root>
+            <dl className="durable-metadata">
+              <dt>Persisted selected conversation</dt>
+              <dd>
+                {item.value.activeConversation
+                  ? link(`Conversation ${item.value.activeConversation}`, {
+                      view: "conversations",
+                      objectId: item.value.activeConversation,
+                    })
+                  : "Not recorded"}
+              </dd>
+            </dl>
           )}
         </Panel>
       )}
@@ -643,66 +593,50 @@ export function DurableInspector({
       </Flex>
       <details className="durable-technical">
         <summary>Technical details</summary>
-        <DataList.Root className="durable-metadata" orientation="horizontal">
+        <dl className="durable-metadata">
           {item.type !== "conversation" && (
-            <DataList.Item>
-              <DataList.Label>Stored kind</DataList.Label>
-              <DataList.Value>{item.kind}</DataList.Value>
-            </DataList.Item>
+            <>
+              <dt>Stored kind</dt>
+              <dd>{item.kind}</dd>
+            </>
           )}
           {item.type === "task" && (
             <>
-              <DataList.Item>
-                <DataList.Label>Version</DataList.Label>
-                <DataList.Value>{item.version}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Stored status</DataList.Label>
-                <DataList.Value>{item.status}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Background</DataList.Label>
-                <DataList.Value>{String(item.background)}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Abort requested</DataList.Label>
-                <DataList.Value>{String(item.abortRequested)}</DataList.Value>
-              </DataList.Item>
+              <dt>Version</dt>
+              <dd>{item.version}</dd>
+              <dt>Stored status</dt>
+              <dd>{item.status}</dd>
+              <dt>Background</dt>
+              <dd>{String(item.background)}</dd>
+              <dt>Abort requested</dt>
+              <dd>{String(item.abortRequested)}</dd>
             </>
           )}
           {item.type === "document" && (
             <>
-              <DataList.Item>
-                <DataList.Label>Family member</DataList.Label>
-                <DataList.Value>{item.family ? "Yes" : "No"}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Created sequence</DataList.Label>
-                <DataList.Value>{item.createdAt}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Retired sequence</DataList.Label>
-                <DataList.Value>{item.retiredAt ?? "Not retired"}</DataList.Value>
-              </DataList.Item>
-              <DataList.Item>
-                <DataList.Label>Definition version</DataList.Label>
-                <DataList.Value>{item.version ?? "Not recorded"}</DataList.Value>
-              </DataList.Item>
+              <dt>Family member</dt>
+              <dd>{item.family ? "Yes" : "No"}</dd>
+              <dt>Created sequence</dt>
+              <dd>{item.createdAt}</dd>
+              <dt>Retired sequence</dt>
+              <dd>{item.retiredAt ?? "Not retired"}</dd>
+              <dt>Definition version</dt>
+              <dd>{item.version ?? "Not recorded"}</dd>
             </>
           )}
           {item.type === "entry" && (
-            <DataList.Item>
-              <DataList.Label>Stored role</DataList.Label>
-              <DataList.Value>{item.role ?? "Not recorded"}</DataList.Value>
-            </DataList.Item>
+            <>
+              <dt>Stored role</dt>
+              <dd>{item.role ?? "Not recorded"}</dd>
+            </>
           )}
           {item.type === "conversation" && (
-            <DataList.Item>
-              <DataList.Label>Persisted selection marker</DataList.Label>
-              <DataList.Value>{String(item.active)}</DataList.Value>
-            </DataList.Item>
+            <>
+              <dt>Persisted selection marker</dt>
+              <dd>{String(item.active)}</dd>
+            </>
           )}
-        </DataList.Root>
+        </dl>
       </details>
       <JsonDetails
         key={`metadata:${item.type}:${item.id}`}
@@ -723,9 +657,16 @@ export function DurableInspector({
     <section className="durable-inspector" aria-label="Durable Inspector">
       <header className="durable-summary-header">
         <div>
-          <Heading as="h2" size="5" title={detailName}>
-            {validChat && metadataLoading && <Spinner aria-hidden="true" mr="2" />}
-            {detailName}
+          <Heading as="h2" size="5">
+            {!validChat
+              ? "Choose a chat"
+              : metadataLoading
+                ? "Loading chat name…"
+                : metadataError
+                  ? "Chat name unavailable"
+                  : metadata
+                    ? chatName(metadata)
+                    : "Chat name unknown"}
           </Heading>
           {validChat && (
             <Flex gap="2" align="center" wrap="wrap">
@@ -734,7 +675,6 @@ export function DurableInspector({
                 {metadata ? ` · ${metadata.type}` : ""}
               </Text>
               <Button
-                color="gray"
                 size="1"
                 variant="ghost"
                 onClick={() => {
@@ -748,22 +688,21 @@ export function DurableInspector({
               >
                 Copy chat ID
               </Button>
+              {copyIdState && (
+                <Text role="status" size="1">
+                  {copyIdState}
+                </Text>
+              )}
             </Flex>
-          )}
-          {validChat && (
-            <Text as="p" className="copy-confirmation" role="status" size="1">
-              {copyIdState}
-            </Text>
           )}
         </div>
         <Flex gap="3" wrap="wrap" align="center">
           {validChat && (
-            <Button color="gray" variant="ghost" onClick={onChats}>
+            <Button variant="ghost" onClick={onChats}>
               Open chat settings
             </Button>
           )}
           <Button
-            color="gray"
             variant="soft"
             disabled={!validChat || (!current && !selection)}
             onClick={() => {
@@ -777,11 +716,11 @@ export function DurableInspector({
       </header>
       {metadataError && (
         <div>
-          <Text as="p" className="error-state" data-status="failed" role="alert">
+          <Text as="p" role="alert">
             {metadataError}
           </Text>
           {onMetadataRetry && (
-            <Button color="gray" variant="soft" onClick={onMetadataRetry}>
+            <Button variant="soft" onClick={onMetadataRetry}>
               Retry chat metadata
             </Button>
           )}
@@ -797,11 +736,6 @@ export function DurableInspector({
           aria-live="polite"
         >
           <Heading as="h3" size="4">
-            {data?.state !== "not-loaded" &&
-              !sessionDocuments &&
-              location.view === "conversations" &&
-              !current &&
-              !location.objectId && <Spinner aria-hidden="true" mr="2" />}
             {data?.state === "not-loaded"
               ? "No loaded session to inspect"
               : sessionDocuments
@@ -881,9 +815,11 @@ export function DurableInspector({
                 Selected conversation
               </Heading>
               {!selection ? (
-                <LoadingState label="Loading selection…" />
+                <Text as="p" role="status">
+                  Loading selection…
+                </Text>
               ) : selection.error ? (
-                <Text as="p" className="error-state" data-status="failed" role="alert">
+                <Text as="p" role="alert">
                   {selection.error}
                 </Text>
               ) : selection.data?.state === "not-loaded" ? (
@@ -957,9 +893,11 @@ export function DurableInspector({
               </Heading>
               {selected ? (
                 !history ? (
-                  <LoadingState label="Loading task history…" />
+                  <Text as="p" role="status">
+                    Loading task history…
+                  </Text>
                 ) : history.error ? (
-                  <Text as="p" className="error-state" data-status="failed" role="alert">
+                  <Text as="p" role="alert">
                     {history.error}
                   </Text>
                 ) : history.data?.state === "not-loaded" ? (
@@ -974,7 +912,9 @@ export function DurableInspector({
                       .
                     </Text>
                     {!history.data?.items.length ? (
-                      <EmptyState title="No task history on this page." />
+                      <Text as="p" size="2">
+                        No task history on this page.
+                      </Text>
                     ) : (
                       <ul className="durable-history">
                         {history.data.items.map(
@@ -1010,7 +950,9 @@ export function DurableInspector({
         </Panel>
       )}
       {!validChat ? (
-        <EmptyState title="Select a chat" description="Select a chat above to inspect Durable." />
+        <Panel>
+          <Text as="p">Select a chat above to inspect Durable.</Text>
+        </Panel>
       ) : (
         <>
           <Heading as="h3" size="3">
@@ -1075,13 +1017,15 @@ export function DurableInspector({
                 {missing ? (
                   <Text as="p">{missing}</Text>
                 ) : !current ? (
-                  <LoadingState label="Loading Durable…" />
+                  <Text as="p" role="status">
+                    Loading Durable…
+                  </Text>
                 ) : current.unavailable ? (
                   <Text as="p" role="status">
                     Retired or unavailable. The object is no longer available in this scope.
                   </Text>
                 ) : current.error ? (
-                  <Text as="p" className="error-state" data-status="failed" role="alert">
+                  <Text as="p" role="alert">
                     {current.error}
                   </Text>
                 ) : (
@@ -1089,10 +1033,15 @@ export function DurableInspector({
                     <>
                       {current !== selection && current !== history && readTime(current)}
                       {data.state === "not-loaded" ? (
-                        <EmptyState
-                          title="Not loaded"
-                          description="This chat has no loaded session. Inspection will not open its database or start a session."
-                        />
+                        <Panel>
+                          <Heading as="h3" size="3">
+                            Not loaded
+                          </Heading>
+                          <Text as="p">
+                            This chat has no loaded session. Inspection will not open its database
+                            or start a session.
+                          </Text>
+                        </Panel>
                       ) : (
                         <>
                           {data.truncated && (
@@ -1102,13 +1051,11 @@ export function DurableInspector({
                             </Text>
                           )}
                           {!data.items.length ? (
-                            <EmptyState
-                              title={
-                                location.objectId
-                                  ? "Retired or unavailable"
-                                  : "Empty · no records in this view."
-                              }
-                            />
+                            <Text as="p">
+                              {location.objectId
+                                ? "Retired or unavailable"
+                                : "Empty · no records in this view."}
+                            </Text>
                           ) : (
                             <div className="durable-browser">
                               <ul
@@ -1147,7 +1094,6 @@ export function DurableInspector({
                           )}
                           <Flex gap="3" wrap="wrap" align="center">
                             <Button
-                              color="gray"
                               variant="soft"
                               disabled={pages.length === 1}
                               onClick={() => setPages((value) => value.slice(0, -1))}
@@ -1155,7 +1101,6 @@ export function DurableInspector({
                               Previous objects
                             </Button>
                             <Button
-                              color="gray"
                               variant="soft"
                               disabled={!data.nextCursor}
                               onClick={() => setPages((value) => [...value, data.nextCursor])}
@@ -1193,14 +1138,10 @@ export function DurableInspector({
                   onChange={(event) => setTaskDraft(event.target.value)}
                 />
               </label>
-              <Button color="gray" variant="soft" type="submit">
+              <Button variant="soft" type="submit">
                 Inspect IDs
               </Button>
-              {inputError && (
-                <Text className="error-state" data-status="failed" role="alert">
-                  {inputError}
-                </Text>
-              )}
+              {inputError && <Text role="alert">{inputError}</Text>}
             </form>
           </details>
         </>

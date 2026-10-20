@@ -435,10 +435,8 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await row.click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Unnamed group")
   await search.fill("Same name")
-  await page
-    .getByRole("radiogroup", { name: "Access status", exact: true })
-    .getByRole("radio", { name: "Approved and enabled", exact: true })
-    .click()
+  await page.getByRole("combobox", { name: "Access status", exact: true }).click()
+  await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(rows(page).getByRole("button")).toHaveCount(1)
   await expect(rows(page)).toContainText("-9001")
   await rows(page).getByRole("button").click()
