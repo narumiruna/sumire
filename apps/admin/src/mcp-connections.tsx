@@ -1,10 +1,11 @@
-import { AlertDialog, Badge, Button, Flex, Heading, TextArea } from "@radix-ui/themes"
+import { Pencil2Icon } from "@radix-ui/react-icons"
+import { AlertDialog, Button, Flex, Heading, IconButton, TextArea, Tooltip } from "@radix-ui/themes"
 import { useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { Field, SecretFields } from "./policy-editors.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { EmptyState, Panel, Prose, StatusBadge } from "./surfaces.js"
 
 type Props = {
   inventory: Inventory
@@ -64,16 +65,16 @@ export function McpConnections({
         discovery adds new tools to global and default permissions, but does not open server gates.
         Connection tests run only when requested.
       </Prose>
-      <Button variant="soft" onClick={() => onTools()}>
+      <Button color="gray" variant="soft" onClick={() => onTools()}>
         Manage tool and MCP server permissions
       </Button>
       <Panel className="mcp-step">
         <Heading size="3">1. Choose or create a server</Heading>
         {!inventory.mcp.length && (
-          <Prose>
-            No MCP connections configured. Add a server below, then test it and approve its tools
-            separately.
-          </Prose>
+          <EmptyState
+            title="No MCP connections configured."
+            description="Add a server below, then test it and approve its tools separately."
+          />
         )}
         <div className="mcp-choice-grid">
           <div className="mcp-saved-list">
@@ -85,8 +86,20 @@ export function McpConnections({
               >
                 <Heading size="3">{m.name}</Heading>
                 <div className="mcp-summary-state">
-                  <Badge>{m.enabled === false ? "Disabled" : "Enabled"}</Badge>
-                  <Badge color="gray">Connection test: {m.connection}</Badge>
+                  <StatusBadge status={m.enabled === false ? "disabled" : "approved"}>
+                    {m.enabled === false ? "Disabled" : "Enabled"}
+                  </StatusBadge>
+                  <StatusBadge
+                    status={
+                      m.connection === "connected"
+                        ? "approved"
+                        : m.connection === "failed"
+                          ? "failed"
+                          : "unknown"
+                    }
+                  >
+                    Connection test: {m.connection}
+                  </StatusBadge>
                   <span>Exposure: {m.exposure ?? "codemode"}</span>
                 </div>
                 <Prose size="2" className="mcp-summary-counts">
@@ -107,6 +120,7 @@ export function McpConnections({
                 </details>
                 <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
                   <Button
+                    color="gray"
                     variant="soft"
                     disabled={busy || dirty || localPending}
                     onClick={() =>
@@ -118,24 +132,28 @@ export function McpConnections({
                   >
                     Test and discover {m.name}
                   </Button>
-                  <Button
-                    variant="soft"
-                    disabled={busy || dirty || localPending}
-                    onClick={() => {
-                      if (
-                        mcpDirty &&
-                        !window.confirm("Discard the current MCP draft and edit this server?")
-                      )
-                        return
-                      setMcpName(m.name)
-                      setMcpConfig("{}")
-                      setMcpSecrets({ env: {}, headers: {} })
-                      setMcpDirty(true)
-                      document.getElementById("mcp-guided")?.focus()
-                    }}
-                  >
-                    Edit fields for {m.name}
-                  </Button>
+                  <Tooltip content={`Edit fields for ${m.name}`}>
+                    <IconButton
+                      variant="soft"
+                      color="gray"
+                      aria-label={`Edit fields for ${m.name}`}
+                      disabled={busy || dirty || localPending}
+                      onClick={() => {
+                        if (
+                          mcpDirty &&
+                          !window.confirm("Discard the current MCP draft and edit this server?")
+                        )
+                          return
+                        setMcpName(m.name)
+                        setMcpConfig("{}")
+                        setMcpSecrets({ env: {}, headers: {} })
+                        setMcpDirty(true)
+                        document.getElementById("mcp-guided")?.focus()
+                      }}
+                    >
+                      <Pencil2Icon aria-hidden="true" focusable="false" />
+                    </IconButton>
+                  </Tooltip>
                   <AlertDialog.Root>
                     <AlertDialog.Trigger>
                       <Button color="red" variant="ghost" disabled={busy || dirty || localPending}>
@@ -151,7 +169,9 @@ export function McpConnections({
                       </AlertDialog.Description>
                       <Flex gap="3" justify="end" mt="4">
                         <AlertDialog.Cancel>
-                          <Button variant="soft">Cancel</Button>
+                          <Button color="gray" variant="soft">
+                            Cancel
+                          </Button>
                         </AlertDialog.Cancel>
                         <AlertDialog.Action>
                           <Button
@@ -331,6 +351,7 @@ export function McpConnections({
         </Button>
         {(mcpDirty || secretPending) && (
           <Button
+            color="gray"
             variant="soft"
             disabled={busy}
             onClick={() => {

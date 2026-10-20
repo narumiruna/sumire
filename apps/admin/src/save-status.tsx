@@ -1,9 +1,9 @@
-import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
+import { AlertDialog, Button, Flex, Spinner } from "@radix-ui/themes"
 import { useEffect, useRef } from "react"
 import type { Snapshot } from "./api.js"
 import type { Page } from "./navigation.js"
 import { countText } from "./status-text.js"
-import { Prose } from "./surfaces.js"
+import { Prose, StatusBadge } from "./surfaces.js"
 
 type Props = {
   snapshot: Snapshot
@@ -52,6 +52,13 @@ export function SaveStatus({
     }
   }, [])
   const applied = snapshot.status === "applied" && snapshot.revision === snapshot.applied
+  const status = busy
+    ? "pending"
+    : snapshot.status === "failed"
+      ? "failed"
+      : applied && !dirty
+        ? "approved"
+        : "pending"
   return (
     <section
       ref={ref}
@@ -59,13 +66,11 @@ export function SaveStatus({
       aria-label="Save status and pending changes"
       className={`save-status ${dirty ? "pending-bar" : "saved-state"}`}
       data-pending={dirty}
+      data-status={status}
     >
       <div className="save-status-line">
-        <Badge
-          role="status"
-          data-saved={applied && !dirty && !busy}
-          color={applied && !dirty && !busy ? "green" : "orange"}
-        >
+        <StatusBadge role="status" data-saved={applied && !dirty && !busy} status={status}>
+          {busy && <Spinner aria-hidden />}
           {busy
             ? "Saving or checking…"
             : snapshot.status === "failed"
@@ -75,10 +80,11 @@ export function SaveStatus({
                 : dirty
                   ? countText(changes.length, "pending policy change")
                   : "Saved revision applied."}
-        </Badge>
+        </StatusBadge>
         <details>
           <summary>Revision details</summary>
-          Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
+          Saved <span className="numeric">{snapshot.revision}</span> · Applied{" "}
+          <span className="numeric">{snapshot.applied}</span> · {snapshot.status}
         </details>
         {showHelp && (
           <details className="save-help">
@@ -103,10 +109,16 @@ export function SaveStatus({
         )}
       </div>
       <div className="save-scopes">
-        <Button variant="ghost" className="navigation-control" onClick={() => navigate("Access")}>
+        <Button
+          color="gray"
+          variant="ghost"
+          className="navigation-control"
+          onClick={() => navigate("Access")}
+        >
           Policy: {dirty ? countText(changes.length, "change") : "No changes"}
         </Button>
         <Button
+          color="gray"
           variant="ghost"
           className="navigation-control"
           onClick={() => navigate("MCP connections")}
@@ -114,6 +126,7 @@ export function SaveStatus({
           {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
         </Button>
         <Button
+          color="gray"
           variant="ghost"
           className="navigation-control"
           onClick={() => navigate("Model Providers")}
@@ -131,12 +144,17 @@ export function SaveStatus({
       {(dirty || !applied) && (
         <div className="save-actions">
           {dirty && (
-            <Button variant="soft" disabled={busy} onClick={discard}>
+            <Button color="gray" variant="soft" disabled={busy} onClick={discard}>
               Discard policy changes
             </Button>
           )}
           {!applied && (
-            <Button disabled={busy || dirty || localPending} onClick={retry}>
+            <Button
+              variant="soft"
+              color="gray"
+              disabled={busy || dirty || localPending}
+              onClick={retry}
+            >
               Retry application
             </Button>
           )}
@@ -155,7 +173,9 @@ export function SaveStatus({
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4" justify="end">
                   <AlertDialog.Cancel>
-                    <Button variant="soft">Cancel</Button>
+                    <Button color="gray" variant="soft">
+                      Cancel
+                    </Button>
                   </AlertDialog.Cancel>
                   <AlertDialog.Action>
                     <Button onClick={apply}>Save and apply</Button>
