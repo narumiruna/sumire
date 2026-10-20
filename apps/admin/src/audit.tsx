@@ -2,7 +2,7 @@ import { Button, Flex, Heading, TextField } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import { ApiError, request } from "./api.js"
-import { LoadingState, Panel, Prose } from "./surfaces.js"
+import { Panel, Prose } from "./surfaces.js"
 
 const empty = { actor: "", operation: "", outcome: "", from: "", to: "" }
 export function auditSearch(filters: typeof empty, offset: number) {
@@ -114,11 +114,10 @@ export function AuditHistory({
             ))}
           </div>
           <Flex gap="2" wrap="wrap">
-            <Button color="gray" variant="soft" type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading}>
               Apply audit filters
             </Button>
             <Button
-              color="gray"
               type="button"
               variant="soft"
               onClick={() => {
@@ -132,11 +131,7 @@ export function AuditHistory({
         </Panel>
       </form>
       {error && <Prose role="alert">{error}</Prose>}
-      {error && (
-        <Button color="gray" variant="soft" onClick={() => setRetry((value) => value + 1)}>
-          Retry audit
-        </Button>
-      )}
+      {error && <Button onClick={() => setRetry((value) => value + 1)}>Retry audit</Button>}
       <Prose size="2">
         Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
         Older records may be available; the server retains up to 10,000 records. Filters cover all
@@ -144,22 +139,18 @@ export function AuditHistory({
         views can omit related events. Field-level change details are unavailable.
       </Prose>
       {loading ? (
-        <LoadingState label="Loading audit records…" />
+        <Prose role="status">Loading audit records…</Prose>
       ) : (
         !error && <Activity entries={entries} />
       )}
       <Flex gap="2">
         <Button
-          color="gray"
-          variant="soft"
           disabled={loading || query.offset === 0}
           onClick={() => setQuery({ ...query, offset: Math.max(0, query.offset - 100) })}
         >
           Newer
         </Button>
         <Button
-          color="gray"
-          variant="soft"
           disabled={loading || entries.length < 100}
           onClick={() => setQuery({ ...query, offset: query.offset + 100 })}
         >

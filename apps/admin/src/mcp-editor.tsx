@@ -304,7 +304,6 @@ export function McpGuidedEditor({
             />
           </label>
           <Button
-            color="gray"
             variant="soft"
             onClick={() =>
               set(
@@ -318,14 +317,13 @@ export function McpGuidedEditor({
         </div>
       ))}
       <Button
-        color="gray"
         variant="soft"
         onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
       >
         Add argument
       </Button>
       {"args" in patch && (
-        <Button color="gray" variant="soft" onClick={() => omit("args")}>
+        <Button variant="soft" onClick={() => omit("args")}>
           Keep saved arguments
         </Button>
       )}

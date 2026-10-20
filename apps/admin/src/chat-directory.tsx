@@ -1,9 +1,9 @@
 import type { Chat } from "@narumitw/sumire-contracts"
-import { Button, Flex, Heading, Separator, Text, TextField } from "@radix-ui/themes"
+import { Button, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, type Ref, useEffect, useId, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { countText } from "./status-text.js"
-import { LoadingState, Prose } from "./surfaces.js"
+import { Prose } from "./surfaces.js"
 
 export function chatName(chat: Chat) {
   const name = chat.name?.trim()
@@ -153,15 +153,15 @@ export function ChatSelector({
         {filters}
         <div aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
-            <LoadingState label="Loading chats…" />
+            <Text as="p" role="status">
+              Loading chats…
+            </Text>
           ) : directory.error ? (
             <>
               <Text as="p" role="alert">
                 {directory.error}
               </Text>
-              <Button color="gray" variant="soft" onClick={directory.refresh}>
-                Retry chats
-              </Button>
+              <Button onClick={directory.refresh}>Retry chats</Button>
             </>
           ) : !directory.chats.length ? (
             <Text as="p">
@@ -190,21 +190,18 @@ export function ChatSelector({
                 >
                   <strong title={chatName(value)}>{chatName(value)}</strong>
                   <small title={`${value.type || "Type not known"} · ${value.id}`}>
-                    {value.type || "Type not known"} · <span className="numeric">{value.id}</span>
+                    {value.type || "Type not known"} · {value.id}
                   </small>
                   {badge?.(value)}
                 </button>
-                <Separator size="4" />
               </li>
             ))}
           </ul>
         )}
       </div>
       <footer className="directory-footer">
-        <Separator size="4" mb="2" />
         <Flex gap="2" wrap="wrap" align="center">
           <Button
-            color="gray"
             variant="soft"
             disabled={directory.loading || directory.offset === 0}
             onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
@@ -212,18 +209,16 @@ export function ChatSelector({
             Previous chats
           </Button>
           <Button
-            color="gray"
             variant="soft"
             disabled={directory.loading || Boolean(directory.error) || directory.chats.length < 100}
             onClick={() => directory.setOffset(directory.offset + 100)}
           >
             Next chats
           </Button>
-          <Text size="1" color="gray" className="numeric">
+          <Text size="1" color="gray">
             Page {Math.floor(directory.offset / 100) + 1}
           </Text>
           <Button
-            color="gray"
             variant="ghost"
             className="navigation-control"
             disabled={directory.loading}
