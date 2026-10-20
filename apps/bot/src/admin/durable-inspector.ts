@@ -17,6 +17,7 @@ import type {
   DurableConversationItem,
   DurableDocumentItem,
   DurableDocumentProjection,
+  DurableEntryItem,
   DurableInspectionItem,
   DurableInspectionLoadedResponse,
   DurableInspectionQuery,
@@ -24,6 +25,7 @@ import type {
   DurableTaskItem,
 } from "@narumitw/sumire-contracts"
 import { z } from "zod"
+import { entryContent } from "./durable-entry-content.js"
 import { AdminError } from "./store.js"
 
 export type DurableInspectionStorage = Pick<
@@ -272,14 +274,22 @@ function conversationMetadata(
   }
 }
 
-function entryMetadata(value: EntryRecord): DurableInspectionItem {
-  // Role is a fixed enum, never an arbitrary message field. Message bodies stay in Storage.
-  const role = value.model?.[0]?.role
+function entryMetadata(value: EntryRecord): DurableEntryItem {
+  // Scans return metadata only. Model-facing content requires an explicit object read.
+  const message = value.model?.[0]
+  const role = message?.role
   return {
     type: "entry",
     id: integer(value.id, true),
     conversationId: integer(value.conversationId, true),
     kind: safeString(value.kind),
+    ...(message?.role === "toolResult"
+      ? {
+          toolName: safeString(message.toolName),
+          toolCallId: safeString(message.toolCallId),
+          isError: flag(message.isError),
+        }
+      : {}),
     ...(value.byTaskId === undefined ? {} : { byTaskId: integer(value.byTaskId, true) }),
     ...(value.head === undefined ? {} : { head: integer(value.head, true) }),
     ...(value.model?.[0]?.timestamp === undefined
@@ -455,7 +465,13 @@ export function createDurableInspector(
           const value = await read(() =>
             storage.entry(conversationId, query.objectId as EntryId, context),
           )
-          page = { items: value ? [entryMetadata(value.entry)] : [] }
+          if (value) {
+            const content = entryContent(value.entry.model)
+            page = { items: [{ ...entryMetadata(value.entry), content }] }
+            response.truncated = content.truncated
+          } else {
+            page = { items: [] }
+          }
         } else {
           const values = await read(() =>
             storage.scanEntries({ conversationId }, query.limit, native, context),
@@ -545,6 +561,14 @@ export function createDurableInspector(
             item.valueState = "withheld"
             item.withheldReason = "limit"
             response.items.push(item)
+          } else if (response.items.length === 0 && item.type === "entry") {
+            if (item.content) item.content = { messages: [], truncated: true }
+            response.items.push(item)
+            if (
+              Buffer.byteLength(JSON.stringify(response)) >
+              maxResponseBytes - maxCursorBytes - 128
+            )
+              throw new ProjectionError("limit")
           } else {
             response.nextCursor = encode(native, index)
             return response

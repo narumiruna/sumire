@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest"
 import {
   formatDurableTime,
   formatReadTime,
+  recordMetadata,
   recordSummary,
   recordTitle,
   taskObservation,
@@ -109,7 +110,9 @@ describe("Durable record titles", () => {
           withheldReason: "unknown-kind",
         }),
       ).toBe("This document is not approved for value inspection.")
-      expect(recordSummary({ ...entry, kind })).toBe("Message content is not included.")
+      expect(recordSummary({ ...entry, kind })).toBe(
+        "Only metadata is included. Inspect this entry to read message content.",
+      )
     },
   )
 })
@@ -149,10 +152,52 @@ describe("structured record summaries", () => {
     )
   })
 
-  it("does not include entry content for any role", () => {
+  it("explains metadata-only entry responses for any role", () => {
     for (const role of [undefined, "assistant", "user", "system", "toolResult"] as const) {
-      expect(recordSummary({ ...entry, role })).toBe("Message content is not included.")
+      expect(recordSummary({ ...entry, role })).toBe(
+        "Only metadata is included. Inspect this entry to read message content.",
+      )
     }
+  })
+
+  it("distinguishes available, empty, and truncated entry content", () => {
+    expect(recordSummary({ ...entry, content: { messages: [], truncated: false } })).toBe(
+      "No message content recorded.",
+    )
+    expect(
+      recordSummary({
+        ...entry,
+        content: { messages: [{ role: "assistant", content: [] }], truncated: false },
+      }),
+    ).toBe("Message content is available.")
+    expect(recordSummary({ ...entry, content: { messages: [], truncated: true } })).toBe(
+      "Message content is truncated.",
+    )
+  })
+
+  it("labels tool result metadata without requiring content", () => {
+    const result = {
+      ...entry,
+      role: "toolResult" as const,
+      toolName: "read",
+      toolCallId: "call-1",
+      isError: true,
+    }
+    expect(recordTitle(result)).toBe("Tool result: read")
+    expect(recordSummary(result)).toContain("Recorded tool error.")
+    expect(recordSummary({ ...result, isError: false })).toContain(
+      "Recorded tool result (not an error).",
+    )
+  })
+
+  it("keeps content and approved values out of metadata JSON without mutating records", () => {
+    const content = { messages: [], truncated: false }
+    const item = { ...entry, content }
+    expect(recordMetadata(item)).toEqual(entry)
+    expect(item.content).toBe(content)
+    const value = { kind: "pi.agent" as const }
+    expect(recordMetadata({ ...document, value })).toEqual(document)
+    expect(recordMetadata(task)).toBe(task)
   })
 
   it("distinguishes metadata-only and unavailable document values", () => {

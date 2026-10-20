@@ -175,7 +175,9 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   await expect(approved).toHaveCount(0)
   await inspector.getByRole("tab", { name: "Entries", exact: true }).click()
   await expectRecord(page, "Assistant message record", "entry #70")
-  await expect(detailsFor(page)).toContainText("Message content is not included.")
+  await expect(detailsFor(page)).toContainText(
+    "Only metadata is included. Inspect this entry to read message content.",
+  )
   await expect(field(detailsFor(page), "Recorded at")).toHaveText("2026-10-19 11:59:30 UTC")
   await inspector.getByText("Metadata JSON for entry 70", { exact: true }).click()
   await expect(inspector.locator("pre")).toContainText('"role": "assistant"')

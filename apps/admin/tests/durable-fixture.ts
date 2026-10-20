@@ -1,5 +1,6 @@
 import type {
   DurableConversationItem,
+  DurableEntryItem,
   DurableInspectionItem,
   DurableInspectionResponse,
   DurableInspectionView,
@@ -91,6 +92,46 @@ export const entries: DurableInspectionItem[] = [
     head: 60,
   },
 ]
+export const entryContent: NonNullable<DurableEntryItem["content"]> = {
+  truncated: false,
+  messages: [
+    { role: "system", content: [{ type: "text", text: "System instructions" }] },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: untrusted },
+        { type: "image", mimeType: "image/png" },
+      ],
+    },
+    {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: `Private reasoning ${untrusted}` },
+        { type: "text", text: "Calling a tool" },
+        {
+          type: "toolCall",
+          id: "call-70",
+          name: "fixture_tool",
+          arguments: JSON.stringify({ input: untrusted }),
+        },
+      ],
+    },
+    {
+      role: "toolResult",
+      toolName: "fixture_tool",
+      toolCallId: "call-70",
+      isError: false,
+      content: [{ type: "text", text: "Tool output" }],
+    },
+    {
+      role: "toolResult",
+      toolName: untrusted,
+      toolCallId: untrusted,
+      isError: true,
+      content: [{ type: "text", text: `Tool error ${untrusted}` }],
+    },
+  ],
+}
 export function response(
   view: DurableInspectionView,
   items: DurableInspectionItem[],
@@ -117,6 +158,7 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
     taskItems: tasks,
     documentItems: documents,
     entryItems: entries,
+    entryContent: entryContent as DurableEntryItem["content"],
     chats: [
       { id: 42, name: "Loaded chat", type: "private" },
       { id: 43, name: "Idle chat", type: "private" },
@@ -204,6 +246,11 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
       }
       if (objectId) {
         items = items.filter((item) => item.id === Number(objectId))
+        if (view === "entries") {
+          items = items.map((item) =>
+            item.type === "entry" ? { ...item, content: state.entryContent } : item,
+          )
+        }
         if (view === "documents") {
           const item = items[0]
           if (item?.type !== "document" || item.valueState === "withheld") {

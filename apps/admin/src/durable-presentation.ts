@@ -39,7 +39,7 @@ export function recordTitle(item: DurableInspectionItem): string {
         case "system":
           return "System message record"
         case "toolResult":
-          return "Tool result record"
+          return item.toolName ? `Tool result: ${item.toolName}` : "Tool result record"
         default:
           return "Entry record"
       }
@@ -75,8 +75,18 @@ export function recordSummary(item: DurableInspectionItem): string {
         : "No parent relationship recorded."
     case "task":
       return taskObservation(item)
-    case "entry":
-      return "Message content is not included."
+    case "entry": {
+      const content = !item.content
+        ? "Only metadata is included. Inspect this entry to read message content."
+        : item.content.truncated
+          ? "Message content is truncated."
+          : item.content.messages.length === 0
+            ? "No message content recorded."
+            : "Message content is available."
+      return item.isError === undefined
+        ? content
+        : `${item.isError ? "Recorded tool error." : "Recorded tool result (not an error)."} ${content}`
+    }
     case "document":
       switch (item.valueState) {
         case "metadata-only":
@@ -98,6 +108,18 @@ export function recordSummary(item: DurableInspectionItem): string {
           }
       }
   }
+}
+
+export function recordMetadata(item: DurableInspectionItem): unknown {
+  if (item.type === "document") {
+    const { value: _value, ...metadata } = item
+    return metadata
+  }
+  if (item.type === "entry") {
+    const { content: _content, ...metadata } = item
+    return metadata
+  }
+  return item
 }
 
 function utcTime(date: Date): string {
