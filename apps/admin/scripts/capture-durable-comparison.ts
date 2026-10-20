@@ -72,10 +72,12 @@ try {
         })
         try {
           await durableFixture(page, "/?section=Durable&chat=42")
-          await page
-            .getByRole("region", { name: "Selected item details", exact: true })
+          const selected = page.getByRole("region", { name: "Selected item details", exact: true })
+          await selected.waitFor()
+          // Current layouts show this ID in the mobile navigator instead of repeating it here.
+          await selected
             .getByText("conversation #7", { exact: true })
-            .waitFor()
+            .waitFor({ state: "attached" })
           await page.screenshot({
             path: path.join(output, `${phase}-${width}.png`),
             fullPage: true,

@@ -994,7 +994,13 @@
   }
 
   .dv-preview .dv-detail-identity {
-    gap: 9px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  #root .dv-preview main h2 {
+    font-size: 20px;
   }
 
   .dv-preview .dv-detail-icon {

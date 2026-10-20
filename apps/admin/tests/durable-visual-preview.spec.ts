@@ -173,3 +173,27 @@ for (const width of [1440, 390, 320]) {
     await page.screenshot({ path: testInfo.outputPath("deep-preview.png"), fullPage: true })
   })
 }
+
+test("narrow tool preview keeps the result badge beside wider fallback-font titles", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 844 })
+  await page.goto("/tests/fixtures/durable-visual-preview.html?record=tool")
+  await page.addStyleTag({ content: ".dv-preview { font-family: Verdana, sans-serif; }" })
+  const title = page.locator(".dv-detail-titles")
+  const badge = page.locator(".dv-result-status")
+  await expect(title.getByRole("heading", { name: "codemode", exact: true })).toBeVisible()
+  await expect(badge).toHaveText("Succeeded")
+  const titleBox = await title.boundingBox()
+  const badgeBox = await badge.boundingBox()
+  expect(titleBox).not.toBeNull()
+  expect(badgeBox).not.toBeNull()
+  expect(badgeBox?.y).toBeGreaterThanOrEqual(titleBox?.y ?? 0)
+  expect((badgeBox?.y ?? 0) + (badgeBox?.height ?? 0)).toBeLessThanOrEqual(
+    (titleBox?.y ?? 0) + (titleBox?.height ?? 0),
+  )
+  expect(await title.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect((await page.locator(".dv-output").boundingBox())?.y).toBeLessThanOrEqual(410)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("fallback-font-preview.png"), fullPage: true })
+})
