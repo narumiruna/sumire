@@ -142,12 +142,25 @@ it("verifies full Chromium with its sandbox explicitly enabled when requested", 
   expect(close).toHaveBeenCalledOnce()
 })
 
-it("selects the pinned official Playwright policy without privileged mode or added capabilities", () => {
+it("limits the pinned Playwright policy change to faccessat2 for runtime compatibility", () => {
   const root = new URL("../../../", import.meta.url)
   const profile = JSON.parse(
     readFileSync(new URL("apps/bot/resources/chromium/seccomp-profile.json", root), "utf8"),
   )
-  expect(createHash("sha256").update(JSON.stringify(profile)).digest("hex")).toBe(
+  expect(profile.syscalls[1]).toMatchObject({
+    action: "SCMP_ACT_ALLOW",
+    args: [],
+    includes: {},
+    excludes: {},
+  })
+  expect(profile.syscalls[1].names.filter((name: string) => name === "faccessat2")).toEqual([
+    "faccessat2",
+  ])
+  const upstream = structuredClone(profile)
+  upstream.syscalls[1].names = upstream.syscalls[1].names.filter(
+    (name: string) => name !== "faccessat2",
+  )
+  expect(createHash("sha256").update(JSON.stringify(upstream)).digest("hex")).toBe(
     "8e3abd795acf8d96f90d4f2103f2b9665c21ab645df244d4eedcc5c95ceac3a2",
   )
   expect(profile.defaultAction).toBe("SCMP_ACT_ERRNO")
