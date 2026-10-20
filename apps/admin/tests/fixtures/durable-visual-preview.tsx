@@ -10,8 +10,8 @@ import {
   LayersIcon,
   LockClosedIcon,
   MixerHorizontalIcon,
-  ReloadIcon,
   PersonIcon,
+  ReloadIcon,
 } from "@radix-ui/react-icons"
 import { Theme } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef } from "react"
