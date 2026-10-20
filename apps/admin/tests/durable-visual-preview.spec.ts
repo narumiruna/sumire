@@ -37,12 +37,18 @@ for (const viewport of [
         expect(
           await text.evaluate((element) => getComputedStyle(element).fontFamily),
         ).not.toContain("monospace")
+        expect(
+          await text.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+        ).toBeGreaterThanOrEqual(14)
       } else {
         const output = selected.locator(".dv-output")
         await expect(output).toBeVisible()
         expect(await output.evaluate((element) => getComputedStyle(element).fontFamily)).toContain(
           "monospace",
         )
+        expect(
+          await output.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+        ).toBeGreaterThanOrEqual(14)
         expect(
           await output.evaluate((element) => element.scrollHeight <= element.clientHeight),
         ).toBe(true)

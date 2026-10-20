@@ -28,11 +28,23 @@ Implementation sources:
 - `apps/admin/src/styles.css`: Durable layout, typography, spacing, and surfaces.
 - `apps/admin/src/surfaces.tsx`: shared `Panel`; do not change its global appearance for this feature.
 
+## Design quality reference
+
+The user supplied Pi Session Inspector as the quality reference after reviewing the first static preview. The first preview was too plain. Tidier spacing alone does not meet the requested result.
+
+- Use warm, paper-like neutral surfaces, fine separators, and a compact Inspector toolbar instead of a general settings-page composition.
+- Make records easy to scan with aligned icons, short type labels, secondary IDs, and compact state indicators.
+- Use low-saturation type colors: violet for system records, blue for user records, sage for assistant records, apricot for tool calls, and blue-gray for tool results. Keep a separate selected-row treatment; type color is not success or error status.
+- Use monospace for technical labels and code, not for all message text. Keep the planned readable type sizes rather than copying the reference's small labels.
+- Refine density, alignment, control sizing, code surfaces, and disclosure details together. A palette change alone is not sufficient.
+- Retain the left relationship navigator and content-first detail pane. The reference is a visual standard, not authorization to add its search, minimap, live capture, metrics, or unrelated views.
+- Use synthetic content only. Do not store the private reference URL, access fragment, session identifiers, real messages, or reference screenshots in the repository.
+
 ## Visual specification
 
 ### Workspace
 
-- Keep the existing Admin shell, Radix colors, Radix icons, and typography tokens.
+- Keep the existing Admin shell, Radix icons, and typography tokens. The review-only fixture may use provisional local color values to establish the requested warm visual direction. Before production adoption, map the accepted palette to existing Radix tokens and verify contrast; keep the change scoped to Durable.
 - At desktop widths of at least 1,100 px, use a 288–336 px navigator and a flexible detail pane, with a 16 px gap.
 - At narrower widths, put the full-width navigator in a `Browse records` disclosure above the detail pane. Keep the current record location visible when navigation is closed. After node selection, close navigation and move focus to the detail heading; reopening navigation must retain its expanded branches. Keep the page free of horizontal scrolling.
 - Put the workspace directly after a compact chat/context header. At 1440 × 900, its heading and first navigation row must be visible without scrolling when no error banner is present.
@@ -68,7 +80,7 @@ Implementation sources:
 
 - Use one outer workspace treatment and light internal separators. Do not replace nested borders with nested shadows.
 - Use body text at the existing 14–16 px tokens and secondary labels at 12–13 px. Do not reduce the main font size to fit more records.
-- Use neutral colors for ordinary records, the accent for selection, and semantic colors for recorded errors or warnings. Always include a text label; color alone must not convey state.
+- Use low-saturation type colors for record surfaces, a separate accent marker and outline for selection, and semantic labels for recorded errors or warnings. Always include text and icons; color alone must not convey type or state.
 - Show loading and read errors within the affected pane or collection. A read failure must not look like an empty record.
 - Keep long names, deep nesting, multiline text, and large output within the pane width. Any label abbreviation must retain its complete accessible name.
 
@@ -84,13 +96,15 @@ Capture and validate the preview from the repository root:
 npm run test:browser --workspace @narumitw/sumire-admin -- tests/durable-visual-preview.spec.ts --workers=1 --output=/tmp/sumire-durable-visual-preview
 ```
 
-- [x] Build the static preview and capture both record types at 1440, 768, 390, and 320 px. All eight preview browser checks pass.
-- [x] Update PR #157 with the validated preview and reproduction steps without changing production interactions.
+- [x] Revise the static preview to match the stated design quality reference and capture both record types at 1440, 768, 390, and 320 px. All eight preview checks pass, including 14 px minimum message and code text.
+- [x] Update PR #157 with the validated revised preview and reference-aligned design direction without changing production interactions.
 - [ ] Receive user approval before starting the remaining implementation tasks.
 
-Phase 1 validation passes: root formatting, lint, typecheck, 1,854 unit tests, build, all 248 Admin browser tests, and `git diff --check`. Browser checks verify no API requests, no horizontal overflow, desktop selection contrast, a closed mobile navigator, body-font user text, and monospace tool output without an internal vertical scrollbar. These checks do not replace the production interaction checks in the completion checklist.
+The first preview was not accepted visually. After revising the preview against the stated reference, root formatting, lint, typecheck, 1,854 unit tests, build, all 248 Admin browser tests, and `git diff --check` pass again. Validation does not establish user acceptance.
 
-Screenshots are local review artifacts under `/tmp/sumire-durable-visual-preview/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. User approval remains pending, so task 1 and the final acceptance checklist remain open.
+Preview browser checks cover no API requests, no horizontal overflow, desktop selection contrast, a closed mobile navigator, body-font user text, and monospace tool output without an internal vertical scrollbar. These checks do not replace the production interaction checks in the completion checklist.
+
+Revised screenshots are local review artifacts under `/tmp/sumire-durable-visual-preview-reference/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. User approval remains pending, so task 1 and the final acceptance checklist remain open.
 
 ## Plan
 
