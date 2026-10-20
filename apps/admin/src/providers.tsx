@@ -1,11 +1,21 @@
-import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
+import {
+  CheckIcon,
+  InfoCircledIcon,
+  LockClosedIcon,
+  MagnifyingGlassIcon,
+  MixerHorizontalIcon,
+} from "@radix-ui/react-icons"
 import {
   AlertDialog,
   Badge,
   Button,
+  Callout,
   Checkbox,
+  Code,
+  DataList,
   Dialog,
   Flex,
+  Grid,
   Heading,
   Popover,
   Text,
@@ -103,18 +113,19 @@ export function SearchChoice({
           />
           <div id={id} role="listbox" aria-label={`${label} results`} className="provider-options">
             {filtered.map((v, index) => (
-              <button
-                type="button"
-                role="option"
-                id={`${id}-${index}`}
-                key={v.id}
-                aria-selected={v.id === value}
-                data-active={index === active}
-                onClick={() => choose(v.id)}
-              >
-                <strong>{v.label}</strong>
-                <small>{v.detail ?? v.id}</small>
-              </button>
+              <Button asChild variant="ghost" key={v.id}>
+                <button
+                  type="button"
+                  role="option"
+                  id={`${id}-${index}`}
+                  aria-selected={v.id === value}
+                  data-active={index === active}
+                  onClick={() => choose(v.id)}
+                >
+                  <strong>{v.label}</strong>
+                  <small>{v.detail ?? v.id}</small>
+                </button>
+              </Button>
             ))}
           </div>
           {!filtered.length && (
@@ -305,202 +316,49 @@ export function Providers({
         if (!open && !busy) closeAuth()
       }}
     >
-      <Prose color="gray">
-        Select a provider and configure its credentials, then choose a model.
-      </Prose>
-      <Text as="p" size="2" color="gray" className="provider-current" mt="2">
-        Shared bot default in current settings: {snapshot.policy.defaults.model ?? "Not set"} ·
-        Thinking: {snapshot.policy.defaults.thinking ?? "off"}
-      </Text>
-      {snapshot.policy.defaults.model && (
-        <AlertDialog.Root>
-          <AlertDialog.Trigger>
-            <Button variant="ghost" disabled={blocked}>
-              Clear shared default model
-            </Button>
-          </AlertDialog.Trigger>
-          <AlertDialog.Content>
-            <AlertDialog.Title>Clear the shared default model?</AlertDialog.Title>
-            <AlertDialog.Description>
-              Save and apply an unconfigured shared model and thinking default. Allowed models,
-              authentication, and chat overrides stay unchanged. Active work will be cancelled.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4">
-              <AlertDialog.Cancel>
-                <Button variant="soft">Cancel</Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button
-                  onClick={() =>
-                    void run(async () => {
-                      await request(
-                        "settings",
-                        csrf,
-                        {
-                          revision: snapshot.revision,
-                          policy: {
-                            ...snapshot.policy,
-                            defaults: { ...snapshot.policy.defaults, model: null, thinking: null },
-                          },
-                        },
-                        "PUT",
-                      )
-                      await refresh()
-                      setNotice("Shared default cleared. Chat overrides remain unchanged.")
-                    })
-                  }
-                >
-                  Clear default and apply
-                </Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-      )}
-      {!inventory.providers.length && (
-        <Text as="p">
-          No providers available. Add a custom endpoint below or check the host provider setup.
-        </Text>
-      )}
-      {!snapshot.policy.defaults.model && (
-        <Text as="p" size="2" color="gray" mt="2">
-          {saved.model
-            ? `Existing chat model: ${saved.provider}/${saved.model}. This is not a shared bot default.`
-            : "No shared bot default. Chats can use different models; no model is selected automatically."}
-        </Text>
-      )}
-      {chatSelections.length > 0 && (
-        <details className="provider-advanced provider-current">
-          <summary>Chat-specific models ({chatSelections.length})</summary>
-          <Text as="p" size="2">
-            These settings override the bot default. Change them on Chats.
-          </Text>
-          <ul>
-            {chatSelections.map(([id, chat]) => (
-              <li key={id}>
-                Chat {id}: {chat.model} · Thinking:{" "}
-                {chat.thinking ?? snapshot.policy.defaults.thinking ?? "off"}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {(draft || defaultChoice !== undefined) && (
-        <Button
-          variant="soft"
-          mt="2"
-          disabled={busy || Boolean(oauth)}
-          onClick={() => {
-            setDraft(null)
-            setDefaultChoice(undefined)
-            setNotice("")
-            setDiscoveryCheck(undefined)
-          }}
-        >
-          Use saved selection
-        </Button>
-      )}
-      {dirty && (
-        <Text as="p" color="orange" role="status">
-          Save or discard the unsaved settings above before changing provider credentials or
-          applying a model.
-        </Text>
-      )}
-      <ol className="provider-steps" aria-label="Provider setup steps">
-        <li>Configure credentials</li>
-        <li>Review check status</li>
-        <li>Choose model</li>
-        <li>Save model explicitly</li>
-      </ol>
-      <Panel mt="4">
-        <Heading size="3">1. Provider and authentication</Heading>
-        <SearchChoice
-          label="Provider"
-          value={provider}
-          disabled={Boolean(oauth) || busy}
-          options={inventory.providers.map((p) => ({
-            id: p.id,
-            label: p.name,
-            detail: `${p.id} · ${p.configured ? "Configured" : "Not configured"}`,
-          }))}
-          onChange={(id) => {
-            if (id === provider) return
-            setDraft(id === saved.provider ? saved : { provider: id, model: "", thinking: null })
-            setDefaultChoice(false)
-            setNotice("")
-            setDiscoveryCheck(undefined)
-          }}
-        />
-        {provider && !selected && (
-          <Text as="p" color="orange" mt="3">
-            The selected provider {provider} is no longer in the catalog. Choose another provider.
-            No replacement is selected automatically.
-          </Text>
-        )}
-        {selected && (
-          <>
-            <Flex align="center" gap="2" wrap="wrap" mt="3">
-              <Badge color={selected.configured ? "teal" : "orange"}>
-                {selected.configured
-                  ? "Authentication configured locally"
-                  : "Authentication not configured"}
-              </Badge>
-              {selected.apiKey || selected.oauth ? (
-                <Dialog.Trigger>
-                  <Button variant="soft" disabled={blocked} onClick={configureAuth}>
-                    Configure authentication
-                  </Button>
-                </Dialog.Trigger>
-              ) : (
-                <Text size="2">
-                  This provider uses host credentials. Configure them on the trusted host.
-                </Text>
-              )}
-              <Button
-                variant="ghost"
-                disabled={blocked}
-                onClick={() =>
-                  void run(async () => {
-                    try {
-                      const result = await request<{ configured: boolean }>(
-                        `providers/${provider}/test`,
-                        csrf,
-                      )
-                      setCredentialCheck({
-                        provider,
-                        revision: snapshot.revision,
-                        status: result.configured ? "Configured locally" : "Not configured",
-                      })
-                      setNotice(
-                        result.configured
-                          ? "Authentication is available. No tokens were generated."
-                          : "Authentication is not available. Check provider setup.",
-                      )
-                    } catch (error) {
-                      setCredentialCheck({
-                        provider,
-                        revision: snapshot.revision,
-                        status: "Check failed",
-                      })
-                      throw error
-                    }
-                  })
-                }
-              >
-                Check authentication
-              </Button>
-              {selected.configured && (
+      <Flex direction="column" gap="4" className="settings-stack">
+        <Panel className="provider-current-summary">
+          <Flex direction="column" gap="3">
+            <div className="section-heading">
+              <Heading as="h3" size="3">
+                Current shared default
+              </Heading>
+              <Prose size="2" color="gray" className="section-copy">
+                Select a provider and configure its credentials, then choose a model.
+              </Prose>
+            </div>
+            <Flex align="start" justify="between" gap="3" wrap="wrap">
+              <DataList.Root size="2" orientation={{ initial: "vertical", sm: "horizontal" }}>
+                <DataList.Item>
+                  <DataList.Label>Shared bot default in current settings</DataList.Label>
+                  <DataList.Value>
+                    {snapshot.policy.defaults.model ? (
+                      <Code>{snapshot.policy.defaults.model}</Code>
+                    ) : (
+                      <Text color="gray">Not set</Text>
+                    )}
+                  </DataList.Value>
+                </DataList.Item>
+                <DataList.Item>
+                  <DataList.Label>Thinking</DataList.Label>
+                  <DataList.Value>
+                    <Badge color="gray">{snapshot.policy.defaults.thinking ?? "off"}</Badge>
+                  </DataList.Value>
+                </DataList.Item>
+              </DataList.Root>
+              {snapshot.policy.defaults.model && (
                 <AlertDialog.Root>
                   <AlertDialog.Trigger>
-                    <Button variant="ghost" color="red" disabled={blocked}>
-                      Remove credential
+                    <Button variant="ghost" disabled={blocked}>
+                      Clear shared default model
                     </Button>
                   </AlertDialog.Trigger>
                   <AlertDialog.Content>
-                    <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
+                    <AlertDialog.Title>Clear the shared default model?</AlertDialog.Title>
                     <AlertDialog.Description>
-                      Replace model references first. Ambient environment credentials are not
-                      removed.
+                      Save and apply an unconfigured shared model and thinking default. Allowed
+                      models, authentication, and chat overrides stay unchanged. Active work will be
+                      cancelled.
                     </AlertDialog.Description>
                     <Flex gap="3" mt="4">
                       <AlertDialog.Cancel>
@@ -508,18 +366,30 @@ export function Providers({
                       </AlertDialog.Cancel>
                       <AlertDialog.Action>
                         <Button
-                          color="red"
                           onClick={() =>
                             void run(async () => {
-                              await request(`providers/${provider}/credential`, csrf, {
-                                key: null,
-                                revision: snapshot.revision,
-                              })
+                              await request(
+                                "settings",
+                                csrf,
+                                {
+                                  revision: snapshot.revision,
+                                  policy: {
+                                    ...snapshot.policy,
+                                    defaults: {
+                                      ...snapshot.policy.defaults,
+                                      model: null,
+                                      thinking: null,
+                                    },
+                                  },
+                                },
+                                "PUT",
+                              )
                               await refresh()
+                              setNotice("Shared default cleared. Chat overrides remain unchanged.")
                             })
                           }
                         >
-                          Remove
+                          Clear default and apply
                         </Button>
                       </AlertDialog.Action>
                     </Flex>
@@ -527,218 +397,498 @@ export function Providers({
                 </AlertDialog.Root>
               )}
             </Flex>
-            <Heading size="3" mt="3">
-              2. Check status
-            </Heading>
-            <Text as="p" size="2" role="status">
-              Local credential check:{" "}
-              {credentialCheck?.provider === provider &&
-              credentialCheck.revision === snapshot.revision
-                ? credentialCheck.status
-                : "Not checked"}
-            </Text>
-            <Text as="p" size="2">
-              Remote verification: Not checked. Local credential checks do not verify remote
-              acceptance.
-            </Text>
-            <Text as="p" size="2" color="gray" mt="2">
-              Model availability is unverified. Check authentication resolves credentials without
-              generating model output. You can select and save a model before authentication.
-            </Text>
-          </>
-        )}
-      </Panel>
-      {selected && (
-        <Panel mt="3">
-          <Heading size="3">3. Choose model</Heading>
-          <SearchChoice
-            label="Model"
-            value={model}
-            disabled={Boolean(oauth) || busy}
-            options={selected.models.map((m) => ({ id: m.id, label: m.name, detail: m.id }))}
-            onChange={(id) => {
-              if (id === model) return
-              setDraft({
-                provider,
-                model: id,
-                thinking:
-                  (selected.models.find((m) => m.id === id)
-                    ?.thinking[0] as Selection["thinking"]) ?? null,
-              })
-              setDefaultChoice(false)
-            }}
-          />
-          {model && !selectedModel && (
-            <Text as="p" color="orange">
-              The selected model is no longer in the catalog. Choose another model before saving.
-            </Text>
-          )}
-          {selectedModel && (
-            <>
-              <Flex gap="2" my="3" wrap="wrap">
-                <Badge>{selectedModel.reasoning ? "Reasoning" : "No reasoning"}</Badge>
-                <Badge>{selectedModel.image ? "Image input" : "Text input"}</Badge>
-              </Flex>
-              {(supported.length > 1 || (!thinkingValid && supported.length > 0)) && (
-                <label htmlFor="provider-thinking">
-                  Thinking level
-                  <Select.Root
-                    value={thinking ?? ""}
-                    onValueChange={(v) =>
-                      setDraft({ provider, model, thinking: v as Selection["thinking"] })
-                    }
-                  >
-                    <Select.Trigger id="provider-thinking" aria-label="Thinking level" />
-                    <Select.Content>
-                      {supported.map((level) => (
-                        <Select.Item key={level} value={level}>
-                          {level}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </label>
-              )}
-              {!thinkingValid && (
-                <Text as="p" color="orange">
-                  The selected thinking level is unavailable. Choose a supported level.
+            {!inventory.providers.length && (
+              <Text as="p">
+                No providers available. Add a custom endpoint below or check the host provider
+                setup.
+              </Text>
+            )}
+            {!snapshot.policy.defaults.model && (
+              <Text as="p" size="2" color="gray" mt="2">
+                {saved.model
+                  ? `Existing chat model: ${saved.provider}/${saved.model}. This is not a shared bot default.`
+                  : "No shared bot default. Chats can use different models; no model is selected automatically."}
+              </Text>
+            )}
+            {chatSelections.length > 0 && (
+              <details className="provider-advanced provider-current">
+                <summary>Chat-specific models ({chatSelections.length})</summary>
+                <Text as="p" size="2">
+                  These settings override the bot default. Change them on Chats.
                 </Text>
-              )}
-              <label className="check" htmlFor="provider-default">
-                <Checkbox
-                  id="provider-default"
-                  aria-label="Use as the bot default"
-                  checked={useDefault}
-                  onCheckedChange={(v) => {
-                    setDraft(draft ?? saved)
-                    setDefaultChoice(v === true)
-                  }}
-                />
-                Use as the bot default
-              </label>
-              <Text as="p" size="2" color="gray">
-                {useDefault
-                  ? "Changes the inherited model and thinking defaults. Chat overrides stay unchanged. Each chat must allow this model."
-                  : "Add only this model to global availability. The bot default and chat overrides stay unchanged. Thinking applies only when this is the bot default."}
-              </Text>
-              {thinkingValid && !modelChanged && (
-                <Text as="p" size="2" color="gray" mt="2">
-                  Selection matches current settings. No model change is needed.
-                </Text>
-              )}
-              <Heading size="3" mt="3">
-                4. Save model
-              </Heading>
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button
-                    mt="3"
-                    disabled={
-                      blocked || !thinkingValid || !modelChanged || custom?.enabled === false
-                    }
-                  >
-                    {useDefault ? "Save default model" : "Save model availability"}
-                  </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content>
-                  <AlertDialog.Title>Save model selection?</AlertDialog.Title>
-                  <AlertDialog.Description>
-                    Add {ref} to availability.
-                    {useDefault
-                      ? ` Set it as the bot default with thinking ${thinking}.`
-                      : " Keep the current bot default."}{" "}
-                    Active work will be cancelled.
-                  </AlertDialog.Description>
-                  <Flex gap="3" mt="4">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft">Cancel</Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button
-                        onClick={() =>
-                          void run(async () => {
-                            await request(
-                              "settings",
-                              csrf,
-                              {
-                                revision: snapshot.revision,
-                                policy: withProviderModel(
-                                  snapshot.policy,
-                                  ref,
-                                  thinking,
-                                  useDefault,
-                                ),
-                              },
-                              "PUT",
-                            )
-                            await refresh()
-                            setNotice("Model selection saved. Check application status above.")
-                          })
-                        }
-                      >
-                        Save and apply
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
-            </>
-          )}
-          {custom?.baseUrl && (
-            <details className="provider-advanced">
-              <summary>Model discovery</summary>
-              <Text as="p" size="2">
-                OpenAI-compatible endpoints only. Discovery returns IDs, not verified model
-                capabilities. Add their metadata under Custom endpoint.
-              </Text>
-              <Button
-                variant="soft"
-                disabled={blocked || !custom.api?.startsWith("openai-")}
-                onClick={() =>
-                  void run(async () => {
-                    try {
-                      const models = await request<string[]>(`providers/${provider}/discover`, csrf)
-                      setDiscoveryCheck({
-                        provider,
-                        revision: snapshot.revision,
-                        configuration: discoveryConfiguration,
-                        models,
-                        status: "Verified — bounded model-list request only, not model execution",
-                      })
-                    } catch (error) {
-                      setDiscoveryCheck({
-                        provider,
-                        revision: snapshot.revision,
-                        configuration: discoveryConfiguration,
-                        models: [],
-                        status: "Check failed",
-                      })
-                      throw error
-                    }
-                  })
-                }
-              >
-                Discover custom models
-              </Button>
-              <Text as="p" role="status">
-                Model-list check: {currentDiscovery?.status ?? "Not checked"}
-              </Text>
-              {discovered.length > 0 && (
                 <ul>
-                  {discovered.map((id) => (
-                    <li key={id}>{id}</li>
+                  {chatSelections.map(([id, chat]) => (
+                    <li key={id}>
+                      Chat {id}: {chat.model} · Thinking:{" "}
+                      {chat.thinking ?? snapshot.policy.defaults.thinking ?? "off"}
+                    </li>
                   ))}
                 </ul>
-              )}
-            </details>
-          )}
+              </details>
+            )}
+          </Flex>
         </Panel>
-      )}
-      {notice && (
-        <Text as="p" role="status" mt="3">
-          {notice}
-        </Text>
-      )}
+        {(draft || defaultChoice !== undefined) && (
+          <Flex>
+            <Button
+              variant="soft"
+              mt="2"
+              disabled={busy || Boolean(oauth)}
+              onClick={() => {
+                setDraft(null)
+                setDefaultChoice(undefined)
+                setNotice("")
+                setDiscoveryCheck(undefined)
+              }}
+            >
+              Use saved selection
+            </Button>
+          </Flex>
+        )}
+        {dirty && (
+          <Callout.Root color="orange" size="1" role="status">
+            <Callout.Icon>
+              <InfoCircledIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              Save or discard the unsaved settings above before changing provider credentials or
+              applying a model.
+            </Callout.Text>
+          </Callout.Root>
+        )}
+        <Grid
+          columns={{ initial: "1", lg: "2" }}
+          gap="4"
+          align="start"
+          className="provider-workspace settings-grid"
+        >
+          <Panel className="provider-connection">
+            <Flex align="center" gap="2" className="section-heading">
+              <LockClosedIcon />
+              <Heading as="h3" size="3">
+                1. Provider and authentication
+              </Heading>
+            </Flex>
+            <SearchChoice
+              label="Provider"
+              value={provider}
+              disabled={Boolean(oauth) || busy}
+              options={inventory.providers.map((p) => ({
+                id: p.id,
+                label: p.name,
+                detail: `${p.id} · ${p.configured ? "Configured" : "Not configured"}`,
+              }))}
+              onChange={(id) => {
+                if (id === provider) return
+                setDraft(
+                  id === saved.provider ? saved : { provider: id, model: "", thinking: null },
+                )
+                setDefaultChoice(false)
+                setNotice("")
+                setDiscoveryCheck(undefined)
+              }}
+            />
+            {provider && !selected && (
+              <Text as="p" color="orange" mt="3">
+                The selected provider {provider} is no longer in the catalog. Choose another
+                provider. No replacement is selected automatically.
+              </Text>
+            )}
+            {selected && (
+              <>
+                <DataList.Root
+                  size="2"
+                  my="3"
+                  orientation={{ initial: "vertical", sm: "horizontal" }}
+                >
+                  <DataList.Item>
+                    <DataList.Label>Provider ID</DataList.Label>
+                    <DataList.Value>
+                      <Code>{selected.id}</Code>
+                    </DataList.Value>
+                  </DataList.Item>
+                  <DataList.Item>
+                    <DataList.Label>Authentication</DataList.Label>
+                    <DataList.Value>
+                      <Badge color={selected.configured ? "teal" : "orange"}>
+                        {selected.configured
+                          ? "Authentication configured locally"
+                          : "Authentication not configured"}
+                      </Badge>
+                    </DataList.Value>
+                  </DataList.Item>
+                </DataList.Root>
+                <Flex align="center" gap="3" wrap="wrap">
+                  {selected.apiKey || selected.oauth ? (
+                    <Dialog.Trigger>
+                      <Button variant="soft" disabled={blocked} onClick={configureAuth}>
+                        Configure authentication
+                      </Button>
+                    </Dialog.Trigger>
+                  ) : (
+                    <Text size="2">
+                      This provider uses host credentials. Configure them on the trusted host.
+                    </Text>
+                  )}
+                  <Button
+                    variant="ghost"
+                    disabled={blocked}
+                    onClick={() =>
+                      void run(async () => {
+                        try {
+                          const result = await request<{ configured: boolean }>(
+                            `providers/${provider}/test`,
+                            csrf,
+                          )
+                          setCredentialCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            status: result.configured ? "Configured locally" : "Not configured",
+                          })
+                          setNotice(
+                            result.configured
+                              ? "Authentication is available. No tokens were generated."
+                              : "Authentication is not available. Check provider setup.",
+                          )
+                        } catch (error) {
+                          setCredentialCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            status: "Check failed",
+                          })
+                          throw error
+                        }
+                      })
+                    }
+                  >
+                    Check authentication
+                  </Button>
+                  {selected.configured && (
+                    <AlertDialog.Root>
+                      <AlertDialog.Trigger>
+                        <Button variant="ghost" color="red" disabled={blocked}>
+                          Remove credential
+                        </Button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Content>
+                        <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
+                        <AlertDialog.Description>
+                          Replace model references first. Ambient environment credentials are not
+                          removed.
+                        </AlertDialog.Description>
+                        <Flex gap="3" mt="4">
+                          <AlertDialog.Cancel>
+                            <Button variant="soft">Cancel</Button>
+                          </AlertDialog.Cancel>
+                          <AlertDialog.Action>
+                            <Button
+                              color="red"
+                              onClick={() =>
+                                void run(async () => {
+                                  await request(`providers/${provider}/credential`, csrf, {
+                                    key: null,
+                                    revision: snapshot.revision,
+                                  })
+                                  await refresh()
+                                })
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </AlertDialog.Action>
+                        </Flex>
+                      </AlertDialog.Content>
+                    </AlertDialog.Root>
+                  )}
+                </Flex>
+                <section className="provider-checks">
+                  <Heading as="h4" size="2" mt="4" mb="3">
+                    2. Check status
+                  </Heading>
+                  <DataList.Root size="2" orientation="vertical">
+                    <DataList.Item>
+                      <DataList.Label>Credential resolution</DataList.Label>
+                      <DataList.Value>
+                        <Text as="p" size="2" role="status">
+                          Local credential check:{" "}
+                          {credentialCheck?.provider === provider &&
+                          credentialCheck.revision === snapshot.revision
+                            ? credentialCheck.status
+                            : "Not checked"}
+                        </Text>
+                      </DataList.Value>
+                    </DataList.Item>
+                    <DataList.Item>
+                      <DataList.Label>Remote acceptance</DataList.Label>
+                      <DataList.Value>
+                        <Text as="p" size="2">
+                          Remote verification: Not checked. Local credential checks do not verify
+                          remote acceptance.
+                        </Text>
+                      </DataList.Value>
+                    </DataList.Item>
+                  </DataList.Root>
+                  <Prose size="2" color="gray" mt="3" className="section-copy">
+                    Model availability is unverified. Check authentication resolves credentials
+                    without generating model output. You can select and save a model before
+                    authentication.
+                  </Prose>
+                </section>
+              </>
+            )}
+          </Panel>
+          {selected && (
+            <Panel className="provider-model">
+              <Flex align="center" gap="2" className="section-heading">
+                <MixerHorizontalIcon />
+                <Heading as="h3" size="3">
+                  3. Choose model
+                </Heading>
+              </Flex>
+              <SearchChoice
+                label="Model"
+                value={model}
+                disabled={Boolean(oauth) || busy}
+                options={selected.models.map((m) => ({ id: m.id, label: m.name, detail: m.id }))}
+                onChange={(id) => {
+                  if (id === model) return
+                  setDraft({
+                    provider,
+                    model: id,
+                    thinking:
+                      (selected.models.find((m) => m.id === id)
+                        ?.thinking[0] as Selection["thinking"]) ?? null,
+                  })
+                  setDefaultChoice(false)
+                }}
+              />
+              {model && !selectedModel && (
+                <Text as="p" color="orange">
+                  The selected model is no longer in the catalog. Choose another model before
+                  saving.
+                </Text>
+              )}
+              {selectedModel && (
+                <>
+                  <Flex gap="2" my="3" wrap="wrap">
+                    <Badge>{selectedModel.reasoning ? "Reasoning" : "No reasoning"}</Badge>
+                    <Badge>{selectedModel.image ? "Image input" : "Text input"}</Badge>
+                  </Flex>
+                  {(supported.length > 1 || (!thinkingValid && supported.length > 0)) && (
+                    <label htmlFor="provider-thinking" className="form-field">
+                      Thinking level
+                      <Select.Root
+                        value={thinking ?? ""}
+                        onValueChange={(v) =>
+                          setDraft({ provider, model, thinking: v as Selection["thinking"] })
+                        }
+                      >
+                        <Select.Trigger id="provider-thinking" aria-label="Thinking level" />
+                        <Select.Content>
+                          {supported.map((level) => (
+                            <Select.Item key={level} value={level}>
+                              {level}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Root>
+                    </label>
+                  )}
+                  {thinkingValid && supported.length === 1 && (
+                    <DataList.Root size="2" mb="3">
+                      <DataList.Item>
+                        <DataList.Label>Thinking level</DataList.Label>
+                        <DataList.Value>
+                          <Badge color="gray">{thinking}</Badge>
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
+                  )}
+                  {!thinkingValid && (
+                    <Text as="p" color="orange">
+                      The selected thinking level is unavailable. Choose a supported level.
+                    </Text>
+                  )}
+                  <label className="check" htmlFor="provider-default">
+                    <Checkbox
+                      id="provider-default"
+                      aria-label="Use as the bot default"
+                      checked={useDefault}
+                      onCheckedChange={(v) => {
+                        setDraft(draft ?? saved)
+                        setDefaultChoice(v === true)
+                      }}
+                    />
+                    Use as the bot default
+                  </label>
+                  <Text as="p" size="2" color="gray">
+                    {useDefault
+                      ? "Changes the inherited model and thinking defaults. Chat overrides stay unchanged. Each chat must allow this model."
+                      : "Add only this model to global availability. The bot default and chat overrides stay unchanged. Thinking applies only when this is the bot default."}
+                  </Text>
+                  {thinkingValid && !modelChanged && (
+                    <Text as="p" size="2" color="gray" mt="2">
+                      Selection matches current settings. No model change is needed.
+                    </Text>
+                  )}
+                  <section className="provider-save">
+                    <Flex align="center" gap="2" mt="4" mb="3" className="section-heading">
+                      <CheckIcon />
+                      <Heading as="h4" size="2">
+                        4. Save model
+                      </Heading>
+                    </Flex>
+                    <DataList.Root size="2" orientation={{ initial: "vertical", sm: "horizontal" }}>
+                      <DataList.Item>
+                        <DataList.Label>Model reference</DataList.Label>
+                        <DataList.Value>
+                          <Code>{ref}</Code>
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>Save scope</DataList.Label>
+                        <DataList.Value>
+                          {useDefault
+                            ? "Shared default and global availability"
+                            : "Global availability only"}
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
+                    <AlertDialog.Root>
+                      <AlertDialog.Trigger>
+                        <Button
+                          mt="3"
+                          disabled={
+                            blocked || !thinkingValid || !modelChanged || custom?.enabled === false
+                          }
+                        >
+                          {useDefault ? "Save default model" : "Save model availability"}
+                        </Button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Content>
+                        <AlertDialog.Title>Save model selection?</AlertDialog.Title>
+                        <AlertDialog.Description>
+                          Add {ref} to availability.
+                          {useDefault
+                            ? ` Set it as the bot default with thinking ${thinking}.`
+                            : " Keep the current bot default."}{" "}
+                          Active work will be cancelled.
+                        </AlertDialog.Description>
+                        <Flex gap="3" mt="4">
+                          <AlertDialog.Cancel>
+                            <Button variant="soft">Cancel</Button>
+                          </AlertDialog.Cancel>
+                          <AlertDialog.Action>
+                            <Button
+                              onClick={() =>
+                                void run(async () => {
+                                  await request(
+                                    "settings",
+                                    csrf,
+                                    {
+                                      revision: snapshot.revision,
+                                      policy: withProviderModel(
+                                        snapshot.policy,
+                                        ref,
+                                        thinking,
+                                        useDefault,
+                                      ),
+                                    },
+                                    "PUT",
+                                  )
+                                  await refresh()
+                                  setNotice(
+                                    "Model selection saved. Check application status above.",
+                                  )
+                                })
+                              }
+                            >
+                              Save and apply
+                            </Button>
+                          </AlertDialog.Action>
+                        </Flex>
+                      </AlertDialog.Content>
+                    </AlertDialog.Root>
+                  </section>
+                </>
+              )}
+              {custom?.baseUrl && (
+                <details className="provider-advanced">
+                  <summary>Model discovery</summary>
+                  <Text as="p" size="2">
+                    OpenAI-compatible endpoints only. Discovery returns IDs, not verified model
+                    capabilities. Add their metadata under Custom endpoint.
+                  </Text>
+                  <Button
+                    variant="soft"
+                    disabled={blocked || !custom.api?.startsWith("openai-")}
+                    onClick={() =>
+                      void run(async () => {
+                        try {
+                          const models = await request<string[]>(
+                            `providers/${provider}/discover`,
+                            csrf,
+                          )
+                          setDiscoveryCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            configuration: discoveryConfiguration,
+                            models,
+                            status:
+                              "Verified — bounded model-list request only, not model execution",
+                          })
+                        } catch (error) {
+                          setDiscoveryCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            configuration: discoveryConfiguration,
+                            models: [],
+                            status: "Check failed",
+                          })
+                          throw error
+                        }
+                      })
+                    }
+                  >
+                    Discover custom models
+                  </Button>
+                  <Text as="p" role="status">
+                    Model-list check: {currentDiscovery?.status ?? "Not checked"}
+                  </Text>
+                  {discovered.length > 0 && (
+                    <ul>
+                      {discovered.map((id) => (
+                        <li key={id}>{id}</li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              )}
+            </Panel>
+          )}
+          {!selected && (
+            <Panel className="provider-model">
+              <Flex align="center" gap="2" className="section-heading">
+                <MixerHorizontalIcon />
+                <Heading as="h3" size="3">
+                  3. Choose model
+                </Heading>
+              </Flex>
+              <Text as="p" size="2" color="gray" className="empty-state">
+                Choose an available provider to review its models and save a selection.
+              </Text>
+            </Panel>
+          )}
+        </Grid>
+        {notice && (
+          <Callout.Root size="1" role="status">
+            <Callout.Icon>
+              <InfoCircledIcon />
+            </Callout.Icon>
+            <Callout.Text>{notice}</Callout.Text>
+          </Callout.Root>
+        )}
+      </Flex>
       <Dialog.Content
         maxWidth="480px"
         onEscapeKeyDown={(e) => {

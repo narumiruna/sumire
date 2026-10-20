@@ -131,10 +131,24 @@ for (const width of [1440, 390]) {
       page.getByRole("button", { name: "Apply policy changes", exact: true }),
     ).toHaveCount(0)
     const row = page.getByRole("list", { name: "Chats on this page" }).getByRole("button").last()
-    await expect(row.locator("small")).toHaveAttribute("title", "supergroup · -1001234567890")
-    expect(await row.locator("small").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe(
-      "nowrap",
-    )
+    const metadata = row.locator(".directory-chat-meta")
+    await expect(metadata.getByText("supergroup", { exact: true })).toBeVisible()
+    const id = metadata.locator("code")
+    await expect(id).toHaveText("-1001234567890")
+    expect(
+      await id.evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getClientRects().length
+      }),
+    ).toBe(1)
+    const idBox = await id.boundingBox()
+    const rowBox = await row.boundingBox()
+    if (!idBox || !rowBox) throw new Error("Missing chat ID geometry")
+    expect(idBox.x).toBeGreaterThanOrEqual(rowBox.x)
+    expect(idBox.x + idBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width)
+    expect(idBox.y).toBeGreaterThanOrEqual(rowBox.y)
+    expect(idBox.y + idBox.height).toBeLessThanOrEqual(rowBox.y + rowBox.height)
     if (width > 850)
       expect((await page.locator(".chat-directory").boundingBox())?.width).toBeGreaterThanOrEqual(
         290,
@@ -670,9 +684,12 @@ for (const state of ["inherited", "empty", "globally unavailable", "disabled pro
     await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
     const effective = effectivePolicy(selectedPolicy, 42)
     const models = page.getByRole("group", { name: "Allowed models", exact: true })
-    await expect(models).toContainText(
-      `${state === "inherited" ? "Inherited" : "Customized"} · Effective: ${effective.models.join(", ") || "None"}`,
-    )
+    await expect(
+      models.getByText(state === "inherited" ? "Inherited" : "Customized", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      models.getByText(`Effective: ${effective.models.join(", ") || "None"}`, { exact: true }),
+    ).toBeVisible()
     await expect(
       page.getByText(
         `Customized model: ${effective.model ?? "No allowed model"} · Inherited thinking: ${effective.thinking}`,
@@ -1353,10 +1370,12 @@ test("distinguishes inherited, empty, and customized chat authorization", async 
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
   await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true }).first()
-  await expect(tools).toContainText("Inherited · Effective: read_url_content")
+  await expect(tools.getByText("Inherited", { exact: true })).toBeVisible()
+  await expect(tools.getByText("Effective: read_url_content", { exact: true })).toBeVisible()
   await tools.getByRole("checkbox", { name: "Inherit default", exact: true }).uncheck()
   await expect(tools).toContainText("None allowed. This does not inherit the default.")
-  await expect(tools).toContainText("Customized · Effective: None")
+  await expect(tools.getByText("Customized", { exact: true })).toBeVisible()
+  await expect(tools.getByText("Effective: None", { exact: true })).toBeVisible()
   const save = async () => {
     await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
     const pending = page.waitForRequest(
@@ -1869,7 +1888,7 @@ test("dismisses retained provider selectors with Escape and outside click", asyn
   await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await trigger.click()
-  await page.getByRole("heading", { name: "Model providers", exact: true }).click()
+  await page.getByRole("heading", { name: "Sumire", exact: true }).click()
   await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
 })
 

@@ -1,8 +1,19 @@
-import { Button, Checkbox, Heading, TextField } from "@radix-ui/themes"
+import { InfoCircledIcon, PlusIcon, TrashIcon } from "@radix-ui/react-icons"
+import {
+  Box,
+  Button,
+  Callout,
+  Checkbox,
+  Flex,
+  Grid,
+  Heading,
+  Text,
+  TextField,
+} from "@radix-ui/themes"
 import { useId } from "react"
 import type { Inventory } from "./api.js"
 import { SectionSelect } from "./sections.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Prose } from "./surfaces.js"
 
 const fields = [
   "type",
@@ -143,9 +154,14 @@ export function McpGuidedEditor({
       throw new Error("Edit invalid arguments in advanced JSON. The draft is unchanged.")
   } catch (error) {
     return (
-      <Prose role="alert">
-        {error instanceof Error ? error.message : "Correct advanced JSON to use guided fields."}
-      </Prose>
+      <Callout.Root color="red" role="alert" size="1">
+        <Callout.Icon>
+          <InfoCircledIcon />
+        </Callout.Icon>
+        <Callout.Text>
+          {error instanceof Error ? error.message : "Correct advanced JSON to use guided fields."}
+        </Callout.Text>
+      </Callout.Root>
     )
   }
   const set = (key: string, value: unknown) =>
@@ -156,7 +172,12 @@ export function McpGuidedEditor({
     onChange(JSON.stringify(next, null, 2))
   }
   return (
-    <Panel as="fieldset" id="mcp-guided" tabIndex={-1} aria-labelledby={`${prefix}-heading`}>
+    <fieldset
+      className="mcp-guided-editor"
+      id="mcp-guided"
+      tabIndex={-1}
+      aria-labelledby={`${prefix}-heading`}
+    >
       <Heading as="h3" size="3" id={`${prefix}-heading`}>
         Guided connection fields
       </Heading>
@@ -164,7 +185,13 @@ export function McpGuidedEditor({
         Only selected fields change. Omitted fields stay saved. Existing values are not returned;
         enter replacements only.
       </Prose>
-      <label htmlFor={`${prefix}-transport`}>
+      <Text
+        as="label"
+        size="2"
+        weight="medium"
+        className="mcp-guided-toolbar"
+        htmlFor={`${prefix}-transport`}
+      >
         Transport update
         <SectionSelect.Root
           value={
@@ -193,8 +220,8 @@ export function McpGuidedEditor({
             <SectionSelect.Item value="http">Replace with HTTP endpoint</SectionSelect.Item>
           </SectionSelect.Content>
         </SectionSelect.Root>
-      </label>
-      <div className="mcp-field-grid">
+      </Text>
+      <Grid columns={{ initial: "1", sm: "2" }} gap="4" className="mcp-field-grid" mt="4">
         {(
           [
             "command",
@@ -207,8 +234,13 @@ export function McpGuidedEditor({
             "type",
           ] as const
         ).map((key) => (
-          <div key={key} className="mcp-field">
-            <label className="check mcp-field-toggle" htmlFor={`${prefix}-${key}-edit`}>
+          <Flex key={key} direction="column" gap="2" className="mcp-field">
+            <Text
+              as="label"
+              size="2"
+              className="check mcp-field-toggle"
+              htmlFor={`${prefix}-${key}-edit`}
+            >
               <Checkbox
                 id={`${prefix}-${key}-edit`}
                 aria-label={`Edit MCP ${key}`}
@@ -232,7 +264,7 @@ export function McpGuidedEditor({
                 }
               />
               Replace {key}
-            </label>
+            </Text>
             {key in patch &&
               (key === "enabled" ? (
                 <label className="check mcp-field-value" htmlFor={`${prefix}-enabled-value`}>
@@ -281,56 +313,71 @@ export function McpGuidedEditor({
                   />
                 </label>
               ))}
-          </div>
+          </Flex>
         ))}
-      </div>
-      <Heading size="2">Arguments</Heading>
-      {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
-        // Arguments are controlled positional fields with no row state; additions append only.
-        // biome-ignore lint/suspicious/noArrayIndexKey: Argument position is the field identity.
-        <div key={`${prefix}-${index}`}>
-          <label htmlFor={`${prefix}-arg-${index}`}>
-            Argument {index + 1}
-            <TextField.Root
-              id={`${prefix}-arg-${index}`}
-              aria-label={`MCP argument ${index + 1}`}
-              value={arg}
-              onChange={(e) =>
+      </Grid>
+      <Box className="mcp-arguments" mt="5">
+        <Heading size="2" mb="3">
+          Arguments
+        </Heading>
+        {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
+          // Arguments are controlled positional fields with no row state; additions append only.
+          <Flex
+            // biome-ignore lint/suspicious/noArrayIndexKey: Argument position is the field identity.
+            key={`${prefix}-${index}`}
+            className="mcp-argument-row"
+            gap="3"
+            align="end"
+            wrap="wrap"
+            mb="3"
+          >
+            <Text as="label" size="2" htmlFor={`${prefix}-arg-${index}`}>
+              Argument {index + 1}
+              <TextField.Root
+                id={`${prefix}-arg-${index}`}
+                aria-label={`MCP argument ${index + 1}`}
+                value={arg}
+                onChange={(e) =>
+                  set(
+                    "args",
+                    (patch.args as string[]).map((v, i) => (i === index ? e.target.value : v)),
+                  )
+                }
+              />
+            </Text>
+            <Button
+              variant="soft"
+              onClick={() =>
                 set(
                   "args",
-                  (patch.args as string[]).map((v, i) => (i === index ? e.target.value : v)),
+                  (patch.args as string[]).filter((_, i) => i !== index),
                 )
               }
-            />
-          </label>
+            >
+              <TrashIcon aria-hidden="true" />
+              Remove argument {index + 1}
+            </Button>
+          </Flex>
+        ))}
+        <Flex gap="2" wrap="wrap">
           <Button
             variant="soft"
-            onClick={() =>
-              set(
-                "args",
-                (patch.args as string[]).filter((_, i) => i !== index),
-              )
-            }
+            onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
           >
-            Remove argument {index + 1}
+            <PlusIcon aria-hidden="true" />
+            Add argument
           </Button>
-        </div>
-      ))}
-      <Button
-        variant="soft"
-        onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
-      >
-        Add argument
-      </Button>
-      {"args" in patch && (
-        <Button variant="soft" onClick={() => omit("args")}>
-          Keep saved arguments
-        </Button>
-      )}
-      <Prose size="2">
+          {"args" in patch && (
+            <Button variant="soft" onClick={() => omit("args")}>
+              Keep saved arguments
+            </Button>
+          )}
+        </Flex>
+      </Box>
+      <Prose size="2" color="gray">
         Use masked fields below for secret replacements. Use advanced JSON for secret-map removal,
         preservation markers, and per-tool exposure; guided edits retain those fields.
       </Prose>
-    </Panel>
+    </fieldset>
   )
 }

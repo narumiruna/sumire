@@ -163,7 +163,12 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
   await page.getByRole("button", { name: "Sign in with passkey" }).click()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toBeEnabled()
   expect(f.state().approvals).toBe(0)
-  await expect(page.getByText("<img src=x onerror=alert(1)> · supergroup · -100")).toBeVisible()
+  const identity = page
+    .getByRole("region", { name: "Chat access approval request", exact: true })
+    .locator("dl")
+  await expect(identity.getByText("<img src=x onerror=alert(1)>", { exact: true })).toBeVisible()
+  await expect(identity.getByText("supergroup", { exact: true })).toBeVisible()
+  await expect(identity.getByText("-100", { exact: true })).toBeVisible()
   await expect(page.locator("img")).toHaveCount(0)
   await page.getByRole("button", { name: "Approve chat", exact: true }).click()
   await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
@@ -250,7 +255,15 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
   )
   await expect(page.locator("img")).toHaveCount(0)
   await users.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
-  await expect(users.getByText("Alice", { exact: true })).toHaveCount(0)
+  const revoked = users.getByRole("row").filter({ hasText: "Alice" })
+  await expect(revoked).toContainText("42")
+  await expect(revoked.getByText("Pending revocation", { exact: true })).toBeVisible()
+  await expect(
+    revoked.getByRole("button", { name: "Revoke access for ID 42", exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    revoked.getByRole("button", { name: "Undo revocation for 42", exact: true }),
+  ).toBeVisible()
 })
 
 test("captures links opened in an existing WebUI tab without a document reload", async ({
@@ -301,7 +314,14 @@ test("does not show or clear an old target when another link opens during approv
   await page.goto(`/#allow=${replacement}`)
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toHaveCount(0)
   finishResolve()
-  await expect(page.getByText("Replacement target · group · -200")).toBeVisible()
+  const identity = page
+    .getByRole("region", { name: "Chat access approval request", exact: true })
+    .locator("dl")
+  await expect(identity.getByText("Replacement target", { exact: true })).toBeVisible()
+  await expect(identity.getByText("group", { exact: true })).toBeVisible()
+  await expect(identity.getByText("-200", { exact: true })).toBeVisible()
+  await expect(identity.getByText("<img src=x onerror=alert(1)>", { exact: true })).toHaveCount(0)
+  await expect(page.locator("img")).toHaveCount(0)
   finishApprove()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toBeEnabled()
   expect(

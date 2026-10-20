@@ -1,8 +1,15 @@
-import { Button, Flex, Heading, TextField } from "@radix-ui/themes"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+  ResetIcon,
+} from "@radix-ui/react-icons"
+import { Button, Callout, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import { ApiError, request } from "./api.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Prose } from "./surfaces.js"
 
 const empty = { actor: "", operation: "", outcome: "", from: "", to: "" }
 export function auditSearch(filters: typeof empty, offset: number) {
@@ -66,8 +73,9 @@ export function AuditHistory({
     }
   }, [query, revision, retry, run])
   return (
-    <>
+    <Flex direction="column" gap="3" className="settings-stack">
       <form
+        className="audit-filter-form"
         onSubmit={(event) => {
           event.preventDefault()
           try {
@@ -79,8 +87,8 @@ export function AuditHistory({
           }
         }}
       >
-        <Panel as="fieldset" aria-labelledby="audit-filter-heading">
-          <Heading as="h3" size="3" id="audit-filter-heading">
+        <fieldset className="audit-filter-toolbar" aria-labelledby="audit-filter-heading">
+          <Heading as="h4" size="2" id="audit-filter-heading" className="section-heading">
             Filter all retained audit records
           </Heading>
           <div className="audit-filters">
@@ -90,7 +98,7 @@ export function AuditHistory({
             ].map(({ className, keys }) => (
               <div className={className} key={className}>
                 {keys.map((key) => (
-                  <label key={key} htmlFor={`audit-${key}`}>
+                  <label key={key} htmlFor={`audit-${key}`} className="form-field">
                     {
                       {
                         actor: "Actor (exact)",
@@ -113,9 +121,9 @@ export function AuditHistory({
               </div>
             ))}
           </div>
-          <Flex gap="2" wrap="wrap">
+          <Flex gap="2" wrap="wrap" className="audit-filter-actions">
             <Button type="submit" disabled={loading}>
-              Apply audit filters
+              <MagnifyingGlassIcon /> Apply audit filters
             </Button>
             <Button
               type="button"
@@ -125,38 +133,57 @@ export function AuditHistory({
                 setQuery({ filters: empty, offset: 0 })
               }}
             >
-              Clear audit filters
+              <ResetIcon /> Clear audit filters
             </Button>
           </Flex>
-        </Panel>
+        </fieldset>
       </form>
-      {error && <Prose role="alert">{error}</Prose>}
-      {error && <Button onClick={() => setRetry((value) => value + 1)}>Retry audit</Button>}
-      <Prose size="2">
-        Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
-        Older records may be available; the server retains up to 10,000 records. Filters cover all
-        retained records. Groups cover this page only and can continue on adjacent pages; filtered
-        views can omit related events. Field-level change details are unavailable.
-      </Prose>
+      {error && (
+        <Callout.Root color="red" size="1" role="alert">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      )}
+      {error && (
+        <Button variant="soft" onClick={() => setRetry((value) => value + 1)}>
+          Retry audit
+        </Button>
+      )}
+      <Flex direction="column" gap="1" className="audit-results-summary">
+        <Text as="p" size="2" weight="medium">
+          Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
+        </Text>
+        <Prose size="1" color="gray">
+          Older records may be available; the server retains up to 10,000 records. Filters cover all
+          retained records. Groups cover this page only and can continue on adjacent pages; filtered
+          views can omit related events. Field-level change details are unavailable.
+        </Prose>
+      </Flex>
       {loading ? (
         <Prose role="status">Loading audit records…</Prose>
       ) : (
         !error && <Activity entries={entries} />
       )}
-      <Flex gap="2">
-        <Button
-          disabled={loading || query.offset === 0}
-          onClick={() => setQuery({ ...query, offset: Math.max(0, query.offset - 100) })}
-        >
-          Newer
-        </Button>
-        <Button
-          disabled={loading || entries.length < 100}
-          onClick={() => setQuery({ ...query, offset: query.offset + 100 })}
-        >
-          Older
-        </Button>
+      <Flex asChild gap="2" className="audit-pagination">
+        <nav aria-label="Audit pagination">
+          <Button
+            variant="surface"
+            disabled={loading || query.offset === 0}
+            onClick={() => setQuery({ ...query, offset: Math.max(0, query.offset - 100) })}
+          >
+            <ChevronLeftIcon /> Newer
+          </Button>
+          <Button
+            variant="surface"
+            disabled={loading || entries.length < 100}
+            onClick={() => setQuery({ ...query, offset: query.offset + 100 })}
+          >
+            Older <ChevronRightIcon />
+          </Button>
+        </nav>
       </Flex>
-    </>
+    </Flex>
   )
 }

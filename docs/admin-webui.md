@@ -2,6 +2,21 @@
 
 The WebUI manages chat access, tools, MCP servers, models, thinking levels, and model providers. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
 
+## Workspace layout
+
+All eight pages use a shared Radix sand/teal theme, page heading, action toolbar, and flat bordered panels. At narrow widths, **Sections** opens navigation. Page changes keep editors mounted and retain browser drafts; navigation does not save settings.
+
+- **Chats** places the searchable directory beside the selected chat on desktop. Mobile shows one pane at a time. The chat inspector separates identity, setup warnings, effective-setting facts, and the existing Overview, Access, Model & Tools, and History tabs.
+- **Durable** uses the relationship navigator and content-first record details described below. History, raw collections, metadata, and JSON remain secondary disclosures.
+- **Access** separates private-user and group/channel approval tables. Pending approvals and revocations stay visible with their status and undo actions. Access-link approval has its own review panel and immediate save scope.
+- **Defaults** groups inherited model settings and capability summaries. Resetting chat overrides remains a separate, confirmed, staged policy action.
+- **Tool permissions** groups source matrices with explicit expansion controls. The manual exact-name approval form is separate from server gates and default selections.
+- **MCP connections** places saved connections beside the guided editor and review actions on desktop. Connection, exposure, discovery, and execution permission are separate facts. Advanced JSON and protected-value replacement remain explicit disclosures.
+- **Model providers** separates provider authentication and local checks from model selection and model-save actions. Custom endpoints and global model availability are secondary sections.
+- **Audit** shows configuration activity first, followed by historical **Import reports**. Filters, raw records, revision groups, and pagination retain their existing scope.
+
+The layout does not combine policy, MCP, credential, or model saves. The save/status bar remains the source of pending-scope and application-state information.
+
 ## Enable passkey login
 
 1. Set the bootstrap values in the root `.env`:

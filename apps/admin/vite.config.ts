@@ -6,7 +6,10 @@ export default defineConfig({
       checks: { moduleLevelDirective: false },
       output: {
         codeSplitting: {
-          groups: [{ name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ }],
+          groups: [
+            { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: "radix", test: /node_modules[\\/]@radix-ui[\\/]/ },
+          ],
         },
       },
     },

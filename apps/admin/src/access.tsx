@@ -1,4 +1,5 @@
-import { Button, Flex, Heading } from "@radix-ui/themes"
+import { InfoCircledIcon } from "@radix-ui/react-icons"
+import { Badge, Button, Callout, Code, DataList, Flex, Heading } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request, type Snapshot } from "./api.js"
 import { Panel, Prose } from "./surfaces.js"
@@ -59,17 +60,43 @@ export function AccessApproval({
     return () => window.clearTimeout(timer)
   }, [chat, clear])
   return (
-    <Panel>
-      <Heading size="4">Review chat access</Heading>
+    <Panel className="access-approval" aria-label="Chat access approval request">
+      <Flex gap="3" align="center" justify="between" wrap="wrap" className="section-heading">
+        <Heading as="h2" size="4">
+          Review chat access
+        </Heading>
+        <Badge color="orange">Approval link request</Badge>
+      </Flex>
       {chat ? (
         <>
-          <Prose>
-            {chat.name} · {chat.type} · {chat.id}
-          </Prose>
-          <Prose>
-            Approve only this chat. Existing capability limits remain unchanged. Application cancels
-            active work.
-          </Prose>
+          <DataList.Root size="2" className="data-list access-approval__identity">
+            <DataList.Item className="data-row">
+              <DataList.Label>Chat</DataList.Label>
+              <DataList.Value>{chat.name}</DataList.Value>
+            </DataList.Item>
+            <DataList.Item className="data-row">
+              <DataList.Label>Type</DataList.Label>
+              <DataList.Value>{chat.type}</DataList.Value>
+            </DataList.Item>
+            <DataList.Item className="data-row">
+              <DataList.Label>Telegram ID</DataList.Label>
+              <DataList.Value>
+                <Code variant="ghost" className="access-id">
+                  {chat.id}
+                </Code>
+              </DataList.Value>
+            </DataList.Item>
+          </DataList.Root>
+          <Callout.Root color="orange" size="1" className="access-approval__notice">
+            <Callout.Icon>
+              <InfoCircledIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              Approve only this chat. Existing capability limits remain unchanged. Application
+              cancels active work. This approval applies immediately, separately from pending policy
+              changes.
+            </Callout.Text>
+          </Callout.Root>
           <Button
             disabled={disabled || chat.expires <= Date.now()}
             onClick={() =>
@@ -96,9 +123,11 @@ export function AccessApproval({
           </Button>
         </>
       ) : (
-        <Prose>Load and review the chat before approval.</Prose>
+        <Prose size="2" className="empty-state" role="status">
+          Load and review the chat before approval.
+        </Prose>
       )}
-      <Flex gap="2" mt="2">
+      <Flex gap="2" mt="3" wrap="wrap" className="access-approval__actions">
         <Button variant="soft" disabled={disabled} onClick={() => setReload((v) => v + 1)}>
           Reload request
         </Button>
