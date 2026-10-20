@@ -35,7 +35,7 @@ Other pages previously used inconsistent headings, nested panels, unstructured f
 - [x] Complete visual review and migrate presentation assertions without weakening security, lifecycle, geometry, or request-budget checks. Evidence: all-page desktop/mobile captures, unchanged strict directory bounds and scroll stability, and regression checks for mobile MCP title/action layout and provider-popup viewport bounds.
 - [x] Update operator documentation and the existing affected-package changeset for all eight production pages. Evidence: `docs/admin-webui.md` and `.changeset/durable-content-tree.md` describe the implemented pages and unchanged save scopes.
 - [x] Complete final validation after root checks. Root formatting, lint, typecheck, 1,855 unit tests, build, independent review, and the six-image comparison capture pass. All 269 existing Admin browser cases pass in a clean run, and all four new all-page visual cases pass. Stop builds during live-Vite browser validation: rebuilding workspace dependencies can reload the page and invalidate draft-state tests.
-- [ ] Commit intended sources and tests on the current branch, update PR #157, and confirm GitHub Actions for the new head.
+- [x] Commit intended sources and tests on the current branch, update PR #157, and confirm GitHub Actions. Evidence: implementation commit `ffbf001` and successful CI run `39458768485`, including all browser flows and comparison captures.
 
 ## Validation evidence
 
@@ -62,7 +62,7 @@ Other pages previously used inconsistent headings, nested panels, unstructured f
 - [x] The complete Admin unit and browser suites pass with unchanged security and lifecycle coverage: 177 Admin unit tests and 273 browser tests, including four new all-page visual cases.
 - [x] Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass. All 1,855 unit tests pass.
 - [x] `git diff --check`, independent review, documentation, and changeset checks pass; no generated output or sensitive data is included.
-- [ ] PR #157 contains the intended change and its head passes GitHub Actions.
+- [x] PR #157 contains the intended implementation and its GitHub Actions run passes. Evidence: `ffbf001`, run `39458768485`; the remaining plan edit records this result only.
 - [ ] User acceptance of the production visual result remains separate from automated validation. No deployment or live Telegram/provider acceptance is claimed.
 
 ## Rollback / Recovery
