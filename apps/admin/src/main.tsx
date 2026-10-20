@@ -1,5 +1,5 @@
 import { effectivePolicy, inherited as inherit } from "@narumitw/sumire-policy"
-import { ExitIcon, ReloadIcon } from "@radix-ui/react-icons"
+import { ExitIcon, MixerHorizontalIcon, ReloadIcon } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
 import { useCallback, useEffect, useState } from "react"
@@ -204,16 +204,23 @@ function App() {
   const selected = policy.chats[chat]
   const changes = policyChanges(savedPolicy ?? policy, policy)
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}`}>
       <SideNavigation page={page} chat={chat} actor={session.actor} onNavigate={setPage} />
       <main aria-busy={busy}>
         <header className="workspace-header">
-          <Text size="2" color="gray">
-            Administration / {pageLabel(page)}
-          </Text>
+          {page === "Durable" ? (
+            <Heading size="6" id="current-section-heading" tabIndex={-1}>
+              {pageLabel(page)}
+            </Heading>
+          ) : (
+            <Text size="2" color="gray">
+              Administration / {pageLabel(page)}
+            </Text>
+          )}
           <Flex gap="2">
             <Button
               variant="soft"
+              aria-label="Reload"
               disabled={busy || dirty || localPending}
               onClick={() => {
                 refreshChats()
@@ -221,10 +228,11 @@ function App() {
               }}
             >
               <ReloadIcon />
-              Reload
+              <span className="workspace-action-label">Reload</span>
             </Button>
             <Button
               variant="soft"
+              aria-label="Sign out"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -236,7 +244,7 @@ function App() {
               }
             >
               <ExitIcon />
-              Sign out
+              <span className="workspace-action-label">Sign out</span>
             </Button>
           </Flex>
         </header>
@@ -305,9 +313,11 @@ function App() {
             }}
           />
         )}
-        <Heading size="6" id="current-section-heading" tabIndex={-1} mb="3">
-          {pageLabel(page)}
-        </Heading>
+        {page !== "Durable" && (
+          <Heading size="6" id="current-section-heading" tabIndex={-1} mb="3">
+            {pageLabel(page)}
+          </Heading>
+        )}
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
             <ChatWorkspace
@@ -366,26 +376,29 @@ function App() {
             </ChatWorkspace>
           </EditorSection>
           {page === "Durable" && (
-            <>
-              <Panel className="durable-chat-selector" aria-label="Find a chat">
-                <details open={!chat}>
-                  <summary>Find or switch chat</summary>
-                  <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
-                </details>
-              </Panel>
-              <SectionErrorBoundary key={chat} label="Durable inspector">
-                <DurableInspector
-                  key={chat}
-                  chat={chat}
-                  metadata={directory.selected.chat}
-                  metadataLoading={directory.selected.loading}
-                  metadataError={directory.selected.error}
-                  onMetadataRetry={directory.refresh}
-                  onChats={() => setPage("Chats")}
-                  onSessionExpired={expireInspectorSession}
-                />
-              </SectionErrorBoundary>
-            </>
+            <SectionErrorBoundary key={chat} label="Durable inspector">
+              <DurableInspector
+                key={chat}
+                chat={chat}
+                chatSelector={
+                  <section className="durable-chat-selector" aria-label="Find a chat">
+                    <details open={!chat}>
+                      <summary aria-label="Find or switch chat">
+                        <MixerHorizontalIcon aria-hidden />
+                        <span className="durable-action-label">Find or switch chat</span>
+                      </summary>
+                      <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
+                    </details>
+                  </section>
+                }
+                metadata={directory.selected.chat}
+                metadataLoading={directory.selected.loading}
+                metadataError={directory.selected.error}
+                onMetadataRetry={directory.refresh}
+                onChats={() => setPage("Chats")}
+                onSessionExpired={expireInspectorSession}
+              />
+            </SectionErrorBoundary>
           )}
           <EditorSection active={page === "Access"} aria-label="Access settings">
             {accessTarget && (

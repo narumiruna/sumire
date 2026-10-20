@@ -1,13 +1,45 @@
 import type { DurableInspectionItem, DurableTaskItem } from "@narumitw/sumire-contracts"
+import {
+  ChatBubbleIcon,
+  CodeIcon,
+  FileTextIcon,
+  GearIcon,
+  LayersIcon,
+  PersonIcon,
+} from "@radix-ui/react-icons"
+
+export function recordTone(item: DurableInspectionItem): string {
+  if (item.type === "entry") return item.role === "toolResult" ? "result" : (item.role ?? "neutral")
+  if (item.type === "task") {
+    if (item.kind === "pi.tool") return "call"
+    if (item.kind === "pi.generation") return "assistant"
+  }
+  return "neutral"
+}
+
+export function recordIcon(item: DurableInspectionItem) {
+  if (item.type === "conversation") return ChatBubbleIcon
+  if (item.type === "document") return FileTextIcon
+  const tone = recordTone(item)
+  if (tone === "user") return PersonIcon
+  if (tone === "system") return GearIcon
+  if (tone === "call") return CodeIcon
+  if (tone === "result") return LayersIcon
+  return ChatBubbleIcon
+}
+
+export function recordBadge(item: DurableInspectionItem): string | undefined {
+  if (item.type === "task")
+    return `Recorded ${item.outcome === undefined ? "status" : "outcome"}: ${item.outcome ?? item.status}`
+  if (item.type === "entry" && item.isError !== undefined)
+    return item.isError ? "Recorded error" : "Recorded result · not an error"
+  return undefined
+}
 
 export function recordTitle(item: DurableInspectionItem): string {
   switch (item.type) {
     case "conversation":
-      return item.active
-        ? "Selected conversation"
-        : item.parent
-          ? "Conversation branch"
-          : "Historical conversation"
+      return "Conversation"
     case "task":
       switch (item.kind) {
         case "pi.generation":
@@ -15,7 +47,7 @@ export function recordTitle(item: DurableInspectionItem): string {
         case "pi.tool":
           return "Tool call"
         case "pi.compaction":
-          return "Context compaction"
+          return "Compaction"
         default:
           return "Task"
       }
@@ -33,15 +65,15 @@ export function recordTitle(item: DurableInspectionItem): string {
     case "entry":
       switch (item.role) {
         case "assistant":
-          return "Assistant message record"
+          return "Assistant message"
         case "user":
-          return "User message record"
+          return "User message"
         case "system":
-          return "System message record"
+          return "System message"
         case "toolResult":
-          return item.toolName ? `Tool result: ${item.toolName}` : "Tool result record"
+          return item.toolName ? `Tool result · ${item.toolName}` : "Tool result"
         default:
-          return "Entry record"
+          return "Entry"
       }
   }
 }

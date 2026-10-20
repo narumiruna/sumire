@@ -165,6 +165,7 @@ test("searches complete IDs, retains duplicate names with separate IDs, and shar
     await openSelector(page)
     await expect(row).toHaveAttribute("aria-current", "true")
   }
+  await inspector(page).getByText("History and context", { exact: true }).click()
   await inspector(page).getByRole("button", { name: "Open chat settings", exact: true }).click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Same name")
   await expect(page.locator(".chat-header code")).toHaveText("-9002")

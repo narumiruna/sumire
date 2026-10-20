@@ -4,9 +4,9 @@
 
 Improve Admin WebUI visual quality to match the supplied reference. Use Durable as the first visual benchmark: a compact relationship navigator and a content-first detail pane. A user must be able to identify the selected record, read its content, and follow its relationships without moving through repeated panels.
 
-The user expanded the goal to the complete Admin WebUI. Treat this as a staged quality goal, not an arbitrary numerical score. The current iteration fixes the reviewed Durable preview defects; it does not claim completion of the production redesign.
+The user expanded the goal to the complete Admin WebUI. Treat this as a staged quality goal, not an arbitrary numerical score. The current iteration implements the approved Durable visual benchmark in production sources; it does not claim completion of every Admin section.
 
-This is a design and implementation plan only. Do not change the UI, commit, update the PR, or deploy until implementation is requested. Present a fixture-based visual preview for approval before completing the redesign.
+The user requested implementation after reviewing the corrected preview. This authorizes production Durable UI changes, commits, and updates to the current PR. Deployment still requires separate verification.
 
 ## Context
 
@@ -101,7 +101,7 @@ The user supplied Pi Session Inspector as the quality reference after reviewing 
 
 ## Execution status
 
-Implementation was requested on `narumi/feat/durable-content-tree` in PR #157. The visual-approval gate remains in effect. Production interaction changes must wait for approval of the fixture preview.
+Production implementation is authorized on `narumi/feat/durable-content-tree` in PR #157 by the user's latest `implement` request after the preview review. The preview-approval gate is satisfied for this Durable iteration.
 
 The review-only fixture is served by Vite at `/tests/fixtures/durable-visual-preview.html?record=user` or `?record=tool`. It uses synthetic records and makes no Inspector API requests. It is not included in the production entry point.
 
@@ -113,23 +113,33 @@ npm run test:browser --workspace @narumitw/sumire-admin -- tests/durable-visual-
 
 - [x] Revise the static preview to match the stated design quality reference and capture both record types at 1440, 768, 390, and 320 px. All 11 preview checks pass, including 14 px minimum navigation and code text.
 - [x] Update PR #157 with the validated revised preview and reference-aligned design direction without changing production interactions.
-- [ ] Receive user approval before starting the remaining implementation tasks.
+- [x] Receive authorization to adopt the visual benchmark. Evidence: the user requested `implement` after the corrected preview and self-review fixes.
 
 The first preview was not accepted visually. The reference-aligned preview passed its initial checks, but later self-review found the four defects listed above. After correcting them, root formatting, lint, typecheck, 1,854 unit tests, build, all 251 Admin browser tests, and `git diff --check` pass. A separate read-only review found no additional issues. Validation does not establish user acceptance.
 
 Preview browser checks cover no API requests, no horizontal overflow, desktop selection contrast, a closed mobile navigator, body-font user text, and monospace tool output without an internal vertical scrollbar. These checks do not replace the production interaction checks in the completion checklist.
 
-Current screenshots are local review artifacts under `/tmp/sumire-quality-browser/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. User approval remains pending, so task 1 and the final acceptance checklist remain open.
+Current screenshots are local review artifacts under `/tmp/sumire-quality-browser/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. The subsequent implementation request approves the visual benchmark. Task 1 is complete; production implementation and verification remain open.
+
+## Production validation
+
+- Production Durable sources now use the approved content-first workspace, scoped Radix palettes, independent expand/select controls, compact chat switching, and narrow-screen content focus.
+- The shared section heading is integrated into the Durable header without changing other sections. Chat switching remains a full-width directory when expanded; only dedicated header actions receive icon-only sizing.
+- Integrated navigator/detail regions use semantic sections, not nested shared `Panel` cards. Shared panel appearance remains unchanged in other sections.
+- All root checks pass: formatting, lint, typecheck, 1,855 unit tests, and build. All 268 Admin browser tests pass, including 57 migrated Inspector/content cases and 14 new real-workspace cases.
+- Real-workspace checks cover 1440, 768, 390, and 320 px; a 14-task ownership chain and long tool name; default bounded reads; complete IDs; readable colors; mobile navigation/focus retention; and full-width mobile chat switching.
+- Manual fixture review also covered 120-line tool output, empty and error states, and 720 × 450 CSS-pixel layout at 2× device scale as a 200%-equivalent reflow check. No horizontal page overflow, nested output scrollbar, or missing keyboard focus was found.
+- Screenshots remain local under `/tmp/sumire-production-all-browser/` and `/tmp/sumire-production-manual-*.png`. No production deployment or live Telegram/provider acceptance is claimed.
 
 ## Plan
 
-1. [ ] Build a fixture-based static preview of the proposed header, navigator, and content-first detail layout. Capture 1440 × 900 and 390 × 844 views. Include a selected nested tool result and an ordinary user message. Acceptance: user approval of the visual direction before completing interaction changes.
-2. [ ] Reorganize `durable-inspector.tsx` so the workspace is the primary content, with history and raw collection browsing secondary. Acceptance: initial-viewport check passes and the selected record is not repeated below its detail pane.
-3. [ ] Restyle and restructure `durable-tree.tsx` rows with type icons, concise labels, selection, independent expansion, and collection-local status. Acceptance: keyboard and pointer tests prove that selection and expansion are separate and no record becomes unreachable.
-4. [ ] Flatten `EntryContent` and selected-record surfaces; move metadata and raw JSON into secondary disclosures. Acceptance: user text is readable without a metadata grid above it; arguments, thinking, result status, truncation, and copy actions remain available.
-5. [ ] Apply Durable-scoped CSS using existing tokens. Acceptance: desktop, narrow, long-label, and deep-tree fixtures have no horizontal page overflow, overlapping controls, clipped focus, or nested message scroll boxes.
-6. [ ] Update behavior and screenshot coverage without weakening lifecycle assertions. Acceptance: existing read budgets, query-bound pagination, cancellation, permission clearing, deep links, back/forward, and withheld-document behavior remain intact.
-7. [ ] Update `docs/admin-webui.md` and the Admin changeset for the implemented interaction. Acceptance: documentation matches visible labels and controls; only affected packages receive a version change.
+1. [x] Build a fixture-based static preview of the proposed header, navigator, and content-first detail layout. Capture 1440 × 900 and 390 × 844 views. Include a selected nested tool result and an ordinary user message. Acceptance: user approval of the visual direction before completing interaction changes.
+2. [x] Reorganize `durable-inspector.tsx` so the workspace is the primary content, with history and raw collection browsing secondary. Acceptance: initial-viewport check passes and the selected record is not repeated below its detail pane.
+3. [x] Restyle and restructure `durable-tree.tsx` rows with type icons, concise labels, selection, independent expansion, and collection-local status. Acceptance: keyboard and pointer tests prove that selection and expansion are separate and no record becomes unreachable.
+4. [x] Flatten `EntryContent` and selected-record surfaces; move metadata and raw JSON into secondary disclosures. Acceptance: user text is readable without a metadata grid above it; arguments, thinking, result status, truncation, and copy actions remain available.
+5. [x] Apply Durable-scoped CSS using existing tokens. Acceptance: desktop, narrow, long-label, and deep-tree fixtures have no horizontal page overflow, overlapping controls, clipped focus, or nested message scroll boxes.
+6. [x] Update behavior and screenshot coverage without weakening lifecycle assertions. Acceptance: existing read budgets, query-bound pagination, cancellation, permission clearing, deep links, back/forward, and withheld-document behavior remain intact.
+7. [x] Update `docs/admin-webui.md` and the Admin changeset for the implemented interaction. Acceptance: documentation matches visible labels and controls; only affected packages receive a version change.
 
 ## Boundaries
 
@@ -137,19 +147,19 @@ Current screenshots are local review artifacts under `/tmp/sumire-quality-browse
 - Keep read-only access, explicit bounded reads, manual refresh, and incomplete-data warnings.
 - Keep historical inspection separate from persisted conversation selection.
 - Do not add a graph canvas, animation library, tree dependency, inferred transcript titles, full-history scan, polling, search, or layout preference storage.
-- This iteration changes only the review fixture, its checks, and this plan. Follow-up work may refine other Admin sections under the expanded user goal, after approval of the visual benchmark. Do not add workspace-specific formatting policy.
+- This iteration changes production Durable presentation, its tests, documentation, and changeset. Follow-up work may refine other Admin sections under the expanded user goal. Preserve shared shell behavior and do not add workspace-specific formatting policy.
 - Use synthetic fixtures for screenshots. Do not commit the supplied production screenshot, binary review artifacts, private chat content, or administrator identifiers.
 
 ## Completion Checklist
 
-- [ ] The user approves the fixture-based visual preview.
-- [ ] Review desktop 1440 × 900, narrow 768 × 1024, mobile 390 × 844, and 320 px layouts. Screenshots include ordinary text, a tool result, a deeply nested branch, and an incomplete/error state.
-- [ ] Keyboard-only review passes: visible focus, independent expansion and selection, reachable pagination/copy controls, and logical DOM order. Check text contrast and 200% zoom.
-- [ ] Focused Admin unit and browser tests pass, including untrusted literal text, truncated-empty content, missing parents/cycles, retained selection, permission changes, and chat-switch cancellation.
-- [ ] All Admin browser tests pass: `npm run test:browser --workspace @narumitw/sumire-admin -- --workers=1`.
-- [ ] Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass. Record any external blocker instead of marking the check complete.
-- [ ] `git diff --check` passes; review confirms no generated output, sensitive data, or unrelated global CSS changes.
-- [ ] The implemented result is accepted, documentation and changeset are current, and no deployment is claimed without separate verification.
+- [x] The user authorizes implementation after reviewing the corrected fixture preview.
+- [x] Review desktop 1440 × 900, narrow 768 × 1024, mobile 390 × 844, and 320 px layouts. Screenshots include ordinary text, a tool result, a deeply nested branch, and an incomplete/error state.
+- [x] Keyboard-only review passes: visible focus, independent expansion and selection, reachable pagination/copy controls, and logical DOM order. Check text contrast and 200% zoom.
+- [x] Focused Admin unit and browser tests pass, including untrusted literal text, truncated-empty content, missing parents/cycles, retained selection, permission changes, and chat-switch cancellation.
+- [x] All Admin browser tests pass: `npm run test:browser --workspace @narumitw/sumire-admin -- --workers=1`.
+- [x] Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass. Record any external blocker instead of marking the check complete.
+- [x] `git diff --check` passes; review confirms no generated output, sensitive data, or unrelated global CSS changes.
+- [ ] User acceptance of the production visual result and the broader Admin follow-up sequence remain open. Durable implementation, documentation, changeset, and local validation are complete; deployment is not part of this work.
 
 ## Rollback / Recovery
 

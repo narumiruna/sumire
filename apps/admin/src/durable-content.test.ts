@@ -44,12 +44,27 @@ describe("Durable entry content", () => {
     expect(html).toContain("Image omitted · image/png. Image bytes are not sent.")
     expect(html).toContain("Tool name")
     expect(html).toContain("Call ID")
-    expect(html).toContain("Arguments (JSON text)")
+    expect(html).toContain("Arguments")
+    expect(html).toContain("JSON text")
     expect(html).toContain("{&quot;partial&quot;:")
-    expect(html).toContain("Error")
-    expect(html).toContain("Not an error")
-    expect(html).toContain("Not recorded")
+    expect(html).toContain("Recorded error")
+    expect(html).toContain("Recorded result · not an error")
+    expect(html).toContain("Result not recorded")
     expect(html).toContain("No content blocks recorded.")
+  })
+
+  it("renders normal text without a nested panel or pre and retains tool output pre", () => {
+    const html = render({
+      truncated: false,
+      messages: [
+        { role: "user", content: [{ type: "text", text: "First line\nSecond line" }] },
+        { role: "toolResult", content: [{ type: "text", text: "tool output" }] },
+      ],
+    })
+    expect(html).toContain('<p class="durable-message-text">First line\nSecond line</p>')
+    expect(html).toContain('<pre class="durable-tool-output">tool output</pre>')
+    expect(html).not.toContain("panel")
+    expect(html).not.toContain("Message content is available.")
   })
 
   it("shows empty content and truncation independently", () => {

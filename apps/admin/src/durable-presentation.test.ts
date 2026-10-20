@@ -53,18 +53,18 @@ const statuses = [
 ] as const
 
 describe("Durable record titles", () => {
-  it("distinguishes persisted selection, branches, and historical conversations", () => {
-    expect(recordTitle(conversation)).toBe("Historical conversation")
+  it("uses a short conversation title without implying execution state", () => {
+    expect(recordTitle(conversation)).toBe("Conversation")
     const branch = { ...conversation, parent: { conversationId: 3, at: 4 } }
-    expect(recordTitle(branch)).toBe("Conversation branch")
-    expect(recordTitle({ ...branch, active: true })).toBe("Selected conversation")
-    expect(recordTitle({ ...conversation, active: true })).toBe("Selected conversation")
+    expect(recordTitle(branch)).toBe("Conversation")
+    expect(recordTitle({ ...branch, active: true })).toBe("Conversation")
+    expect(recordTitle({ ...conversation, active: true })).toBe("Conversation")
   })
 
   it.each([
     ["pi.generation", "Model response"],
     ["pi.tool", "Tool call"],
-    ["pi.compaction", "Context compaction"],
+    ["pi.compaction", "Compaction"],
     ["sumire.codemode-call", "Task"],
     ["future.task", "Task"],
     ["", "Task"],
@@ -83,11 +83,11 @@ describe("Durable record titles", () => {
   })
 
   it.each([
-    ["assistant", "Assistant message record"],
-    ["user", "User message record"],
-    ["system", "System message record"],
-    ["toolResult", "Tool result record"],
-    [undefined, "Entry record"],
+    ["assistant", "Assistant message"],
+    ["user", "User message"],
+    ["system", "System message"],
+    ["toolResult", "Tool result"],
+    [undefined, "Entry"],
   ] as const)("labels entry role %s without interpreting its kind", (role, title) => {
     expect(recordTitle({ ...entry, role })).toBe(title)
     expect(recordTitle({ ...entry, role, kind: "future.entry" })).toBe(title)
@@ -98,7 +98,7 @@ describe("Durable record titles", () => {
     (kind) => {
       expect(recordTitle({ ...task, kind })).toBe("Task")
       expect(recordTitle({ ...document, kind })).toBe("Document")
-      expect(recordTitle({ ...entry, kind })).toBe("Entry record")
+      expect(recordTitle({ ...entry, kind })).toBe("Entry")
       expect(recordSummary({ ...task, kind })).toBe(
         "Recorded status: Pending · no outcome recorded",
       )
@@ -183,7 +183,7 @@ describe("structured record summaries", () => {
       toolCallId: "call-1",
       isError: true,
     }
-    expect(recordTitle(result)).toBe("Tool result: read")
+    expect(recordTitle(result)).toBe("Tool result · read")
     expect(recordSummary(result)).toContain("Recorded tool error.")
     expect(recordSummary({ ...result, isError: false })).toContain(
       "Recorded tool result (not an error).",
