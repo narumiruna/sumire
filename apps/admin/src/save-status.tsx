@@ -103,18 +103,18 @@ export function SaveStatus({
         )}
       </div>
       <div className="save-scopes">
-        <Button variant="ghost" className="navigation-control" onClick={() => navigate("Access")}>
+        <Button variant="surface" className="navigation-control" onClick={() => navigate("Access")}>
           Policy: {dirty ? countText(changes.length, "change") : "No changes"}
         </Button>
         <Button
-          variant="ghost"
+          variant="surface"
           className="navigation-control"
           onClick={() => navigate("MCP connections")}
         >
           {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
         </Button>
         <Button
-          variant="ghost"
+          variant="surface"
           className="navigation-control"
           onClick={() => navigate("Model Providers")}
         >

@@ -8,11 +8,16 @@ export const SectionActive = createContext(true)
 export function EditorSection({
   active,
   children,
+  className,
   ...props
 }: ComponentProps<"section"> & { active: boolean }) {
   return (
     <SectionActive value={active}>
-      <section {...props} hidden={!active}>
+      <section
+        {...props}
+        className={["admin-page", "page-content", className].filter(Boolean).join(" ")}
+        hidden={!active}
+      >
         <SectionErrorBoundary label={props["aria-label"] ?? "Section"}>
           {children}
         </SectionErrorBoundary>

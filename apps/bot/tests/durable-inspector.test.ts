@@ -263,6 +263,98 @@ async function snapshot(storage: Storage) {
   return JSON.stringify({ conversations, tasks, documents, entries })
 }
 
+describe("entry content inspection", () => {
+  it("keeps oversized explicit content reads bounded without issuing an unusable cursor", async () => {
+    const f = await fixture()
+    const stored = await f.storage.entry(f.root.id, f.first.id, context)
+    assert(stored)
+    f.reads.entry.mockResolvedValueOnce({
+      ...stored,
+      entry: {
+        ...stored.entry,
+        kind: "\u0000".repeat(16 * 1024),
+        model: [
+          {
+            role: "toolResult",
+            toolName: "\u0000".repeat(10000),
+            toolCallId: "call-1",
+            isError: false,
+            timestamp: 1,
+            content: [
+              { type: "text", text: "\u0000".repeat(16000) },
+              { type: "text", text: "a".repeat(16000) },
+              { type: "text", text: "b".repeat(16000) },
+            ],
+          },
+        ],
+      },
+    })
+    const detail = await f.inspect(
+      query({ view: "entries", conversationId: f.root.id, objectId: f.first.id }),
+      signal(),
+    )
+    expect(detail).toMatchObject({
+      truncated: true,
+      items: [{ content: { messages: [], truncated: true } }],
+    })
+    expect(detail.nextCursor).toBeUndefined()
+    expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(256 * 1024)
+  })
+
+  it("returns bounded tool output only on targeted reads without exposing stored data or details", async () => {
+    const f = await fixture()
+    const entry = await f.root.commit(
+      (tx) =>
+        tx.appendEntry(f.root.id, {
+          kind: "pi.tool-result",
+          data: { credential: "PRIVATE_ENTRY_DATA" },
+          model: [
+            {
+              role: "toolResult",
+              toolName: "read",
+              toolCallId: "call-1",
+              isError: true,
+              timestamp: 2,
+              content: [{ type: "text", text: "Tool failed.\n".repeat(20000) }],
+              details: { credential: "PRIVATE_DETAILS" },
+            },
+          ],
+        }),
+      context,
+    )
+    const scan = await f.inspect(query({ view: "entries", conversationId: f.root.id }), signal())
+    expect(scan.items.every((item) => !("content" in item))).toBe(true)
+    const detail = await f.inspect(
+      query({ view: "entries", conversationId: f.root.id, objectId: entry.id }),
+      signal(),
+    )
+    expect(detail).toMatchObject({
+      truncated: true,
+      items: [
+        {
+          id: entry.id,
+          content: {
+            truncated: true,
+            messages: [
+              { role: "toolResult", toolName: "read", toolCallId: "call-1", isError: true },
+            ],
+          },
+        },
+      ],
+    })
+    const json = JSON.stringify(detail)
+    expect(json).toContain("Tool failed.")
+    expect(json).not.toContain("PRIVATE_")
+    expect(Buffer.byteLength(json)).toBeLessThan(256 * 1024)
+    expect(
+      await f.inspect(
+        query({ view: "entries", conversationId: f.other.id, objectId: entry.id }),
+        signal(),
+      ),
+    ).toMatchObject({ items: [] })
+  })
+})
+
 describe("persisted conversation selection", () => {
   it("returns off-page selection with one targeted read, without scanning extra pages or values", async () => {
     const f = await fixture()
@@ -546,7 +638,19 @@ describe("Pi SQLite public read contract and inspector", () => {
         query({ view: "entries", conversationId: f.fork.id, objectId: f.first.id }),
         signal(),
       ),
-    ).toMatchObject({ items: [{ id: f.first.id, role: "user" }] })
+    ).toMatchObject({
+      items: [
+        {
+          id: f.first.id,
+          role: "user",
+          content: {
+            messages: [{ role: "user", content: [{ type: "text", text: secret }] }],
+            truncated: false,
+          },
+        },
+      ],
+    })
+    expect(entries.items.every((item) => !("content" in item))).toBe(true)
     const docs = await f.inspect(query({ view: "documents", conversationId: f.root.id }), signal())
     expect(docs.items).toContainEqual(
       expect.objectContaining({ kind: "fixture.family", family: true, valueState: "withheld" }),

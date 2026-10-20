@@ -161,10 +161,13 @@ test("searches complete IDs, retains duplicate names with separate IDs, and shar
     await expect(
       inspector(page).getByRole("heading", { name: "Same name", exact: true }),
     ).toBeVisible()
-    await expect(inspector(page).locator("header code")).toHaveText(String(id))
+    await expect(
+      inspector(page).locator(".durable-summary-header > div:first-child code"),
+    ).toHaveText(String(id))
     await openSelector(page)
     await expect(row).toHaveAttribute("aria-current", "true")
   }
+  await inspector(page).getByText("History and context", { exact: true }).click()
   await inspector(page).getByRole("button", { name: "Open chat settings", exact: true }).click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Same name")
   await expect(page.locator(".chat-header code")).toHaveText("-9002")
@@ -262,7 +265,9 @@ for (const status of [200, 403, 500]) {
         exact: true,
       }),
     ).toBeVisible()
-    await expect(inspector(page).locator("header code")).toHaveText("-777")
+    await expect(
+      inspector(page).locator(".durable-summary-header > div:first-child code"),
+    ).toHaveText("-777")
     if (status !== 200) {
       await expect(
         inspector(page)
@@ -381,20 +386,30 @@ test("rapid A→B→A switching rejects stale metadata and restores browser hist
   delayedB.release()
   delayedA.release()
   await Promise.all(finished.map((value) => value.promise))
-  await expect(inspector(page).locator("header code")).toHaveText("-9001")
+  await expect(
+    inspector(page).locator(".durable-summary-header > div:first-child code"),
+  ).toHaveText("-9001")
   await expect(inspector(page)).not.toContainText("Obsolete")
   await expect(inspector(page).getByRole("alert")).toHaveCount(0)
   await page.goBack()
-  await expect(inspector(page).locator("header code")).toHaveText("-9002")
+  await expect(
+    inspector(page).locator(".durable-summary-header > div:first-child code"),
+  ).toHaveText("-9002")
   await expect(
     inspector(page).getByRole("heading", { name: "Same name", exact: true }),
   ).toBeVisible()
   await page.goBack()
-  await expect(inspector(page).locator("header code")).toHaveText("-9001")
+  await expect(
+    inspector(page).locator(".durable-summary-header > div:first-child code"),
+  ).toHaveText("-9001")
   await page.goForward()
-  await expect(inspector(page).locator("header code")).toHaveText("-9002")
+  await expect(
+    inspector(page).locator(".durable-summary-header > div:first-child code"),
+  ).toHaveText("-9002")
   await page.reload()
-  await expect(inspector(page).locator("header code")).toHaveText("-9002")
+  await expect(
+    inspector(page).locator(".durable-summary-header > div:first-child code"),
+  ).toHaveText("-9002")
   await expect(
     inspector(page).getByRole("heading", { name: "Same name", exact: true }),
   ).toBeVisible()
@@ -431,7 +446,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await search.fill("-9003")
   const row = rows(page).getByRole("button")
   await expect(row.locator("strong")).toHaveText("Unnamed group")
-  await expect(row.locator("small")).toContainText("-9003")
+  await expect(row.locator(".directory-chat-meta code")).toHaveText("-9003")
   await row.click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Unnamed group")
   await search.fill("Same name")

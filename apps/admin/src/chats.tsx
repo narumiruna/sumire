@@ -1,7 +1,28 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { CheckCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
+import {
+  ArrowLeftIcon,
+  ChatBubbleIcon,
+  CheckCircledIcon,
+  CopyIcon,
+  ExclamationTriangleIcon,
+  InfoCircledIcon,
+  MinusCircledIcon,
+  PersonIcon,
+  SpeakerLoudIcon,
+} from "@radix-ui/react-icons"
+import {
+  Badge,
+  Button,
+  Callout,
+  Code,
+  DataList,
+  Flex,
+  Heading,
+  Tabs,
+  Text,
+  TextField,
+} from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy } from "./api.js"
@@ -18,6 +39,44 @@ export { chatName } from "./chat-directory.js"
 function chatType(chat: Chat) {
   if (chat.type === "supergroup") return "group"
   return ["private", "group", "channel"].includes(chat.type) ? chat.type : "unknown"
+}
+
+function ChatFact({
+  label,
+  children,
+  detail,
+  action,
+}: {
+  label: string
+  children: ReactNode
+  detail?: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <DataList.Item>
+      <DataList.Label>{label}</DataList.Label>
+      <DataList.Value>
+        <Flex
+          className="chat-fact-value"
+          justify="between"
+          align="start"
+          gap="3"
+          wrap="wrap"
+          width="100%"
+        >
+          <div>
+            {children}
+            {detail && (
+              <Text as="span" size="1" color="gray" className="chat-fact-detail">
+                {detail}
+              </Text>
+            )}
+          </div>
+          {action}
+        </Flex>
+      </DataList.Value>
+    </DataList.Item>
+  )
 }
 
 export function ChatWorkspace({
@@ -210,7 +269,7 @@ export function ChatWorkspace({
       data-directory-visible={showDirectory}
       data-selected={Boolean(chat)}
     >
-      <aside ref={directoryRef} className="chat-directory" aria-label="Find a chat">
+      <aside ref={directoryRef} className="chat-directory chat-sidebar" aria-label="Find a chat">
         <ChatSelector
           directory={directory}
           chat={chat}
@@ -335,6 +394,7 @@ export function ChatWorkspace({
               mb="3"
               onClick={() => setShowDirectory(true)}
             >
+              <ArrowLeftIcon aria-hidden="true" />
               Back to chat directory
             </Button>
             {metadataState.error && (
@@ -346,7 +406,7 @@ export function ChatWorkspace({
               </>
             )}
             <header className="chat-header">
-              <div>
+              <div className="chat-identity">
                 <Heading
                   size="5"
                   className="chat-detail-name"
@@ -356,11 +416,23 @@ export function ChatWorkspace({
                 >
                   {detailName}
                 </Heading>
-                <Text size="2" color="gray">
-                  {metadata?.type || "Type not known"} · <code>{chat}</code>
-                </Text>
+                <Flex className="chat-identity-meta" gap="2" align="center" wrap="wrap">
+                  <Badge color="gray" variant="surface">
+                    {metadata?.type === "private" ? (
+                      <PersonIcon aria-hidden="true" />
+                    ) : metadata?.type === "channel" ? (
+                      <SpeakerLoudIcon aria-hidden="true" />
+                    ) : (
+                      <ChatBubbleIcon aria-hidden="true" />
+                    )}
+                    {metadata?.type || "Type not known"}
+                  </Badge>
+                  <Code size="2" variant="ghost">
+                    {chat}
+                  </Code>
+                </Flex>
               </div>
-              <Flex gap="2" align="center" wrap="wrap">
+              <Flex className="chat-header-actions" gap="2" align="center" wrap="wrap">
                 {valid && (
                   <Button variant="soft" asChild>
                     <a
@@ -396,6 +468,7 @@ export function ChatWorkspace({
                     }
                   }}
                 >
+                  <CopyIcon aria-hidden="true" />
                   Copy chat ID
                 </Button>
               </Flex>
@@ -414,45 +487,60 @@ export function ChatWorkspace({
                   aria-label="Chat setup status"
                   data-blocked={blockers.length > 0}
                 >
-                  <Heading size="3">
-                    {blockers.length
-                      ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
-                      : "Runtime status unchecked"}
-                  </Heading>
-                  {blockers.map((blocker) => (
-                    <div className="blocker" key={blocker.text}>
-                      <Text size="2">{blocker.text}</Text>
-                      <Button type="button" variant="soft" onClick={blocker.run}>
-                        {blocker.action}
-                      </Button>
+                  <Callout.Root
+                    className="chat-setup-callout"
+                    color={blockers.length ? "amber" : "gray"}
+                    size="1"
+                  >
+                    <Callout.Icon>
+                      {blockers.length ? <ExclamationTriangleIcon /> : <InfoCircledIcon />}
+                    </Callout.Icon>
+                    <div className="chat-setup-body">
+                      <Heading size="3">
+                        {blockers.length
+                          ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
+                          : "Runtime status unchecked"}
+                      </Heading>
+                      {blockers.map((blocker) => (
+                        <Flex
+                          className="blocker"
+                          key={blocker.text}
+                          align="center"
+                          justify="between"
+                          gap="2"
+                          wrap="wrap"
+                        >
+                          <Text size="2">{blocker.text}</Text>
+                          <Button type="button" variant="soft" onClick={blocker.run}>
+                            {blocker.action}
+                          </Button>
+                        </Flex>
+                      ))}
                     </div>
-                  ))}
+                  </Callout.Root>
                   <details className="setup-details">
                     <summary>Readiness details</summary>
-                    <dl className="effective-settings readiness">
-                      <dt>Access</dt>
-                      <dd>
+                    <DataList.Root className="chat-facts effective-settings readiness" size="2">
+                      <ChatFact label="Access">
                         {savedApproval ? "Approved" : "Not approved"}
                         {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
-                      </dd>
-                      <dt>Chat</dt>
-                      <dd>
+                      </ChatFact>
+                      <ChatFact label="Chat">
                         {override?.enabled === false ? "Disabled" : "Enabled"}
                         {preview ? " · Policy draft" : ""}
-                      </dd>
-                      <dt>Configuration</dt>
-                      <dd>
+                      </ChatFact>
+                      <ChatFact label="Configuration">
                         {!provider
                           ? "Unknown"
                           : effective.model && provider.configured
                             ? "Configured locally"
                             : "Setup required"}
-                      </dd>
-                      <dt>Verification</dt>
-                      <dd>Not checked — no remote model request</dd>
-                      <dt>Application</dt>
-                      <dd>{application}</dd>
-                    </dl>
+                      </ChatFact>
+                      <ChatFact label="Verification">
+                        Not checked — no remote model request
+                      </ChatFact>
+                      <ChatFact label="Application">{application}</ChatFact>
+                    </DataList.Root>
                     <Text as="p" size="2" color="gray">
                       {effective.enabled
                         ? "This chat is approved by policy."
@@ -505,59 +593,70 @@ export function ChatWorkspace({
                       Saved model: {saved.model ?? "No allowed model"}
                     </Text>
                   )}
-                  <Tabs.Content value="overview" forceMount hidden={tab !== "overview"}>
+                  <Tabs.Content
+                    className="chat-view"
+                    value="overview"
+                    forceMount
+                    hidden={tab !== "overview"}
+                  >
                     <Heading size="3" mb="3">
                       Effective settings
                     </Heading>
-                    <dl className="overview-settings">
-                      <div>
-                        <dt>Access</dt>
-                        <dd>
-                          {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
-                          <small>
+                    <DataList.Root
+                      className="chat-facts chat-overview-facts overview-settings"
+                      size="2"
+                    >
+                      <ChatFact
+                        label="Access"
+                        detail={
+                          <>
                             Approval {approved ? "granted" : "not granted"} · Chat{" "}
                             {override?.enabled === false ? "disabled" : "enabled"}
-                          </small>
-                        </dd>
-                        <Button type="button" variant="ghost" onClick={() => changeTab("access")}>
-                          Manage access
-                        </Button>
-                      </div>
-                      <div>
-                        <dt>Model</dt>
-                        <dd>
-                          {effective.model ?? "No allowed model"}
-                          <small>
-                            {effective.sources.model === "chat"
-                              ? "Chat override"
-                              : "Shared default"}
-                          </small>
-                        </dd>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => changeTab("configuration")}
-                        >
-                          Change model
-                        </Button>
-                      </div>
-                      <div>
-                        <dt>Tools</dt>
-                        <dd>
-                          {effective.tools.length} allowed
-                          <small>
-                            {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                          </small>
-                        </dd>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => changeTab("configuration")}
-                        >
-                          View tool permissions
-                        </Button>
-                      </div>
-                    </dl>
+                          </>
+                        }
+                        action={
+                          <Button type="button" variant="ghost" onClick={() => changeTab("access")}>
+                            Manage access
+                          </Button>
+                        }
+                      >
+                        {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
+                      </ChatFact>
+                      <ChatFact
+                        label="Model"
+                        detail={
+                          effective.sources.model === "chat" ? "Chat override" : "Shared default"
+                        }
+                        action={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => changeTab("configuration")}
+                          >
+                            Change model
+                          </Button>
+                        }
+                      >
+                        <Code variant="ghost">{effective.model ?? "No allowed model"}</Code>
+                      </ChatFact>
+                      <ChatFact
+                        label="Tools"
+                        detail={
+                          effective.sources.tools === "chat" ? "Explicit override" : "Inherited"
+                        }
+                        action={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => changeTab("configuration")}
+                          >
+                            View tool permissions
+                          </Button>
+                        }
+                      >
+                        {effective.tools.length} allowed
+                      </ChatFact>
+                    </DataList.Root>
                     {unavailableTools.length > 0 && (
                       <div className="blocker">
                         <Text size="2">
@@ -574,25 +673,22 @@ export function ChatWorkspace({
                     )}
                     <details className="permission-details">
                       <summary>Advanced configuration / Check details</summary>
-                      <dl className="effective-settings">
-                        <dt>Tools</dt>
-                        <dd>
+                      <DataList.Root className="chat-facts effective-settings" size="2">
+                        <ChatFact label="Tools">
                           {effective.tools.join(", ") || "None"} ·{" "}
                           {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                        </dd>
-                        <dt>MCP servers</dt>
-                        <dd>
+                        </ChatFact>
+                        <ChatFact label="MCP servers">
                           {effective.servers.join(", ") || "None"} ·{" "}
                           {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
-                        </dd>
-                        <dt>Thinking</dt>
-                        <dd>
+                        </ChatFact>
+                        <ChatFact label="Thinking">
                           {effective.thinking} ·{" "}
                           {effective.sources.thinking === "chat"
                             ? "Explicit override"
                             : "Inherited"}
-                        </dd>
-                      </dl>
+                        </ChatFact>
+                      </DataList.Root>
                       <Text as="p" size="2">
                         Remote authentication and runtime availability are not verified here.
                         Connection checks require an explicit action.
@@ -614,26 +710,32 @@ export function ChatWorkspace({
                       </Flex>
                     </details>
                   </Tabs.Content>
-                  <Tabs.Content value="access" forceMount hidden={tab !== "access"}>
-                    <Panel>
+                  <Tabs.Content
+                    className="chat-view"
+                    value="access"
+                    forceMount
+                    hidden={tab !== "access"}
+                  >
+                    <section className="chat-access-editor">
                       <Heading size="3">Access for this chat</Heading>
                       <Text as="p" size="2" mt="2">
                         {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
                         never grants access in other chats.
                       </Text>
-                      <dl className="effective-settings">
-                        <dt>Saved approval</dt>
-                        <dd>{savedApproval ? "Approved" : "Not approved"}</dd>
-                        <dt>Draft approval</dt>
-                        <dd>{approved ? "Approved" : "Not approved"}</dd>
-                        <dt>Policy access</dt>
-                        <dd>
+                      <DataList.Root className="chat-facts effective-settings" size="2">
+                        <ChatFact label="Saved approval">
+                          {savedApproval ? "Approved" : "Not approved"}
+                        </ChatFact>
+                        <ChatFact label="Draft approval">
+                          {approved ? "Approved" : "Not approved"}
+                        </ChatFact>
+                        <ChatFact label="Policy access">
                           {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
                           {override?.enabled === false
                             ? " · Chat disabled independently of approval"
                             : ""}
-                        </dd>
-                      </dl>
+                        </ChatFact>
+                      </DataList.Root>
                       <Text as="p" role="status">
                         {accessPending
                           ? approved
@@ -671,34 +773,36 @@ export function ChatWorkspace({
                         These actions stage access changes for this chat only. Granting approval
                         does not enable a disabled chat or configure authentication.
                       </Text>
-                    </Panel>
+                    </section>
                   </Tabs.Content>
-                  <Tabs.Content value="configuration" forceMount hidden={tab !== "configuration"}>
+                  <Tabs.Content
+                    className="chat-view"
+                    value="configuration"
+                    forceMount
+                    hidden={tab !== "configuration"}
+                  >
                     <Heading size="3">Model &amp; Tools</Heading>
-                    <dl className="effective-settings">
-                      <dt>Effective model</dt>
-                      <dd>
-                        {effective.model ?? "No allowed model"} ·{" "}
+                    <DataList.Root className="chat-facts effective-settings" size="2">
+                      <ChatFact label="Effective model">
+                        <Code variant="ghost">{effective.model ?? "No allowed model"}</Code> ·{" "}
                         {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
-                      </dd>
-                      <dt>Chat model override</dt>
-                      <dd>{override?.model ?? "Inherit from defaults"}</dd>
-                      <dt>Tools</dt>
-                      <dd>
+                      </ChatFact>
+                      <ChatFact label="Chat model override">
+                        <Code variant="ghost">{override?.model ?? "Inherit from defaults"}</Code>
+                      </ChatFact>
+                      <ChatFact label="Tools">
                         {effective.tools.join(", ") || "None"} ·{" "}
                         {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                      <dt>MCP servers</dt>
-                      <dd>
+                      </ChatFact>
+                      <ChatFact label="MCP servers">
                         {effective.servers.join(", ") || "None"} ·{" "}
                         {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                      <dt>Thinking</dt>
-                      <dd>
+                      </ChatFact>
+                      <ChatFact label="Thinking">
                         {effective.thinking} ·{" "}
                         {effective.sources.thinking === "chat" ? "Explicit override" : "Inherited"}
-                      </dd>
-                    </dl>
+                      </ChatFact>
+                    </DataList.Root>
                     <Flex gap="3" wrap="wrap">
                       <Button variant="soft" onClick={onProviders}>
                         Manage model authentication
@@ -707,10 +811,12 @@ export function ChatWorkspace({
                         Manage tool permissions
                       </Button>
                     </Flex>
-                    <Heading size="3" mt="4">
-                      Chat overrides
-                    </Heading>
-                    {children}
+                    <section className="chat-override-editor" aria-label="Chat overrides">
+                      <Heading size="3" mt="4">
+                        Chat overrides
+                      </Heading>
+                      {children}
+                    </section>
                     <details className="permission-details">
                       <summary>Inspect individual tool permissions</summary>
                       <Text as="p" size="2">
@@ -769,7 +875,12 @@ export function ChatWorkspace({
                       </Panel>
                     )}
                   </Tabs.Content>
-                  <Tabs.Content value="history" forceMount hidden={tab !== "history"}>
+                  <Tabs.Content
+                    className="chat-view"
+                    value="history"
+                    forceMount
+                    hidden={tab !== "history"}
+                  >
                     <Heading size="3">Chat-targeted audit history</Heading>
                     <Text as="p" size="2" color="gray">
                       Only records explicitly targeted to this chat in the loaded audit page (up to

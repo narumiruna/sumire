@@ -79,6 +79,20 @@ export type DurableDocumentItem = {
   withheldReason?: "unknown-kind" | "invalid-value" | "limit"
 }
 
+export type DurableEntryContentBlock =
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string }
+  | { type: "toolCall"; id: string; name: string; arguments: string }
+  | { type: "image"; mimeType: string }
+
+export type DurableEntryMessage = {
+  role: "system" | "user" | "assistant" | "toolResult"
+  content: DurableEntryContentBlock[]
+  toolName?: string
+  toolCallId?: string
+  isError?: boolean
+}
+
 export type DurableEntryItem = {
   type: "entry"
   id: number
@@ -88,6 +102,11 @@ export type DurableEntryItem = {
   head?: number
   role?: "system" | "user" | "assistant" | "toolResult"
   timestamp?: number
+  toolName?: string
+  toolCallId?: string
+  isError?: boolean
+  /** Bounded model-facing content, included only for an objectId read. */
+  content?: { messages: DurableEntryMessage[]; truncated: boolean }
 }
 
 export type DurableInspectionItem =

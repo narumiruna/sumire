@@ -1,5 +1,6 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
-import { Badge, Heading, Text } from "@radix-ui/themes"
+import { ClockIcon } from "@radix-ui/react-icons"
+import { Badge, Code, DataList, Flex, Heading, Text } from "@radix-ui/themes"
 import { countText } from "./status-text.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -10,10 +11,15 @@ function failedImports(report: ImportReport["report"]) {
 }
 
 export function ImportHistory({ reports }: { reports: ImportReport[] }) {
-  if (!reports.length) return <Text as="p">No import history.</Text>
+  if (!reports.length)
+    return (
+      <Text as="p" size="2" color="gray" className="empty-state">
+        No import history.
+      </Text>
+    )
   return (
-    <>
-      <Prose>
+    <Flex direction="column" gap="3" className="import-history settings-stack">
+      <Prose size="2" color="gray" className="section-copy">
         Import history is read-only. It does not approve IDs or restore revoked access. Environment
         review history is limited to the latest 10 reviews.
       </Prose>
@@ -24,39 +30,45 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
             Number(b.report.reviewRequired === true) - Number(a.report.reviewRequired === true),
         )
         .map(({ name, report }) => (
-          <Panel key={name}>
-            <Heading size="3">{name}</Heading>
-            {failedImports(report) > 0 && (
-              <Badge color="red">Import failures — review details</Badge>
-            )}
-            {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
-              (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
-              <Badge color="orange">Incomplete import</Badge>
-            )}
-            {report.reviewRequired === true && (
-              <Badge color="orange">Review required at import</Badge>
-            )}
-            <Text as="p" size="2">
-              {typeof report.servers === "number" &&
-                `${countText(report.servers, "server")} imported. `}
-              {typeof report.imported === "number" &&
-                `${countText(report.imported, "model setting")} imported. `}
-              {Array.isArray(report.failedChatIds) &&
-                `${countText(report.failedChatIds.length, "chat")} failed. `}
-              {typeof report.skippedServers === "number" &&
-                `${countText(report.skippedServers, "server")} skipped. `}
-              {typeof report.unscannedEntries === "number" &&
-                `${countText(report.unscannedEntries, "entry", "entries")} not scanned. `}
-              {Array.isArray(report.decisions) &&
-                `${countText(report.decisions.length, "recorded access decision")}. `}
-            </Text>
-            <details>
-              <summary>Imported IDs and review details</summary>
-              <pre>{JSON.stringify(report, null, 2)}</pre>
-            </details>
+          <Panel key={name} className="import-report">
+            <Flex direction="column" gap="3">
+              <Flex align="center" gap="2" wrap="wrap" className="section-heading">
+                <Heading as="h4" size="2">
+                  {name}
+                </Heading>
+                {failedImports(report) > 0 && (
+                  <Badge color="red">Import failures — review details</Badge>
+                )}
+                {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
+                  (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
+                  <Badge color="orange">Incomplete import</Badge>
+                )}
+                {report.reviewRequired === true && (
+                  <Badge color="orange">Review required at import</Badge>
+                )}
+              </Flex>
+              <Text as="p" size="2" className="import-report-summary">
+                {typeof report.servers === "number" &&
+                  `${countText(report.servers, "server")} imported. `}
+                {typeof report.imported === "number" &&
+                  `${countText(report.imported, "model setting")} imported. `}
+                {Array.isArray(report.failedChatIds) &&
+                  `${countText(report.failedChatIds.length, "chat")} failed. `}
+                {typeof report.skippedServers === "number" &&
+                  `${countText(report.skippedServers, "server")} skipped. `}
+                {typeof report.unscannedEntries === "number" &&
+                  `${countText(report.unscannedEntries, "entry", "entries")} not scanned. `}
+                {Array.isArray(report.decisions) &&
+                  `${countText(report.decisions.length, "recorded access decision")}. `}
+              </Text>
+              <details>
+                <summary>Imported IDs and review details</summary>
+                <pre>{JSON.stringify(report, null, 2)}</pre>
+              </details>
+            </Flex>
           </Panel>
         ))}
-    </>
+    </Flex>
   )
 }
 
@@ -113,27 +125,59 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
   }
   const time = new Date(entry.time)
   return (
-    <>
-      <strong>{operationNames[entry.operation] ?? entry.operation}</strong> — {entry.outcome}
-      <Text as="p" size="2">
-        <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
-        {` · Actor ${entry.actor} · Revision ${entry.revision} · ${entry.target}`}
-      </Text>
+    <Flex direction="column" gap="2" className="activity-record">
+      <Flex align="center" gap="2" wrap="wrap" className="activity-record-heading">
+        <Text size="2" weight="medium">
+          {operationNames[entry.operation] ?? entry.operation} —{" "}
+          <Badge
+            color={
+              entry.outcome === "failed" ? "red" : entry.outcome === "applied" ? "teal" : "gray"
+            }
+          >
+            {entry.outcome}
+          </Badge>
+        </Text>
+      </Flex>
+      <DataList.Root size="1" className="activity-metadata">
+        <DataList.Item>
+          <DataList.Label>
+            <ClockIcon aria-hidden="true" /> Recorded
+          </DataList.Label>
+          <DataList.Value>
+            <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
+          </DataList.Value>
+        </DataList.Item>
+        <DataList.Item>
+          <DataList.Label>Context</DataList.Label>
+          <DataList.Value>
+            <Flex align="center" gap="2" wrap="wrap">
+              <Text>{`Actor ${entry.actor} · Revision ${entry.revision}`}</Text>
+              <Code size="1">{entry.target}</Code>
+            </Flex>
+          </DataList.Value>
+        </DataList.Item>
+      </DataList.Root>
       <details>
         <summary>Raw audit record</summary>
         <pre>{JSON.stringify(entry, null, 2)}</pre>
       </details>
-    </>
+    </Flex>
   )
 }
 
 export function Activity({ entries }: { entries: AuditEntry[] }) {
-  if (!entries.length) return <Text as="p">No audit records on this page.</Text>
+  if (!entries.length)
+    return (
+      <Text as="p" size="2" color="gray" className="empty-state">
+        No audit records on this page.
+      </Text>
+    )
   return (
     <ol className="activity" aria-label="Configuration activity">
       {groupActivity(entries).map((group) => (
         <li
           key={group[0]?.id}
+          className="activity-group"
           data-outcome={
             group.some((entry) => entry.outcome === "failed") ? "failed" : group[0]?.outcome
           }
@@ -142,10 +186,29 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
             group[0] && <AuditRecord entry={group[0]} />
           ) : (
             <>
-              <strong>
-                Revision {group[0]?.revision}: {countText(group.length, "save/application record")}
-              </strong>
-              <Text as="p">
+              <Flex
+                align="center"
+                justify="between"
+                gap="2"
+                wrap="wrap"
+                className="activity-group-heading"
+              >
+                <Text size="2" weight="medium">
+                  Revision {group[0]?.revision}:{" "}
+                  {countText(group.length, "save/application record")}
+                </Text>
+                <Flex gap="2" wrap="wrap">
+                  {[...new Set(group.map((entry) => entry.outcome))].map((outcome) => (
+                    <Badge
+                      key={outcome}
+                      color={outcome === "failed" ? "red" : outcome === "applied" ? "teal" : "gray"}
+                    >
+                      {outcome}
+                    </Badge>
+                  ))}
+                </Flex>
+              </Flex>
+              <Text as="p" size="2" color="gray">
                 {countText(
                   group.filter((entry) => entry.outcome === "failed").length,
                   "failed application",
@@ -154,7 +217,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
               </Text>
               <details>
                 <summary>Individual save and application records</summary>
-                <ul>
+                <ul className="activity-group-records">
                   {group.map((entry) => (
                     <li key={entry.id}>
                       <AuditRecord entry={entry} />

@@ -1,5 +1,10 @@
 import { effectivePolicy, inherited as inherit } from "@narumitw/sumire-policy"
-import { ExitIcon, ReloadIcon } from "@radix-ui/react-icons"
+import {
+  ExclamationTriangleIcon,
+  ExitIcon,
+  MixerHorizontalIcon,
+  ReloadIcon,
+} from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
 import { useCallback, useEffect, useState } from "react"
@@ -33,13 +38,23 @@ import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { PageHeader, Panel, Prose } from "./surfaces.js"
 import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
+const pageDescriptions = {
+  Chats: "Review chat access and effective settings.",
+  Durable: undefined,
+  Access: "Approve private chats, groups, and channels.",
+  Defaults: "Set shared settings and inheritance.",
+  "Tool permissions": "Manage global, default, and chat permissions.",
+  "MCP connections": "Manage connections and protected configuration.",
+  "Model Providers": "Manage models and provider authentication.",
+  Audit: "Review configuration activity and imports.",
+}
 function App() {
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
@@ -154,29 +169,39 @@ function App() {
   }
   if (session === undefined)
     return (
-      <main>
-        <Text>Loading administrator session…</Text>
+      <main className="session-screen">
+        <Panel className="session-card" aria-busy="true">
+          <PageHeader title="Sumire administration" description="Loading administrator session…" />
+          <Text size="2" color="gray" role="status">
+            Checking your administrator session.
+          </Text>
+        </Panel>
       </main>
     )
   if (!session)
     return (
-      <main>
-        <Panel>
-          <Heading>Sumire administration</Heading>
-          <Prose>
-            {setup
-              ? "Register your administrator passkey with your device."
-              : "Use your administrator passkey to sign in."}
-          </Prose>
+      <main className="session-screen">
+        <Panel className="session-card">
+          <PageHeader
+            title="Sumire administration"
+            description={
+              setup
+                ? "Register your administrator passkey with your device."
+                : "Use your administrator passkey to sign in."
+            }
+          />
           {!setup && (
             <Prose>
               First visit? Send /admin in a private chat with Sumire to get a setup link.
             </Prose>
           )}
           {error && (
-            <Text role="alert" color="red">
-              {error}
-            </Text>
+            <Callout.Root role="alert" color="red">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
           )}
           <Button
             disabled={busy}
@@ -195,53 +220,77 @@ function App() {
     )
   if (!snapshot)
     return (
-      <main>
-        <Text>{error || "Loading settings…"}</Text>
-        <Button onClick={() => void run(load)}>Retry</Button>
+      <main className="session-screen">
+        <Panel className="session-card">
+          <PageHeader
+            title="Sumire administration"
+            description="Load the saved policy and connected services."
+          />
+          {error ? (
+            <Callout.Root role="alert" color="red">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          ) : (
+            <Text role="status">Loading settings…</Text>
+          )}
+          <Button variant="soft" onClick={() => void run(load)}>
+            <ReloadIcon aria-hidden />
+            Retry
+          </Button>
+        </Panel>
       </main>
     )
   const policy = snapshot.policy
   const selected = policy.chats[chat]
   const changes = policyChanges(savedPolicy ?? policy, policy)
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}`}>
       <SideNavigation page={page} chat={chat} actor={session.actor} onNavigate={setPage} />
       <main aria-busy={busy}>
-        <header className="workspace-header">
-          <Text size="2" color="gray">
-            Administration / {pageLabel(page)}
-          </Text>
-          <Flex gap="2">
-            <Button
-              variant="soft"
-              disabled={busy || dirty || localPending}
-              onClick={() => {
-                refreshChats()
-                void run(load)
-              }}
-            >
-              <ReloadIcon />
-              Reload
-            </Button>
-            <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  if (!confirmDiscard()) return
-                  clearAccess()
-                  await request("logout", session.csrf)
-                  expireSession()
-                })
-              }
-            >
-              <ExitIcon />
-              Sign out
-            </Button>
-          </Flex>
-        </header>
+        <PageHeader
+          title={pageLabel(page)}
+          description={pageDescriptions[page]}
+          actions={
+            <>
+              <Button
+                variant="soft"
+                aria-label="Reload"
+                disabled={busy || dirty || localPending}
+                onClick={() => {
+                  refreshChats()
+                  void run(load)
+                }}
+              >
+                <ReloadIcon />
+                <span className="workspace-action-label">Reload</span>
+              </Button>
+              <Button
+                variant="soft"
+                aria-label="Sign out"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    if (!confirmDiscard()) return
+                    clearAccess()
+                    await request("logout", session.csrf)
+                    expireSession()
+                  })
+                }
+              >
+                <ExitIcon />
+                <span className="workspace-action-label">Sign out</span>
+              </Button>
+            </>
+          }
+        />
         {error && (
-          <Callout.Root color="red" role="alert">
+          <Callout.Root color="red" role="alert" className="workspace-error">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
             <Callout.Text>
               {error} Review the input and retry. If settings were saved but application failed,
               reload the saved state to check it; discard policy edits only when you no longer need
@@ -305,9 +354,6 @@ function App() {
             }}
           />
         )}
-        <Heading size="6" id="current-section-heading" tabIndex={-1} mb="3">
-          {pageLabel(page)}
-        </Heading>
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
             <ChatWorkspace
@@ -335,7 +381,7 @@ function App() {
               onTools={() => setPage("Tool permissions")}
               onDurable={() => setPage("Durable")}
             >
-              <Panel>
+              <section className="chat-policy-editor" aria-label="Chat policy settings">
                 <Check
                   label="Chat enabled"
                   checked={selected?.enabled !== false}
@@ -362,32 +408,39 @@ function App() {
                     })
                   }
                 />
-              </Panel>
+              </section>
             </ChatWorkspace>
           </EditorSection>
           {page === "Durable" && (
-            <>
-              <Panel className="durable-chat-selector" aria-label="Find a chat">
-                <details open={!chat}>
-                  <summary>Find or switch chat</summary>
-                  <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
-                </details>
-              </Panel>
-              <SectionErrorBoundary key={chat} label="Durable inspector">
-                <DurableInspector
-                  key={chat}
-                  chat={chat}
-                  metadata={directory.selected.chat}
-                  metadataLoading={directory.selected.loading}
-                  metadataError={directory.selected.error}
-                  onMetadataRetry={directory.refresh}
-                  onChats={() => setPage("Chats")}
-                  onSessionExpired={expireInspectorSession}
-                />
-              </SectionErrorBoundary>
-            </>
+            <SectionErrorBoundary key={chat} label="Durable inspector">
+              <DurableInspector
+                key={chat}
+                chat={chat}
+                chatSelector={
+                  <section className="durable-chat-selector" aria-label="Find a chat">
+                    <details open={!chat}>
+                      <summary aria-label="Find or switch chat">
+                        <MixerHorizontalIcon aria-hidden />
+                        <span className="durable-action-label">Find or switch chat</span>
+                      </summary>
+                      <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
+                    </details>
+                  </section>
+                }
+                metadata={directory.selected.chat}
+                metadataLoading={directory.selected.loading}
+                metadataError={directory.selected.error}
+                onMetadataRetry={directory.refresh}
+                onChats={() => setPage("Chats")}
+                onSessionExpired={expireInspectorSession}
+              />
+            </SectionErrorBoundary>
           )}
-          <EditorSection active={page === "Access"} aria-label="Access settings">
+          <EditorSection
+            active={page === "Access"}
+            aria-label="Access settings"
+            className="admin-page--access"
+          >
             {accessTarget && (
               <Panel>
                 <Heading size="3">Access for chat {accessTarget}</Heading>
@@ -403,179 +456,200 @@ function App() {
                 </Button>
               </Panel>
             )}
-            <Prose>
-              {countText(policy.privateUsers.length, "private user")} ·{" "}
-              {countText(policy.groups.length, "group or channel", "groups or channels")}
-              approved in the policy draft.
-            </Prose>
-            <Prose>
-              Private-message approval does not grant access in any group. Import history never
-              grants access or reverses a revocation.
-            </Prose>
-            <details>
-              <summary>Imported IDs and review history</summary>
+            <section className="access-intro" aria-label="Access policy scope">
               <Prose>
-                Read-only history is available in Audit. Review current access below; no imported ID
-                is approved automatically.
+                {countText(policy.privateUsers.length, "private user")} ·{" "}
+                {countText(policy.groups.length, "group or channel", "groups or channels")}
+                approved in the policy draft.
               </Prose>
-              <Button variant="soft" onClick={() => setPage("Audit")}>
-                Open import history in Audit
-              </Button>
-            </details>
-            <Prose size="2">Private and group access are separate.</Prose>
-            <Prose size="2">
-              Search all entries in each access list by ID or loaded chat name. Names for chats on
-              other pages may not be loaded.
-            </Prose>
-            <IdList
-              key={`${snapshot.revision}:users`}
-              onPending={(v) => markPending("users", v)}
-              label="Private-message access"
-              values={policy.privateUsers}
-              chats={knownChats}
-              savedValues={savedPolicy?.privateUsers ?? policy.privateUsers}
-              target={accessTarget}
-              positive
-              onChange={(values) => update({ ...policy, privateUsers: values })}
-            />
-            <IdList
-              key={`${snapshot.revision}:groups`}
-              onPending={(v) => markPending("groups", v)}
-              label="Group and channel access"
-              values={policy.groups}
-              chats={knownChats}
-              savedValues={savedPolicy?.groups ?? policy.groups}
-              target={accessTarget}
-              positive={false}
-              onChange={(values) => update({ ...policy, groups: values })}
-            />
-          </EditorSection>
-          <EditorSection active={page === "Defaults"} aria-label="Shared defaults">
-            <Prose>
-              Review shared defaults below. Chat overrides take priority within global availability;
-              defaults do not approve access.
-            </Prose>
-            <Prose size="2">
-              Reset is unavailable when all chats already inherit defaults. During a save,
-              configuration controls are unavailable.
-            </Prose>
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button
-                  variant="soft"
-                  disabled={
-                    !Object.values(policy.chats).some((choice) =>
-                      Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
-                    )
-                  }
-                >
-                  Reset all chats to inherit defaults
+              <Prose>
+                Private-message approval does not grant access in any group. Import history never
+                grants access or reverses a revocation.
+              </Prose>
+              <details>
+                <summary>Imported IDs and review history</summary>
+                <Prose>
+                  Read-only history is available in Audit. Review current access below; no imported
+                  ID is approved automatically.
+                </Prose>
+                <Button variant="soft" onClick={() => setPage("Audit")}>
+                  Open import history in Audit
                 </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content>
-                <AlertDialog.Title>Reset all chat overrides to inherit defaults?</AlertDialog.Title>
-                <AlertDialog.Description>
-                  {countText(
-                    Object.values(policy.chats).filter((choice) =>
-                      Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
-                    ).length,
-                    "chat has",
-                    "chats have",
-                  )}{" "}
-                  explicit overrides in the policy draft. Clear tool, MCP server, allowed model,
-                  model, and thinking overrides for all chats, including chats outside the current
-                  page. Explicit empty lists will also inherit Defaults. Chat access and enabled
-                  switches stay unchanged. Future chats already inherit Defaults. This stages edits
-                  only; use Apply policy changes to apply them.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft">Cancel</Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <Button
-                      onClick={() =>
-                        update({
-                          ...policy,
-                          chats: Object.fromEntries(
-                            Object.entries(policy.chats).map(([id, choice]) => [
-                              id,
-                              { ...inherit, enabled: choice.enabled },
-                            ]),
-                          ),
-                        })
-                      }
-                    >
-                      Stage reset of all chat overrides
-                    </Button>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-            <Panel>
-              <Heading size="3">Default tool permissions</Heading>
-              <Prose>
-                Applies to chats without a tool or MCP-server permission override. Explicit
-                overrides are not changed.
-              </Prose>
-              <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
-              {dirty && <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>}
-              <Button variant="soft" asChild>
-                <a
-                  href={navigationHref(
-                    "Tool permissions",
-                    chat,
-                    new URL("#default-tool-permissions", window.location.href),
-                  )}
-                  onClick={(event) => {
-                    if (
-                      event.button !== 0 ||
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    )
-                      return
-                    event.preventDefault()
-                    setPage("Tool permissions", "default-tool-permissions")
-                  }}
-                >
-                  Manage default tool permissions
-                </a>
-              </Button>
-            </Panel>
-            <Prose size="2">
-              Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
-              {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
-              {savedPolicy?.defaults.models?.join(", ") || "None"}
-            </Prose>
-            {JSON.stringify([
-              policy.defaults.model,
-              policy.defaults.thinking,
-              policy.defaults.models,
-            ]) !==
-              JSON.stringify([
-                (savedPolicy ?? policy).defaults.model,
-                (savedPolicy ?? policy).defaults.thinking,
-                (savedPolicy ?? policy).defaults.models,
-              ]) && (
+              </details>
+              <Prose size="2">Private and group access are separate.</Prose>
               <Prose size="2">
-                Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
-                {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
-                {policy.defaults.models?.join(", ") || "None"}
+                Search all entries in each access list by ID or loaded chat name. Names for chats on
+                other pages may not be loaded.
               </Prose>
-            )}
-            <Choices
-              navigate={setPage}
-              defaults
-              value={policy.defaults}
-              policy={policy}
-              effective={effectivePolicy(policy, 0)}
-              inventory={inventory}
-              onChange={(v) => update({ ...policy, defaults: v })}
-            />
+            </section>
+            <div className="access-lists">
+              <IdList
+                key={`${snapshot.revision}:users`}
+                onPending={(v) => markPending("users", v)}
+                label="Private-message access"
+                values={policy.privateUsers}
+                chats={knownChats}
+                savedValues={savedPolicy?.privateUsers ?? policy.privateUsers}
+                target={accessTarget}
+                positive
+                onChange={(values) => update({ ...policy, privateUsers: values })}
+              />
+              <IdList
+                key={`${snapshot.revision}:groups`}
+                onPending={(v) => markPending("groups", v)}
+                label="Group and channel access"
+                values={policy.groups}
+                chats={knownChats}
+                savedValues={savedPolicy?.groups ?? policy.groups}
+                target={accessTarget}
+                positive={false}
+                onChange={(values) => update({ ...policy, groups: values })}
+              />
+            </div>
           </EditorSection>
-          <EditorSection active={page === "Tool permissions"} aria-label="Tool permissions">
+          <EditorSection
+            active={page === "Defaults"}
+            aria-label="Shared defaults"
+            className="admin-page--defaults"
+          >
+            <section className="defaults-reset" aria-label="Default inheritance">
+              <Prose>
+                Review shared defaults below. Chat overrides take priority within global
+                availability; defaults do not approve access.
+              </Prose>
+              <Prose size="2">
+                Reset is unavailable when all chats already inherit defaults. During a save,
+                configuration controls are unavailable.
+              </Prose>
+              <AlertDialog.Root>
+                <AlertDialog.Trigger>
+                  <Button
+                    variant="soft"
+                    disabled={
+                      !Object.values(policy.chats).some((choice) =>
+                        Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
+                      )
+                    }
+                  >
+                    Reset all chats to inherit defaults
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Content>
+                  <AlertDialog.Title>
+                    Reset all chat overrides to inherit defaults?
+                  </AlertDialog.Title>
+                  <AlertDialog.Description>
+                    {countText(
+                      Object.values(policy.chats).filter((choice) =>
+                        Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
+                      ).length,
+                      "chat has",
+                      "chats have",
+                    )}{" "}
+                    explicit overrides in the policy draft. Clear tool, MCP server, allowed model,
+                    model, and thinking overrides for all chats, including chats outside the current
+                    page. Explicit empty lists will also inherit Defaults. Chat access and enabled
+                    switches stay unchanged. Future chats already inherit Defaults. This stages
+                    edits only; use Apply policy changes to apply them.
+                  </AlertDialog.Description>
+                  <Flex gap="3" mt="4">
+                    <AlertDialog.Cancel>
+                      <Button variant="soft">Cancel</Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button
+                        onClick={() =>
+                          update({
+                            ...policy,
+                            chats: Object.fromEntries(
+                              Object.entries(policy.chats).map(([id, choice]) => [
+                                id,
+                                { ...inherit, enabled: choice.enabled },
+                              ]),
+                            ),
+                          })
+                        }
+                      >
+                        Stage reset of all chat overrides
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
+            </section>
+            <div className="defaults-layout">
+              <Panel className="defaults-summary">
+                <Heading size="3">Default tool permissions</Heading>
+                <Prose>
+                  Applies to chats without a tool or MCP-server permission override. Explicit
+                  overrides are not changed.
+                </Prose>
+                <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
+                {dirty && <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>}
+                <Button variant="soft" asChild>
+                  <a
+                    href={navigationHref(
+                      "Tool permissions",
+                      chat,
+                      new URL("#default-tool-permissions", window.location.href),
+                    )}
+                    onClick={(event) => {
+                      if (
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      )
+                        return
+                      event.preventDefault()
+                      setPage("Tool permissions", "default-tool-permissions")
+                    }}
+                  >
+                    Manage default tool permissions
+                  </a>
+                </Button>
+              </Panel>
+              <section className="defaults-model" aria-label="Default model settings">
+                <Heading size="3">Model and thinking defaults</Heading>
+                <Prose size="2">
+                  Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
+                  {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
+                  {savedPolicy?.defaults.models?.join(", ") || "None"}
+                </Prose>
+                {JSON.stringify([
+                  policy.defaults.model,
+                  policy.defaults.thinking,
+                  policy.defaults.models,
+                ]) !==
+                  JSON.stringify([
+                    (savedPolicy ?? policy).defaults.model,
+                    (savedPolicy ?? policy).defaults.thinking,
+                    (savedPolicy ?? policy).defaults.models,
+                  ]) && (
+                  <Prose size="2">
+                    Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
+                    {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
+                    {policy.defaults.models?.join(", ") || "None"}
+                  </Prose>
+                )}
+                <Choices
+                  navigate={setPage}
+                  defaults
+                  value={policy.defaults}
+                  policy={policy}
+                  effective={effectivePolicy(policy, 0)}
+                  inventory={inventory}
+                  onChange={(v) => update({ ...policy, defaults: v })}
+                />
+              </section>
+            </div>
+          </EditorSection>
+          <EditorSection
+            active={page === "Tool permissions"}
+            aria-label="Tool permissions"
+            className="admin-page--permissions"
+          >
             <Callout.Root color="orange">
               <Callout.Text>
                 Shell and file tools are trusted capabilities, not a sandbox. They can access
@@ -600,33 +674,40 @@ function App() {
                 page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
               }
             />
-            <Field
-              label="Additional approved tool name"
-              value={toolName}
-              onChange={(v) => {
-                setToolName(v)
-                markPending("tool", Boolean(v))
-              }}
-            />
-            <Button
-              disabled={!toolName}
-              onClick={() => {
-                update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
-                setToolName("")
-                markPending("tool", false)
-              }}
-            >
-              Add tool to pending approval
-            </Button>
-            <Prose size="2">
-              Enter an exact tool name even if discovery is unavailable. This stages global approval
-              only; default and chat permissions remain unchanged.
-            </Prose>
+            <Panel as="fieldset" className="permission-manual">
+              <legend>Approve an exact tool name</legend>
+              <Field
+                label="Additional approved tool name"
+                value={toolName}
+                onChange={(v) => {
+                  setToolName(v)
+                  markPending("tool", Boolean(v))
+                }}
+              />
+              <Button
+                disabled={!toolName}
+                onClick={() => {
+                  update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
+                  setToolName("")
+                  markPending("tool", false)
+                }}
+              >
+                Add tool to pending approval
+              </Button>
+              <Prose size="2">
+                Enter an exact tool name even if discovery is unavailable. This stages global
+                approval only; default and chat permissions remain unchanged.
+              </Prose>
+            </Panel>
             <Button variant="soft" onClick={() => setPage("MCP connections")}>
               Manage MCP connections
             </Button>
           </EditorSection>
-          <EditorSection active={page === "MCP connections"} aria-label="MCP connections">
+          <EditorSection
+            active={page === "MCP connections"}
+            aria-label="MCP connections"
+            className="admin-page--mcp"
+          >
             <McpConnections
               inventory={inventory}
               policy={policy}
@@ -644,7 +725,11 @@ function App() {
               load={load}
             />
           </EditorSection>
-          <EditorSection active={page === "Model Providers"} aria-label="Model providers">
+          <EditorSection
+            active={page === "Model Providers"}
+            aria-label="Model providers"
+            className="admin-page--providers"
+          >
             <Providers
               snapshot={snapshot}
               inventory={inventory}
@@ -738,14 +823,25 @@ function App() {
               />
             </details>
           </EditorSection>
-          <EditorSection active={page === "Audit"} aria-label="Audit history">
-            <Prose>
-              Latest configuration operations. Secret values and conversation contents are excluded.
-            </Prose>
-            <Heading size="3">Import reports</Heading>
-            <ImportHistory reports={imports} />
-            <Heading size="3">Configuration activity</Heading>
-            <AuditHistory revision={snapshot.revision} run={run} />
+          <EditorSection
+            active={page === "Audit"}
+            aria-label="Audit history"
+            className="admin-page--audit"
+          >
+            <div className="audit-workspace">
+              <section className="audit-configuration" aria-label="Configuration operations">
+                <Heading size="3">Configuration activity</Heading>
+                <Prose size="2">
+                  Latest configuration operations. Secret values and conversation contents are
+                  excluded.
+                </Prose>
+                <AuditHistory revision={snapshot.revision} run={run} />
+              </section>
+              <section className="audit-imports" aria-label="Import reports">
+                <Heading size="3">Import reports</Heading>
+                <ImportHistory reports={imports} />
+              </section>
+            </div>
           </EditorSection>
         </fieldset>
         {localPending && (
@@ -772,7 +868,7 @@ function App() {
 const root = document.getElementById("root")
 if (root)
   createRoot(root).render(
-    <Theme appearance="light" accentColor="teal" grayColor="slate" radius="medium">
+    <Theme appearance="light" accentColor="teal" grayColor="sand" radius="medium">
       <App />
     </Theme>,
   )

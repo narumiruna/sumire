@@ -1,5 +1,19 @@
 import type { effectivePolicy } from "@narumitw/sumire-policy"
-import { Badge, Button, Callout, Checkbox, Flex, Heading, Text, TextField } from "@radix-ui/themes"
+import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
+import {
+  Badge,
+  Button,
+  Callout,
+  Checkbox,
+  Code,
+  DataList,
+  Flex,
+  Grid,
+  Table,
+  Text,
+  TextField,
+} from "@radix-ui/themes"
 import { useEffect, useId, useState } from "react"
 import { type Inventory, type Policy, parseIds, type Selection } from "./api.js"
 import { type Chat, chatName } from "./chats.js"
@@ -43,7 +57,7 @@ export function Field({
 }) {
   const id = useId()
   return (
-    <label htmlFor={id}>
+    <label className="form-field" htmlFor={id}>
       {label}
       <TextField.Root
         id={id}
@@ -77,6 +91,7 @@ export function IdList({
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
+  const searchId = useId()
   useEffect(() => {
     setQuery(target && Number(target) > 0 === positive ? target : "")
   }, [target, positive])
@@ -87,27 +102,48 @@ export function IdList({
   const visible = values.filter(matches)
   const revoked = savedValues.filter((id) => !values.includes(id))
   return (
-    <Panel as="fieldset">
+    <Panel as="fieldset" className="access-list">
       <legend>{label}</legend>
-      <Field label={`Search ${label.toLowerCase()}`} value={query} onChange={setQuery} />
-      {!!values.length && !visible.length && <Prose>No matching access entries.</Prose>}
-      <Prose size="2">
-        {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
-        {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.{" "}
-        <a href="#save-status">Review pending changes</a>
-      </Prose>
-      <table className="access-table" aria-label={label}>
-        <thead>
-          <tr>
-            <th scope="col">Chat / ID</th>
-            <th scope="col">Approval</th>
-            <th scope="col">Action</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Flex direction="column" gap="2" className="access-list__header">
+        <label className="form-field access-list__search" htmlFor={searchId}>
+          {`Search ${label.toLowerCase()}`}
+          <TextField.Root
+            id={searchId}
+            value={query}
+            autoComplete="off"
+            onChange={(e) => setQuery(e.target.value)}
+          >
+            <TextField.Slot>
+              <MagnifyingGlassIcon aria-hidden="true" />
+            </TextField.Slot>
+          </TextField.Root>
+        </label>
+        <Prose size="2" color="gray" className="access-list__summary">
+          {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
+          {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.{" "}
+          <a href="#save-status">Review pending changes</a>
+        </Prose>
+      </Flex>
+      {!!values.length && !visible.length && (
+        <Prose size="2" className="empty-state">
+          No matching access entries.
+        </Prose>
+      )}
+      <Table.Root size="1" className="access-table">
+        <VisuallyHidden.Root asChild>
+          <caption>{label}</caption>
+        </VisuallyHidden.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeaderCell scope="col">Chat / ID</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell scope="col">Approval</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell scope="col">Action</Table.ColumnHeaderCell>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
           {visible.map((id) => (
-            <tr key={id}>
-              <td>
+            <Table.Row key={id}>
+              <Table.Cell>
                 <Prose weight="medium">
                   {chatName(
                     metadata.get(id) ?? {
@@ -117,18 +153,20 @@ export function IdList({
                     },
                   )}
                 </Prose>
-                <Text size="2">
-                  <code>{id}</code>
-                </Text>
-              </td>
-              <td>
+                <Code size="2" variant="ghost" className="access-id">
+                  {id}
+                </Code>
+              </Table.Cell>
+              <Table.Cell>
                 {!savedValues.includes(id) ? (
                   <Badge color="orange">Pending approval</Badge>
                 ) : (
-                  "Approved"
+                  <Badge color="green" variant="soft">
+                    Approved
+                  </Badge>
                 )}
-              </td>
-              <td>
+              </Table.Cell>
+              <Table.Cell>
                 <Button
                   variant="ghost"
                   color="red"
@@ -137,59 +175,81 @@ export function IdList({
                 >
                   Revoke access
                 </Button>
-              </td>
-            </tr>
+              </Table.Cell>
+            </Table.Row>
           ))}
-        </tbody>
-      </table>
-      {revoked.filter(matches).map((id) => (
-        <Flex key={id} gap="2" align="center" wrap="wrap">
-          <Text>
-            {chatName(
-              metadata.get(id) ?? { id, name: "", type: id > 0 ? "private" : "group or channel" },
-            )}{" "}
-            · {id}
-          </Text>
-          <Badge color="orange">Pending revocation</Badge>
-          <Button variant="soft" onClick={() => onChange([...values, id])}>
-            Undo revocation for {id}
-          </Button>
-        </Flex>
-      ))}
-      {!values.length && <Prose>No access approved in the policy draft.</Prose>}
-      <Field
-        label={positive ? "Private user ID to add" : "Group or channel ID to add"}
-        value={draft}
-        onChange={(v) => {
-          setDraft(v)
-          onPending(Boolean(v))
-        }}
-      />
-      <Button
-        variant="soft"
-        disabled={!draft}
-        onClick={() => {
-          try {
-            const ids = parseIds(draft, positive)
-            if (ids.length !== 1) throw new Error("Enter one ID")
-            onChange([...new Set([...values, ...ids])])
-            setDraft("")
-            onPending(false)
-            setError("")
-          } catch {
-            setError(
-              positive
-                ? "Enter one positive whole-number Telegram user ID."
-                : "Enter one negative whole-number Telegram group or channel ID.",
-            )
-          }
-        }}
-      >
-        Add ID to pending settings
-      </Button>
-      {draft && <Prose size="2">Not added yet. Add this ID before saving settings.</Prose>}
+          {revoked.filter(matches).map((id) => (
+            <Table.Row key={id} className="access-row--revoked">
+              <Table.Cell>
+                <Prose weight="medium">
+                  {chatName(
+                    metadata.get(id) ?? {
+                      id,
+                      name: "",
+                      type: id > 0 ? "private" : "group or channel",
+                    },
+                  )}
+                </Prose>
+                <Code size="2" variant="ghost" className="access-id">
+                  {id}
+                </Code>
+              </Table.Cell>
+              <Table.Cell>
+                <Badge color="orange">Pending revocation</Badge>
+              </Table.Cell>
+              <Table.Cell>
+                <Button variant="soft" onClick={() => onChange([...values, id])}>
+                  Undo revocation for {id}
+                </Button>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+      {!values.length && (
+        <Prose size="2" className="empty-state">
+          No access approved in the policy draft.
+        </Prose>
+      )}
+      <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
+        <Field
+          label={positive ? "Private user ID to add" : "Group or channel ID to add"}
+          value={draft}
+          onChange={(v) => {
+            setDraft(v)
+            onPending(Boolean(v))
+          }}
+        />
+        <Button
+          variant="soft"
+          disabled={!draft}
+          onClick={() => {
+            try {
+              const ids = parseIds(draft, positive)
+              if (ids.length !== 1) throw new Error("Enter one ID")
+              onChange([...new Set([...values, ...ids])])
+              setDraft("")
+              onPending(false)
+              setError("")
+            } catch {
+              setError(
+                positive
+                  ? "Enter one positive whole-number Telegram user ID."
+                  : "Enter one negative whole-number Telegram group or channel ID.",
+              )
+            }
+          }}
+        >
+          Add ID to pending settings
+        </Button>
+      </Flex>
+      {draft && (
+        <Prose size="2" className="access-list__feedback">
+          Not added yet. Add this ID before saving settings.
+        </Prose>
+      )}
       {error && (
-        <Text color="red" role="alert">
+        <Text color="red" role="alert" size="2" className="access-list__feedback">
           {error}
         </Text>
       )}
@@ -213,7 +273,7 @@ export function List({
 }) {
   const displayed = [...new Set([...options, ...(value ?? [])])]
   return (
-    <Panel as="fieldset">
+    <Panel as="fieldset" className="policy-list">
       <legend>{label}</legend>
       {inheritable && (
         <Check
@@ -222,30 +282,38 @@ export function List({
           onChange={(v) => onChange(v ? null : [])}
         />
       )}
-      {value !== null &&
-        (displayed.length ? (
-          displayed.map((name) => (
-            <Check
-              key={name}
-              label={options.includes(name) ? name : `${name} (no longer available)`}
-              checked={value.includes(name)}
-              onChange={(checked) =>
-                onChange(checked ? [...value, name] : value.filter((v) => v !== name))
-              }
-            />
-          ))
-        ) : (
-          <Text>No approved options.</Text>
-        ))}
+      <Flex direction="column" gap="2" className="policy-list__options">
+        {value !== null &&
+          (displayed.length ? (
+            displayed.map((name) => (
+              <Check
+                key={name}
+                label={options.includes(name) ? name : `${name} (no longer available)`}
+                checked={value.includes(name)}
+                onChange={(checked) =>
+                  onChange(checked ? [...value, name] : value.filter((v) => v !== name))
+                }
+              />
+            ))
+          ) : (
+            <Text size="2" color="gray" className="empty-state">
+              No approved options.
+            </Text>
+          ))}
+      </Flex>
       {value === null && !inheritable && <Prose size="2">None selected.</Prose>}
       {value?.length === 0 && (
         <Prose size="2">None allowed. This does not inherit the default.</Prose>
       )}
       {inheritable && (
-        <Prose size="2">
-          {value === null ? "Inherited" : "Customized"} · Effective:{" "}
-          {effective?.join(", ") || "None"}
-        </Prose>
+        <Flex direction="column" align="start" gap="2" className="policy-list__status">
+          <Badge color={value === null ? "gray" : "orange"}>
+            {value === null ? "Inherited" : "Customized"}
+          </Badge>
+          <Prose size="2" color="gray">
+            Effective: {effective?.join(", ") || "None"}
+          </Prose>
+        </Flex>
       )}
       {inheritable && value !== null && (
         <Button variant="soft" onClick={() => onChange(null)}>
@@ -295,8 +363,8 @@ export function Choices({
     .flatMap((p) => p.models.map((m) => ({ ref: `${p.id}/${m.id}`, levels: m.thinking })))
     .find((m) => m.ref === model)?.levels ?? ["off"]
   return (
-    <>
-      <div className="grid">
+    <Flex direction="column" gap="4" className="settings-stack policy-choices">
+      <Grid gap="4" className="grid settings-grid policy-choice-lists">
         {(defaults ? (["models"] as const) : (["tools", "servers", "models"] as const)).map(
           (key) => (
             <List
@@ -316,7 +384,7 @@ export function Choices({
             />
           ),
         )}
-      </div>
+      </Grid>
       {!defaults && (
         <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
           Manage global and default tool permissions
@@ -334,13 +402,21 @@ export function Choices({
         </Callout.Root>
       )}
       {defaults ? (
-        <Panel>
-          <Heading size="3">Default model</Heading>
-          <Prose>
-            {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
-            {policy.defaults.thinking ?? "off"}
-          </Prose>
-          <Prose size="2">
+        <Panel as="fieldset" className="policy-model">
+          <legend>Default model</legend>
+          <DataList.Root size="2" className="data-list">
+            <DataList.Item className="data-row">
+              <DataList.Label>Model</DataList.Label>
+              <DataList.Value>
+                <Code variant="ghost">{policy.defaults.model ?? "Not configured"}</Code>
+              </DataList.Value>
+            </DataList.Item>
+            <DataList.Item className="data-row">
+              <DataList.Label>Thinking</DataList.Label>
+              <DataList.Value>{policy.defaults.thinking ?? "off"}</DataList.Value>
+            </DataList.Item>
+          </DataList.Root>
+          <Prose size="2" color="gray" className="section-copy">
             Allowed models limit what chats can use. The default model selects one for chats without
             an override.
           </Prose>
@@ -349,65 +425,68 @@ export function Choices({
           </Button>
         </Panel>
       ) : (
-        <>
-          <label htmlFor="model-selection">
-            Chat model override
-            <Select.Root
-              value={value.model ?? "inherit"}
-              onValueChange={(v) =>
-                onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
-              }
-            >
-              <Select.Trigger
-                id="model-selection"
-                aria-label="Chat model override"
-                placeholder="Choose model"
-              />
-              <Select.Content>
-                <Select.Item value="inherit">
-                  {defaults ? "Not configured" : "Inherit default"}
-                </Select.Item>
-                {[
-                  ...new Set([
-                    ...(value.models ?? policy.defaults.models ?? []),
-                    ...(value.model ? [value.model] : []),
-                  ]),
-                ].map((ref) => (
-                  <Select.Item key={ref} value={ref}>
-                    {ref}
-                    {!(value.models ?? policy.defaults.models ?? []).includes(ref)
-                      ? " (not allowed)"
-                      : ""}
+        <Panel as="fieldset" className="policy-model">
+          <legend>Model and thinking</legend>
+          <Grid gap="3" className="grid settings-grid policy-model__controls">
+            <label className="form-field" htmlFor="model-selection">
+              Chat model override
+              <Select.Root
+                value={value.model ?? "inherit"}
+                onValueChange={(v) =>
+                  onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
+                }
+              >
+                <Select.Trigger
+                  id="model-selection"
+                  aria-label="Chat model override"
+                  placeholder="Choose model"
+                />
+                <Select.Content>
+                  <Select.Item value="inherit">
+                    {defaults ? "Not configured" : "Inherit default"}
                   </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
-          <label htmlFor="thinking-selection">
-            Thinking level
-            <Select.Root
-              value={value.thinking ?? "inherit"}
-              onValueChange={(v) =>
-                onChange({
-                  ...value,
-                  thinking: v === "inherit" ? null : (v as Selection["thinking"]),
-                })
-              }
-            >
-              <Select.Trigger id="thinking-selection" aria-label="Thinking level" />
-              <Select.Content>
-                <Select.Item value="inherit">
-                  {defaults ? "Off (default)" : "Inherit default"}
-                </Select.Item>
-                {levels.map((level) => (
-                  <Select.Item key={level} value={level}>
-                    {level}
+                  {[
+                    ...new Set([
+                      ...(value.models ?? policy.defaults.models ?? []),
+                      ...(value.model ? [value.model] : []),
+                    ]),
+                  ].map((ref) => (
+                    <Select.Item key={ref} value={ref}>
+                      {ref}
+                      {!(value.models ?? policy.defaults.models ?? []).includes(ref)
+                        ? " (not allowed)"
+                        : ""}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+            <label className="form-field" htmlFor="thinking-selection">
+              Thinking level
+              <Select.Root
+                value={value.thinking ?? "inherit"}
+                onValueChange={(v) =>
+                  onChange({
+                    ...value,
+                    thinking: v === "inherit" ? null : (v as Selection["thinking"]),
+                  })
+                }
+              >
+                <Select.Trigger id="thinking-selection" aria-label="Thinking level" />
+                <Select.Content>
+                  <Select.Item value="inherit">
+                    {defaults ? "Off (default)" : "Inherit default"}
                   </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
-          <Prose size="2">
+                  {levels.map((level) => (
+                    <Select.Item key={level} value={level}>
+                      {level}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+          </Grid>
+          <Prose size="2" color="gray" className="section-copy">
             {value.model === null ? "Inherited" : "Customized"} model:{" "}
             {effective.model ?? "No allowed model"} ·{" "}
             {value.thinking === null ? "Inherited" : "Customized"} thinking: {effective.thinking}
@@ -420,9 +499,9 @@ export function Choices({
               Reset model and thinking to default
             </Button>
           )}
-        </>
+        </Panel>
       )}
-    </>
+    </Flex>
   )
 }
 export function SecretFields({

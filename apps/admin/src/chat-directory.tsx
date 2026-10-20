@@ -1,5 +1,11 @@
 import type { Chat } from "@narumitw/sumire-contracts"
-import { Button, Flex, Heading, Text, TextField } from "@radix-ui/themes"
+import {
+  ChatBubbleIcon,
+  MagnifyingGlassIcon,
+  PersonIcon,
+  SpeakerLoudIcon,
+} from "@radix-ui/react-icons"
+import { Button, Code, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, type Ref, useEffect, useId, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { countText } from "./status-text.js"
@@ -135,23 +141,34 @@ export function ChatSelector({
   return (
     <>
       <div className="directory-header">
-        <Heading size="3">{title}</Heading>
-        <label htmlFor={searchId}>
-          Search stored chats
-          <TextField.Root
-            id={searchId}
-            ref={searchRef}
-            value={directory.query}
-            maxLength={128}
-            onChange={(event) => directory.setQuery(event.target.value)}
-            placeholder="Name or complete chat ID"
-          />
-        </label>
+        <Flex className="directory-heading" align="center" gap="2">
+          <ChatBubbleIcon aria-hidden="true" />
+          <Heading size="3">{title}</Heading>
+        </Flex>
+        <div className="directory-toolbar">
+          <label className="directory-search" htmlFor={searchId}>
+            <Text size="1" weight="medium">
+              Search stored chats
+            </Text>
+            <TextField.Root
+              id={searchId}
+              ref={searchRef}
+              value={directory.query}
+              maxLength={128}
+              onChange={(event) => directory.setQuery(event.target.value)}
+              placeholder="Name or complete chat ID"
+            >
+              <TextField.Slot>
+                <MagnifyingGlassIcon aria-hidden="true" />
+              </TextField.Slot>
+            </TextField.Root>
+          </label>
+          {filters}
+        </div>
         <Prose size="1" color="gray">
           Search covers the stored directory, not all Telegram chats. Up to 100 matches per page.
         </Prose>
-        {filters}
-        <div aria-live="polite" aria-busy={directory.loading}>
+        <div className="directory-result-status" aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
             <Text as="p" role="status">
               Loading chats…
@@ -183,17 +200,31 @@ export function ChatSelector({
           <ul className="chat-list" aria-label="Chats on this page">
             {visibleChats.map((value) => (
               <li key={value.id}>
-                <button
-                  type="button"
-                  aria-current={chat === String(value.id) ? "true" : undefined}
-                  onClick={() => onSelect(String(value.id))}
-                >
-                  <strong title={chatName(value)}>{chatName(value)}</strong>
-                  <small title={`${value.type || "Type not known"} · ${value.id}`}>
-                    {value.type || "Type not known"} · {value.id}
-                  </small>
-                  {badge?.(value)}
-                </button>
+                <Button asChild variant="ghost" className="directory-chat">
+                  <button
+                    type="button"
+                    aria-current={chat === String(value.id) ? "true" : undefined}
+                    onClick={() => onSelect(String(value.id))}
+                  >
+                    <Flex asChild className="directory-chat-identity" align="start" gap="2">
+                      <span>
+                        {value.type === "private" ? (
+                          <PersonIcon aria-hidden="true" />
+                        ) : value.type === "channel" ? (
+                          <SpeakerLoudIcon aria-hidden="true" />
+                        ) : (
+                          <ChatBubbleIcon aria-hidden="true" />
+                        )}
+                        <strong title={chatName(value)}>{chatName(value)}</strong>
+                      </span>
+                    </Flex>
+                    <Text as="span" size="1" color="gray" className="directory-chat-meta">
+                      <span>{value.type || "Type not known"}</span>
+                      <Code variant="ghost">{value.id}</Code>
+                    </Text>
+                    {badge && <span className="directory-chat-state">{badge(value)}</span>}
+                  </button>
+                </Button>
               </li>
             ))}
           </ul>

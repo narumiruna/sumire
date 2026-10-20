@@ -1,5 +1,16 @@
-import { GearIcon, HamburgerMenuIcon } from "@radix-ui/react-icons"
-import { Button, Heading, Text } from "@radix-ui/themes"
+import {
+  ActivityLogIcon,
+  ChatBubbleIcon,
+  ComponentInstanceIcon,
+  GearIcon,
+  HamburgerMenuIcon,
+  LayersIcon,
+  LockClosedIcon,
+  MixerHorizontalIcon,
+  ReaderIcon,
+  TokensIcon,
+} from "@radix-ui/react-icons"
+import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 
 export const pages = [
@@ -13,6 +24,16 @@ export const pages = [
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
+const pageIcons = {
+  Chats: ChatBubbleIcon,
+  Durable: LayersIcon,
+  Access: LockClosedIcon,
+  Defaults: MixerHorizontalIcon,
+  "Tool permissions": TokensIcon,
+  "MCP connections": ComponentInstanceIcon,
+  "Model Providers": ReaderIcon,
+  Audit: ActivityLogIcon,
+} satisfies Record<Page, typeof GearIcon>
 export const pageLabel = (page: Page) => (page === "Model Providers" ? "Model providers" : page)
 
 export function readNavigation(url: URL) {
@@ -82,9 +103,14 @@ export function SideNavigation({
   const trigger = useRef<HTMLButtonElement>(null)
   return (
     <aside className="sidebar" aria-label="Administration navigation">
-      <Heading size="5" className="brand">
-        <GearIcon aria-hidden /> Sumire
-      </Heading>
+      <Flex direction="column" gap="1" className="sidebar-brand">
+        <Heading size="5" className="brand">
+          <GearIcon aria-hidden /> Sumire
+        </Heading>
+        <Text size="1" color="gray" className="brand-caption">
+          Administration
+        </Text>
+      </Flex>
       <Button
         ref={trigger}
         className="mobile-menu"
@@ -96,33 +122,43 @@ export function SideNavigation({
         <HamburgerMenuIcon aria-hidden /> Sections · {pageLabel(page)}
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
-        {pages.map((item) => (
-          <a
-            key={item}
-            href={navigationHref(item, chat)}
-            aria-current={page === item ? "page" : undefined}
-            onClick={(event) => {
-              if (
-                event.button !== 0 ||
-                event.metaKey ||
-                event.ctrlKey ||
-                event.shiftKey ||
-                event.altKey
-              )
-                return
-              event.preventDefault()
-              onNavigate(item)
-              setOpen(false)
-              if (open) trigger.current?.focus()
-            }}
-          >
-            {pageLabel(item)}
-          </a>
-        ))}
+        {pages.map((item) => {
+          const Icon = pageIcons[item]
+          return (
+            <a
+              key={item}
+              href={navigationHref(item, chat)}
+              aria-current={page === item ? "page" : undefined}
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return
+                event.preventDefault()
+                onNavigate(item)
+                setOpen(false)
+                if (open) trigger.current?.focus()
+              }}
+            >
+              <Icon aria-hidden />
+              <span>{pageLabel(item)}</span>
+            </a>
+          )
+        })}
       </nav>
-      <Text className="sidebar-account" size="2">
-        Administrator <span>{actor}</span>
-      </Text>
+      <Flex direction="column" gap="3" className="sidebar-account">
+        <Separator size="4" />
+        <Text size="1" color="gray">
+          Administrator
+        </Text>
+        <Text size="2" weight="medium">
+          {actor}
+        </Text>
+      </Flex>
     </aside>
   )
 }

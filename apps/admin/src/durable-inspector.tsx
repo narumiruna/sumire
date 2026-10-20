@@ -2,27 +2,40 @@ import type {
   Chat,
   DurableConversationItem,
   DurableDocumentScope,
+  DurableEntryItem,
   DurableInspectionItem,
   DurableInspectionQuery,
   DurableInspectionResponse,
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
+import {
+  ChevronDownIcon,
+  CopyIcon,
+  LayersIcon,
+  MixerHorizontalIcon,
+  ReloadIcon,
+} from "@radix-ui/react-icons"
 import { Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
-import { type FormEvent, useEffect, useState } from "react"
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
 import {
   formatDurableTime,
   formatReadTime,
+  recordBadge,
+  recordIcon,
+  recordMetadata,
   recordSummary,
   recordTitle,
+  recordTone,
   taskObservation,
 } from "./durable-presentation.js"
+import { DurableTree } from "./durable-tree.js"
 import { navigationHref } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel } from "./surfaces.js"
 
 const views = ["conversations", "tasks", "documents", "entries"] as const
 const labels = {
@@ -190,6 +203,136 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
   )
 }
 
+export function EntryContent({
+  content,
+  toolName,
+}: {
+  content: NonNullable<DurableEntryItem["content"]>
+  toolName?: string
+}) {
+  const roles = {
+    system: "System",
+    user: "User",
+    assistant: "Assistant",
+    toolResult: "Tool result",
+  }
+  return (
+    <section aria-label="Entry content" className="durable-entry-content">
+      {content.truncated && (
+        <Text as="p" role="status">
+          Content truncated · inspection limits were reached. Messages, blocks, or text may be
+          incomplete.
+        </Text>
+      )}
+      {content.messages.length === 0 && (
+        <Text as="p">
+          {content.truncated
+            ? "No message content included in this response."
+            : "No message content recorded."}
+        </Text>
+      )}
+      {content.messages.map((message, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: A read-only message snapshot has no message IDs.
+        <section key={index} aria-label={`Message ${index + 1}`} className="durable-entry-message">
+          <div className="durable-message-heading">
+            <Heading as="h4" size="2">
+              {content.messages.length > 1
+                ? roles[message.role]
+                : message.role === "toolResult"
+                  ? "Output"
+                  : "Message"}
+            </Heading>
+            {message.toolName !== undefined &&
+              (content.messages.length > 1 || message.toolName !== toolName) && (
+                <span>{message.toolName}</span>
+              )}
+            {(message.role === "toolResult" || message.isError !== undefined) && (
+              <span className="durable-tree-badge">
+                {message.isError === undefined
+                  ? "Result not recorded"
+                  : message.isError
+                    ? "Recorded error"
+                    : "Recorded result · not an error"}
+              </span>
+            )}
+          </div>
+          {message.content.length === 0 && (
+            <Text as="p">
+              {content.truncated
+                ? "No content blocks included in this response."
+                : "No content blocks recorded."}
+            </Text>
+          )}
+          {message.content.map((block, blockIndex) => {
+            switch (block.type) {
+              case "text":
+                return message.role === "toolResult" ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs in this snapshot.
+                  <pre className="durable-tool-output" key={blockIndex}>
+                    {block.text}
+                  </pre>
+                ) : (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs in this snapshot.
+                  <p className="durable-message-text" key={blockIndex}>
+                    {block.text}
+                  </p>
+                )
+              case "thinking":
+                return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
+                  <details key={blockIndex}>
+                    <summary>Thinking</summary>
+                    <p className="durable-message-text">{block.thinking}</p>
+                  </details>
+                )
+              case "toolCall":
+                return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
+                  <section key={blockIndex} aria-label="Tool call">
+                    <div className="durable-message-heading">
+                      <Heading as="h5" size="2">
+                        {block.name} · Arguments
+                      </Heading>
+                      <span>JSON text</span>
+                    </div>
+                    <pre className="durable-arguments">{block.arguments}</pre>
+                    <details className="durable-message-details">
+                      <summary>Tool call details</summary>
+                      <dl className="durable-metadata">
+                        <dt>Tool name</dt>
+                        <dd>{block.name}</dd>
+                        <dt>Call ID</dt>
+                        <dd>{block.id}</dd>
+                      </dl>
+                    </details>
+                  </section>
+                )
+              case "image":
+                return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
+                  <Text as="p" key={blockIndex}>
+                    Image omitted · {block.mimeType}. Image bytes are not sent.
+                  </Text>
+                )
+              default:
+                return null
+            }
+          })}
+          {message.toolCallId !== undefined && (
+            <details className="durable-message-details">
+              <summary>Message details</summary>
+              <dl className="durable-metadata">
+                <dt>Call ID</dt>
+                <dd>{message.toolCallId}</dd>
+              </dl>
+            </details>
+          )}
+        </section>
+      ))}
+    </section>
+  )
+}
+
 function UsageFields({ usage }: { usage: DurableNumericUsage }) {
   const fields = [
     ["input", "Input"],
@@ -223,6 +366,7 @@ export function DurableInspector({
   metadataLoading,
   metadataError,
   onMetadataRetry,
+  chatSelector,
   onChats,
   onSessionExpired,
 }: {
@@ -231,12 +375,21 @@ export function DurableInspector({
   metadataLoading?: boolean
   metadataError?: string
   onMetadataRetry?(): void
+  chatSelector?: ReactNode
   onChats(): void
   onSessionExpired(): void
 }) {
   const [location, setLocation] = useState(() => readDurableLocation(new URL(window.location.href)))
   const [pages, setPages] = useState<(string | undefined)[]>([undefined])
   const [refresh, setRefresh] = useState(0)
+  const readTreePage = useCallback(
+    (path: string, signal: AbortSignal) =>
+      sequenceRead(chat, () => {
+        signal.throwIfAborted()
+        return request<DurableInspectionResponse>(path, undefined, undefined, "GET", signal)
+      }),
+    [chat],
+  )
   const [blocks, setBlocks] = useState<{
     key: string
     selection?: ReadBlock
@@ -244,6 +397,16 @@ export function DurableInspector({
     inspection?: ReadBlock
   }>()
   const [detailId, setDetailId] = useState<number>()
+  const browser = useRef<HTMLDetailsElement>(null)
+  const detailHeading = useRef<HTMLHeadingElement>(null)
+  const focusDetail = useRef(false)
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1100px)").matches)
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1100px)")
+    const sync = () => setWide(media.matches)
+    media.addEventListener("change", sync)
+    return () => media.removeEventListener("change", sync)
+  }, [])
   const [copyIdState, setCopyIdState] = useState("")
   const draftConversationId =
     location.view === "conversations"
@@ -317,13 +480,25 @@ export function DurableInspector({
     setLocation(next)
     setPages([undefined])
   }
-  const link = (label: string, next: DurableLocation) => (
+  const link = (label: ReactNode, next: DurableLocation) => (
     <a
       href={durableHref(chat, next)}
+      className={typeof label === "string" ? undefined : "durable-record-link"}
+      aria-current={
+        next.objectId !== undefined &&
+        next.objectId === detail?.id &&
+        inspectionPath(chat, next) === inspectionPath(chat, { ...location, objectId: detail?.id })
+          ? "true"
+          : undefined
+      }
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return
         event.preventDefault()
+        if (!wide) {
+          if (browser.current) browser.current.open = false
+          focusDetail.current = true
+        }
         navigate(next)
       }}
     >
@@ -357,6 +532,12 @@ export function DurableInspector({
   const history = activeBlocks?.history
   const selected = persistedSelection(selection?.data)
   const detail = data?.items.find((item) => item.id === detailId) ?? data?.items[0]
+  useEffect(() => {
+    if ((current || missing) && focusDetail.current && detailHeading.current) {
+      detailHeading.current.focus()
+      focusDetail.current = false
+    }
+  }, [current, missing])
   const inspectedConversation =
     location.view === "conversations"
       ? (location.objectId ??
@@ -381,280 +562,367 @@ export function DurableInspector({
         Read time: <time dateTime={block.data.readAt}>{formatReadTime(block.data.readAt)}</time>
       </Text>
     )
-  const row = (item: DurableInspectionItem) => (
-    <Panel
-      key={`${item.type}:${item.id}`}
-      className="durable-detail"
-      aria-label="Selected item details"
-    >
-      <Heading as="h3" size="4">
-        {recordTitle(item)}
-      </Heading>
-      <Text as="p" size="2" className="durable-record-id">
-        {item.type} #{item.id}
-      </Text>
-      <Text as="p" className="durable-record-summary">
-        {recordSummary(item)}
-      </Text>
-      <dl className="durable-metadata">
-        {item.type === "conversation" && (
-          <>
-            <dt>Selection marker</dt>
-            <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
-            <dt>Parent conversation</dt>
-            <dd>
-              {item.parent ? (
+  const recordDetails = (item: DurableInspectionItem) => (
+    <dl className="durable-metadata">
+      {item.type === "conversation" && (
+        <>
+          <dt>Selection marker</dt>
+          <dd>{item.active ? "Persisted selected conversation" : "Historical conversation"}</dd>
+          <dt>Parent conversation</dt>
+          <dd>
+            {item.parent ? (
+              <>
+                {link(`Conversation ${item.parent.conversationId}`, {
+                  view: "conversations",
+                  objectId: item.parent.conversationId,
+                })}{" "}
+                ·{" "}
+                {link(`Fork entry ${item.parent.at}`, {
+                  view: "entries",
+                  conversationId: item.parent.conversationId,
+                  objectId: item.parent.at,
+                })}
+              </>
+            ) : (
+              "No parent recorded"
+            )}
+          </dd>
+          <dt>Owning task</dt>
+          <dd>
+            {item.owner
+              ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
+                  view: "tasks",
+                  conversationId: item.owner.conversationId,
+                  objectId: item.owner.taskId,
+                })
+              : "No owner recorded"}
+          </dd>
+        </>
+      )}
+      {item.type === "task" && (
+        <>
+          <dt>Conversation</dt>
+          <dd>
+            {link(`Conversation ${item.conversationId}`, {
+              view: "conversations",
+              objectId: item.conversationId,
+            })}
+          </dd>
+          <dt>Owning task</dt>
+          <dd>
+            {item.ownerTaskId
+              ? link(`Task ${item.ownerTaskId}`, {
+                  view: "tasks",
+                  conversationId: item.conversationId,
+                  objectId: item.ownerTaskId,
+                })
+              : "No owner recorded"}
+          </dd>
+          <dt>Started</dt>
+          <dd>{formatDurableTime(item.startedAt)}</dd>
+          <dt>Ended</dt>
+          <dd>{formatDurableTime(item.endedAt)}</dd>
+        </>
+      )}
+      {item.type === "document" && (
+        <>
+          <dt>Applies to</dt>
+          <dd>
+            {item.scope.kind === "conversation"
+              ? link(`Conversation ${item.scope.conversationId}`, {
+                  view: "conversations",
+                  objectId: item.scope.conversationId,
+                })
+              : item.scope.kind === "task"
+                ? link(`Task ${item.scope.taskId}`, {
+                    view: "tasks",
+                    conversationId: location.conversationId,
+                    objectId: item.scope.taskId,
+                  })
+                : "This session"}
+          </dd>
+        </>
+      )}
+      {item.type === "entry" && (
+        <>
+          <dt>Recorded at</dt>
+          <dd>{formatDurableTime(item.timestamp)}</dd>
+          <dt>Conversation</dt>
+          <dd>
+            {link(`Conversation ${item.conversationId}`, {
+              view: "conversations",
+              objectId: item.conversationId,
+            })}
+          </dd>
+          <dt>Recorded by</dt>
+          <dd>
+            {item.byTaskId
+              ? link(`Task ${item.byTaskId}`, {
+                  view: "tasks",
+                  conversationId: item.conversationId,
+                  objectId: item.byTaskId,
+                })
+              : "Not recorded"}
+          </dd>
+          {item.toolName !== undefined && (
+            <>
+              <dt>Tool name</dt>
+              <dd>{item.toolName}</dd>
+            </>
+          )}
+          {item.isError !== undefined && (
+            <>
+              <dt>Recorded result</dt>
+              <dd>{item.isError ? "Error" : "Not an error"}</dd>
+            </>
+          )}
+          {item.toolCallId !== undefined && (
+            <>
+              <dt>Call ID</dt>
+              <dd>{item.toolCallId}</dd>
+            </>
+          )}
+          <dt>Head entry</dt>
+          <dd>
+            {item.head
+              ? link(`Entry ${item.head}`, {
+                  view: "entries",
+                  conversationId: item.conversationId,
+                  objectId: item.head,
+                })
+              : "Not recorded"}
+          </dd>
+        </>
+      )}
+    </dl>
+  )
+  const row = (item: DurableInspectionItem) => {
+    const Icon = recordIcon(item)
+    return (
+      <section
+        key={`${item.type}:${item.id}`}
+        className={`durable-detail durable-role-${recordTone(item)}`}
+        aria-label="Selected item details"
+      >
+        <header className="durable-detail-header">
+          <div className="durable-detail-identity">
+            <span className="durable-detail-icon durable-role-icon">
+              <Icon aria-hidden />
+            </span>
+            <Heading
+              as="h3"
+              size="4"
+              tabIndex={-1}
+              ref={detailHeading}
+              className="durable-detail-heading"
+            >
+              {recordTitle(item)}
+            </Heading>
+          </div>
+          <div className="durable-record-meta">
+            <span className="durable-record-id durable-detail-record-id">
+              {item.type} #{item.id}
+            </span>
+            {item.type === "entry" && <span>{formatDurableTime(item.timestamp)}</span>}
+            {item.type === "task" && <span>{formatDurableTime(item.startedAt)}</span>}
+            {item.type !== "conversation" && "conversationId" in item && (
+              <span className="durable-conversation-crumb">
+                {link(`Conversation ${item.conversationId}`, {
+                  view: "conversations",
+                  objectId: item.conversationId,
+                })}
+              </span>
+            )}
+            {item.type === "entry" &&
+              item.byTaskId !== undefined &&
+              link(`Task ${item.byTaskId}`, {
+                view: "tasks",
+                conversationId: item.conversationId,
+                objectId: item.byTaskId,
+              })}
+          </div>
+          {item.type === "task" && <span className="durable-tree-badge">{recordBadge(item)}</span>}
+        </header>
+        <div className="durable-detail-content">
+          {(item.type === "conversation" ||
+            (item.type === "document" && item.valueState !== "available") ||
+            (item.type === "entry" && !item.content)) && (
+            <Text as="p" className="durable-record-summary">
+              {recordSummary(item)}
+            </Text>
+          )}
+          {item.type === "document" && item.valueState === "available" && !item.value && (
+            <Text as="p">Approved fields were not included in this response.</Text>
+          )}
+          {item.type === "document" && item.valueState === "available" && item.value && (
+            <section aria-label="Approved document fields" className="durable-projection">
+              <Heading as="h4" size="3">
+                Approved fields
+              </Heading>
+              {item.value.kind === "pi.agent" ? (
+                <dl className="durable-metadata">
+                  <dt>Model provider</dt>
+                  <dd>{item.value.model?.provider ?? "Not recorded"}</dd>
+                  <dt>Model</dt>
+                  <dd>{item.value.model?.modelId ?? "Not recorded"}</dd>
+                  <dt>Thinking level</dt>
+                  <dd>{item.value.thinkingLevel ?? "Not recorded"}</dd>
+                </dl>
+              ) : item.value.kind === "pi.usage" ? (
                 <>
-                  {link(`Conversation ${item.parent.conversationId}`, {
-                    view: "conversations",
-                    objectId: item.parent.conversationId,
-                  })}{" "}
-                  ·{" "}
-                  {link(`Fork entry ${item.parent.at}`, {
-                    view: "entries",
-                    conversationId: item.parent.conversationId,
-                    objectId: item.parent.at,
-                  })}
+                  <Heading as="h5" size="2">
+                    Total usage
+                  </Heading>
+                  <UsageFields usage={item.value.total} />
+                  <Heading as="h5" size="2">
+                    Per-model usage
+                  </Heading>
+                  {Object.keys(item.value.models).length === 0 && (
+                    <Text as="p" size="2">
+                      No per-model usage recorded.
+                    </Text>
+                  )}
+                  {Object.entries(item.value.models).map(([model, usage]) => (
+                    <details key={model} className="durable-model-usage">
+                      <summary>
+                        {model} ·{" "}
+                        {usage.total === undefined
+                          ? "Total not recorded"
+                          : countText(usage.total, "total token")}
+                      </summary>
+                      <UsageFields usage={usage} />
+                    </details>
+                  ))}
                 </>
               ) : (
-                "No parent recorded"
+                <dl className="durable-metadata">
+                  <dt>Persisted selected conversation</dt>
+                  <dd>
+                    {item.value.activeConversation
+                      ? link(`Conversation ${item.value.activeConversation}`, {
+                          view: "conversations",
+                          objectId: item.value.activeConversation,
+                        })
+                      : "Not recorded"}
+                  </dd>
+                </dl>
               )}
-            </dd>
-            <dt>Owning task</dt>
-            <dd>
-              {item.owner
-                ? link(`Task ${item.owner.taskId} in conversation ${item.owner.conversationId}`, {
-                    view: "tasks",
-                    conversationId: item.owner.conversationId,
-                    objectId: item.owner.taskId,
-                  })
-                : "No owner recorded"}
-            </dd>
-          </>
-        )}
-        {item.type === "task" && (
-          <>
-            <dt>Conversation</dt>
-            <dd>
-              {link(`Conversation ${item.conversationId}`, {
-                view: "conversations",
-                objectId: item.conversationId,
+            </section>
+          )}
+          {item.type === "entry" && item.content && (
+            <EntryContent
+              content={item.content}
+              toolName={item.role === "toolResult" ? item.toolName : undefined}
+            />
+          )}
+          <Flex gap="3" wrap="wrap" className="durable-links">
+            {item.type === "conversation" && (
+              <>
+                {link(`Tasks in conversation ${item.id}`, {
+                  view: "tasks",
+                  conversationId: item.id,
+                })}
+                {link(`Documents in conversation ${item.id}`, {
+                  view: "documents",
+                  scope: "conversation",
+                  conversationId: item.id,
+                })}
+                {link(`Entries in conversation ${item.id}`, {
+                  view: "entries",
+                  conversationId: item.id,
+                })}
+              </>
+            )}
+            {item.type === "task" &&
+              link(`Documents for task ${item.id}`, {
+                view: "documents",
+                scope: "task",
+                conversationId: item.conversationId,
+                taskId: item.id,
               })}
-            </dd>
-            <dt>Owning task</dt>
-            <dd>
-              {item.ownerTaskId
-                ? link(`Task ${item.ownerTaskId}`, {
-                    view: "tasks",
-                    conversationId: item.conversationId,
-                    objectId: item.ownerTaskId,
-                  })
-                : "No owner recorded"}
-            </dd>
-            <dt>Started</dt>
-            <dd>{formatDurableTime(item.startedAt)}</dd>
-            <dt>Ended</dt>
-            <dd>{formatDurableTime(item.endedAt)}</dd>
-          </>
-        )}
-        {item.type === "document" && (
-          <>
-            <dt>Applies to</dt>
-            <dd>
-              {item.scope.kind === "conversation"
-                ? link(`Conversation ${item.scope.conversationId}`, {
-                    view: "conversations",
-                    objectId: item.scope.conversationId,
-                  })
-                : item.scope.kind === "task"
-                  ? link(`Task ${item.scope.taskId}`, {
-                      view: "tasks",
-                      conversationId: location.conversationId,
-                      objectId: item.scope.taskId,
-                    })
-                  : "This session"}
-            </dd>
-          </>
-        )}
-        {item.type === "entry" && (
-          <>
-            <dt>Recorded at</dt>
-            <dd>{formatDurableTime(item.timestamp)}</dd>
-            <dt>Conversation</dt>
-            <dd>
-              {link(`Conversation ${item.conversationId}`, {
-                view: "conversations",
-                objectId: item.conversationId,
-              })}
-            </dd>
-            <dt>Recorded by</dt>
-            <dd>
-              {item.byTaskId
-                ? link(`Task ${item.byTaskId}`, {
-                    view: "tasks",
-                    conversationId: item.conversationId,
-                    objectId: item.byTaskId,
-                  })
-                : "Not recorded"}
-            </dd>
-            <dt>Head entry</dt>
-            <dd>
-              {item.head
-                ? link(`Entry ${item.head}`, {
-                    view: "entries",
-                    conversationId: item.conversationId,
-                    objectId: item.head,
-                  })
-                : "Not recorded"}
-            </dd>
-          </>
-        )}
-      </dl>
-      {item.type === "document" && item.valueState === "available" && !item.value && (
-        <Text as="p">Approved fields were not included in this response.</Text>
-      )}
-      {item.type === "document" && item.valueState === "available" && item.value && (
-        <Panel aria-label="Approved document fields" className="durable-projection">
-          <Heading as="h4" size="3">
-            Approved fields
-          </Heading>
-          {item.value.kind === "pi.agent" ? (
+          </Flex>
+        </div>
+        <div className="durable-detail-disclosures">
+          <details className="durable-record-details">
+            <summary>Record details</summary>
+            {recordDetails(item)}
             <dl className="durable-metadata">
-              <dt>Model provider</dt>
-              <dd>{item.value.model?.provider ?? "Not recorded"}</dd>
-              <dt>Model</dt>
-              <dd>{item.value.model?.modelId ?? "Not recorded"}</dd>
-              <dt>Thinking level</dt>
-              <dd>{item.value.thinkingLevel ?? "Not recorded"}</dd>
-            </dl>
-          ) : item.value.kind === "pi.usage" ? (
-            <>
-              <Heading as="h5" size="2">
-                Total usage
-              </Heading>
-              <UsageFields usage={item.value.total} />
-              <Heading as="h5" size="2">
-                Per-model usage
-              </Heading>
-              {Object.keys(item.value.models).length === 0 && (
-                <Text as="p" size="2">
-                  No per-model usage recorded.
-                </Text>
+              {item.type !== "conversation" && (
+                <>
+                  <dt>Stored kind</dt>
+                  <dd>{item.kind}</dd>
+                </>
               )}
-              {Object.entries(item.value.models).map(([model, usage]) => (
-                <details key={model} className="durable-model-usage">
-                  <summary>
-                    {model} ·{" "}
-                    {usage.total === undefined
-                      ? "Total not recorded"
-                      : countText(usage.total, "total token")}
-                  </summary>
-                  <UsageFields usage={usage} />
-                </details>
-              ))}
-            </>
-          ) : (
-            <dl className="durable-metadata">
-              <dt>Persisted selected conversation</dt>
-              <dd>
-                {item.value.activeConversation
-                  ? link(`Conversation ${item.value.activeConversation}`, {
-                      view: "conversations",
-                      objectId: item.value.activeConversation,
-                    })
-                  : "Not recorded"}
-              </dd>
+              {item.type === "task" && (
+                <>
+                  <dt>Version</dt>
+                  <dd>{item.version}</dd>
+                  <dt>Stored status</dt>
+                  <dd>{item.status}</dd>
+                  <dt>Background</dt>
+                  <dd>{String(item.background)}</dd>
+                  <dt>Abort requested</dt>
+                  <dd>{String(item.abortRequested)}</dd>
+                </>
+              )}
+              {item.type === "document" && (
+                <>
+                  <dt>Family member</dt>
+                  <dd>{item.family ? "Yes" : "No"}</dd>
+                  <dt>Created sequence</dt>
+                  <dd>{item.createdAt}</dd>
+                  <dt>Retired sequence</dt>
+                  <dd>{item.retiredAt ?? "Not retired"}</dd>
+                  <dt>Definition version</dt>
+                  <dd>{item.version ?? "Not recorded"}</dd>
+                </>
+              )}
+              {item.type === "entry" && (
+                <>
+                  <dt>Stored role</dt>
+                  <dd>{item.role ?? "Not recorded"}</dd>
+                </>
+              )}
+              {item.type === "conversation" && (
+                <>
+                  <dt>Persisted selection marker</dt>
+                  <dd>{String(item.active)}</dd>
+                </>
+              )}
             </dl>
-          )}
-        </Panel>
-      )}
-      <Flex gap="3" wrap="wrap" className="durable-links">
-        {item.type === "conversation" && (
-          <>
-            {link(`Tasks in conversation ${item.id}`, { view: "tasks", conversationId: item.id })}
-            {link(`Documents in conversation ${item.id}`, {
-              view: "documents",
-              scope: "conversation",
-              conversationId: item.id,
-            })}
-            {link(`Entries in conversation ${item.id}`, {
-              view: "entries",
-              conversationId: item.id,
-            })}
-          </>
-        )}
-        {item.type === "task" &&
-          link(`Documents for task ${item.id}`, {
-            view: "documents",
-            scope: "task",
-            conversationId: item.conversationId,
-            taskId: item.id,
-          })}
-      </Flex>
-      <details className="durable-technical">
-        <summary>Technical details</summary>
-        <dl className="durable-metadata">
-          {item.type !== "conversation" && (
-            <>
-              <dt>Stored kind</dt>
-              <dd>{item.kind}</dd>
-            </>
-          )}
-          {item.type === "task" && (
-            <>
-              <dt>Version</dt>
-              <dd>{item.version}</dd>
-              <dt>Stored status</dt>
-              <dd>{item.status}</dd>
-              <dt>Background</dt>
-              <dd>{String(item.background)}</dd>
-              <dt>Abort requested</dt>
-              <dd>{String(item.abortRequested)}</dd>
-            </>
-          )}
-          {item.type === "document" && (
-            <>
-              <dt>Family member</dt>
-              <dd>{item.family ? "Yes" : "No"}</dd>
-              <dt>Created sequence</dt>
-              <dd>{item.createdAt}</dd>
-              <dt>Retired sequence</dt>
-              <dd>{item.retiredAt ?? "Not retired"}</dd>
-              <dt>Definition version</dt>
-              <dd>{item.version ?? "Not recorded"}</dd>
-            </>
-          )}
-          {item.type === "entry" && (
-            <>
-              <dt>Stored role</dt>
-              <dd>{item.role ?? "Not recorded"}</dd>
-            </>
-          )}
-          {item.type === "conversation" && (
-            <>
-              <dt>Persisted selection marker</dt>
-              <dd>{String(item.active)}</dd>
-            </>
-          )}
-        </dl>
-      </details>
-      <JsonDetails
-        key={`metadata:${item.type}:${item.id}`}
-        label={`Metadata JSON for ${item.type} ${item.id}`}
-        value={item.type === "document" ? { ...item, value: undefined } : item}
-      />
-      {item.type === "document" && item.valueState === "available" && item.value && (
-        <JsonDetails
-          key={`value:${item.id}`}
-          label={`Approved value JSON for document ${item.id}`}
-          value={item.value}
-        />
-      )}
-    </Panel>
-  )
+          </details>
+          <details className="durable-raw-data">
+            <summary>Raw data</summary>
+            <JsonDetails
+              key={`metadata:${item.type}:${item.id}`}
+              label={`Metadata JSON for ${item.type} ${item.id}`}
+              value={recordMetadata(item)}
+            />
+            {item.type === "entry" && item.content && (
+              <JsonDetails
+                key={`content:${item.id}`}
+                label={`Content JSON for entry ${item.id}`}
+                value={item.content}
+              />
+            )}
+            {item.type === "document" && item.valueState === "available" && item.value && (
+              <JsonDetails
+                key={`value:${item.id}`}
+                label={`Approved value JSON for document ${item.id}`}
+                value={item.value}
+              />
+            )}
+          </details>
+        </div>
+        <footer className="durable-detail-footer">
+          Read-only persisted record · not live execution state
+        </footer>
+      </section>
+    )
+  }
 
-  return (
-    <section className="durable-inspector" aria-label="Durable Inspector">
+  const header = (
+    <>
       <header className="durable-summary-header">
         <div>
           <Heading as="h2" size="5">
@@ -674,43 +942,22 @@ export function DurableInspector({
                 <code>{chat}</code>
                 {metadata ? ` · ${metadata.type}` : ""}
               </Text>
-              <Button
-                size="1"
-                variant="ghost"
-                onClick={() => {
-                  void Promise.resolve()
-                    .then(() => navigator.clipboard.writeText(chat))
-                    .then(
-                      () => setCopyIdState("Chat ID copied."),
-                      () => setCopyIdState("Copy failed. Select and copy the chat ID."),
-                    )
-                }}
-              >
-                Copy chat ID
-              </Button>
-              {copyIdState && (
-                <Text role="status" size="1">
-                  {copyIdState}
-                </Text>
-              )}
             </Flex>
           )}
         </div>
-        <Flex gap="3" wrap="wrap" align="center">
-          {validChat && (
-            <Button variant="ghost" onClick={onChats}>
-              Open chat settings
-            </Button>
-          )}
+        {chatSelector}
+        <Flex gap="2" wrap="wrap" align="center" className="durable-header-actions">
           <Button
             variant="soft"
+            aria-label="Refresh Durable"
             disabled={!validChat || (!current && !selection)}
             onClick={() => {
               setPages([undefined])
               setRefresh((value) => value + 1)
             }}
           >
-            Refresh Durable
+            <ReloadIcon aria-hidden />
+            <span className="durable-action-label">Refresh</span>
           </Button>
         </Flex>
       </header>
@@ -726,9 +973,10 @@ export function DurableInspector({
           )}
         </div>
       )}
-      <Prose size="2" className="durable-notice" id="durable-history-warning">
-        Read-only persisted data; not live execution state
-      </Prose>
+    </>
+  )
+  const historyContext = (
+    <>
       {validChat && (
         <Panel
           className="durable-inspection-context"
@@ -759,7 +1007,7 @@ export function DurableInspector({
                         selected.id +
                         "). Inspecting it does not change selection."
                     : "Persisted selection cannot be confirmed from the available metadata."
-                  : "Use the conversation list or a related-record link. Message content is not included."}
+                  : "Use the conversation list or a related-record link. Inspect an entry to read message content."}
           </Text>
           {conversation?.parent && (
             <Text as="p">
@@ -810,7 +1058,11 @@ export function DurableInspector({
             Persisted session context
           </Heading>
           <div className="durable-overview-grid">
-            <Panel aria-label="Persisted selection" aria-live="polite" aria-busy={!selection}>
+            <Panel
+              aria-label="Persisted selection details"
+              aria-live="polite"
+              aria-busy={!selection}
+            >
               <Heading as="h4" size="2">
                 Selected conversation
               </Heading>
@@ -949,71 +1201,98 @@ export function DurableInspector({
           </div>
         </Panel>
       )}
+    </>
+  )
+  return (
+    <section className="durable-inspector" aria-label="Durable Inspector">
+      {header}
+      <div className="durable-context-bar">
+        <span>
+          <span className="durable-context-key">Inspecting</span>
+          <strong>
+            {sessionDocuments
+              ? "Session documents"
+              : inspectedConversation
+                ? `Conversation ${inspectedConversation}`
+                : "Conversations"}
+          </strong>
+        </span>
+        <section aria-label="Persisted selection" className="durable-persisted-compact">
+          <span className="durable-context-key">Persisted selection</span>
+          <strong>
+            {!selection
+              ? "Loading…"
+              : selection.error
+                ? "Unavailable"
+                : selected
+                  ? link(`Conversation ${selected.id}`, {
+                      view: "conversations",
+                      objectId: selected.id,
+                    })
+                  : selection.data?.state === "not-loaded"
+                    ? "No loaded session"
+                    : "Not recorded"}
+          </strong>
+        </section>
+      </div>
       {!validChat ? (
         <Panel>
           <Text as="p">Select a chat above to inspect Durable.</Text>
         </Panel>
       ) : (
         <>
-          <Heading as="h3" size="3">
-            Explore related records
-          </Heading>
-          <Tabs.Root
-            value={location.view}
-            onValueChange={(view) =>
-              navigate({
-                view: view as DurableInspectionView,
-                ...(view === "conversations"
-                  ? { objectId: inspectedConversation ?? selected?.id }
-                  : { conversationId: inspectedConversation ?? selected?.id }),
-                taskId: location.taskId,
-                ...(view === "documents"
-                  ? { scope: inspectedConversation || selected ? "conversation" : "session" }
-                  : {}),
-              })
-            }
-          >
-            <Tabs.List aria-label="Durable object views">
-              {views.map((view) => (
-                <Tabs.Trigger key={view} value={view}>
-                  {labels[view]}
-                </Tabs.Trigger>
-              ))}
-            </Tabs.List>
-            <Tabs.Content value={location.view}>
-              {location.view === "documents" && (
-                <label htmlFor="durable-scope">
-                  Document scope
-                  <Select.Root
-                    value={location.scope ?? "conversation"}
-                    onValueChange={(scope) =>
-                      navigate({
-                        view: "documents",
-                        conversationId: location.conversationId,
-                        taskId: location.taskId,
-                        scope: scope as DurableDocumentScope,
-                      })
-                    }
-                  >
-                    <Select.Trigger id="durable-scope" aria-label="Document scope" />
-                    <Select.Content>
-                      <Select.Item value="session">Session</Select.Item>
-                      <Select.Item value="conversation">Conversation</Select.Item>
-                      <Select.Item value="task">Task</Select.Item>
-                    </Select.Content>
-                  </Select.Root>
-                </label>
-              )}
-              {location.objectId && (
-                <Text as="p">
-                  Object #{location.objectId} ·{" "}
-                  {link(`Back to ${labels[location.view].toLowerCase()}`, {
-                    ...location,
-                    objectId: undefined,
-                  })}
-                </Text>
-              )}
+          <div className="durable-explorer">
+            <details ref={browser} className="durable-record-browser" open={wide}>
+              <summary className="durable-browse-trigger">
+                <LayersIcon aria-hidden />
+                <span>Browse records</span>
+                <span className="durable-browse-current">
+                  {detail
+                    ? `${detail.type} #${detail.id}`
+                    : location.objectId
+                      ? `${location.view} #${location.objectId}`
+                      : labels[location.view]}
+                </span>
+                <ChevronDownIcon aria-hidden />
+              </summary>
+              <DurableTree
+                key={`${chat}:${refresh}`}
+                chat={chat}
+                conversations={[
+                  ...(selection?.data?.items ?? []).filter(
+                    (item): item is DurableConversationItem => item.type === "conversation",
+                  ),
+                  ...(selected ? [selected] : []),
+                  ...(conversation ? [conversation] : []),
+                ]}
+                target={inspectedConversation}
+                selected={selected?.id}
+                nextCursor={
+                  selection?.data?.state === "loaded" ? selection.data.nextCursor : undefined
+                }
+                truncated={selection?.data?.truncated}
+                link={link}
+                read={readTreePage}
+                path={(next, cursor) => inspectionPath(chat, next, cursor)}
+                onSessionExpired={onSessionExpired}
+              />
+            </details>
+            <div className="durable-selected-area">
               <div aria-live="polite" aria-busy={!missing && !current}>
+                {(!detail ||
+                  current?.error ||
+                  current?.unavailable ||
+                  data?.state === "not-loaded") && (
+                  <Heading
+                    as="h3"
+                    size="3"
+                    tabIndex={-1}
+                    ref={detailHeading}
+                    className="durable-detail-heading durable-empty-heading"
+                  >
+                    Selected record
+                  </Heading>
+                )}
                 {missing ? (
                   <Text as="p">{missing}</Text>
                 ) : !current ? (
@@ -1028,95 +1307,230 @@ export function DurableInspector({
                   <Text as="p" role="alert">
                     {current.error}
                   </Text>
+                ) : data?.state === "not-loaded" ? (
+                  <div>
+                    <Heading as="h3" size="3">
+                      Not loaded
+                    </Heading>
+                    <Text as="p">
+                      This chat has no loaded session. Inspection will not open its database or
+                      start a session.
+                    </Text>
+                  </div>
+                ) : !detail ? (
+                  <Text as="p">
+                    {location.objectId
+                      ? "Retired or unavailable"
+                      : "Empty · no records in this view."}
+                  </Text>
                 ) : (
-                  data && (
-                    <>
-                      {current !== selection && current !== history && readTime(current)}
-                      {data.state === "not-loaded" ? (
-                        <Panel>
-                          <Heading as="h3" size="3">
-                            Not loaded
-                          </Heading>
-                          <Text as="p">
-                            This chat has no loaded session. Inspection will not open its database
-                            or start a session.
-                          </Text>
-                        </Panel>
-                      ) : (
-                        <>
-                          {data.truncated && (
-                            <Text as="p" role="status">
-                              Truncated · the server read limit was reached. Some records are not
-                              shown.
-                            </Text>
-                          )}
-                          {!data.items.length ? (
-                            <Text as="p">
-                              {location.objectId
-                                ? "Retired or unavailable"
-                                : "Empty · no records in this view."}
-                            </Text>
-                          ) : (
-                            <div className="durable-browser">
-                              <ul
-                                className="durable-objects durable-compact-list"
-                                aria-label={`${labels[location.view]} metadata`}
-                              >
-                                {data.items.map((item) => (
-                                  <li key={`${item.type}:${item.id}`}>
-                                    <button
-                                      type="button"
-                                      aria-pressed={detail?.id === item.id}
-                                      aria-label={`Select ${recordTitle(item)} (${item.type} ${item.id})`}
-                                      onClick={() => setDetailId(item.id)}
-                                      aria-describedby={`durable-summary-${item.type}-${item.id}${item.type === "task" ? " durable-history-warning" : ""}`}
-                                    >
-                                      <strong>{recordTitle(item)}</strong>
-                                      <span id={`durable-summary-${item.type}-${item.id}`}>
-                                        {recordSummary(item)}
-                                      </span>
-                                      <span className="durable-record-id">
-                                        {item.type} #{item.id}
-                                      </span>
-                                    </button>
-                                    {item.type === "document" &&
-                                      item.valueState === "metadata-only" &&
-                                      !location.objectId &&
-                                      link(`Inspect document ${item.id}`, {
-                                        ...location,
-                                        objectId: item.id,
-                                      })}
-                                  </li>
-                                ))}
-                              </ul>
-                              {detail && row(detail)}
-                            </div>
-                          )}
-                          <Flex gap="3" wrap="wrap" align="center">
-                            <Button
-                              variant="soft"
-                              disabled={pages.length === 1}
-                              onClick={() => setPages((value) => value.slice(0, -1))}
-                            >
-                              Previous objects
-                            </Button>
-                            <Button
-                              variant="soft"
-                              disabled={!data.nextCursor}
-                              onClick={() => setPages((value) => [...value, data.nextCursor])}
-                            >
-                              Next objects
-                            </Button>
-                            <Text size="2">Page {pages.length}</Text>
-                          </Flex>
-                        </>
-                      )}
-                    </>
-                  )
+                  row(detail)
                 )}
+                {data?.truncated && (
+                  <Text as="p" role="status">
+                    Truncated · the server read limit was reached. Some records are not shown.
+                  </Text>
+                )}
+                {current !== selection && current !== history && readTime(current)}
               </div>
-            </Tabs.Content>
-          </Tabs.Root>
+              <details className="durable-raw-collections">
+                <summary>Raw collections</summary>
+                <Tabs.Root
+                  value={location.view}
+                  onValueChange={(view) =>
+                    navigate({
+                      view: view as DurableInspectionView,
+                      ...(view === "conversations"
+                        ? { objectId: inspectedConversation ?? selected?.id }
+                        : { conversationId: inspectedConversation ?? selected?.id }),
+                      taskId: location.taskId,
+                      ...(view === "documents"
+                        ? { scope: inspectedConversation || selected ? "conversation" : "session" }
+                        : {}),
+                    })
+                  }
+                >
+                  <Tabs.List aria-label="Durable object views">
+                    {views.map((view) => (
+                      <Tabs.Trigger key={view} value={view}>
+                        {labels[view]}
+                      </Tabs.Trigger>
+                    ))}
+                  </Tabs.List>
+                  <Tabs.Content value={location.view}>
+                    {location.view === "documents" && (
+                      <label htmlFor="durable-scope">
+                        Document scope
+                        <Select.Root
+                          value={location.scope ?? "conversation"}
+                          onValueChange={(scope) =>
+                            navigate({
+                              view: "documents",
+                              conversationId: location.conversationId,
+                              taskId: location.taskId,
+                              scope: scope as DurableDocumentScope,
+                            })
+                          }
+                        >
+                          <Select.Trigger id="durable-scope" aria-label="Document scope" />
+                          <Select.Content>
+                            <Select.Item value="session">Session</Select.Item>
+                            <Select.Item value="conversation">Conversation</Select.Item>
+                            <Select.Item value="task">Task</Select.Item>
+                          </Select.Content>
+                        </Select.Root>
+                      </label>
+                    )}
+                    {location.objectId && (
+                      <Text as="p">
+                        Object #{location.objectId} ·{" "}
+                        {link(`Back to ${labels[location.view].toLowerCase()}`, {
+                          ...location,
+                          objectId: undefined,
+                        })}
+                      </Text>
+                    )}
+                    <div aria-live="polite" aria-busy={!missing && !current}>
+                      {missing ? (
+                        <Text as="p">{missing}</Text>
+                      ) : !current ? (
+                        <Text as="p" role="status">
+                          Loading Durable…
+                        </Text>
+                      ) : current.unavailable ? (
+                        <Text as="p" role="status">
+                          Retired or unavailable. The object is no longer available in this scope.
+                        </Text>
+                      ) : current.error ? (
+                        <Text as="p" role="alert">
+                          {current.error}
+                        </Text>
+                      ) : (
+                        data && (
+                          <>
+                            {current !== selection && current !== history && readTime(current)}
+                            {data.state === "not-loaded" ? (
+                              <Panel>
+                                <Heading as="h3" size="3">
+                                  Not loaded
+                                </Heading>
+                                <Text as="p">
+                                  This chat has no loaded session. Inspection will not open its
+                                  database or start a session.
+                                </Text>
+                              </Panel>
+                            ) : (
+                              <>
+                                {data.truncated && (
+                                  <Text as="p" role="status">
+                                    Truncated · the server read limit was reached. Some records are
+                                    not shown.
+                                  </Text>
+                                )}
+                                {!data.items.length ? (
+                                  <Text as="p">
+                                    {location.objectId
+                                      ? "Retired or unavailable"
+                                      : "Empty · no records in this view."}
+                                  </Text>
+                                ) : (
+                                  <div className="durable-browser">
+                                    <ul
+                                      className="durable-objects durable-compact-list"
+                                      aria-label={`${labels[location.view]} metadata`}
+                                    >
+                                      {data.items.map((item) => (
+                                        <li key={`${item.type}:${item.id}`}>
+                                          <button
+                                            type="button"
+                                            aria-pressed={detail?.id === item.id}
+                                            aria-label={`Select ${recordTitle(item)} (${item.type} ${item.id})`}
+                                            onClick={() => setDetailId(item.id)}
+                                            aria-describedby={`durable-summary-${item.type}-${item.id}${item.type === "task" ? " durable-history-warning" : ""}`}
+                                          >
+                                            <strong>{recordTitle(item)}</strong>
+                                            <span id={`durable-summary-${item.type}-${item.id}`}>
+                                              {recordSummary(item)}
+                                            </span>
+                                            <span className="durable-record-id">
+                                              {item.type} #{item.id}
+                                            </span>
+                                          </button>
+                                          {item.type === "entry" &&
+                                            !item.content &&
+                                            link(`Inspect entry ${item.id}`, {
+                                              ...location,
+                                              objectId: item.id,
+                                            })}
+                                          {item.type === "document" &&
+                                            item.valueState === "metadata-only" &&
+                                            !location.objectId &&
+                                            link(`Inspect document ${item.id}`, {
+                                              ...location,
+                                              objectId: item.id,
+                                            })}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                <Flex gap="3" wrap="wrap" align="center">
+                                  <Button
+                                    variant="soft"
+                                    disabled={pages.length === 1}
+                                    onClick={() => setPages((value) => value.slice(0, -1))}
+                                  >
+                                    Previous objects
+                                  </Button>
+                                  <Button
+                                    variant="soft"
+                                    disabled={!data.nextCursor}
+                                    onClick={() => setPages((value) => [...value, data.nextCursor])}
+                                  >
+                                    Next objects
+                                  </Button>
+                                  <Text size="2">Page {pages.length}</Text>
+                                </Flex>
+                              </>
+                            )}
+                          </>
+                        )
+                      )}
+                    </div>
+                  </Tabs.Content>
+                </Tabs.Root>
+              </details>
+            </div>
+          </div>
+          <details className="durable-history-context">
+            <summary>History and context</summary>
+            <Flex gap="2" wrap="wrap" align="center">
+              <Button variant="soft" onClick={onChats}>
+                <MixerHorizontalIcon aria-hidden />
+                Open chat settings
+              </Button>
+              <Button
+                variant="soft"
+                onClick={() => {
+                  void Promise.resolve()
+                    .then(() => navigator.clipboard.writeText(chat))
+                    .then(
+                      () => setCopyIdState("Chat ID copied."),
+                      () => setCopyIdState("Copy failed. Select and copy the chat ID."),
+                    )
+                }}
+              >
+                <CopyIcon aria-hidden />
+                Copy chat ID
+              </Button>
+              {copyIdState && (
+                <Text role="status" size="1">
+                  {copyIdState}
+                </Text>
+              )}
+            </Flex>
+            {historyContext}
+          </details>
           <details className="durable-advanced">
             <summary>Advanced inspection</summary>
             <form onSubmit={selectContext} className="durable-context">
@@ -1148,13 +1562,19 @@ export function DurableInspector({
       )}
       <details className="durable-limits">
         <summary>Data scope and limits</summary>
+        <Text as="p" id="durable-history-warning">
+          Read-only persisted data; not live execution state
+        </Text>
         <Text as="p" size="2">
           Inspection does not load chats or start work. Refresh is manual; there is no polling. Each
-          context or refresh reads at most one conversation page, one selected-conversation task
-          page, and one requested inspection page, in sequence. Pages contain at most 25 records.
-          Reads are separate, not one atomic snapshot. Active marks persisted selection, not running
-          work. Task status and outcome are historical observations, not live scheduling state.
-          Retired task documents can be unavailable. Message bodies and tool output are excluded.
+          record context or refresh reads at most one conversation page, one selected-conversation
+          task page, and one requested inspection page, in sequence. Tree collections read one page
+          on expansion and one page per Load more action. Pages contain at most 25 records. Reads
+          are separate, not one atomic snapshot. Active marks persisted selection, not running work.
+          Task status and outcome are historical observations, not live scheduling state. Retired
+          task documents can be unavailable. Entry lists include metadata only. Inspect an entry to
+          read bounded message content and tool output. Content can be truncated. Image bytes are
+          never sent.
         </Text>
       </details>
     </section>
