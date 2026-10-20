@@ -1,7 +1,30 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 import { contrast } from "./contrast.js"
 
 // Review-only fixture. It does not replace the production Inspector or exercise its interactions.
+async function addDeepBranches(page: Page) {
+  await page.evaluate(() => {
+    const original = document.querySelector(".dv-branch.dv-role-call")?.parentElement
+    let target = document.querySelector(".dv-branch.dv-role-call > ul")
+    if (!original || !target) throw new Error("Missing synthetic tool branch")
+    const template = original.cloneNode(true) as HTMLElement
+    for (let index = 1; index <= 14; index++) {
+      const row = template.cloneNode(true) as HTMLElement
+      const list = row.querySelector("ul")
+      const summary = row.querySelector("summary")
+      const label = row.querySelector(".dv-row-label")
+      if (!list || !summary || !label) throw new Error("Incomplete synthetic branch")
+      list.replaceChildren()
+      label.textContent =
+        index === 14
+          ? "Nested tool with a long namespace and a complete readable record name"
+          : `Nested tool ${index}`
+      summary.setAttribute("aria-label", `Toggle nested tool ${index} records`)
+      target.append(row)
+      target = list
+    }
+  })
+}
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 768, height: 1024 },
@@ -40,9 +63,11 @@ for (const viewport of [
         expect(
           await text.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
         ).toBeGreaterThanOrEqual(14)
+        if (viewport.width <= 650) expect((await text.boundingBox())?.y).toBeLessThanOrEqual(410)
       } else {
         const output = selected.locator(".dv-output")
         await expect(output).toBeVisible()
+        if (viewport.width <= 650) expect((await output.boundingBox())?.y).toBeLessThanOrEqual(410)
         expect(await output.evaluate((element) => getComputedStyle(element).fontFamily)).toContain(
           "monospace",
         )
@@ -67,7 +92,84 @@ for (const viewport of [
         await expect(navigator).toBeHidden()
         expect((await selected.boundingBox())?.y).toBeLessThan(viewport.height)
       }
+      if (viewport.width < 1100) await page.locator(".dv-browse-trigger").click()
+      for (const selector of [".dv-row-caption", ".dv-record-id", ".dv-tree-badge"]) {
+        for (const text of await navigator.locator(selector).all()) {
+          expect(
+            (await contrast(text)).text,
+            `${selector} must remain readable`,
+          ).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+      expect(
+        await navigator
+          .locator(".dv-row-label")
+          .first()
+          .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+      ).toBeGreaterThanOrEqual(14)
+      if (viewport.width < 1100) await page.locator(".dv-browse-trigger").click()
+      if (viewport.width <= 650) {
+        for (const name of ["Refresh", "Switch chat"]) {
+          const button = page.getByRole("button", { name, exact: true })
+          await expect(button).toBeVisible()
+          const bounds = await button.boundingBox()
+          expect(bounds?.width).toBeGreaterThanOrEqual(44)
+          expect(bounds?.height).toBeGreaterThanOrEqual(44)
+        }
+      }
+      expect(
+        await selected
+          .locator(".dv-detail-header")
+          .evaluate((element) => getComputedStyle(element).backgroundImage),
+      ).toBe("none")
       await page.screenshot({ path: testInfo.outputPath("preview.png"), fullPage: true })
     })
   }
+}
+
+for (const width of [1440, 390, 320]) {
+  test(`deep preview stays readable without stretching details at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto("/tests/fixtures/durable-visual-preview.html?record=tool")
+    const detail = page.getByRole("article", { name: "Selected record", exact: true })
+    await expect(detail).toBeVisible()
+    if (width < 1100) await page.locator(".dv-browse-trigger").click()
+    const before = await detail.boundingBox()
+    const footerBefore = await detail.locator(".dv-detail-footer").boundingBox()
+    await addDeepBranches(page)
+    const after = await detail.boundingBox()
+    expect(before).not.toBeNull()
+    expect(after).not.toBeNull()
+    expect(Math.abs((after?.height ?? 0) - (before?.height ?? 0))).toBeLessThanOrEqual(1)
+    if (width >= 1100) {
+      const footerAfter = await detail.locator(".dv-detail-footer").boundingBox()
+      expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThanOrEqual(1)
+    }
+    const browser = page.locator(".dv-browser")
+    expect(await browser.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const last = page.locator('.dv-branch > summary[aria-label="Toggle nested tool 14 records"]')
+    await last.scrollIntoViewIfNeeded()
+    await expect(last).toBeInViewport()
+    const bounds = await last.boundingBox()
+    const navBounds = await browser.boundingBox()
+    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(
+      (navBounds?.x ?? 0) + (navBounds?.width ?? 0),
+    )
+    expect(
+      await last
+        .locator(".dv-row-label")
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true)
+    await last.focus()
+    await page.keyboard.press("Space")
+    await page.keyboard.press("Space")
+    expect(await last.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+    expect(await last.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid")
+    await page.screenshot({ path: testInfo.outputPath("deep-preview.png"), fullPage: true })
+  })
 }

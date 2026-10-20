@@ -273,10 +273,14 @@ function SelectedRecord() {
         </div>
         <div className="dv-record-meta">
           <p className="dv-relationships">
-            Conversation <code>7</code> <ChevronRightIcon aria-hidden /> Task <code>8</code>
+            <span className="dv-conversation-crumb">
+              Conversation <code>7</code> <ChevronRightIcon aria-hidden />
+            </span>
+            Task <code>8</code>
             {toolSelected && (
               <>
-                <ChevronRightIcon aria-hidden /> Task <code>81</code>
+                <ChevronRightIcon aria-hidden />
+                <span className="dv-repeated-task-kind">Task</span> <code>81</code>
               </>
             )}
           </p>
@@ -380,18 +384,21 @@ function Preview() {
               <button
                 className="dv-button"
                 type="button"
+                aria-label="Refresh"
                 disabled
                 title="Not connected in this static preview"
               >
-                <ReloadIcon aria-hidden /> Refresh
+                <ReloadIcon aria-hidden /> <span className="dv-action-label">Refresh</span>
               </button>
               <button
                 className="dv-button"
                 type="button"
+                aria-label="Switch chat"
                 disabled
                 title="Not connected in this static preview"
               >
-                <MixerHorizontalIcon aria-hidden /> Switch chat
+                <MixerHorizontalIcon aria-hidden />{" "}
+                <span className="dv-action-label">Switch chat</span>
               </button>
             </div>
           </div>

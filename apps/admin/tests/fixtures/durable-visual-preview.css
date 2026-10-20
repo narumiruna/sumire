@@ -5,7 +5,7 @@
   --dv-panel: #eeede6;
   --dv-line: #dcdad0;
   --dv-ink: #30332f;
-  --dv-muted: #686a60;
+  --dv-muted: #585c52;
   --dv-role-soft: #e9e8e0;
   --dv-role-ink: #55594d;
   color: var(--dv-ink);
@@ -325,7 +325,7 @@
 .dv-preview .dv-workspace {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   border: 1px solid var(--dv-line);
   border-radius: 7px;
   background: var(--dv-panel);
@@ -435,6 +435,13 @@
   border-left: 1px solid #d0cfc5;
 }
 
+/* Cap visual indentation, not the semantic list hierarchy or available records. */
+.dv-preview .dv-records ul ul ul ul {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
 .dv-preview .dv-records li {
   margin: 0;
   padding: 0;
@@ -453,7 +460,7 @@
   border-radius: 4px;
   background: var(--dv-role-soft);
   color: var(--dv-ink);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
   text-decoration: none;
 }
@@ -562,7 +569,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 460px;
+  min-height: 0;
   border-left: 1px solid var(--dv-line);
   border-radius: 0 7px 7px 0;
   background: var(--dv-paper);
@@ -647,6 +654,12 @@
   font-size: 12px;
 }
 
+.dv-preview .dv-conversation-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .dv-preview .dv-relationships code {
   color: var(--dv-ink);
 }
@@ -658,7 +671,6 @@
 }
 
 .dv-preview .dv-record-content {
-  flex: 1;
   padding: 20px 24px 24px;
 }
 
@@ -888,10 +900,6 @@
     min-height: 44px;
   }
 
-  .dv-preview .dv-record-content {
-    min-height: 132px;
-  }
-
   .dv-preview .dv-secondary-tools {
     margin-left: 0;
   }
@@ -899,7 +907,7 @@
 
 @media (max-width: 650px) {
   .dv-preview .dv-sidebar {
-    padding: 11px 14px;
+    padding: 8px 14px;
   }
 
   .dv-preview .dv-brand {
@@ -922,68 +930,67 @@
   }
 
   .dv-preview .dv-preview-label {
+    min-height: 0;
+    padding-block: 6px;
     gap: 4px 8px;
     font-size: 12px;
   }
 
-  .dv-preview .dv-preview-label-detail {
-    width: 100%;
-    margin-left: 0;
+  .dv-preview :is(.dv-preview-label-detail, .dv-breadcrumb, .dv-app-icon) {
+    display: none;
   }
 
   .dv-preview .dv-page-header {
-    gap: 10px;
-    padding-block: 14px;
-  }
-
-  .dv-preview .dv-breadcrumb {
-    display: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-block: 8px;
   }
 
   #root .dv-preview main h1 {
     font-size: 19px;
   }
 
-  .dv-preview .dv-app-icon {
-    width: 32px;
-    height: 32px;
-  }
-
   .dv-preview .dv-header-actions {
-    justify-content: space-between;
-    width: 100%;
-    gap: 5px;
+    gap: 0;
   }
 
-  .dv-preview .dv-readonly {
-    margin: 0;
+  .dv-preview .dv-header-actions :is(.dv-readonly, .dv-action-label) {
+    display: none;
   }
 
   .dv-preview .dv-action-group {
-    gap: 5px;
+    gap: 4px;
   }
 
-  .dv-preview .dv-button {
-    padding-inline: 7px;
+  .dv-preview .dv-header-actions .dv-button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
   }
 
   .dv-preview .dv-chat-context {
-    gap: 7px;
+    gap: 6px;
     margin-bottom: 10px;
-    padding: 9px 10px;
+    padding: 8px 10px;
   }
 
   .dv-preview .dv-context-labels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 10px;
     width: 100%;
-    margin-left: 23px;
+    margin-left: 0;
   }
 
   .dv-preview .dv-context-selection {
-    gap: 5px;
+    flex-direction: column;
+    align-items: start;
+    gap: 0;
   }
 
   .dv-preview .dv-detail-header {
-    padding: 16px 14px 12px;
+    padding: 8px 14px;
   }
 
   .dv-preview .dv-detail-identity {
@@ -999,16 +1006,35 @@
     gap: 7px;
   }
 
+  /* Entry ID is already visible in Browse records; keep the outcome beside the title. */
+  .dv-preview .dv-detail-kind .dv-record-id {
+    display: none;
+  }
+
   .dv-preview .dv-result-status {
-    margin-left: 43px;
+    margin-left: auto;
   }
 
   .dv-preview .dv-record-meta {
-    margin-top: 12px;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  /* Keep the full date and IDs; omit only repeated context and type labels. */
+  .dv-preview :is(.dv-conversation-crumb, .dv-repeated-task-kind) {
+    display: none;
   }
 
   .dv-preview .dv-record-content {
-    padding: 18px 14px;
+    padding: 12px 14px;
+  }
+
+  .dv-preview .dv-section-heading {
+    margin-bottom: 8px;
+  }
+
+  .dv-preview .dv-message-text {
+    padding-block: 4px;
   }
 
   .dv-preview :is(.dv-output, .dv-arguments, .dv-raw) {

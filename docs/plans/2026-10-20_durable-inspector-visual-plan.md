@@ -2,7 +2,9 @@
 
 ## Goal
 
-Make Durable a record inspector with a compact relationship navigator and a content-first detail pane. A user must be able to identify the selected record, read its content, and follow its relationships without moving through repeated panels.
+Improve Admin WebUI visual quality to match the supplied reference. Use Durable as the first visual benchmark: a compact relationship navigator and a content-first detail pane. A user must be able to identify the selected record, read its content, and follow its relationships without moving through repeated panels.
+
+The user expanded the goal to the complete Admin WebUI. Treat this as a staged quality goal, not an arbitrary numerical score. The current iteration fixes the reviewed Durable preview defects; it does not claim completion of the production redesign.
 
 This is a design and implementation plan only. Do not change the UI, commit, update the PR, or deploy until implementation is requested. Present a fixture-based visual preview for approval before completing the redesign.
 
@@ -84,6 +86,19 @@ The user supplied Pi Session Inspector as the quality reference after reviewing 
 - Show loading and read errors within the affected pane or collection. A read failure must not look like an empty record.
 - Keep long names, deep nesting, multiline text, and large output within the pane width. Any label abbreviation must retain its complete accessible name.
 
+## Admin WebUI follow-up sequence
+
+- [ ] After approval of the Durable visual benchmark, audit the shared shell, typography, spacing, form controls, buttons, and state treatments against the same design rules.
+- [ ] Apply approved shared rules to Chats, Access, Defaults, Tool permissions, MCP connections, Model providers, and Audit in scoped changes. Keep policy editing, draft retention, authentication, transport, and save boundaries unchanged.
+- [ ] Review real desktop and mobile pages with populated, empty, error, long-content, and unsaved states. Tests passing alone do not establish visual acceptance.
+
+## Self-review corrections
+
+- [x] Increase secondary-text contrast to at least 4.5:1 on every role surface and selected row. Caption, ID, and badge tests pass; measured minimum is about 5.29:1.
+- [x] Bring message text and tool output above 410 px at 390 and 320 px widths without reducing their font sizes. Both mobile controls retain accessible names and 44 px touch targets.
+- [x] Cap cumulative visual indentation while retaining semantic nested lists and complete record labels. Tests with 14 added levels and a long name pass at 1440, 390, and 320 px without navigator or page horizontal scrolling.
+- [x] Decouple detail height from navigator height. Deep-branch tests confirm unchanged detail height and unchanged desktop footer position within 1 px.
+
 ## Execution status
 
 Implementation was requested on `narumi/feat/durable-content-tree` in PR #157. The visual-approval gate remains in effect. Production interaction changes must wait for approval of the fixture preview.
@@ -96,15 +111,15 @@ Capture and validate the preview from the repository root:
 npm run test:browser --workspace @narumitw/sumire-admin -- tests/durable-visual-preview.spec.ts --workers=1 --output=/tmp/sumire-durable-visual-preview
 ```
 
-- [x] Revise the static preview to match the stated design quality reference and capture both record types at 1440, 768, 390, and 320 px. All eight preview checks pass, including 14 px minimum message and code text.
+- [x] Revise the static preview to match the stated design quality reference and capture both record types at 1440, 768, 390, and 320 px. All 11 preview checks pass, including 14 px minimum navigation and code text.
 - [x] Update PR #157 with the validated revised preview and reference-aligned design direction without changing production interactions.
 - [ ] Receive user approval before starting the remaining implementation tasks.
 
-The first preview was not accepted visually. After revising the preview against the stated reference, root formatting, lint, typecheck, 1,854 unit tests, build, all 248 Admin browser tests, and `git diff --check` pass again. Validation does not establish user acceptance.
+The first preview was not accepted visually. The reference-aligned preview passed its initial checks, but later self-review found the four defects listed above. After correcting them, root formatting, lint, typecheck, 1,854 unit tests, build, all 251 Admin browser tests, and `git diff --check` pass. A separate read-only review found no additional issues. Validation does not establish user acceptance.
 
 Preview browser checks cover no API requests, no horizontal overflow, desktop selection contrast, a closed mobile navigator, body-font user text, and monospace tool output without an internal vertical scrollbar. These checks do not replace the production interaction checks in the completion checklist.
 
-Revised screenshots are local review artifacts under `/tmp/sumire-durable-visual-preview-reference/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. User approval remains pending, so task 1 and the final acceptance checklist remain open.
+Current screenshots are local review artifacts under `/tmp/sumire-quality-browser/`, not committed files. Desktop tool-result and mobile user-message captures were reviewed. User approval remains pending, so task 1 and the final acceptance checklist remain open.
 
 ## Plan
 
@@ -122,7 +137,7 @@ Revised screenshots are local review artifacts under `/tmp/sumire-durable-visual
 - Keep read-only access, explicit bounded reads, manual refresh, and incomplete-data warnings.
 - Keep historical inspection separate from persisted conversation selection.
 - Do not add a graph canvas, animation library, tree dependency, inferred transcript titles, full-history scan, polling, search, or layout preference storage.
-- Do not redesign other Admin sections or add workspace-specific formatting policy.
+- This iteration changes only the review fixture, its checks, and this plan. Follow-up work may refine other Admin sections under the expanded user goal, after approval of the visual benchmark. Do not add workspace-specific formatting policy.
 - Use synthetic fixtures for screenshots. Do not commit the supplied production screenshot, binary review artifacts, private chat content, or administrator identifiers.
 
 ## Completion Checklist
