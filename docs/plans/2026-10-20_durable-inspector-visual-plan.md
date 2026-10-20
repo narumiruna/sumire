@@ -78,7 +78,7 @@ The user supplied Pi Session Inspector as the quality reference after reviewing 
 
 ### Surface and state rules
 
-- Use one outer workspace treatment and light internal separators. Do not replace nested borders with nested shadows.
+- Use flat surface colors, one outer workspace treatment, and light internal separators. Do not use gradients in record headers. Do not replace nested borders with nested shadows.
 - Use body text at the existing 14–16 px tokens and secondary labels at 12–13 px. Do not reduce the main font size to fit more records.
 - Use low-saturation type colors for record surfaces, a separate accent marker and outline for selection, and semantic labels for recorded errors or warnings. Always include text and icons; color alone must not convey type or state.
 - Show loading and read errors within the affected pane or collection. A read failure must not look like an empty record.
