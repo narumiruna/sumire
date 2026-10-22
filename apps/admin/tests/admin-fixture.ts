@@ -86,10 +86,27 @@ export const sections = [
   "Model providers",
   "Audit",
 ]
+export function sectionLabel(name: string): string {
+  const labels: Record<string, string> = {
+    Access: "Chat access",
+    Defaults: "Shared defaults",
+    Durable: "Conversation records",
+    "MCP connections": "Tool connections",
+    "Model Providers": "Model providers",
+  }
+  return labels[name] ?? name
+}
+
+export async function openDirectoryFilters(page: Page) {
+  const summary = page.getByText("Filters and search scope", { exact: true })
+  if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
+}
+
 export async function navigate(page: Page, name: string) {
   const link = page
     .getByRole("navigation", { name: "Administration sections" })
-    .getByRole("link", { name, exact: true })
-  if (!(await link.isVisible())) await page.getByRole("button", { name: /^Sections ·/ }).click()
+    .getByRole("link", { name: sectionLabel(name), exact: true })
+  const menu = page.getByRole("button", { name: /^Sections ·/ })
+  if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
 }

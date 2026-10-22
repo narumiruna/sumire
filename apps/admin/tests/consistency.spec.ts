@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { adminFixture as fixture, navigate, sections } from "./admin-fixture"
+import { adminFixture as fixture, navigate, openDirectoryFilters, sections } from "./admin-fixture"
 
 for (const control of [
   { section: "Chats", name: "Chat type" },
@@ -12,6 +12,7 @@ for (const control of [
   test(`${control.name} closes when history hides its section`, async ({ page }) => {
     await fixture(page)
     await navigate(page, control.section)
+    if (control.section === "Chats") await openDirectoryFilters(page)
     if (control.field)
       await page.getByRole("checkbox", { name: `Edit MCP ${control.field}`, exact: true }).check()
     await navigate(page, "Defaults")
@@ -22,7 +23,7 @@ for (const control of [
     await trigger.click()
     await expect(page.getByRole("listbox")).toBeVisible()
     await page.goForward()
-    await expect(page.getByRole("heading", { name: "Defaults", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     expect(await page.evaluate(() => Boolean(document.activeElement?.closest("[hidden]")))).toBe(
       false,
@@ -65,8 +66,15 @@ for (const width of [1440, 390, 320]) {
         await expect(panel).toHaveCSS("border-top-width", "1px")
       }
       const bar = page.getByRole("region", { name: "Save status and pending changes" })
-      if (section === "Durable") await expect(bar).toBeHidden()
-      else if (width <= 390) {
+      if (section === "Durable") {
+        await expect(bar).toBeHidden()
+        continue
+      }
+      await expect(bar).toHaveAttribute("data-compact", "true")
+      await expect(bar).toContainText("All settings saved and applied.")
+      await expect(bar.getByRole("button")).toHaveCount(0)
+      await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
+      if (width <= 390) {
         await expect(bar).toBeVisible()
         const box = await bar.boundingBox()
         expect(box?.height, section).toBeLessThanOrEqual(900 / 4)
@@ -248,6 +256,6 @@ for (const time of ["invalid", "absent"] as const) {
     )
     await expect(page.getByRole("alert")).toHaveCount(0)
     await navigate(page, "Defaults")
-    await expect(page.getByRole("heading", { name: "Defaults", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
   })
 }

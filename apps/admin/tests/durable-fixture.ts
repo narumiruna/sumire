@@ -6,6 +6,7 @@ import type {
   DurableInspectionView,
 } from "@narumitw/sumire-contracts"
 import type { Page } from "@playwright/test"
+import { sectionLabel } from "./admin-fixture.js"
 
 export const readAt = "2026-10-19T12:00:00.000Z"
 export const untrusted =
@@ -387,7 +388,8 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
 export async function navigateSection(page: Page, name: string) {
   const link = page
     .getByRole("navigation", { name: "Administration sections" })
-    .getByRole("link", { name, exact: true })
-  if (!(await link.isVisible())) await page.getByRole("button", { name: /^Sections ·/ }).click()
+    .getByRole("link", { name: sectionLabel(name), exact: true })
+  const menu = page.getByRole("button", { name: /^Sections ·/ })
+  if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
 }

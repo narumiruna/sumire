@@ -163,11 +163,14 @@ export function ChatSelector({
               </TextField.Slot>
             </TextField.Root>
           </label>
-          {filters}
         </div>
-        <Prose size="1" color="gray">
-          Search covers the stored directory, not all Telegram chats. Up to 100 matches per page.
-        </Prose>
+        <details className="directory-options">
+          <summary>{filters ? "Filters and search scope" : "Search scope"}</summary>
+          {filters}
+          <Prose size="1" color="gray">
+            Search covers the stored directory, not all Telegram chats. Up to 100 matches per page.
+          </Prose>
+        </details>
         <div className="directory-result-status" aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
             <Text as="p" role="status">
@@ -232,23 +235,32 @@ export function ChatSelector({
       </div>
       <footer className="directory-footer">
         <Flex gap="2" wrap="wrap" align="center">
-          <Button
-            variant="soft"
-            disabled={directory.loading || directory.offset === 0}
-            onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
-          >
-            Previous chats
-          </Button>
-          <Button
-            variant="soft"
-            disabled={directory.loading || Boolean(directory.error) || directory.chats.length < 100}
-            onClick={() => directory.setOffset(directory.offset + 100)}
-          >
-            Next chats
-          </Button>
-          <Text size="1" color="gray">
-            Page {Math.floor(directory.offset / 100) + 1}
-          </Text>
+          {(directory.offset !== 0 ||
+            directory.loading ||
+            Boolean(directory.error) ||
+            directory.chats.length >= 100) && (
+            <>
+              <Button
+                variant="soft"
+                disabled={directory.loading || directory.offset === 0}
+                onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
+              >
+                Previous chats
+              </Button>
+              <Button
+                variant="soft"
+                disabled={
+                  directory.loading || Boolean(directory.error) || directory.chats.length < 100
+                }
+                onClick={() => directory.setOffset(directory.offset + 100)}
+              >
+                Next chats
+              </Button>
+              <Text size="1" color="gray">
+                Page {Math.floor(directory.offset / 100) + 1}
+              </Text>
+            </>
+          )}
           <Button
             variant="ghost"
             className="navigation-control"

@@ -266,6 +266,8 @@ export function List({
   onChange,
   inheritable = false,
   effective,
+  scope,
+  sharedDefault,
 }: {
   label: string
   options: string[]
@@ -273,11 +275,34 @@ export function List({
   onChange(value: string[] | null): void
   inheritable?: boolean
   effective?: string[]
+  scope: "global" | "defaults" | "chat"
+  sharedDefault?: string[] | null
 }) {
   const displayed = [...new Set([...options, ...(value ?? [])])]
+  const blocked = (value ?? (scope === "chat" ? sharedDefault : null) ?? []).filter(
+    (name) => !options.includes(name),
+  )
+  const source =
+    scope === "global"
+      ? "Global availability"
+      : scope === "defaults"
+        ? "Shared defaults"
+        : value === null
+          ? "From shared defaults"
+          : "This chat override"
   return (
     <Panel as="fieldset" className="policy-list">
       <legend>{label}</legend>
+      <Badge color={scope === "chat" && value !== null ? "orange" : "gray"}>{source}</Badge>
+      <Prose size="2" color="gray">
+        {scope === "global"
+          ? "Limits shared defaults and all chat overrides. Availability alone does not select an option for a chat."
+          : scope === "defaults"
+            ? "Used by chats without an override. Global availability still limits this selection."
+            : value === null
+              ? "Uses shared defaults. Global availability still limits this chat."
+              : "Applies only to this chat. Shared defaults do not change. Global availability still limits this selection."}
+      </Prose>
       {inheritable && (
         <Check
           label="Inherit default"
@@ -304,15 +329,25 @@ export function List({
             </Text>
           ))}
       </Flex>
-      {value === null && !inheritable && <Prose size="2">None selected.</Prose>}
-      {value?.length === 0 && (
-        <Prose size="2">None allowed. This does not inherit the default.</Prose>
+      {value === null && !inheritable && (
+        <Prose size="2">None selected. Global availability does not select default options.</Prose>
       )}
-      {inheritable && (
+      {value?.length === 0 && (
+        <Prose size="2">
+          {scope === "global"
+            ? "No options available globally."
+            : scope === "defaults"
+              ? "No options allowed for chats that inherit shared defaults."
+              : "No options allowed. This does not inherit shared defaults."}
+        </Prose>
+      )}
+      {blocked.length > 0 && (
+        <Prose size="2" color="orange">
+          Selected but blocked by Global availability: {blocked.join(", ")}.
+        </Prose>
+      )}
+      {scope !== "global" && (
         <Flex direction="column" align="start" gap="2" className="policy-list__status">
-          <Badge color={value === null ? "gray" : "orange"}>
-            {value === null ? "Inherited" : "Customized"}
-          </Badge>
           <Prose size="2" color="gray">
             Effective: {effective?.join(", ") || "None"}
           </Prose>
@@ -338,6 +373,7 @@ export function ModelAvailability({
   return (
     <List
       label="Globally available models"
+      scope="global"
       options={[...new Set([...approved, ...value])]}
       value={value}
       onChange={(v) => onChange(v ?? [])}
@@ -387,6 +423,8 @@ export function Choices({
             onChange={(v) => onChange({ ...value, [key]: v })}
             inheritable={!defaults}
             effective={effective[key]}
+            scope={defaults ? "defaults" : "chat"}
+            sharedDefault={policy.defaults[key]}
           />
         ))}
       </Grid>
@@ -418,17 +456,26 @@ export function Choices({
             <DataList.Item className="data-row">
               <DataList.Label>Model</DataList.Label>
               <DataList.Value>
-                <Code variant="ghost">{policy.defaults.model ?? "Not configured"}</Code>
+                <Flex gap="2" align="center" wrap="wrap">
+                  <Code variant="ghost">{policy.defaults.model ?? "Not configured"}</Code>
+                  <Badge color="gray">Shared defaults</Badge>
+                </Flex>
               </DataList.Value>
             </DataList.Item>
             <DataList.Item className="data-row">
               <DataList.Label>Thinking</DataList.Label>
-              <DataList.Value>{policy.defaults.thinking ?? "off"}</DataList.Value>
+              <DataList.Value>
+                <Flex gap="2" align="center" wrap="wrap">
+                  <Text>{policy.defaults.thinking ?? "off"}</Text>
+                  <Badge color="gray">Shared defaults</Badge>
+                </Flex>
+              </DataList.Value>
             </DataList.Item>
           </DataList.Root>
           <Prose size="2" color="gray" className="section-copy">
-            Allowed models limit what chats can use. The default model selects one for chats without
-            an override.
+            Allowed models and Global availability limit what chats can use. Shared defaults select
+            the model and thinking level for chats without an override. An unspecified thinking
+            level uses off.
           </Prose>
           <Button variant="soft" onClick={() => navigate("Model Providers")}>
             Edit default model in {pageLabel("Model Providers")}
@@ -438,69 +485,90 @@ export function Choices({
         <Panel as="fieldset" className="policy-model">
           <legend>Model and thinking</legend>
           <Grid gap="3" className="grid settings-grid policy-model__controls">
-            <label className="form-field" htmlFor="model-selection">
-              Chat model override
-              <Select.Root
-                value={value.model ?? "inherit"}
-                onValueChange={(v) =>
-                  onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
-                }
-              >
-                <Select.Trigger
-                  id="model-selection"
-                  aria-label="Chat model override"
-                  placeholder="Choose model"
-                />
-                <Select.Content>
-                  <Select.Item value="inherit">
-                    {defaults ? "Not configured" : "Inherit default"}
-                  </Select.Item>
-                  {[
-                    ...new Set([
-                      ...(value.models ?? policy.defaults.models ?? []),
-                      ...(value.model ? [value.model] : []),
-                    ]),
-                  ].map((ref) => (
-                    <Select.Item key={ref} value={ref}>
-                      {ref}
-                      {!(value.models ?? policy.defaults.models ?? []).includes(ref)
-                        ? " (not allowed)"
-                        : ""}
+            <Flex direction="column" gap="2">
+              <label className="form-field" htmlFor="model-selection">
+                Chat model override
+                <Select.Root
+                  value={value.model ?? "inherit"}
+                  onValueChange={(v) =>
+                    onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
+                  }
+                >
+                  <Select.Trigger
+                    id="model-selection"
+                    aria-label="Chat model override"
+                    aria-describedby="model-selection-source"
+                    placeholder="Choose model"
+                  />
+                  <Select.Content>
+                    <Select.Item value="inherit">
+                      {defaults ? "Not configured" : "Inherit default"}
                     </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </label>
-            <label className="form-field" htmlFor="thinking-selection">
-              Thinking level
-              <Select.Root
-                value={value.thinking ?? "inherit"}
-                onValueChange={(v) =>
-                  onChange({
-                    ...value,
-                    thinking: v === "inherit" ? null : (v as Selection["thinking"]),
-                  })
-                }
-              >
-                <Select.Trigger id="thinking-selection" aria-label="Thinking level" />
-                <Select.Content>
-                  <Select.Item value="inherit">
-                    {defaults ? "Off (default)" : "Inherit default"}
-                  </Select.Item>
-                  {levels.map((level) => (
-                    <Select.Item key={level} value={level}>
-                      {level}
+                    {[
+                      ...new Set([
+                        ...(value.models ?? policy.defaults.models ?? []),
+                        ...(value.model ? [value.model] : []),
+                      ]),
+                    ].map((ref) => (
+                      <Select.Item key={ref} value={ref}>
+                        {ref}
+                        {!(value.models ?? policy.defaults.models ?? []).includes(ref)
+                          ? " (not allowed)"
+                          : ""}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </label>
+              <Prose id="model-selection-source" size="2" color="gray">
+                {effective.sources.model === "chat" ? "This chat override" : "From shared defaults"}
+                {value.model === null
+                  ? " · No override for this chat."
+                  : ". Shared defaults do not change."}{" "}
+                Effective model: {effective.model ?? "No allowed model"}. Global availability and
+                Allowed models limit this choice.
+              </Prose>
+            </Flex>
+            <Flex direction="column" gap="2">
+              <label className="form-field" htmlFor="thinking-selection">
+                Thinking level
+                <Select.Root
+                  value={value.thinking ?? "inherit"}
+                  onValueChange={(v) =>
+                    onChange({
+                      ...value,
+                      thinking: v === "inherit" ? null : (v as Selection["thinking"]),
+                    })
+                  }
+                >
+                  <Select.Trigger
+                    id="thinking-selection"
+                    aria-label="Thinking level"
+                    aria-describedby="thinking-selection-source"
+                  />
+                  <Select.Content>
+                    <Select.Item value="inherit">
+                      {defaults ? "Off (default)" : "Inherit default"}
                     </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </label>
+                    {levels.map((level) => (
+                      <Select.Item key={level} value={level}>
+                        {level}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </label>
+              <Prose id="thinking-selection-source" size="2" color="gray">
+                {effective.sources.thinking === "chat"
+                  ? "This chat override"
+                  : "From shared defaults"}
+                {value.thinking === null
+                  ? " · No override for this chat."
+                  : ". Shared defaults do not change."}{" "}
+                Effective thinking: {effective.thinking}.
+              </Prose>
+            </Flex>
           </Grid>
-          <Prose size="2" color="gray" className="section-copy">
-            {value.model === null ? "Inherited" : "Customized"} model:{" "}
-            {effective.model ?? "No allowed model"} ·{" "}
-            {value.thinking === null ? "Inherited" : "Customized"} thinking: {effective.thinking}
-          </Prose>
           {(value.model !== null || value.thinking !== null) && (
             <Button
               variant="soft"

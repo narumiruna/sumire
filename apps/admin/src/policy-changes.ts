@@ -1,4 +1,4 @@
-import type { Policy } from "./api.js"
+import type { Policy, ProviderSettings, Selection } from "./api.js"
 
 /** Stage one explicit approval without changing chat overrides or other access scopes. */
 export function withChatAccess(policy: Policy, id: number, allowed: boolean): Policy {
@@ -12,10 +12,101 @@ export function withChatAccess(policy: Policy, id: number, allowed: boolean): Po
   }
 }
 
-/** Describe policy-only changes without including credentials or endpoint values. */
+const different = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b)
+
+const selectionFields = [
+  ["tools", "Authorized tools"],
+  ["skills", "Enabled skills"],
+  ["servers", "Authorized MCP servers"],
+  ["models", "Allowed models"],
+  ["model", "Model"],
+  ["thinking", "Thinking level"],
+] as const
+
+function selectionChanges(
+  saved: Selection | undefined,
+  draft: Selection | undefined,
+  chat: boolean,
+): string[] {
+  return selectionFields.flatMap(([key, label]) => {
+    if (!different(saved?.[key] ?? null, draft?.[key] ?? null)) return []
+    const value = draft?.[key]
+    const source =
+      value == null
+        ? chat
+          ? "inherit shared defaults"
+          : "no shared default"
+        : Array.isArray(value) && value.length === 0
+          ? chat
+            ? "explicit empty override"
+            : "explicit empty selection"
+          : chat
+            ? "explicit override"
+            : "explicit selection"
+    return [`${label} (${source})`]
+  })
+}
+
+function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): string[] {
+  const fields = new Set<string>()
+  for (const id of new Set([...saved, ...draft].map((provider) => provider.id))) {
+    const before = saved.find((provider) => provider.id === id)
+    const after = draft.find((provider) => provider.id === id)
+    if (!before) fields.add("Added provider settings")
+    if (!after) fields.add("Removed provider settings")
+    for (const [key, label] of [
+      ["enabled", "Enabled switch"],
+      ["baseUrl", "Endpoint URL"],
+      ["api", "API protocol"],
+    ] as const)
+      if (different(before?.[key], after?.[key])) fields.add(label)
+    if (different(before?.models, after?.models)) {
+      const models = new Set([...(before?.models ?? []), ...(after?.models ?? [])].map((m) => m.id))
+      const changed = [
+        ["id", "Model ID"],
+        ["name", "Display name"],
+        ["reasoning", "Reasoning support"],
+        ["image", "Image support"],
+        ["contextWindow", "Context window"],
+        ["maxTokens", "Maximum output tokens"],
+      ] as const
+      const labels = changed
+        .filter(([key]) =>
+          [...models].some((model) =>
+            different(
+              before?.models.find((m) => m.id === model)?.[key],
+              after?.models.find((m) => m.id === model)?.[key],
+            ),
+          ),
+        )
+        .map(([, label]) => label)
+      if (
+        labels.length ||
+        different(
+          before?.models.map((model) => model.id),
+          after?.models.map((model) => model.id),
+        )
+      ) {
+        const detail = labels.join(", ") || (before && after ? "entry order" : "")
+        fields.add(`Model definitions${detail ? ` (${detail})` : ""}`)
+      }
+    }
+  }
+  if (
+    saved.length === draft.length &&
+    saved.every((provider) => draft.some((p) => p.id === provider.id)) &&
+    different(
+      saved.map((provider) => provider.id),
+      draft.map((provider) => provider.id),
+    )
+  )
+    fields.add("Provider order")
+  return [...fields]
+}
+
+/** Describe policy-only fields and impact without including selection or endpoint values. */
 export function policyChanges(saved: Policy, draft: Policy): string[] {
   const changes: string[] = []
-  const different = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b)
   for (const key of ["privateUsers", "groups"] as const) {
     const label = key === "privateUsers" ? "Private-message access" : "Group/channel access"
     for (const id of draft[key])
@@ -24,17 +115,37 @@ export function policyChanges(saved: Policy, draft: Policy): string[] {
       if (!draft[key].includes(id)) changes.push(`${label}: revoke ${id}`)
   }
   for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {
-    if (different(saved.chats[id], draft.chats[id]))
-      changes.push(`Chat ${id}: overrides or enabled switch`)
+    const before = saved.chats[id]
+    const after = draft.chats[id]
+    const fields = selectionChanges(before, after, true)
+    if (before?.enabled !== after?.enabled)
+      fields.push(after ? "Enabled switch" : "Enabled switch (reset)")
+    if (fields.length) {
+      const action = !before ? "added settings; " : !after ? "removed settings; " : ""
+      changes.push(
+        `Chat ${id}: ${action}${fields.join(", ")} — this chat only; shared defaults and access approval unchanged.`,
+      )
+    }
   }
+  const defaults = selectionChanges(saved.defaults, draft.defaults, false)
+  if (defaults.length)
+    changes.push(
+      `Shared defaults: ${defaults.join(", ")} — affects chats inheriting each changed field; explicit overrides unchanged; does not grant access.`,
+    )
   for (const [key, label] of [
-    ["defaults", "Shared defaults"],
     ["tools", "Global tool availability"],
     ["skills", "Global skill availability"],
     ["servers", "Global MCP availability"],
     ["models", "Global model availability"],
-    ["providers", "Provider configuration"],
   ] as const)
-    if (different(saved[key], draft[key])) changes.push(label)
+    if (different(saved[key], draft[key]))
+      changes.push(
+        `${label} (${key}): limits shared defaults and all chat selections, including explicit overrides; does not grant access.`,
+      )
+  const providers = providerChanges(saved.providers, draft.providers)
+  if (providers.length)
+    changes.push(
+      `Provider configuration: ${providers.join(", ")} — global provider settings; may affect chats using these providers, including explicit overrides.`,
+    )
   return changes
 }

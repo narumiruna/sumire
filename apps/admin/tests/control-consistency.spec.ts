@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { openDirectoryFilters, sectionLabel } from "./admin-fixture.js"
 
 const longName = "Long group name with multilingual metadata 管理員 🌸 ".repeat(12).trim()
 const chats = [
@@ -57,11 +58,14 @@ async function fixture(page: Page, section = "Chats") {
     await route.fulfill({ json: data[url.pathname] ?? {} })
   })
   await page.goto(`/?section=${encodeURIComponent(section)}`)
-  await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: sectionLabel(section), exact: true }),
+  ).toBeVisible()
   return { auditQueries, writes }
 }
 
 async function choose(page: Page, name: string, option: string) {
+  if (name === "Chat type" || name === "Access status") await openDirectoryFilters(page)
   await page.getByRole("combobox", { name, exact: true }).click()
   await page.getByRole("option", { name: option, exact: true }).click()
 }
@@ -196,7 +200,8 @@ for (const name of [
     await fixture(page, "Access")
     const mcp = name.startsWith("MCP") || name === "Transport update"
     const section = mcp ? "MCP connections" : "Chats"
-    await page.getByRole("link", { name: section, exact: true }).click()
+    await page.getByRole("link", { name: sectionLabel(section), exact: true }).click()
+    if (!mcp) await openDirectoryFilters(page)
     if (mcp) {
       await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
       if (name === "MCP exposure replacement")
@@ -212,7 +217,7 @@ for (const name of [
     await expect(trigger).toBeFocused()
     await trigger.click()
     await page.goBack()
-    await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     await page.goForward()
     await expect(trigger).toBeVisible()

@@ -25,8 +25,9 @@ import {
 } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
-import type { Inventory, Policy } from "./api.js"
+import type { Inventory, Policy, Snapshot } from "./api.js"
 import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
+import { type ChatRepair, chatState } from "./chat-state.js"
 import { navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
@@ -89,6 +90,7 @@ export function ChatWorkspace({
   application,
   inventory,
   onAccess,
+  onApplication,
   onProviders,
   onTools,
   onDurable,
@@ -103,9 +105,10 @@ export function ChatWorkspace({
   onSelect(value: string): void
   policy: Policy
   savedPolicy: Policy
-  application: string
+  application: Pick<Snapshot, "revision" | "applied" | "status">
   inventory: Inventory
   onAccess(): void
+  onApplication(): void
   onProviders(): void
   onTools(): void
   onDurable(): void
@@ -190,6 +193,24 @@ export function ChatWorkspace({
     setTab(value)
     tabsRef.current?.querySelector<HTMLButtonElement>(`[data-view="${value}"]`)?.focus()
   }
+  const [repairRequest, setRepairRequest] = useState<{ target: ChatRepair }>()
+  useEffect(() => {
+    if (!repairRequest) return
+    const selector = {
+      access: ".chat-access-editor h3",
+      enabled: '.chat-policy-editor [role="checkbox"]',
+      model: "#model-selection",
+      providers: "",
+      application: "",
+    }[repairRequest.target]
+    if (selector) tabsRef.current?.parentElement?.querySelector<HTMLElement>(selector)?.focus()
+  }, [repairRequest])
+  const repair = (target: ChatRepair) => {
+    if (target === "providers") return onProviders()
+    if (target === "application") return onApplication()
+    setTab(target === "access" ? "access" : "configuration")
+    setRepairRequest({ target })
+  }
   const [copyStatus, setCopyStatus] = useState({ chat: "", message: "" })
   const filtered = chats.filter(
     (c) =>
@@ -213,53 +234,15 @@ export function ChatWorkspace({
   const savedApproval = savedPolicy[list].includes(id)
   const accessPending = approved !== savedApproval
   const override = policy.chats[chat]
-  const configuredModel = override?.model ?? policy.defaults.model
-  const provider = inventory.providers.find((p) => p.id === effective.model?.split("/")[0])
+  const state = chatState(id, savedPolicy, inventory, application)
+  const primary = state.primary
+  const draftState = chatState(id, policy, inventory, application)
+  const provider = inventory.providers.find((p) => p.id === saved.model?.split("/")[0])
   const preview = policyChanges(savedPolicy, policy).length > 0
   const history = audit.filter((entry) => entry.target === `chat:${chat}`)
   const unavailableTools = (override?.tools ?? policy.defaults.tools ?? []).filter(
     (name) => !policy.tools.includes(name),
   )
-  const blockers = [
-    ...(!approved
-      ? [
-          {
-            text: "Access approval is missing.",
-            action: "Review access approval",
-            run: () => changeTab("access"),
-          },
-        ]
-      : []),
-    ...(override?.enabled === false
-      ? [
-          {
-            text: "The chat is disabled.",
-            action: "Review chat enabled switch",
-            run: () => changeTab("configuration"),
-          },
-        ]
-      : []),
-    ...(!effective.model
-      ? [
-          {
-            text: configuredModel
-              ? `Configured model ${configuredModel} is not effective. Review allowed models and provider availability.`
-              : "No effective model configured.",
-            action: "Configure model",
-            run: () => changeTab("configuration"),
-          },
-        ]
-      : []),
-    ...(effective.model && provider && !provider.configured
-      ? [
-          {
-            text: "Model authentication is not configured.",
-            action: "Configure authentication",
-            run: onProviders,
-          },
-        ]
-      : []),
-  ]
   const showChatDetails = () => {
     if (window.matchMedia("(max-width: 850px)").matches) directoryScroll.current = window.scrollY
     setShowDirectory(false)
@@ -324,31 +307,49 @@ export function ChatWorkspace({
                   Clear search and filters
                 </Button>
               )}
-              <details className="directory-help">
-                <summary>Search scope and access labels</summary>
+              <div className="directory-help">
                 <Text as="p" size="1" color="gray">
-                  Search covers stored chats. Type and access filters cover this page only. Access
-                  labels show {preview ? "the policy draft" : "saved policy"}, not verified runtime
-                  readiness. Names reflect observed Telegram metadata; ID-only records have no known
+                  Search covers stored chats. Type and access filters cover this page only. The
+                  access filter uses {preview ? "the policy draft" : "saved policy"}. Status and
+                  access labels show saved policy, not verified runtime readiness; draft access is
+                  separate. Names reflect observed Telegram metadata; ID-only records have no known
                   name.
                 </Text>
-              </details>
+              </div>
             </>
           }
-          badge={(c) => (
-            <Badge color="gray">
-              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) ? (
-                <CheckCircledIcon aria-hidden="true" />
-              ) : (
-                <MinusCircledIcon aria-hidden="true" />
-              )}
-              {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                ? "Approved"
-                : "Not approved"}
-              {policy.chats[String(c.id)]?.enabled === false ? " · Disabled" : ""}
-              {preview ? " · Draft" : ""}
-            </Badge>
-          )}
+          badge={(c) => {
+            const status = chatState(c.id, savedPolicy, inventory, application)
+            return (
+              <span className="directory-status" data-blocked={Boolean(status.primary)}>
+                <span className="directory-status-label">
+                  {status.primary ? (
+                    <MinusCircledIcon aria-hidden="true" />
+                  ) : (
+                    <CheckCircledIcon aria-hidden="true" />
+                  )}
+                  {status.label}
+                  <span className="directory-access">
+                    {" "}
+                    · Access: {status.approved ? "Approved" : "Not approved"}
+                    {!status.enabled ? " · Disabled" : ""}
+                  </span>
+                </span>
+                <span className="directory-status-reason" title={status.reason}>
+                  {status.reason}
+                </span>
+                {preview && (
+                  <span className="directory-draft">
+                    Draft access:{" "}
+                    {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
+                      ? "Approved"
+                      : "Not approved"}{" "}
+                    · {policy.chats[String(c.id)]?.enabled === false ? "Disabled" : "Enabled"}
+                  </span>
+                )}
+              </span>
+            )
+          }}
           footer={
             <>
               <Button
@@ -362,7 +363,7 @@ export function ChatWorkspace({
                 Show selected chat
               </Button>
               <details className="configure-id">
-                <summary>Configure a chat before its first message</summary>
+                <summary>Configure chat ID</summary>
                 <Text as="p" size="2">
                   This creates settings, not access approval.
                 </Text>
@@ -435,6 +436,23 @@ export function ChatWorkspace({
                   <Code size="2" variant="ghost">
                     {chat}
                   </Code>
+                  <Button
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(chat)
+                        setCopyStatus({ chat, message: "Chat ID copied." })
+                      } catch {
+                        setCopyStatus({
+                          chat,
+                          message: "Could not copy. Select the ID to copy it manually.",
+                        })
+                      }
+                    }}
+                  >
+                    <CopyIcon aria-hidden="true" />
+                    Copy chat ID
+                  </Button>
                 </Flex>
               </div>
               <Flex className="chat-header-actions" gap="2" align="center" wrap="wrap">
@@ -459,23 +477,6 @@ export function ChatWorkspace({
                     </a>
                   </Button>
                 )}
-                <Button
-                  variant="surface"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(chat)
-                      setCopyStatus({ chat, message: "Chat ID copied." })
-                    } catch {
-                      setCopyStatus({
-                        chat,
-                        message: "Could not copy. Select the ID to copy it manually.",
-                      })
-                    }
-                  }}
-                >
-                  <CopyIcon aria-hidden="true" />
-                  Copy chat ID
-                </Button>
               </Flex>
             </header>
             <Text role="status" size="2">
@@ -490,87 +491,78 @@ export function ChatWorkspace({
                 <section
                   className="chat-status"
                   aria-label="Chat setup status"
-                  data-blocked={blockers.length > 0}
+                  data-blocked={Boolean(state.primary)}
                 >
                   <Callout.Root
                     className="chat-setup-callout"
-                    color={blockers.length ? "amber" : "gray"}
+                    color={state.primary ? "amber" : "gray"}
                     size="1"
                   >
                     <Callout.Icon>
-                      {blockers.length ? <ExclamationTriangleIcon /> : <InfoCircledIcon />}
+                      {state.primary ? <ExclamationTriangleIcon /> : <InfoCircledIcon />}
                     </Callout.Icon>
                     <div className="chat-setup-body">
-                      <Heading size="3">
-                        {blockers.length
-                          ? `Setup required${blockers.length > 1 ? `: ${blockers.length} blockers` : ""}`
-                          : "Runtime status unchecked"}
-                      </Heading>
-                      {blockers.map((blocker) => (
-                        <Flex
-                          className="blocker"
-                          key={blocker.text}
-                          align="center"
-                          justify="between"
-                          gap="2"
-                          wrap="wrap"
-                        >
-                          <Text size="2">{blocker.text}</Text>
-                          <Button type="button" variant="soft" onClick={blocker.run}>
-                            {blocker.action}
-                          </Button>
-                        </Flex>
-                      ))}
+                      <Heading size="3">{state.label}</Heading>
+                      <Text as="p" size="2">
+                        {state.reason}
+                      </Text>
+                      {primary && (
+                        <Button type="button" onClick={() => repair(primary.target)}>
+                          {primary.action}
+                        </Button>
+                      )}
                     </div>
                   </Callout.Root>
                   <details className="setup-details">
                     <summary>Readiness details</summary>
                     <DataList.Root className="chat-facts effective-settings readiness" size="2">
                       <ChatFact label="Access">
-                        {savedApproval ? "Approved" : "Not approved"}
-                        {accessPending ? ` · Draft: ${approved ? "Approved" : "Not approved"}` : ""}
+                        {state.approved ? "Approved" : "Not approved"}
                       </ChatFact>
-                      <ChatFact label="Chat">
-                        {override?.enabled === false ? "Disabled" : "Enabled"}
-                        {preview ? " · Policy draft" : ""}
-                      </ChatFact>
+                      <ChatFact label="Chat">{state.enabled ? "Enabled" : "Disabled"}</ChatFact>
                       <ChatFact label="Configuration">
-                        {!provider
-                          ? "Unknown"
-                          : effective.model && provider.configured
-                            ? "Configured locally"
-                            : "Setup required"}
+                        {!saved.model
+                          ? "Setup required"
+                          : state.issues.some((issue) => issue.code === "inventory") || !provider
+                            ? "Unknown"
+                            : provider.configured
+                              ? "Configured locally"
+                              : "Setup required"}
                       </ChatFact>
                       <ChatFact label="Verification">
                         Not checked — no remote model request
                       </ChatFact>
-                      <ChatFact label="Application">{application}</ChatFact>
+                      <ChatFact label="Application">
+                        {application.status === "failed"
+                          ? "Failed"
+                          : application.status === "applied" &&
+                              application.revision === application.applied
+                            ? "Applied"
+                            : "Pending"}
+                      </ChatFact>
                     </DataList.Root>
+                    {state.issues.slice(1).map((issue) => (
+                      <div className="blocker" key={issue.code}>
+                        <Text size="2">{issue.reason}</Text>
+                        <Button type="button" variant="soft" onClick={() => repair(issue.target)}>
+                          {issue.action}
+                        </Button>
+                      </div>
+                    ))}
                     <Text as="p" size="2" color="gray">
-                      {effective.enabled
+                      {saved.enabled
                         ? "This chat is approved by policy."
                         : "Policy access is not allowed."}{" "}
-                      {effective.model && provider?.configured
-                        ? "Configured locally; remote authentication not checked here."
-                        : "Remote authentication not checked here."}{" "}
                       Runtime availability is unchecked; policy approval does not establish
-                      readiness.
-                    </Text>
-                    <Text as="p" size="2">
-                      Approval and the chat enabled switch are independent. Model availability
-                      follows global policy and chat settings. Authentication status comes from the
-                      loaded local inventory, not a remote model request.
+                      readiness. Authentication status comes from the loaded local inventory, not a
+                      remote model request.
                     </Text>
                   </details>
-                  {effective.model && !provider && (
-                    <Flex gap="2" align="center" wrap="wrap" mt="2">
-                      <Text size="2">
-                        Configuration status unknown; remote authentication not checked here.
-                      </Text>
-                      <Button type="button" variant="soft" onClick={onProviders}>
-                        Review authentication configuration
-                      </Button>
-                    </Flex>
+                  {preview && (
+                    <Text as="p" size="2" className="chat-draft-status">
+                      Draft preview — not saved: {draftState.label}. {draftState.reason} Current
+                      state above is unchanged.
+                    </Text>
                   )}
                 </section>
                 <Tabs.Root value={tab} onValueChange={changeTab}>
@@ -630,7 +622,9 @@ export function ChatWorkspace({
                       <ChatFact
                         label="Model"
                         detail={
-                          effective.sources.model === "chat" ? "Chat override" : "Shared default"
+                          effective.sources.model === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"
                         }
                         action={
                           <Button
@@ -647,7 +641,9 @@ export function ChatWorkspace({
                       <ChatFact
                         label="Tools"
                         detail={
-                          effective.sources.tools === "chat" ? "Explicit override" : "Inherited"
+                          effective.sources.tools === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"
                         }
                         action={
                           <Button
@@ -681,21 +677,27 @@ export function ChatWorkspace({
                       <DataList.Root className="chat-facts effective-settings" size="2">
                         <ChatFact label="Tools">
                           {effective.tools.join(", ") || "None"} ·{" "}
-                          {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                          {effective.sources.tools === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Skills">
                           {effective.skills.join(", ") || "None"} ·{" "}
-                          {effective.sources.skills === "chat" ? "Explicit override" : "Inherited"}
+                          {effective.sources.skills === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="MCP servers">
                           {effective.servers.join(", ") || "None"} ·{" "}
-                          {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                          {effective.sources.servers === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Thinking">
                           {effective.thinking} ·{" "}
                           {effective.sources.thinking === "chat"
-                            ? "Explicit override"
-                            : "Inherited"}
+                            ? "This chat override"
+                            : "From shared defaults"}
                         </ChatFact>
                       </DataList.Root>
                       <Text as="p" size="2">
@@ -726,7 +728,9 @@ export function ChatWorkspace({
                     hidden={tab !== "access"}
                   >
                     <section className="chat-access-editor">
-                      <Heading size="3">Access for this chat</Heading>
+                      <Heading as="h3" size="3" tabIndex={-1}>
+                        Access for this chat
+                      </Heading>
                       <Text as="p" size="2" mt="2">
                         {id > 0 ? "Private-message access" : "Group and channel access"}. Approval
                         never grants access in other chats.
@@ -794,26 +798,36 @@ export function ChatWorkspace({
                     <DataList.Root className="chat-facts effective-settings" size="2">
                       <ChatFact label="Effective model">
                         <Code variant="ghost">{effective.model ?? "No allowed model"}</Code> ·{" "}
-                        {effective.sources.model === "chat" ? "Chat override" : "Shared default"}
+                        {effective.sources.model === "chat"
+                          ? "This chat override"
+                          : "From shared defaults"}
                       </ChatFact>
                       <ChatFact label="Chat model override">
                         <Code variant="ghost">{override?.model ?? "Inherit from defaults"}</Code>
                       </ChatFact>
                       <ChatFact label="Tools">
                         {effective.tools.join(", ") || "None"} ·{" "}
-                        {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                        {effective.sources.tools === "chat"
+                          ? "This chat override"
+                          : "From shared defaults"}
                       </ChatFact>
                       <ChatFact label="Skills">
                         {effective.skills.join(", ") || "None"} ·{" "}
-                        {effective.sources.skills === "chat" ? "Explicit override" : "Inherited"}
+                        {effective.sources.skills === "chat"
+                          ? "This chat override"
+                          : "From shared defaults"}
                       </ChatFact>
                       <ChatFact label="MCP servers">
                         {effective.servers.join(", ") || "None"} ·{" "}
-                        {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
+                        {effective.sources.servers === "chat"
+                          ? "This chat override"
+                          : "From shared defaults"}
                       </ChatFact>
                       <ChatFact label="Thinking">
                         {effective.thinking} ·{" "}
-                        {effective.sources.thinking === "chat" ? "Explicit override" : "Inherited"}
+                        {effective.sources.thinking === "chat"
+                          ? "This chat override"
+                          : "From shared defaults"}
                       </ChatFact>
                     </DataList.Root>
                     <Flex gap="3" wrap="wrap">

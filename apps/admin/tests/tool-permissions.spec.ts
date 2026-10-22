@@ -1,9 +1,10 @@
 import { inherited, initialPolicy, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import type { Inventory, Policy } from "../src/api.js"
+import { sectionLabel } from "./admin-fixture.js"
 
 async function navigate(page: Page, name: string) {
-  const link = page.getByRole("link", { name, exact: true })
+  const link = page.getByRole("link", { name: sectionLabel(name), exact: true })
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
@@ -149,7 +150,7 @@ for (const width of [1440, 390]) {
     await expect(defaults).toBeChecked()
     expect(state.writes).toEqual([])
     await savePolicy(page)
-    await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().defaults.tools).toContain("bash")
     expect(state.saved().chats).toEqual(state.initial.chats)
   })
@@ -187,7 +188,7 @@ for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect(state.writes).toEqual([])
     await savePolicy(page)
-    await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().tools).toEqual(state.initial.tools)
     expect(state.saved().defaults.tools).toEqual(["read"])
   })
@@ -231,7 +232,7 @@ test("global removal retains defaults and overrides, shows exact references, and
     tools.getByRole("checkbox", { name: "read (no longer available)", exact: true }),
   ).toHaveCount(0)
   await savePolicy(page)
-  await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
   expect(state.saved().tools).not.toContain("read")
   expect(state.saved().defaults.tools).not.toContain("read")
   expect(state.saved().chats["43"]?.tools).toEqual([])
@@ -439,6 +440,6 @@ test("legacy links open canonical permissions without policy changes or remote t
   await navigate(page, "MCP connections")
   await navigate(page, "Tool permissions")
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "MCP connections", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Tool connections", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })

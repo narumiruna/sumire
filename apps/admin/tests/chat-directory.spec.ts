@@ -1,5 +1,6 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { expect, type Page, type Route, test } from "@playwright/test"
+import { openDirectoryFilters } from "./admin-fixture.js"
 
 const stored: Chat[] = [
   ...Array.from({ length: 205 }, (_, index) => ({
@@ -80,7 +81,7 @@ async function fixture(page: Page, href = "/?section=Durable") {
     await route.fulfill({ json: data[url.pathname] ?? {} })
   })
   await page.goto(href)
-  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible()
   return state
 }
 
@@ -90,8 +91,9 @@ const inspector = (page: Page) =>
 const rows = (page: Page) =>
   page.getByRole("list", { name: "Chats on this page", exact: true }).filter({ visible: true })
 async function openSelector(page: Page) {
-  const details = selector(page).locator("details")
-  if ((await details.getAttribute("open")) === null) await details.locator("summary").click()
+  const details = selector(page).locator(":scope > details")
+  if ((await details.getAttribute("open")) === null)
+    await details.locator(":scope > summary").click()
   await expect(selector(page).getByLabel("Search stored chats", { exact: true })).toBeVisible()
 }
 function gate() {
@@ -108,7 +110,7 @@ for (const width of [1440, 390, 320]) {
   }) => {
     await page.setViewportSize({ width, height: 900 })
     const state = await fixture(page)
-    await expect(selector(page).locator("details")).toHaveAttribute("open", "")
+    await expect(selector(page).locator(":scope > details")).toHaveAttribute("open", "")
     await expect(
       inspector(page).getByRole("heading", { name: "Choose a chat", exact: true }),
     ).toBeVisible()
@@ -227,7 +229,7 @@ test("direct links load exact metadata independently of the visible page and sur
     true,
   )
   expect(state.directoryReads.some((url) => url.searchParams.get("offset") === "0")).toBe(true)
-  await expect(selector(page).locator("details")).not.toHaveAttribute("open", "")
+  await expect(selector(page).locator(":scope > details")).not.toHaveAttribute("open", "")
   await page.reload()
   await expect(
     inspector(page).getByRole("heading", { name: "Beyond first page", exact: true }),
@@ -336,7 +338,10 @@ test("old queries and old pages cannot replace the current global search", async
   await expect(rows(page).getByRole("button")).toHaveCount(1)
   await expect(rows(page)).not.toContainText("Obsolete result")
   await expect(search).toHaveValue("Beyond first page")
-  await expect(selector(page).getByText("Page 1", { exact: true })).toBeVisible()
+  await expect(selector(page).getByText("Page 1", { exact: true })).toHaveCount(0)
+  await expect(
+    selector(page).getByRole("button", { name: "Refresh chats", exact: true }),
+  ).toBeVisible()
 })
 
 test("rapid A→B→A switching rejects stale metadata and restores browser history", async ({
@@ -450,6 +455,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await row.click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Unnamed group")
   await search.fill("Same name")
+  await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(rows(page).getByRole("button")).toHaveCount(1)
@@ -516,7 +522,8 @@ for (const trigger of ["directory", "lookup", "logout"] as const) {
       await expect
         .poll(() => state.directoryReads.some((url) => url.searchParams.get("q") === "late query"))
         .toBe(true)
-      await page.getByRole("button", { name: "Sign out", exact: true }).click()
+      await page.getByRole("button", { name: "Account", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Sign out", exact: true }).click()
       pending.release()
       await finished.promise
       await expect(page.getByText("Late cached name", { exact: true })).toHaveCount(0)

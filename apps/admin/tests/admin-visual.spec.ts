@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { adminFixture, navigate, sections } from "./admin-fixture.js"
+import { adminFixture, navigate, sectionLabel, sections } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 
 const record = {
@@ -50,7 +50,7 @@ for (const viewport of [
       await navigate(page, section)
       const heading = page.locator("#current-section-heading")
       await expect(heading).toHaveCount(1)
-      await expect(heading).toHaveText(section)
+      await expect(heading).toHaveText(sectionLabel(section))
       await expect(heading).toBeVisible()
       if (section === "MCP connections") {
         const permissions = page.getByRole("button", {

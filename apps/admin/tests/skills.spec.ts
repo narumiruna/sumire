@@ -100,7 +100,7 @@ for (const width of [1440, 390]) {
     expect(state.writes).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await save(page)
-    await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().defaults.skills).toEqual(["load-public-url", "missing", "expenses"])
     expect(state.saved().tools).toEqual([])
     expect(state.saved().chats["43"]?.skills).toEqual(["missing"])
@@ -117,7 +117,7 @@ test("chat skills distinguish inheritance, explicit empty, and reset", async ({ 
   ).toBeVisible()
   await skills.getByRole("checkbox", { name: "Inherit default", exact: true }).uncheck()
   await expect(
-    skills.getByText("None allowed. This does not inherit the default.", { exact: true }),
+    skills.getByText("No options allowed. This does not inherit shared defaults.", { exact: true }),
   ).toBeVisible()
   await save(page)
   expect(state.saved().chats["42"]?.skills).toEqual([])
@@ -168,7 +168,9 @@ for (const width of [1440, 390]) {
       .getByRole("checkbox", { name: "missing (no longer available)", exact: true })
       .click()
     await expect(
-      chatSkills.getByText("None allowed. This does not inherit the default.", { exact: true }),
+      chatSkills.getByText("No options allowed. This does not inherit shared defaults.", {
+        exact: true,
+      }),
     ).toBeVisible()
     await save(page)
     expect(state.saved().skills).not.toContain("missing")

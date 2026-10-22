@@ -3,10 +3,20 @@ import {
   ExclamationTriangleIcon,
   ExitIcon,
   MixerHorizontalIcon,
+  PersonIcon,
   ReloadIcon,
 } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
+import {
+  AlertDialog,
+  Button,
+  Callout,
+  DropdownMenu,
+  Flex,
+  Heading,
+  Text,
+  Theme,
+} from "@radix-ui/themes"
 import { useCallback, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
@@ -64,6 +74,10 @@ function App() {
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const { page, setPage, chat, setChat } = useNavigation()
   const [detailsRequest, setDetailsRequest] = useState(0)
+  const [focusRepairPage, setFocusRepairPage] = useState(0)
+  useEffect(() => {
+    if (focusRepairPage) document.getElementById("current-section-heading")?.focus()
+  }, [focusRepairPage])
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -259,7 +273,7 @@ function App() {
           actions={
             <>
               <Button
-                variant="soft"
+                variant="ghost"
                 aria-label="Reload"
                 disabled={busy || dirty || localPending}
                 onClick={() => {
@@ -270,22 +284,35 @@ function App() {
                 <ReloadIcon />
                 <span className="workspace-action-label">Reload</span>
               </Button>
-              <Button
-                variant="soft"
-                aria-label="Sign out"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    if (!confirmDiscard()) return
-                    clearAccess()
-                    await request("logout", session.csrf)
-                    expireSession()
-                  })
-                }
-              >
-                <ExitIcon />
-                <span className="workspace-action-label">Sign out</span>
-              </Button>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <Button variant="ghost" aria-label="Account" disabled={busy}>
+                    <PersonIcon aria-hidden />
+                    <span className="workspace-action-label">Account</span>
+                    <DropdownMenu.TriggerIcon />
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" aria-label="Account" className="account-menu">
+                  <DropdownMenu.Label className="account-menu-actor">
+                    Administrator: {session.actor}
+                  </DropdownMenu.Label>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item
+                    disabled={busy}
+                    onSelect={() =>
+                      void run(async () => {
+                        if (!confirmDiscard()) return
+                        clearAccess()
+                        await request("logout", session.csrf)
+                        expireSession()
+                      })
+                    }
+                  >
+                    <ExitIcon aria-hidden />
+                    Sign out
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
             </>
           }
         />
@@ -366,13 +393,7 @@ function App() {
               onSelect={setChat}
               policy={policy}
               savedPolicy={savedPolicy ?? policy}
-              application={
-                snapshot.status === "applied" && snapshot.revision === snapshot.applied
-                  ? "Applied"
-                  : snapshot.status === "failed"
-                    ? "Failed"
-                    : "Pending"
-              }
+              application={snapshot}
               inventory={inventory}
               audit={audit}
               onPolicyChange={update}
@@ -381,7 +402,11 @@ function App() {
                 setAccessTarget(chat)
                 setPage("Access")
               }}
-              onProviders={() => setPage("Model Providers")}
+              onApplication={() => document.getElementById("save-status")?.focus()}
+              onProviders={() => {
+                setPage("Model Providers")
+                setFocusRepairPage((request) => request + 1)
+              }}
               onTools={() => setPage("Tool permissions")}
               onDurable={() => setPage("Durable")}
             >
