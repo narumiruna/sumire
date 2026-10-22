@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { openDirectoryFilters, sectionLabel } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 
 const basePolicy = {
@@ -119,7 +120,7 @@ async function fixture(page: Page) {
   }
 }
 async function navigate(page: Page, name: string) {
-  const link = page.getByRole("link", { name, exact: true })
+  const link = page.getByRole("link", { name: sectionLabel(name), exact: true })
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
@@ -169,6 +170,13 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
         continue
       }
       await expect(bar).toBeVisible()
+      await expect(bar).toHaveAttribute("data-compact", String(!attention))
+      if (!attention) {
+        await expect(bar).toContainText("All settings saved and applied.")
+        await expect(bar.getByRole("button")).toHaveCount(0)
+        await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
+        await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
+      }
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
       const box = await bar.boundingBox()
       expect(box?.y).toBeGreaterThanOrEqual(0)
@@ -250,7 +258,9 @@ test("Durable keeps pending or failed application and busy actions visible, then
     release()
   }
   await expect(bar).toBeHidden()
-  await expect(page.getByRole("heading", { name: "Durable", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "Conversation records", exact: true }),
+  ).toBeVisible()
 })
 
 test("guided and advanced MCP edits share a draft and a redacted transport-aware preview", async ({
@@ -538,7 +548,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   const state = await fixture(page)
   const measurements: Record<string, Awaited<ReturnType<typeof contrast>>> = {}
   measurements.normal = await contrast(page.locator("#current-section-heading"))
-  measurements.muted = await contrast(page.locator(".directory-help summary"))
+  measurements.muted = await contrast(page.locator(".directory-options summary"))
   await navigate(page, "Defaults")
   measurements.disabled = await contrast(
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),
@@ -567,6 +577,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   await expect(error).toBeVisible()
   measurements.error = await contrast(error.locator(".rt-CalloutText"))
   await navigate(page, "Chats")
+  await openDirectoryFilters(page)
   measurements.control = await contrast(page.getByLabel("Chat type", { exact: true }))
   await testInfo.attach("contrast-ratios", {
     contentType: "application/json",
@@ -601,7 +612,7 @@ for (const mode of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
-      const initial = page.getByRole("heading", { name: section, exact: true })
+      const initial = page.getByRole("heading", { name: sectionLabel(section), exact: true })
       await initial.focus()
       for (let index = 0; index < 8; index++) {
         await page.keyboard.press("Tab")

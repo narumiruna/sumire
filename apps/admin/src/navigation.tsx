@@ -10,8 +10,9 @@ import {
   ReaderIcon,
   TokensIcon,
 } from "@radix-ui/react-icons"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 
 export const pages = [
   "Chats",
@@ -36,7 +37,32 @@ const pageIcons = {
   "Model Providers": ReaderIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof GearIcon>
-export const pageLabel = (page: Page) => (page === "Model Providers" ? "Model providers" : page)
+const pageLabels = {
+  Chats: "Chats",
+  Durable: "Conversation records",
+  Access: "Chat access",
+  Defaults: "Shared defaults",
+  "Tool permissions": "Tool permissions",
+  Skills: "Skills",
+  "MCP connections": "Tool connections",
+  "Model Providers": "Model providers",
+  Audit: "Audit",
+} satisfies Record<Page, string>
+export const pageLabel = (page: Page) => pageLabels[page]
+const navigationGroups = [
+  { id: "chat-management", label: "Chat management", pages: ["Chats", "Access"] },
+  {
+    id: "models-and-tools",
+    label: "Models and tools",
+    pages: ["Model Providers", "Tool permissions", "Skills", "MCP connections"],
+  },
+  { id: "system-settings", label: "System settings", pages: ["Defaults"] },
+  { id: "activity", label: "Activity", pages: ["Durable", "Audit"] },
+] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
+const technicalDescriptions: Partial<Record<Page, string>> = {
+  Durable: "Durable Inspector: stored conversations and execution records.",
+  "MCP connections": "Model Context Protocol (MCP) connections.",
+}
 
 export function readNavigation(url: URL) {
   const raw = url.searchParams.get("section")
@@ -121,36 +147,62 @@ export function SideNavigation({
         aria-controls="section-navigation"
         onClick={() => setOpen(!open)}
       >
-        <HamburgerMenuIcon aria-hidden /> Sections · {pageLabel(page)}
+        <HamburgerMenuIcon aria-hidden />
+        <span className="section-trigger-label">Sections · {pageLabel(page)}</span>
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
-        {pages.map((item) => {
-          const Icon = pageIcons[item]
-          return (
-            <a
-              key={item}
-              href={navigationHref(item, chat)}
-              aria-current={page === item ? "page" : undefined}
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                )
-                  return
-                event.preventDefault()
-                onNavigate(item)
-                setOpen(false)
-                if (open) trigger.current?.focus()
-              }}
+        {navigationGroups.map((group) => (
+          <section
+            key={group.id}
+            className="navigation-group"
+            aria-labelledby={`navigation-${group.id}`}
+          >
+            <Heading
+              as="h2"
+              id={`navigation-${group.id}`}
+              className="navigation-group-title"
+              size="1"
+              weight="medium"
+              color="gray"
             >
-              <Icon aria-hidden />
-              <span>{pageLabel(item)}</span>
-            </a>
-          )
-        })}
+              {group.label}
+            </Heading>
+            {group.pages.map((item) => {
+              const Icon = pageIcons[item]
+              const description = technicalDescriptions[item]
+              const descriptionId = `navigation-description-${item.replaceAll(" ", "-")}`
+              return (
+                <Fragment key={item}>
+                  <a
+                    href={navigationHref(item, chat)}
+                    aria-current={page === item ? "page" : undefined}
+                    aria-describedby={description ? descriptionId : undefined}
+                    onClick={(event) => {
+                      if (
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      )
+                        return
+                      event.preventDefault()
+                      onNavigate(item)
+                      setOpen(false)
+                      if (open) trigger.current?.focus()
+                    }}
+                  >
+                    <Icon aria-hidden />
+                    <span>{pageLabel(item)}</span>
+                  </a>
+                  {description && (
+                    <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>
+                  )}
+                </Fragment>
+              )
+            })}
+          </section>
+        ))}
       </nav>
       <Flex direction="column" gap="3" className="sidebar-account">
         <Separator size="4" />

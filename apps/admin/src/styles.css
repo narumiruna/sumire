@@ -97,6 +97,27 @@ main {
   padding: 24px 12px 20px;
   border-right: 1px solid var(--gray-6);
   background: var(--gray-2);
+  overflow-y: auto;
+}
+.navigation-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.navigation-group-title {
+  margin: 8px 12px 2px;
+  color: var(--gray-11);
+  font-size: 11px;
+  font-weight: 600;
+}
+.account-menu {
+  max-width: calc(100vw - 24px);
+}
+.account-menu-actor {
+  max-width: 260px;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .brand {
   display: flex;
@@ -581,6 +602,18 @@ pre {
   font-size: var(--font-size-2);
   color: var(--gray-12);
 }
+.save-status[data-compact="true"] {
+  margin-block: 4px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--gray-6);
+  border-radius: 0;
+  background: var(--gray-1);
+}
+.save-status[data-compact="true"] :where(.rt-Badge) {
+  background: transparent;
+  color: var(--gray-11);
+}
 .save-status-line {
   display: flex;
   align-items: start;
@@ -662,7 +695,7 @@ html {
   grid-template-columns: minmax(290px, 330px) minmax(0, 1fr);
   gap: 24px;
   align-items: start;
-  margin-top: 16px;
+  margin-top: 8px;
 }
 .chat-workspace aside,
 .chat-detail {
@@ -682,8 +715,21 @@ html {
   padding: 4px;
 }
 .directory-footer {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 4px;
   border-top: 1px solid var(--gray-6);
-  padding-top: 12px;
+  padding-top: 4px;
+}
+.directory-footer > .rt-Flex {
+  display: contents;
+}
+.directory-options > summary {
+  padding-block: 8px;
+}
+.directory-options[open] {
+  margin-bottom: 8px;
 }
 .durable-chat-selector .directory-list-region {
   max-height: 280px;
@@ -706,14 +752,14 @@ html {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 4px 8px;
+  gap: 1px 8px;
   width: 100%;
   text-align: left;
   border: 0;
   border-left: 3px solid transparent;
   border-bottom: 1px solid var(--gray-6);
   border-radius: 0;
-  padding: 12px 8px;
+  padding: 4px 8px;
   background: var(--gray-1);
   color: var(--gray-12);
   cursor: pointer;
@@ -949,7 +995,11 @@ html {
   font-size: var(--font-size-2);
 }
 .directory-footer .configure-id {
-  margin: 12px 0 0;
+  margin: 0;
+  flex: 1 1 140px;
+}
+.directory-footer .configure-id[open] {
+  flex-basis: 100%;
 }
 .permission-details li {
   margin: 8px 0;
@@ -1020,6 +1070,15 @@ html {
   .sidebar .mobile-menu {
     display: inline-flex;
     align-self: start;
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: start;
+  }
+  .section-trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .sidebar nav {
     display: none;
@@ -1557,7 +1616,7 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   margin-block: 4px;
 }
 .directory-result-status > p {
-  margin-block: 8px;
+  margin-block: 4px;
 }
 .chat-list .directory-chat {
   box-sizing: border-box;
@@ -1576,6 +1635,7 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   border-color: var(--teal-8);
   background: var(--teal-3);
   box-shadow: inset 3px 0 var(--teal-11);
+  font-weight: 700;
 }
 .directory-chat-identity {
   grid-column: 1;
@@ -1585,7 +1645,7 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
 .directory-chat-identity strong {
   min-width: 0;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .directory-chat-meta {
   grid-column: 1 / -1;
@@ -1597,8 +1657,43 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   padding-left: 24px;
 }
 .directory-chat-state {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding-left: 24px;
+  font-size: 12px;
+}
+.directory-status,
+.directory-status-label,
+.directory-status-reason {
+  display: block;
+  min-width: 0;
+}
+.directory-status-label,
+.directory-status-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.directory-status-label {
+  font-weight: 600;
+}
+.directory-status-label svg {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.directory-status-reason,
+.directory-access,
+.directory-draft {
+  color: var(--gray-11);
+}
+.directory-access {
+  font-weight: 400;
+}
+.directory-draft {
+  display: block;
+  font-style: italic;
 }
 .chat-directory {
   padding-right: 16px;
@@ -1625,7 +1720,7 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   min-width: 0;
   flex: 1;
 }
-.chat-setup-body > .prose {
+.chat-setup-body > p {
   margin: 0 0 8px;
 }
 .chat-facts,
@@ -2405,6 +2500,10 @@ main .durable-record-meta a {
 @media (max-width: 650px) {
   .panel {
     padding: 12px;
+  }
+  .admin-shell-durable .workspace-header {
+    margin-bottom: 4px;
+    padding-bottom: 0;
   }
   .admin-shell-durable .workspace-header .workspace-action-label {
     display: none;

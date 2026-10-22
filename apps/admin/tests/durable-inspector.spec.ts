@@ -1045,10 +1045,9 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await expect(page.locator(".chat-header code")).toHaveText("42")
   await navigateSection(page, "Durable")
+  await page.getByRole("button", { name: "Account", exact: true }).click()
   const dialog = page.waitForEvent("dialog")
-  const clicking = page
-    .getByRole("button", { includeHidden: true, name: "Sign out", exact: true })
-    .click()
+  const clicking = page.getByRole("menuitem", { name: "Sign out", exact: true }).click()
   const prompt = await dialog
   expect(prompt.message()).toBe("Discard pending changes and leave?")
   await prompt.dismiss()

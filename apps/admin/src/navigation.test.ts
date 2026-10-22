@@ -1,7 +1,114 @@
-import { describe, expect, it } from "vitest"
-import { navigationHref, readNavigation } from "./navigation.js"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
+import { describe, expect, it, vi } from "vitest"
+import {
+  navigationHref,
+  type Page,
+  pageLabel,
+  pages,
+  readNavigation,
+  SideNavigation,
+} from "./navigation.js"
+
+const taskLabels = {
+  Chats: "Chats",
+  Durable: "Conversation records",
+  Access: "Chat access",
+  Defaults: "Shared defaults",
+  "Tool permissions": "Tool permissions",
+  Skills: "Skills",
+  "MCP connections": "Tool connections",
+  "Model Providers": "Model providers",
+  Audit: "Audit",
+} satisfies Record<Page, string>
+
+function renderNavigation(page: Page = "Durable") {
+  vi.stubGlobal("window", {
+    location: {
+      href: "https://example.com/admin?section=Durable&chat=-100&view=documents&objectId=9#records",
+    },
+  })
+  try {
+    return renderToStaticMarkup(
+      createElement(SideNavigation, { page, chat: "-100", actor: "Admin", onNavigate: () => {} }),
+    )
+  } finally {
+    vi.unstubAllGlobals()
+  }
+}
 
 describe("admin navigation", () => {
+  it("uses task labels without changing stable page IDs or selected chat URLs", () => {
+    for (const page of pages) {
+      expect(pageLabel(page)).toBe(taskLabels[page])
+      const url = new URL(
+        navigationHref(page, "-100", new URL("https://example.com/admin")),
+        "https://example.com",
+      )
+      expect(url.searchParams.get("section")).toBe(page)
+      expect(readNavigation(url)).toEqual({ page, chat: "-100" })
+    }
+  })
+
+  it("groups every destination by task in the planned order", () => {
+    const html = renderNavigation()
+    const groups = [
+      ["chat-management", "Chat management"],
+      ["models-and-tools", "Models and tools"],
+      ["system-settings", "System settings"],
+      ["activity", "Activity"],
+    ]
+    let previous = -1
+    for (const [id, label] of groups) {
+      const position = html.indexOf(`class="navigation-group" aria-labelledby="navigation-${id}"`)
+      expect(position).toBeGreaterThan(previous)
+      expect(html).toContain(`id="navigation-${id}"`)
+      expect(html).toContain(`>${label}</h2>`)
+      previous = position
+    }
+    const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)]
+    const orderedPages: Page[] = [
+      "Chats",
+      "Access",
+      "Model Providers",
+      "Tool permissions",
+      "Skills",
+      "MCP connections",
+      "Defaults",
+      "Durable",
+      "Audit",
+    ]
+    expect(links).toHaveLength(pages.length)
+    for (const [index, page] of orderedPages.entries()) {
+      const link = links[index]
+      expect(link?.[2]).toContain(`<span>${taskLabels[page]}</span>`)
+      const href = link?.[1]?.match(/href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&")
+      const url = new URL(href ?? "", "https://example.com")
+      expect(readNavigation(url)).toEqual({ page, chat: "-100" })
+      expect(url.pathname).toBe("/admin")
+      expect(url.hash).toBe("#records")
+      expect(url.searchParams.has("objectId")).toBe(page === "Durable")
+      expect(link?.[1]?.includes('aria-current="page"')).toBe(page === "Durable")
+    }
+  })
+
+  it("keeps MCP and Durable in accessible descriptions, not primary link names", () => {
+    const html = renderNavigation()
+    for (const [id, label, technicalTerm] of [
+      ["Durable", "Conversation records", "Durable Inspector"],
+      ["MCP-connections", "Tool connections", "Model Context Protocol (MCP)"],
+    ]) {
+      const descriptionId = `navigation-description-${id}`
+      const link = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].find((match) =>
+        match[2]?.includes(`<span>${label}</span>`),
+      )
+      expect(link?.[1]).toContain(`aria-describedby="${descriptionId}"`)
+      expect(link?.[2]).not.toContain(technicalTerm)
+      expect(html).toContain(`id="${descriptionId}"`)
+      expect(html).toContain(technicalTerm)
+    }
+  })
+
   it("defaults unknown sections and invalid chat IDs without changing policy", () => {
     expect(readNavigation(new URL("https://example.com/?section=Missing&chat=0"))).toEqual({
       page: "Chats",

@@ -296,10 +296,21 @@ for (const width of [1440, 390, 320]) {
       expect(await page.evaluate(() => window.scrollY)).toBe(before)
     }
     requests.length = 0
-    let actionTop = 0
     for (const index of [0, 1, 2, 3, 4]) {
       await select(page, index)
       const status = page.getByRole("region", { name: "Chat setup status" })
+      const approved = index === 0 || index === 2
+      await expect(status.getByRole("heading")).toHaveText(
+        approved ? "Setup required" : "Access not approved",
+      )
+      const primaryAction = status.getByRole("button", {
+        name: approved ? "Configure authentication" : "Review access approval",
+        exact: true,
+      })
+      await expect(primaryAction).toBeVisible()
+      const details = status.locator("details")
+      await expect(details).not.toHaveAttribute("open", "")
+      await details.locator("summary").click()
       await expect(
         status.getByText("Model authentication is not configured.", { exact: true }),
       ).toBeVisible()
@@ -307,11 +318,8 @@ for (const width of [1440, 390, 320]) {
         status.getByRole("button", { name: "Configure authentication", exact: true }),
       ).toBeVisible()
       const approval = status.getByRole("button", { name: "Review access approval", exact: true })
-      if (index === 0 || index === 2) await expect(approval).toHaveCount(0)
+      if (approved) await expect(approval).toHaveCount(0)
       else await expect(approval).toBeVisible()
-      const details = status.locator("details")
-      await expect(details).not.toHaveAttribute("open", "")
-      await details.locator("summary").click()
       for (const text of ["Access", "Chat", "Configuration", "Verification", "Application"])
         await expect(
           details.locator("dt").filter({ hasText: new RegExp(`^${text}$`) }),
@@ -323,11 +331,12 @@ for (const width of [1440, 390, 320]) {
       const action = await copy.boundingBox()
       const header = await page.locator(".chat-header").boundingBox()
       if (!action || !header) throw new Error("Missing header geometry")
-      if (width > 850) {
-        expect(action.y - header.y).toBe(actionTop)
-        actionTop = action.y - header.y
-        await expect(rows.nth(index)).toHaveAttribute("aria-current", "true")
-      } else expect(action.y).toBeGreaterThan(header.y)
+      const id = await page.locator(".chat-header code").boundingBox()
+      if (!id) throw new Error("Missing chat ID geometry")
+      expect(action.y).toBeGreaterThanOrEqual(id.y - action.height)
+      expect(action.y + action.height).toBeLessThanOrEqual(header.y + header.height)
+      if (width > 850) await expect(rows.nth(index)).toHaveAttribute("aria-current", "true")
+      else expect(action.y).toBeGreaterThan(header.y)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )

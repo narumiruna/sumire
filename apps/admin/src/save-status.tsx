@@ -52,13 +52,16 @@ export function SaveStatus({
     }
   }, [])
   const applied = snapshot.status === "applied" && snapshot.revision === snapshot.applied
+  const compact = applied && !dirty && !busy && !localPending && !mcpDirty && !providerPending
   return (
     <section
       ref={ref}
       id="save-status"
+      tabIndex={-1}
       aria-label="Save status and pending changes"
       className={`save-status ${dirty ? "pending-bar" : "saved-state"}`}
       data-pending={dirty}
+      data-compact={compact}
     >
       <div className="save-status-line">
         <Badge
@@ -74,13 +77,15 @@ export function SaveStatus({
                 ? "Saved changes are waiting to apply."
                 : dirty
                   ? countText(changes.length, "pending policy change")
-                  : "Saved revision applied."}
+                  : compact
+                    ? "All settings saved and applied."
+                    : "Saved revision applied."}
         </Badge>
         <details>
           <summary>Revision details</summary>
           Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
         </details>
-        {showHelp && (
+        {showHelp && !compact && (
           <details className="save-help">
             <summary>How saving works</summary>
             <Prose size="2">
@@ -102,27 +107,33 @@ export function SaveStatus({
           </details>
         )}
       </div>
-      <div className="save-scopes">
-        <Button variant="surface" className="navigation-control" onClick={() => navigate("Access")}>
-          Policy: {dirty ? countText(changes.length, "change") : "No changes"}
-        </Button>
-        <Button
-          variant="surface"
-          className="navigation-control"
-          onClick={() => navigate("MCP connections")}
-        >
-          {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
-        </Button>
-        <Button
-          variant="surface"
-          className="navigation-control"
-          onClick={() => navigate("Model Providers")}
-        >
-          {providerPending
-            ? "Provider: Unsaved selection or authentication"
-            : "Provider: No browser edits"}
-        </Button>
-      </div>
+      {!compact && (
+        <div className="save-scopes">
+          <Button
+            variant="surface"
+            className="navigation-control"
+            onClick={() => navigate("Access")}
+          >
+            Policy: {dirty ? countText(changes.length, "change") : "No changes"}
+          </Button>
+          <Button
+            variant="surface"
+            className="navigation-control"
+            onClick={() => navigate("MCP connections")}
+          >
+            {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
+          </Button>
+          <Button
+            variant="surface"
+            className="navigation-control"
+            onClick={() => navigate("Model Providers")}
+          >
+            {providerPending
+              ? "Provider: Unsaved selection or authentication"
+              : "Provider: No browser edits"}
+          </Button>
+        </div>
+      )}
       {localPending && (
         <Prose size="2">
           <span>Unstaged editor input</span> · Save unavailable: finish or clear this input.
@@ -153,6 +164,11 @@ export function SaveStatus({
                   are separate. Active work will be cancelled. Revoked permissions cannot undo
                   completed external actions.
                 </AlertDialog.Description>
+                <ul aria-label="Policy changes to save">
+                  {changes.map((change) => (
+                    <li key={change}>{change}</li>
+                  ))}
+                </ul>
                 <Flex gap="3" mt="4" justify="end">
                   <AlertDialog.Cancel>
                     <Button variant="soft">Cancel</Button>
