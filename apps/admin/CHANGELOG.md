@@ -1,5 +1,22 @@
 # @narumitw/sumire-admin
 
+## 0.6.0
+
+### Minor Changes
+
+- 7648df0: Show Durable relationships in an expandable tree and inspect recorded message text, thinking, tool arguments, and tool results. Keep collection reads metadata-only, bound explicit content reads, and show incomplete data without exposing image bytes or protocol fields.
+  
+  Apply a shared Radix sand/teal workspace to all eight production Admin pages. Add consistent navigation, headers, touch targets, structured facts, permission tables, and responsive chat, MCP, and provider inspectors while preserving drafts, authentication, protected values, and separate save scopes. Keep Durable content first with retained mobile expansion and focus, accessible record colors, independent detail sizing, and secondary history, raw collections, metadata, and JSON views.
+- 6ea8d02: Add skill management to the administration WebUI with discovered descriptions, global availability, shared defaults, and per-chat inheritance or explicit selections. Apply selected skills to each chat’s prompt without changing tool access. Preserve existing policy data and manual removals through persistent first-seen skill registration.
+
+### Patch Changes
+
+- a667851: Show saved chat setup state and repair actions, compact clean save controls, clarify setting scopes, and group administration tasks without changing policy or save boundaries. Keep narrow conversation workspaces compact when fallback fonts wrap the page title. Keep standalone comparison capture compatible with native Node TypeScript loading.
+- Updated dependencies [7648df0]
+- Updated dependencies [6ea8d02]
+  - @narumitw/sumire-contracts@0.5.0
+  - @narumitw/sumire-policy@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
