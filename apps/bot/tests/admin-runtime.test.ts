@@ -241,6 +241,7 @@ describe("admin durable runtime integration", () => {
       const state = store.snapshot()
       state.policy.chats["42"] = {
         enabled: true,
+        skills: null,
         tools: null,
         servers: null,
         models: null,

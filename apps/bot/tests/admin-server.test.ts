@@ -21,6 +21,7 @@ let server: ReturnType<typeof createAdminServer>
 let value: string
 let csrf: string
 let runtime: ModelRuntime
+const skills = vi.fn(() => [{ name: "fixture-skill", description: "Use the fixture skill." }])
 const apply = vi.fn(async () => {
   store.applied(store.snapshot().revision, true)
 })
@@ -98,6 +99,7 @@ beforeEach(async () => {
       mcp: new McpAdmin(store, directory),
       apply,
       tools: () => ["read"],
+      skills,
     },
   )
   await server.start()
@@ -110,6 +112,19 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("returns skill metadata only to authenticated administrators", async () => {
+    skills.mockClear()
+    const denied = await call("/api/inventory")
+    expect(denied.status).toBe(401)
+    expect(denied.body).not.toContain("fixture-skill")
+    expect(skills).not.toHaveBeenCalled()
+    const allowed = await call("/api/inventory", "GET", undefined, auth())
+    expect(allowed.status).toBe(200)
+    expect(JSON.parse(allowed.body).skills).toEqual([
+      { name: "fixture-skill", description: "Use the fixture skill." },
+    ])
+    expect(skills).toHaveBeenCalledOnce()
+  })
   it("searches the persisted directory before pagination and supports exact off-page metadata lookup", async () => {
     for (let id = 1; id <= 205; id++) store.observe(id, "private", `Chat ${id}`)
     store.observe(201, "private", "Duplicate Name")

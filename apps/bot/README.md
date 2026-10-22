@@ -63,7 +63,7 @@ npm run build --workspace @narumitw/sumire
 npm start --workspace @narumitw/sumire
 ```
 
-The scripts run from the repository root and load its `.env`; workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Pi tools use the process working directory: the repository root for npm scripts and `/workdir` in Docker. The system prompt is rendered from `instructions/SYSTEM.md`, which must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. Skills are always loaded from `./skills`.
+The scripts run from the repository root and load its `.env`; workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Pi tools use the process working directory: the repository root for npm scripts and `/workdir` in Docker. The system prompt is rendered from `instructions/SYSTEM.md`, which must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. Skills are discovered from `./skills` and the bundled URL-reader package. The administration WebUI manages global, shared-default, and per-chat skill selections. Only selected loaded skills appear in each chat’s model prompt; skills do not grant tool access. Restart the bot after changing skill files.
 
 For development:
 

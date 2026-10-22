@@ -3,10 +3,12 @@ import type { Policy } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 
 const policy: Policy = {
+  skills: [],
   tools: ["bash"],
   servers: ["fixture"],
   models: ["old/model"],
   defaults: {
+    skills: [],
     tools: ["bash"],
     servers: [],
     models: ["old/model"],
@@ -18,6 +20,7 @@ const policy: Policy = {
   chats: {
     "42": {
       enabled: true,
+      skills: null,
       tools: [],
       servers: null,
       models: ["old/model"],

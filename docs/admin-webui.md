@@ -1,16 +1,17 @@
 # Administration WebUI
 
-The WebUI manages chat access, tools, MCP servers, models, thinking levels, and model providers. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
+The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, and model providers. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
 
 ## Workspace layout
 
-All eight pages use a shared Radix sand/teal theme, page heading, action toolbar, and flat bordered panels. At narrow widths, **Sections** opens navigation. Page changes keep editors mounted and retain browser drafts; navigation does not save settings.
+All nine pages use a shared Radix sand/teal theme, page heading, action toolbar, and flat bordered panels. At narrow widths, **Sections** opens navigation. Page changes keep editors mounted and retain browser drafts; navigation does not save settings.
 
 - **Chats** places the searchable directory beside the selected chat on desktop. Mobile shows one pane at a time. The chat inspector separates identity, setup warnings, effective-setting facts, and the existing Overview, Access, Model & Tools, and History tabs.
 - **Durable** uses the relationship navigator and content-first record details described below. History, raw collections, metadata, and JSON remain secondary disclosures.
 - **Access** separates private-user and group/channel approval tables. Pending approvals and revocations stay visible with their status and undo actions. Access-link approval has its own review panel and immediate save scope.
 - **Defaults** groups inherited model settings and capability summaries. Resetting chat overrides remains a separate, confirmed, staged policy action.
 - **Tool permissions** groups source matrices with explicit expansion controls. The manual exact-name approval form is separate from server gates and default selections.
+- **Skills** lists loaded skill names and descriptions with global availability and shared-default selections. Search filters the list without changing selections. Per-chat skill overrides stay in Chats.
 - **MCP connections** places saved connections beside the guided editor and review actions on desktop. Connection, exposure, discovery, and execution permission are separate facts. Advanced JSON and protected-value replacement remain explicit disclosures.
 - **Model providers** separates provider authentication and local checks from model selection and model-save actions. Custom endpoints and global model availability are secondary sections.
 - **Audit** shows configuration activity first, followed by historical **Import reports**. Filters, raw records, revision groups, and pagination retain their existing scope.
@@ -123,7 +124,7 @@ The upgrade retains the existing schema version 3, database path, policy revisio
 
 ## Policy behavior
 
-To change inherited settings, use **Defaults**, **Tool permissions**, or **Model providers** for the relevant category. Existing chat overrides take priority within the global ceiling. In Defaults, select **Reset all chats to inherit defaults** and confirm to clear all tool, MCP server, allowed-model, model, and thinking overrides, including overrides outside the current chat page. This also replaces explicit empty lists with inheritance. Access approvals and chat enabled switches do not change. Review the defaults before you select **Apply policy changes**. Future chats inherit the same defaults unless given overrides.
+To change inherited settings, use **Defaults**, **Tool permissions**, **Skills**, or **Model providers** for the relevant category. Existing chat overrides take priority within the global ceiling. In Defaults, select **Reset all chats to inherit defaults** and confirm to clear all tool, MCP server, skill, allowed-model, model, and thinking overrides, including overrides outside the current chat page. This also replaces explicit empty lists with inheritance. Access approvals and chat enabled switches do not change. Review the defaults before you select **Apply policy changes**. Future chats inherit the same defaults unless given overrides.
 
 Model validation errors identify **Defaults** or the chat ID, the model, and whether the allowed list is inherited. Open that section and add the model to **Allowed models**, or change the model selection. For an inherited allowed list, edit **Defaults** or clear **Inherit default** for that chat. Model conflicts also appear next to the selection before saving.
 
@@ -231,13 +232,26 @@ Disabled controls have nearby reasons where setup or pending edits block the act
 
 Access tables search every ID in their policy list. Their counts distinguish matching draft approvals, saved approvals, and pending revocations. Access-list name search uses only cached directory metadata; it is not a remote name lookup. Shared chat-directory name/ID search runs on the server before pagination.
 
-Defaults summarizes saved model, thinking, allowed-model, tool, and MCP defaults. A model draft summary appears only when those model settings differ from saved settings. Links lead to the existing authoritative editors. Bulk reset is unavailable when all chats already inherit defaults; saving also disables configuration controls. Explicit empty lists deny that category rather than inherit it.
+Defaults summarizes saved model, thinking, allowed-model, tool, MCP, and skill defaults. A model draft summary appears only when those model settings differ from saved settings. Links lead to the existing authoritative editors. Bulk reset is unavailable when all chats already inherit defaults; saving also disables configuration controls. Explicit empty lists deny that category rather than inherit it.
 
 ## Audit filters and grouped records
 
 Audit puts actor, operation, and result in one filter row and the inclusive UTC date bounds together in a second row. At narrow widths the filters form one column. Audit provides exact actor, operation type, and result filters plus inclusive UTC date bounds. They apply to all retained records on the server, not just the loaded page. The authenticated `GET /api/audit` endpoint accepts optional `actor`, `operation`, `outcome`, `from`, and `to` query parameters. Text filters contain 1–128 characters. Dates are non-negative integer Unix milliseconds; reversed bounds and duplicate filter parameters are rejected. The response remains an array, ordered by descending record ID, with 100 records per page and the existing bounded `offset` parameter. Unfiltered callers remain compatible. Live inserts can shift offset pages; reload to see the latest records.
 
 Adjacent structured save/application records for the same revision and save target are grouped within the loaded page. Failed applications remain visible in the group summary; expand it for each record and raw data. Groups can continue on adjacent pages, and filters can omit related records. Login events and unrelated save targets stay separate. Historical field-level changes were not recorded; the UI does not invent a change diff. Filtering and pagination do not reload or clear policy drafts. Chat History continues to use the independent unfiltered loaded audit page.
+
+## Skills
+
+**Skills** controls which loaded Pi skills appear in each chat’s model prompt. The inventory contains skill names and descriptions, not file paths or file content. Descriptions are untrusted text, not executable instructions in the WebUI.
+
+- Global skill availability limits shared-default and explicit chat selections. **Default chat selection** applies to chats with no skill override. In **Chats → Model & Tools → Enabled skills**, **Inherit default** uses that shared list; an explicit empty list selects no skills. **Reset enabled skills to default** restores inheritance.
+- Skill changes use **Apply policy changes**, with the same revision, audit, application, and session invalidation flow as other policy edits. Navigation retains drafts. Defaults shows saved and pending effective skill names and links to the Skills editor. **Reset all chats to inherit defaults** also clears skill overrides, including explicit empty lists.
+- First registration adds loaded skill names to global and shared-default selections, within the 512-name limits. Existing tool permissions and access approvals do not change. Registration preserves explicit chat overrides. A persistent first-seen registry prevents restart from restoring manually removed selections. Names that exceed capacity are retried on the next startup after space is available.
+- Install or update skill files on the host and restart the bot to refresh discovery. Discovery uses the same Pi resource loader as the runtime, including root `skills/` and the bundled URL-reader skills. Names outside the policy’s 1–256-character limit are skipped with a startup diagnostic; other skills and administration startup remain available. The WebUI does not install, edit, or delete skill files.
+- A skill that is no longer loaded remains visible when saved or draft selections reference it. It is not added to runtime prompts. Removing global availability retains default and chat selections for review; clear all conflicting selections, including disabled chat overrides, or restore global availability before saving.
+- Skill selection controls prompt visibility only. It does not grant tool access, prevent an authorized file tool from reading a skill file, or remove skill content from conversation history. Tool and MCP permissions remain separate. Install only trusted skills.
+
+Existing saved policies load with empty global skill lists and inherited chat skill selections. Startup registration enables loaded skills once to retain the previous default behavior. The database keeps its existing access, models, tools, sessions, and audit history. Before rollback to a version with the previous strict policy schema, restore the matching database backup; that version does not accept skill fields.
 
 ## Tool permissions and defaults
 
@@ -247,7 +261,7 @@ Adjacent structured save/application records for the same revision and save targ
 - Global removal does not delete default or chat selections. The existing backend rejects a policy save while any of those selections exceed the global list, including disabled chat overrides. The workspace shows retained selections and exact explicit-override references. Clear each conflicting selection explicitly or restore the global permission before saving. An unavailable, unselected default cannot be granted; a retained default can still be cleared.
 - Counts describe default names within global permission, not working connections or executable MCP tools. MCP execution requires both the server gate and exact tool-name permission. First registration or discovery adds new tool names to global and shared-default permissions. This includes built-in tools at startup and MCP tools during connection tests or runtime discovery. Explicit chat tool overrides and server gates stay unchanged. A persistent first-seen registry prevents later discovery or restart from restoring manually removed permissions. On upgrade, existing selected names are retained without changes; other registered names are enabled. Automatic registration adds only names that fit within both 512-name permission lists. Overflow names stay unregistered and are retried on the next registration or discovery after space is available. Registration records an audit event and a new revision without cancelling active work; pending or failed application remains blocked. Exposure does not grant execution permission.
 - **MCP connections** manages configuration, enabled state, masked secret replacement, explicit tests, and discovery. Its read-only permission summary identifies saved policy or policy drafts and links to Tool permissions. Viewing or navigating does not test connections or discover tools. Connection saves remain separate from policy saves.
-- **Reset all chats to inherit defaults** stages removal of tool, MCP-server, allowed-model, model, and thinking overrides from every policy chat entry, including entries outside the loaded directory page. The confirmation counts entries with an explicit override. Access lists, chat-enabled switches, and shared defaults do not change. Explicit empty selections also become inherited. Use **Apply policy changes** to persist the reset.
+- **Reset all chats to inherit defaults** stages removal of tool, MCP-server, skill, allowed-model, model, and thinking overrides from every policy chat entry, including entries outside the loaded directory page. The confirmation counts entries with an explicit override. Access lists, chat-enabled switches, and shared defaults do not change. Explicit empty selections also become inherited. Use **Apply policy changes** to persist the reset.
 
 ## Editing scope and status
 

@@ -81,6 +81,7 @@ export const sections = [
   "Access",
   "Defaults",
   "Tool permissions",
+  "Skills",
   "MCP connections",
   "Model providers",
   "Audit",

@@ -37,6 +37,7 @@ import { Providers } from "./providers.js"
 import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
+import { Skills } from "./skills.js"
 import { countText } from "./status-text.js"
 import { PageHeader, Panel, Prose } from "./surfaces.js"
 import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js"
@@ -51,6 +52,7 @@ const pageDescriptions = {
   Access: "Approve private chats, groups, and channels.",
   Defaults: "Set shared settings and inheritance.",
   "Tool permissions": "Manage global, default, and chat permissions.",
+  Skills: "Manage skill instructions for defaults and individual chats.",
   "MCP connections": "Manage connections and protected configuration.",
   "Model Providers": "Manage models and provider authentication.",
   Audit: "Review configuration activity and imports.",
@@ -61,6 +63,7 @@ function App() {
   const [savedPolicy, setSavedPolicy] = useState<Policy>()
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const { page, setPage, chat, setChat } = useNavigation()
+  const [detailsRequest, setDetailsRequest] = useState(0)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -359,6 +362,7 @@ function App() {
             <ChatWorkspace
               directory={directory}
               chat={chat}
+              detailsRequest={detailsRequest}
               onSelect={setChat}
               policy={policy}
               savedPolicy={savedPolicy ?? policy}
@@ -546,11 +550,11 @@ function App() {
                       "chat has",
                       "chats have",
                     )}{" "}
-                    explicit overrides in the policy draft. Clear tool, MCP server, allowed model,
-                    model, and thinking overrides for all chats, including chats outside the current
-                    page. Explicit empty lists will also inherit Defaults. Chat access and enabled
-                    switches stay unchanged. Future chats already inherit Defaults. This stages
-                    edits only; use Apply policy changes to apply them.
+                    explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed
+                    model, model, and thinking overrides for all chats, including chats outside the
+                    current page. Explicit empty lists will also inherit Defaults. Chat access and
+                    enabled switches stay unchanged. Future chats already inherit Defaults. This
+                    stages edits only; use Apply policy changes to apply them.
                   </AlertDialog.Description>
                   <Flex gap="3" mt="4">
                     <AlertDialog.Cancel>
@@ -578,38 +582,60 @@ function App() {
               </AlertDialog.Root>
             </section>
             <div className="defaults-layout">
-              <Panel className="defaults-summary">
-                <Heading size="3">Default tool permissions</Heading>
-                <Prose>
-                  Applies to chats without a tool or MCP-server permission override. Explicit
-                  overrides are not changed.
-                </Prose>
-                <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
-                {dirty && <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>}
-                <Button variant="soft" asChild>
-                  <a
-                    href={navigationHref(
-                      "Tool permissions",
-                      chat,
-                      new URL("#default-tool-permissions", window.location.href),
-                    )}
-                    onClick={(event) => {
-                      if (
-                        event.button !== 0 ||
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      )
-                        return
-                      event.preventDefault()
-                      setPage("Tool permissions", "default-tool-permissions")
-                    }}
-                  >
-                    Manage default tool permissions
-                  </a>
-                </Button>
-              </Panel>
+              <Flex direction="column" gap="4" className="defaults-capabilities">
+                <Panel className="defaults-summary">
+                  <Heading size="3">Default tool permissions</Heading>
+                  <Prose>
+                    Applies to chats without a tool or MCP-server permission override. Explicit
+                    overrides are not changed.
+                  </Prose>
+                  <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
+                  {dirty && (
+                    <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>
+                  )}
+                  <Button variant="soft" asChild>
+                    <a
+                      href={navigationHref(
+                        "Tool permissions",
+                        chat,
+                        new URL("#default-tool-permissions", window.location.href),
+                      )}
+                      onClick={(event) => {
+                        if (
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        )
+                          return
+                        event.preventDefault()
+                        setPage("Tool permissions", "default-tool-permissions")
+                      }}
+                    >
+                      Manage default tool permissions
+                    </a>
+                  </Button>
+                </Panel>
+                <Panel className="defaults-summary">
+                  <Heading size="3">Default skills</Heading>
+                  <Prose>
+                    Saved skills:{" "}
+                    {effectivePolicy(savedPolicy ?? policy, 0).skills.join(", ") || "None"}.
+                  </Prose>
+                  {dirty && (
+                    <Prose>
+                      Policy draft skills: {effectivePolicy(policy, 0).skills.join(", ") || "None"}.
+                    </Prose>
+                  )}
+                  <Prose size="2">
+                    Applies to chats without a skill override. Skills do not grant tool access.
+                  </Prose>
+                  <Button variant="soft" onClick={() => setPage("Skills")}>
+                    Manage default skills
+                  </Button>
+                </Panel>
+              </Flex>
               <section className="defaults-model" aria-label="Default model settings">
                 <Heading size="3">Model and thinking defaults</Heading>
                 <Prose size="2">
@@ -644,6 +670,19 @@ function App() {
                 />
               </section>
             </div>
+          </EditorSection>
+          <EditorSection active={page === "Skills"} aria-label="Skills">
+            <Skills
+              policy={policy}
+              saved={savedPolicy ?? policy}
+              inventory={inventory}
+              onChange={update}
+              onChat={(id) => {
+                setChat(id)
+                setPage("Chats")
+                setDetailsRequest((request) => request + 1)
+              }}
+            />
           </EditorSection>
           <EditorSection
             active={page === "Tool permissions"}
