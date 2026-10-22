@@ -6,7 +6,7 @@ import type {
   DurableInspectionView,
 } from "@narumitw/sumire-contracts"
 import type { Page } from "@playwright/test"
-import { sectionLabel } from "./admin-fixture.js"
+import { sectionLabel } from "./admin-fixture.ts"
 
 export const readAt = "2026-10-19T12:00:00.000Z"
 export const untrusted =

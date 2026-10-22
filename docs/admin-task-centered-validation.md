@@ -60,16 +60,17 @@ The confirmation lists changed fields and their scope and retains the active-wor
 
 ## Verification results
 
-Local checks after the CI layout fix passed on Node.js 26.10.0. Remote results are available in the [PR #159 checks](https://github.com/narumiruna/sumire/pull/159/checks).
+Local verification after both CI fixes used Node.js 26.10.0. Remote results are available in the [PR #159 checks](https://github.com/narumiruna/sumire/pull/159/checks).
 
 | Check | Result |
 | --- | --- |
-| `npm run test --workspace @narumitw/sumire-admin` | 272 tests passed in 22 files |
+| `npm run test --workspace @narumitw/sumire-admin` | 273 tests passed in 23 files |
 | Complete Chromium suite | 306 tests passed, including 24 task-centered cases and four fallback-font workspace cases |
 | Root `npm run format:check` | Passed |
 | Root `npm run lint` | Passed without warnings |
 | Root `npm run typecheck` | Passed |
-| Root `npm test` | 1,968 tests passed across all nine workspaces |
+| Root `npm test` | Latest local retry failed in ten unchanged bot timing cases on the shared host |
+| Root `npm test -- -- --maxWorkers=2` | 1,969 tests passed across all nine workspaces; same cases and timeouts |
 | Root `npm run build` | Passed |
 | `git diff --check` | Passed |
 
@@ -93,6 +94,16 @@ Intermediate integration runs failed on a JSX brace error and selectors for inte
 The default macOS font kept the page title on one line. Arial and Verdana wrapped the title to two lines and reproduced the same 416.875px result locally. The mobile page header had both bottom padding and bottom margin. Reducing that duplicate space keeps the complete title, existing text sizes, and 44px action targets. The fix changes only narrow-screen header spacing, not the test limit.
 
 Four new 320px cases cover message and tool content with Arial and Verdana. They failed before the CSS fix and pass after it. The tests retain the 410px limit, assert the requested fallback font, and attach title/header/content bounds. The focused workspace suite passed 18 cases; the complete browser suite passed 306 cases. All five root checks passed again. No CI retry policy, timeout increase, or workflow change was required.
+
+### Native Node comparison capture
+
+[CI run 39829381816](https://github.com/narumiruna/sumire/actions/runs/39829381816) passed the complete browser suite, then failed to start Capture Durable comparison. Native Node TypeScript loading could not resolve `admin-fixture.js` from `durable-fixture.ts`. Playwright had resolved that specifier to its TypeScript source during browser tests, hiding the standalone-script failure.
+
+The fixture now imports the actual `admin-fixture.ts` file. The admin TypeScript configuration already permits that extension; no loader, dependency, or workflow change is needed. `src/comparison-script.test.ts` launches the actual script with native Node and no CLI arguments. It must reach the existing usage error before any browser starts. This test failed with the missing-module error before the import fix and passes after it.
+
+The complete capture command also passed locally: `node apps/admin/scripts/capture-durable-comparison.ts origin/main /tmp/sumire-ci-159-durable-comparison`. It produced all six before/after screenshots at 1440, 390, and 320px. These generated files remain outside the repository.
+
+The final browser suite passed 306 cases with normal test timeouts. One local attempt exceeded the 300-second command limit; the complete rerun finished in the background without changing test timeouts. Formatting, lint, typecheck, and build passed again. The default local root test retry hit ten unchanged bot subprocess/deadline failures; the complete two-worker rerun passed all 1,969 tests. Only scheduling changed for that rerun, not test cases, assertions, or timeouts. Remote CI uses the normal root command; its current result is linked above.
 
 ## Review and remaining acceptance
 
