@@ -10,6 +10,7 @@ export const thinkingSchema = z.enum(["off", "minimal", "low", "medium", "high",
 export const selectionSchema = z
   .object({
     tools: names.nullable(),
+    skills: names.nullable().default(null),
     servers: names.nullable(),
     models: names.nullable(),
     model: z.string().min(1).max(256).nullable(),
@@ -54,6 +55,7 @@ export const providerSchema = z
 export const policySchema = z
   .object({
     tools: names,
+    skills: names.default([]),
     servers: names,
     models: names,
     defaults: selectionSchema,
@@ -82,6 +84,7 @@ export type Selection = z.infer<typeof selectionSchema>
 export type ProviderSettings = z.infer<typeof providerSchema>
 export const inherited: Selection = {
   tools: null,
+  skills: null,
   servers: null,
   models: null,
   model: null,
@@ -91,9 +94,10 @@ export const inherited: Selection = {
 export function initialPolicy(): Policy {
   return {
     tools: [],
+    skills: [],
     servers: [],
     models: [],
-    defaults: { ...inherited, tools: [], servers: [], models: [], thinking: "off" },
+    defaults: { ...inherited, tools: [], skills: [], servers: [], models: [], thinking: "off" },
     privateUsers: [],
     groups: [],
     chats: {},
@@ -104,7 +108,7 @@ export function initialPolicy(): Policy {
 export function effectivePolicy(policy: Policy, chatId: number) {
   const override = policy.chats[String(chatId)]
   const source = (key: keyof Selection) => (override?.[key] == null ? "default" : "chat")
-  const list = (key: "tools" | "servers" | "models") => {
+  const list = (key: "tools" | "skills" | "servers" | "models") => {
     const chosen = override?.[key] ?? policy.defaults[key] ?? []
     return chosen.filter((name) => policy[key].includes(name))
   }
@@ -118,6 +122,7 @@ export function effectivePolicy(policy: Policy, chatId: number) {
       override?.enabled !== false &&
       (chatId > 0 ? policy.privateUsers : policy.groups).includes(chatId),
     tools: list("tools"),
+    skills: list("skills"),
     servers: list("servers"),
     models,
     model: model && models.includes(model) ? model : null,
@@ -133,7 +138,7 @@ export function validateReferences(policy: Policy): void {
     ["Defaults", policy.defaults],
     ...Object.entries(policy.chats).map(([id, choice]) => [`Chats → ${id}`, choice] as const),
   ] as const) {
-    for (const key of ["tools", "servers", "models"] as const) {
+    for (const key of ["tools", "skills", "servers", "models"] as const) {
       const unavailable = choice[key]?.filter((value) => !policy[key].includes(value))
       if (unavailable?.length)
         throw new Error(

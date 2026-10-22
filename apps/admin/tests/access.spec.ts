@@ -110,7 +110,10 @@ async function fixture(page: Page, signedIn = true) {
 test("retains a fragment request through reload and virtual Passkey sign-in, then requires confirmation", async ({
   page,
   context,
+  baseURL,
 }) => {
+  const localUrl = new URL("/", baseURL)
+  localUrl.hostname = "localhost"
   const f = await fixture(page, false)
   const client = await context.newCDPSession(page)
   await client.send("WebAuthn.enable")
@@ -155,9 +158,9 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
       await route.fulfill({ json: { csrf: "csrf-fixture", actor: "42" } })
     }
   })
-  await page.goto(`http://localhost:17466/#allow=${token}`)
+  await page.goto(`${localUrl.origin}/#allow=${token}`)
   await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()
-  await expect(page).toHaveURL("http://localhost:17466/")
+  await expect(page).toHaveURL(`${localUrl.origin}/`)
   expect(f.state().resolutions).toBe(0)
   await page.reload()
   await page.getByRole("button", { name: "Sign in with passkey" }).click()
@@ -272,8 +275,9 @@ test("captures links opened in an existing WebUI tab without a document reload",
   const f = await fixture(page)
   await page.goto("/")
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
+  const initialUrl = page.url()
   await page.goto(`/#allow=${token}`)
-  await expect(page).toHaveURL("http://127.0.0.1:17466/")
+  await expect(page).toHaveURL(initialUrl)
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toBeEnabled()
   expect(f.state()).toMatchObject({ approvals: 0, resolutions: 1 })
 })

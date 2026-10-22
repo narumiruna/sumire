@@ -26,9 +26,11 @@ export function Check({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string
   checked: boolean
+  disabled?: boolean
   onChange(value: boolean): void
 }) {
   const id = useId()
@@ -38,6 +40,7 @@ export function Check({
         id={id}
         aria-label={label}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={(v) => onChange(v === true)}
       />
       {label}
@@ -356,7 +359,7 @@ export function Choices({
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
-  navigate(page: "Tool permissions" | "Model Providers"): void
+  navigate(page: "Tool permissions" | "Skills" | "Model Providers"): void
 }) {
   const model = value.model ?? policy.defaults.model
   const levels = inventory.providers
@@ -365,30 +368,37 @@ export function Choices({
   return (
     <Flex direction="column" gap="4" className="settings-stack policy-choices">
       <Grid gap="4" className="grid settings-grid policy-choice-lists">
-        {(defaults ? (["models"] as const) : (["tools", "servers", "models"] as const)).map(
-          (key) => (
-            <List
-              key={key}
-              label={
-                {
-                  tools: "Authorized tools",
-                  servers: "Authorized MCP servers",
-                  models: "Allowed models",
-                }[key]
-              }
-              options={policy[key]}
-              value={value[key]}
-              onChange={(v) => onChange({ ...value, [key]: v })}
-              inheritable={!defaults}
-              effective={effective[key]}
-            />
-          ),
-        )}
+        {(defaults
+          ? (["models"] as const)
+          : (["tools", "servers", "skills", "models"] as const)
+        ).map((key) => (
+          <List
+            key={key}
+            label={
+              {
+                tools: "Authorized tools",
+                servers: "Authorized MCP servers",
+                skills: "Enabled skills",
+                models: "Allowed models",
+              }[key]
+            }
+            options={policy[key] ?? []}
+            value={value[key] ?? null}
+            onChange={(v) => onChange({ ...value, [key]: v })}
+            inheritable={!defaults}
+            effective={effective[key]}
+          />
+        ))}
       </Grid>
       {!defaults && (
-        <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
-          Manage global and default tool permissions
-        </Button>
+        <Flex gap="3" wrap="wrap">
+          <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+            Manage global and default tool permissions
+          </Button>
+          <Button variant="ghost" onClick={() => navigate("Skills")}>
+            Manage global and default skills
+          </Button>
+        </Flex>
       )}
       {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
         <Callout.Root color="red" role="alert">

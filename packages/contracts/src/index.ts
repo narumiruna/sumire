@@ -27,6 +27,7 @@ export type Snapshot = {
 
 export interface Inventory {
   tools: string[]
+  skills?: { name: string; description: string }[]
   builtInTools?: string[]
   providers: {
     id: string

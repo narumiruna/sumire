@@ -16,10 +16,12 @@ function chatResponse(route: Route, chats: { id: number; name: string; type: str
 }
 
 const policy = {
+  skills: [],
   tools: ["read_url_content"],
   servers: [],
   models: ["fixture/test"],
   defaults: {
+    skills: [],
     tools: ["read_url_content"],
     servers: [],
     models: ["fixture/test"],
@@ -285,14 +287,21 @@ test("stages inheritance for all chat overrides without changing access or enabl
   page,
 }) => {
   await setup(page)
-  const inherited = { tools: null, servers: null, models: null, model: null, thinking: null }
+  const inherited = {
+    tools: null,
+    skills: null,
+    servers: null,
+    models: null,
+    model: null,
+    thinking: null,
+  }
   const original = {
     ...structuredClone(policy),
     groups: [-100],
     chats: {
       "42": { ...inherited, tools: [], model: "fixture/test", enabled: true },
       "-100": { ...inherited, models: [], thinking: "high", enabled: false },
-      "999": { ...inherited, servers: [], enabled: true },
+      "999": { ...inherited, servers: [], skills: [], enabled: true },
     },
   }
   let saved = structuredClone(original)
@@ -522,6 +531,9 @@ test("registers and signs in with a browser passkey without Telegram Web Login",
   context,
 }) => {
   await setup(page, false)
+  const localUrl = new URL(page.url())
+  localUrl.hostname = "localhost"
+  const origin = localUrl.origin
   const client = await context.newCDPSession(page)
   await client.send("WebAuthn.enable")
   await client.send("WebAuthn.addVirtualAuthenticator", {
@@ -541,7 +553,7 @@ test("registers and signs in with a browser passkey without Telegram Web Login",
   await page.route("**/auth/passkey/**", async (route) => {
     const path = new URL(route.request().url()).pathname
     expect(route.request().method()).toBe("POST")
-    expect(route.request().headers().origin).toBe("http://localhost:17466")
+    expect(route.request().headers().origin).toBe(origin)
     if (path === "/auth/passkey/register/options") {
       expect(route.request().postDataJSON()).toEqual({ setup: "s".repeat(43) })
       await route.fulfill({
@@ -571,9 +583,9 @@ test("registers and signs in with a browser passkey without Telegram Web Login",
       await route.fulfill({ json: { csrf: "browser-fixture", actor: "42" } })
     }
   })
-  await page.goto(`http://localhost:17466/#setup=${"s".repeat(43)}`)
+  await page.goto(`${origin}/#setup=${"s".repeat(43)}`)
   await expect(page.getByRole("button", { name: "Register passkey" })).toBeVisible()
-  await expect(page).toHaveURL("http://localhost:17466/")
+  await expect(page).toHaveURL(`${origin}/`)
   await page.getByRole("button", { name: "Register passkey" }).click()
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
   await page.getByRole("button", { name: "Sign out" }).click()
@@ -2724,7 +2736,9 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
       await route.fulfill({ json: { csrf: "browser-fixture", actor: "42" } })
     }
   })
-  await page.goto("http://localhost:17466/")
+  const localUrl = new URL(page.url())
+  localUrl.hostname = "localhost"
+  await page.goto(localUrl.href)
   await page.getByRole("button", { name: "Next chats", exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
     "Previous session name",

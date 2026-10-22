@@ -82,6 +82,7 @@ function ChatFact({
 export function ChatWorkspace({
   directory,
   chat,
+  detailsRequest,
   onSelect,
   policy,
   savedPolicy,
@@ -98,6 +99,7 @@ export function ChatWorkspace({
 }: {
   directory: ChatDirectory
   chat: string
+  detailsRequest: number
   onSelect(value: string): void
   policy: Policy
   savedPolicy: Policy
@@ -120,6 +122,9 @@ export function ChatWorkspace({
   const [access, setAccess] = useState("all")
   const [tab, setTab] = useState("overview")
   const [showDirectory, setShowDirectory] = useState(!chat)
+  useEffect(() => {
+    if (detailsRequest) setShowDirectory(false)
+  }, [detailsRequest])
   const directoryRef = useRef<HTMLElement>(null)
   const directoryScroll = useRef(0)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -678,6 +683,10 @@ export function ChatWorkspace({
                           {effective.tools.join(", ") || "None"} ·{" "}
                           {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
                         </ChatFact>
+                        <ChatFact label="Skills">
+                          {effective.skills.join(", ") || "None"} ·{" "}
+                          {effective.sources.skills === "chat" ? "Explicit override" : "Inherited"}
+                        </ChatFact>
                         <ChatFact label="MCP servers">
                           {effective.servers.join(", ") || "None"} ·{" "}
                           {effective.sources.servers === "chat" ? "Explicit override" : "Inherited"}
@@ -793,6 +802,10 @@ export function ChatWorkspace({
                       <ChatFact label="Tools">
                         {effective.tools.join(", ") || "None"} ·{" "}
                         {effective.sources.tools === "chat" ? "Explicit override" : "Inherited"}
+                      </ChatFact>
+                      <ChatFact label="Skills">
+                        {effective.skills.join(", ") || "None"} ·{" "}
+                        {effective.sources.skills === "chat" ? "Explicit override" : "Inherited"}
                       </ChatFact>
                       <ChatFact label="MCP servers">
                         {effective.servers.join(", ") || "None"} ·{" "}

@@ -412,9 +412,16 @@ describe("createPiSessionFactory", () => {
           .tools()
           .find(({ tool }) => tool.name === "read_url_content")?.tool.replay,
       ).toBe("unsafe")
-      expect(logger.info).toHaveBeenCalledWith(`Bot instructions loaded\n${session.systemPrompt}`, {
-        sha256: createHash("sha256").update(session.systemPrompt).digest("hex"),
-        chars: session.systemPrompt.length,
+      const instructionsLog = vi
+        .mocked(logger.info)
+        .mock.calls.findLast(([message]) => message.startsWith("Bot instructions loaded\n"))
+      const basePrompt = instructionsLog?.[0].slice("Bot instructions loaded\n".length) ?? ""
+      expect(basePrompt).toContain("Telegram 機器人助理")
+      expect(basePrompt).not.toContain("<available_skills>")
+      expect(session.systemPrompt).toContain(basePrompt)
+      expect(instructionsLog?.[1]).toEqual({
+        sha256: createHash("sha256").update(basePrompt).digest("hex"),
+        chars: basePrompt.length,
         tools: factory.toolNames,
       })
       expect(session.systemPrompt).toContain("Telegram 機器人助理")

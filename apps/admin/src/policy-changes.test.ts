@@ -1,4 +1,4 @@
-import { initialPolicy } from "@narumitw/sumire-policy"
+import { inherited, initialPolicy } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 
@@ -14,6 +14,7 @@ describe("policyChanges", () => {
     draft.groups = [-100]
     draft.chats["43"] = {
       tools: [],
+      skills: null,
       servers: null,
       models: null,
       model: null,
@@ -29,6 +30,18 @@ describe("policyChanges", () => {
       "Global tool availability",
     ])
   })
+  it("tracks global, default, and chat skill edits in the policy draft", () => {
+    const saved = initialPolicy()
+    const draft = structuredClone(saved)
+    draft.skills = ["load-public-url"]
+    draft.defaults.skills = ["load-public-url"]
+    draft.chats["42"] = { ...inherited, enabled: true, skills: [] }
+    expect(policyChanges(saved, draft)).toEqual([
+      "Chat 42: overrides or enabled switch",
+      "Shared defaults",
+      "Global skill availability",
+    ])
+  })
   it("does not include provider endpoint values in the summary", () => {
     const saved = initialPolicy()
     const draft = structuredClone(saved)
@@ -42,6 +55,7 @@ describe("withChatAccess", () => {
     const policy = initialPolicy()
     policy.privateUsers = [42]
     policy.chats["-100"] = {
+      skills: null,
       tools: [],
       servers: null,
       models: null,

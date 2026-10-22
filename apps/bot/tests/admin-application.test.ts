@@ -81,13 +81,13 @@ it("preserves observed metadata across repeated actual administration startup", 
           name: expectedName,
         })
         const { value } = store.createSession("42")
-        const metadata = (id: number) =>
+        const get = (route: string) =>
           new Promise<unknown>((resolve, reject) => {
             const req = request(
               {
                 hostname: "127.0.0.1",
                 port: (server.server.address() as AddressInfo).port,
-                path: `/api/chats?id=${id}`,
+                path: route,
                 headers: { host: "admin.example.test", cookie: `__Host-sumire-session=${value}` },
               },
               (res) => {
@@ -108,6 +108,9 @@ it("preserves observed metadata across repeated actual administration startup", 
             req.on("error", reject)
             req.end()
           })
+        const metadata = (id: number) => get(`/api/chats?id=${id}`)
+        expect(await get("/api/inventory")).toMatchObject({ skills: factory.skills })
+        expect(factory.skills).toContainEqual(expect.objectContaining({ name: "load-url-content" }))
         expect(await metadata(-100)).toEqual([
           expect.objectContaining({ name: expectedName, type: "supergroup" }),
         ])

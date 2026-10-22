@@ -358,8 +358,13 @@ textarea:focus-visible {
 .access-lists > .panel {
   margin-block: 16px 0;
 }
-.defaults-layout > .panel {
+.defaults-layout > .panel,
+.defaults-capabilities > .panel,
+.skills-workspace > .panel {
   margin: 0;
+}
+.skills-workspace {
+  overflow-wrap: anywhere;
 }
 .panel > :first-child {
   margin-top: 0;

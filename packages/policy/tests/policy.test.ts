@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "vitest"
+import type { z } from "zod"
 import {
   effectivePolicy,
   inherited,
   initialPolicy,
+  POLICY_MAX_NAMES,
   policySchema,
+  selectionSchema,
   validateReferences,
 } from "../src/index.js"
 
@@ -16,6 +19,83 @@ describe("shared policy", () => {
     policy.defaults.tools?.push("read")
     expect(initialPolicy().defaults.tools).toEqual([])
     expect(inherited.tools).toBeNull()
+    expect(policy.skills).toEqual([])
+    expect(policy.defaults.skills).toEqual([])
+    policy.skills.push("review")
+    policy.defaults.skills?.push("review")
+    expect(initialPolicy().skills).toEqual([])
+    expect(initialPolicy().defaults.skills).toEqual([])
+    expect(inherited.skills).toBeNull()
+  })
+
+  it("parses old policies and literal selections with safe skills defaults", () => {
+    const oldSelection = {
+      tools: null,
+      servers: null,
+      models: null,
+      model: null,
+      thinking: null,
+    } satisfies z.input<typeof selectionSchema>
+    expect(selectionSchema.parse(oldSelection)).toEqual(inherited)
+    expectTypeOf<z.output<typeof selectionSchema>["skills"]>().toEqualTypeOf<string[] | null>()
+    const oldPolicy = {
+      tools: [],
+      servers: [],
+      models: [],
+      defaults: oldSelection,
+      privateUsers: [42],
+      groups: [],
+      chats: { "42": { ...oldSelection, enabled: true } },
+      providers: [],
+    } satisfies z.input<typeof policySchema>
+    const parsed = policySchema.parse(oldPolicy)
+    expect(parsed.skills).toEqual([])
+    expect(parsed.defaults.skills).toBeNull()
+    expect(parsed.chats["42"]?.skills).toBeNull()
+    expect(effectivePolicy(parsed, 42).skills).toEqual([])
+    expect(() => validateReferences(parsed)).not.toThrow()
+  })
+
+  it("intersects skills with global availability and distinguishes inheritance from empty", () => {
+    const policy = initialPolicy()
+    policy.skills = ["review", "release"]
+    policy.defaults.skills = ["review"]
+    policy.chats["42"] = { ...inherited, enabled: true }
+    expect(effectivePolicy(policy, 42)).toMatchObject({
+      skills: ["review"],
+      sources: { skills: "default" },
+    })
+    policy.chats["42"].skills = []
+    expect(effectivePolicy(policy, 42)).toMatchObject({
+      skills: [],
+      sources: { skills: "chat" },
+    })
+    policy.chats["42"].skills = ["release", "unknown"]
+    expect(effectivePolicy(policy, 42).skills).toEqual(["release"])
+    expect(() => validateReferences(policy)).toThrow(
+      "Chats → 42: skills selection exceeds global availability: unknown",
+    )
+    policy.chats["42"].skills = null
+    policy.defaults.skills = ["unknown"]
+    expect(effectivePolicy(policy, 42).skills).toEqual([])
+    expect(() => validateReferences(policy)).toThrow(
+      "Defaults: skills selection exceeds global availability: unknown",
+    )
+    policy.defaults.skills = null
+    expect(effectivePolicy(policy, 42).skills).toEqual([])
+    expect(() => validateReferences(policy)).not.toThrow()
+  })
+
+  it("validates skill names, duplicates, and list capacity", () => {
+    for (const skills of [
+      [""],
+      ["x".repeat(257)],
+      ["review", "review"],
+      Array.from({ length: POLICY_MAX_NAMES + 1 }, (_, i) => `skill-${i}`),
+    ]) {
+      expect(policySchema.safeParse({ ...initialPolicy(), skills }).success).toBe(false)
+      expect(selectionSchema.safeParse({ ...inherited, skills }).success).toBe(false)
+    }
   })
 
   it("preserves inheritance, explicit empty lists, global ceilings, and sources", () => {

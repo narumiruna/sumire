@@ -30,6 +30,7 @@ export function policyChanges(saved: Policy, draft: Policy): string[] {
   for (const [key, label] of [
     ["defaults", "Shared defaults"],
     ["tools", "Global tool availability"],
+    ["skills", "Global skill availability"],
     ["servers", "Global MCP availability"],
     ["models", "Global model availability"],
     ["providers", "Provider configuration"],

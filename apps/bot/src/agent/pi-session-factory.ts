@@ -13,7 +13,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
-import { effectivePolicy } from "@narumitw/sumire-policy"
+import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import { createDurableInspector } from "../admin/durable-inspector.js"
 import type { McpAdmin } from "../admin/mcp.js"
 import { chatModelRuntime } from "../admin/providers.js"
@@ -46,6 +46,7 @@ const soulSectionPlaceholder = "{{SOUL_SECTION}}"
 export interface PiSessionFactory {
   modelRuntime?: ModelRuntime
   toolNames?: string[]
+  skills?: { name: string; description: string }[]
   create(chatId: number): Promise<DurableSession>
   listChats(): Promise<number[]>
 }
@@ -80,12 +81,16 @@ export async function createPiSessionFactory(
   await loader.reload()
   for (const diagnostic of loader.getSkills().diagnostics)
     logger.warn(`Pi skill diagnostic: ${diagnostic.message}`)
-  const systemPrompt = [
-    await buildSystemPrompt(settings),
-    formatSkillsForPrompt(loader.getSkills().skills),
-  ]
-    .filter(Boolean)
-    .join("\n\n")
+  const loadedSkills = loader.getSkills().skills.filter((skill) => {
+    if (policySchema.shape.skills.safeParse([skill.name]).success) return true
+    logger.warn("Pi skill skipped: name is outside administration policy limits", {
+      path: skill.filePath,
+    })
+    return false
+  })
+  const skills = loadedSkills.map(({ name, description }) => ({ name, description }))
+  control.store.registerSkills(skills.map(({ name }) => name))
+  const baseSystemPrompt = await buildSystemPrompt(settings)
   const urlTool = createUrlTool(createBotUrlLoader(settings), {
     selectableLoaders: selectableUrlLoaders,
     traceLoad: (url, requestedLoader, toolCallId, load) =>
@@ -108,15 +113,16 @@ export async function createPiSessionFactory(
     "update_progress",
   ]
   control.store.registerTools(toolNames)
-  logger.info(`Bot instructions loaded\n${systemPrompt}`, {
-    sha256: createHash("sha256").update(systemPrompt).digest("hex"),
-    chars: systemPrompt.length,
+  logger.info(`Bot instructions loaded\n${baseSystemPrompt}`, {
+    sha256: createHash("sha256").update(baseSystemPrompt).digest("hex"),
+    chars: baseSystemPrompt.length,
     tools: toolNames,
   })
 
   return {
     modelRuntime,
     toolNames,
+    skills,
 
     async listChats() {
       try {
@@ -143,6 +149,12 @@ export async function createPiSessionFactory(
       const state = control.store.snapshot()
       control.store.assertChat(chatId, state.revision)
       const policy = effectivePolicy(state.policy, chatId)
+      const systemPrompt = [
+        baseSystemPrompt,
+        formatSkillsForPrompt(loadedSkills.filter((skill) => policy.skills.includes(skill.name))),
+      ]
+        .filter(Boolean)
+        .join("\n\n")
       const assertSessionPolicy = () => {
         control.store.assertChat(chatId)
         const latest = control.store.snapshot()

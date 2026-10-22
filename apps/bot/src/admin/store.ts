@@ -50,6 +50,7 @@ export class AdminStore {
       )
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS known_tools (name TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS known_skills (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS imports (name TEXT PRIMARY KEY, report TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, applied INTEGER NOT NULL, status TEXT NOT NULL, policy TEXT NOT NULL, epoch INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, actor TEXT NOT NULL, time INTEGER NOT NULL, operation TEXT NOT NULL, revision INTEGER NOT NULL, outcome TEXT NOT NULL, target TEXT NOT NULL);
@@ -132,28 +133,35 @@ export class AdminStore {
   }
   /** Remember tools. Enable first-seen names only when enableNew is true. */
   registerTools(names: readonly string[], enableNew = true) {
+    this.registerNames("tools", names, enableNew)
+  }
+  /** Enable first-seen skills without restoring manually removed selections. */
+  registerSkills(names: string[]) {
+    this.registerNames("skills", names)
+  }
+  private registerNames(key: "tools" | "skills", names: readonly string[], enableNew = true) {
     this.db.exec("BEGIN IMMEDIATE")
     try {
       const state = this.snapshot()
-      const remember = this.db.prepare("INSERT OR IGNORE INTO known_tools VALUES (?)")
+      const remember = this.db.prepare(`INSERT OR IGNORE INTO known_${key} VALUES (?)`)
       if (!enableNew)
-        for (const name of policySchema.shape.tools.parse([...new Set(names)])) remember.run(name)
+        for (const name of policySchema.shape[key].parse([...new Set(names)])) remember.run(name)
       // Existing selections are already known, including selections denied globally.
       for (const name of [
-        ...state.policy.tools,
-        ...(state.policy.defaults.tools ?? []),
-        ...Object.values(state.policy.chats).flatMap((chat) => chat.tools ?? []),
+        ...state.policy[key],
+        ...(state.policy.defaults[key] ?? []),
+        ...Object.values(state.policy.chats).flatMap((chat) => chat[key] ?? []),
       ])
         remember.run(name)
       const capacity = Math.max(
         0,
         Math.min(
-          POLICY_MAX_NAMES - state.policy.tools.length,
-          POLICY_MAX_NAMES - (state.policy.defaults.tools?.length ?? 0),
+          POLICY_MAX_NAMES - state.policy[key].length,
+          POLICY_MAX_NAMES - (state.policy.defaults[key]?.length ?? 0),
         ),
       )
       const known = new Set(
-        (this.db.prepare("SELECT name FROM known_tools").all() as { name: string }[]).map(
+        (this.db.prepare(`SELECT name FROM known_${key}`).all() as { name: string }[]).map(
           (row) => row.name,
         ),
       )
@@ -161,8 +169,8 @@ export class AdminStore {
       const added = [...new Set(names)].filter((name) => !known.has(name)).slice(0, capacity)
       for (const name of added) remember.run(name)
       if (added.length) {
-        state.policy.tools.push(...added)
-        state.policy.defaults.tools = [...(state.policy.defaults.tools ?? []), ...added]
+        state.policy[key].push(...added)
+        state.policy.defaults[key] = [...(state.policy.defaults[key] ?? []), ...added]
         const policy = policySchema.parse(state.policy)
         // No model, admission, server gate, or explicit chat selection changes.
         // Pending and failed revisions remain unavailable until normal application.
@@ -171,7 +179,7 @@ export class AdminStore {
             "UPDATE settings SET revision=revision+1, applied=CASE WHEN status='applied' AND applied=revision THEN revision+1 ELSE applied END, policy=? WHERE id=1",
           )
           .run(JSON.stringify(policy))
-        this.audit("system", "tools.register", state.revision + 1, "enabled", added.join(", "))
+        this.audit("system", `${key}.register`, state.revision + 1, "enabled", added.join(", "))
       }
       this.db.exec("COMMIT")
     } catch (error) {
