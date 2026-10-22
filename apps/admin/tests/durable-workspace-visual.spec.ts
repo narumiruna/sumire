@@ -108,15 +108,23 @@ async function openRecords(page: Page, width: number) {
 }
 
 for (const viewport of [
-  { width: 1440, height: 900 },
-  { width: 768, height: 1024 },
-  { width: 390, height: 844 },
-  { width: 320, height: 844 },
+  { width: 1440, height: 900, font: "" },
+  { width: 768, height: 1024, font: "" },
+  { width: 390, height: 844, font: "" },
+  { width: 320, height: 844, font: "" },
+  { width: 320, height: 844, font: "Arial" },
+  { width: 320, height: 844, font: "Verdana" },
 ]) {
   for (const record of ["user", "tool"] as const) {
-    test(`real Durable workspace: ${record} at ${viewport.width}px`, async ({ page }, testInfo) => {
-      await page.setViewportSize(viewport)
+    test(`real Durable workspace: ${record} at ${viewport.width}px${viewport.font ? ` with ${viewport.font} fallback font` : ""}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height })
       const state = await fixture(page, record)
+      if (viewport.font)
+        await page.addStyleTag({
+          content: `.radix-themes { --default-font-family: ${viewport.font}, sans-serif; }`,
+        })
       await expect.poll(() => state.requests.length).toBe(3)
       const detail = page.getByRole("region", { name: "Selected item details", exact: true })
       await expect(detail).toBeVisible()
@@ -141,6 +149,20 @@ for (const viewport of [
       if (viewport.width < 1100) {
         await expect(tree(page)).toBeHidden()
         expect((await body.boundingBox())?.y).toBeLessThan(viewport.height * 0.7)
+        await testInfo.attach("workspace-geometry", {
+          contentType: "application/json",
+          body: JSON.stringify({
+            viewport,
+            pageHeading: await page.locator("#current-section-heading").boundingBox(),
+            pageHeader: await page.locator(".workspace-header").boundingBox(),
+            content: await body.boundingBox(),
+          }),
+        })
+        if (viewport.font)
+          await expect(page.locator("#current-section-heading")).toHaveCSS(
+            "font-family",
+            new RegExp(viewport.font),
+          )
         if (viewport.width <= 650) expect((await body.boundingBox())?.y).toBeLessThanOrEqual(410)
         await page.screenshot({ path: testInfo.outputPath("workspace-closed.png"), fullPage: true })
       } else {

@@ -60,12 +60,12 @@ The confirmation lists changed fields and their scope and retains the active-wor
 
 ## Verification results
 
-Final checks passed on Node.js 26.10.0:
+Local checks after the CI layout fix passed on Node.js 26.10.0. Remote results are available in the [PR #159 checks](https://github.com/narumiruna/sumire/pull/159/checks).
 
 | Check | Result |
 | --- | --- |
 | `npm run test --workspace @narumitw/sumire-admin` | 272 tests passed in 22 files |
-| Complete Chromium suite | 302 tests passed, including 24 new task-centered cases |
+| Complete Chromium suite | 306 tests passed, including 24 task-centered cases and four fallback-font workspace cases |
 | Root `npm run format:check` | Passed |
 | Root `npm run lint` | Passed without warnings |
 | Root `npm run typecheck` | Passed |
@@ -73,7 +73,7 @@ Final checks passed on Node.js 26.10.0:
 | Root `npm run build` | Passed |
 | `git diff --check` | Passed |
 
-The complete browser command was `npm run test:browser --workspace @narumitw/sumire-admin -- --config playwright.task-centered.config.ts --workers=2 --timeout=60000`. The temporary configuration imported `playwright.config.ts`, retained its Chromium/test settings, and set both baseURL and webServer URL to `http://127.0.0.1:17476`. Its webServer command was `npm run dev -- --port 17476`; server reuse remained disabled. The temporary file was removed after testing. The existing listener on 17466 was unchanged. The final suite ran without source or test edits.
+The complete browser command after the CI fix was `npm run test:browser --workspace @narumitw/sumire-admin -- --config playwright.ci-fix.config.ts --workers=2`, with the normal test timeout. The temporary configuration imported `playwright.config.ts`, retained its Chromium/test settings, and set both baseURL and webServer URL to `http://127.0.0.1:17476`. Its webServer command was `npm run dev -- --port 17476`; server reuse remained disabled. The temporary file was removed after testing. The existing listener on 17466 was unchanged. The final suite ran without source or test edits.
 
 | Viewport | Final complete visible rows | Final clean save line |
 | --- | --- | --- |
@@ -85,6 +85,14 @@ The measurement fixture has 17 named private chats, one approved chat, and missi
 Reflow checks include 1440, 850, 390, and 320 CSS pixels and 200% CSS zoom. Contrast checks use composited computed colors and require 4.5:1 text and 3:1 control boundaries. These checks are not screen-reader certification or real-device browser zoom evidence.
 
 Intermediate integration runs failed on a JSX brace error and selectors for intentionally changed labels, disclosures, and pagination. These were corrected before the final runs. A real 320px regression put selected conversation content below the existing 410px bound. The longer navigation label caused wrapping; the mobile trigger now bounds and truncates visible text while retaining its full accessible name. The original 410px bound passes without relaxation. An intermediate root run also failed three unchanged bot subprocess/deadline tests while browser tests ran. The complete root suite passed after the browser run ended; no bot changes were made.
+
+### CI fallback-font regression
+
+[CI run 39822262468](https://github.com/narumiruna/sumire/actions/runs/39822262468) passed 300 browser cases but failed the two 320px conversation workspace cases. Message and tool-output content started at 416.875px, below the unchanged 410px limit. Browser installation succeeded; it was not the failure.
+
+The default macOS font kept the page title on one line. Arial and Verdana wrapped the title to two lines and reproduced the same 416.875px result locally. The mobile page header had both bottom padding and bottom margin. Reducing that duplicate space keeps the complete title, existing text sizes, and 44px action targets. The fix changes only narrow-screen header spacing, not the test limit.
+
+Four new 320px cases cover message and tool content with Arial and Verdana. They failed before the CSS fix and pass after it. The tests retain the 410px limit, assert the requested fallback font, and attach title/header/content bounds. The focused workspace suite passed 18 cases; the complete browser suite passed 306 cases. All five root checks passed again. No CI retry policy, timeout increase, or workflow change was required.
 
 ## Review and remaining acceptance
 

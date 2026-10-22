@@ -4,7 +4,7 @@
 
 Let an administrator identify a chat's known operating state, blocking reason, and next action from the directory and chat header. Reduce save controls and internal terminology without changing authorization, policy resolution, or save boundaries.
 
-Implementation and pull-request delivery were authorized by the user after this plan was drafted. Production deployment and live settings changes remain outside this authorization. Actual user acceptance is still required before this plan can be deleted. Checked tasks are supported by `docs/admin-task-centered-validation.md`, including 272 admin unit tests, 302 browser tests, and all five root checks. The user-acceptance task below is blocked on the administrator's direct review; fixture tests are not a substitute.
+Implementation and pull-request delivery were authorized by the user after this plan was drafted. Production deployment and live settings changes remain outside this authorization. Actual user acceptance is still required before this plan can be deleted. Checked tasks are supported by `docs/admin-task-centered-validation.md`, including 272 admin unit tests, 306 browser tests, and all five root checks. The CI font-layout correction and its failing-before/passing-after cases are recorded in the same validation document. The user-acceptance task below is blocked on the administrator's direct review; fixture tests are not a substitute.
 
 ## Context
 

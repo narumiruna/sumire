@@ -2501,6 +2501,10 @@ main .durable-record-meta a {
   .panel {
     padding: 12px;
   }
+  .admin-shell-durable .workspace-header {
+    margin-bottom: 4px;
+    padding-bottom: 0;
+  }
   .admin-shell-durable .workspace-header .workspace-action-label {
     display: none;
   }
