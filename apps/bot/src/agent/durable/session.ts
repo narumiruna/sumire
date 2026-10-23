@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import path from "node:path"
 
 import type { AttachedReplicatedState } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
@@ -34,6 +35,7 @@ import type { Logger } from "../../logging.js"
 import type { SessionHandle } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
 import { forwardDurableEvent } from "./events.js"
+import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
 import { BotSessionDoc, OutboxDoc, type PendingResponse, type ResponseDelivery } from "./state.js"
@@ -67,10 +69,13 @@ export class DurableSession implements SessionHandle {
     private readonly logger: Logger,
     private readonly cleanup: () => Promise<void>,
     private readonly inspection?: DurableInspectionReader,
+    private readonly authorizeMedia: () => void = () => {
+      throw new Error("Image delivery is unavailable")
+    },
   ) {
     this.#conversation = conversation
     this.#model = model
-    this.#outbox = new DurableOutbox(harness)
+    this.#outbox = new DurableOutbox(harness, new GeneratedMediaFiles(path.dirname(sessionFile)))
   }
 
   static async open(options: {
@@ -86,6 +91,7 @@ export class DurableSession implements SessionHandle {
     logger: Logger
     cleanup?: () => Promise<void>
     inspection?: DurableInspectionReader
+    authorizeMedia?: () => void
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -135,6 +141,7 @@ export class DurableSession implements SessionHandle {
       options.logger,
       options.cleanup ?? (() => Promise.resolve()),
       options.inspection,
+      options.authorizeMedia,
     )
     session.sessionId = saved.sessionId
     session.#thinkingLevel = clampThinkingLevel(selected, agent.thinkingLevel ?? "off")
@@ -146,6 +153,7 @@ export class DurableSession implements SessionHandle {
       },
       context,
     )
+    await session.#outbox.prepareFiles()
     await session.attach()
     return session
   }
@@ -273,21 +281,18 @@ export class DurableSession implements SessionHandle {
       if (this.#closing) return { text: "" }
       await this.#conversation.waitForIdle(context)
       await this.refresh()
-      if (settled.status !== "done" || settled.type !== "input") {
-        // Terminal failures still need their transport fallback delivered and acknowledged.
-        return { text: "", ...(pending ? { requestId } : {}) }
-      }
+      const done = settled.status === "done" && settled.type === "input"
       const answer = this.#lastEntries.findLast((entry) =>
         entry.model?.some((message) => message.role === "assistant"),
       )
-      const text = assistantText(answer)
-      // An empty answer still needs its Telegram fallback delivered and acknowledged.
-      if (pending && answer) await this.#outbox.captureAnswer(requestId, answer.id)
-      return {
-        text,
-        ...(answer ? { entryId: checkpointId(answer) } : {}),
-        ...(pending ? { requestId } : {}),
+      const text = done ? assistantText(answer) : ""
+      if (pending) {
+        const result = await this.#outbox.answer(requestId, text, answer)
+        if (answer && (done || result.media?.length))
+          await this.#outbox.captureAnswer(requestId, answer.id)
+        return done || result.media?.length ? result : { text: "", requestId }
       }
+      return { text, ...(done && answer ? { entryId: checkpointId(answer) } : {}) }
     } finally {
       this.#prompting--
     }
@@ -402,6 +407,27 @@ export class DurableSession implements SessionHandle {
     return this.#outbox.hasPendingResponses()
   }
 
+  assertResponseMediaAccess(): void {
+    this.authorizeMedia()
+    if (this.#closing) throw new Error("Image delivery is unavailable")
+  }
+
+  async readResponseImage(requestId: string, id: string): Promise<Buffer> {
+    this.assertResponseMediaAccess()
+    const bytes = await this.#outbox.readImage(requestId, id)
+    this.assertResponseMediaAccess()
+    return bytes
+  }
+
+  async recordResponseComponent(
+    requestId: string,
+    component: string,
+    messageId: number,
+  ): Promise<void> {
+    if (this.#closing) throw new Error("Image delivery is unavailable")
+    await this.#outbox.recordComponent(requestId, component, messageId)
+  }
+
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
@@ -430,9 +456,13 @@ export class DurableSession implements SessionHandle {
     const epoch = this.#epoch
     await this.configureInput()
     if (epoch !== this.#epoch || this.#closing) return
+    const requestId = randomUUID()
+    await this.#outbox.relateInput(this.#conversation.id, requestId)
+    if (epoch !== this.#epoch || this.#closing) return
     await this.#conversation.submit(
       {
         type: "input",
+        requestId,
         content: images.length ? [{ type: "text", text }, ...images] : text,
         whenBusy,
       },

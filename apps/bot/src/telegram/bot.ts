@@ -32,6 +32,7 @@ import {
   downloadTelegramImage,
   TelegramDownloadTooLargeError,
 } from "./files.js"
+import { deliverGeneratedResponse } from "./media-delivery.js"
 import {
   audioReferences,
   captionCommandArguments,
@@ -1072,6 +1073,51 @@ export function createTelegramAgentBot(
         finalizingBotReplies.set(chatId, finalizing)
       }
       const resultDeliveryMode = result.kind === "completed" ? finalDeliveryMode : "default"
+      if (
+        result.kind === "completed" &&
+        result.media?.length &&
+        result.checkpoint &&
+        sourceMessageId
+      ) {
+        try {
+          if (retainedProgressMessageId !== undefined)
+            await sessions.recordDelivery(
+              chatId,
+              result.checkpoint,
+              [retainedProgressMessageId],
+              false,
+            )
+          const outcome = await deliverGeneratedResponse(
+            context,
+            sessions,
+            delivery,
+            result,
+            result.checkpoint,
+            {
+              sourceMessageId,
+              ...(status && retainedProgressMessageId === undefined
+                ? { statusMessageId: status.message_id }
+                : {}),
+              mode: resultDeliveryMode,
+            },
+            isCurrent,
+          )
+          if (outcome === "stale") await cancelStatus()
+        } catch {
+          logger.warn(
+            `Generated image delivery failed for chat_id=${chatId}; pending components retained`,
+          )
+          if (isCurrent())
+            await delivery.guardedReply(
+              context,
+              "圖片尚未完成傳送，已保留生成結果；服務重啟後會重試傳送，不會重新生成。",
+              replyOptions,
+              isCurrent,
+            )
+        }
+        clearPendingReply()
+        return
+      }
       let previousStatusId: number | undefined
       const deliveryResult = await withLogSpan(
         logger,

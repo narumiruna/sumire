@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import type { JsonValue } from "@earendil-works/chord"
 import { type ConversationId, defineDoc, type EntryId } from "@earendil-works/pi-durable"
+import type { GeneratedMedia } from "./media.js"
 
 export const BotSessionDoc = defineDoc({
   kind: "sumire.session",
@@ -40,11 +41,17 @@ export type PendingResponse = {
   content: JsonValue
   delivery: ResponseDelivery
   answerEntryId?: EntryId
+  media?: GeneratedMedia[]
+  textMessageIds?: number[]
+  relatedRequestIds?: string[]
 }
 
 export const OutboxDoc = defineDoc({
   kind: "sumire.outbox",
   version: 1,
   scope: "session",
-  initial: () => ({ pending: [] as PendingResponse[] }),
+  initial: () => ({
+    pending: [] as PendingResponse[],
+    mediaReceipts: [] as Array<{ requestId: string; id: string; messageId: number }>,
+  }),
 })

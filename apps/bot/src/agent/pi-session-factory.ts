@@ -31,11 +31,13 @@ import {
   guardDurableTool,
   type ToolNamespace,
 } from "./durable/codemode.js"
+import { GeneratedMediaFiles } from "./durable/media.js"
 import { migrateCodemodeStores } from "./durable/migration.js"
 import { createProgressExtension } from "./durable/progress.js"
 import { DurableSession } from "./durable/session.js"
 import { BotSessionDoc } from "./durable/state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
+import { createImagegenTool, hasCodexImageAuth, IMAGEGEN_TOOL } from "./imagegen.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -109,9 +111,11 @@ export async function createPiSessionFactory(
     ...coding.map((tool) => tool.name),
     ...baseTools.map((tool) => tool.name),
     ...publicPolymarketToolNames,
+    IMAGEGEN_TOOL,
     "codemode",
     "update_progress",
   ]
+  control.store.registerTools([IMAGEGEN_TOOL], false)
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${baseSystemPrompt}`, {
     sha256: createHash("sha256").update(baseSystemPrompt).digest("hex"),
@@ -209,7 +213,17 @@ export async function createPiSessionFactory(
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
       const polymarket = createPolymarketTools()
-      const chatCoding = coding.filter((tool) => control.store.allowsTool(chatId, tool.name))
+      const authorizeMedia = () => {
+        authorize(IMAGEGEN_TOOL)
+        if (!hasCodexImageAuth(modelRuntime))
+          throw new Error("Compatible Codex OAuth is unavailable")
+      }
+      const imagegen = hasCodexImageAuth(modelRuntime)
+        ? createImagegenTool(modelRuntime, new GeneratedMediaFiles(directory), authorizeMedia)
+        : undefined
+      const chatCoding = [...coding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
+        control.store.allowsTool(chatId, tool.name),
+      )
       const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
       const nativeTools = [...chatBaseTools]
       let mcpTools: import("./durable/tools.js").NativeTool[] = []
@@ -285,10 +299,7 @@ export async function createPiSessionFactory(
             section("tool_access", ({ agent }) => {
               const direct = agent.tools.map((tool) => tool.name)
               const indirect = direct.includes("codemode")
-                ? nativeTools
-                    .filter(isCodemodeCallable)
-                    .map((tool) => tool.name)
-                    .filter((name) => !direct.includes(name))
+                ? agent.callable.map((tool) => tool.name).filter((name) => !direct.includes(name))
                 : []
               return [
                 "This chat's current tool access is listed below. Skills and conversation history describe capabilities, not tool authorization.",
@@ -404,6 +415,7 @@ export async function createPiSessionFactory(
           nativeTools,
           logger,
           trustKey: `admin:${state.epoch}`,
+          authorizeMedia,
           cleanup,
         })
         await session.setModel(selectedModel)

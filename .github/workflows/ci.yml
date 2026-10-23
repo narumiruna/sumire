@@ -19,6 +19,7 @@ on:
       - "packages/url-reader/**"
       - "packages/pi-url-reader/**"
       - "packages/pi-polymarket/**"
+      - "packages/imagegen/**"
   pull_request:
     branches:
       - main
@@ -36,6 +37,7 @@ on:
       - "packages/url-reader/**"
       - "packages/pi-url-reader/**"
       - "packages/pi-polymarket/**"
+      - "packages/imagegen/**"
 
 jobs:
   typescript:

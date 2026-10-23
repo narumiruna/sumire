@@ -11,6 +11,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | [`apps/admin`](docs/admin-webui.md) | Passkey-authenticated Radix administration frontend, served by the bot. |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |
+| [`packages/imagegen`](packages/imagegen/README.md) | Experimental bounded Codex image generation client with bot-owned Telegram delivery. |
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
 | [`packages/pi-polymarket`](packages/pi-polymarket/README.md) | Pi tools for official Polymarket client queries and host-authorized trading. Requires Node.js 26 or newer. |
 | [`packages/url-reader`](packages/url-reader/README.md) | Source-aware URL reading library and CLI. |

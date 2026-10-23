@@ -2,10 +2,11 @@ import { type Bot, Context } from "grammy"
 
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { createTelegramDelivery } from "./delivery.js"
+import { deliverGeneratedResponse, type MediaDeliverySessions } from "./media-delivery.js"
 
 export async function recoverTelegramResponses(
   bot: Bot,
-  sessions: Pick<ChatSessionRegistry, "recover" | "recordDelivery">,
+  sessions: Pick<ChatSessionRegistry, "recover" | "recordDelivery"> & MediaDeliverySessions,
   delivery: ReturnType<typeof createTelegramDelivery>,
   chatIds: readonly number[],
 ): Promise<void> {
@@ -23,6 +24,20 @@ export async function recoverTelegramResponses(
       bot.api,
       bot.botInfo,
     )
+    if (answer.media?.length) {
+      if (!checkpoint) return false
+      return (
+        (await deliverGeneratedResponse(
+          recoveryContext,
+          sessions,
+          delivery,
+          answer,
+          checkpoint,
+          saved,
+          isCurrent,
+        )) === "delivered"
+      )
+    }
     const options = {
       reply_parameters: {
         message_id: saved.sourceMessageId,

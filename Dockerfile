@@ -41,6 +41,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
+COPY packages/imagegen/package.json packages/imagegen/package.json
 COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
 COPY packages/pi-polymarket/package.json packages/pi-polymarket/package.json
@@ -66,6 +67,12 @@ FROM dependencies AS progress-build
 COPY packages/progress/tsconfig*.json packages/progress/
 COPY packages/progress/src/ packages/progress/src/
 RUN npm run build --workspace @narumitw/sumire-progress
+
+FROM dependencies AS imagegen-build
+
+COPY packages/imagegen/tsconfig*.json packages/imagegen/
+COPY packages/imagegen/src/ packages/imagegen/src/
+RUN npm run build --workspace @narumitw/sumire-imagegen
 
 FROM dependencies AS polymarket-build
 
@@ -93,6 +100,7 @@ COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
 
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
+COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist
 COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
 COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
@@ -180,12 +188,14 @@ COPY --from=production-dependencies --chown=app:app /build/packages/contracts/pa
 COPY --from=production-dependencies --chown=app:app /build/packages/policy/package.json /app/packages/policy/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
+COPY --from=production-dependencies --chown=app:app /build/packages/imagegen/package.json /app/packages/imagegen/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/url-reader/package.json /app/packages/url-reader/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reader/package.json /app/packages/pi-url-reader/package.json
 COPY --from=production-dependencies --chown=app:app /build/packages/pi-polymarket/package.json /app/packages/pi-polymarket/package.json
 COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=imagegen-build --chown=app:app /build/packages/imagegen/dist /app/packages/imagegen/dist
 COPY --from=polymarket-build --chown=app:app /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist
 COPY --from=pi-url-reader-build --chown=app:app /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
@@ -201,6 +211,9 @@ RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 ENV HOME=/workdir
 USER app
+
+# Import image generation offline as the runtime user; do not resolve auth or consume quota.
+RUN --network=none node --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"
 
 # Verify both locked browser binaries and a real offline headless launch as the runtime user.
 RUN --network=none node /app/apps/bot/scripts/check-browser.mjs

@@ -10,6 +10,7 @@ import {
 } from "@narumitw/sumire-progress"
 import { AdminError, type AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
+import type { GeneratedMedia } from "./durable/media.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable/outbox.js"
 import type { ResponseDelivery } from "./durable/state.js"
 import { type PiReplyCheckpoint, TelegramReplyIndex } from "./reply-index.js"
@@ -20,7 +21,13 @@ export interface SubmissionCheckpoint extends PiReplyCheckpoint {
 }
 
 export type SubmissionResult =
-  | { kind: "completed"; text: string; checkpoint?: SubmissionCheckpoint }
+  | {
+      kind: "completed"
+      text: string
+      checkpoint?: SubmissionCheckpoint
+      media?: GeneratedMedia[]
+      textMessageIds?: number[]
+    }
   | { kind: "no_response"; text: string; checkpoint?: SubmissionCheckpoint }
   | { kind: "steered"; text: string }
   | { kind: "followed_up"; text: string }
@@ -53,6 +60,9 @@ export interface SessionHandle {
   dispose(): void | Promise<void>
   acknowledge(requestId: string): Promise<void>
   hasPendingResponses(): Promise<boolean>
+  assertResponseMediaAccess?(): void
+  readResponseImage?(requestId: string, id: string): Promise<Buffer>
+  recordResponseComponent?(requestId: string, component: string, messageId: number): Promise<void>
   recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void>
@@ -258,8 +268,11 @@ export class ChatSessionRegistry {
       const text = answer.text
       const entryId = answer.entryId ?? session.getCheckpoint()
       return {
-        kind: text ? "completed" : "no_response",
-        text: text || NO_RESPONSE_TEXT,
+        kind: text || answer.media?.length ? "completed" : "no_response",
+        text: text || (answer.media?.length ? "" : NO_RESPONSE_TEXT),
+        ...(answer.media?.length
+          ? { media: answer.media, textMessageIds: answer.textMessageIds ?? [] }
+          : {}),
         ...(entryId && (text || answer.requestId)
           ? {
               checkpoint: {
@@ -313,6 +326,7 @@ export class ChatSessionRegistry {
     chatId: number,
     checkpoint: SubmissionCheckpoint | undefined,
     telegramMessageIds: readonly number[],
+    acknowledge = true,
   ): Promise<void> {
     if (!checkpoint) return
     const session = this.#sessions.get(chatId)
@@ -334,13 +348,54 @@ export class ChatSessionRegistry {
         )
       }
     }
-    if (checkpoint.requestId) {
+    if (acknowledge && checkpoint.requestId) {
       try {
         await session.acknowledge(checkpoint.requestId)
       } catch (error) {
         this.logger.warn(`Could not acknowledge durable delivery for chat_id=${chatId}`, error)
       }
     }
+  }
+
+  #deliverySession(chatId: number, checkpoint: SubmissionCheckpoint) {
+    this.#assertCurrentGeneration(chatId, checkpoint.generation)
+    this.options.control.assertChat(chatId)
+    const session = this.#sessions.get(chatId)
+    if (!checkpoint.requestId || !session || session.sessionId !== checkpoint.sessionId)
+      throw new Error("Image delivery is stale")
+    return session
+  }
+
+  assertResponseMediaAccess(chatId: number, checkpoint: SubmissionCheckpoint): void {
+    const session = this.#deliverySession(chatId, checkpoint)
+    if (!session.assertResponseMediaAccess) throw new Error("Image delivery is unavailable")
+    session.assertResponseMediaAccess()
+  }
+
+  async readResponseImage(
+    chatId: number,
+    checkpoint: SubmissionCheckpoint,
+    id: string,
+  ): Promise<Buffer> {
+    const session = this.#deliverySession(chatId, checkpoint)
+    if (!session.readResponseImage) throw new Error("Image delivery is unavailable")
+    const bytes = await session.readResponseImage(checkpoint.requestId as string, id)
+    if (this.#deliverySession(chatId, checkpoint) !== session)
+      throw new Error("Image delivery is stale")
+    return bytes
+  }
+
+  async recordResponseComponent(
+    chatId: number,
+    checkpoint: SubmissionCheckpoint,
+    component: string,
+    messageId: number,
+  ): Promise<void> {
+    const session = this.#deliverySession(chatId, checkpoint)
+    if (!session.recordResponseComponent) throw new Error("Image delivery is unavailable")
+    await session.recordResponseComponent(checkpoint.requestId as string, component, messageId)
+    this.#deliverySession(chatId, checkpoint)
+    await this.recordDelivery(chatId, checkpoint, [messageId], false)
   }
 
   async recover(

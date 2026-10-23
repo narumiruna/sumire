@@ -261,6 +261,40 @@ Telegram polling retries transient failures such as `ECONNRESET` every five seco
 
 If polling warnings continue, check the container's outbound HTTPS connection to `api.telegram.org`, including any VPN, proxy, or firewall. Retries cannot fix a blocked network. If a token has appeared in old logs, revoke it via @BotFather, replace `BOT_TOKEN` in `.env`, and rebuild/recreate the service with `docker compose up -d --build sumire`.
 
+## Image generation
+
+`generate_image` generates one new image from a text prompt and sends it to the originating Telegram chat. Pi selects the tool from ordinary intent; there is no required command or keyword route.
+
+**Experimental:** The fixed endpoint is `https://chatgpt.com/backend-api/codex/images/generations`, using `gpt-image-2` with automatic quality/size and an opaque background. This is an internal ChatGPT endpoint, not the public OpenAI Images API. Account entitlement and live delivery require controlled verification; offline tests do not establish access.
+
+### Setup and permissions
+
+Use the existing administration Web UI to sign in to Pi's `openai-codex` provider, then explicitly allow `generate_image` for the intended chats and apply the policy. The tool is remembered without being enabled automatically. It is available only when both the tool policy and compatible Codex OAuth permit it, including calls through codemode.
+
+The separate `openai` OAuth flow, an OpenAI API key, and a login held only by Codex CLI do not enable this feature. Credentials stay in Pi's existing store; no new secret file, environment option, or CLI-auth import is added. The text model can use another authorized provider. Missing auth never selects another chat model.
+
+Generation consumes account quota. A cancelled, timed-out, or interrupted request is not retried automatically, and the remote service may continue generation or consume quota. Image editing, references, masks, batches, and transparent output are not supported.
+
+### Delivery and storage
+
+The image client bounds prompt length, streamed JSON, decoded image bytes, dimensions, time, and cancellation; see [the package contract](../../packages/imagegen/README.md). Only the prompt and fixed image options reach the endpoint. Arbitrary provider headers and Codex identity headers are not copied.
+
+Validated original bytes are saved privately under each chat's `durable/images/` directory in the existing state volume. Host-generated filenames prevent model-selected file uploads. Files use private permissions and atomic publication; a trusted durable receipt, not assistant text or historical tool image blocks, selects what is sent. Direct and nested codemode generation use the same receipt path, even when a script discards its return value.
+
+PNG/JPEG images within Telegram's photo constraints are uploaded as photos: at most 10 MB, width plus height at most 10,000, and aspect ratio at most 20. Other accepted originals, including WebP, are sent as documents. The 32 MiB image bound stays below the cloud Bot API's 50 MB document bound. No remote URL is passed to Telegram. Photo delivery can apply Telegram compression; document uploads preserve original bytes. Explanatory text keeps the existing text/Morsel policy; image bytes are not published to Morsel.
+
+Normal delivery and startup recovery share the same transport. Each confirmed text/media message is recorded before the next component, and every component is mapped to its reply checkpoint. The response is acknowledged only after all required components succeed. Recovery skips confirmed components and never generates again to retry an upload. Pending originals survive shutdown; acknowledgement removes unused originals and retains a bounded delivery history. Reset removes that chat's durable files.
+
+Telegram delivery is at least once. A crash or lost upload response after Telegram accepts a message but before its local receipt commits can cause a duplicate. There is no immediate photo-to-document fallback after an ambiguous upload. A crash before the image receipt commits can lose a generated image; the unsafe tool is still not replayed automatically. Missing or changed files fail delivery rather than uploading another file.
+
+### Verification and rollback
+
+Run workspace tests and all root checks before rollout. With account-owner permission, use a controlled Codex login and test Telegram chat for one generation/delivery request, then verify reply-tree behavior and a separate denied-tool chat. Stop after one clear entitlement or endpoint failure. Do not record tokens, account identifiers, prompts containing secrets, image bytes, or raw upstream errors in verification notes.
+
+The production Dockerfile has an offline import check as the non-root runtime user. A successful host build is not proof of the container check or live account access.
+
+Before rollout, stop the bot and back up the admin database, per-chat durable databases, and pending originals as one consistent snapshot. Disable `generate_image` through existing policy to stop new generation. Prefer a fixed release that drains pending media. Do not assume an older binary can safely acknowledge media-bearing outbox records: drain work first or restore the consistent pre-rollout snapshot when reverting. Keep the state volume and never use `docker compose down -v`.
+
 ## Channel image input (`read_image`)
 
 Enabled by default. Add the **channel chat ID** (a negative Telegram ID, typically starting with `-100`) to group/channel access in the WebUI, then save and apply. Existing explicitly allowlisted channels start indexing new images after this upgrade, even if an old environment flag was false. Obtain the ID through a trusted Telegram update inspection or a channel ID lookup; `/id` reports chat IDs only in existing user/group conversations. The bot must be an administrator of the channel to receive new `channel_post` updates and access its images; it does **not** need permission to publish posts. Grant only the minimum channel permissions Telegram requires. Do not put the bot token in a post or the repository.
