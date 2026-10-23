@@ -52,7 +52,10 @@ export function createTelegramDelivery(
     messageId: number,
     prepared: Awaited<ReturnType<typeof prepare>>,
     isCurrent: () => boolean,
+    authorize?: () => Promise<boolean>,
   ): Promise<EditResult> {
+    // Provider checks can await I/O; check current ownership synchronously before sending.
+    if (authorize && !(await authorize())) return "stale"
     if (!isCurrent()) return "stale"
     await context.api.editMessageText(
       chatId,
@@ -60,6 +63,7 @@ export function createTelegramDelivery(
       telegramHtmlChunks(prepared.text)[0] ?? " ",
       { parse_mode: "HTML" },
     )
+    if (authorize && !(await authorize())) return "stale"
     if (!isCurrent()) return "stale"
     return prepared.delivered ? "delivered" : "unavailable"
   }
@@ -71,9 +75,13 @@ export function createTelegramDelivery(
     prepared: Awaited<ReturnType<typeof prepare>>,
     options: Parameters<Context["reply"]>[1],
     isCurrent: () => boolean,
+    authorize?: () => Promise<boolean>,
   ) {
+    if (authorize && !(await authorize())) return { result: "stale" as const }
     if (!isCurrent()) return { result: "stale" as const }
     const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
+    if (authorize && !(await authorize())) return { message, result: "stale" as const }
+    if (!isCurrent()) return { message, result: "stale" as const }
     // The original may still be visible, or may have been deleted already.
     let previousMessageUpdated = false
     try {
@@ -84,6 +92,7 @@ export function createTelegramDelivery(
     } catch (cleanupError) {
       logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
     }
+    if (authorize && !(await authorize())) return { message, result: "stale" as const }
     if (!isCurrent()) return { message, result: "stale" as const }
     return {
       message,
@@ -115,9 +124,11 @@ export function createTelegramDelivery(
       options: Parameters<Context["reply"]>[1] | undefined,
       isCurrent: () => boolean,
       mode: DeliveryMode = "default",
+      authorize?: () => Promise<boolean>,
     ) {
       if (!isCurrent()) return { result: "stale" as const }
       const prepared = await prepare(text, mode)
+      if (authorize && !(await authorize())) return { result: "stale" as const }
       if (!isCurrent()) return { result: "stale" as const }
       const message = await context.reply(
         options?.parse_mode === "HTML"
@@ -125,6 +136,7 @@ export function createTelegramDelivery(
           : prepared.text,
         options,
       )
+      if (authorize && !(await authorize())) return { message, result: "stale" as const }
       if (!isCurrent()) return { message, result: "stale" as const }
       return {
         message,
@@ -154,12 +166,13 @@ export function createTelegramDelivery(
       options: Parameters<Context["reply"]>[1],
       isCurrent: () => boolean,
       mode: DeliveryMode = "default",
+      authorize?: () => Promise<boolean>,
     ) {
       if (!isCurrent()) return { result: "stale" as const }
       const prepared = await prepare(text, mode)
       try {
         return {
-          result: await editPrepared(context, chatId, messageId, prepared, isCurrent),
+          result: await editPrepared(context, chatId, messageId, prepared, isCurrent, authorize),
           message: undefined,
         }
       } catch (error) {
@@ -171,6 +184,7 @@ export function createTelegramDelivery(
           prepared,
           options,
           isCurrent,
+          authorize,
         )
       }
     },

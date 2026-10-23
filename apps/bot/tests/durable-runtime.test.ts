@@ -37,6 +37,12 @@ describe("durable bot runtime", () => {
       const info = vi.spyOn(fixture.logger, "info")
       const session = await fixture.createSession()
       expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
+        imagegen: {
+          available: false,
+          permitted: false,
+          installed: false,
+          reason: "Requires compatible openai-codex OAuth. Check Model providers.",
+        },
         tools,
         codemodeTools: [],
       })

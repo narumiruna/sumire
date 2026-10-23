@@ -25,8 +25,16 @@ export type Snapshot = {
   epoch: number
 }
 
+/** Provider requirements only; policy permission and live entitlement are separate. */
+export interface ToolAvailability {
+  available: boolean
+  /** Fixed host-owned diagnostic; never include credentials or raw upstream errors. */
+  reason: string
+}
+
 export interface Inventory {
   tools: string[]
+  toolAvailability?: Record<string, ToolAvailability>
   skills?: { name: string; description: string }[]
   builtInTools?: string[]
   providers: {

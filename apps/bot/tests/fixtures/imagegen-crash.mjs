@@ -34,14 +34,10 @@ runtime.registerProvider("openai", {
 })
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url")
 const token = `${encode({ alg: "RS256" })}.${encode({ "https://api.openai.com/auth": { chatgpt_account_id: "fixture-account" } })}.${encode("synthetic")}`
-const usingOAuth = runtime.isUsingOAuth.bind(runtime)
-const status = runtime.getProviderAuthStatus.bind(runtime)
 const check = runtime.checkAuth.bind(runtime)
 const auth = runtime.getAuth.bind(runtime)
 // Synthetic public auth seam; this process never reads or refreshes a real Codex credential.
-runtime.isUsingOAuth = (id) => id === "openai-codex" || usingOAuth(id)
-runtime.getProviderAuthStatus = (id) =>
-  id === "openai-codex" ? { configured: true, source: "stored" } : status(id)
+runtime.listCredentials = async () => [{ providerId: "openai-codex", type: "oauth" }]
 runtime.checkAuth = (id, options) =>
   id === "openai-codex" ? Promise.resolve({ type: "oauth" }) : check(id, options)
 runtime.getAuth = (model, options) =>

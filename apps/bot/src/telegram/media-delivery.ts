@@ -39,16 +39,17 @@ export async function deliverGeneratedResponse(
 ): Promise<"delivered" | "unavailable" | "stale"> {
   const chatId = context.chat?.id
   if (chatId === undefined) throw new Error("Image delivery chat is unavailable")
-  const isCurrent = () => {
+  const authorize = async () => {
     if (!isOwned()) return false
     try {
-      sessions.assertResponseMediaAccess?.(chatId, checkpoint)
-      return true
+      await sessions.assertResponseMediaAccess?.(chatId, checkpoint)
+      return isOwned()
     } catch {
       return false
     }
   }
-  if (!isCurrent()) return "stale"
+  const isCurrent = () => isOwned()
+  if (!(await authorize()) || !isCurrent()) return "stale"
   if (!sessions.readResponseImage || !sessions.recordResponseComponent)
     throw new Error("Image delivery is unavailable")
   const options = {
@@ -58,20 +59,20 @@ export async function deliverGeneratedResponse(
   const ids = [...(answer.textMessageIds ?? [])]
   // Generated images go directly to the user, independently of text/Morsel availability.
   for (const image of answer.media ?? []) {
-    if (!isCurrent()) return "stale"
+    if (!(await authorize()) || !isCurrent()) return "stale"
     if (image.messageId !== undefined) {
       ids.push(image.messageId)
       continue
     }
     const bytes = await sessions.readResponseImage(chatId, checkpoint, image.id)
-    if (!isCurrent()) return "stale"
+    if (!(await authorize()) || !isCurrent()) return "stale"
     const file = new InputFile(bytes, `${image.id}.${image.extension}`)
     const method = telegramImageMethod(image)
     // Never fall back or retry after an ambiguous upload: Telegram may have accepted it.
     const message = await context.api[method](chatId, file, {
       reply_parameters: options.reply_parameters,
     })
-    if (!isCurrent()) return "stale"
+    if (!(await authorize()) || !isCurrent()) return "stale"
     await sessions.recordResponseComponent(chatId, checkpoint, image.id, message.message_id)
     ids.push(message.message_id)
   }
@@ -79,7 +80,7 @@ export async function deliverGeneratedResponse(
     const text = answer.text || "圖片已生成。"
     const result =
       saved.statusMessageId === undefined
-        ? await delivery.guardedReply(context, text, options, isCurrent, saved.mode)
+        ? await delivery.guardedReply(context, text, options, isCurrent, saved.mode, authorize)
         : await delivery.editOrReply(
             context,
             chatId,
@@ -88,15 +89,16 @@ export async function deliverGeneratedResponse(
             options,
             isCurrent,
             saved.mode,
+            authorize,
           )
-    if (!isCurrent()) return "stale"
+    if (!(await authorize()) || !isCurrent()) return "stale"
     if (result.result !== "delivered") return result.result
     const messageId = result.message?.message_id ?? saved.statusMessageId
     if (messageId === undefined) throw new Error("Image response text was not delivered")
     await sessions.recordResponseComponent(chatId, checkpoint, "text", messageId)
     ids.push(messageId)
   }
-  if (!isCurrent()) return "stale"
+  if (!(await authorize()) || !isCurrent()) return "stale"
   await sessions.recordDelivery(chatId, checkpoint, ids)
   return "delivered"
 }

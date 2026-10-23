@@ -4,11 +4,14 @@ import {
   initialPolicy,
   validateReferences,
 } from "@narumitw/sumire-policy"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
 import {
   defaultPermissionSummary,
   permissionNames,
+  ToolPermissions,
   toolPermissionGroups,
 } from "./tool-permissions.js"
 
@@ -27,6 +30,42 @@ const inventory: Inventory = {
 }
 
 describe("tool permission presentation and existing policy rules", () => {
+  it.each([false, true])(
+    "shows provider requirements independently of approved policy (available=%s)",
+    (available) => {
+      const policy = initialPolicy()
+      policy.tools = ["generate_image"]
+      policy.defaults.tools = ["generate_image"]
+      const before = structuredClone(policy)
+      const reason = available
+        ? "Codex OAuth configured; image access not verified."
+        : "Requires Codex OAuth <not a probe>."
+      const html = renderToStaticMarkup(
+        createElement(ToolPermissions, {
+          actor: "42",
+          policy,
+          saved: policy,
+          dirty: false,
+          defaultContext: false,
+          inventory: {
+            ...inventory,
+            tools: ["generate_image"],
+            builtInTools: ["generate_image"],
+            toolAvailability: { generate_image: { available, reason } },
+          },
+          onChange: () => {
+            throw new Error("Rendering must not change policy")
+          },
+          onChat: () => {},
+        }),
+      )
+      expect(html).toContain(available ? "Capability configured" : "Capability unavailable")
+      expect(html).toContain(available ? reason : "Requires Codex OAuth &lt;not a probe&gt;.")
+      expect(html).toContain("Global permission alone does not install a tool")
+      expect(html).toContain("except approval-only tools such as generate_image")
+      expect(policy).toEqual(before)
+    },
+  )
   it("keeps saved, undiscovered, default, and explicit override names visible without granting discovery results", () => {
     const saved = initialPolicy()
     saved.tools = ["manual"]

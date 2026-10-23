@@ -25,6 +25,7 @@ interface AdminServices {
   mcp: McpAdmin
   apply(): Promise<void>
   tools(): string[]
+  toolAvailability?(): Promise<Inventory["toolAvailability"]>
   skills?(): Inventory["skills"]
   inspectDurable?(
     chatId: number,
@@ -363,6 +364,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           ...new Set([...services.tools(), ...mcp.inventory().flatMap((entry) => entry.tools)]),
         ],
         builtInTools: services.tools(),
+        toolAvailability: await services.toolAvailability?.(),
         skills: services.skills?.(),
         providers: providers.inventory(),
         mcp: mcp.inventory(),

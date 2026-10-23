@@ -1,6 +1,6 @@
 # Image Generation and Telegram Delivery Plan
 
-Status: External verification blocked. The direct image-delivery follow-up and local verification are complete. Live image access, real Telegram delivery, and the production container build remain unverified. This work did not perform a live image request, deployment, or publication. Retain this plan until the open acceptance items pass.
+Status: Tool-availability correction passes local verification; pull-request handoff is pending. External image-access, Telegram-delivery, and container acceptance items remain open. Logfire confirms that production requests did not receive `generate_image`; this is not live image-generation success evidence. Retain this plan until every open acceptance item passes.
 
 ## Goal
 
@@ -63,6 +63,25 @@ Follow-up branch: `narumi/fix/direct-image-delivery`, from `origin/main` at `97f
 - Additional slow-publication tests prove that the image is already sent and recorded while text publication waits, and that cancellation prevents later text delivery and acknowledgement.
 - All five required root commands and `npm run precommit` pass for this follow-up. The full test run passes 2,049 tests in 151 files.
 - The full follow-up diff was reviewed for correctness, ownership/auth checks, partial-delivery persistence, old confirmed-text compatibility, lifecycle cancellation, and scope. Original container/live verification blockers and their unchecked acceptance items are unchanged.
+
+### Tool-availability correction (2026-10-24)
+
+Branch: `narumi/fix/imagegen-tool-availability`, initially from `origin/main` at `97f22f3`, then rebased onto the deployed direct-delivery branch at `9731d9a`. This correction stacks onto PR #162 and preserves image-first delivery.
+
+- Read-only Logfire queries locate the reported requests at 2026-10-23 16:23–16:24 UTC. The first request's actual direct and Codemode inventories omit `generate_image`; the second uses the same session. No image request was made by this diagnostic.
+- Deployment run `39986250414` successfully deployed `9731d9a` before these requests, so absence is not explained by an imagegen-free binary.
+- A real Pi `ModelRuntime` with synthetic OAuth credentials reproduces the defect without network calls: `checkAuth("openai-codex")` returns OAuth while the unrefreshed snapshot reports no configured OAuth. The earlier imagegen tests mocked both snapshot methods and hid this case.
+- Global permissions, shared defaults, explicit chat overrides, and provider requirements remain separate gates. Existing telemetry does not expose the final auth/policy decisions; do not infer production credential state from this coding session or bypass policy.
+
+- [x] Reproduce the cold-start exclusion with the pinned runtime and inspect WebUI policy application; evidence: synthetic runtime output and the existing policy intersection and invalidation paths.
+- [x] Replace snapshot-dependent imagegen gating with public, non-secret credential metadata; acceptance: real-runtime cold-start, restart, API-key replacement, logout, endpoint, and direct/Codemode tests pass without an auth probe. Evidence: `apps/bot/tests/{imagegen-availability,imagegen}.test.ts`; the cold-start test asserts zero auth resolution, availability refresh, or fetch calls.
+- [x] Show imagegen capability requirements separately from policy permissions in the WebUI; acceptance: authenticated inventory, UI, and browser tests show the reason without changing selections or claiming image entitlement. Evidence: authenticated inventory checks, eight tool-permission unit tests, and twelve browser tests including 1440 px and 390 px imagegen cases pass.
+- [x] Add metadata-only availability decisions to session logs; acceptance: tests distinguish auth availability, effective tool permission, and actual installation without credential or prompt disclosure. Evidence: approved OAuth, denied policy, and missing OAuth cases assert the three separate values; cold-start execution tests check that credentials are absent from logs.
+- [ ] Run focused and all required root checks, update affected-package changesets and documentation, review the complete diff, and deliver a focused pull request; acceptance: recorded results and PR URL. Original live/container blockers remain open.
+  - Focused bot checks pass 132 tests in seven files. After integration with PR #162, all five required root commands and `npm run precommit` pass; the root test run passes 2,066 tests in 152 files. The first full run exposed three old exact log-shape assertions; they now require the new diagnostic fields, and the full run passes.
+  - Asynchronous authorization is awaited before generation, image reads, uploads, text delivery, and acknowledgement. Synchronous ownership checks remain immediately before sends. Tests cover policy changes during metadata reads, auth revocation during Morsel publication, partial-delivery acknowledgement, cancellation, and image-first delivery.
+  - The complete diff was reviewed for correctness, fixed-endpoint credential safety, lifecycle invalidation, additive optional inventory compatibility, regressions, and scope. The bot README and changeset cover all three affected private packages. No policy is broadened and no runtime credential, environment flag, dependency, model loop, or output-text route is added.
+  - The container build was retried and still cannot connect to the local Docker daemon. Local bot auth and `.env` remain absent; real generation and Telegram delivery were not attempted. This correction does not waive those acceptance items.
 
 ### Reference evidence
 
@@ -199,7 +218,7 @@ Image editing, reference images, masks, batches, transparent output, video, TUI 
 - [ ] Codex OAuth image access is verified; incompatible or missing auth keeps imagegen unavailable. Any unresolved external verification blocker keeps the feature incomplete.
 - [ ] An authorized natural-language request produces an actual Telegram image, with a document upload when photo constraints do not permit a photo.
 - [x] Direct and codemode invocation, image-only output, partial delivery, restart, fork, compaction, cancellation, reset, and credential revocation pass deterministic tests.
-- [x] From the repository root, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
+- [x] From the repository root, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass for the tool-availability correction. Evidence: 2,066 tests in 152 files; twelve focused browser tests also pass.
 - [ ] From the repository root, `docker compose --progress plain build sumire` passes; the package loads as the non-root runtime user without a live request.
 - [ ] With separate permission to consume quota and send to a controlled Telegram chat, one end-to-end request succeeds. Record only sanitized media/delivery evidence; stop after one clear entitlement or endpoint failure.
 - [x] Documentation, affected-package changesets, additive-state compatibility, and rollback/recovery review are complete. No package is published or deployed without authorization.

@@ -157,6 +157,68 @@ for (const width of [1440, 390]) {
 }
 
 for (const width of [1440, 390]) {
+  test(`imagegen capability diagnostics remain separate from global and default permissions at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const inventory: Inventory = {
+      tools: ["read", "bash", "generate_image"],
+      builtInTools: ["read", "bash", "generate_image"],
+      providers: [],
+      mcp: [],
+      toolAvailability: {
+        generate_image: {
+          available: false,
+          reason: "Requires compatible openai-codex OAuth. Check Model providers.",
+        },
+      },
+    }
+    const state = await setup(page, { inventory })
+    await navigate(page, "Tool permissions")
+    await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
+    const row = page
+      .getByRole("listitem")
+      .filter({ has: page.getByText("generate_image", { exact: true }) })
+    await expect(row.getByText("Capability unavailable", { exact: true })).toBeVisible()
+    await expect(row.getByText(/Requires compatible openai-codex OAuth/)).toBeVisible()
+    const global = row.getByRole("checkbox", {
+      name: "Globally allow tool generate_image",
+      exact: true,
+    })
+    const defaults = row.getByRole("checkbox", {
+      name: "Default chat permission for tool generate_image",
+      exact: true,
+    })
+    await expect(global).not.toBeChecked()
+    await expect(defaults).not.toBeChecked()
+    expect(state.writes).toEqual([])
+    await global.check()
+    await expect(defaults).not.toBeChecked()
+    await expect(row.getByText("Not allowed for inheriting chats", { exact: true })).toBeVisible()
+    await defaults.check()
+    await savePolicy(page)
+    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+    expect(state.saved().tools).toContain("generate_image")
+    expect(state.saved().defaults.tools).toContain("generate_image")
+    expect(state.saved().chats).toEqual(state.initial.chats)
+    await expect(row.getByText("Capability unavailable", { exact: true })).toBeVisible()
+    inventory.toolAvailability = {
+      generate_image: {
+        available: true,
+        reason: "Codex OAuth is configured; experimental image access is not verified.",
+      },
+    }
+    await page.reload()
+    await expect(row.getByText("Capability configured", { exact: true })).toBeVisible()
+    await expect(row.getByText(/experimental image access is not verified/)).toBeVisible()
+    await expect(global).toBeChecked()
+    await expect(defaults).toBeChecked()
+    expect(state.writes).toEqual(["/api/settings"])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+}
+
+for (const width of [1440, 390]) {
   test(`MCP tool groups collapse without changing permissions at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const state = await setup(page)
