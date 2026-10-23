@@ -110,10 +110,10 @@ it.each(["image/png", "image/webp"])(
       () => true,
     )
     expect(f.methods.map((x) => x.method)).toEqual([
-      "sendMessage",
       mimeType === "image/png" ? "sendPhoto" : "sendDocument",
+      "sendMessage",
     ])
-    const payload = f.methods[1]?.payload
+    const payload = f.methods[0]?.payload
     const file = (payload?.photo ?? payload?.document) as InputFile
     expect(file).toBeInstanceOf(InputFile)
     expect(file.filename).toBe(`${image.id}.png`)
@@ -123,8 +123,8 @@ it.each(["image/png", "image/webp"])(
     expect(payload?.reply_parameters).toEqual({ message_id: 10, allow_sending_without_reply: true })
     expect(f.sessions.recordDelivery).toHaveBeenCalledWith(123, checkpoint, [21, 22])
     expect(f.sessions.recordResponseComponent.mock.calls.map((call) => call[2])).toEqual([
-      "text",
       image.id,
+      "text",
     ])
   },
 )
@@ -250,7 +250,7 @@ it("never falls back after ambiguous upload failure and leaves the response pend
   expect(f.methods.map((x) => x.method)).toEqual(["sendPhoto"])
   expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
 })
-it("does not upload images when required long-text publication is unavailable", async () => {
+it("uploads images directly even when required long-text publication is unavailable", async () => {
   const f = setup()
   const result = await deliverGeneratedResponse(
     f.ctx,
@@ -262,9 +262,62 @@ it("does not upload images when required long-text publication is unavailable", 
     () => true,
   )
   expect(result).toBe("unavailable")
-  expect(f.methods.map((item) => item.method)).toEqual(["sendMessage"])
+  expect(f.methods.map((item) => item.method)).toEqual(["sendPhoto", "sendMessage"])
+  expect(f.sessions.recordResponseComponent).toHaveBeenCalledWith(123, checkpoint, image.id, 21)
   expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
 })
+it.each([false, true])(
+  "uploads images before waiting for text publication (cancelled=%s)",
+  async (cancelled) => {
+    const f = setup()
+    let current = true
+    let release = () => {}
+    let started = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const publishing = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const slowDelivery = createTelegramDelivery(
+      {
+        isConfigured: true,
+        publish: async () => {
+          started()
+          await gate
+          return "https://morsel.example/share/fixture"
+        },
+      },
+      logger,
+    )
+    const pending = deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      slowDelivery,
+      { text: "long text ".repeat(200), media: [image] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => current,
+    )
+    let result: Awaited<typeof pending> | undefined
+    try {
+      await publishing
+      expect(f.methods.map((item) => item.method)).toEqual(["sendPhoto"])
+      expect(f.sessions.recordResponseComponent).toHaveBeenCalledWith(123, checkpoint, image.id, 21)
+      expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+      if (cancelled) current = false
+    } finally {
+      release()
+      result = await pending
+    }
+    expect(result).toBe(cancelled ? "stale" : "delivered")
+    expect(f.methods.map((item) => item.method)).toEqual(
+      cancelled ? ["sendPhoto"] : ["sendPhoto", "sendMessage"],
+    )
+    if (cancelled) expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+    else expect(f.sessions.recordDelivery).toHaveBeenCalledWith(123, checkpoint, [21, 22])
+  },
+)
 async function files() {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-media-files-"))
   roots.push(root)
