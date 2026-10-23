@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { defineTool, LiveDoc } from "@earendil-works/pi-durable"
+import type { ToolAvailability } from "@narumitw/sumire-contracts"
 import { generateImage, ImagegenError, isCanonicalCodexRoot } from "@narumitw/sumire-imagegen"
 import type { GeneratedMediaFiles } from "./durable/media.js"
 import { OutboxDoc } from "./durable/state.js"
@@ -8,18 +9,52 @@ import { OutboxDoc } from "./durable/state.js"
 export const IMAGEGEN_TOOL = "generate_image"
 const provider = "openai-codex"
 
-/** Public metadata only: never refresh credentials or probe the endpoint for availability. */
-export function hasCodexImageAuth(runtime: ModelRuntime): boolean {
-  const configured = runtime.getProvider(provider)
-  const models = runtime.getModels(provider)
-  return (
-    !!configured?.auth.oauth &&
-    isCanonicalCodexRoot(configured.baseUrl) &&
-    models.length > 0 &&
-    models.every((model) => isCanonicalCodexRoot(model.baseUrl)) &&
-    runtime.getProviderAuthStatus(provider).configured &&
-    runtime.isUsingOAuth(provider)
+/** Public metadata only: never resolve credentials or probe the image endpoint. */
+export async function getImagegenAvailability(
+  runtime: ModelRuntime,
+  signal?: AbortSignal,
+): Promise<ToolAvailability> {
+  const compatible = () => {
+    const configured = runtime.getProvider(provider)
+    const models = runtime.getModels(provider)
+    return (
+      !!configured?.auth.oauth &&
+      isCanonicalCodexRoot(configured.baseUrl) &&
+      models.length > 0 &&
+      models.every((model) => isCanonicalCodexRoot(model.baseUrl))
+    )
+  }
+  const incompatible = {
+    available: false,
+    reason: "Requires the canonical openai-codex provider with OAuth support.",
+  }
+  signal?.throwIfAborted()
+  if (!compatible()) return incompatible
+  let credentials: Awaited<ReturnType<ModelRuntime["listCredentials"]>>
+  try {
+    credentials = await runtime.listCredentials({ signal })
+  } catch {
+    signal?.throwIfAborted()
+    return { available: false, reason: "Codex credential metadata is unavailable." }
+  }
+  signal?.throwIfAborted()
+  if (!compatible()) return incompatible
+  const available = credentials.some(
+    (entry) => entry.providerId === provider && entry.type === "oauth",
   )
+  return {
+    available,
+    reason: available
+      ? "Codex OAuth is configured; experimental image access is not verified."
+      : "Requires compatible openai-codex OAuth. Check Model providers.",
+  }
+}
+
+export async function hasCodexImageAuth(
+  runtime: ModelRuntime,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return (await getImagegenAvailability(runtime, signal)).available
 }
 
 export function createImagegenTool(
@@ -27,9 +62,11 @@ export function createImagegenTool(
   files: GeneratedMediaFiles,
   authorize: () => void,
 ) {
-  const check = () => {
+  const check = async (signal?: AbortSignal) => {
     authorize()
-    if (!hasCodexImageAuth(runtime)) throw new ImagegenError("auth")
+    if (!(await hasCodexImageAuth(runtime, signal))) throw new ImagegenError("auth")
+    authorize()
+    signal?.throwIfAborted()
   }
   return defineTool({
     name: IMAGEGEN_TOOL,
@@ -48,7 +85,7 @@ export function createImagegenTool(
     }),
     replay: "unsafe",
     async execute(args, api, context) {
-      check()
+      await check(context.abortSignal)
       context.abortSignal?.throwIfAborted()
       // The native run binds direct and nested calls to input submissions, not text or a mutable host slot.
       const requestId = await api.commit(async (tx) => {
@@ -62,23 +99,23 @@ export function createImagegenTool(
         }
         throw new Error("Image generation requires a pending Telegram response")
       }, context)
-      check()
+      await check(context.abortSignal)
       try {
         await files.prepare()
       } catch {
         throw new Error("Image storage is unavailable. No generation request was made.")
       }
-      check()
+      await check(context.abortSignal)
       context.abortSignal?.throwIfAborted()
       const image = await generateImage(args, {
         signal: context.abortSignal,
         async resolveAuth(signal) {
-          check()
+          await check(signal)
           if ((await runtime.checkAuth(provider, { signal }))?.type !== "oauth")
             throw new ImagegenError("auth")
-          check()
+          await check(signal)
           const resolved = await runtime.getAuth(provider, { signal })
-          check()
+          await check(signal)
           signal.throwIfAborted()
           if (
             !resolved?.auth.apiKey ||
@@ -88,17 +125,17 @@ export function createImagegenTool(
           return { accessToken: resolved.auth.apiKey }
         },
       })
-      check()
+      await check(context.abortSignal)
       context.abortSignal?.throwIfAborted()
       let saved: Awaited<ReturnType<GeneratedMediaFiles["save"]>> | undefined
       let committed = false
       try {
         saved = await files.save(image, context.abortSignal)
-        check()
+        await check(context.abortSignal)
         context.abortSignal?.throwIfAborted()
         const receipt = { ...saved, taskId: api.taskId as number, callId: api.callId }
         await api.commit(async (tx) => {
-          check()
+          await check(context.abortSignal)
           const pending = (await tx.doc(OutboxDoc)).pending.find(
             (item) => item.requestId === requestId && item.conversationId === api.conversationId,
           )

@@ -269,7 +269,15 @@ If polling warnings continue, check the container's outbound HTTPS connection to
 
 ### Setup and permissions
 
-Use the existing administration Web UI to sign in to Pi's `openai-codex` provider, then explicitly allow `generate_image` for the intended chats and apply the policy. The tool is remembered without being enabled automatically. It is available only when both the tool policy and compatible Codex OAuth permit it, including calls through codemode.
+Use the existing administration Web UI:
+
+1. Sign in to Pi's `openai-codex` provider in **Model providers**.
+2. In **Tool permissions**, globally allow `generate_image` and select **Default chat permission** for inheriting chats, or select it in an intended chat's explicit tool override.
+3. Save and apply the policy. Global permission is only the upper limit; it does not add the tool to a default or explicit chat selection.
+
+The tool is remembered without being enabled automatically. It is installed only when effective chat permission and compatible Codex OAuth both permit it, including calls through Codemode. Explicit empty chat overrides remain denied.
+
+The tool's **Capability configured** or **Capability unavailable** status describes its provider requirements separately from permissions. The status uses Pi's non-secret credential metadata, including after a restart; it does not resolve or refresh tokens, make an image request, or prove account entitlement. Older backends without capability metadata show policy information only. Session-start `Pi chat tool access` records also include imagegen availability, effective permission, installation, and a fixed diagnostic reason. These records contain no credentials, account identifiers, image bytes, or prompts.
 
 The separate `openai` OAuth flow, an OpenAI API key, and a login held only by Codex CLI do not enable this feature. Credentials stay in Pi's existing store; no new secret file, environment option, or CLI-auth import is added. The text model can use another authorized provider. Missing auth never selects another chat model.
 

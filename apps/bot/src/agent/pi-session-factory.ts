@@ -11,6 +11,7 @@ import {
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
+import type { Inventory } from "@narumitw/sumire-contracts"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
@@ -37,7 +38,12 @@ import { createProgressExtension } from "./durable/progress.js"
 import { DurableSession } from "./durable/session.js"
 import { BotSessionDoc } from "./durable/state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
-import { createImagegenTool, hasCodexImageAuth, IMAGEGEN_TOOL } from "./imagegen.js"
+import {
+  createImagegenTool,
+  getImagegenAvailability,
+  hasCodexImageAuth,
+  IMAGEGEN_TOOL,
+} from "./imagegen.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { createReadImageExtension } from "./read-image.js"
@@ -48,6 +54,7 @@ const soulSectionPlaceholder = "{{SOUL_SECTION}}"
 export interface PiSessionFactory {
   modelRuntime?: ModelRuntime
   toolNames?: string[]
+  toolAvailability?(): Promise<Inventory["toolAvailability"]>
   skills?: { name: string; description: string }[]
   create(chatId: number): Promise<DurableSession>
   listChats(): Promise<number[]>
@@ -127,6 +134,9 @@ export async function createPiSessionFactory(
     modelRuntime,
     toolNames,
     skills,
+    async toolAvailability() {
+      return { [IMAGEGEN_TOOL]: await getImagegenAvailability(modelRuntime) }
+    },
 
     async listChats() {
       try {
@@ -213,13 +223,17 @@ export async function createPiSessionFactory(
       const sessionFile = path.join(directory, "session.sqlite")
       const registry = createRegistry()
       const polymarket = createPolymarketTools()
-      const authorizeMedia = () => {
+      const authorizeMedia = async () => {
         authorize(IMAGEGEN_TOOL)
-        if (!hasCodexImageAuth(modelRuntime))
+        if (!(await hasCodexImageAuth(modelRuntime)))
           throw new Error("Compatible Codex OAuth is unavailable")
+        authorize(IMAGEGEN_TOOL)
       }
-      const imagegen = hasCodexImageAuth(modelRuntime)
-        ? createImagegenTool(modelRuntime, new GeneratedMediaFiles(directory), authorizeMedia)
+      const imagegenStatus = await getImagegenAvailability(modelRuntime)
+      const imagegen = imagegenStatus.available
+        ? createImagegenTool(modelRuntime, new GeneratedMediaFiles(directory), () =>
+            authorize(IMAGEGEN_TOOL),
+          )
         : undefined
       const chatCoding = [...coding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
         control.store.allowsTool(chatId, tool.name),
@@ -422,6 +436,11 @@ export async function createPiSessionFactory(
         await session.setThinkingLevel(policy.thinking)
         admissionReady = true
         logger.info(`Pi chat tool access chat_id=${chatId}`, {
+          imagegen: {
+            ...imagegenStatus,
+            permitted: control.store.allowsTool(chatId, IMAGEGEN_TOOL),
+            installed: session.getActiveToolNames().includes(IMAGEGEN_TOOL),
+          },
           tools: session.getActiveToolNames(),
           codemodeTools: control.store.allowsTool(chatId, "codemode")
             ? [

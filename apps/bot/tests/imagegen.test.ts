@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { readdir, readFile, stat } from "node:fs/promises"
+import { readdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable"
 import { IMAGE_ENDPOINT } from "@narumitw/sumire-imagegen"
 import { Bot, Context } from "grammy"
@@ -18,6 +19,7 @@ import { createTelegramDelivery } from "../src/telegram/delivery.js"
 import { deliverGeneratedResponse } from "../src/telegram/media-delivery.js"
 import { recoverTelegramResponses } from "../src/telegram/recovery.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
+import { createTestSessionFactory } from "./helpers/session-factory.js"
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -39,15 +41,10 @@ async function setup() {
   cleanups.push(fixture.cleanup)
   const runtime = fixture.modelRuntime
   let enabled = true
-  const usingOAuth = runtime.isUsingOAuth.bind(runtime)
-  const status = runtime.getProviderAuthStatus.bind(runtime)
   const check = runtime.checkAuth.bind(runtime)
   const auth = runtime.getAuth.bind(runtime)
-  vi.spyOn(runtime, "isUsingOAuth").mockImplementation((id) =>
-    id === "openai-codex" ? enabled : usingOAuth(id),
-  )
-  vi.spyOn(runtime, "getProviderAuthStatus").mockImplementation((id) =>
-    id === "openai-codex" ? { configured: enabled, source: "stored" } : status(id),
+  vi.spyOn(runtime, "listCredentials").mockImplementation(async () =>
+    enabled ? [{ providerId: "openai-codex", type: "oauth" as const }] : [],
   )
   vi.spyOn(runtime, "checkAuth").mockImplementation((id, options) =>
     id === "openai-codex"
@@ -79,9 +76,87 @@ async function setup() {
   }
 }
 
+it.each([false, true])(
+  "installs and executes approved imagegen with real cold-start OAuth (nested=%s)",
+  async (nested) => {
+    const fixture = await createPiFixture()
+    cleanups.push(fixture.cleanup)
+    const authPath = path.join(fixture.root, "cold-auth.json")
+    await writeFile(
+      authPath,
+      JSON.stringify({
+        "openai-codex": {
+          type: "oauth",
+          access: token,
+          refresh: "synthetic-refresh",
+          expires: Date.now() + 3_600_000,
+        },
+      }),
+      { mode: 0o600 },
+    )
+    const runtime = await ModelRuntime.create({
+      authPath,
+      modelsPath: null,
+      refreshOnCreate: false,
+    })
+    const config = fixture.modelRuntime.getRegisteredProviderConfig("openai")
+    if (!config) throw new Error("Missing offline model fixture")
+    runtime.registerProvider("openai", config)
+    expect(runtime.isUsingOAuth("openai-codex")).toBe(false)
+    const logger = vi.spyOn(fixture.logger, "info")
+    const factory = await createTestSessionFactory(
+      fixture.settings,
+      fixture.logger,
+      undefined,
+      runtime,
+    )
+    const session = await factory.create(123)
+    cleanups.push(() => session.dispose())
+    expect(factory.control.allowsTool(123, "generate_image")).toBe(true)
+    expect(session.getActiveToolNames()).toContain("generate_image")
+    expect(await factory.toolAvailability?.()).toMatchObject({
+      generate_image: { available: true },
+    })
+    expect(logger).toHaveBeenCalledWith(
+      "Pi chat tool access chat_id=123",
+      expect.objectContaining({
+        imagegen: expect.objectContaining({ available: true, permitted: true, installed: true }),
+      }),
+    )
+    const originalFetch = globalThis.fetch
+    const imageFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [{ b64_json: PNG.toString("base64") }] }), {
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input) === IMAGE_ENDPOINT ? imageFetch() : originalFetch(input, init),
+    )
+    fixture.enqueue(
+      nested ? "codemode" : "generate_image",
+      nested ? { code: 'await tools.generate_image({prompt:"fox"});' } : { prompt: "fox" },
+    )
+    const answer = await session.prompt("Generate a fox", {
+      delivery: { sourceMessageId: 10, mode: "default" },
+    })
+    expect(answer.media).toHaveLength(1)
+    expect(imageFetch).toHaveBeenCalledOnce()
+    expect(JSON.stringify(logger.mock.calls)).not.toContain(token)
+    await runtime.logout("openai-codex")
+    await expect(
+      session.readResponseImage(answer.requestId as string, answer.media?.[0]?.id as string),
+    ).rejects.toThrow()
+    expect(await factory.toolAvailability?.()).toMatchObject({
+      generate_image: { available: false },
+    })
+  },
+)
+
 it("gates availability on compatible Codex OAuth, not the text model provider", async () => {
   const fixture = await setup()
-  expect(hasCodexImageAuth(fixture.modelRuntime)).toBe(true)
+  const logger = vi.spyOn(fixture.logger, "info")
+  expect(await hasCodexImageAuth(fixture.modelRuntime)).toBe(true)
   const session = await fixture.createSession()
   expect(session.model.provider).toBe("openai")
   expect(
@@ -94,16 +169,44 @@ it("gates availability on compatible Codex OAuth, not the text model provider", 
   fixture.revoke()
   const next = await fixture.createSession(456)
   expect(next.getActiveToolNames()).not.toContain("generate_image")
+  expect(logger).toHaveBeenCalledWith(
+    "Pi chat tool access chat_id=456",
+    expect.objectContaining({
+      imagegen: expect.objectContaining({ available: false, permitted: true, installed: false }),
+    }),
+  )
   expect(fixture.imageFetch).not.toHaveBeenCalled()
 })
 it("does not enable imagegen for the separate openai OAuth flow", async () => {
   const fixture = await setup()
-  vi.spyOn(fixture.modelRuntime, "isUsingOAuth").mockImplementation((id) => id === "openai")
-  expect(hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
+  vi.spyOn(fixture.modelRuntime, "listCredentials").mockResolvedValue([
+    { providerId: "openai", type: "oauth" },
+  ])
+  expect(await hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
   const session = await fixture.createSession()
   expect(session.getActiveToolNames()).not.toContain("generate_image")
   expect(fixture.imageFetch).not.toHaveBeenCalled()
 })
+it("rechecks policy after asynchronous credential metadata reads before generation", async () => {
+  const fixture = await setup()
+  const session = await fixture.createSession()
+  vi.spyOn(fixture.modelRuntime, "listCredentials").mockImplementationOnce(async () => {
+    const store = fixture.factory.control
+    const current = store.snapshot()
+    current.policy.defaults.tools =
+      current.policy.defaults.tools?.filter((name) => name !== "generate_image") ?? []
+    const next = store.save(current.policy, current.revision, "7")
+    store.applied(next.revision, true)
+    return [{ providerId: "openai-codex", type: "oauth" }]
+  })
+  fixture.enqueue("generate_image", { prompt: "fox" })
+  const answer = await session.prompt("Generate", {
+    delivery: { sourceMessageId: 10, mode: "default" },
+  })
+  expect(answer.media).toBeUndefined()
+  expect(fixture.imageFetch).not.toHaveBeenCalled()
+})
+
 it("rejects credential replacement during auth resolution before HTTP", async () => {
   const fixture = await setup()
   const session = await fixture.createSession()
@@ -145,9 +248,16 @@ it("remembers imagegen without enabling it on upgrade and obeys explicit policy"
   const factory = await fixture.createFactory()
   expect(factory.toolNames).toContain("generate_image")
   expect(store.snapshot().policy.tools).not.toContain("generate_image")
+  const logger = vi.spyOn(fixture.logger, "info")
   const session = await factory.create(123)
   cleanups.push(() => session.dispose())
   expect(session.getActiveToolNames()).not.toContain("generate_image")
+  expect(logger).toHaveBeenCalledWith(
+    "Pi chat tool access chat_id=123",
+    expect.objectContaining({
+      imagegen: expect.objectContaining({ available: true, permitted: false, installed: false }),
+    }),
+  )
   expect(fixture.imageFetch).not.toHaveBeenCalled()
 })
 it.each([false, true])(
@@ -323,9 +433,9 @@ it("rejects custom gateways and API-key auth without making an image request", a
     ...provider,
     baseUrl: "https://example.com",
   })
-  expect(hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
+  expect(await hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
   fixture.revoke()
-  expect(hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
+  expect(await hasCodexImageAuth(fixture.modelRuntime)).toBe(false)
   expect(fixture.imageFetch).not.toHaveBeenCalled()
 })
 it("preserves media delivery components across partial failure and startup recovery", async () => {

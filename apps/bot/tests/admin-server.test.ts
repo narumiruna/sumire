@@ -22,6 +22,9 @@ let value: string
 let csrf: string
 let runtime: ModelRuntime
 const skills = vi.fn(() => [{ name: "fixture-skill", description: "Use the fixture skill." }])
+const toolAvailability = vi.fn(async () => ({
+  generate_image: { available: false, reason: "Requires compatible openai-codex OAuth." },
+}))
 const apply = vi.fn(async () => {
   store.applied(store.snapshot().revision, true)
 })
@@ -99,6 +102,7 @@ beforeEach(async () => {
       mcp: new McpAdmin(store, directory),
       apply,
       tools: () => ["read"],
+      toolAvailability,
       skills,
     },
   )
@@ -112,6 +116,19 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("returns provider capability diagnostics only to authenticated administrators without changing policy", async () => {
+    toolAvailability.mockClear()
+    const before = store.snapshot()
+    expect((await call("/api/inventory")).status).toBe(401)
+    expect(toolAvailability).not.toHaveBeenCalled()
+    const response = await call("/api/inventory", "GET", undefined, auth())
+    expect(response.status).toBe(200)
+    expect(JSON.parse(response.body).toolAvailability).toEqual({
+      generate_image: { available: false, reason: "Requires compatible openai-codex OAuth." },
+    })
+    expect(toolAvailability).toHaveBeenCalledOnce()
+    expect(store.snapshot()).toEqual(before)
+  })
   it("returns skill metadata only to authenticated administrators", async () => {
     skills.mockClear()
     const denied = await call("/api/inventory")

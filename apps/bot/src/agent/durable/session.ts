@@ -69,7 +69,7 @@ export class DurableSession implements SessionHandle {
     private readonly logger: Logger,
     private readonly cleanup: () => Promise<void>,
     private readonly inspection?: DurableInspectionReader,
-    private readonly authorizeMedia: () => void = () => {
+    private readonly authorizeMedia: () => void | Promise<void> = () => {
       throw new Error("Image delivery is unavailable")
     },
   ) {
@@ -91,7 +91,7 @@ export class DurableSession implements SessionHandle {
     logger: Logger
     cleanup?: () => Promise<void>
     inspection?: DurableInspectionReader
-    authorizeMedia?: () => void
+    authorizeMedia?: () => void | Promise<void>
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -407,15 +407,16 @@ export class DurableSession implements SessionHandle {
     return this.#outbox.hasPendingResponses()
   }
 
-  assertResponseMediaAccess(): void {
-    this.authorizeMedia()
+  async assertResponseMediaAccess(): Promise<void> {
+    if (this.#closing) throw new Error("Image delivery is unavailable")
+    await this.authorizeMedia()
     if (this.#closing) throw new Error("Image delivery is unavailable")
   }
 
   async readResponseImage(requestId: string, id: string): Promise<Buffer> {
-    this.assertResponseMediaAccess()
+    await this.assertResponseMediaAccess()
     const bytes = await this.#outbox.readImage(requestId, id)
-    this.assertResponseMediaAccess()
+    await this.assertResponseMediaAccess()
     return bytes
   }
 

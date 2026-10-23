@@ -60,7 +60,7 @@ export interface SessionHandle {
   dispose(): void | Promise<void>
   acknowledge(requestId: string): Promise<void>
   hasPendingResponses(): Promise<boolean>
-  assertResponseMediaAccess?(): void
+  assertResponseMediaAccess?(): void | Promise<void>
   readResponseImage?(requestId: string, id: string): Promise<Buffer>
   recordResponseComponent?(requestId: string, component: string, messageId: number): Promise<void>
   recoverPending(
@@ -366,10 +366,12 @@ export class ChatSessionRegistry {
     return session
   }
 
-  assertResponseMediaAccess(chatId: number, checkpoint: SubmissionCheckpoint): void {
+  async assertResponseMediaAccess(chatId: number, checkpoint: SubmissionCheckpoint): Promise<void> {
     const session = this.#deliverySession(chatId, checkpoint)
     if (!session.assertResponseMediaAccess) throw new Error("Image delivery is unavailable")
-    session.assertResponseMediaAccess()
+    await session.assertResponseMediaAccess()
+    if (this.#deliverySession(chatId, checkpoint) !== session)
+      throw new Error("Image delivery is stale")
   }
 
   async readResponseImage(

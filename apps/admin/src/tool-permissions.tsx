@@ -169,7 +169,8 @@ export function ToolPermissions({
           Global and default chat permissions
         </Heading>
         <Prose size="2" color="gray" className="section-copy">
-          Choose global and default permissions.
+          Choose global and default permissions. Global permission alone does not install a tool:
+          the chat must select it, and its provider requirements must be available.
         </Prose>
       </Flex>
       <details className="permission-rules">
@@ -194,7 +195,7 @@ export function ToolPermissions({
           )}
         </DataList.Root>
         <Prose size="2" color="gray" className="section-copy">
-          These counts describe policy selections, not connection readiness or executable MCP tools.
+          These counts describe policy selections, not installed tools or verified provider access.
         </Prose>
       </Panel>
       {(["tools", "servers"] as const).map((key) => (
@@ -208,7 +209,7 @@ export function ToolPermissions({
           </Heading>
           <Text as="p" size="2" color="gray" className="section-copy">
             {key === "tools"
-              ? "New tools are automatically added to global and default permissions when first registered or discovered. Manual removals and explicit chat overrides are preserved. MCP tools still require their server gate."
+              ? "New tools are automatically added to global and default permissions when first registered or discovered, except approval-only tools such as generate_image. Manual removals and explicit chat overrides are preserved. MCP tools still require their server gate."
               : "A server gate does not approve its tools. Each tool also needs global and inherited or explicit chat permission. Connection enabled state is separate."}
           </Text>
           {!permissionNames(key, policy, saved, inventory).length && (
@@ -267,6 +268,8 @@ export function ToolPermissions({
             >
               {group.names.map((name, index) => {
                 const id = `${prefix}-${key}-${groupIndex}-${index}`
+                const availability =
+                  key === "tools" ? inventory.toolAvailability?.[name] : undefined
                 const global = policy[key].includes(name)
                 const selected = policy.defaults[key]?.includes(name) ?? false
                 const refs = Object.entries(policy.chats).filter(([, chat]) =>
@@ -283,6 +286,18 @@ export function ToolPermissions({
                       <Code variant="ghost" weight="medium">
                         {name}
                       </Code>
+                      {availability && (
+                        <Flex direction="column" gap="1" mt="1">
+                          <Badge color={availability.available ? "gray" : "orange"}>
+                            {availability.available
+                              ? "Capability configured"
+                              : "Capability unavailable"}
+                          </Badge>
+                          <Text as="p" size="2">
+                            {availability.reason}
+                          </Text>
+                        </Flex>
+                      )}
                       {servers.length > 1 && (
                         <Text as="p" size="2">
                           MCP server: {servers.map((m) => m.name).join(", ")} · server gate also

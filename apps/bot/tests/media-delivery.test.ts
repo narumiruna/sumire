@@ -71,7 +71,7 @@ function setup() {
     {} as never,
   )
   const sessions = {
-    assertResponseMediaAccess: vi.fn(() => {}),
+    assertResponseMediaAccess: vi.fn(async () => {}),
     readResponseImage: vi.fn(async () => PNG),
     recordResponseComponent: vi.fn(
       async (
@@ -192,9 +192,98 @@ it("does not send stale work or acknowledge after invalidation during file reads
   expect(f.methods).toEqual([])
   expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
 })
+it("checks asynchronous authorization after Morsel publication before sending text", async () => {
+  const f = setup()
+  let started = () => {}
+  let release = () => {}
+  const ready = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const delayed = createTelegramDelivery(
+    {
+      isConfigured: true,
+      async publish() {
+        started()
+        await gate
+        return "https://morsel.test/fixture"
+      },
+    },
+    logger,
+  )
+  const running = deliverGeneratedResponse(
+    f.ctx,
+    f.sessions,
+    delayed,
+    { text: "x".repeat(1_001), media: [image] },
+    checkpoint,
+    { sourceMessageId: 10, mode: "default" },
+    () => true,
+  )
+  await ready
+  f.sessions.assertResponseMediaAccess.mockRejectedValue(new Error("auth revoked"))
+  release()
+  expect(await running).toBe("stale")
+  expect(f.methods.map(({ method }) => method)).toEqual(["sendPhoto"])
+  expect(f.sessions.recordResponseComponent).toHaveBeenCalledExactlyOnceWith(
+    123,
+    checkpoint,
+    image.id,
+    21,
+  )
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+})
+
+it("awaits authorization after text delivery before recording text or acknowledging partial delivery", async () => {
+  const f = setup()
+  vi.spyOn(delivery, "guardedReply").mockImplementation(async () => {
+    const message = await f.ctx.reply("done")
+    f.sessions.assertResponseMediaAccess.mockRejectedValue(new Error("auth revoked"))
+    return { result: "delivered", message }
+  })
+  expect(
+    await deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      delivery,
+      { text: "done", media: [{ ...image, messageId: 30 }] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => true,
+    ),
+  ).toBe("stale")
+  expect(f.methods.map(({ method }) => method)).toEqual(["sendMessage"])
+  expect(f.sessions.recordResponseComponent).not.toHaveBeenCalled()
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+})
+
+it("does not send or acknowledge if ownership changes during an asynchronous auth check", async () => {
+  const f = setup()
+  let current = true
+  f.sessions.assertResponseMediaAccess.mockImplementation(async () => {
+    current = false
+  })
+  expect(
+    await deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      delivery,
+      { text: "done", media: [image] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => current,
+    ),
+  ).toBe("stale")
+  expect(f.methods).toEqual([])
+  expect(f.sessions.readResponseImage).not.toHaveBeenCalled()
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+})
+
 it("checks auth again before text publication and after asynchronous reads", async () => {
   const f = setup()
-  f.sessions.assertResponseMediaAccess.mockImplementation(() => {
+  f.sessions.assertResponseMediaAccess.mockImplementation(async () => {
     throw new Error("auth revoked")
   })
   expect(
@@ -209,9 +298,9 @@ it("checks auth again before text publication and after asynchronous reads", asy
     ),
   ).toBe("stale")
   expect(f.methods).toEqual([])
-  f.sessions.assertResponseMediaAccess.mockImplementation(() => {})
+  f.sessions.assertResponseMediaAccess.mockImplementation(async () => {})
   f.sessions.readResponseImage.mockImplementation(async () => {
-    f.sessions.assertResponseMediaAccess.mockImplementation(() => {
+    f.sessions.assertResponseMediaAccess.mockImplementation(async () => {
       throw new Error("auth revoked")
     })
     return PNG
