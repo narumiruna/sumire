@@ -97,6 +97,36 @@ export function sectionLabel(name: string): string {
   return labels[name] ?? name
 }
 
+export async function openDisclosure(page: Page, label: string) {
+  const summary = page.locator("summary").filter({ hasText: new RegExp(`^${label}$`) })
+  if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
+}
+
+export async function openConnectionEditor(page: Page, existing = false) {
+  if (!(await page.getByLabel("MCP server name", { exact: true }).isVisible())) {
+    const resume = page.getByRole("button", { name: "Resume connection draft", exact: true })
+    if (await resume.isVisible()) await resume.click()
+    else if (existing)
+      await page
+        .getByRole("button", { name: /^Edit fields for / })
+        .first()
+        .click()
+    else await page.getByRole("button", { name: "Add connection", exact: true }).click()
+  }
+  await openDisclosure(page, "Advanced connection fields")
+}
+
+export async function openChatConfiguration(page: Page) {
+  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  for (const summary of await page
+    .locator(
+      ".chat-view:not([hidden]) .policy-options > summary, .chat-view:not([hidden]) .configuration-summary > summary",
+    )
+    .all()) {
+    if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
+  }
+}
+
 export async function openDirectoryFilters(page: Page) {
   const summary = page.getByText("Filters and search scope", { exact: true })
   if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()

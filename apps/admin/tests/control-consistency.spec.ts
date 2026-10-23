@@ -1,5 +1,10 @@
 import { expect, type Page, test } from "@playwright/test"
-import { openDirectoryFilters, sectionLabel } from "./admin-fixture.js"
+import {
+  openConnectionEditor,
+  openDirectoryFilters,
+  openDisclosure,
+  sectionLabel,
+} from "./admin-fixture.js"
 
 const longName = "Long group name with multilingual metadata 管理員 🌸 ".repeat(12).trim()
 const chats = [
@@ -61,6 +66,8 @@ async function fixture(page: Page, section = "Chats") {
   await expect(
     page.getByRole("heading", { name: sectionLabel(section), exact: true }),
   ).toBeVisible()
+  if (section === "MCP connections") await openConnectionEditor(page, true)
+  if (section === "Audit") await openDisclosure(page, "Filters")
   return { auditQueries, writes }
 }
 
@@ -104,7 +111,9 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: 900 })
     const { auditQueries, writes } = await fixture(page, "Audit")
-    const fields = page.locator(".audit-filters input")
+    const fields = page.locator(
+      ".audit-filters .rt-TextFieldRoot, .audit-filters button[role=combobox]",
+    )
     await expect(fields).toHaveCount(5)
     for (const key of ["from", "to"]) {
       await expect(page.getByLabel(`Audit ${key}`, { exact: true })).toHaveAttribute("type", "date")
@@ -204,6 +213,7 @@ for (const name of [
     if (!mcp) await openDirectoryFilters(page)
     if (mcp) {
       await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
+      await openDisclosure(page, "Advanced connection fields")
       if (name === "MCP exposure replacement")
         await page.getByRole("checkbox", { name: "Edit MCP exposure", exact: true }).check()
       if (name === "MCP type replacement")

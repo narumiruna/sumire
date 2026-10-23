@@ -28,7 +28,7 @@ import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy, Snapshot } from "./api.js"
 import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
 import { type ChatRepair, chatState } from "./chat-state.js"
-import { navigationHref } from "./navigation.js"
+import { type EditorTarget, focusEditor, navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { SectionSelect } from "./sections.js"
@@ -84,6 +84,7 @@ export function ChatWorkspace({
   directory,
   chat,
   detailsRequest,
+  editorRequest,
   onSelect,
   policy,
   savedPolicy,
@@ -102,6 +103,7 @@ export function ChatWorkspace({
   directory: ChatDirectory
   chat: string
   detailsRequest: number
+  editorRequest?: EditorTarget
   onSelect(value: string): void
   policy: Policy
   savedPolicy: Policy
@@ -193,7 +195,13 @@ export function ChatWorkspace({
     setTab(value)
     tabsRef.current?.querySelector<HTMLButtonElement>(`[data-view="${value}"]`)?.focus()
   }
-  const [repairRequest, setRepairRequest] = useState<{ target: ChatRepair }>()
+  const [repairRequest, setRepairRequest] = useState<{ target: ChatRepair | "tools" }>()
+  useEffect(() => {
+    if (editorRequest) {
+      setTab("configuration")
+      setShowDirectory(false)
+    }
+  }, [editorRequest])
   useEffect(() => {
     if (!repairRequest) return
     const selector = {
@@ -202,10 +210,14 @@ export function ChatWorkspace({
       model: "#model-selection",
       providers: "",
       application: "",
+      tools: "#chat-tools-options",
     }[repairRequest.target]
-    if (selector) tabsRef.current?.parentElement?.querySelector<HTMLElement>(selector)?.focus()
+    if (selector) {
+      const frame = requestAnimationFrame(() => focusEditor(selector))
+      return () => cancelAnimationFrame(frame)
+    }
   }, [repairRequest])
-  const repair = (target: ChatRepair) => {
+  const repair = (target: ChatRepair | "tools") => {
     if (target === "providers") return onProviders()
     if (target === "application") return onApplication()
     setTab(target === "access" ? "access" : "configuration")
@@ -473,7 +485,7 @@ export function ChatWorkspace({
                         onDurable()
                       }}
                     >
-                      Inspect Durable
+                      View conversation records
                     </a>
                   </Button>
                 )}
@@ -627,11 +639,7 @@ export function ChatWorkspace({
                             : "From shared defaults"
                         }
                         action={
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => changeTab("configuration")}
-                          >
+                          <Button type="button" variant="ghost" onClick={() => repair("model")}>
                             Change model
                           </Button>
                         }
@@ -646,11 +654,7 @@ export function ChatWorkspace({
                             : "From shared defaults"
                         }
                         action={
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => changeTab("configuration")}
-                          >
+                          <Button type="button" variant="ghost" onClick={() => repair("tools")}>
                             View tool permissions
                           </Button>
                         }
@@ -779,7 +783,7 @@ export function ChatWorkspace({
                           </Button>
                         )}
                         <Button variant="ghost" onClick={onAccess}>
-                          Open global Access
+                          Open Chat access
                         </Button>
                       </Flex>
                       <Text as="p" size="2" color="gray" mt="3">
@@ -795,55 +799,58 @@ export function ChatWorkspace({
                     hidden={tab !== "configuration"}
                   >
                     <Heading size="3">Model &amp; Tools</Heading>
-                    <DataList.Root className="chat-facts effective-settings" size="2">
-                      <ChatFact label="Effective model">
-                        <Code variant="ghost">{effective.model ?? "No allowed model"}</Code> ·{" "}
-                        {effective.sources.model === "chat"
-                          ? "This chat override"
-                          : "From shared defaults"}
-                      </ChatFact>
-                      <ChatFact label="Chat model override">
-                        <Code variant="ghost">{override?.model ?? "Inherit from defaults"}</Code>
-                      </ChatFact>
-                      <ChatFact label="Tools">
-                        {effective.tools.join(", ") || "None"} ·{" "}
-                        {effective.sources.tools === "chat"
-                          ? "This chat override"
-                          : "From shared defaults"}
-                      </ChatFact>
-                      <ChatFact label="Skills">
-                        {effective.skills.join(", ") || "None"} ·{" "}
-                        {effective.sources.skills === "chat"
-                          ? "This chat override"
-                          : "From shared defaults"}
-                      </ChatFact>
-                      <ChatFact label="MCP servers">
-                        {effective.servers.join(", ") || "None"} ·{" "}
-                        {effective.sources.servers === "chat"
-                          ? "This chat override"
-                          : "From shared defaults"}
-                      </ChatFact>
-                      <ChatFact label="Thinking">
-                        {effective.thinking} ·{" "}
-                        {effective.sources.thinking === "chat"
-                          ? "This chat override"
-                          : "From shared defaults"}
-                      </ChatFact>
-                    </DataList.Root>
-                    <Flex gap="3" wrap="wrap">
-                      <Button variant="soft" onClick={onProviders}>
-                        Manage model authentication
-                      </Button>
-                      <Button variant="soft" onClick={onTools}>
-                        Manage tool permissions
-                      </Button>
-                    </Flex>
                     <section className="chat-override-editor" aria-label="Chat overrides">
                       <Heading size="3" mt="4">
                         Chat overrides
                       </Heading>
                       {children}
                     </section>
+                    <details className="configuration-summary">
+                      <summary>Effective settings and authentication</summary>
+                      <DataList.Root className="chat-facts effective-settings" size="2">
+                        <ChatFact label="Effective model">
+                          <Code variant="ghost">{effective.model ?? "No allowed model"}</Code> ·{" "}
+                          {effective.sources.model === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
+                        </ChatFact>
+                        <ChatFact label="Chat model override">
+                          <Code variant="ghost">{override?.model ?? "Inherit from defaults"}</Code>
+                        </ChatFact>
+                        <ChatFact label="Tools">
+                          {effective.tools.join(", ") || "None"} ·{" "}
+                          {effective.sources.tools === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
+                        </ChatFact>
+                        <ChatFact label="Skills">
+                          {effective.skills.join(", ") || "None"} ·{" "}
+                          {effective.sources.skills === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
+                        </ChatFact>
+                        <ChatFact label="MCP servers">
+                          {effective.servers.join(", ") || "None"} ·{" "}
+                          {effective.sources.servers === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
+                        </ChatFact>
+                        <ChatFact label="Thinking">
+                          {effective.thinking} ·{" "}
+                          {effective.sources.thinking === "chat"
+                            ? "This chat override"
+                            : "From shared defaults"}
+                        </ChatFact>
+                      </DataList.Root>
+                      <Flex gap="3" wrap="wrap">
+                        <Button variant="soft" onClick={onProviders}>
+                          Manage model authentication
+                        </Button>
+                        <Button variant="soft" onClick={onTools}>
+                          Manage tool permissions
+                        </Button>
+                      </Flex>
+                    </details>
                     <details className="permission-details">
                       <summary>Inspect individual tool permissions</summary>
                       <Text as="p" size="2">
@@ -922,7 +929,7 @@ export function ChatWorkspace({
                       <Text as="p">No chat-targeted records in the loaded audit page.</Text>
                     )}
                     <Button variant="soft" mt="3" onClick={onAudit}>
-                      Open global Audit
+                      Open Audit
                     </Button>
                   </Tabs.Content>
                 </Tabs.Root>

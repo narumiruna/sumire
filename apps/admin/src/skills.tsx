@@ -1,6 +1,7 @@
 import { Badge, Button, Flex, Heading } from "@radix-ui/themes"
 import { useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { focusEditor } from "./navigation.js"
 import { Check, Field } from "./policy-editors.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -39,16 +40,17 @@ export function Skills({
   )
   return (
     <Flex direction="column" gap="4" className="skills-workspace">
-      <Prose>
-        Skills add instructions to the model prompt. They do not grant tool access or restrict file
-        access. Manage executable capabilities in Tool permissions.
-      </Prose>
-      <Prose size="2">
-        Loaded skills are enabled globally and by default when first registered. Manual removals and
-        explicit chat selections stay unchanged after restart. Install or update skill files on the
-        host, then restart the bot to refresh this inventory. This page does not edit skill files.
-      </Prose>
-      <Field label="Search skills" value={query} onChange={setQuery} />
+      <Prose>Skills add model instructions, not tool permissions or file restrictions.</Prose>
+      <details>
+        <summary id="skill-maintenance">Install and update skills</summary>
+        <Prose size="2">
+          Loaded skills are enabled globally and by default when first registered. Manual removals
+          and explicit chat selections stay unchanged after restart. Install or update skill files
+          on the host, then restart the bot to refresh this inventory. This page does not edit skill
+          files.
+        </Prose>
+      </details>
+      <Field id="skill-search" label="Search skills" value={query} onChange={setQuery} />
       <Prose size="2">
         {visible.length} matching of {names.length} known skills. Changes use Apply policy changes.
       </Prose>
@@ -56,6 +58,11 @@ export function Skills({
         <Prose className="empty-state">
           {names.length ? "No matching skills." : "No skills loaded or selected."}
         </Prose>
+      )}
+      {!names.length && (
+        <Button variant="soft" onClick={() => focusEditor("#skill-maintenance")}>
+          Show skill setup instructions
+        </Button>
       )}
       {visible.map((name) => {
         const skill = metadata.get(name)

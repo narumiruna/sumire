@@ -1,5 +1,10 @@
 import { expect, type Page, test } from "@playwright/test"
-import { openDirectoryFilters, sectionLabel } from "./admin-fixture.js"
+import {
+  openConnectionEditor,
+  openDirectoryFilters,
+  openDisclosure,
+  sectionLabel,
+} from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 
 const basePolicy = {
@@ -124,7 +129,11 @@ async function navigate(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "MCP connections") await openConnectionEditor(page)
+  if (name === "Audit") await openDisclosure(page, "Filters")
+  if (name === "Defaults") await openDisclosure(page, "Advanced actions")
   if (name === "Tool permissions") {
+    await openDisclosure(page, "Approve an exact tool name")
     await page.getByRole("button", { name: "Expand all", exact: true }).click()
   }
 }
@@ -204,7 +213,7 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
   await expect(bar).toContainText("1 pending policy change")
   page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
-  await expect(bar).toContainText("Policy: No changes")
+  await expect(bar).not.toContainText("Policy: No changes")
   await expect(bar).toContainText("MCP: Unsaved")
   await expect(bar).toContainText("Provider: Unsaved")
 })
@@ -219,7 +228,7 @@ test("Durable retains unfinished editor input and shows save chrome until it is 
   await navigate(page, "Durable")
   const bar = page.getByRole("region", { name: "Save status and pending changes" })
   await expect(bar).toBeVisible()
-  await expect(bar).toContainText("Unstaged editor input")
+  await expect(bar).toContainText("Finish or clear input in Chat access")
   await navigate(page, "Access")
   await expect(input).toHaveValue("1234")
   await input.clear()
@@ -304,8 +313,10 @@ test("audit filters query all records without clearing cross-section policy draf
   await stagePolicy(page)
   await navigate(page, "Audit")
   await page.getByRole("textbox", { name: "Audit actor", exact: true }).fill("system")
-  await page.getByRole("textbox", { name: "Audit operation", exact: true }).fill("settings.apply")
-  await page.getByRole("textbox", { name: "Audit outcome", exact: true }).fill("failed")
+  await page.getByRole("combobox", { name: "Audit operation", exact: true }).click()
+  await page.getByRole("option", { name: "Settings application", exact: true }).click()
+  await page.getByRole("combobox", { name: "Audit outcome", exact: true }).click()
+  await page.getByRole("option", { name: "Failed", exact: true }).click()
   await page.getByLabel("Audit from", { exact: true }).fill("2026-10-16")
   await page.getByLabel("Audit to", { exact: true }).fill("2026-10-16")
   await page.getByRole("button", { name: "Apply audit filters" }).click()

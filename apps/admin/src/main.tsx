@@ -38,9 +38,18 @@ import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { McpConnections } from "./mcp-connections.js"
-import { navigationHref, pageLabel, SideNavigation, useNavigation } from "./navigation.js"
+import {
+  type EditorTarget,
+  focusEditor,
+  navigationHref,
+  type PendingEditor,
+  pageLabel,
+  pendingEditors,
+  SideNavigation,
+  useNavigation,
+} from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
-import { policyChanges } from "./policy-changes.js"
+import { policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, IdList, ModelAvailability } from "./policy-editors.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { Providers } from "./providers.js"
@@ -74,6 +83,28 @@ function App() {
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const { page, setPage, chat, setChat } = useNavigation()
   const [detailsRequest, setDetailsRequest] = useState(0)
+  const [editorRequest, setEditorRequest] = useState<EditorTarget>()
+  const [defaultModelRequest, setDefaultModelRequest] = useState(0)
+  const openDefaultModel = () => {
+    setDefaultModelRequest((request) => request + 1)
+    setPage("Model Providers")
+  }
+  const openEditor = (target: EditorTarget) => {
+    if (target.chat) {
+      setChat(target.chat)
+      setDetailsRequest((request) => request + 1)
+    }
+    setPage(target.page)
+    setEditorRequest({ ...target })
+  }
+  useEffect(() => {
+    if (!editorRequest || page !== editorRequest.page) return
+    const frame = requestAnimationFrame(() => {
+      focusEditor(editorRequest.selector)
+      setEditorRequest(undefined)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [editorRequest, page])
   const [focusRepairPage, setFocusRepairPage] = useState(0)
   useEffect(() => {
     if (focusRepairPage) document.getElementById("current-section-heading")?.focus()
@@ -86,9 +117,9 @@ function App() {
   const [imports, setImports] = useState<ImportReport[]>([])
   const [mcpDirty, setMcpDirty] = useState(false)
   const [providerPending, setProviderPending] = useState(false)
-  const [editorPending, setEditorPending] = useState<Record<string, boolean>>({})
+  const [editorPending, setEditorPending] = useState<Partial<Record<PendingEditor, boolean>>>({})
   const localPending = Object.values(editorPending).some(Boolean)
-  const markPending = (key: string, value: boolean) =>
+  const markPending = (key: PendingEditor, value: boolean) =>
     setEditorPending((previous) => ({ ...previous, [key]: value }))
   const pending = dirty || mcpDirty || providerPending || localPending
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
@@ -103,6 +134,10 @@ function App() {
   }, [])
   const expireSession = useCallback(() => {
     setSession(null)
+    setDefaultModelRequest(0)
+    setEditorRequest(undefined)
+    setToolName("")
+    setEditingProvider(undefined)
     setMcpDirty(false)
     setProviderPending(false)
     setEditorPending({})
@@ -350,6 +385,11 @@ function App() {
           <SaveStatus
             snapshot={snapshot}
             changes={changes}
+            entries={policyChangeEntries(savedPolicy ?? policy, policy)}
+            unfinished={(Object.keys(pendingEditors) as PendingEditor[])
+              .filter((key) => editorPending[key])
+              .map((key) => pendingEditors[key])}
+            openEditor={openEditor}
             dirty={dirty}
             busy={busy}
             localPending={localPending}
@@ -390,6 +430,7 @@ function App() {
               directory={directory}
               chat={chat}
               detailsRequest={detailsRequest}
+              editorRequest={editorRequest?.page === "Chats" ? editorRequest : undefined}
               onSelect={setChat}
               policy={policy}
               savedPolicy={savedPolicy ?? policy}
@@ -412,6 +453,7 @@ function App() {
             >
               <section className="chat-policy-editor" aria-label="Chat policy settings">
                 <Check
+                  id="chat-policy-enabled"
                   label="Chat enabled"
                   checked={selected?.enabled !== false}
                   onChange={(enabled) =>
@@ -488,28 +530,20 @@ function App() {
             <section className="access-intro" aria-label="Access policy scope">
               <Prose>
                 {countText(policy.privateUsers.length, "private user")} ·{" "}
-                {countText(policy.groups.length, "group or channel", "groups or channels")}
-                approved in the policy draft.
+                {countText(policy.groups.length, "group or channel", "groups or channels")} approved
+                in this policy.
               </Prose>
-              <Prose>
-                Private-message approval does not grant access in any group. Import history never
-                grants access or reverses a revocation.
-              </Prose>
+              <Prose size="2">Private and group access are separate.</Prose>
               <details>
                 <summary>Imported IDs and review history</summary>
                 <Prose>
-                  Read-only history is available in Audit. Review current access below; no imported
-                  ID is approved automatically.
+                  Import history never grants access or reverses a revocation. Review current access
+                  below; no imported ID is approved automatically.
                 </Prose>
                 <Button variant="soft" onClick={() => setPage("Audit")}>
                   Open import history in Audit
                 </Button>
               </details>
-              <Prose size="2">Private and group access are separate.</Prose>
-              <Prose size="2">
-                Search all entries in each access list by ID or loaded chat name. Names for chats on
-                other pages may not be loaded.
-              </Prose>
             </section>
             <div className="access-lists">
               <IdList
@@ -541,72 +575,46 @@ function App() {
             aria-label="Shared defaults"
             className="admin-page--defaults"
           >
-            <section className="defaults-reset" aria-label="Default inheritance">
-              <Prose>
-                Review shared defaults below. Chat overrides take priority within global
-                availability; defaults do not approve access.
-              </Prose>
-              <Prose size="2">
-                Reset is unavailable when all chats already inherit defaults. During a save,
-                configuration controls are unavailable.
-              </Prose>
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button
-                    variant="soft"
-                    disabled={
-                      !Object.values(policy.chats).some((choice) =>
-                        Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
-                      )
-                    }
-                  >
-                    Reset all chats to inherit defaults
-                  </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content>
-                  <AlertDialog.Title>
-                    Reset all chat overrides to inherit defaults?
-                  </AlertDialog.Title>
-                  <AlertDialog.Description>
-                    {countText(
-                      Object.values(policy.chats).filter((choice) =>
-                        Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
-                      ).length,
-                      "chat has",
-                      "chats have",
-                    )}{" "}
-                    explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed
-                    model, model, and thinking overrides for all chats, including chats outside the
-                    current page. Explicit empty lists will also inherit Defaults. Chat access and
-                    enabled switches stay unchanged. Future chats already inherit Defaults. This
-                    stages edits only; use Apply policy changes to apply them.
-                  </AlertDialog.Description>
-                  <Flex gap="3" mt="4">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft">Cancel</Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button
-                        onClick={() =>
-                          update({
-                            ...policy,
-                            chats: Object.fromEntries(
-                              Object.entries(policy.chats).map(([id, choice]) => [
-                                id,
-                                { ...inherit, enabled: choice.enabled },
-                              ]),
-                            ),
-                          })
-                        }
-                      >
-                        Stage reset of all chat overrides
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
-            </section>
             <div className="defaults-layout">
+              <section
+                id="default-model-settings"
+                tabIndex={-1}
+                className="defaults-model"
+                aria-label="Default model settings"
+              >
+                <Heading size="3">Model and thinking defaults</Heading>
+                <Prose size="2">
+                  Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
+                  {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
+                  {savedPolicy?.defaults.models?.join(", ") || "None"}
+                </Prose>
+                {JSON.stringify([
+                  policy.defaults.model,
+                  policy.defaults.thinking,
+                  policy.defaults.models,
+                ]) !==
+                  JSON.stringify([
+                    (savedPolicy ?? policy).defaults.model,
+                    (savedPolicy ?? policy).defaults.thinking,
+                    (savedPolicy ?? policy).defaults.models,
+                  ]) && (
+                  <Prose size="2">
+                    Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
+                    {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
+                    {policy.defaults.models?.join(", ") || "None"}
+                  </Prose>
+                )}
+                <Choices
+                  navigate={setPage}
+                  defaults
+                  onDefaultModel={openDefaultModel}
+                  value={policy.defaults}
+                  policy={policy}
+                  effective={effectivePolicy(policy, 0)}
+                  inventory={inventory}
+                  onChange={(v) => update({ ...policy, defaults: v })}
+                />
+              </section>
               <Flex direction="column" gap="4" className="defaults-capabilities">
                 <Panel className="defaults-summary">
                   <Heading size="3">Default tool permissions</Heading>
@@ -661,40 +669,71 @@ function App() {
                   </Button>
                 </Panel>
               </Flex>
-              <section className="defaults-model" aria-label="Default model settings">
-                <Heading size="3">Model and thinking defaults</Heading>
-                <Prose size="2">
-                  Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
-                  {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
-                  {savedPolicy?.defaults.models?.join(", ") || "None"}
-                </Prose>
-                {JSON.stringify([
-                  policy.defaults.model,
-                  policy.defaults.thinking,
-                  policy.defaults.models,
-                ]) !==
-                  JSON.stringify([
-                    (savedPolicy ?? policy).defaults.model,
-                    (savedPolicy ?? policy).defaults.thinking,
-                    (savedPolicy ?? policy).defaults.models,
-                  ]) && (
-                  <Prose size="2">
-                    Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
-                    {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
-                    {policy.defaults.models?.join(", ") || "None"}
-                  </Prose>
-                )}
-                <Choices
-                  navigate={setPage}
-                  defaults
-                  value={policy.defaults}
-                  policy={policy}
-                  effective={effectivePolicy(policy, 0)}
-                  inventory={inventory}
-                  onChange={(v) => update({ ...policy, defaults: v })}
-                />
-              </section>
             </div>
+            <details className="defaults-advanced">
+              <summary>Advanced actions</summary>
+              <section className="defaults-reset" aria-label="Default inheritance">
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger>
+                    <Button
+                      variant="soft"
+                      disabled={
+                        !Object.values(policy.chats).some((choice) =>
+                          Object.keys(inherit).some(
+                            (key) => choice[key as keyof Selection] !== null,
+                          ),
+                        )
+                      }
+                    >
+                      Reset all chats to inherit defaults
+                    </Button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Content>
+                    <AlertDialog.Title>
+                      Reset all chat overrides to inherit defaults?
+                    </AlertDialog.Title>
+                    <AlertDialog.Description>
+                      {countText(
+                        Object.values(policy.chats).filter((choice) =>
+                          Object.keys(inherit).some(
+                            (key) => choice[key as keyof Selection] !== null,
+                          ),
+                        ).length,
+                        "chat has",
+                        "chats have",
+                      )}{" "}
+                      explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed
+                      model, model, and thinking overrides for all chats, including chats outside
+                      the current page. Explicit empty lists will also inherit Defaults. Chat access
+                      and enabled switches stay unchanged. Future chats already inherit Defaults.
+                      This stages edits only; use Apply policy changes to apply them.
+                    </AlertDialog.Description>
+                    <Flex gap="3" mt="4">
+                      <AlertDialog.Cancel>
+                        <Button variant="soft">Cancel</Button>
+                      </AlertDialog.Cancel>
+                      <AlertDialog.Action>
+                        <Button
+                          onClick={() =>
+                            update({
+                              ...policy,
+                              chats: Object.fromEntries(
+                                Object.entries(policy.chats).map(([id, choice]) => [
+                                  id,
+                                  { ...inherit, enabled: choice.enabled },
+                                ]),
+                              ),
+                            })
+                          }
+                        >
+                          Stage reset of all chat overrides
+                        </Button>
+                      </AlertDialog.Action>
+                    </Flex>
+                  </AlertDialog.Content>
+                </AlertDialog.Root>
+              </section>
+            </details>
           </EditorSection>
           <EditorSection active={page === "Skills"} aria-label="Skills">
             <Skills
@@ -716,10 +755,8 @@ function App() {
           >
             <Callout.Root color="orange">
               <Callout.Text>
-                Shell and file tools are trusted capabilities, not a sandbox. They can access
-                process-readable credentials. New tools are enabled in global and default
-                permissions when first registered or discovered. Explicit chat overrides and MCP
-                server gates still apply.
+                Shell and file tools are not sandboxed. They can access process-readable
+                credentials.
               </Callout.Text>
             </Callout.Root>
             <ToolPermissions
@@ -738,33 +775,48 @@ function App() {
                 page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
               }
             />
-            <Panel as="fieldset" className="permission-manual">
-              <legend>Approve an exact tool name</legend>
-              <Field
-                label="Additional approved tool name"
-                value={toolName}
-                onChange={(v) => {
-                  setToolName(v)
-                  markPending("tool", Boolean(v))
-                }}
-              />
-              <Button
-                disabled={!toolName}
-                onClick={() => {
-                  update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
-                  setToolName("")
-                  markPending("tool", false)
-                }}
-              >
-                Add tool to pending approval
-              </Button>
-              <Prose size="2">
-                Enter an exact tool name even if discovery is unavailable. This stages global
-                approval only; default and chat permissions remain unchanged.
-              </Prose>
-            </Panel>
+            <details className="permission-manual">
+              <summary>Approve an exact tool name</summary>
+              <Panel as="fieldset">
+                <legend>Manual tool approval</legend>
+                <Field
+                  id="tool-input"
+                  label="Additional approved tool name"
+                  value={toolName}
+                  onChange={(v) => {
+                    setToolName(v)
+                    markPending("tool", Boolean(v))
+                  }}
+                />
+                <Button
+                  disabled={!toolName}
+                  onClick={() => {
+                    update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
+                    setToolName("")
+                    markPending("tool", false)
+                  }}
+                >
+                  Add tool to pending approval
+                </Button>
+                {toolName && (
+                  <Button
+                    variant="soft"
+                    onClick={() => {
+                      setToolName("")
+                      markPending("tool", false)
+                    }}
+                  >
+                    Clear tool input
+                  </Button>
+                )}
+                <Prose size="2">
+                  Enter an exact tool name even if discovery is unavailable. This stages global
+                  approval only; default and chat permissions remain unchanged.
+                </Prose>
+              </Panel>
+            </details>
             <Button variant="soft" onClick={() => setPage("MCP connections")}>
-              Manage MCP connections
+              Manage Tool connections
             </Button>
           </EditorSection>
           <EditorSection
@@ -804,6 +856,7 @@ function App() {
               refresh={load}
               error={error}
               onPending={setProviderPending}
+              defaultModelRequest={defaultModelRequest}
             />
             <details className="provider-advanced">
               <summary>Custom endpoint</summary>
@@ -875,7 +928,7 @@ function App() {
               />
             </details>
             <details className="provider-advanced">
-              <summary>Manage model availability</summary>
+              <summary id="model-availability">Manage model availability</summary>
               <Prose size="2">
                 Add models with the provider flow above. Remove references from defaults and chats
                 before removing a model. Selecting a provider never grants its full catalog.
@@ -908,12 +961,7 @@ function App() {
             </div>
           </EditorSection>
         </fieldset>
-        {localPending && (
-          <Prose role="status">
-            An editor has unfinished input. Add, stage, or clear it before saving settings. It is
-            not included in policy changes yet.
-          </Prose>
-        )}
+
         <VisuallyHidden.Root>
           <span role="status">
             {busy

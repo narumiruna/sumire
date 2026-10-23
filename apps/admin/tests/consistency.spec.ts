@@ -1,5 +1,16 @@
-import { expect, test } from "@playwright/test"
-import { adminFixture as fixture, navigate, openDirectoryFilters, sections } from "./admin-fixture"
+import { expect, type Page, test } from "@playwright/test"
+import {
+  adminFixture as fixture,
+  navigate as navigateSection,
+  openConnectionEditor,
+  openDirectoryFilters,
+  sections,
+} from "./admin-fixture"
+
+async function navigate(page: Page, section: string) {
+  await navigateSection(page, section)
+  if (section === "MCP connections") await openConnectionEditor(page, true)
+}
 
 for (const control of [
   { section: "Chats", name: "Chat type" },
@@ -139,16 +150,13 @@ test("MCP steps distinguish creation, replacement fields, and redacted review", 
 }) => {
   const requests = await fixture(page)
   await navigate(page, "MCP connections")
-  const choose = page.getByRole("heading", { name: "1. Choose or create a server", exact: true })
-  const edit = page.getByRole("heading", { name: "2. Edit connection fields", exact: true })
-  const review = page.getByRole("heading", { name: "3. Review and save", exact: true })
+  const choose = page.getByRole("heading", { name: "Saved connections", exact: true })
+  const edit = page.getByRole("heading", { name: "Edit connection fields", exact: true })
+  const review = page.getByRole("heading", { name: "Review and save", exact: true })
   await expect(choose).toBeVisible()
   await expect(edit).toBeVisible()
   await expect(review).toBeVisible()
-  const choosePanel = choose.locator("..")
-  await expect(
-    choosePanel.getByRole("textbox", { name: "MCP server name", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "MCP server name", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
   const replacement = page.getByRole("checkbox", { name: "Edit MCP enabled", exact: true })
   const value = page.getByRole("checkbox", { name: "MCP enabled value", exact: true })

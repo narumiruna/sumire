@@ -21,7 +21,7 @@ import {
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { useContext, useEffect, useId, useState } from "react"
+import { useContext, useEffect, useId, useRef, useState } from "react"
 import { type Inventory, request, type Selection, type Snapshot } from "./api.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
@@ -161,7 +161,9 @@ export function Providers({
   refresh,
   error,
   onPending,
+  defaultModelRequest = 0,
 }: {
+  defaultModelRequest?: number
   snapshot: Snapshot
   inventory: Inventory
   csrf: string
@@ -172,6 +174,8 @@ export function Providers({
   run(action: () => Promise<void>): Promise<void>
   refresh(): Promise<void>
 }) {
+  const sectionActive = useContext(SectionActive)
+  const handledDefaultRequest = useRef(0)
   const saved = savedProviderSelection(snapshot.policy)
   // Untouched fields follow saved settings. An explicit preview survives credential refresh.
   const [draft, setDraft] = useState<ReturnType<typeof savedProviderSelection> | null>(null)
@@ -214,7 +218,7 @@ export function Providers({
   const discovered = currentDiscovery?.models ?? []
   const blocked = busy || dirty || Boolean(oauth)
   const ref = provider && model ? `${provider}/${model}` : ""
-  const useDefault = defaultChoice ?? (Boolean(ref) && ref === snapshot.policy.defaults.model)
+  const useDefault = defaultChoice ?? false
   const chatSelections = Object.entries(snapshot.policy.chats).filter(
     ([, chat]) => chat.model !== null,
   )
@@ -226,6 +230,20 @@ export function Providers({
       (snapshot.policy.defaults.model !== ref ||
         (snapshot.policy.defaults.thinking ?? "off") !== thinking ||
         !snapshot.policy.defaults.models?.includes(ref)))
+
+  useEffect(() => {
+    if (!defaultModelRequest || handledDefaultRequest.current === defaultModelRequest) return
+    handledDefaultRequest.current = defaultModelRequest
+    if (
+      draft &&
+      modelChanged &&
+      !useDefault &&
+      !window.confirm("Use the pending model selection as the shared default?")
+    )
+      return
+    setDefaultChoice(true)
+    setDraft((current) => current ?? savedProviderSelection(snapshot.policy))
+  }, [defaultModelRequest, draft, modelChanged, useDefault, snapshot.policy])
 
   useEffect(() => {
     onPending(Boolean(key || answer || oauth || (modelChanged && draft)))
@@ -311,7 +329,7 @@ export function Providers({
   const authLink = loginUrl(login?.event?.url ?? login?.event?.verificationUri)
   return (
     <Dialog.Root
-      open={authOpen}
+      open={authOpen && sectionActive}
       onOpenChange={(open) => {
         if (!open && !busy) closeAuth()
       }}
@@ -483,7 +501,6 @@ export function Providers({
                 setDraft(
                   id === saved.provider ? saved : { provider: id, model: "", thinking: null },
                 )
-                setDefaultChoice(false)
                 setNotice("")
                 setDiscoveryCheck(undefined)
               }}
@@ -659,7 +676,6 @@ export function Providers({
                       (selected.models.find((m) => m.id === id)
                         ?.thinking[0] as Selection["thinking"]) ?? null,
                   })
-                  setDefaultChoice(false)
                 }}
               />
               {model && !selectedModel && (
@@ -709,6 +725,9 @@ export function Providers({
                       The selected thinking level is unavailable. Choose a supported level.
                     </Text>
                   )}
+                  <Text as="p" size="2" weight="medium">
+                    Model task: {useDefault ? "Change shared default" : "Add available model"}
+                  </Text>
                   <label className="check" htmlFor="provider-default">
                     <Checkbox
                       id="provider-default"

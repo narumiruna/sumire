@@ -1,13 +1,17 @@
 import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
 import { useEffect, useRef } from "react"
 import type { Snapshot } from "./api.js"
-import type { Page } from "./navigation.js"
+import { type EditorTarget, type Page, pageLabel } from "./navigation.js"
+import type { PolicyChange } from "./policy-changes.js"
 import { countText } from "./status-text.js"
 import { Prose } from "./surfaces.js"
 
 type Props = {
   snapshot: Snapshot
   changes: string[]
+  entries: PolicyChange[]
+  unfinished: { label: string; target: EditorTarget }[]
+  openEditor(target: EditorTarget): void
   dirty: boolean
   busy: boolean
   localPending: boolean
@@ -23,6 +27,9 @@ type Props = {
 export function SaveStatus({
   snapshot,
   changes,
+  entries,
+  unfinished,
+  openEditor,
   dirty,
   busy,
   localPending,
@@ -109,35 +116,62 @@ export function SaveStatus({
       </div>
       {!compact && (
         <div className="save-scopes">
-          <Button
-            variant="surface"
-            className="navigation-control"
-            onClick={() => navigate("Access")}
-          >
-            Policy: {dirty ? countText(changes.length, "change") : "No changes"}
-          </Button>
-          <Button
-            variant="surface"
-            className="navigation-control"
-            onClick={() => navigate("MCP connections")}
-          >
-            {mcpDirty ? "MCP: Unsaved configuration" : "MCP: No browser edits"}
-          </Button>
-          <Button
-            variant="surface"
-            className="navigation-control"
-            onClick={() => navigate("Model Providers")}
-          >
-            {providerPending
-              ? "Provider: Unsaved selection or authentication"
-              : "Provider: No browser edits"}
-          </Button>
+          {dirty && (
+            <details className="policy-destinations">
+              <summary>Policy: {countText(changes.length, "change")}</summary>
+              {entries.map((entry) => (
+                <div key={entry.label}>
+                  <Prose size="2">{entry.label}</Prose>
+                  <Flex gap="2" wrap="wrap">
+                    {entry.targets
+                      .filter(
+                        (target, index, targets) =>
+                          targets.findIndex(
+                            (other) => JSON.stringify(other) === JSON.stringify(target),
+                          ) === index,
+                      )
+                      .map((target) => (
+                        <Button
+                          key={JSON.stringify(target)}
+                          variant="soft"
+                          className="navigation-control"
+                          onClick={() => openEditor(target)}
+                        >
+                          Review {target.chat ? `chat ${target.chat}` : pageLabel(target.page)}
+                        </Button>
+                      ))}
+                  </Flex>
+                </div>
+              ))}
+            </details>
+          )}
+          {mcpDirty && (
+            <Button
+              variant="surface"
+              className="navigation-control"
+              onClick={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
+            >
+              MCP: Unsaved configuration
+            </Button>
+          )}
+          {providerPending && (
+            <Button
+              variant="surface"
+              className="navigation-control"
+              onClick={() => navigate("Model Providers")}
+            >
+              Provider: Unsaved selection or authentication
+            </Button>
+          )}
+          {unfinished.map((editor) => (
+            <div key={editor.label} className="unfinished-editor">
+              <Prose size="2">Finish or clear input in {editor.label} before saving.</Prose>
+              <Button variant="soft" onClick={() => openEditor(editor.target)}>
+                Continue editing: {editor.label}
+              </Button>
+            </div>
+          ))}
         </div>
-      )}
-      {localPending && (
-        <Prose size="2">
-          <span>Unstaged editor input</span> · Save unavailable: finish or clear this input.
-        </Prose>
       )}
       {(dirty || !applied) && (
         <div className="save-actions">

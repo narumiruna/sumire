@@ -1,13 +1,19 @@
 import { inherited, initialPolicy, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import type { Inventory, Policy } from "../src/api.js"
-import { sectionLabel } from "./admin-fixture.js"
+import {
+  openChatConfiguration,
+  openConnectionEditor,
+  openDisclosure,
+  sectionLabel,
+} from "./admin-fixture.js"
 
 async function navigate(page: Page, name: string) {
   const link = page.getByRole("link", { name: sectionLabel(name), exact: true })
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "MCP connections") await openConnectionEditor(page)
 }
 
 async function setup(page: Page, options: { actor?: string; inventory?: Inventory } = {}) {
@@ -112,10 +118,16 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByText("New tools are denied until explicitly approved.", { exact: false }),
     ).toHaveCount(0)
+    await openDisclosure(page, "Permission rules and inheritance")
     await expect(
-      page.getByText(/New tools are automatically added to global and default permissions/),
+      page.getByText(/New tools are added to global and default permissions/),
     ).toBeVisible()
-    await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
+    if (
+      (await page
+        .getByRole("button", { name: "Built-in tools · 3 tools", exact: true })
+        .getAttribute("aria-expanded")) === "false"
+    )
+      await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
     const blocked = page.getByRole("checkbox", {
       name: "Default chat permission for tool write",
       exact: true,
@@ -175,7 +187,12 @@ for (const width of [1440, 390]) {
     }
     const state = await setup(page, { inventory })
     await navigate(page, "Tool permissions")
-    await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
+    if (
+      (await page
+        .getByRole("button", { name: "Built-in tools · 3 tools", exact: true })
+        .getAttribute("aria-expanded")) === "false"
+    )
+      await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
     const row = page
       .getByRole("listitem")
       .filter({ has: page.getByText("generate_image", { exact: true }) })
@@ -232,7 +249,7 @@ for (const width of [1440, 390]) {
     await expect(global).not.toBeVisible()
     await expect(
       page.getByRole("checkbox", { name: "Globally allow tool read", exact: true }),
-    ).not.toBeVisible()
+    ).toBeVisible()
     await expect(summary).toHaveAttribute("aria-expanded", "false")
     await summary.focus()
     await page.keyboard.press("Enter")
@@ -261,7 +278,12 @@ test("global removal retains defaults and overrides, shows exact references, and
 }) => {
   const state = await setup(page)
   await navigate(page, "Tool permissions")
-  await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
+  if (
+    (await page
+      .getByRole("button", { name: "Built-in tools · 3 tools", exact: true })
+      .getAttribute("aria-expanded")) === "false"
+  )
+    await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
   const global = page.getByRole("checkbox", { name: "Globally allow tool read", exact: true })
   const defaults = page.getByRole("checkbox", {
     name: "Default chat permission for tool read",
@@ -284,7 +306,7 @@ test("global removal retains defaults and overrides, shows exact references, and
   await expect(defaults).toBeDisabled()
   await page.getByRole("button", { name: "Review chat 43", exact: true }).click()
   await expect(page).toHaveURL(/section=Chats.*chat=43|chat=43.*section=Chats/)
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true })
   await expect(
     tools.getByRole("checkbox", { name: "read (no longer available)", exact: true }),
@@ -308,6 +330,7 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
   await expect(
     page.getByRole("checkbox", { name: /Globally allow|Default chat permission/ }),
   ).toHaveCount(0)
+  await openDisclosure(page, "Connection permissions and discovery")
   await expect(
     page.getByText(/Connection configuration and enabled state do not grant execution permission/),
   ).toBeVisible()
@@ -337,6 +360,7 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
     page.getByRole("checkbox", { name: "Default chat permission for server fixture", exact: true }),
   ).toBeChecked()
   await server.check()
+  await openDisclosure(page, "Approve an exact tool name")
   await page
     .getByLabel("Additional approved tool name", { exact: true })
     .fill("mcp__offline__manual")
@@ -393,7 +417,7 @@ test("bulk expansion persists per user and new groups start collapsed", async ({
 
   await setup(page, { actor: "43" })
   await navigate(page, "Tool permissions")
-  await expect(builtin).toHaveAttribute("aria-expanded", "false")
+  await expect(builtin).toHaveAttribute("aria-expanded", "true")
   await expect(fixture).toHaveAttribute("aria-expanded", "false")
 
   await setup(page, {

@@ -26,6 +26,44 @@ export const pages = [
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
+
+export type EditorTarget = { page: Page; selector: string; chat?: string }
+
+export const pendingEditors = {
+  users: {
+    label: "Chat access — Private user ID to add",
+    target: { page: "Access", selector: "#access-user-input" },
+  },
+  groups: {
+    label: "Chat access — Group or channel ID to add",
+    target: { page: "Access", selector: "#access-group-input" },
+  },
+  tool: {
+    label: "Tool permissions — Additional approved tool name",
+    target: { page: "Tool permissions", selector: "#tool-input" },
+  },
+  endpoint: {
+    label: "Model providers — Custom endpoint",
+    target: { page: "Model Providers", selector: "#endpoint-provider-id" },
+  },
+  secret: {
+    label: "Tool connections — Secret replacement",
+    target: { page: "MCP connections", selector: "#secret-name" },
+  },
+} satisfies Record<string, { label: string; target: EditorTarget }>
+export type PendingEditor = keyof typeof pendingEditors
+
+/** Open native disclosures before focusing. Never read or copy field values. */
+export function focusEditor(selector: string) {
+  const target = document.querySelector<HTMLElement>(selector)
+  if (!target) return
+  for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+    if (parent instanceof HTMLDetailsElement) parent.open = true
+  }
+  if (!target.checkVisibility()) return
+  target.focus({ preventScroll: true })
+  target.scrollIntoView({ block: "center", behavior: "instant" })
+}
 const pageIcons = {
   Chats: ChatBubbleIcon,
   Durable: LayersIcon,
