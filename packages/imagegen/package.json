@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-imagegen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Bounded Codex image generation client for Sumire",
   "license": "MIT",

@@ -1,5 +1,11 @@
 # @narumitw/sumire-contracts
 
+## 0.6.0
+
+### Minor Changes
+
+- b5fa6fc: Fix imagegen tool availability after restart by reading Pi's non-secret credential metadata instead of an uninitialized auth snapshot. Preserve effective chat permissions and recheck asynchronous authorization before generation and delivery. Add optional capability diagnostics to the authenticated inventory, show provider requirements separately from policy in the WebUI, and log imagegen availability, permission, and installation without credentials or prompts.
+
 ## 0.5.0
 
 ### Minor Changes
