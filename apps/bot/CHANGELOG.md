@@ -1,5 +1,20 @@
 # @narumitw/sumire
 
+## 0.15.0
+
+### Minor Changes
+
+- 0e1496e: Add experimental Codex OAuth image generation with bounded image validation, explicit chat tool approval, and durable Telegram photo/document delivery with partial-delivery recovery.
+
+### Patch Changes
+
+- 9731d9a: Upload generated images directly before processing explanatory text or Morsel publication. Preserve confirmed image receipts so text delivery failures and recovery do not generate or upload images again.
+- b5fa6fc: Fix imagegen tool availability after restart by reading Pi's non-secret credential metadata instead of an uninitialized auth snapshot. Preserve effective chat permissions and recheck asynchronous authorization before generation and delivery. Add optional capability diagnostics to the authenticated inventory, show provider requirements separately from policy in the WebUI, and log imagegen availability, permission, and installation without credentials or prompts.
+- Updated dependencies [0e1496e]
+- Updated dependencies [b5fa6fc]
+  - @narumitw/sumire-imagegen@0.2.0
+  - @narumitw/sumire-contracts@0.6.0
+
 ## 0.14.0
 
 ### Minor Changes

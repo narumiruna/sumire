@@ -1,5 +1,14 @@
 # @narumitw/sumire-admin
 
+## 0.6.1
+
+### Patch Changes
+
+- e504a57: Make pending-input warnings actionable, retain explicit default-model intent, and open chat model controls directly. Reveal connection editors and advanced settings only when needed, and add readable exact-value audit filters without changing save scopes or permissions.
+- b5fa6fc: Fix imagegen tool availability after restart by reading Pi's non-secret credential metadata instead of an uninitialized auth snapshot. Preserve effective chat permissions and recheck asynchronous authorization before generation and delivery. Add optional capability diagnostics to the authenticated inventory, show provider requirements separately from policy in the WebUI, and log imagegen availability, permission, and installation without credentials or prompts.
+- Updated dependencies [b5fa6fc]
+  - @narumitw/sumire-contracts@0.6.0
+
 ## 0.6.0
 
 ### Minor Changes
