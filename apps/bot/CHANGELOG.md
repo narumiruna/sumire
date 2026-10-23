@@ -1,5 +1,22 @@
 # @narumitw/sumire
 
+## 0.14.0
+
+### Minor Changes
+
+- 7648df0: Show Durable relationships in an expandable tree and inspect recorded message text, thinking, tool arguments, and tool results. Keep collection reads metadata-only, bound explicit content reads, and show incomplete data without exposing image bytes or protocol fields.
+  
+  Apply a shared Radix sand/teal workspace to all eight production Admin pages. Add consistent navigation, headers, touch targets, structured facts, permission tables, and responsive chat, MCP, and provider inspectors while preserving drafts, authentication, protected values, and separate save scopes. Keep Durable content first with retained mobile expansion and focus, accessible record colors, independent detail sizing, and secondary history, raw collections, metadata, and JSON views.
+- 6ea8d02: Add skill management to the administration WebUI with discovered descriptions, global availability, shared defaults, and per-chat inheritance or explicit selections. Apply selected skills to each chat’s prompt without changing tool access. Preserve existing policy data and manual removals through persistent first-seen skill registration.
+
+### Patch Changes
+
+- 5ce8fc3: Allow `faccessat2` in the Chromium seccomp profile to restore startup with current ARM64 container runtimes while retaining the deny-by-default policy and browser sandbox. Recreate the container to apply security policy file changes and wait for its healthcheck before reporting deployment success.
+- Updated dependencies [7648df0]
+- Updated dependencies [6ea8d02]
+  - @narumitw/sumire-contracts@0.5.0
+  - @narumitw/sumire-policy@0.4.0
+
 ## 0.13.0
 
 ### Minor Changes
