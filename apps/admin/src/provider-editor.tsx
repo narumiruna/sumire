@@ -188,7 +188,7 @@ export function ProviderEditor({
         </Button>
       </Flex>
       <Prose size="2" color="gray" className="section-copy">
-        This stages policy edits only. Apply policy changes before authentication. This replaces the
+        This stages settings only. Review and save changes before authentication. This replaces the
         custom model list. Custom model costs are unknown, not verified zero-cost.
       </Prose>
     </Panel>

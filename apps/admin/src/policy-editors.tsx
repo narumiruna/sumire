@@ -1,6 +1,4 @@
 import type { effectivePolicy } from "@narumitw/sumire-policy"
-import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
   Badge,
   Button,
@@ -10,16 +8,13 @@ import {
   DataList,
   Flex,
   Grid,
-  Table,
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { useEffect, useId, useState } from "react"
-import { type Inventory, type Policy, parseIds, type Selection } from "./api.js"
-import { type Chat, chatName } from "./chats.js"
+import { useId, useState } from "react"
+import type { Inventory, Policy, Selection } from "./api.js"
 import { focusEditor, pageLabel } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
-import { countText } from "./status-text.js"
 import { Panel, Prose } from "./surfaces.js"
 
 export function Check({
@@ -76,212 +71,6 @@ export function Field({
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
-  )
-}
-export function IdList({
-  label,
-  values,
-  savedValues,
-  target,
-  chats,
-  positive,
-  onChange,
-  onPending,
-}: {
-  label: string
-  values: number[]
-  savedValues: number[]
-  target: string
-  chats: Chat[]
-  positive: boolean
-  onChange(values: number[]): void
-  onPending(value: boolean): void
-}) {
-  const [draft, setDraft] = useState("")
-  const [error, setError] = useState("")
-  const [query, setQuery] = useState("")
-  const searchId = useId()
-  useEffect(() => {
-    setQuery(target && Number(target) > 0 === positive ? target : "")
-  }, [target, positive])
-  const metadata = new Map(chats.map((chat) => [chat.id, chat]))
-  const names = new Map(chats.map((chat) => [chat.id, chat.name]))
-  const matches = (id: number) =>
-    `${names.get(id) ?? ""} ${id}`.toLowerCase().includes(query.toLowerCase())
-  const visible = values.filter(matches)
-  const revoked = savedValues.filter((id) => !values.includes(id))
-  return (
-    <Panel as="fieldset" className="access-list">
-      <legend>{label}</legend>
-      <Flex direction="column" gap="2" className="access-list__header">
-        <label className="form-field access-list__search" htmlFor={searchId}>
-          {`Search ${label.toLowerCase()}`}
-          <TextField.Root
-            id={searchId}
-            value={query}
-            autoComplete="off"
-            onChange={(e) => setQuery(e.target.value)}
-          >
-            <TextField.Slot>
-              <MagnifyingGlassIcon aria-hidden="true" />
-            </TextField.Slot>
-          </TextField.Root>
-        </label>
-        <details className="access-search-help">
-          <summary>Search scope</summary>
-          <Prose size="2">
-            Search all entries by ID or loaded chat name. Names on other pages may not be loaded.
-          </Prose>
-        </details>
-        <Prose size="2" color="gray" className="access-list__summary">
-          {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
-          {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.{" "}
-          <a href="#save-status">Review pending changes</a>
-        </Prose>
-      </Flex>
-      {!!values.length && !visible.length && (
-        <Prose size="2" className="empty-state">
-          No matching access entries.
-        </Prose>
-      )}
-      <Table.Root size="1" className="access-table">
-        <VisuallyHidden.Root asChild>
-          <caption>{label}</caption>
-        </VisuallyHidden.Root>
-        <Table.Header>
-          <Table.Row>
-            <Table.ColumnHeaderCell scope="col">Chat / ID</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">Approval</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">Action</Table.ColumnHeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {visible.map((id) => (
-            <Table.Row key={id}>
-              <Table.Cell>
-                <Prose weight="medium">
-                  {chatName(
-                    metadata.get(id) ?? {
-                      id,
-                      name: "",
-                      type: id > 0 ? "private" : "group or channel",
-                    },
-                  )}
-                </Prose>
-                <Code size="2" variant="ghost" className="access-id">
-                  {id}
-                </Code>
-              </Table.Cell>
-              <Table.Cell>
-                {!savedValues.includes(id) ? (
-                  <Badge color="orange">Pending approval</Badge>
-                ) : (
-                  <Badge color="green" variant="soft">
-                    Approved
-                  </Badge>
-                )}
-              </Table.Cell>
-              <Table.Cell>
-                <Button
-                  variant="ghost"
-                  color="red"
-                  aria-label={`Revoke access for ID ${id}`}
-                  onClick={() => onChange(values.filter((v) => v !== id))}
-                >
-                  Revoke access
-                </Button>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-          {revoked.filter(matches).map((id) => (
-            <Table.Row key={id} className="access-row--revoked">
-              <Table.Cell>
-                <Prose weight="medium">
-                  {chatName(
-                    metadata.get(id) ?? {
-                      id,
-                      name: "",
-                      type: id > 0 ? "private" : "group or channel",
-                    },
-                  )}
-                </Prose>
-                <Code size="2" variant="ghost" className="access-id">
-                  {id}
-                </Code>
-              </Table.Cell>
-              <Table.Cell>
-                <Badge color="orange">Pending revocation</Badge>
-              </Table.Cell>
-              <Table.Cell>
-                <Button variant="soft" onClick={() => onChange([...values, id])}>
-                  Undo revocation for {id}
-                </Button>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table.Root>
-      {!values.length && (
-        <Prose size="2" className="empty-state">
-          No access approved in the policy draft.
-        </Prose>
-      )}
-      <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
-        <Field
-          id={positive ? "access-user-input" : "access-group-input"}
-          label={positive ? "Private user ID to add" : "Group or channel ID to add"}
-          value={draft}
-          onChange={(v) => {
-            setDraft(v)
-            onPending(Boolean(v))
-          }}
-        />
-        <Button
-          variant="soft"
-          disabled={!draft}
-          onClick={() => {
-            try {
-              const ids = parseIds(draft, positive)
-              if (ids.length !== 1) throw new Error("Enter one ID")
-              onChange([...new Set([...values, ...ids])])
-              setDraft("")
-              onPending(false)
-              setError("")
-            } catch {
-              setError(
-                positive
-                  ? "Enter one positive whole-number Telegram user ID."
-                  : "Enter one negative whole-number Telegram group or channel ID.",
-              )
-            }
-          }}
-        >
-          Add ID to pending settings
-        </Button>
-        {draft && (
-          <Button
-            variant="soft"
-            onClick={() => {
-              setDraft("")
-              setError("")
-              onPending(false)
-            }}
-          >
-            Clear ID input
-          </Button>
-        )}
-      </Flex>
-      {draft && (
-        <Prose size="2" className="access-list__feedback">
-          Not added yet. Add this ID before saving settings.
-        </Prose>
-      )}
-      {error && (
-        <Text color="red" role="alert" size="2" className="access-list__feedback">
-          {error}
-        </Text>
-      )}
-    </Panel>
   )
 }
 export function List({

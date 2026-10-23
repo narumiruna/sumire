@@ -156,7 +156,6 @@ test("MCP field replacement selectors stay distinct from values and preserve pat
   page,
 }) => {
   const { writes } = await fixture(page, "MCP connections")
-  await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
   const preview = page.getByRole("region", { name: "MCP change preview", exact: true })
   const enabled = page.getByRole("checkbox", { name: "Edit MCP enabled", exact: true })
   await expect(enabled.locator("..")).toContainText("Replace enabled")
@@ -171,9 +170,9 @@ test("MCP field replacement selectors stay distinct from values and preserve pat
   await enabled.uncheck()
   await expect(preview).toContainText("Preserved: enabled")
   await expect(value).toHaveCount(0)
-  await choose(page, "Transport update", "Replace with HTTP endpoint")
+  await choose(page, "Connection type", "Replace with HTTP endpoint")
   await page
-    .getByRole("textbox", { name: "MCP url replacement", exact: true })
+    .getByRole("textbox", { name: "Connection URL", exact: true })
     .fill("https://fixture.example/mcp")
   await expect(preview).toContainText("Removed by transport selection: command")
   await expect(preview).toContainText("Removed by transport selection: env")
@@ -201,18 +200,18 @@ test("MCP field replacement selectors stay distinct from values and preserve pat
 for (const name of [
   "Chat type",
   "Access status",
-  "Transport update",
+  "Connection type",
   "MCP exposure replacement",
   "MCP type replacement",
 ]) {
   test(`${name} closes on Escape and when its section becomes inactive`, async ({ page }) => {
     await fixture(page, "Access")
-    const mcp = name.startsWith("MCP") || name === "Transport update"
+    const mcp = name.startsWith("MCP") || name === "Connection type"
     const section = mcp ? "MCP connections" : "Chats"
     await page.getByRole("link", { name: sectionLabel(section), exact: true }).click()
     if (!mcp) await openDirectoryFilters(page)
     if (mcp) {
-      await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
+      await openConnectionEditor(page, true)
       await openDisclosure(page, "Advanced connection fields")
       if (name === "MCP exposure replacement")
         await page.getByRole("checkbox", { name: "Edit MCP exposure", exact: true }).check()

@@ -2,9 +2,11 @@ import { inherited, initialPolicy, validateReferences } from "@narumitw/sumire-p
 import { expect, type Page, test } from "@playwright/test"
 import type { Inventory, Policy } from "../src/api.js"
 import {
+  closeConnectionEditor,
   openChatConfiguration,
   openConnectionEditor,
   openDisclosure,
+  openGlobalLimits,
   sectionLabel,
 } from "./admin-fixture.js"
 
@@ -13,6 +15,7 @@ async function navigate(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "Tool permissions") await openGlobalLimits(page)
   if (name === "MCP connections") await openConnectionEditor(page)
 }
 
@@ -90,8 +93,8 @@ async function setup(page: Page, options: { actor?: string; inventory?: Inventor
 }
 
 async function savePolicy(page: Page) {
-  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
-  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
 }
 
 for (const width of [1440, 390]) {
@@ -112,9 +115,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible()
     await page.getByRole("link", { name: "Manage default tool permissions", exact: true }).click()
     await expect(page).toHaveURL(/section=Tool\+permissions.*#default-tool-permissions/)
-    await expect(
-      page.getByRole("heading", { name: "Global and default chat permissions" }),
-    ).toBeFocused()
+    await expect(page.getByRole("heading", { name: "Default permissions" })).toBeFocused()
     await expect(
       page.getByText("New tools are denied until explicitly approved.", { exact: false }),
     ).toHaveCount(0)
@@ -134,6 +135,7 @@ for (const width of [1440, 390]) {
     })
     await expect(blocked).toBeDisabled()
     await expect(blocked).toHaveAccessibleDescription("Unavailable globally")
+    await openGlobalLimits(page)
     const global = page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true })
     const defaults = page.getByRole("checkbox", {
       name: "Default chat permission for tool bash",
@@ -226,6 +228,7 @@ for (const width of [1440, 390]) {
       },
     }
     await page.reload()
+    await openGlobalLimits(page)
     await expect(row.getByText("Capability configured", { exact: true })).toBeVisible()
     await expect(row.getByText(/experimental image access is not verified/)).toBeVisible()
     await expect(global).toBeChecked()
@@ -335,10 +338,12 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
     page.getByText(/Connection configuration and enabled state do not grant execution permission/),
   ).toBeVisible()
   expect(state.writes).toEqual([])
+  await closeConnectionEditor(page)
   await page.getByRole("button", { name: "Test and discover fixture", exact: true }).click()
   await page
     .getByRole("button", { name: "Manage tool and MCP server permissions", exact: true })
     .click()
+  await openGlobalLimits(page)
   await page.getByRole("button", { name: "MCP: fixture · 2 tools", exact: true }).click()
   const discovered = page.getByRole("checkbox", {
     name: "Globally allow tool mcp__fixture__new",
@@ -390,7 +395,7 @@ test("MCP connectivity, server gates, new tools, and manual approvals keep separ
   expect(state.writes).toEqual(["/api/mcp/fixture/discover", "/api/settings"])
   await navigate(page, "MCP connections")
   await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("draft")
-  await page.getByRole("button", { name: "Save MCP configuration and apply", exact: true }).click()
+  await page.getByRole("button", { name: "Save connection", exact: true }).click()
   await expect(page.getByRole("button", { name: "Discard MCP draft", exact: true })).toHaveCount(0)
   expect(state.writes).toEqual(["/api/mcp/fixture/discover", "/api/settings", "/api/mcp/draft"])
 })

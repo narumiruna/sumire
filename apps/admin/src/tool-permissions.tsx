@@ -10,6 +10,7 @@ import {
   Flex,
   Heading,
   Text,
+  TextField,
 } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
@@ -83,11 +84,15 @@ function readExpansion(actor: string): string[] | undefined {
 function PermissionGroup({
   group,
   expanded,
+  globalEditing,
+  searching,
   onToggle,
   children,
 }: {
   group?: ToolPermissionGroup
   expanded: boolean
+  globalEditing: boolean
+  searching: boolean
   onToggle(): void
   children: ReactNode
 }) {
@@ -96,9 +101,9 @@ function PermissionGroup({
     <>
       <div className="permission-matrix-heading" aria-hidden="true">
         <strong>{group ? "Tool name" : "Server name"}</strong>
-        <strong>Globally allowed</strong>
+        <strong hidden={!globalEditing}>Globally allowed</strong>
         <strong>Default chat permission</strong>
-        <strong>Effective for inheriting chats</strong>
+        <strong>Status</strong>
       </div>
       <ul className="permission-list">{children}</ul>
     </>
@@ -107,23 +112,29 @@ function PermissionGroup({
   return (
     <section className="permission-group" aria-label={group.label}>
       <Heading as="h4" size="2">
-        <Button
-          variant="ghost"
-          className="permission-group-toggle"
-          aria-expanded={expanded}
-          aria-controls={id}
-          onClick={onToggle}
-        >
-          {expanded ? (
-            <ChevronDownIcon aria-hidden="true" />
-          ) : (
-            <ChevronRightIcon aria-hidden="true" />
-          )}
-          <Text>{group.label} ·</Text>
-          <Badge color="gray" variant="soft">
-            {countText(group.names.length, "tool")}
-          </Badge>
-        </Button>
+        {searching ? (
+          <Text>
+            {group.label} · {countText(group.names.length, "tool")}
+          </Text>
+        ) : (
+          <Button
+            variant="ghost"
+            className="permission-group-toggle"
+            aria-expanded={expanded}
+            aria-controls={id}
+            onClick={onToggle}
+          >
+            {expanded ? (
+              <ChevronDownIcon aria-hidden="true" />
+            ) : (
+              <ChevronRightIcon aria-hidden="true" />
+            )}
+            <Text>{group.label} ·</Text>
+            <Badge color="gray" variant="soft">
+              {countText(group.names.length, "tool")}
+            </Badge>
+          </Button>
+        )}
       </Heading>
       <div id={id} hidden={!expanded}>
         {content}
@@ -153,9 +164,24 @@ export function ToolPermissions({
 }) {
   const prefix = useId()
   const heading = useRef<HTMLHeadingElement>(null)
-  const groups = toolPermissionGroups(permissionNames("tools", policy, saved, inventory), inventory)
+  const [query, setQuery] = useState("")
+  const [globalEditing, setGlobalEditing] = useState(false)
+  const term = query.trim().toLowerCase()
+  const allGroups = toolPermissionGroups(
+    permissionNames("tools", policy, saved, inventory),
+    inventory,
+  )
+  const groups = allGroups
+    .map((group) => ({
+      ...group,
+      names: group.names.filter((name) => `${name} ${group.label}`.toLowerCase().includes(term)),
+    }))
+    .filter((group) => group.names.length > 0)
+  const servers = permissionNames("servers", policy, saved, inventory).filter((name) =>
+    name.toLowerCase().includes(term),
+  )
   const [expansion, setExpansion] = useState(() => readExpansion(actor))
-  const expanded = expansion ?? groups.slice(0, 1).map((group) => group.id)
+  const expanded = expansion ?? allGroups.slice(0, 1).map((group) => group.id)
   function changeExpansion(next: string[]) {
     setExpansion(next)
     try {
@@ -168,55 +194,54 @@ export function ToolPermissions({
     if (defaultContext) heading.current?.focus()
   }, [defaultContext])
   return (
-    <Flex direction="column" gap="4" className="settings-stack tool-permissions">
+    <Flex
+      direction="column"
+      gap="4"
+      className="settings-stack tool-permissions"
+      data-global-editing={globalEditing}
+    >
       <Flex direction="column" gap="2" className="section-heading">
         <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="4">
-          Global and default chat permissions
+          Default permissions
         </Heading>
         <Prose size="2" color="gray" className="section-copy">
-          Set global limits and permissions for chats that use shared defaults.
+          Choose tools for chats that use shared defaults. Global limits still apply.
         </Prose>
       </Flex>
-      <details className="permission-rules">
-        <summary>Permission rules and inheritance</summary>
-        <Text as="p" size="2" color="gray">
-          Global permission alone does not install a tool. Global permission is the system-wide
-          ceiling. Defaults apply only to inheriting chats. Explicit overrides stay in chat details.
-          Global changes never clear stored selections. MCP requires both server and individual tool
-          permission.
-        </Text>
-        <Text as="p" size="2">
-          New tools are added to global and default permissions when first registered or discovered,
-          except approval-only tools such as generate_image. Manual removals and explicit chat
-          overrides are preserved. MCP tools still require their server gate.
-        </Text>
-        <Panel className="permission-summary">
-          <DataList.Root size="2" className="data-list">
-            <DataList.Item className="data-row">
-              <DataList.Label>Saved defaults</DataList.Label>
-              <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
-            </DataList.Item>
-            {dirty && (
-              <DataList.Item className="data-row">
-                <DataList.Label>Policy draft defaults</DataList.Label>
-                <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
-              </DataList.Item>
-            )}
-          </DataList.Root>
-          <Prose size="2" color="gray" className="section-copy">
-            These counts describe policy selections, not installed tools or verified provider
-            access.
-          </Prose>
-        </Panel>
-      </details>
+      <Flex gap="3" align="end" wrap="wrap" className="tool-search">
+        <label className="form-field" htmlFor={`${prefix}-search`}>
+          Search tools and servers
+          <TextField.Root
+            id={`${prefix}-search`}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <Button
+          variant="soft"
+          aria-pressed={globalEditing}
+          onClick={() => setGlobalEditing(!globalEditing)}
+        >
+          Edit global limits
+        </Button>
+      </Flex>
+      {globalEditing && (
+        <Prose size="2">
+          Global limits affect every chat. Stored selections are not removed automatically.
+        </Prose>
+      )}
+      {term && !groups.length && !servers.length && (
+        <Prose role="status">No matching tools or servers.</Prose>
+      )}
       {(["tools", "servers"] as const).map((key) => (
         <Panel
           key={key}
           className="permission-section"
+          hidden={Boolean(term) && (key === "tools" ? !groups.length : !servers.length)}
           aria-label={key === "tools" ? "Individual tool permissions" : "MCP server permissions"}
         >
           <Heading as="h3" size="3" className="section-heading">
-            {key === "tools" ? "Individual tool names" : "MCP server gates"}
+            {key === "tools" ? "Tools" : "MCP servers"}
           </Heading>
           {key === "servers" && (
             <Text as="p" size="2" color="gray">
@@ -232,6 +257,7 @@ export function ToolPermissions({
           )}
           {key === "tools" && (
             <Flex
+              hidden={Boolean(term)}
               gap="3"
               my="3"
               wrap="wrap"
@@ -246,7 +272,7 @@ export function ToolPermissions({
               <Flex gap="2" wrap="wrap">
                 <Button
                   variant="soft"
-                  onClick={() => changeExpansion(groups.map((group) => group.id))}
+                  onClick={() => changeExpansion(allGroups.map((group) => group.id))}
                 >
                   Expand all
                 </Button>
@@ -262,14 +288,16 @@ export function ToolPermissions({
                 {
                   id: "servers",
                   label: "MCP server gates",
-                  names: permissionNames(key, policy, saved, inventory),
+                  names: servers,
                 },
               ]
           ).map((group, groupIndex) => (
             <PermissionGroup
               key={group.id}
               group={key === "tools" ? group : undefined}
-              expanded={expanded.includes(group.id)}
+              expanded={Boolean(term) || expanded.includes(group.id)}
+              globalEditing={globalEditing}
+              searching={Boolean(term)}
               onToggle={() =>
                 changeExpansion(
                   expanded.includes(group.id)
@@ -327,7 +355,7 @@ export function ToolPermissions({
                         </Text>
                       )}
                     </div>
-                    <label className="check" htmlFor={`${id}-global`}>
+                    <label className="check" htmlFor={`${id}-global`} hidden={!globalEditing}>
                       <Checkbox
                         id={`${id}-global`}
                         aria-label={`Globally allow ${key === "tools" ? "tool" : "server"} ${name}`}
@@ -365,13 +393,10 @@ export function ToolPermissions({
                             })
                           }
                         />
-                        <span className="permission-mobile-label">Default chat permission</span>
+                        <span className="permission-mobile-label">Use by default</span>
                       </label>
                     </div>
                     <div>
-                      <Text as="p" size="2" weight="medium" className="permission-mobile-label">
-                        Effective for inheriting chats
-                      </Text>
                       <Text as="p" size="2" id={`${id}-status`}>
                         {!global
                           ? "Unavailable globally"
@@ -391,7 +416,7 @@ export function ToolPermissions({
                           policy.defaults.servers?.includes(server.name)
                             ? "Server gate selected for inheriting chats"
                             : "Blocked by global or default server permission"}
-                          . Connection and chat approval remain separate.
+                          .
                         </Text>
                       ))}
                     </div>
@@ -438,6 +463,38 @@ export function ToolPermissions({
           ))}
         </Panel>
       ))}
+      <details className="permission-rules">
+        <summary>Permission rules and inheritance</summary>
+        <Text as="p" size="2" color="gray">
+          Global permission alone does not install a tool. Global permission is the system-wide
+          ceiling. Defaults apply only to inheriting chats. Explicit overrides stay in chat details.
+          Global changes never clear stored selections. MCP requires both server and individual tool
+          permission.
+        </Text>
+        <Text as="p" size="2">
+          New tools are added to global and default permissions when first registered or discovered,
+          except approval-only tools such as generate_image. Manual removals and explicit chat
+          overrides are preserved. MCP tools still require their server gate.
+        </Text>
+        <Panel className="permission-summary">
+          <DataList.Root size="2" className="data-list">
+            <DataList.Item className="data-row">
+              <DataList.Label>Saved defaults</DataList.Label>
+              <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
+            </DataList.Item>
+            {dirty && (
+              <DataList.Item className="data-row">
+                <DataList.Label>Policy draft defaults</DataList.Label>
+                <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
+              </DataList.Item>
+            )}
+          </DataList.Root>
+          <Prose size="2" color="gray" className="section-copy">
+            These counts describe policy selections, not installed tools or verified provider
+            access.
+          </Prose>
+        </Panel>
+      </details>
     </Flex>
   )
 }

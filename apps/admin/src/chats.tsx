@@ -6,7 +6,6 @@ import {
   CheckCircledIcon,
   CopyIcon,
   ExclamationTriangleIcon,
-  InfoCircledIcon,
   MinusCircledIcon,
   PersonIcon,
   SpeakerLoudIcon,
@@ -505,28 +504,33 @@ export function ChatWorkspace({
                   aria-label="Chat setup status"
                   data-blocked={Boolean(state.primary)}
                 >
-                  <Callout.Root
-                    className="chat-setup-callout"
-                    color={state.primary ? "amber" : "gray"}
-                    size="1"
-                  >
-                    <Callout.Icon>
-                      {state.primary ? <ExclamationTriangleIcon /> : <InfoCircledIcon />}
-                    </Callout.Icon>
-                    <div className="chat-setup-body">
-                      <Heading size="3">{state.label}</Heading>
-                      <Text as="p" size="2">
+                  {state.primary ? (
+                    <Callout.Root className="chat-setup-callout" color="amber" size="1">
+                      <Callout.Icon>
+                        <ExclamationTriangleIcon />
+                      </Callout.Icon>
+                      <div className="chat-setup-body">
+                        <Heading size="3">{state.label}</Heading>
+                        <Text as="p" size="2">
+                          {state.reason}
+                        </Text>
+                        {primary && (
+                          <Button type="button" onClick={() => repair(primary.target)}>
+                            {primary.action}
+                          </Button>
+                        )}
+                      </div>
+                    </Callout.Root>
+                  ) : (
+                    <Flex gap="2" align="center" wrap="wrap" className="chat-ready-summary">
+                      <Badge color="gray">{state.label}</Badge>
+                      <Text size="2" color="gray">
                         {state.reason}
                       </Text>
-                      {primary && (
-                        <Button type="button" onClick={() => repair(primary.target)}>
-                          {primary.action}
-                        </Button>
-                      )}
-                    </div>
-                  </Callout.Root>
+                    </Flex>
+                  )}
                   <details className="setup-details">
-                    <summary>Readiness details</summary>
+                    <summary className="chat-readiness-toggle">Readiness details</summary>
                     <DataList.Root className="chat-facts effective-settings readiness" size="2">
                       <ChatFact label="Access">
                         {state.approved ? "Approved" : "Not approved"}
@@ -592,10 +596,12 @@ export function ChatWorkspace({
                       History
                     </Tabs.Trigger>
                   </Tabs.List>
-                  <Text className="draft-context" as="p" size="2" color="gray">
-                    {preview ? "Policy draft preview — not yet saved." : "Saved policy."}{" "}
-                    Authentication and MCP status reflect the loaded inventory.
-                  </Text>
+                  {preview && (
+                    <Text className="draft-context" as="p" size="2" color="gray">
+                      Unsaved preview. Authentication and connection status reflect the loaded
+                      inventory.
+                    </Text>
+                  )}
                   {preview && (
                     <Text as="p" size="2">
                       Saved access: {saved.enabled ? "Approved and enabled" : "Blocked by policy"} ·
@@ -608,9 +614,6 @@ export function ChatWorkspace({
                     forceMount
                     hidden={tab !== "overview"}
                   >
-                    <Heading size="3" mb="3">
-                      Effective settings
-                    </Heading>
                     <DataList.Root
                       className="chat-facts chat-overview-facts overview-settings"
                       size="2"
@@ -618,10 +621,12 @@ export function ChatWorkspace({
                       <ChatFact
                         label="Access"
                         detail={
-                          <>
-                            Approval {approved ? "granted" : "not granted"} · Chat{" "}
-                            {override?.enabled === false ? "disabled" : "enabled"}
-                          </>
+                          effective.enabled ? undefined : (
+                            <>
+                              Approval {approved ? "granted" : "not granted"} · Chat{" "}
+                              {override?.enabled === false ? "disabled" : "enabled"}
+                            </>
+                          )
                         }
                         action={
                           <Button type="button" variant="ghost" onClick={() => changeTab("access")}>
@@ -636,7 +641,7 @@ export function ChatWorkspace({
                         detail={
                           effective.sources.model === "chat"
                             ? "This chat override"
-                            : "From shared defaults"
+                            : "Shared default"
                         }
                         action={
                           <Button type="button" variant="ghost" onClick={() => repair("model")}>
@@ -651,7 +656,7 @@ export function ChatWorkspace({
                         detail={
                           effective.sources.tools === "chat"
                             ? "This chat override"
-                            : "From shared defaults"
+                            : "Shared default"
                         }
                         action={
                           <Button type="button" variant="ghost" onClick={() => repair("tools")}>

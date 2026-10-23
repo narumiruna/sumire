@@ -30,7 +30,7 @@ for (const width of [1440, 390]) {
     await navigate(page, "Access")
     await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
     await expect(
-      page.getByRole("button", { name: "Apply policy changes", exact: true }),
+      page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeDisabled()
     await page
       .getByRole("button", {
@@ -42,9 +42,9 @@ for (const width of [1440, 390]) {
     await expect(manual).toHaveValue("unfinished_tool")
     await page.getByRole("button", { name: "Clear tool input", exact: true }).click()
     await expect(
-      page.getByRole("button", { name: "Apply policy changes", exact: true }),
+      page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeEnabled()
-    await expect(page.locator("#save-status")).toContainText("1 pending policy change")
+    await expect(page.locator("#save-status")).toContainText("1 unsaved change")
     expect(state.writes).toEqual([])
   })
 
@@ -64,7 +64,7 @@ for (const width of [1440, 390]) {
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
     expect(state.writes).toEqual([])
     await page.getByRole("button", { name: "Save default model", exact: true }).click()
-    await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+    await page.getByRole("button", { name: "Save changes", exact: true }).click()
     await expect.poll(() => state.policy().defaults.model).toBe("fixture/other")
     expect(state.policy().defaults.models).toContain("fixture/other")
     expect(state.policy().chats).toEqual({})
@@ -105,11 +105,9 @@ for (const width of [1440, 768]) {
       fullPage: true,
     })
     await page.getByRole("button", { name: "Add connection", exact: true }).click()
-    await expect(layout).toHaveClass(/settings-sidebar-layout/)
-    if (width === 1440) {
-      const editingBox = await list.boundingBox()
-      expect(editingBox && workspaceBox && editingBox.width < workspaceBox.width / 2).toBe(true)
-    }
+    await expect(list).toBeHidden()
+    const editorBox = await page.locator(".mcp-editor-column").boundingBox()
+    expect(editorBox && workspaceBox && editorBox.width <= workspaceBox.width).toBe(true)
     await page.getByRole("button", { name: "Close connection editor", exact: true }).click()
     await expect(layout).toHaveClass(/mcp-list-only/)
     expect(state.writes).toEqual([])
@@ -119,24 +117,20 @@ for (const width of [1440, 768]) {
 test("F4 connection editing starts explicitly and retains a closed draft", async ({ page }) => {
   const state = await fixture(page)
   await navigate(page, "MCP connections")
-  await expect(
-    page.getByRole("heading", { name: "Guided connection fields", exact: true }),
-  ).toBeHidden()
+  await expect(page.getByRole("group", { name: "Connection details", exact: true })).toBeHidden()
   await page.getByRole("button", { name: "Add connection", exact: true }).click()
   await page.getByRole("textbox", { name: "MCP server name", exact: true }).fill("new-connection")
-  await page.getByRole("combobox", { name: "Transport update", exact: true }).click()
+  await page.getByRole("combobox", { name: "Connection type", exact: true }).click()
   await page.getByRole("option", { name: /HTTP endpoint/ }).click()
   await page
-    .getByRole("textbox", { name: "MCP url replacement", exact: true })
+    .getByRole("textbox", { name: "Connection URL", exact: true })
     .fill("https://example.com/mcp")
-  await expect(
-    page.getByRole("textbox", { name: "MCP command replacement", exact: true }),
-  ).toBeHidden()
+  await expect(page.getByRole("textbox", { name: "Connection command", exact: true })).toBeHidden()
   await page.getByRole("button", { name: "Close connection editor", exact: true }).click()
   await navigate(page, "Chats")
   await navigate(page, "MCP connections")
   await page.getByRole("button", { name: "Resume connection draft", exact: true }).click()
-  await expect(page.getByRole("textbox", { name: "MCP url replacement", exact: true })).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "Connection URL", exact: true })).toHaveValue(
     "https://example.com/mcp",
   )
   expect(state.writes).toEqual([])
@@ -147,9 +141,9 @@ test("F5 settings start with usable controls on mobile", async ({ page }) => {
   const state = await fixture(page)
   await navigate(page, "Tool permissions")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(
+  await expect(
     page.getByRole("checkbox", { name: "Globally allow tool read_url_content", exact: true }),
-  )
+  ).toBeHidden()
   await visibleInViewport(
     page.getByRole("checkbox", {
       name: "Default chat permission for tool read_url_content",
@@ -159,9 +153,7 @@ test("F5 settings start with usable controls on mobile", async ({ page }) => {
   await visibleInViewport(page.locator(".permission-row").first())
   await navigate(page, "Access")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(
-    page.getByRole("button", { name: "Revoke access for ID 42", exact: true }),
-  )
+  await visibleInViewport(page.getByRole("button", { name: "Review approval", exact: true }))
   await navigate(page, "Skills")
   await page.evaluate(() => window.scrollTo(0, 0))
   await visibleInViewport(

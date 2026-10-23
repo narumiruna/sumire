@@ -15,7 +15,7 @@ async function navigate(page: Page, section: string) {
 for (const control of [
   { section: "Chats", name: "Chat type" },
   { section: "Chats", name: "Access status" },
-  { section: "MCP connections", name: "Transport update" },
+  { section: "MCP connections", name: "Connection type" },
   { section: "MCP connections", name: "MCP exposure replacement", field: "exposure" },
   { section: "MCP connections", name: "MCP type replacement", field: "type" },
   { section: "MCP connections", name: "Field map" },
@@ -29,7 +29,7 @@ for (const control of [
     await navigate(page, "Defaults")
     await page.goBack()
     if (control.name === "Field map")
-      await page.getByText("Replace secrets", { exact: true }).click()
+      await page.getByText("Secrets (optional)", { exact: true }).click()
     const trigger = page.getByRole("combobox", { name: control.name, exact: true })
     await trigger.click()
     await expect(page.getByRole("listbox")).toBeVisible()
@@ -95,18 +95,16 @@ for (const width of [1440, 390, 320]) {
     await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
     const bar = page.getByRole("region", { name: "Save status and pending changes" })
     await expect(bar.locator(".save-status-line .rt-Badge")).toHaveCount(1)
-    await expect(bar.locator(".save-status-line .rt-Badge")).toHaveText("1 pending policy change")
+    await expect(bar.locator(".save-status-line .rt-Badge")).toHaveText("1 unsaved change")
     await expect(
-      bar.getByRole("button", { name: "Apply policy changes", exact: true }),
+      bar.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeEnabled()
     if (width <= 390) {
       expect((await bar.boundingBox())?.height).toBeLessThanOrEqual(900 / 4)
-      await bar.getByText("How saving works", { exact: true }).click()
-      await bar.getByText("Review pending policy changes", { exact: true }).click()
-      expect((await bar.boundingBox())?.height).toBeLessThanOrEqual(900 / 4)
-      expect(await bar.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
-        true,
-      )
+      await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
+      await expect(bar.getByText("Review pending policy changes", { exact: true })).toHaveCount(0)
+      await bar.getByRole("button", { name: "Review and save changes", exact: true }).click()
+      await expect(page.getByRole("alertdialog")).toContainText("Chat access")
     }
   })
 }
@@ -151,13 +149,17 @@ test("MCP steps distinguish creation, replacement fields, and redacted review", 
   const requests = await fixture(page)
   await navigate(page, "MCP connections")
   const choose = page.getByRole("heading", { name: "Saved connections", exact: true })
-  const edit = page.getByRole("heading", { name: "Edit connection fields", exact: true })
-  const review = page.getByRole("heading", { name: "Review and save", exact: true })
+  await expect(choose).toBeHidden()
+  await page.getByRole("button", { name: "Close connection editor", exact: true }).click()
   await expect(choose).toBeVisible()
-  await expect(edit).toBeVisible()
-  await expect(review).toBeVisible()
+  await page.getByRole("button", { name: "Add connection", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Add connection", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Save connection", exact: true })).toBeVisible()
   await expect(page.getByRole("textbox", { name: "MCP server name", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Close connection editor", exact: true }).click()
+  await expect(choose).toBeVisible()
   await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Edit connection", exact: true })).toBeVisible()
   const replacement = page.getByRole("checkbox", { name: "Edit MCP enabled", exact: true })
   const value = page.getByRole("checkbox", { name: "MCP enabled value", exact: true })
   await expect(value).toHaveCount(0)
@@ -228,7 +230,7 @@ for (const time of ["invalid", "absent"] as const) {
   }) => {
     await fixture(page, [goodRecord], [{ ...malformed, target: "settings" }])
     await navigate(page, "Access")
-    await page.getByLabel("Private user ID to add", { exact: true }).fill("1234")
+    await page.getByLabel("Telegram ID to approve", { exact: true }).fill("1234")
     await navigate(page, "Audit")
     await expect(page.getByRole("alert")).toContainText("Audit history could not be displayed.")
     await expect(
@@ -243,7 +245,7 @@ for (const time of ["invalid", "absent"] as const) {
     )
     await expect(history.getByRole("alert")).toHaveCount(0)
     await navigate(page, "Access")
-    await expect(page.getByLabel("Private user ID to add", { exact: true })).toHaveValue("1234")
+    await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toHaveValue("1234")
   })
 
   test(`Chat history contains an ${time} time independently of global Audit`, async ({ page }) => {

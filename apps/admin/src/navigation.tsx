@@ -30,13 +30,9 @@ export type Page = (typeof pages)[number]
 export type EditorTarget = { page: Page; selector: string; chat?: string }
 
 export const pendingEditors = {
-  users: {
-    label: "Chat access — Private user ID to add",
-    target: { page: "Access", selector: "#access-user-input" },
-  },
-  groups: {
-    label: "Chat access — Group or channel ID to add",
-    target: { page: "Access", selector: "#access-group-input" },
+  access: {
+    label: "Chat access — Telegram ID to approve",
+    target: { page: "Access", selector: "#access-id-input" },
   },
   tool: {
     label: "Tool permissions — Additional approved tool name",

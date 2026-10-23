@@ -1,4 +1,5 @@
 import { InfoCircledIcon, PlusIcon, TrashIcon } from "@radix-ui/react-icons"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
   Box,
   Button,
@@ -195,7 +196,7 @@ export function McpGuidedEditor({
                 <Checkbox
                   id={`${prefix}-${key}-edit`}
                   aria-label={`Edit MCP ${key}`}
-                  aria-describedby={`${prefix}-replacement-help`}
+                  aria-describedby={existing ? `${prefix}-replacement-help` : undefined}
                   checked={key in patch}
                   onCheckedChange={(checked) =>
                     checked === true
@@ -255,10 +256,16 @@ export function McpGuidedEditor({
                 </label>
               ) : (
                 <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
-                  Replacement {key}
+                  {key === "url" ? "URL" : key === "command" ? "Command" : `Replacement ${key}`}
                   <TextField.Root
                     id={`${prefix}-${key}-value`}
-                    aria-label={`MCP ${key} replacement`}
+                    aria-label={
+                      key === "url"
+                        ? "Connection URL"
+                        : key === "command"
+                          ? "Connection command"
+                          : `MCP ${key} replacement`
+                    }
                     type={key === "timeout" ? "number" : "text"}
                     value={String(patch[key] ?? "")}
                     onChange={(e) =>
@@ -278,14 +285,14 @@ export function McpGuidedEditor({
       tabIndex={-1}
       aria-labelledby={`${prefix}-heading`}
     >
-      <Heading as="h3" size="3" id={`${prefix}-heading`}>
-        Guided connection fields
-      </Heading>
-      <Prose size="2" id={`${prefix}-replacement-help`}>
-        {existing
-          ? "Only selected fields change. Omitted fields stay saved. Existing values are not returned; enter replacements only."
-          : "Choose a connection type and enter its address or command."}
-      </Prose>
+      <VisuallyHidden.Root asChild>
+        <legend id={`${prefix}-heading`}>Connection details</legend>
+      </VisuallyHidden.Root>
+      {existing && (
+        <Prose size="2" id={`${prefix}-replacement-help`}>
+          Saved values are hidden. Select only the fields to replace.
+        </Prose>
+      )}
       <Text
         as="label"
         size="2"
@@ -293,7 +300,7 @@ export function McpGuidedEditor({
         className="mcp-guided-toolbar"
         htmlFor={`${prefix}-transport`}
       >
-        Transport update
+        Connection type
         <SectionSelect.Root
           value={
             patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : "preserve"
@@ -314,7 +321,7 @@ export function McpGuidedEditor({
             onChange(JSON.stringify(next, null, 2))
           }}
         >
-          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label="Transport update" />
+          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label="Connection type" />
           <SectionSelect.Content>
             {existing && (
               <SectionSelect.Item value="preserve">Keep saved transport</SectionSelect.Item>
@@ -384,17 +391,13 @@ export function McpGuidedEditor({
             <PlusIcon aria-hidden="true" />
             Add argument
           </Button>
-          {"args" in patch && (
+          {existing && "args" in patch && (
             <Button variant="soft" onClick={() => omit("args")}>
               Keep saved arguments
             </Button>
           )}
         </Flex>
       </Box>
-      <Prose size="2" color="gray">
-        Use masked fields below for secret replacements. Use advanced JSON for secret-map removal,
-        preservation markers, and per-tool exposure; guided edits retain those fields.
-      </Prose>
     </fieldset>
   )
 }
