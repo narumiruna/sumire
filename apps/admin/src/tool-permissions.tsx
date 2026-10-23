@@ -67,12 +67,16 @@ export function expansionStorageKey(actor: string) {
   return `sumire:tool-permissions:expanded:v1:${encodeURIComponent(actor)}`
 }
 
-function readExpansion(actor: string): string[] {
+function readExpansion(actor: string): string[] | undefined {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(expansionStorageKey(actor)) ?? "[]")
-    return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : []
+    const raw = localStorage.getItem(expansionStorageKey(actor))
+    if (raw === null) return undefined
+    const stored: unknown = JSON.parse(raw)
+    return Array.isArray(stored)
+      ? stored.filter((id): id is string => typeof id === "string")
+      : undefined
   } catch {
-    return []
+    return undefined
   }
 }
 
@@ -150,9 +154,10 @@ export function ToolPermissions({
   const prefix = useId()
   const heading = useRef<HTMLHeadingElement>(null)
   const groups = toolPermissionGroups(permissionNames("tools", policy, saved, inventory), inventory)
-  const [expanded, setExpanded] = useState(() => readExpansion(actor))
+  const [expansion, setExpansion] = useState(() => readExpansion(actor))
+  const expanded = expansion ?? groups.slice(0, 1).map((group) => group.id)
   function changeExpansion(next: string[]) {
-    setExpanded(next)
+    setExpansion(next)
     try {
       localStorage.setItem(expansionStorageKey(actor), JSON.stringify(next))
     } catch {
@@ -169,35 +174,41 @@ export function ToolPermissions({
           Global and default chat permissions
         </Heading>
         <Prose size="2" color="gray" className="section-copy">
-          Choose global and default permissions. Global permission alone does not install a tool:
-          the chat must select it, and its provider requirements must be available.
+          Set global limits and permissions for chats that use shared defaults.
         </Prose>
       </Flex>
       <details className="permission-rules">
         <summary>Permission rules and inheritance</summary>
         <Text as="p" size="2" color="gray">
-          Global permission is the system-wide ceiling. Defaults apply only to inheriting chats.
-          Explicit overrides stay in chat details. Global changes never clear stored selections. MCP
-          requires both server and individual tool permission.
+          Global permission alone does not install a tool. Global permission is the system-wide
+          ceiling. Defaults apply only to inheriting chats. Explicit overrides stay in chat details.
+          Global changes never clear stored selections. MCP requires both server and individual tool
+          permission.
         </Text>
-      </details>
-      <Panel className="permission-summary">
-        <DataList.Root size="2" className="data-list">
-          <DataList.Item className="data-row">
-            <DataList.Label>Saved defaults</DataList.Label>
-            <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
-          </DataList.Item>
-          {dirty && (
+        <Text as="p" size="2">
+          New tools are added to global and default permissions when first registered or discovered,
+          except approval-only tools such as generate_image. Manual removals and explicit chat
+          overrides are preserved. MCP tools still require their server gate.
+        </Text>
+        <Panel className="permission-summary">
+          <DataList.Root size="2" className="data-list">
             <DataList.Item className="data-row">
-              <DataList.Label>Policy draft defaults</DataList.Label>
-              <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
+              <DataList.Label>Saved defaults</DataList.Label>
+              <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
             </DataList.Item>
-          )}
-        </DataList.Root>
-        <Prose size="2" color="gray" className="section-copy">
-          These counts describe policy selections, not installed tools or verified provider access.
-        </Prose>
-      </Panel>
+            {dirty && (
+              <DataList.Item className="data-row">
+                <DataList.Label>Policy draft defaults</DataList.Label>
+                <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
+              </DataList.Item>
+            )}
+          </DataList.Root>
+          <Prose size="2" color="gray" className="section-copy">
+            These counts describe policy selections, not installed tools or verified provider
+            access.
+          </Prose>
+        </Panel>
+      </details>
       {(["tools", "servers"] as const).map((key) => (
         <Panel
           key={key}
@@ -207,11 +218,12 @@ export function ToolPermissions({
           <Heading as="h3" size="3" className="section-heading">
             {key === "tools" ? "Individual tool names" : "MCP server gates"}
           </Heading>
-          <Text as="p" size="2" color="gray" className="section-copy">
-            {key === "tools"
-              ? "New tools are automatically added to global and default permissions when first registered or discovered, except approval-only tools such as generate_image. Manual removals and explicit chat overrides are preserved. MCP tools still require their server gate."
-              : "A server gate does not approve its tools. Each tool also needs global and inherited or explicit chat permission. Connection enabled state is separate."}
-          </Text>
+          {key === "servers" && (
+            <Text as="p" size="2" color="gray">
+              A server gate does not approve its tools. Each tool also needs permission. Connection
+              enabled state is separate.
+            </Text>
+          )}
           {!permissionNames(key, policy, saved, inventory).length && (
             <Text as="p" size="2" className="empty-state">
               No {key === "tools" ? "tool names" : "MCP servers"} known. Manual tool-name approval

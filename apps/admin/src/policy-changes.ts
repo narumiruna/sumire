@@ -1,4 +1,7 @@
 import type { Policy, ProviderSettings, Selection } from "./api.js"
+import type { EditorTarget } from "./navigation.js"
+
+export type PolicyChange = { label: string; targets: EditorTarget[] }
 
 /** Stage one explicit approval without changing chat overrides or other access scopes. */
 export function withChatAccess(policy: Policy, id: number, allowed: boolean): Policy {
@@ -105,14 +108,32 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
 }
 
 /** Describe policy-only fields and impact without including selection or endpoint values. */
-export function policyChanges(saved: Policy, draft: Policy): string[] {
-  const changes: string[] = []
+export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[] {
+  const changes: PolicyChange[] = []
   for (const key of ["privateUsers", "groups"] as const) {
     const label = key === "privateUsers" ? "Private-message access" : "Group/channel access"
     for (const id of draft[key])
-      if (!saved[key].includes(id)) changes.push(`${label}: approve ${id}`)
+      if (!saved[key].includes(id))
+        changes.push({
+          label: `${label}: approve ${id}`,
+          targets: [
+            {
+              page: "Access",
+              selector: key === "privateUsers" ? "#access-user-input" : "#access-group-input",
+            },
+          ],
+        })
     for (const id of saved[key])
-      if (!draft[key].includes(id)) changes.push(`${label}: revoke ${id}`)
+      if (!draft[key].includes(id))
+        changes.push({
+          label: `${label}: revoke ${id}`,
+          targets: [
+            {
+              page: "Access",
+              selector: key === "privateUsers" ? "#access-user-input" : "#access-group-input",
+            },
+          ],
+        })
   }
   for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {
     const before = saved.chats[id]
@@ -122,16 +143,38 @@ export function policyChanges(saved: Policy, draft: Policy): string[] {
       fields.push(after ? "Enabled switch" : "Enabled switch (reset)")
     if (fields.length) {
       const action = !before ? "added settings; " : !after ? "removed settings; " : ""
-      changes.push(
-        `Chat ${id}: ${action}${fields.join(", ")} — this chat only; shared defaults and access approval unchanged.`,
-      )
+      const changed = selectionFields.find(([key]) =>
+        different(before?.[key] ?? null, after?.[key] ?? null),
+      )?.[0]
+      const selector =
+        changed === "tools" || changed === "servers" || changed === "skills" || changed === "models"
+          ? `#chat-${changed}-options`
+          : changed === "thinking"
+            ? "#thinking-selection"
+            : changed === "model"
+              ? "#model-selection"
+              : "#chat-policy-enabled"
+      changes.push({
+        label: `Chat ${id}: ${action}${fields.join(", ")} — this chat only; shared defaults and access approval unchanged.`,
+        targets: [{ page: "Chats", chat: id, selector }],
+      })
     }
   }
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
-    changes.push(
-      `Shared defaults: ${defaults.join(", ")} — affects chats inheriting each changed field; explicit overrides unchanged; does not grant access.`,
-    )
+    changes.push({
+      label: `Shared defaults: ${defaults.join(", ")} — affects chats inheriting each changed field; explicit overrides unchanged; does not grant access.`,
+      targets: selectionFields
+        .filter(([key]) => different(saved.defaults[key] ?? null, draft.defaults[key] ?? null))
+        .map(
+          ([key]): EditorTarget =>
+            key === "tools" || key === "servers"
+              ? { page: "Tool permissions", selector: "#default-tool-permissions" }
+              : key === "skills"
+                ? { page: "Skills", selector: "#skill-search" }
+                : { page: "Defaults", selector: "#default-model-settings" },
+        ),
+    })
   for (const [key, label] of [
     ["tools", "Global tool availability"],
     ["skills", "Global skill availability"],
@@ -139,13 +182,25 @@ export function policyChanges(saved: Policy, draft: Policy): string[] {
     ["models", "Global model availability"],
   ] as const)
     if (different(saved[key], draft[key]))
-      changes.push(
-        `${label} (${key}): limits shared defaults and all chat selections, including explicit overrides; does not grant access.`,
-      )
+      changes.push({
+        label: `${label} (${key}): limits shared defaults and all chat selections, including explicit overrides; does not grant access.`,
+        targets: [
+          key === "skills"
+            ? { page: "Skills", selector: "#skill-search" }
+            : key === "models"
+              ? { page: "Model Providers", selector: "#model-availability" }
+              : { page: "Tool permissions", selector: "#default-tool-permissions" },
+        ],
+      })
   const providers = providerChanges(saved.providers, draft.providers)
   if (providers.length)
-    changes.push(
-      `Provider configuration: ${providers.join(", ")} — global provider settings; may affect chats using these providers, including explicit overrides.`,
-    )
+    changes.push({
+      label: `Provider configuration: ${providers.join(", ")} — global provider settings; may affect chats using these providers, including explicit overrides.`,
+      targets: [{ page: "Model Providers", selector: "#endpoint-provider-id" }],
+    })
   return changes
+}
+
+export function policyChanges(saved: Policy, draft: Policy): string[] {
+  return policyChangeEntries(saved, draft).map((change) => change.label)
 }

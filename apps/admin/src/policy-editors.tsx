@@ -17,23 +17,26 @@ import {
 import { useEffect, useId, useState } from "react"
 import { type Inventory, type Policy, parseIds, type Selection } from "./api.js"
 import { type Chat, chatName } from "./chats.js"
-import { pageLabel } from "./navigation.js"
+import { focusEditor, pageLabel } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
 import { Panel, Prose } from "./surfaces.js"
 
 export function Check({
+  id: providedId,
   label,
   checked,
   onChange,
   disabled = false,
 }: {
+  id?: string
   label: string
   checked: boolean
   disabled?: boolean
   onChange(value: boolean): void
 }) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   return (
     <label className="check" htmlFor={id}>
       <Checkbox
@@ -52,13 +55,16 @@ export function Field({
   value,
   onChange,
   secret = false,
+  id: providedId,
 }: {
+  id?: string
   label: string
   value: string
   onChange(value: string): void
   secret?: boolean
 }) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   return (
     <label className="form-field" htmlFor={id}>
       {label}
@@ -121,6 +127,12 @@ export function IdList({
             </TextField.Slot>
           </TextField.Root>
         </label>
+        <details className="access-search-help">
+          <summary>Search scope</summary>
+          <Prose size="2">
+            Search all entries by ID or loaded chat name. Names on other pages may not be loaded.
+          </Prose>
+        </details>
         <Prose size="2" color="gray" className="access-list__summary">
           {visible.length} matching of {countText(values.length, "draft approval")} ·{" "}
           {savedValues.length} saved · {countText(revoked.length, "pending revocation")}.{" "}
@@ -216,6 +228,7 @@ export function IdList({
       )}
       <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
         <Field
+          id={positive ? "access-user-input" : "access-group-input"}
           label={positive ? "Private user ID to add" : "Group or channel ID to add"}
           value={draft}
           onChange={(v) => {
@@ -245,6 +258,18 @@ export function IdList({
         >
           Add ID to pending settings
         </Button>
+        {draft && (
+          <Button
+            variant="soft"
+            onClick={() => {
+              setDraft("")
+              setError("")
+              onPending(false)
+            }}
+          >
+            Clear ID input
+          </Button>
+        )}
       </Flex>
       {draft && (
         <Prose size="2" className="access-list__feedback">
@@ -388,6 +413,7 @@ export function Choices({
   onChange,
   defaults = false,
   navigate,
+  onDefaultModel,
 }: {
   value: Selection
   policy: Policy
@@ -395,6 +421,7 @@ export function Choices({
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
+  onDefaultModel?(): void
   navigate(page: "Tool permissions" | "Skills" | "Model Providers"): void
 }) {
   const model = value.model ?? policy.defaults.model
@@ -403,52 +430,6 @@ export function Choices({
     .find((m) => m.ref === model)?.levels ?? ["off"]
   return (
     <Flex direction="column" gap="4" className="settings-stack policy-choices">
-      <Grid gap="4" className="grid settings-grid policy-choice-lists">
-        {(defaults
-          ? (["models"] as const)
-          : (["tools", "servers", "skills", "models"] as const)
-        ).map((key) => (
-          <List
-            key={key}
-            label={
-              {
-                tools: "Authorized tools",
-                servers: "Authorized MCP servers",
-                skills: "Enabled skills",
-                models: "Allowed models",
-              }[key]
-            }
-            options={policy[key] ?? []}
-            value={value[key] ?? null}
-            onChange={(v) => onChange({ ...value, [key]: v })}
-            inheritable={!defaults}
-            effective={effective[key]}
-            scope={defaults ? "defaults" : "chat"}
-            sharedDefault={policy.defaults[key]}
-          />
-        ))}
-      </Grid>
-      {!defaults && (
-        <Flex gap="3" wrap="wrap">
-          <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
-            Manage global and default tool permissions
-          </Button>
-          <Button variant="ghost" onClick={() => navigate("Skills")}>
-            Manage global and default skills
-          </Button>
-        </Flex>
-      )}
-      {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>
-            Model "{value.model}" is not in Allowed models
-            {value.models === null ? " inherited from Defaults" : ""}. Add it above
-            {value.models === null ? " by editing Defaults or clearing Inherit default" : ""}, or
-            change the{" "}
-            {defaults ? `default model in ${pageLabel("Model Providers")}` : "chat model override"}.
-          </Callout.Text>
-        </Callout.Root>
-      )}
       {defaults ? (
         <Panel as="fieldset" className="policy-model">
           <legend>Default model</legend>
@@ -477,7 +458,7 @@ export function Choices({
             the model and thinking level for chats without an override. An unspecified thinking
             level uses off.
           </Prose>
-          <Button variant="soft" onClick={() => navigate("Model Providers")}>
+          <Button variant="soft" onClick={onDefaultModel ?? (() => navigate("Model Providers"))}>
             Edit default model in {pageLabel("Model Providers")}
           </Button>
         </Panel>
@@ -579,6 +560,64 @@ export function Choices({
           )}
         </Panel>
       )}
+      {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>
+            Model "{value.model}" is not in Allowed models
+            {value.models === null ? " inherited from Defaults" : ""}. Review Allowed models
+            {value.models === null ? " by editing Defaults or clearing Inherit default" : ""}, or
+            change the{" "}
+            {defaults ? `default model in ${pageLabel("Model Providers")}` : "chat model override"}.
+          </Callout.Text>
+          <Button
+            variant="soft"
+            onClick={() => focusEditor(`#${defaults ? "default" : "chat"}-models-options`)}
+          >
+            Review allowed models
+          </Button>
+        </Callout.Root>
+      )}
+      <Grid gap="4" className="grid settings-grid policy-choice-lists">
+        {(defaults
+          ? (["models"] as const)
+          : (["tools", "servers", "skills", "models"] as const)
+        ).map((key) => {
+          const label = {
+            tools: "Authorized tools",
+            servers: "Authorized MCP servers",
+            skills: "Enabled skills",
+            models: "Allowed models",
+          }[key]
+          return (
+            <details key={key} className="policy-options">
+              <summary id={`${defaults ? "default" : "chat"}-${key}-options`}>
+                {label} · {effective[key].length} effective ·{" "}
+                {value[key] == null ? "Shared defaults" : "Custom selection"}
+              </summary>
+              <List
+                label={label}
+                options={policy[key] ?? []}
+                value={value[key] ?? null}
+                onChange={(v) => onChange({ ...value, [key]: v })}
+                inheritable={!defaults}
+                effective={effective[key]}
+                scope={defaults ? "defaults" : "chat"}
+                sharedDefault={policy.defaults[key]}
+              />
+            </details>
+          )
+        })}
+      </Grid>
+      {!defaults && (
+        <Flex gap="3" wrap="wrap">
+          <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+            Manage global and default tool permissions
+          </Button>
+          <Button variant="ghost" onClick={() => navigate("Skills")}>
+            Manage global and default skills
+          </Button>
+        </Flex>
+      )}
     </Flex>
   )
 }
@@ -607,6 +646,7 @@ export function SecretFields({
         </Select.Root>
       </label>
       <Field
+        id="secret-name"
         label="Secret field name"
         value={name}
         onChange={(v) => {
@@ -635,6 +675,18 @@ export function SecretFields({
       >
         Set pending secret replacement
       </Button>
+      {(name || value) && (
+        <Button
+          variant="soft"
+          onClick={() => {
+            setName("")
+            setValue("")
+            onPending(false)
+          }}
+        >
+          Clear secret input
+        </Button>
+      )}
     </Panel>
   )
 }

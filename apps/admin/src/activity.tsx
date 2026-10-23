@@ -72,7 +72,9 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
   )
 }
 
-const operationNames: Record<string, string> = {
+export const operationNames: Record<string, string> = {
+  "tools.register": "Tools registered",
+  "skills.register": "Skills registered",
   "settings.update": "Settings saved",
   "settings.apply": "Settings application",
   "chat.model.update": "Chat model changed",
@@ -86,6 +88,24 @@ const operationNames: Record<string, string> = {
   "models.import": "Model settings imported",
   "provider.credential": "Provider credential changed",
   "provider.oauth.complete": "Provider sign-in completed",
+}
+
+export const outcomeNames: Record<string, string> = {
+  saved: "Saved",
+  applied: "Applied",
+  failed: "Failed",
+  stale: "Superseded",
+  completed: "Completed",
+  revoked: "Revoked",
+  deleted: "Deleted",
+  enabled: "Enabled",
+  "imported; review required": "Imported — review required",
+  "partial; review import report": "Partial import — review report",
+}
+
+export function auditValueLabel(field: "operation" | "outcome", value: string) {
+  const names = field === "operation" ? operationNames : outcomeNames
+  return Object.hasOwn(names, value) ? (names[value] ?? value) : value
 }
 
 export function groupActivity(entries: AuditEntry[]) {
@@ -128,7 +148,7 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
     <Flex direction="column" gap="2" className="activity-record">
       <Flex align="center" gap="2" wrap="wrap" className="activity-record-heading">
         <Text size="2" weight="medium">
-          {operationNames[entry.operation] ?? entry.operation} —{" "}
+          {auditValueLabel("operation", entry.operation)} —{" "}
           <Badge
             color={
               entry.outcome === "failed" ? "red" : entry.outcome === "applied" ? "teal" : "gray"

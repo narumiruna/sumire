@@ -1,7 +1,13 @@
 import { generateKeyPairSync } from "node:crypto"
 import { effectivePolicy, inherited } from "@narumitw/sumire-policy"
 import { expect, type Page, type Route, test } from "@playwright/test"
-import { openDirectoryFilters, sectionLabel } from "./admin-fixture.js"
+import {
+  openChatConfiguration,
+  openConnectionEditor,
+  openDirectoryFilters,
+  openDisclosure,
+  sectionLabel,
+} from "./admin-fixture.js"
 
 function chatResponse(route: Route, chats: { id: number; name: string; type: string }[]) {
   const url = new URL(route.request().url())
@@ -69,7 +75,16 @@ async function navigate(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "MCP connections") await openConnectionEditor(page)
+  if (name === "Defaults") {
+    if ((await page.locator("#default-models-options").locator("..").getAttribute("open")) === null)
+      await page.locator("#default-models-options").click()
+    await openDisclosure(page, "Advanced actions")
+  }
+  if (name === "Audit") await openDisclosure(page, "Filters")
   if (name === "Tool permissions") {
+    await openDisclosure(page, "Approve an exact tool name")
+    await openDisclosure(page, "Permission rules and inheritance")
     await page.getByRole("button", { name: "Expand all", exact: true }).click()
   }
 }
@@ -664,7 +679,7 @@ test("edits private access and saves with a confirmation", async ({ page }) => {
 test("shows inherited chat settings and supported thinking levels", async ({ page }) => {
   await setup(page)
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   await expect(page.getByRole("checkbox", { name: "Inherit default" }).first()).toBeChecked()
   await page.getByRole("combobox", { name: "Thinking level", exact: true }).click()
   await expect(page.getByRole("option", { name: "low", exact: true })).toBeVisible()
@@ -696,7 +711,7 @@ for (const state of ["inherited", "empty", "globally unavailable", "disabled pro
     )
     await page.reload()
     await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
-    await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+    await openChatConfiguration(page)
     const effective = effectivePolicy(selectedPolicy, 42)
     const models = page.getByRole("group", { name: "Allowed models", exact: true })
     await expect(
@@ -747,7 +762,7 @@ test("loads the saved bot provider, model, thinking level, and default state", a
   await expect(page.getByRole("button", { name: "Provider", exact: true })).toHaveText(/Fixture/)
   await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Test/)
   await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveText("low")
-  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).not.toBeChecked()
   await expect(
     page.getByRole("button", { name: /Save default model|Save model availability/ }),
   ).toBeDisabled()
@@ -774,7 +789,7 @@ test("updates untouched provider fields when saved settings are reloaded", async
   }
   await page.getByRole("button", { name: "Reload", exact: true }).click()
   await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Other model/)
-  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).not.toBeChecked()
 })
 
 test("keeps a local preview on refresh and restores saved values on request", async ({ page }) => {
@@ -796,7 +811,7 @@ test("keeps a local preview on refresh and restores saved values on request", as
   await page.getByRole("button", { name: "Use saved selection", exact: true }).click()
   await expect(page.getByRole("button", { name: "Model", exact: true })).toHaveText(/Test/)
   await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveText("low")
-  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).toBeChecked()
+  await expect(page.getByRole("checkbox", { name: "Use as the bot default" })).not.toBeChecked()
 })
 
 test("loads an existing chat model without creating a shared bot default", async ({ page }) => {
@@ -1387,7 +1402,7 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
 test("distinguishes inherited, empty, and customized chat authorization", async ({ page }) => {
   await setup(page)
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true }).first()
   await expect(tools.getByText("From shared defaults", { exact: true })).toBeVisible()
   await expect(tools.getByText("Effective: read_url_content", { exact: true })).toBeVisible()
@@ -1465,7 +1480,7 @@ test("uses Model Providers as the only shared default model editor", async ({ pa
   await navigate(page, "Defaults")
   await expect(page.getByRole("group", { name: "Allowed models", exact: true })).toBeVisible()
   await expect(page.getByRole("combobox", { name: "Chat model override" })).toHaveCount(0)
-  await page.getByRole("button", { name: "Edit default model in Model Providers" }).click()
+  await page.getByRole("button", { name: "Edit default model in Model providers" }).click()
   await expect(page.getByRole("button", { name: "Provider", exact: true })).toBeVisible()
 })
 
@@ -1967,7 +1982,7 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
   await expect(
     detail.getByRole("heading", { name: "Access for this chat", exact: true }),
   ).toBeFocused()
-  await detail.getByRole("button", { name: "Open global Access", exact: true }).click()
+  await detail.getByRole("button", { name: "Open Chat access", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Access for chat -100" })).toBeVisible()
   await expect(page.getByLabel("Search group and channel access")).toHaveValue("-100")
 })
@@ -2016,7 +2031,7 @@ test("separates saved chat status from draft effects without remote checks or im
   await expect(detail).toContainText("fixture/test · From shared defaults")
   await expect(detail).toContainText("Model authentication is not configured.")
   await expect(detail.getByRole("button", { name: "Configure authentication" })).toBeVisible()
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   await detail.getByRole("checkbox", { name: "Chat enabled", exact: true }).check()
   await expect(detail).toContainText("Policy draft preview")
   await expect(
@@ -2439,7 +2454,7 @@ test("shows only structured chat-targeted audit records and discloses history sc
   await expect(panel).toContainText("chat:42")
   await expect(panel).not.toContainText("chat:142")
   await expect(panel).toContainText("This is not a complete chat history.")
-  await panel.getByRole("button", { name: "Open global Audit", exact: true }).click()
+  await panel.getByRole("button", { name: "Open Audit", exact: true }).click()
   await expect(
     page.getByRole("region", { name: "Audit history", exact: true }).getByRole("listitem"),
   ).toHaveCount(3)
@@ -2484,7 +2499,7 @@ test("closes a chat model dropdown when browser navigation hides its owning sect
 }) => {
   await setup(page)
   await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   await navigate(page, "Defaults")
   await page.goBack()
   await page.getByRole("combobox", { name: "Chat model override", exact: true }).click()
@@ -2810,7 +2825,7 @@ test("policy-only discard preserves unfinished access input", async ({ page }) =
     page.getByRole("button", { name: "Revoke access for ID 42", exact: true }),
   ).toBeVisible()
   await expect(page.getByLabel("Private user ID to add", { exact: true })).toHaveValue("43")
-  await expect(page.getByText("Unstaged editor input", { exact: true })).toBeVisible()
+  await expect(page.locator("#save-status")).toContainText("Chat access — Private user ID to add")
   await navigate(page, "Defaults")
   await navigate(page, "Access")
   await expect(page.getByLabel("Private user ID to add", { exact: true })).toHaveValue("43")

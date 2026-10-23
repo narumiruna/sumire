@@ -275,7 +275,7 @@ main {
 }
 .defaults-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.75fr);
   align-items: start;
   gap: 24px;
   margin-top: 20px;
@@ -1340,6 +1340,59 @@ html {
   margin: 0;
 }
 .tool-permissions {
+  margin-top: 8px;
+  gap: 12px;
+}
+.tool-permissions > .section-heading {
+  align-items: flex-start;
+  text-align: left;
+  gap: 4px;
+}
+.tool-permissions :where(.section-heading) .section-copy {
+  margin: 0;
+}
+.policy-options > summary,
+.configuration-summary > summary,
+.defaults-advanced > summary,
+.permission-manual > summary,
+.access-search-help > summary,
+.audit-filter-disclosure > summary,
+.audit-results-summary summary,
+.mcp-optional-fields > summary,
+.skills-workspace > :where(details) > summary,
+.policy-destinations > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.policy-options > .panel {
+  margin-top: 8px;
+}
+.mcp-editor-column > .mcp-editor-summary,
+.mcp-editor-column:not([open]) {
+  display: none;
+}
+.mcp-editor-column > .mcp-server-name {
+  margin-block: 12px;
+}
+.save-scopes {
+  max-height: min(40vh, 320px);
+  overflow: auto;
+}
+.unfinished-editor {
+  flex: 1 1 100%;
+}
+.unfinished-editor .prose {
+  margin-block: 4px;
+}
+.policy-destinations {
+  width: 100%;
+}
+.audit-filter-disclosure .audit-filter-form {
+  margin-top: 8px;
+}
+.defaults-advanced {
   margin-top: 20px;
 }
 .permission-summary .section-copy {
@@ -1380,6 +1433,9 @@ html {
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   align-items: start;
   gap: 16px;
+}
+.mcp-workspace.mcp-list-only {
+  display: block;
 }
 .mcp-workspace .panel {
   margin-block: 0;
@@ -1775,9 +1831,6 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   }
   .mcp-workspace {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .mcp-chooser .mcp-choice-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 @media (max-width: 850px) {

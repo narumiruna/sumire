@@ -22,6 +22,7 @@ import {
 import { useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
+import { focusEditor, type PendingEditor } from "./navigation.js"
 import { Field, SecretFields } from "./policy-editors.js"
 import { countText } from "./status-text.js"
 import { Panel, Prose } from "./surfaces.js"
@@ -37,7 +38,7 @@ type Props = {
   mcpDirty: boolean
   secretPending: boolean
   setMcpDirty(value: boolean): void
-  markPending(key: string, value: boolean): void
+  markPending(key: PendingEditor, value: boolean): void
   onTools(): void
   run(action: () => Promise<void>): Promise<void>
   load(): Promise<void>
@@ -60,6 +61,8 @@ export function McpConnections({
   load,
 }: Props) {
   const [mcpName, setMcpName] = useState("")
+  const [editing, setEditing] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
   const [mcpSecrets, setMcpSecrets] = useState<{
     env: Record<string, string>
     headers: Record<string, string>
@@ -68,6 +71,24 @@ export function McpConnections({
     '{\n  "command": "",\n  "args": [],\n  "enabled": true,\n  "exposure": "codemode"\n}',
   )
   const [mcpEditorVersion, setMcpEditorVersion] = useState(0)
+  const startEditor = (name = "") => {
+    if (
+      (mcpDirty || secretPending) &&
+      !window.confirm("Discard the current MCP draft and edit this server?")
+    )
+      return
+    setMcpName(name)
+    setMcpConfig(
+      name ? "{}" : '{ "command": "", "args": [], "enabled": true, "exposure": "codemode" }',
+    )
+    setMcpSecrets({ env: {}, headers: {} })
+    markPending("secret", false)
+    setMcpEditorVersion((version) => version + 1)
+    setMcpDirty(false)
+    setEditing(true)
+    setEditorOpen(true)
+    requestAnimationFrame(() => focusEditor("#mcp-name"))
+  }
   let mcpPreview: string[] = []
   let mcpValidation = ""
   try {
@@ -80,9 +101,11 @@ export function McpConnections({
     <>
       <Flex className="page-header" gap="4" justify="between" align="start" wrap="wrap">
         <Box className="page-header__copy">
-          <Heading size="4">MCP connections — saved separately</Heading>
+          <Heading as="h2" size="4">
+            Connections
+          </Heading>
           <Prose size="2" className="section-copy">
-            Configure connections here. Review execution permissions separately.
+            Add or edit a tool connection. Connection changes save separately from permissions.
           </Prose>
         </Box>
         <Flex className="page-header__actions">
@@ -92,25 +115,47 @@ export function McpConnections({
         </Flex>
       </Flex>
       <Box className="page-content settings-stack">
-        <Callout.Root size="2" color="blue">
-          <Callout.Icon>
-            <InfoCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Connection configuration and enabled state do not grant execution permission. First
-            discovery adds new tools to global and default permissions, but does not open server
-            gates. Connection tests run only when requested.
-          </Callout.Text>
-        </Callout.Root>
-        <Box className="settings-sidebar-layout mcp-workspace">
+        <details className="mcp-disclosure">
+          <summary>Connection permissions and discovery</summary>
+          <Callout.Root size="2" color="blue">
+            <Callout.Icon>
+              <InfoCircledIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              Connection configuration and enabled state do not grant execution permission. First
+              discovery adds new tools to global and default permissions, but does not open server
+              gates. Connection tests run only when requested.
+            </Callout.Text>
+          </Callout.Root>
+        </details>
+        <Flex gap="3" wrap="wrap">
+          <Button id="mcp-add" disabled={busy} onClick={() => startEditor()}>
+            Add connection
+          </Button>
+          {editing && !editorOpen && (
+            <Button
+              id="mcp-resume"
+              variant="soft"
+              onClick={() => {
+                setEditorOpen(true)
+                requestAnimationFrame(() => focusEditor("#mcp-name"))
+              }}
+            >
+              Resume connection draft
+            </Button>
+          )}
+        </Flex>
+        <Box
+          className={`mcp-workspace ${editorOpen ? "settings-sidebar-layout" : "mcp-list-only"}`}
+        >
           <Panel className="mcp-step mcp-chooser">
-            <Heading size="3" className="section-heading">
-              1. Choose or create a server
+            <Heading as="h2" size="3" className="section-heading">
+              Saved connections
             </Heading>
             {!inventory.mcp.length && (
               <Box className="empty-state">
                 <Prose>
-                  No MCP connections configured. Add a server below, then test it and approve its
+                  No connections configured. Select Add connection, then test it and approve its
                   tools separately.
                 </Prose>
               </Box>
@@ -124,12 +169,84 @@ export function McpConnections({
                     aria-label={`${m.name} connection`}
                   >
                     <Flex justify="between" align="start" gap="2" wrap="wrap">
-                      <Heading size="3">{m.name}</Heading>
+                      <Heading as="h3" size="3">
+                        {m.name}
+                      </Heading>
                       {mcpName === m.name && (
                         <Badge color="blue" variant="outline">
                           Editing
                         </Badge>
                       )}
+                    </Flex>
+                    <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
+                      <Button
+                        variant="soft"
+                        disabled={busy || dirty || localPending}
+                        onClick={() =>
+                          void run(async () => {
+                            await request(`mcp/${encodeURIComponent(m.name)}/discover`, csrf)
+                            await load()
+                          })
+                        }
+                      >
+                        Test and discover {m.name}
+                      </Button>
+                      <Button variant="soft" disabled={busy} onClick={() => startEditor(m.name)}>
+                        <Pencil2Icon aria-hidden="true" />
+                        Edit fields for {m.name}
+                      </Button>
+                      <AlertDialog.Root>
+                        <AlertDialog.Trigger>
+                          <Button
+                            color="red"
+                            variant="ghost"
+                            disabled={busy || dirty || localPending}
+                          >
+                            <TrashIcon aria-hidden="true" />
+                            Delete {m.name}
+                          </Button>
+                        </AlertDialog.Trigger>
+                        <AlertDialog.Content>
+                          <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
+                          <AlertDialog.Description>
+                            This deletes its configuration and stored secrets. Remove it from
+                            global, default, and chat selections first. Application cancels active
+                            work and retains transcripts.
+                          </AlertDialog.Description>
+                          <Flex gap="3" justify="end" mt="4">
+                            <AlertDialog.Cancel>
+                              <Button variant="soft">Cancel</Button>
+                            </AlertDialog.Cancel>
+                            <AlertDialog.Action>
+                              <Button
+                                color="red"
+                                onClick={() =>
+                                  void run(async () => {
+                                    await request(
+                                      `mcp/${encodeURIComponent(m.name)}`,
+                                      csrf,
+                                      { revision: snapshot.revision },
+                                      "DELETE",
+                                    )
+                                    if (mcpName === m.name) {
+                                      setEditing(false)
+                                      setEditorOpen(false)
+                                      setMcpEditorVersion((version) => version + 1)
+                                      setMcpName("")
+                                      setMcpConfig("{}")
+                                      setMcpSecrets({ env: {}, headers: {} })
+                                      setMcpDirty(false)
+                                    }
+                                    await load()
+                                  })
+                                }
+                              >
+                                Delete server and apply
+                              </Button>
+                            </AlertDialog.Action>
+                          </Flex>
+                        </AlertDialog.Content>
+                      </AlertDialog.Root>
                     </Flex>
                     <DataList.Root size="1" className="mcp-summary-facts data-list">
                       <DataList.Item className="data-row">
@@ -187,88 +304,6 @@ export function McpConnections({
                         )}
                       </Flex>
                     </details>
-                    <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
-                      <Button
-                        variant="soft"
-                        disabled={busy || dirty || localPending}
-                        onClick={() =>
-                          void run(async () => {
-                            await request(`mcp/${encodeURIComponent(m.name)}/discover`, csrf)
-                            await load()
-                          })
-                        }
-                      >
-                        Test and discover {m.name}
-                      </Button>
-                      <Button
-                        variant="soft"
-                        disabled={busy || dirty || localPending}
-                        onClick={() => {
-                          if (
-                            mcpDirty &&
-                            !window.confirm("Discard the current MCP draft and edit this server?")
-                          )
-                            return
-                          setMcpName(m.name)
-                          setMcpConfig("{}")
-                          setMcpSecrets({ env: {}, headers: {} })
-                          setMcpDirty(true)
-                          document.getElementById("mcp-guided")?.focus()
-                        }}
-                      >
-                        <Pencil2Icon aria-hidden="true" />
-                        Edit fields for {m.name}
-                      </Button>
-                      <AlertDialog.Root>
-                        <AlertDialog.Trigger>
-                          <Button
-                            color="red"
-                            variant="ghost"
-                            disabled={busy || dirty || localPending}
-                          >
-                            <TrashIcon aria-hidden="true" />
-                            Delete {m.name}
-                          </Button>
-                        </AlertDialog.Trigger>
-                        <AlertDialog.Content>
-                          <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
-                          <AlertDialog.Description>
-                            This deletes its configuration and stored secrets. Remove it from
-                            global, default, and chat selections first. Application cancels active
-                            work and retains transcripts.
-                          </AlertDialog.Description>
-                          <Flex gap="3" justify="end" mt="4">
-                            <AlertDialog.Cancel>
-                              <Button variant="soft">Cancel</Button>
-                            </AlertDialog.Cancel>
-                            <AlertDialog.Action>
-                              <Button
-                                color="red"
-                                onClick={() =>
-                                  void run(async () => {
-                                    await request(
-                                      `mcp/${encodeURIComponent(m.name)}`,
-                                      csrf,
-                                      { revision: snapshot.revision },
-                                      "DELETE",
-                                    )
-                                    if (mcpName === m.name) {
-                                      setMcpName("")
-                                      setMcpConfig("{}")
-                                      setMcpSecrets({ env: {}, headers: {} })
-                                      setMcpDirty(false)
-                                    }
-                                    await load()
-                                  })
-                                }
-                              >
-                                Delete server and apply
-                              </Button>
-                            </AlertDialog.Action>
-                          </Flex>
-                        </AlertDialog.Content>
-                      </AlertDialog.Root>
-                    </Flex>
                     <Prose size="2">
                       Secret fields:{" "}
                       {[...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") || "none"}
@@ -276,46 +311,76 @@ export function McpConnections({
                   </Panel>
                 ))}
               </div>
-              <div className="mcp-server-name">
-                <Field
-                  label="MCP server name"
-                  value={mcpName}
-                  onChange={(name) => {
-                    if (
-                      (Object.keys(mcpSecrets.env).length ||
-                        Object.keys(mcpSecrets.headers).length ||
-                        secretPending) &&
-                      !window.confirm(
-                        "Changing the server name discards staged secret replacements. Continue?",
-                      )
-                    )
-                      return
-                    markPending("secret", false)
-                    setMcpDirty(true)
-                    setMcpName(name)
-                    setMcpSecrets({ env: {}, headers: {} })
-                  }}
-                />
-                <Prose size="2">
-                  {inventory.mcp.some((m) => m.name === mcpName)
-                    ? "Editing a saved server."
-                    : "A new name creates a server when saved."}{" "}
-                  Changing the name keeps the configuration patch. Staged secret replacements
-                  require confirmation before removal.
-                </Prose>
-              </div>
             </div>
           </Panel>
-          <Box className="settings-stack mcp-editor-column">
+          <details
+            hidden={!editing}
+            open={editorOpen}
+            onToggle={(event) => setEditorOpen(event.currentTarget.open)}
+            className="settings-stack mcp-editor-column"
+          >
+            <summary className="mcp-editor-summary">Connection editor</summary>
+            <Flex justify="end">
+              <Button
+                variant="soft"
+                onClick={() => {
+                  setEditorOpen(false)
+                  requestAnimationFrame(() => document.getElementById("mcp-resume")?.focus())
+                }}
+              >
+                Close connection editor
+              </Button>
+            </Flex>
+            <div className="mcp-server-name">
+              <Field
+                id="mcp-name"
+                label="MCP server name"
+                value={mcpName}
+                onChange={(name) => {
+                  if (
+                    (Object.keys(mcpSecrets.env).length ||
+                      Object.keys(mcpSecrets.headers).length ||
+                      secretPending) &&
+                    !window.confirm(
+                      "Changing the server name discards staged secret replacements. Continue?",
+                    )
+                  )
+                    return
+                  markPending("secret", false)
+                  setMcpDirty(true)
+                  setMcpName(name)
+                  setMcpEditorVersion((version) => version + 1)
+                  setMcpSecrets({ env: {}, headers: {} })
+                }}
+              />
+              <Prose size="2">
+                {inventory.mcp.some((m) => m.name === mcpName)
+                  ? "Editing a saved server."
+                  : "A new name creates a server when saved."}{" "}
+                Changing the name keeps the configuration patch. Staged secret replacements require
+                confirmation before removal.
+              </Prose>
+            </div>
+
             <Panel className="mcp-step">
-              <Heading size="3" className="section-heading">
-                2. Edit connection fields
+              <Heading as="h2" size="3" className="section-heading">
+                Edit connection fields
               </Heading>
               <Prose size="2" className="section-copy">
                 Saved values stay hidden. Reload retains this draft; a failed request can still have
                 saved changes. Defaults and chat selections can restrict these tools further.
               </Prose>
               <McpGuidedEditor
+                existing={inventory.mcp.some((server) => server.name === mcpName)}
+                savedTransport={
+                  inventory.mcp.find((server) => server.name === mcpName)?.fields?.includes("url")
+                    ? "http"
+                    : inventory.mcp
+                          .find((server) => server.name === mcpName)
+                          ?.fields?.includes("command")
+                      ? "stdio"
+                      : undefined
+                }
                 text={mcpConfig}
                 onChange={(text) => {
                   setMcpConfig(text)
@@ -340,7 +405,7 @@ export function McpConnections({
               <details className="mcp-secret-editor mcp-disclosure">
                 <summary>Replace secrets</summary>
                 <SecretFields
-                  key={`${mcpName}:${mcpEditorVersion}`}
+                  key={mcpEditorVersion}
                   onPending={(v) => markPending("secret", v)}
                   onChange={({ scope, name, value }) => {
                     setMcpDirty(true)
@@ -371,8 +436,8 @@ export function McpConnections({
               </details>
             </Panel>
             <Panel className="mcp-step" aria-label="MCP change preview">
-              <Heading size="3" className="section-heading">
-                3. Review and save
+              <Heading as="h2" size="3" className="section-heading">
+                Review and save
               </Heading>
               <Prose size="2" className="section-copy">
                 Field operations only; values are hidden. Transport changes remove fields that do
@@ -444,6 +509,8 @@ export function McpConnections({
                     disabled={busy}
                     onClick={() => {
                       if (window.confirm("Discard pending MCP configuration and secrets?")) {
+                        setEditing(false)
+                        setEditorOpen(false)
                         setMcpName("")
                         setMcpConfig("{}")
                         setMcpSecrets({ env: {}, headers: {} })
@@ -459,7 +526,7 @@ export function McpConnections({
                 )}
               </Flex>
             </Panel>
-          </Box>
+          </details>
         </Box>
       </Box>
     </>

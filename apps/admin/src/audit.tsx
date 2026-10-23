@@ -7,8 +7,15 @@ import {
 } from "@radix-ui/react-icons"
 import { Button, Callout, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
-import { Activity, type AuditEntry } from "./activity.js"
+import {
+  Activity,
+  type AuditEntry,
+  auditValueLabel,
+  operationNames,
+  outcomeNames,
+} from "./activity.js"
 import { ApiError, request } from "./api.js"
+import { SectionSelect as Select } from "./sections.js"
 import { Prose } from "./surfaces.js"
 
 const empty = { actor: "", operation: "", outcome: "", from: "", to: "" }
@@ -39,6 +46,7 @@ export function AuditHistory({
   run(action: () => Promise<void>): Promise<void>
 }) {
   const [draft, setDraft] = useState(empty)
+  const [custom, setCustom] = useState({ operation: false, outcome: false })
   const [query, setQuery] = useState({ filters: empty, offset: 0 })
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -74,70 +82,130 @@ export function AuditHistory({
   }, [query, revision, retry, run])
   return (
     <Flex direction="column" gap="3" className="settings-stack">
-      <form
-        className="audit-filter-form"
-        onSubmit={(event) => {
-          event.preventDefault()
-          try {
-            auditSearch(draft, 0)
-            setQuery({ filters: { ...draft }, offset: 0 })
-            setError("")
-          } catch (error) {
-            setError(error instanceof Error ? error.message : "Invalid filters")
-          }
-        }}
-      >
-        <fieldset className="audit-filter-toolbar" aria-labelledby="audit-filter-heading">
-          <Heading as="h4" size="2" id="audit-filter-heading" className="section-heading">
-            Filter all retained audit records
-          </Heading>
-          <div className="audit-filters">
-            {[
-              { className: "audit-text-filters", keys: ["actor", "operation", "outcome"] as const },
-              { className: "audit-date-filters", keys: ["from", "to"] as const },
-            ].map(({ className, keys }) => (
-              <div className={className} key={className}>
-                {keys.map((key) => (
-                  <label key={key} htmlFor={`audit-${key}`} className="form-field">
-                    {
+      <details className="audit-filter-disclosure">
+        <summary>Filters</summary>
+        <form
+          className="audit-filter-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            try {
+              auditSearch(draft, 0)
+              setQuery({ filters: { ...draft }, offset: 0 })
+              setError("")
+            } catch (error) {
+              setError(error instanceof Error ? error.message : "Invalid filters")
+            }
+          }}
+        >
+          <fieldset className="audit-filter-toolbar" aria-labelledby="audit-filter-heading">
+            <Heading as="h4" size="2" id="audit-filter-heading" className="section-heading">
+              Filter all retained audit records
+            </Heading>
+            <div className="audit-filters">
+              {[
+                {
+                  className: "audit-text-filters",
+                  keys: ["actor", "operation", "outcome"] as const,
+                },
+                { className: "audit-date-filters", keys: ["from", "to"] as const },
+              ].map(({ className, keys }) => (
+                <div className={className} key={className}>
+                  {keys.map((key) => (
+                    <label key={key} htmlFor={`audit-${key}`} className="form-field">
                       {
-                        actor: "Actor (exact)",
-                        operation: "Operation type (exact)",
-                        outcome: "Result (exact)",
-                        from: "From date (UTC)",
-                        to: "Through date (UTC)",
-                      }[key]
-                    }
-                    <TextField.Root
-                      id={`audit-${key}`}
-                      aria-label={`Audit ${key}`}
-                      type={key === "from" || key === "to" ? "date" : "text"}
-                      maxLength={128}
-                      value={draft[key]}
-                      onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-                    />
-                  </label>
-                ))}
-              </div>
-            ))}
-          </div>
-          <Flex gap="2" wrap="wrap" className="audit-filter-actions">
-            <Button type="submit" disabled={loading}>
-              <MagnifyingGlassIcon /> Apply audit filters
-            </Button>
-            <Button
-              type="button"
-              variant="soft"
-              onClick={() => {
-                setDraft(empty)
-                setQuery({ filters: empty, offset: 0 })
-              }}
-            >
-              <ResetIcon /> Clear audit filters
-            </Button>
-          </Flex>
-        </fieldset>
-      </form>
+                        {
+                          actor: "Actor (exact)",
+                          operation: "Operation type",
+                          outcome: "Result",
+                          from: "From date (UTC)",
+                          to: "Through date (UTC)",
+                        }[key]
+                      }
+                      {key === "operation" || key === "outcome" ? (
+                        <>
+                          <Select.Root
+                            value={custom[key] ? "__custom" : draft[key] || "__all"}
+                            onValueChange={(value) => {
+                              setCustom((previous) => ({
+                                ...previous,
+                                [key]: value === "__custom",
+                              }))
+                              setDraft((previous) => ({
+                                ...previous,
+                                [key]: value === "__custom" || value === "__all" ? "" : value,
+                              }))
+                            }}
+                          >
+                            <Select.Trigger id={`audit-${key}`} aria-label={`Audit ${key}`} />
+                            <Select.Content>
+                              <Select.Item value="__all">All</Select.Item>
+                              {Object.entries(
+                                key === "operation" ? operationNames : outcomeNames,
+                              ).map(([value, label]) => (
+                                <Select.Item key={value} value={value}>
+                                  {label}
+                                </Select.Item>
+                              ))}
+                              <Select.Item value="__custom">Other exact value</Select.Item>
+                            </Select.Content>
+                          </Select.Root>
+                          {custom[key] && (
+                            <TextField.Root
+                              aria-label={`Audit ${key} exact value`}
+                              maxLength={128}
+                              value={draft[key]}
+                              onChange={(event) =>
+                                setDraft({ ...draft, [key]: event.target.value })
+                              }
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <TextField.Root
+                          id={`audit-${key}`}
+                          aria-label={`Audit ${key}`}
+                          type={key === "actor" ? "text" : "date"}
+                          maxLength={128}
+                          value={draft[key]}
+                          onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                        />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <Flex gap="2" wrap="wrap" className="audit-filter-actions">
+              <Button type="submit" disabled={loading}>
+                <MagnifyingGlassIcon /> Apply audit filters
+              </Button>
+              <Button
+                type="button"
+                variant="soft"
+                onClick={() => {
+                  setDraft(empty)
+                  setCustom({ operation: false, outcome: false })
+                  setQuery({ filters: empty, offset: 0 })
+                }}
+              >
+                <ResetIcon /> Clear audit filters
+              </Button>
+            </Flex>
+          </fieldset>
+        </form>
+      </details>
+      {Object.values(query.filters).some(Boolean) && (
+        <Prose size="2" role="status" className="audit-active-filters">
+          Active filters:{" "}
+          {Object.entries(query.filters)
+            .filter(([, value]) => value)
+            .map(
+              ([key, value]) =>
+                `${key}: ${key === "operation" || key === "outcome" ? auditValueLabel(key, value) : value}`,
+            )
+            .join(" · ")}
+        </Prose>
+      )}
       {error && (
         <Callout.Root color="red" size="1" role="alert">
           <Callout.Icon>
@@ -155,11 +223,14 @@ export function AuditHistory({
         <Text as="p" size="2" weight="medium">
           Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
         </Text>
-        <Prose size="1" color="gray">
-          Older records may be available; the server retains up to 10,000 records. Filters cover all
-          retained records. Groups cover this page only and can continue on adjacent pages; filtered
-          views can omit related events. Field-level change details are unavailable.
-        </Prose>
+        <details>
+          <summary>History scope and limits</summary>
+          <Prose size="1" color="gray">
+            Older records may be available; the server retains up to 10,000 records. Filters cover
+            all retained records. Groups cover this page only and can continue on adjacent pages;
+            filtered views can omit related events. Field-level change details are unavailable.
+          </Prose>
+        </details>
       </Flex>
       {loading ? (
         <Prose role="status">Loading audit records…</Prose>

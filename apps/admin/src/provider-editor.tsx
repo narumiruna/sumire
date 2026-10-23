@@ -49,7 +49,7 @@ export function ProviderEditor({
     >
       <legend>{initial ? "Edit provider configuration" : "Add provider configuration"}</legend>
       <Grid columns={{ initial: "1", md: "2" }} gap="3" className="settings-grid">
-        <Field label="Provider ID" value={id} onChange={setId} />
+        <Field id="endpoint-provider-id" label="Provider ID" value={id} onChange={setId} />
         <Field label="API base URL" value={url} onChange={setUrl} />
       </Grid>
       <details className="provider-advanced">

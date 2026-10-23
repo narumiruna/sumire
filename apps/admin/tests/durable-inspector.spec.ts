@@ -125,7 +125,11 @@ for (const width of [1440, 390, 320]) {
         .getByRole("button", { includeHidden: true, name: /Idle chat/ }),
     )
     await click(
-      page.getByRole("link", { includeHidden: true, name: "Inspect Durable", exact: true }),
+      page.getByRole("link", {
+        includeHidden: true,
+        name: "View conversation records",
+        exact: true,
+      }),
     )
     await expectRecord(page, "Conversation", "conversation #17")
     await click(
@@ -138,7 +142,11 @@ for (const width of [1440, 390, 320]) {
         .getByRole("button", { includeHidden: true, name: /Unloaded chat/ }),
     )
     await click(
-      page.getByRole("link", { includeHidden: true, name: "Inspect Durable", exact: true }),
+      page.getByRole("link", {
+        includeHidden: true,
+        name: "View conversation records",
+        exact: true,
+      }),
     )
     await expect(inspector.getByRole("heading", { name: "Not loaded", exact: true })).toBeVisible()
     await expect(inspector).toContainText("Inspection will not open its database")
@@ -1017,7 +1025,11 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
         .getByRole("button", { includeHidden: true, name: /Idle chat/ }),
     )
     await click(
-      page.getByRole("link", { includeHidden: true, name: "Inspect Durable", exact: true }),
+      page.getByRole("link", {
+        includeHidden: true,
+        name: "View conversation records",
+        exact: true,
+      }),
     )
     await expectRecord(page, "Conversation", "conversation #17")
   } finally {
@@ -1036,7 +1048,9 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await click(page.getByRole("tab", { name: "Access", exact: true }))
   await click(page.getByRole("button", { includeHidden: true, name: "Revoke access", exact: true }))
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
-  await click(page.getByRole("link", { includeHidden: true, name: "Inspect Durable", exact: true }))
+  await click(
+    page.getByRole("link", { includeHidden: true, name: "View conversation records", exact: true }),
+  )
   await expectRecord(page, "Conversation", "conversation #7")
   await expect(page.locator(".pending-bar")).toContainText("pending policy changes")
   await click(

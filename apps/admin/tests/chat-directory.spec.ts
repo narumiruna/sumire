@@ -178,7 +178,7 @@ test("searches complete IDs, retains duplicate names with separate IDs, and shar
   )
   await page.reload()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Persisted rename")
-  await page.getByRole("link", { name: "Inspect Durable", exact: true }).click()
+  await page.getByRole("link", { name: "View conversation records", exact: true }).click()
   await expect(
     inspector(page).getByRole("heading", { name: "Persisted rename", exact: true }),
   ).toBeVisible()

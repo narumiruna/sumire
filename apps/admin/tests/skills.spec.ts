@@ -1,7 +1,7 @@
 import { inherited, initialPolicy, policySchema, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import type { Inventory, Policy } from "../src/api.js"
-import { navigate } from "./admin-fixture.js"
+import { navigate, openChatConfiguration } from "./admin-fixture.js"
 
 async function setup(page: Page) {
   let saved = initialPolicy()
@@ -110,7 +110,7 @@ for (const width of [1440, 390]) {
 test("chat skills distinguish inheritance, explicit empty, and reset", async ({ page }) => {
   const state = await setup(page)
   await page.goto("/?section=Chats&chat=42")
-  await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+  await openChatConfiguration(page)
   const skills = page.getByRole("group", { name: "Enabled skills", exact: true })
   await expect(
     skills.getByText("Effective: load-public-url, missing", { exact: true }),
@@ -162,7 +162,7 @@ for (const width of [1440, 390]) {
       .uncheck()
     await missing.getByRole("button", { name: "Chat 43", exact: true }).click()
     await expect(page.getByRole("region", { name: "Chat details", exact: true })).toBeVisible()
-    await page.getByRole("tab", { name: "Model & Tools", exact: true }).click()
+    await openChatConfiguration(page)
     const chatSkills = page.getByRole("group", { name: "Enabled skills", exact: true })
     await chatSkills
       .getByRole("checkbox", { name: "missing (no longer available)", exact: true })

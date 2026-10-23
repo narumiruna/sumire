@@ -1,7 +1,7 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import type { ProviderSettings, Selection } from "./api.js"
-import { policyChanges, withChatAccess } from "./policy-changes.js"
+import { policyChangeEntries, policyChanges, withChatAccess } from "./policy-changes.js"
 
 const chatImpact = "this chat only; shared defaults and access approval unchanged."
 const defaultImpact =
@@ -37,6 +37,45 @@ const provider: ProviderSettings = {
   api: "openai-completions",
   models: [providerModel],
 }
+
+describe("typed policy review destinations", () => {
+  it.each(selectionCases)(
+    "opens the changed chat $key editor without exposing values",
+    ({ key, value }) => {
+      const saved = initialPolicy()
+      saved.chats["42"] = { ...inherited, enabled: true }
+      const draft = structuredClone(saved)
+      const chat = draft.chats["42"]
+      if (!chat) throw new Error("Missing chat fixture")
+      Object.assign(chat, { [key]: value })
+      const selector =
+        key === "model"
+          ? "#model-selection"
+          : key === "thinking"
+            ? "#thinking-selection"
+            : `#chat-${key}-options`
+      const entries = policyChangeEntries(saved, draft)
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.targets).toEqual([{ page: "Chats", chat: "42", selector }])
+      expect(JSON.stringify(entries)).not.toContain("sensitive-")
+    },
+  )
+  it("routes mixed policy scopes to their own editors without protected configuration", () => {
+    const saved = initialPolicy()
+    const draft = structuredClone(saved)
+    draft.privateUsers = [42]
+    draft.tools = ["sensitive-tool"]
+    draft.skills = ["sensitive-skill"]
+    draft.defaults.model = "sensitive-model"
+    draft.providers = [provider]
+    const entries = policyChangeEntries(saved, draft)
+    expect(new Set(entries.flatMap((entry) => entry.targets.map((target) => target.page)))).toEqual(
+      new Set(["Access", "Tool permissions", "Skills", "Defaults", "Model Providers"]),
+    )
+    expect(JSON.stringify(entries)).not.toContain(provider.baseUrl)
+    expect(JSON.stringify(entries)).not.toContain("sensitive-")
+  })
+})
 
 describe("policyChanges", () => {
   it("reports no changes for identical policies", () => {
