@@ -56,26 +56,7 @@ export async function deliverGeneratedResponse(
     reply_parameters: { message_id: saved.sourceMessageId, allow_sending_without_reply: true },
   }
   const ids = [...(answer.textMessageIds ?? [])]
-  if (!ids.length) {
-    const text = answer.text || "圖片已生成。"
-    const result =
-      saved.statusMessageId === undefined
-        ? await delivery.guardedReply(context, text, options, isCurrent, saved.mode)
-        : await delivery.editOrReply(
-            context,
-            chatId,
-            saved.statusMessageId,
-            text,
-            options,
-            isCurrent,
-            saved.mode,
-          )
-    if (result.result !== "delivered" || !isCurrent()) return result.result
-    const messageId = result.message?.message_id ?? saved.statusMessageId
-    if (messageId === undefined) throw new Error("Image response text was not delivered")
-    await sessions.recordResponseComponent(chatId, checkpoint, "text", messageId)
-    ids.push(messageId)
-  }
+  // Generated images go directly to the user, independently of text/Morsel availability.
   for (const image of answer.media ?? []) {
     if (!isCurrent()) return "stale"
     if (image.messageId !== undefined) {
@@ -93,6 +74,27 @@ export async function deliverGeneratedResponse(
     if (!isCurrent()) return "stale"
     await sessions.recordResponseComponent(chatId, checkpoint, image.id, message.message_id)
     ids.push(message.message_id)
+  }
+  if (!answer.textMessageIds?.length) {
+    const text = answer.text || "圖片已生成。"
+    const result =
+      saved.statusMessageId === undefined
+        ? await delivery.guardedReply(context, text, options, isCurrent, saved.mode)
+        : await delivery.editOrReply(
+            context,
+            chatId,
+            saved.statusMessageId,
+            text,
+            options,
+            isCurrent,
+            saved.mode,
+          )
+    if (!isCurrent()) return "stale"
+    if (result.result !== "delivered") return result.result
+    const messageId = result.message?.message_id ?? saved.statusMessageId
+    if (messageId === undefined) throw new Error("Image response text was not delivered")
+    await sessions.recordResponseComponent(chatId, checkpoint, "text", messageId)
+    ids.push(messageId)
   }
   if (!isCurrent()) return "stale"
   await sessions.recordDelivery(chatId, checkpoint, ids)

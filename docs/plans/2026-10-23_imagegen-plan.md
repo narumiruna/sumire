@@ -1,6 +1,6 @@
 # Image Generation and Telegram Delivery Plan
 
-Status: External verification blocked. The Codex implementation and local verification are complete. Live image access, real Telegram delivery, and the production container build remain unverified. No live image request, deployment, or publication has been performed. Retain this plan until the open acceptance items pass.
+Status: External verification blocked. The direct image-delivery follow-up and local verification are complete. Live image access, real Telegram delivery, and the production container build remain unverified. This work did not perform a live image request, deployment, or publication. Retain this plan until the open acceptance items pass.
 
 ## Goal
 
@@ -38,7 +38,7 @@ The selected reference contract is:
 
 No local Sumire credential configuration or controlled Telegram target is available, and the local Docker daemon is not running. These are outstanding live/container verification conditions, not an auth-design blocker. No credential values were read and no authenticated image request was made.
 
-### Execution evidence
+### Execution evidence (initial implementation)
 
 - `npm ci` passed with Node.js 26.10.0. `npm ls @narumitw/sumire-imagegen` resolves the bot dependency to the local private workspace. Its compiled exports import without auth or a request.
 - `packages/imagegen/tests/` passes 36 deterministic client/container-validation tests with synthetic tokens and images.
@@ -51,7 +51,18 @@ No local Sumire credential configuration or controlled Telegram target is availa
 - Container blocker: `docker compose --progress plain build sumire` failed because the local Docker daemon socket is unavailable. Static packaging tests and the host import pass, but do not prove the non-root production image check.
 - Live blocker: the repository has no `.env` or bot-owned Pi auth file, and `BOT_TOKEN`/`BOT_ADMIN_ID` are unset. A controlled Sumire runtime with Codex OAuth and a test chat is needed for the required real generation/delivery smoke. Do not substitute this coding session's credentials, invent access evidence, or waive these checks.
 
-The implementation is suitable for review as a draft pull request, not a claim that all plan acceptance criteria are complete.
+The initial implementation was handed off in PR #160, which has merged. Its external live/container acceptance items remain open; this is not a claim that all plan acceptance criteria are complete.
+
+### Direct image-delivery follow-up (2026-10-24)
+
+Follow-up branch: `narumi/fix/direct-image-delivery`, from `origin/main` at `97f22f3` after PR #160 merged.
+
+- Upload generated images directly before explanatory text or Morsel publication. Slow or failed text delivery must not withhold the image.
+- Preserve confirmed image receipts before sending text. Recovery retries text without regenerating or reposting the image; final response acknowledgement still requires every component.
+- Updated regression tests failed against the text-first implementation, then passed after the delivery-order change. Focused delivery, imagegen, recovery, and text/Morsel checks pass 76 tests; workspace type checking also passes.
+- Additional slow-publication tests prove that the image is already sent and recorded while text publication waits, and that cancellation prevents later text delivery and acknowledgement.
+- All five required root commands and `npm run precommit` pass for this follow-up. The full test run passes 2,049 tests in 151 files.
+- The full follow-up diff was reviewed for correctness, ownership/auth checks, partial-delivery persistence, old confirmed-text compatibility, lifecycle cancellation, and scope. Original container/live verification blockers and their unchecked acceptance items are unchanged.
 
 ### Reference evidence
 
@@ -129,6 +140,7 @@ flowchart LR
   - Use the same media delivery function for normal replies and startup recovery.
   - Select `sendPhoto` for supported photo size/format/dimensions; otherwise upload the original with `sendDocument`. Confirm the current cloud Bot API limits before coding these checks.
   - Upload local validated bytes through grammY `InputFile`. Never ask Telegram to fetch a model-supplied URL or open a model-supplied path.
+  - Upload generated images before handling explanatory text or Morsel publication. Text delays or failures must not withhold the images.
   - Keep explanatory text in the existing text/Morsel path. Do not publish image bytes to Morsel or rely on captions to carry long text.
   - Record each confirmed media/text message ID before proceeding. Record reply-tree mappings for every delivered component, but acknowledge the whole response only after all required components succeed.
   - On partial failure, preserve pending components and skip confirmed ones during recovery. Do not regenerate an image to retry delivery.

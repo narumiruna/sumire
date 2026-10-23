@@ -366,7 +366,7 @@ it("preserves media delivery components across partial failure and startup recov
   let failing = true
   bot.api.config.use(async (_previous, method, payload) => {
     sent.push({ method, data: payload })
-    if (method === "sendPhoto" && failing) throw new Error("offline upload failure")
+    if (method === "sendMessage" && failing) throw new Error("offline text failure")
     return {
       ok: true,
       result: {
@@ -410,16 +410,16 @@ it("preserves media delivery components across partial failure and startup recov
       { sourceMessageId: 10, mode: "default" },
       () => true,
     ),
-  ).rejects.toThrow("offline upload failure")
-  expect(sent.map((x) => x.method)).toEqual(["sendMessage", "sendPhoto"])
+  ).rejects.toThrow("offline text failure")
+  expect(sent.map((x) => x.method)).toEqual(["sendPhoto", "sendMessage"])
   failing = false
   await recoverTelegramResponses(bot, registry, delivery, [123])
   // recover() starts delivery in the background. Wait on its observable acknowledgement, not a sleep.
   await vi.waitFor(async () => {
     expect(await owner?.hasPendingResponses()).toBe(false)
   })
-  expect(sent.filter((x) => x.method === "sendPhoto")).toHaveLength(2)
-  expect(sent.filter((x) => x.method === "sendMessage")).toHaveLength(1)
+  expect(sent.filter((x) => x.method === "sendPhoto")).toHaveLength(1)
+  expect(sent.filter((x) => x.method === "sendMessage")).toHaveLength(2)
   expect(fixture.imageFetch).toHaveBeenCalledTimes(1)
 })
 it("keeps pending media through compaction and does not copy it to a sibling reply", async () => {
