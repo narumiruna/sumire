@@ -129,6 +129,31 @@ describe("admin HTTP security", () => {
     expect(toolAvailability).toHaveBeenCalledOnce()
     expect(store.snapshot()).toEqual(before)
   })
+  it("awaits current provider authentication on each inventory request", async () => {
+    runtime.getProviders = () =>
+      [{ id: "fixture", name: "Fixture", auth: { oauth: {} } }] as unknown as ReturnType<
+        ModelRuntime["getProviders"]
+      >
+    runtime.hasConfiguredAuth = () => false
+    runtime.checkAuth = vi
+      .fn<ModelRuntime["checkAuth"]>()
+      .mockResolvedValue({ type: "oauth", source: "OAuth" })
+    expect((await call("/api/inventory")).status).toBe(401)
+    expect(runtime.checkAuth).not.toHaveBeenCalled()
+
+    const before = store.snapshot()
+    const first = await call("/api/inventory", "GET", undefined, auth())
+    expect(first.status).toBe(200)
+    expect(JSON.parse(first.body).providers).toEqual([
+      { id: "fixture", name: "Fixture", apiKey: false, oauth: true, configured: true, models: [] },
+    ])
+    vi.mocked(runtime.checkAuth).mockResolvedValue(undefined)
+    const reopened = await call("/api/inventory", "GET", undefined, auth())
+    expect(reopened.status).toBe(200)
+    expect(JSON.parse(reopened.body).providers[0].configured).toBe(false)
+    expect(runtime.checkAuth).toHaveBeenCalledTimes(2)
+    expect(store.snapshot()).toEqual(before)
+  })
   it("returns skill metadata only to authenticated administrators", async () => {
     skills.mockClear()
     const denied = await call("/api/inventory")

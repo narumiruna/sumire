@@ -97,6 +97,35 @@ describe("bot model authentication", () => {
     })
   })
 
+  it.each([
+    ["stored API key", { type: "api_key", key: "fixture-stored-key" }, "", true],
+    ["stored OAuth", credential, "", true],
+    ["expired stored OAuth", { ...credential, expires: 0 }, "", true],
+    ["environment API key", undefined, "fixture-env-key", true],
+    ["no credentials", undefined, "", false],
+  ] as const)(
+    "reports %s in WebUI inventory on cold startup without remote requests",
+    async (_name, stored, environment, configured) => {
+      vi.stubEnv("OPENAI_API_KEY", environment)
+      const { agentDir } = await setup()
+      if (stored) await storeCredential(agentDir, stored)
+      const fetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("Unexpected remote authentication request"))
+      try {
+        const { modelRuntime } = await createBotModelRuntime(agentDir)
+        const inventory = await providerAdmin(agentDir, modelRuntime).inventory()
+        expect(inventory.find((provider) => provider.id === "openai")?.configured).toBe(configured)
+        expect(JSON.stringify(inventory)).not.toMatch(
+          /fixture-(?:stored-key|env-key|access|refresh)/,
+        )
+        expect(fetch).not.toHaveBeenCalled()
+      } finally {
+        fetch.mockRestore()
+      }
+    },
+  )
+
   it.each(["8", "-100", ""])(
     "ignores obsolete access values during model setup: %j",
     async (value) => {
