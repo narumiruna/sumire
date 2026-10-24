@@ -128,24 +128,29 @@ export class ProviderAdmin {
       })
     }
   }
-  inventory(): Inventory["providers"] {
-    return this.runtime.getProviders().map((p) => ({
-      id: p.id,
-      name: p.name,
-      apiKey: Boolean(p.auth.apiKey?.login),
-      oauth: Boolean(p.auth.oauth),
-      configured: this.runtime.hasConfiguredAuth(p.id),
-      models: this.runtime
-        .getModels(p.id)
-        .filter((m) => this.runtime.getPhysicalModel(m.provider, m.id))
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          thinking: getSupportedThinkingLevels(m),
-          reasoning: m.reasoning,
-          image: m.input.includes("image"),
-        })),
-    }))
+  async inventory(): Promise<Inventory["providers"]> {
+    const signal = AbortSignal.timeout(10_000)
+    // The runtime's synchronous auth snapshot can be empty after startup.
+    // Check local credentials without refreshing OAuth tokens or generating output.
+    return Promise.all(
+      this.runtime.getProviders().map(async (p) => ({
+        id: p.id,
+        name: p.name,
+        apiKey: Boolean(p.auth.apiKey?.login),
+        oauth: Boolean(p.auth.oauth),
+        configured: Boolean(await this.runtime.checkAuth(p.id, { signal })),
+        models: this.runtime
+          .getModels(p.id)
+          .filter((m) => this.runtime.getPhysicalModel(m.provider, m.id))
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            thinking: getSupportedThinkingLevels(m),
+            reasoning: m.reasoning,
+            image: m.input.includes("image"),
+          })),
+      })),
+    )
   }
   assertUnused(id: string) {
     if (this.store.snapshot().policy.models.some((ref) => ref.startsWith(`${id}/`)))

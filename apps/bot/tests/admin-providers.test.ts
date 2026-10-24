@@ -30,7 +30,8 @@ function setup() {
     getModel: () => model,
     getPhysicalModel: () => model,
     getAvailable: async () => [model],
-    hasConfiguredAuth: () => true,
+    hasConfiguredAuth: () => false,
+    checkAuth: vi.fn(async () => ({ type: "api_key", source: "fixture" })),
     streamSimple: vi.fn(() => ({ result: async () => "compacted" })),
     logout: vi.fn(async () => {}),
     login: vi.fn(async () => ({})),
@@ -64,11 +65,14 @@ describe("Pi model administration contracts", () => {
       modelsPath: null,
       refreshOnCreate: false,
     })
+    const restoredInventory = await new ProviderAdmin(restored, store).inventory()
+    expect(restoredInventory.find((p) => p.id === "openai")?.configured).toBe(true)
+    expect(JSON.stringify(restoredInventory)).not.toContain("literal-fixture-api-key")
     expect(await restored.getAuth("openai")).toMatchObject({
       auth: { apiKey: "literal-fixture-api-key" },
     })
     expect((await stat(authPath)).mode & 0o077).toBe(0)
-    expect(JSON.stringify(admin.inventory())).not.toContain("literal-fixture-api-key")
+    expect(JSON.stringify(await admin.inventory())).not.toContain("literal-fixture-api-key")
     expect(JSON.stringify(store.snapshot())).not.toContain("literal-fixture-api-key")
   })
 
@@ -112,7 +116,7 @@ describe("Pi model administration contracts", () => {
       input: ["text", "image"],
       contextWindow: 64000,
     })
-    expect(admin.inventory().find((p) => p.id === "compatible")?.models).toEqual([
+    expect((await admin.inventory()).find((p) => p.id === "compatible")?.models).toEqual([
       expect.objectContaining({ id: "custom/model", reasoning: true, image: true }),
     ])
     const restored = await ModelRuntime.create({
@@ -120,7 +124,11 @@ describe("Pi model administration contracts", () => {
       modelsPath: null,
       refreshOnCreate: false,
     })
-    new ProviderAdmin(restored, store).install(store.snapshot().policy.providers)
+    const restoredAdmin = new ProviderAdmin(restored, store)
+    restoredAdmin.install(store.snapshot().policy.providers)
+    expect((await restoredAdmin.inventory()).find((p) => p.id === "compatible")?.configured).toBe(
+      true,
+    )
     expect(await restored.getAuth("compatible")).toMatchObject({
       auth: { apiKey: "compatible-key-fixture" },
     })
@@ -179,14 +187,27 @@ describe("Pi model administration contracts", () => {
     for (const key of ["!execute-command", "$ENV_KEY", "a\nb"])
       await expect(admin.credential("fixture", key)).rejects.toThrow("literal")
   })
-  it("returns non-secret inventory and supported thinking levels", () => {
-    const { admin } = setup()
-    expect(admin.inventory()[0]).toMatchObject({
+  it("returns current non-secret authentication and supported thinking levels", async () => {
+    const { admin, runtime } = setup()
+    const inventory = await admin.inventory()
+    expect(inventory[0]).toMatchObject({
       id: "fixture",
       configured: true,
       models: [{ id: "test", thinking: ["off"], reasoning: false, image: false }],
     })
-    expect(JSON.stringify(admin.inventory())).not.toContain("credential")
+    expect(JSON.stringify(inventory)).not.toContain("credential")
+    expect(runtime.checkAuth).toHaveBeenCalledWith("fixture", { signal: expect.any(AbortSignal) })
+  })
+  it("reports missing authentication from the current check", async () => {
+    const { admin, runtime } = setup()
+    runtime.hasConfiguredAuth = () => true
+    vi.mocked(runtime.checkAuth).mockResolvedValue(undefined)
+    expect((await admin.inventory())[0]?.configured).toBe(false)
+  })
+  it("does not report a failed authentication check as missing credentials", async () => {
+    const { admin, runtime } = setup()
+    vi.mocked(runtime.checkAuth).mockRejectedValue(new Error("Credential store unavailable"))
+    await expect(admin.inventory()).rejects.toThrow("Credential store unavailable")
   })
   it("binds OAuth to its initiating session and supports cancellation", async () => {
     const { admin, runtime } = setup()

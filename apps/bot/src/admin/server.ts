@@ -366,7 +366,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         builtInTools: services.tools(),
         toolAvailability: await services.toolAvailability?.(),
         skills: services.skills?.(),
-        providers: providers.inventory(),
+        providers: await providers.inventory(),
         mcp: mcp.inventory(),
       } satisfies Inventory)
       return
