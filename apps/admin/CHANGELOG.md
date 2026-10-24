@@ -1,5 +1,21 @@
 # @narumitw/sumire-admin
 
+## 0.7.0
+
+### Minor Changes
+
+- 6b45844: Guide provider and model setup through explicit save scopes, compact mobile chat actions and settings layouts, group navigation by task, and provide one record-specific refresh action.
+- 40828b0: Apply the warm editorial direction B to all administration pages. Make shared defaults editable in place, count actual pending policy differences, and separate bottom draft actions from saved application status. Keep provider setup, permissions, skills, connections, chat access, records, and audit actions on their existing API contracts.
+
+### Patch Changes
+
+- 9377d61: Separate saved settings from local model setup, add long-list permission filters and fixed editing context, and edit shared model defaults in place. Keep provider authentication, global availability, and chat overrides separate.
+- 3426c4e: Put model selection, chat approval, connection setup, and chat actions before advanced details. Add bounded access lists, tool/source search, explicit global-limit editing, and one settings review while preserving drafts, permissions, and separate save actions.
+- 073624a: Reveal failed saves without losing drafts, focus desktop section headings after navigation, improve control and status contrast, and include selected provider and model values in accessible names.
+- Updated dependencies [9377d61]
+  - @narumitw/sumire-policy@0.4.1
+  - @narumitw/sumire-contracts@0.6.1
+
 ## 0.6.1
 
 ### Patch Changes

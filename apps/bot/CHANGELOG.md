@@ -1,5 +1,14 @@
 # @narumitw/sumire
 
+## 0.15.1
+
+### Patch Changes
+
+- 3090186: Read current local provider authentication for the admin inventory instead of an uninitialized runtime cache. Preserve configured status after restart for saved API keys, OAuth credentials, environment credentials, and custom providers without refreshing tokens or generating model output.
+- Updated dependencies [9377d61]
+  - @narumitw/sumire-policy@0.4.1
+  - @narumitw/sumire-contracts@0.6.1
+
 ## 0.15.0
 
 ### Minor Changes
