@@ -13,16 +13,20 @@ const record = {
 }
 
 for (const viewport of [
-  { width: 1440, height: 900 },
-  { width: 768, height: 1024 },
-  { width: 390, height: 844 },
-  { width: 320, height: 844 },
+  { width: 1440, height: 900, zoom: 1 },
+  { width: 768, height: 1024, zoom: 1 },
+  { width: 390, height: 844, zoom: 1 },
+  { width: 320, height: 844, zoom: 1 },
+  { width: 640, height: 900, zoom: 2 },
 ]) {
-  test(`all production pages use the shared Radix workspace at ${viewport.width}px`, async ({
+  test(`all production pages use the shared Radix workspace at ${viewport.width}px and ${viewport.zoom}x zoom`, async ({
     page,
   }, testInfo) => {
-    await page.setViewportSize(viewport)
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
     const requests = await adminFixture(page, [record])
+    await page.evaluate((zoom) => {
+      document.documentElement.style.zoom = String(zoom)
+    }, viewport.zoom)
     await page.route("**/api/chats/42", (route) =>
       route.fulfill({ json: { id: 42, name: "Fixture chat", type: "private" } }),
     )
@@ -58,18 +62,20 @@ for (const viewport of [
           exact: true,
         })
         const box = await permissions.boundingBox()
-        expect(box?.width).toBeGreaterThanOrEqual(160)
-        expect(box?.height).toBeLessThanOrEqual(96)
+        expect(box?.width).toBeGreaterThanOrEqual(160 * viewport.zoom)
+        expect(box?.height).toBeLessThanOrEqual(96 * viewport.zoom)
         expect(
           (
             await page
               .getByRole("heading", { name: "Saved connections", exact: true })
               .boundingBox()
           )?.width,
-        ).toBeGreaterThanOrEqual(200)
+        ).toBeGreaterThanOrEqual(200 * viewport.zoom)
       }
-      if (section === "Model providers") {
-        await page.getByRole("button", { name: "Model", exact: true }).click()
+      // The added CSS-zoom case checks page reflow. Radix popup positioning under CSS zoom
+      // also fails on the base revision; retain the existing popup checks at every native width.
+      if (section === "Model providers" && viewport.zoom === 1) {
+        await page.getByRole("button", { name: /^Model: / }).click()
         const popup = page.getByRole("dialog", { name: "Choose model", exact: true })
         await expect(popup).toBeVisible()
         const box = await popup.boundingBox()
@@ -93,7 +99,7 @@ for (const viewport of [
         expect(
           (await button.boundingBox())?.height,
           `${section} touch target`,
-        ).toBeGreaterThanOrEqual(44)
+        ).toBeGreaterThanOrEqual(44 * viewport.zoom)
       }
       for (const panel of await page.locator("main .panel").all()) {
         if (!(await panel.isVisible())) continue

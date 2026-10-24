@@ -165,7 +165,7 @@ main {
   background: var(--gray-4);
 }
 .sidebar a[aria-current="page"] {
-  color: var(--teal-11);
+  color: var(--teal-12);
   background: var(--teal-3);
   border-color: var(--teal-7);
   font-weight: 600;
@@ -640,6 +640,23 @@ pre {
 .rt-Badge[data-accent-color="orange"],
 .rt-Badge[data-accent-color="red"] {
   color: var(--gray-12);
+}
+/* Use the high-contrast Radix text tokens on enabled controls and colored labels. */
+.rt-Button:where(:not(:disabled, [data-disabled])) {
+  color: var(--accent-12);
+}
+.rt-Button.rt-variant-solid:where(:not(:disabled, [data-disabled])) {
+  background-color: var(--accent-12);
+  color: var(--gray-1);
+}
+.rt-Button.rt-variant-solid:where(:hover, [data-state="open"]):where(
+  :not(:disabled, [data-disabled])
+) {
+  filter: var(--base-button-solid-high-contrast-hover-filter);
+}
+.rt-Badge:where(:not([data-accent-color="gray"])),
+.rt-Code:where(.rt-variant-soft) {
+  color: var(--accent-12);
 }
 .rt-Button:disabled {
   color: var(--gray-11);

@@ -89,7 +89,7 @@ for (const { width, zoom } of [
 }
 
 async function chooseOtherModel(page: Page) {
-  await page.getByRole("button", { name: "Model", exact: true }).click()
+  await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
 }
 
@@ -253,7 +253,7 @@ test("F2 navigation and authentication preserve an availability draft without co
   await expect(
     page.getByRole("heading", { name: "Add an available model", exact: true }),
   ).toBeVisible()
-  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+  await expect(page.getByRole("button", { name: /^Model: / })).toContainText("Other")
   await expect(
     page.getByRole("button", { name: "Save model availability", exact: true }),
   ).toBeEnabled()

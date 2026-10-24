@@ -72,7 +72,7 @@ for (const width of [390, 1440]) {
       await page.getByRole("button", { name: "Add connection", exact: true }).click()
       await page.getByLabel("MCP server name", { exact: true }).fill("connection-draft")
       await navigate(page, "Model Providers")
-      await page.getByRole("button", { name: "Model", exact: true }).click()
+      await page.getByRole("button", { name: /^Model: / }).click()
       await page.getByRole("option", { name: /Other/ }).click()
       await openDisclosure(page, "Custom endpoint")
       await page.getByLabel("Provider ID", { exact: true }).fill("unfinished-endpoint")
@@ -105,7 +105,7 @@ for (const width of [390, 1440]) {
         "connection-draft",
       )
       await navigate(page, "Model Providers")
-      await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+      await expect(page.getByRole("button", { name: /^Model: / })).toContainText("Other")
       await expect(
         page.getByRole("button", { name: "Save model availability", exact: true }),
       ).toBeDisabled()

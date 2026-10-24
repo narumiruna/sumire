@@ -160,7 +160,7 @@ async function stageMcp(page: Page) {
 }
 async function stageProvider(page: Page) {
   await navigate(page, "Model providers")
-  await page.getByRole("button", { name: "Model", exact: true }).click()
+  await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
 }
 
