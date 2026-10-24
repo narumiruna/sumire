@@ -162,7 +162,7 @@ for (const scenario of scenarios) {
     const { methods } = await fixture(page, state)
     const row = page.locator(".chat-list button").first()
     await expect(row.locator(".directory-status-label")).toContainText(scenario.label)
-    await expect(row.locator(".directory-status-reason")).toHaveText(scenario.reason)
+    await expect(row.locator(".directory-status-label")).toHaveAttribute("title", scenario.reason)
     await expect(row.locator("button, a")).toHaveCount(0)
     await row.click()
     if (scenario.name === "locally configured") {
@@ -191,7 +191,9 @@ for (const scenario of scenarios) {
         await expect(page.locator("#save-status")).toBeFocused()
       else
         await expect(
-          page.getByRole("heading", { name: "Model providers", exact: true }),
+          page.locator(
+            scenario.name === "unknown provider" ? "#provider-choice" : "#provider-authentication",
+          ),
         ).toBeFocused()
       await expect(page).toHaveURL(/chat=42/)
     }
@@ -237,7 +239,7 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   const row = page.locator(".chat-list button")
   await expect(row).toHaveCount(1)
-  await expect(row.locator(".directory-access")).toContainText("Not approved")
+  await expect(row.locator(".directory-status-label")).toContainText("Access not approved")
   await expect(row.locator(".directory-draft")).toHaveText("Draft access: Approved · Enabled")
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
 })
@@ -267,7 +269,7 @@ for (const width of [1440, 390]) {
     await status(page)
       .getByRole("button", { name: "Configure authentication", exact: true })
       .click()
-    await expect(page.getByRole("heading", { name: "Model providers", exact: true })).toBeFocused()
+    await expect(page.locator("#provider-authentication")).toBeFocused()
     await expect(page.locator("#save-status")).toContainText("1 unsaved change")
     const chats = page
       .getByRole("navigation", { name: "Administration sections" })
@@ -399,7 +401,7 @@ for (const [width, height, zoom] of [
     await row.focus()
     expect(await row.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
     expect((await contrast(row.locator("strong"))).text).toBeGreaterThanOrEqual(4.5)
-    expect((await contrast(row.locator(".directory-status-reason"))).text).toBeGreaterThanOrEqual(
+    expect((await contrast(row.locator(".directory-status-label"))).text).toBeGreaterThanOrEqual(
       4.5,
     )
     await row.click()

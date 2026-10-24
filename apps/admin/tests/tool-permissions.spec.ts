@@ -115,7 +115,9 @@ for (const width of [1440, 390]) {
     ).toBeVisible()
     await page.getByRole("link", { name: "Manage default tool permissions", exact: true }).click()
     await expect(page).toHaveURL(/section=Tool\+permissions.*#default-tool-permissions/)
-    await expect(page.getByRole("heading", { name: "Default permissions" })).toBeFocused()
+    await expect(
+      page.getByRole("heading", { name: "Editing shared defaults", exact: true }),
+    ).toBeFocused()
     await expect(
       page.getByText("New tools are denied until explicitly approved.", { exact: false }),
     ).toHaveCount(0)
@@ -164,7 +166,7 @@ for (const width of [1440, 390]) {
     await expect(defaults).toBeChecked()
     expect(state.writes).toEqual([])
     await savePolicy(page)
-    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().defaults.tools).toContain("bash")
     expect(state.saved().chats).toEqual(state.initial.chats)
   })
@@ -213,10 +215,10 @@ for (const width of [1440, 390]) {
     expect(state.writes).toEqual([])
     await global.check()
     await expect(defaults).not.toBeChecked()
-    await expect(row.getByText("Not allowed for inheriting chats", { exact: true })).toBeVisible()
+    await expect(row.getByText("Not selected", { exact: true })).toBeVisible()
     await defaults.check()
     await savePolicy(page)
-    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().tools).toContain("generate_image")
     expect(state.saved().defaults.tools).toContain("generate_image")
     expect(state.saved().chats).toEqual(state.initial.chats)
@@ -270,7 +272,7 @@ for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect(state.writes).toEqual([])
     await savePolicy(page)
-    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().tools).toEqual(state.initial.tools)
     expect(state.saved().defaults.tools).toEqual(["read"])
   })
@@ -319,7 +321,7 @@ test("global removal retains defaults and overrides, shows exact references, and
     tools.getByRole("checkbox", { name: "read (no longer available)", exact: true }),
   ).toHaveCount(0)
   await savePolicy(page)
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   expect(state.saved().tools).not.toContain("read")
   expect(state.saved().defaults.tools).not.toContain("read")
   expect(state.saved().chats["43"]?.tools).toEqual([])

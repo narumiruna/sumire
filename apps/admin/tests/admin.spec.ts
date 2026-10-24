@@ -263,13 +263,17 @@ test("provider workflow separates local authentication from model saving", async
   await expect(
     page.getByRole("button", { name: "Configure authentication", exact: true }),
   ).toBeVisible()
+  await openDisclosure(page, "Credential checks")
   await expect(page.getByText("Model availability is unverified.", { exact: false })).toBeVisible()
   await chooseModel(page)
   await expect(
     page.getByRole("button", { name: "Save model availability", exact: true }),
   ).toBeEnabled()
-  await page.getByRole("button", { name: "Change shared default instead", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Save default model", exact: true })).toBeEnabled()
+  await page.getByRole("button", { name: "Edit shared default", exact: true }).click()
+  await expect(
+    page.getByRole("combobox", { name: "Shared default model", exact: true }),
+  ).toBeVisible()
+  await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
   await expect(page.locator(".pending-bar")).toHaveCount(0)
   expect(writes).toEqual([])
 })
@@ -360,7 +364,7 @@ test("stages inheritance for all chat overrides without changing access or enabl
   await expect(bulk).toBeDisabled()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   expect(writes).toBe(1)
   expect(saved).toEqual({
     ...original,
@@ -690,7 +694,7 @@ test("edits private access and saves with a confirmation", async ({ page }) => {
   await page.getByRole("button", { name: "Review approval" }).click()
   await expect(page.getByRole("alertdialog")).toBeVisible()
   await page.getByRole("button", { name: "Save changes" }).click()
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 test("shows inherited chat settings and supported thinking levels", async ({ page }) => {
   await setup(page)
@@ -949,21 +953,17 @@ test("searches built-in catalogs and adds only the selected model", async ({ pag
     revision: 1,
     policy: { ...policy, models: ["fixture/test", "fixture/other"] },
   })
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 
-test("sets a bot default only after explicit selection and confirmation", async ({ page }) => {
+test("sets default thinking only after explicit selection and confirmation", async ({ page }) => {
   await setup(page)
-  await navigate(page, "Model Providers")
-  await chooseProvider(page)
-  await chooseModel(page, "Test")
-  await expect(page.getByText("Image input", { exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Change shared default instead", exact: true }).click()
-  await page.getByRole("combobox", { name: "Thinking level" }).click()
+  await navigate(page, "Defaults")
+  await page.getByRole("combobox", { name: "Shared default thinking", exact: true }).click()
   await expect(page.getByRole("option", { name: "high", exact: true })).toHaveCount(0)
   await page.getByRole("option", { name: "low", exact: true }).click()
-  await page.getByRole("button", { name: /Save default model|Save model availability/ }).click()
-  await expect(page.getByRole("alertdialog")).toContainText("thinking low")
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await expect(page.getByRole("alertdialog")).toContainText("Thinking level")
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
   )
@@ -1073,7 +1073,7 @@ test("opens account-only authentication directly and cancels it on Escape", asyn
   await page.keyboard.press("Escape")
   await expect(page.getByRole("dialog")).toHaveCount(0)
   expect(cancelled).toBe(true)
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeFocused()
 })
 
@@ -1162,7 +1162,9 @@ test("keeps unavailable model selections visible instead of selecting a fallback
 test("keeps removed approved models available to undo an unsaved edit", async ({ page }) => {
   await setup(page)
   await navigate(page, "Model Providers")
-  await page.getByText("Manage model availability", { exact: true }).click()
+  await expect(
+    page.getByRole("region", { name: "Manage model availability", exact: true }),
+  ).toBeVisible()
   const approved = page.getByRole("checkbox", { name: "fixture/test", exact: true })
   await approved.uncheck()
   await expect(approved).not.toBeChecked()
@@ -1174,6 +1176,10 @@ test("keeps removed approved models available to undo an unsaved edit", async ({
 test("requires an explicit supported thinking choice after catalog changes", async ({ page }) => {
   await setup(page)
   let changed = false
+  const saved = { ...policy, defaults: { ...policy.defaults, thinking: "low" } }
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { revision: 1, applied: 1, status: "applied", policy: saved } }),
+  )
   await page.route("**/api/inventory", (route) =>
     route.fulfill({
       json: {
@@ -1182,9 +1188,9 @@ test("requires an explicit supported thinking choice after catalog changes", asy
           {
             ...inventory.providers[0],
             oauth: false,
-            models: inventory.providers[0]?.models.map((m) => ({
-              ...m,
-              thinking: changed ? ["off"] : m.thinking,
+            models: inventory.providers[0]?.models.map((model) => ({
+              ...model,
+              thinking: changed ? ["off"] : model.thinking,
             })),
           },
         ],
@@ -1197,31 +1203,24 @@ test("requires an explicit supported thinking choice after catalog changes", asy
   })
   await page.reload()
   await navigate(page, "Model Providers")
-  await chooseProvider(page)
-  await chooseModel(page, "Test")
-  await page.getByRole("button", { name: "Change shared default instead", exact: true }).click()
-  await page.getByRole("combobox", { name: "Thinking level" }).click()
-  await page.getByRole("option", { name: "low", exact: true }).click()
-  await page.getByRole("button", { name: "Configure authentication" }).click()
+  await page.getByRole("button", { name: "Configure authentication", exact: true }).click()
   await page.getByLabel("API key", { exact: true }).fill("fixture-secret")
   await page.getByRole("button", { name: "Save API key", exact: true }).click()
+  await navigate(page, "Defaults")
+  const thinking = page.getByRole("combobox", { name: "Shared default thinking", exact: true })
+  await expect(thinking).toContainText("low")
   await expect(
-    page.getByRole("button", { name: /Save default model|Save model availability/ }),
-  ).toBeDisabled()
-  await expect(
-    page.getByText("The selected thinking level is unavailable.", { exact: false }),
+    page.getByRole("alert").filter({ hasText: "Choose a supported thinking level" }),
   ).toBeVisible()
-  await page.getByRole("combobox", { name: "Thinking level" }).click()
+  await expect(page.locator("#save-status")).not.toContainText("unsaved change")
+  await thinking.click()
   await page.getByRole("option", { name: "off", exact: true }).click()
   await expect(
-    page.getByText("The selected thinking level is unavailable.", { exact: false }),
+    page.getByText("Choose a supported thinking level before saving.", { exact: true }),
   ).toHaveCount(0)
   await expect(
-    page.getByRole("button", { name: /Save default model|Save model availability/ }),
-  ).toBeDisabled()
-  await expect(
-    page.getByText("Selection matches current settings.", { exact: false }),
-  ).toBeVisible()
+    page.getByRole("button", { name: "Review and save changes", exact: true }),
+  ).toBeEnabled()
 })
 
 test("provider search works with the keyboard on narrow screens", async ({ page }) => {
@@ -1418,7 +1417,7 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeDisabled()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText(
-    "Connection drafts, model selection, and authentication have separate save actions",
+    "Connection drafts, provider model additions, and authentication have separate save actions",
   )
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
@@ -1507,13 +1506,17 @@ test("retains unfinished editors across sections and guards reload and sign-out"
   await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible()
 })
 
-test("uses Model Providers as the only shared default model editor", async ({ page }) => {
+test("uses Shared defaults as the only shared default model editor", async ({ page }) => {
   await setup(page)
   await navigate(page, "Defaults")
   await expect(page.getByRole("group", { name: "Allowed models", exact: true })).toBeVisible()
   await expect(page.getByRole("combobox", { name: "Chat model override" })).toHaveCount(0)
-  await page.getByRole("button", { name: "Edit default model in Model providers" }).click()
-  await expect(page.getByRole("button", { name: "Provider", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("combobox", { name: "Shared default model", exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "Edit default model in Model providers" }),
+  ).toHaveCount(0)
 })
 
 test("shows readable audit and import summaries with raw details and server pagination", async ({
@@ -1626,7 +1629,7 @@ test("never saves plaintext secrets from the advanced JSON editor", async ({ pag
 
 test("clears the shared model only through an explicit scoped confirmation", async ({ page }) => {
   await setup(page)
-  await navigate(page, "Model Providers")
+  await navigate(page, "Defaults")
   await page.getByRole("button", { name: "Clear shared default model", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText(
     "Allowed models, authentication, and chat overrides stay unchanged",
@@ -1634,7 +1637,9 @@ test("clears the shared model only through an explicit scoped confirmation", asy
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
   )
-  await page.getByRole("button", { name: "Clear default and apply", exact: true }).click()
+  await page.getByRole("button", { name: "Clear default in draft", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
   const saved = (await saving).postDataJSON().policy
   expect(saved.defaults.model).toBeNull()
   expect(saved.defaults.thinking).toBeNull()
@@ -1662,7 +1667,7 @@ test("locks configuration inputs while policy submission is in flight", async ({
   await expect(page.getByText("Saving or checking…", { exact: true })).toBeVisible()
   finish()
   await expect(page.getByLabel("Telegram ID to approve")).toBeEnabled()
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 
 test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ page }) => {
@@ -2233,7 +2238,10 @@ test("filters the loaded directory by type and effective policy access without t
   await expect(directory.getByRole("button")).toHaveCount(1)
   await expect(directory).toContainText("Team")
   await expect(directory).toContainText("Disabled")
-  await expect(directory).toContainText("Approved")
+  await directory.getByRole("button").click()
+  await expect(page.getByRole("region", { name: "Chat setup status", exact: true })).toContainText(
+    "Approved",
+  )
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(

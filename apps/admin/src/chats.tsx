@@ -110,7 +110,7 @@ export function ChatWorkspace({
   inventory: Inventory
   onAccess(): void
   onApplication(): void
-  onProviders(): void
+  onProviders(provider: string): void
   onTools(): void
   onDurable(): void
   onPolicyChange(value: Policy): void
@@ -217,7 +217,7 @@ export function ChatWorkspace({
     }
   }, [repairRequest])
   const repair = (target: ChatRepair | "tools") => {
-    if (target === "providers") return onProviders()
+    if (target === "providers") return onProviders(saved.model?.split("/")[0] ?? "")
     if (target === "application") return onApplication()
     setTab(target === "access" ? "access" : "configuration")
     setRepairRequest({ target })
@@ -228,6 +228,13 @@ export function ChatWorkspace({
       (type === "all" || chatType(c) === type) &&
       (access === "all" || effectivePolicy(policy, c.id).enabled === (access === "allowed")),
   )
+  const authentication = new Map<string, number>()
+  for (const entry of filtered) {
+    const status = chatState(entry.id, savedPolicy, inventory, application)
+    if (status.primary?.code !== "authentication") continue
+    const provider = status.effective.model?.split("/")[0]
+    if (provider) authentication.set(provider, (authentication.get(provider) ?? 0) + 1)
+  }
   const metadata = metadataState.chat
   const detailName = metadataState.loading
     ? "Loading chat name…"
@@ -276,6 +283,28 @@ export function ChatWorkspace({
           searchRef={searchRef}
           title="Chat directory"
           visibleChats={filtered}
+          summary={
+            authentication.size > 0 && (
+              <section
+                className="directory-authentication"
+                aria-label="Authentication on this directory page"
+              >
+                <Text as="p" size="2" weight="medium">
+                  Authentication required · displayed page
+                </Text>
+                {[...authentication].map(([provider, count]) => (
+                  <Flex key={provider} gap="2" align="center" wrap="wrap">
+                    <Text size="2">
+                      {provider}: {count} {count === 1 ? "chat" : "chats"}
+                    </Text>
+                    <Button variant="ghost" onClick={() => onProviders(provider)}>
+                      Configure {provider}
+                    </Button>
+                  </Flex>
+                ))}
+              </section>
+            )
+          }
           filters={
             <>
               <div className="directory-filters">
@@ -333,22 +362,18 @@ export function ChatWorkspace({
             const status = chatState(c.id, savedPolicy, inventory, application)
             return (
               <span className="directory-status" data-blocked={Boolean(status.primary)}>
-                <span className="directory-status-label">
+                <Badge
+                  className="directory-status-label"
+                  color={status.primary ? "orange" : "gray"}
+                  title={status.reason}
+                >
                   {status.primary ? (
                     <MinusCircledIcon aria-hidden="true" />
                   ) : (
                     <CheckCircledIcon aria-hidden="true" />
                   )}
                   {status.label}
-                  <span className="directory-access">
-                    {" "}
-                    · Access: {status.approved ? "Approved" : "Not approved"}
-                    {!status.enabled ? " · Disabled" : ""}
-                  </span>
-                </span>
-                <span className="directory-status-reason" title={status.reason}>
-                  {status.reason}
-                </span>
+                </Badge>
                 {preview && (
                   <span className="directory-draft">
                     Draft access:{" "}
@@ -714,7 +739,11 @@ export function ChatWorkspace({
                         Connection checks require an explicit action.
                       </Text>
                       <Flex gap="3" wrap="wrap" mt="2">
-                        <Button type="button" variant="soft" onClick={onProviders}>
+                        <Button
+                          type="button"
+                          variant="soft"
+                          onClick={() => onProviders(saved.model?.split("/")[0] ?? "")}
+                        >
                           Manage authentication
                         </Button>
                         <Button type="button" variant="soft" onClick={onTools}>
@@ -848,7 +877,10 @@ export function ChatWorkspace({
                         </ChatFact>
                       </DataList.Root>
                       <Flex gap="3" wrap="wrap">
-                        <Button variant="soft" onClick={onProviders}>
+                        <Button
+                          variant="soft"
+                          onClick={() => onProviders(saved.model?.split("/")[0] ?? "")}
+                        >
                           Manage model authentication
                         </Button>
                         <Button variant="soft" onClick={onTools}>

@@ -51,19 +51,18 @@ for (const width of [1440, 390]) {
   test(`F2 default model intent survives model selection at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
     const state = await fixture(page)
+    state.policy().models.push("fixture/other")
+    await page.reload()
     await navigate(page, "Defaults")
-    await page
-      .getByRole("button", { name: "Edit default model in Model providers", exact: true })
-      .click()
-    await page.getByRole("button", { name: "Model", exact: true }).click()
-    await page.getByRole("option", { name: /Other/ }).click()
+    await page.getByRole("combobox", { name: "Shared default model", exact: true }).click()
+    await page.getByRole("option", { name: "fixture/other", exact: true }).click()
     await expect(
-      page.getByRole("button", { name: "Save default model", exact: true }),
+      page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeEnabled()
-    await page.getByRole("button", { name: "Save default model", exact: true }).click()
+    await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
     expect(state.writes).toEqual([])
-    await page.getByRole("button", { name: "Save default model", exact: true }).click()
+    await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
     await page.getByRole("button", { name: "Save changes", exact: true }).click()
     await expect.poll(() => state.policy().defaults.model).toBe("fixture/other")
     expect(state.policy().defaults.models).toContain("fixture/other")
@@ -161,9 +160,7 @@ test("F5 settings start with usable controls on mobile", async ({ page }) => {
   )
   await navigate(page, "Defaults")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(
-    page.getByRole("button", { name: "Edit default model in Model providers", exact: true }),
-  )
+  await visibleInViewport(page.getByRole("combobox", { name: "Shared default model", exact: true }))
   await expect(
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),
   ).toBeHidden()

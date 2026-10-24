@@ -91,21 +91,16 @@ describe("saved provider selection", () => {
 
 describe("provider selection policy", () => {
   it("adds only the selected model and keeps all other policy unchanged", () => {
-    const result = withProviderModel(policy, "new/vendor/model", "high", false)
+    const result = withProviderModel(policy, "new/vendor/model")
     expect(result).toEqual({ ...policy, models: ["old/model", "new/vendor/model"] })
     expect(policy.models).toEqual(["old/model"])
   })
-  it("sets the default only on request and preserves explicit chat overrides", () => {
-    const result = withProviderModel(policy, "new/model", "low", true)
-    expect(result.defaults).toEqual({
-      ...policy.defaults,
-      models: ["old/model", "new/model"],
-      model: "new/model",
-      thinking: "low",
-    })
+  it("never changes defaults or explicit chat overrides and is idempotent", () => {
+    const result = withProviderModel(policy, "new/model")
+    expect(result.defaults).toEqual(policy.defaults)
     expect(result.chats).toEqual(policy.chats)
     expect(result.privateUsers).toEqual([42])
-    expect(withProviderModel(result, "new/model", "low", true)).toEqual(result)
+    expect(withProviderModel(result, "new/model")).toEqual(result)
   })
 })
 describe("provider sign-in links", () => {

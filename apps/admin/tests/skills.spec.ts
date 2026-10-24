@@ -100,7 +100,7 @@ for (const width of [1440, 390]) {
     expect(state.writes).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await save(page)
-    await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
     expect(state.saved().defaults.skills).toEqual(["load-public-url", "missing", "expenses"])
     expect(state.saved().tools).toEqual([])
     expect(state.saved().chats["43"]?.skills).toEqual(["missing"])

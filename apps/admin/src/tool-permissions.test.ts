@@ -4,12 +4,15 @@ import {
   initialPolicy,
   validateReferences,
 } from "@narumitw/sumire-policy"
+import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
 import {
   defaultPermissionSummary,
+  permissionChangeCounts,
+  permissionMatches,
   permissionNames,
   ToolPermissions,
   toolPermissionGroups,
@@ -30,6 +33,32 @@ const inventory: Inventory = {
 }
 
 describe("tool permission presentation and existing policy rules", () => {
+  it("filters inventory presence independently from source and capability requirements", () => {
+    const current = {
+      ...inventory,
+      tools: ["read", "unknown-source"],
+      toolAvailability: { read: { available: false, reason: "Requires credentials" } },
+    }
+    expect(permissionMatches("tools", "read", current, "unavailable")).toBe(true)
+    expect(permissionMatches("tools", "read", current, "missing")).toBe(false)
+    expect(permissionMatches("tools", "unknown-source", current, "missing")).toBe(false)
+    expect(permissionMatches("tools", "mcp__fixture__new", current, "missing")).toBe(false)
+    expect(permissionMatches("tools", "stored", current, "missing")).toBe(true)
+    expect(permissionMatches("tools", "stored", current, "unavailable")).toBe(false)
+    expect(permissionMatches("servers", "fixture", current, "unavailable")).toBe(false)
+    expect(permissionMatches("servers", "offline", current, "missing")).toBe(true)
+    expect(permissionMatches("tools", "stored", current, "all")).toBe(true)
+  })
+  it("counts unique names per scope even when two servers report the same tool", () => {
+    const saved = initialPolicy()
+    saved.tools = ["read", "mcp__fixture__new"]
+    saved.defaults.tools = [...saved.tools]
+    const policy = structuredClone(saved)
+    policy.tools = ["read"]
+    policy.defaults.tools = ["mcp__fixture__new"]
+    const current = { ...inventory, mcp: [server, { ...server, name: "second" }] }
+    expect(permissionChangeCounts(policy, saved, current)).toEqual({ global: 1, defaults: 1 })
+  })
   it.each([false, true])(
     "shows provider requirements independently of approved policy (available=%s)",
     (available) => {
@@ -41,23 +70,27 @@ describe("tool permission presentation and existing policy rules", () => {
         ? "Codex OAuth configured; image access not verified."
         : "Requires Codex OAuth <not a probe>."
       const html = renderToStaticMarkup(
-        createElement(ToolPermissions, {
-          actor: "42",
-          policy,
-          saved: policy,
-          dirty: false,
-          defaultContext: false,
-          inventory: {
-            ...inventory,
-            tools: ["generate_image"],
-            builtInTools: ["generate_image"],
-            toolAvailability: { generate_image: { available, reason } },
-          },
-          onChange: () => {
-            throw new Error("Rendering must not change policy")
-          },
-          onChat: () => {},
-        }),
+        createElement(
+          Theme,
+          {},
+          createElement(ToolPermissions, {
+            actor: "42",
+            policy,
+            saved: policy,
+            dirty: false,
+            defaultContext: false,
+            inventory: {
+              ...inventory,
+              tools: ["generate_image"],
+              builtInTools: ["generate_image"],
+              toolAvailability: { generate_image: { available, reason } },
+            },
+            onChange: () => {
+              throw new Error("Rendering must not change policy")
+            },
+            onChat: () => {},
+          }),
+        ),
       )
       expect(html).toContain(available ? "Capability configured" : "Capability unavailable")
       expect(html).toContain(available ? reason : "Requires Codex OAuth &lt;not a probe&gt;.")

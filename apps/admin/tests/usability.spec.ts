@@ -188,7 +188,7 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
       await expect(bar).toBeVisible()
       await expect(bar).toHaveAttribute("data-compact", String(!attention))
       if (!attention) {
-        await expect(bar).toContainText("All settings saved and applied.")
+        await expect(bar).toContainText("Settings saved and applied.")
         await expect(bar.getByRole("button")).toHaveCount(0)
         await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
         await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
@@ -344,6 +344,7 @@ test("local provider checks distinguish failure and configuration from remote ve
 }) => {
   await fixture(page)
   await navigate(page, "Model providers")
+  await openDisclosure(page, "Credential checks")
   await page.route("**/api/providers/fixture/test", (route) =>
     route.fulfill({ status: 500, json: { error: "Fixture credential check failed" } }),
   )

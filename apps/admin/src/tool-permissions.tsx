@@ -14,6 +14,7 @@ import {
 } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -40,6 +41,39 @@ export function permissionNames(
       ...Object.values(policy.chats).flatMap((chat) => chat[key] ?? []),
     ]),
   ]
+}
+
+export type PermissionFilter = "all" | "missing" | "unavailable"
+
+export function permissionMatches(
+  key: "tools" | "servers",
+  name: string,
+  inventory: Inventory,
+  filter: PermissionFilter,
+) {
+  if (filter === "all") return true
+  if (filter === "unavailable")
+    return key === "tools" && inventory.toolAvailability?.[name]?.available === false
+  return key === "tools"
+    ? !inventory.tools.includes(name) &&
+        !inventory.mcp.some((server) => server.tools.includes(name))
+    : !inventory.mcp.some((server) => server.name === name)
+}
+
+export function permissionChangeCounts(policy: Policy, saved: Policy, inventory: Inventory) {
+  let global = 0
+  let defaults = 0
+  for (const key of ["tools", "servers"] as const) {
+    for (const name of permissionNames(key, policy, saved, inventory)) {
+      if (policy[key].includes(name) !== saved[key].includes(name)) global++
+      if (
+        Boolean(policy.defaults[key]?.includes(name)) !==
+        Boolean(saved.defaults[key]?.includes(name))
+      )
+        defaults++
+    }
+  }
+  return { global, defaults }
 }
 
 export type ToolPermissionGroup = { id: string; label: string; names: string[] }
@@ -97,45 +131,52 @@ function PermissionGroup({
   children: ReactNode
 }) {
   const id = useId()
-  const content = (
-    <>
-      <div className="permission-matrix-heading" aria-hidden="true">
-        <strong>{group ? "Tool name" : "Server name"}</strong>
-        <strong hidden={!globalEditing}>Globally allowed</strong>
-        <strong>Default chat permission</strong>
-        <strong>Status</strong>
-      </div>
-      <ul className="permission-list">{children}</ul>
-    </>
+  const columns = (
+    <div className="permission-matrix-heading" aria-hidden="true">
+      <strong>{group ? "Tool name" : "Server name"}</strong>
+      <strong hidden={!globalEditing}>Globally allowed</strong>
+      <strong>Default chat permission</strong>
+      <strong>Status</strong>
+    </div>
   )
-  if (!group) return content
+  const content = <ul className="permission-list">{children}</ul>
+  if (!group)
+    return (
+      <>
+        {columns}
+        {content}
+      </>
+    )
   return (
     <section className="permission-group" aria-label={group.label}>
-      <Heading as="h4" size="2">
-        {searching ? (
-          <Text>
-            {group.label} · {countText(group.names.length, "tool")}
-          </Text>
-        ) : (
-          <Button
-            variant="ghost"
-            className="permission-group-toggle"
-            aria-expanded={expanded}
-            aria-controls={id}
-            onClick={onToggle}
-          >
-            {expanded ? (
-              <ChevronDownIcon aria-hidden="true" />
-            ) : (
-              <ChevronRightIcon aria-hidden="true" />
-            )}
-            <Text>{group.label} ·</Text>
-            <Badge color="gray" variant="soft">
-              {countText(group.names.length, "tool")}
-            </Badge>
-          </Button>
-        )}
-      </Heading>
+      <div className="permission-group-heading">
+        <Heading as="h4" size="2">
+          {searching ? (
+            <Text>
+              {group.label} · {countText(group.names.length, "tool")}
+            </Text>
+          ) : (
+            <Button
+              variant="ghost"
+              className="permission-group-toggle"
+              aria-expanded={expanded}
+              aria-controls={id}
+              onClick={onToggle}
+            >
+              {expanded ? (
+                <ChevronDownIcon aria-hidden="true" />
+              ) : (
+                <ChevronRightIcon aria-hidden="true" />
+              )}
+              <Text>{group.label} ·</Text>
+              <Badge color="gray" variant="soft">
+                {countText(group.names.length, "tool")}
+              </Badge>
+            </Button>
+          )}
+        </Heading>
+        {expanded && columns}
+      </div>
       <div id={id} hidden={!expanded}>
         {content}
       </div>
@@ -166,6 +207,23 @@ export function ToolPermissions({
   const heading = useRef<HTMLHeadingElement>(null)
   const [query, setQuery] = useState("")
   const [globalEditing, setGlobalEditing] = useState(false)
+  const [filter, setFilter] = useState<PermissionFilter>("all")
+  const scope = useRef<HTMLElement>(null)
+  const filtering = Boolean(query.trim()) || filter !== "all"
+  const changes = permissionChangeCounts(policy, saved, inventory)
+  useEffect(() => {
+    const element = scope.current
+    if (!element) return
+    const measure = () =>
+      element.parentElement?.style.setProperty(
+        "--permission-scope-height",
+        `${element.offsetHeight}px`,
+      )
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [])
   const term = query.trim().toLowerCase()
   const allGroups = toolPermissionGroups(
     permissionNames("tools", policy, saved, inventory),
@@ -174,11 +232,16 @@ export function ToolPermissions({
   const groups = allGroups
     .map((group) => ({
       ...group,
-      names: group.names.filter((name) => `${name} ${group.label}`.toLowerCase().includes(term)),
+      names: group.names.filter(
+        (name) =>
+          `${name} ${group.label}`.toLowerCase().includes(term) &&
+          permissionMatches("tools", name, inventory, filter),
+      ),
     }))
     .filter((group) => group.names.length > 0)
-  const servers = permissionNames("servers", policy, saved, inventory).filter((name) =>
-    name.toLowerCase().includes(term),
+  const servers = permissionNames("servers", policy, saved, inventory).filter(
+    (name) =>
+      name.toLowerCase().includes(term) && permissionMatches("servers", name, inventory, filter),
   )
   const [expansion, setExpansion] = useState(() => readExpansion(actor))
   const expanded = expansion ?? allGroups.slice(0, 1).map((group) => group.id)
@@ -200,14 +263,22 @@ export function ToolPermissions({
       className="settings-stack tool-permissions"
       data-global-editing={globalEditing}
     >
-      <Flex direction="column" gap="2" className="section-heading">
-        <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="4">
-          Default permissions
+      <section ref={scope} className="permission-scope" aria-label="Permission editing scope">
+        <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="3">
+          {globalEditing ? "Editing global limits and shared defaults" : "Editing shared defaults"}
         </Heading>
-        <Prose size="2" color="gray" className="section-copy">
-          Choose tools for chats that use shared defaults. Global limits still apply.
-        </Prose>
-      </Flex>
+        {(changes.global > 0 || changes.defaults > 0) && (
+          <Text as="p" size="2">
+            {countText(changes.global, "global change")} ·{" "}
+            {countText(changes.defaults, "default change")} · Includes filtered names
+          </Text>
+        )}
+        {globalEditing && (
+          <Prose size="2">
+            Global limits affect every chat. Stored selections are not removed automatically.
+          </Prose>
+        )}
+      </section>
       <Flex gap="3" align="end" wrap="wrap" className="tool-search">
         <label className="form-field" htmlFor={`${prefix}-search`}>
           Search tools and servers
@@ -217,6 +288,20 @@ export function ToolPermissions({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        <label className="form-field" htmlFor={`${prefix}-filter`}>
+          Tool status
+          <Select.Root
+            value={filter}
+            onValueChange={(value) => setFilter(value as PermissionFilter)}
+          >
+            <Select.Trigger id={`${prefix}-filter`} aria-label="Tool status" />
+            <Select.Content>
+              <Select.Item value="all">All</Select.Item>
+              <Select.Item value="missing">Not in inventory</Select.Item>
+              <Select.Item value="unavailable">Capability unavailable</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </label>
         <Button
           variant="soft"
           aria-pressed={globalEditing}
@@ -225,19 +310,31 @@ export function ToolPermissions({
           Edit global limits
         </Button>
       </Flex>
-      {globalEditing && (
-        <Prose size="2">
-          Global limits affect every chat. Stored selections are not removed automatically.
-        </Prose>
+      {filtering && (
+        <Flex gap="2" wrap="wrap" align="center">
+          <Text role="status" size="2">
+            {countText(new Set(groups.flatMap((group) => group.names)).size, "matching tool")} ·{" "}
+            {countText(servers.length, "matching server")}
+          </Text>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setQuery("")
+              setFilter("all")
+            }}
+          >
+            Clear tool filters
+          </Button>
+        </Flex>
       )}
-      {term && !groups.length && !servers.length && (
+      {filtering && !groups.length && !servers.length && (
         <Prose role="status">No matching tools or servers.</Prose>
       )}
       {(["tools", "servers"] as const).map((key) => (
         <Panel
           key={key}
           className="permission-section"
-          hidden={Boolean(term) && (key === "tools" ? !groups.length : !servers.length)}
+          hidden={filtering && (key === "tools" ? !groups.length : !servers.length)}
           aria-label={key === "tools" ? "Individual tool permissions" : "MCP server permissions"}
         >
           <Heading as="h3" size="3" className="section-heading">
@@ -257,7 +354,7 @@ export function ToolPermissions({
           )}
           {key === "tools" && (
             <Flex
-              hidden={Boolean(term)}
+              hidden={filtering}
               gap="3"
               my="3"
               wrap="wrap"
@@ -295,9 +392,9 @@ export function ToolPermissions({
             <PermissionGroup
               key={group.id}
               group={key === "tools" ? group : undefined}
-              expanded={Boolean(term) || expanded.includes(group.id)}
+              expanded={filtering || expanded.includes(group.id)}
               globalEditing={globalEditing}
-              searching={Boolean(term)}
+              searching={filtering}
               onToggle={() =>
                 changeExpansion(
                   expanded.includes(group.id)
@@ -346,12 +443,12 @@ export function ToolPermissions({
                       )}
                       {key === "tools" && !inventory.tools.includes(name) && !servers.length && (
                         <Text as="p" size="2">
-                          Not in current tool inventory; permissions remain editable.
+                          <Badge color="gray">Not in inventory</Badge>
                         </Text>
                       )}
                       {key === "servers" && !inventory.mcp.some((m) => m.name === name) && (
                         <Text as="p" size="2">
-                          Connection not in inventory
+                          <Badge color="gray">Not in inventory</Badge>
                         </Text>
                       )}
                     </div>
@@ -402,9 +499,9 @@ export function ToolPermissions({
                           ? "Unavailable globally"
                           : selected
                             ? servers.length
-                              ? "Tool permission selected; check MCP server gates below"
-                              : "Allowed for inheriting chats"
-                            : "Not allowed for inheriting chats"}
+                              ? "Selected · server gate required"
+                              : "Allowed"
+                            : "Not selected"}
                         {!global && selected
                           ? " · stored default selection retained; clear it explicitly to resolve the save conflict"
                           : ""}
@@ -466,6 +563,9 @@ export function ToolPermissions({
       <details className="permission-rules">
         <summary>Permission rules and inheritance</summary>
         <Text as="p" size="2" color="gray">
+          Shared defaults select tools for chats without an override, within global limits. Not in
+          inventory means the name is absent from the loaded inventory; permissions remain editable.
+          Capability unavailable means a local requirement is missing, not a permission denial.
           Global permission alone does not install a tool. Global permission is the system-wide
           ceiling. Defaults apply only to inheriting chats. Explicit overrides stay in chat details.
           Global changes never clear stored selections. MCP requires both server and individual tool

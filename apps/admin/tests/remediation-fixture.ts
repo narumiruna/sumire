@@ -16,6 +16,7 @@ export async function remediationFixture(page: Page) {
   }
   let revision = 1
   let fail = false
+  const application = { status: "applied", lag: 0 }
   const writes: { path: string; body: unknown }[] = []
   const queries: URLSearchParams[] = []
   await page.route("**/api/**", async (route) => {
@@ -38,7 +39,12 @@ export async function remediationFixture(page: Page) {
     if (url.pathname === "/api/audit") queries.push(url.searchParams)
     const responses: Record<string, unknown> = {
       "/api/session": { csrf: "fixture", actor: "42" },
-      "/api/settings": { revision, applied: revision, status: "applied", policy },
+      "/api/settings": {
+        revision,
+        applied: revision - application.lag,
+        status: application.status,
+        policy,
+      },
       "/api/inventory": inventory,
       "/api/imports": [],
       "/api/chats": [{ id: 42, name: "Fixture chat", type: "private" }],
@@ -61,6 +67,7 @@ export async function remediationFixture(page: Page) {
   return {
     writes,
     queries,
+    application,
     policy: () => policy,
     fail: (value = true) => {
       fail = value

@@ -41,7 +41,7 @@ describe("SaveStatus", () => {
   it("keeps a clean applied state compact", () => {
     const html = render()
     expect(html).toContain('data-compact="true"')
-    expect(html).toContain("All settings saved and applied.")
+    expect(html).toContain("Settings saved and applied.")
     expect(html).toContain("Revision details")
     expect(html).not.toContain("<button")
     expect(html).not.toContain("save-scopes")
@@ -83,7 +83,7 @@ describe("SaveStatus", () => {
     expect(html).not.toContain("Review and save changes")
     expect(html).not.toContain("MCP: Unsaved configuration")
     expect(html).not.toContain("Provider: Unsaved selection or authentication")
-    expect(html).not.toContain("All settings saved and applied.")
+    expect(html).not.toContain("Settings saved and applied.")
   })
   it("has one policy review entry point while preserving separate save scopes", () => {
     const html = render({

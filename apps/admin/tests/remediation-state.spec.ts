@@ -231,26 +231,18 @@ test("F1 endpoint discard restores its staged configuration and keeps the policy
   expect(state.writes).toEqual([])
 })
 
-test("F2 changing the model task can be cancelled and authentication keeps the accepted task", async ({
+test("F2 navigation and authentication preserve an availability draft without converting it", async ({
   page,
 }) => {
   const state = await fixture(page)
   await navigate(page, "Model Providers")
   await chooseOtherModel(page)
-  const enterDefault = async () => {
-    await navigate(page, "Defaults")
-    await page
-      .getByRole("button", { name: "Edit default model in Model providers", exact: true })
-      .click()
-  }
-  page.once("dialog", (dialog) => dialog.dismiss())
-  await enterDefault()
+  await page.getByRole("button", { name: "Edit shared default", exact: true }).click()
   await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
-  ).toBeVisible()
-  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
-  page.once("dialog", (dialog) => dialog.accept())
-  await enterDefault()
+    page.getByRole("combobox", { name: "Shared default model", exact: true }),
+  ).toContainText("fixture/test")
+  await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
+  await navigate(page, "Model Providers")
   await openDisclosure(page, "Authentication")
   await page.getByRole("button", { name: "Configure authentication", exact: true }).click()
   await page.getByLabel("API key", { exact: true }).fill("synthetic-key-for-test")
@@ -259,34 +251,37 @@ test("F2 changing the model task can be cancelled and authentication keeps the a
   await navigate(page, "Chats")
   await navigate(page, "Model Providers")
   await expect(
-    page.getByRole("heading", { name: "Change shared default model", exact: true }),
+    page.getByRole("heading", { name: "Add an available model", exact: true }),
   ).toBeVisible()
   await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
-  await expect(page.getByRole("button", { name: "Save default model", exact: true })).toBeEnabled()
+  await expect(
+    page.getByRole("button", { name: "Save model availability", exact: true }),
+  ).toBeEnabled()
   expect(state.writes.some((write) => write.path === "/api/settings")).toBe(false)
   expect(state.policy().defaults.model).toBe("fixture/test")
 })
 
-test("F2 a failed default-model save retains intent for retry", async ({ page }, testInfo) => {
+test("F2 a failed default-model save retains its exact draft for retry", async ({
+  page,
+}, testInfo) => {
   const state = await fixture(page)
+  state.policy().models.push("fixture/other")
+  await page.reload()
   await navigate(page, "Defaults")
-  await page
-    .getByRole("button", { name: "Edit default model in Model providers", exact: true })
-    .click()
-  await chooseOtherModel(page)
+  await page.getByRole("combobox", { name: "Shared default model", exact: true }).click()
+  await page.getByRole("option", { name: "fixture/other", exact: true }).click()
   state.fail()
-  await page.getByRole("button", { name: "Save default model", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect(page.getByRole("alert").first()).toContainText("Settings changed; reload")
-  await expect(
-    page.getByRole("heading", { name: "Change shared default model", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("failed-default-save.png"), fullPage: true })
   expect(state.policy().defaults.model).toBe("fixture/test")
   state.fail(false)
-  await page.getByRole("button", { name: "Save default model", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect.poll(() => state.policy().defaults.model).toBe("fixture/other")
+  expect(state.writes[0]?.body).toEqual(state.writes[1]?.body)
 })
 
 test("F4 dirty connection switching and closed secret inputs retain the same draft", async ({

@@ -24,11 +24,8 @@ for (const width of [390, 1440]) {
     test("default model starts with its controls, not credential maintenance", async ({ page }) => {
       const state = await fixture(page)
       await navigate(page, "Defaults")
-      await page
-        .getByRole("button", { name: "Edit default model in Model providers", exact: true })
-        .click()
-      await inViewport(page.getByRole("button", { name: "Model", exact: true }))
-      await inViewport(page.getByRole("button", { name: "Save default model", exact: true }))
+      await inViewport(page.getByRole("combobox", { name: "Shared default model", exact: true }))
+      await inViewport(page.getByRole("combobox", { name: "Shared default thinking", exact: true }))
       await expect(
         page.getByRole("button", { name: "Remove credential", exact: true }),
       ).toBeHidden()

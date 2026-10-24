@@ -174,7 +174,7 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
   await expect(identity.getByText("-100", { exact: true })).toBeVisible()
   await expect(page.locator("img")).toHaveCount(0)
   await page.getByRole("button", { name: "Approve chat", exact: true }).click()
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toHaveCount(0)
   await page.reload()
   await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible()
@@ -366,6 +366,6 @@ test("requires renewed review on conflict and displays failed runtime applicatio
     page.getByText("Saved, but application failed. Retry application.", { exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "Retry application" }).click()
-  await expect(page.getByText("All settings saved and applied.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   expect(f.state().approvals).toBe(2)
 })

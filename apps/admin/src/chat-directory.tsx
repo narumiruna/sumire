@@ -126,6 +126,7 @@ export function ChatSelector({
   badge,
   footer,
   title = "Find a chat",
+  summary,
 }: {
   directory: ChatDirectory
   chat: string
@@ -136,6 +137,7 @@ export function ChatSelector({
   badge?(chat: Chat): ReactNode
   footer?: ReactNode
   title?: string
+  summary?: ReactNode
 }) {
   const searchId = useId()
   return (
@@ -197,6 +199,7 @@ export function ChatSelector({
             </Text>
           )}
         </div>
+        {summary}
       </div>
       <div className="directory-list-region">
         {!directory.loading && !directory.error && (
@@ -207,6 +210,8 @@ export function ChatSelector({
                   <button
                     type="button"
                     aria-current={chat === String(value.id) ? "true" : undefined}
+                    aria-label={`${chatName(value)} · ${value.id}`}
+                    aria-describedby={badge ? `directory-state-${value.id}` : undefined}
                     onClick={() => onSelect(String(value.id))}
                   >
                     <Flex asChild className="directory-chat-identity" align="start" gap="2">
@@ -225,7 +230,11 @@ export function ChatSelector({
                       <span>{value.type || "Type not known"}</span>
                       <Code variant="ghost">{value.id}</Code>
                     </Text>
-                    {badge && <span className="directory-chat-state">{badge(value)}</span>}
+                    {badge && (
+                      <span id={`directory-state-${value.id}`} className="directory-chat-state">
+                        {badge(value)}
+                      </span>
+                    )}
                   </button>
                 </Button>
               </li>

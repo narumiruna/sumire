@@ -10,6 +10,48 @@ export type ChatIssue = {
   target: ChatRepair
 }
 
+/** Inventory describes local configuration, not model execution. */
+export function modelIssues(
+  model: string | null,
+  selected: string | null,
+  inventory?: Inventory,
+): ChatIssue[] {
+  const issues: ChatIssue[] = []
+  if (!model)
+    issues.push({
+      code: "model",
+      label: "Setup required",
+      reason: selected
+        ? "Selected model is excluded by model availability rules."
+        : "No effective model configured.",
+      action: "Configure model",
+      target: "model",
+    })
+  else {
+    const providerId = model.split("/")[0]
+    const provider = inventory?.providers.find((value) => value.id === providerId)
+    if (provider && !provider.configured)
+      issues.push({
+        code: "authentication",
+        label: "Setup required",
+        reason: "Model authentication is not configured.",
+        action: "Configure authentication",
+        target: "providers",
+      })
+    if (!provider?.models.some((candidate) => `${provider.id}/${candidate.id}` === model))
+      issues.push({
+        code: "inventory",
+        label: "Status unknown",
+        reason: !provider
+          ? "Provider configuration is not in the loaded inventory."
+          : "Selected model is not in the loaded inventory.",
+        action: "Review authentication configuration",
+        target: "providers",
+      })
+  }
+  return issues
+}
+
 /** Describe saved configuration, not model execution or an unsaved policy preview. */
 export function chatState(
   chatId: number,
@@ -54,39 +96,7 @@ export function chatState(
       action: "Review application status",
       target: "application",
     })
-  if (!effective.model)
-    issues.push({
-      code: "model",
-      label: "Setup required",
-      reason:
-        override?.model || policy.defaults.model
-          ? "Selected model is excluded by model availability rules."
-          : "No effective model configured.",
-      action: "Configure model",
-      target: "model",
-    })
-  else {
-    const providerId = effective.model.split("/")[0]
-    const provider = inventory?.providers.find((value) => value.id === providerId)
-    if (provider && !provider.configured)
-      issues.push({
-        code: "authentication",
-        label: "Setup required",
-        reason: "Model authentication is not configured.",
-        action: "Configure authentication",
-        target: "providers",
-      })
-    if (!provider?.models.some((model) => `${provider.id}/${model.id}` === effective.model))
-      issues.push({
-        code: "inventory",
-        label: "Status unknown",
-        reason: !provider
-          ? "Provider configuration is not in the loaded inventory."
-          : "Selected model is not in the loaded inventory.",
-        action: "Review authentication configuration",
-        target: "providers",
-      })
-  }
+  issues.push(...modelIssues(effective.model, override?.model ?? policy.defaults.model, inventory))
   return {
     approved,
     enabled,

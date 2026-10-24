@@ -9,6 +9,7 @@ import { Prose } from "./surfaces.js"
 type Props = {
   snapshot: Snapshot
   entries: PolicyChange[]
+  modelReview?: { before: string | null; after: string | null; added: string[] }
   unfinished: { label: string; target: EditorTarget }[]
   openEditor(target: EditorTarget): void
   reviewOpen: boolean
@@ -27,6 +28,7 @@ type Props = {
 export function SaveStatus({
   snapshot,
   entries,
+  modelReview,
   unfinished,
   openEditor,
   reviewOpen,
@@ -46,16 +48,22 @@ export function SaveStatus({
   useEffect(() => {
     const bar = ref.current
     if (!bar) return
-    const resize = () =>
+    const resize = () => {
+      // CSS zoom must not make the sticky status consume more than one quarter of the viewport.
+      const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+      bar.style.maxHeight = `${window.innerHeight / zoom / 4}px`
       document.documentElement.style.setProperty(
         "--save-status-height",
-        `${bar.getBoundingClientRect().height + 20}px`,
+        `${bar.offsetHeight + 20}px`,
       )
+    }
     const observer = new ResizeObserver(resize)
     observer.observe(bar)
+    window.addEventListener("resize", resize)
     resize()
     return () => {
       observer.disconnect()
+      window.removeEventListener("resize", resize)
       document.documentElement.style.removeProperty("--save-status-height")
     }
   }, [])
@@ -92,7 +100,7 @@ export function SaveStatus({
                   : dirty
                     ? countText(entries.length, "unsaved change")
                     : compact
-                      ? "All settings saved and applied."
+                      ? "Settings saved and applied."
                       : "Saved revision applied."}
           </Badge>
           <details>
@@ -161,10 +169,23 @@ export function SaveStatus({
         <AlertDialog.Title>Save settings changes?</AlertDialog.Title>
         <AlertDialog.Description>
           Save the changes below across Chats, Chat access, Shared defaults, tools, skills, and
-          custom endpoints. Connection drafts, model selection, and authentication have separate
-          save actions. Active work will be cancelled. Revoked permissions cannot undo completed
-          external actions.
+          custom endpoints. Connection drafts, provider model additions, and authentication have
+          separate save actions. Active work will be cancelled. Revoked permissions cannot undo
+          completed external actions.
         </AlertDialog.Description>
+        {modelReview && (
+          <section aria-label="Shared model change">
+            <Prose size="2">
+              Model: {modelReview.before ?? "Not configured"} →{" "}
+              {modelReview.after ?? "Not configured"}
+            </Prose>
+            {modelReview.added.map((ref) => (
+              <Prose size="2" key={ref}>
+                Add shared allowed model: {ref}
+              </Prose>
+            ))}
+          </section>
+        )}
         <ul aria-label="Settings changes to save" className="settings-review-list">
           {entries.map((entry) => (
             <li key={entry.label}>
