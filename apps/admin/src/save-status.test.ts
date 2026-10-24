@@ -18,16 +18,16 @@ function render(props: Partial<Props> = {}, snapshot: Partial<Snapshot> = {}) {
         epoch: 1,
         ...snapshot,
       },
-      changes: [],
       entries: [],
       unfinished: [],
+      reviewOpen: false,
+      onReviewOpenChange: () => {},
       openEditor: () => {},
       dirty: false,
       busy: false,
       localPending: false,
       mcpDirty: false,
       providerPending: false,
-      showHelp: true,
       navigate: () => {},
       apply: () => {},
       retry: () => {},
@@ -45,7 +45,6 @@ describe("SaveStatus", () => {
     expect(html).toContain("Revision details")
     expect(html).not.toContain("<button")
     expect(html).not.toContain("save-scopes")
-    expect(html).not.toContain("How saving works")
   })
   it.each([
     { dirty: true },
@@ -75,49 +74,55 @@ describe("SaveStatus", () => {
           : "Saved changes are waiting to apply.",
       )
       expect(html).toMatch(/<button(?![^>]*disabled=)[^>]*>Retry application<\/button>/)
-      expect(html).not.toContain("Apply policy changes</button>")
+      expect(html).not.toContain("Review and save changes</button>")
     },
   )
-  it("shows only affected scopes and source-specific input recovery", () => {
-    const html = render({ localPending: true, unfinished: [pendingEditors.tool] })
-    expect(html).toContain("Continue editing: Tool permissions — Additional approved tool name")
-    expect(html).not.toContain("unfinished_tool")
-    expect(html).not.toContain("Policy: No changes")
-    expect(html).not.toContain("MCP: No browser edits")
-    expect(html).not.toContain("Provider: No browser edits")
+  it("shows only affected scopes and identifies the unfinished input", () => {
+    const html = render({ localPending: true, unfinished: [pendingEditors.access] })
+    expect(html).toContain("Continue editing: Chat access — Telegram ID to approve")
+    expect(html).not.toContain("Review and save changes")
+    expect(html).not.toContain("MCP: Unsaved configuration")
+    expect(html).not.toContain("Provider: Unsaved selection or authentication")
     expect(html).not.toContain("All settings saved and applied.")
   })
-  it("lists actual policy destinations and retains mixed save scopes", () => {
-    const label = "Global tool availability"
+  it("has one policy review entry point while preserving separate save scopes", () => {
     const html = render({
       dirty: true,
-      changes: [label],
       entries: [
-        { label, targets: [{ page: "Tool permissions", selector: "#default-tool-permissions" }] },
+        {
+          label: "Global tool availability",
+          targets: [{ page: "Tool permissions", selector: "#default-tool-permissions" }],
+        },
       ],
       localPending: true,
       unfinished: [pendingEditors.secret],
       mcpDirty: true,
       providerPending: true,
     })
-    expect(html).toContain("1 pending policy change")
-    expect(html).toContain("Policy: 1 change")
-    expect(html).toContain("Review Tool permissions")
+    expect(html).toContain("1 unsaved change")
+    expect(html.split("Review and save changes")).toHaveLength(2)
+    expect(html).not.toContain("Review pending policy changes")
+    expect(html).not.toContain("Policy: 1 change")
     expect(html).toContain("MCP: Unsaved configuration")
     expect(html).toContain("Provider: Unsaved selection or authentication")
-    expect(html).toContain("provider model selection, and authentication use separate actions")
-    expect(html).toMatch(/<button(?=[^>]*disabled=)[^>]*>Apply policy changes<\/button>/)
-    expect(html).toContain("Discard policy changes</button>")
+    expect(html).toContain("Discard settings changes</button>")
   })
-  it.each([{ busy: true }, { localPending: true }])("retains apply guards: %j", (guard) => {
-    expect(render({ dirty: true, ...guard })).toMatch(
-      /<button(?=[^>]*disabled=)[^>]*>Apply policy changes<\/button>/,
+  it("retains pending-input guards on review and application retry", () => {
+    expect(render({ dirty: true, localPending: true })).toMatch(
+      /<button(?=[^>]*disabled=)[^>]*>Review and save changes<\/button>/,
     )
-    expect(render(guard, { status: "failed" })).toMatch(
+    expect(render({ localPending: true }, { status: "failed" })).toMatch(
       /<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/,
     )
   })
-  it("hides saving help when the page does not request it", () => {
-    expect(render({ showHelp: false, dirty: true })).not.toContain("How saving works")
+  it("blocks review and application actions while busy", () => {
+    const html = render({ dirty: true, busy: true }, { status: "failed" })
+    for (const label of [
+      "Review and save changes",
+      "Retry application",
+      "Discard settings changes",
+    ]) {
+      expect(html).toMatch(new RegExp(`<button(?=[^>]*disabled=)[^>]*>${label}</button>`))
+    }
   })
 })

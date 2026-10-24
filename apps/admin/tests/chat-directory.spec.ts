@@ -469,7 +469,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
-  await expect(page.locator(".pending-bar")).toContainText("1 pending policy change")
+  await expect(page.locator(".pending-bar")).toContainText("1 unsaved change")
 })
 
 test("manual ID input stays a local draft until an explicit chat choice", async ({ page }) => {

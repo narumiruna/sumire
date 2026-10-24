@@ -52,7 +52,8 @@ export function Skills({
       </details>
       <Field id="skill-search" label="Search skills" value={query} onChange={setQuery} />
       <Prose size="2">
-        {visible.length} matching of {names.length} known skills. Changes use Apply policy changes.
+        {visible.length} matching of {names.length} known skills. Changes use Review and save
+        changes.
       </Prose>
       {!visible.length && (
         <Prose className="empty-state">

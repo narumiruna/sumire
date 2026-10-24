@@ -119,7 +119,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           targets: [
             {
               page: "Access",
-              selector: key === "privateUsers" ? "#access-user-input" : "#access-group-input",
+              selector: key === "privateUsers" ? "#access-users-list" : "#access-groups-list",
             },
           ],
         })
@@ -130,7 +130,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           targets: [
             {
               page: "Access",
-              selector: key === "privateUsers" ? "#access-user-input" : "#access-group-input",
+              selector: key === "privateUsers" ? "#access-users-list" : "#access-groups-list",
             },
           ],
         })

@@ -61,8 +61,11 @@ for (const viewport of [
         expect(box?.width).toBeGreaterThanOrEqual(160)
         expect(box?.height).toBeLessThanOrEqual(96)
         expect(
-          (await page.getByRole("heading", { name: "Connections", exact: true }).boundingBox())
-            ?.width,
+          (
+            await page
+              .getByRole("heading", { name: "Saved connections", exact: true })
+              .boundingBox()
+          )?.width,
         ).toBeGreaterThanOrEqual(200)
       }
       if (section === "Model providers") {

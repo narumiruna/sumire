@@ -1,8 +1,10 @@
 import { expect, type Page, test } from "@playwright/test"
 import {
+  closeConnectionEditor,
   openConnectionEditor,
   openDirectoryFilters,
   openDisclosure,
+  openGlobalLimits,
   sectionLabel,
 } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
@@ -129,6 +131,7 @@ async function navigate(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
+  if (name === "Tool permissions") await openGlobalLimits(page)
   if (name === "MCP connections") await openConnectionEditor(page)
   if (name === "Audit") await openDisclosure(page, "Filters")
   if (name === "Defaults") await openDisclosure(page, "Advanced actions")
@@ -143,9 +146,13 @@ async function stagePolicy(page: Page) {
 }
 async function stageMcp(page: Page) {
   await navigate(page, "MCP connections")
-  const edit = page.getByRole("button", { name: "Edit fields for fixture", exact: true })
-  if (await edit.isEnabled()) await edit.click()
-  else await page.getByRole("textbox", { name: "MCP server name", exact: true }).fill("fixture")
+  const blocked = await page
+    .getByRole("button", { name: "Add connection", exact: true, includeHidden: true })
+    .isDisabled()
+  if (!blocked) {
+    await closeConnectionEditor(page)
+    await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
+  } else await page.getByRole("textbox", { name: "MCP server name", exact: true }).fill("fixture")
   await page.getByRole("checkbox", { name: "Edit MCP description", exact: true }).check()
   await page
     .getByRole("textbox", { name: "MCP description replacement" })
@@ -210,9 +217,9 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
   await stageProvider(page)
   await tour()
   await expect(bar).toContainText("MCP: Unsaved")
-  await expect(bar).toContainText("1 pending policy change")
+  await expect(bar).toContainText("1 unsaved change")
   page.once("dialog", (dialog) => dialog.accept())
-  await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
+  await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
   await expect(bar).not.toContainText("Policy: No changes")
   await expect(bar).toContainText("MCP: Unsaved")
   await expect(bar).toContainText("Provider: Unsaved")
@@ -223,7 +230,7 @@ test("Durable retains unfinished editor input and shows save chrome until it is 
 }) => {
   await fixture(page)
   await navigate(page, "Access")
-  const input = page.getByLabel("Private user ID to add", { exact: true })
+  const input = page.getByLabel("Telegram ID to approve", { exact: true })
   await input.fill("1234")
   await navigate(page, "Durable")
   const bar = page.getByRole("region", { name: "Save status and pending changes" })
@@ -291,15 +298,13 @@ test("guided and advanced MCP edits share a draft and a redacted transport-aware
   await page.getByRole("textbox", { name: "MCP description replacement" }).fill("guided")
   await expect(json).toHaveValue(/fixture_tool/)
   await json.fill('{"unknown":true}')
-  await expect(
-    page.getByRole("button", { name: "Save MCP configuration and apply" }),
-  ).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Save connection" })).toBeDisabled()
   await expect(json).toHaveValue('{"unknown":true}')
   await json.fill('{"url":"https://example.test/opaque","headers":{}}')
   await expect(preview).toContainText("Removed by transport selection: command")
   await expect(preview).toContainText("Removed by transport selection: env")
   await expect(preview).not.toContainText("opaque")
-  await page.getByRole("button", { name: "Save MCP configuration and apply" }).click()
+  await page.getByRole("button", { name: "Save connection" }).click()
   expect(state.writes.at(-1)).toMatchObject({
     path: "/api/mcp/fixture",
     body: { revision: 1, config: { url: "https://example.test/opaque", headers: {} } },
@@ -330,7 +335,7 @@ test("audit filters query all records without clearing cross-section policy draf
   expect(state.auditQueries.at(-1)?.get("offset")).toBe("100")
   expect(state.auditQueries.at(-1)?.get("outcome")).toBe("failed")
   await expect(page.getByRole("region", { name: "Save status and pending changes" })).toContainText(
-    "1 pending policy change",
+    "1 unsaved change",
   )
 })
 
@@ -414,7 +419,7 @@ test("failed and stale audit queries cannot replace the current result or discar
   await expect(page.getByRole("list", { name: "Configuration activity" })).not.toContainText(
     "STALE",
   )
-  await expect(page.locator("#save-status")).toContainText("1 pending policy change")
+  await expect(page.locator("#save-status")).toContainText("1 unsaved change")
 })
 
 test("audit retry clears the local error and HTTP 401 still clears the session", async ({
@@ -498,7 +503,7 @@ for (const change of ["url", "protocol"] as const) {
     await expect(check).toHaveText("Model-list check: Not checked")
     await expect(page.getByText("checked-endpoint-model", { exact: true })).toHaveCount(0)
     page.once("dialog", (dialog) => dialog.accept())
-    await page.getByRole("button", { name: "Discard policy changes", exact: true }).click()
+    await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
     await expect(check).toContainText("Verified")
     await expect(page.getByText("checked-endpoint-model", { exact: true })).toBeVisible()
     await page.route("**/api/providers/fixture/discover", (route) =>
@@ -579,11 +584,11 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   })
   await stagePolicy(page)
   measurements.pending = await contrast(
-    page.locator("#save-status .rt-Badge").filter({ hasText: /pending policy changes?/ }),
+    page.locator("#save-status .rt-Badge").filter({ hasText: /unsaved changes?/ }),
   )
   state.conflict()
-  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
-  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
   const error = page.getByRole("alert")
   await expect(error).toBeVisible()
   measurements.error = await contrast(error.locator(".rt-CalloutText"))

@@ -945,8 +945,24 @@ html {
   margin: 16px 0;
 }
 .chat-status {
-  margin: 12px 0 16px;
+  margin: 8px 0;
 }
+.chat-status[data-blocked="false"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.chat-status[data-blocked="false"] .setup-details[open] {
+  flex-basis: 100%;
+}
+.chat-ready-summary {
+  min-height: 32px;
+}
+.setup-details > .chat-readiness-toggle {
+  padding-block: 6px;
+}
+
 .overview-settings {
   margin: 0;
 }
@@ -1004,7 +1020,7 @@ html {
 .permission-details li {
   margin: 8px 0;
 }
-[hidden] {
+.radix-themes [hidden] {
   display: none;
 }
 @media (max-width: 1100px) {
@@ -1374,8 +1390,15 @@ html {
   display: none;
 }
 .mcp-editor-column > .mcp-server-name {
-  margin-block: 12px;
+  margin-block: 8px;
 }
+.mcp-server-name > .form-field {
+  margin-block: 8px;
+}
+.mcp-editor-column {
+  max-width: 860px;
+}
+
 .save-scopes {
   max-height: min(40vh, 320px);
   overflow: auto;
@@ -1386,8 +1409,19 @@ html {
 .unfinished-editor .prose {
   margin-block: 4px;
 }
-.policy-destinations {
-  width: 100%;
+.settings-review-list {
+  padding-left: 20px;
+  max-height: 40vh;
+  overflow: auto;
+}
+.settings-review-list > li {
+  margin-block: 12px;
+}
+.access-approve-form .form-field {
+  flex: 1 1 180px;
+}
+.access-approve-form {
+  margin-block: 12px;
 }
 .audit-filter-disclosure .audit-filter-form {
   margin-top: 8px;
@@ -1413,6 +1447,23 @@ html {
 }
 .permission-name .rt-Code {
   font-size: 14px;
+}
+.tool-search .form-field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.tool-permissions:not([data-global-editing="true"])
+  :is(.permission-row, .permission-matrix-heading) {
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.7fr) minmax(0, 1fr);
+}
+@media (max-width: 850px) {
+  .tool-permissions:not([data-global-editing="true"]) .permission-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .tool-permissions:not([data-global-editing="true"]) .permission-name {
+    grid-column: 1 / -1;
+  }
 }
 .permission-row p {
   margin-block: 0 8px;
@@ -1577,11 +1628,34 @@ html {
   gap: 4px;
   white-space: normal;
 }
-.provider-checks,
-.provider-save {
+.provider-checks {
   padding-top: 16px;
   margin-top: 16px;
   border-top: 1px solid var(--gray-6);
+}
+.provider-save {
+  margin-block: 8px;
+}
+.provider-task {
+  max-width: 760px;
+}
+.provider-task .provider-choice {
+  margin-top: 12px;
+}
+.provider-choice > p {
+  margin-block: 0 6px;
+}
+.provider-authentication > summary,
+.provider-saved-settings > summary,
+.access-intro > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.provider-authentication > .panel,
+.provider-saved-settings > .panel {
+  margin-top: 8px;
 }
 .provider-advanced {
   padding-block: 0;
@@ -1806,6 +1880,9 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
 .chat-fact-value > div {
   min-width: 0;
   flex: 1 1 150px;
+}
+.chat-facts.chat-overview-facts > .rt-DataListItem {
+  padding-block: 8px;
 }
 .chat-fact-detail {
   display: block;

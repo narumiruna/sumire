@@ -7,7 +7,7 @@ export async function remediationFixture(page: Page) {
   let policy: Policy = {
     ...structuredClone(basePolicy),
     skills: ["url-guide"],
-    defaults: { ...basePolicy.defaults, thinking: "off", skills: ["url-guide"] },
+    defaults: { ...structuredClone(basePolicy.defaults), thinking: "off", skills: ["url-guide"] },
   }
   const inventory: Inventory = {
     ...structuredClone(baseInventory),

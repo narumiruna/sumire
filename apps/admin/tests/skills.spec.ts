@@ -62,8 +62,8 @@ async function setup(page: Page) {
 }
 
 async function save(page: Page) {
-  await page.getByRole("button", { name: "Apply policy changes", exact: true }).click()
-  await page.getByRole("button", { name: "Save and apply", exact: true }).click()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
 }
 
 for (const width of [1440, 390]) {

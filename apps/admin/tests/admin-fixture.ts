@@ -98,8 +98,18 @@ export function sectionLabel(name: string): string {
 }
 
 export async function openDisclosure(page: Page, label: string) {
-  const summary = page.locator("summary").filter({ hasText: new RegExp(`^${label}$`) })
+  const summary = page.getByText(label, { exact: true }).and(page.locator("summary"))
   if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
+}
+
+export async function openGlobalLimits(page: Page) {
+  const button = page.getByRole("button", { name: "Edit global limits", exact: true })
+  if ((await button.getAttribute("aria-pressed")) !== "true") await button.click()
+}
+
+export async function closeConnectionEditor(page: Page) {
+  const close = page.getByRole("button", { name: "Close connection editor", exact: true })
+  if (await close.isVisible()) await close.click()
 }
 
 export async function openConnectionEditor(page: Page, existing = false) {
@@ -114,6 +124,7 @@ export async function openConnectionEditor(page: Page, existing = false) {
     else await page.getByRole("button", { name: "Add connection", exact: true }).click()
   }
   await openDisclosure(page, "Advanced connection fields")
+  await openDisclosure(page, "Review field changes")
 }
 
 export async function openChatConfiguration(page: Page) {
@@ -133,6 +144,9 @@ export async function openDirectoryFilters(page: Page) {
 }
 
 export async function navigate(page: Page, name: string) {
+  await expect(
+    page.getByRole("complementary", { name: "Administration navigation", exact: true }),
+  ).toBeVisible()
   const link = page
     .getByRole("navigation", { name: "Administration sections" })
     .getByRole("link", { name: sectionLabel(name), exact: true })

@@ -34,6 +34,7 @@ import {
   type Snapshot,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
+import { ChatAccess } from "./chat-access.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
@@ -50,7 +51,7 @@ import {
 } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeEntries, policyChanges } from "./policy-changes.js"
-import { Check, Choices, Field, IdList, ModelAvailability } from "./policy-editors.js"
+import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { Providers } from "./providers.js"
 import { SaveStatus } from "./save-status.js"
@@ -85,6 +86,7 @@ function App() {
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
   const [defaultModelRequest, setDefaultModelRequest] = useState(0)
+  const [policyReviewOpen, setPolicyReviewOpen] = useState(false)
   const openDefaultModel = () => {
     setDefaultModelRequest((request) => request + 1)
     setPage("Model Providers")
@@ -135,6 +137,7 @@ function App() {
   const expireSession = useCallback(() => {
     setSession(null)
     setDefaultModelRequest(0)
+    setPolicyReviewOpen(false)
     setEditorRequest(undefined)
     setToolName("")
     setEditingProvider(undefined)
@@ -297,7 +300,6 @@ function App() {
     )
   const policy = snapshot.policy
   const selected = policy.chats[chat]
-  const changes = policyChanges(savedPolicy ?? policy, policy)
   return (
     <div className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}`}>
       <SideNavigation page={page} chat={chat} actor={session.actor} onNavigate={setPage} />
@@ -384,7 +386,8 @@ function App() {
         ) && (
           <SaveStatus
             snapshot={snapshot}
-            changes={changes}
+            reviewOpen={policyReviewOpen}
+            onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
             unfinished={(Object.keys(pendingEditors) as PendingEditor[])
               .filter((key) => editorPending[key])
@@ -395,7 +398,6 @@ function App() {
             localPending={localPending}
             mcpDirty={mcpDirty}
             providerPending={providerPending}
-            showHelp={(page !== "Audit" && page !== "Durable") || pending}
             navigate={setPage}
             apply={() =>
               void run(async () => {
@@ -527,48 +529,26 @@ function App() {
                 </Button>
               </Panel>
             )}
-            <section className="access-intro" aria-label="Access policy scope">
+            <ChatAccess
+              key={snapshot.revision}
+              policy={policy}
+              saved={savedPolicy ?? policy}
+              target={accessTarget}
+              chats={knownChats}
+              onChange={update}
+              onPending={(value) => markPending("access", value)}
+              onReview={() => setPolicyReviewOpen(true)}
+            />
+            <details className="access-intro">
+              <summary>Imported IDs and review history</summary>
               <Prose>
-                {countText(policy.privateUsers.length, "private user")} ·{" "}
-                {countText(policy.groups.length, "group or channel", "groups or channels")} approved
-                in this policy.
+                Import history never grants access or reverses a revocation. No imported ID is
+                approved automatically.
               </Prose>
-              <Prose size="2">Private and group access are separate.</Prose>
-              <details>
-                <summary>Imported IDs and review history</summary>
-                <Prose>
-                  Import history never grants access or reverses a revocation. Review current access
-                  below; no imported ID is approved automatically.
-                </Prose>
-                <Button variant="soft" onClick={() => setPage("Audit")}>
-                  Open import history in Audit
-                </Button>
-              </details>
-            </section>
-            <div className="access-lists">
-              <IdList
-                key={`${snapshot.revision}:users`}
-                onPending={(v) => markPending("users", v)}
-                label="Private-message access"
-                values={policy.privateUsers}
-                chats={knownChats}
-                savedValues={savedPolicy?.privateUsers ?? policy.privateUsers}
-                target={accessTarget}
-                positive
-                onChange={(values) => update({ ...policy, privateUsers: values })}
-              />
-              <IdList
-                key={`${snapshot.revision}:groups`}
-                onPending={(v) => markPending("groups", v)}
-                label="Group and channel access"
-                values={policy.groups}
-                chats={knownChats}
-                savedValues={savedPolicy?.groups ?? policy.groups}
-                target={accessTarget}
-                positive={false}
-                onChange={(values) => update({ ...policy, groups: values })}
-              />
-            </div>
+              <Button variant="soft" onClick={() => setPage("Audit")}>
+                Open import history in Audit
+              </Button>
+            </details>
           </EditorSection>
           <EditorSection
             active={page === "Defaults"}
@@ -706,7 +686,7 @@ function App() {
                       model, model, and thinking overrides for all chats, including chats outside
                       the current page. Explicit empty lists will also inherit Defaults. Chat access
                       and enabled switches stay unchanged. Future chats already inherit Defaults.
-                      This stages edits only; use Apply policy changes to apply them.
+                      This stages edits only; use Review and save changes to apply them.
                     </AlertDialog.Description>
                     <Flex gap="3" mt="4">
                       <AlertDialog.Cancel>
