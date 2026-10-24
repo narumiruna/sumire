@@ -9,6 +9,7 @@ import { Prose } from "./surfaces.js"
 type Props = {
   snapshot: Snapshot
   entries: PolicyChange[]
+  changeCount: number
   modelReview?: { before: string | null; after: string | null; added: string[] }
   unfinished: { label: string; target: EditorTarget }[]
   openEditor(target: EditorTarget): void
@@ -28,6 +29,7 @@ type Props = {
 export function SaveStatus({
   snapshot,
   entries,
+  changeCount,
   modelReview,
   unfinished,
   openEditor,
@@ -44,29 +46,55 @@ export function SaveStatus({
   discard,
 }: Props) {
   const ref = useRef<HTMLElement>(null)
+  const pending = dirty || localPending || mcpDirty || providerPending
   const navigating = useRef(false)
   useEffect(() => {
     const bar = ref.current
-    if (!bar) return
+    if (!pending || !bar) return
     const resize = () => {
-      // CSS zoom must not make the sticky status consume more than one quarter of the viewport.
-      const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+      // Keep the fixed changes bar within one quarter of the viewport, including CSS zoom.
+      const zoom = bar.getBoundingClientRect().width / bar.offsetWidth || 1
       bar.style.maxHeight = `${window.innerHeight / zoom / 4}px`
       document.documentElement.style.setProperty(
-        "--save-status-height",
+        "--changes-bar-height",
         `${bar.offsetHeight + 20}px`,
       )
     }
     const observer = new ResizeObserver(resize)
     observer.observe(bar)
     window.addEventListener("resize", resize)
+    let keyboardFocus = true
+    const onPointer = () => {
+      keyboardFocus = false
+    }
+    const onKey = () => {
+      keyboardFocus = true
+    }
+    const revealFocus = (event: FocusEvent) => {
+      const target = event.target
+      if (
+        !keyboardFocus ||
+        !(target instanceof HTMLElement) ||
+        !target.closest("main") ||
+        bar.contains(target)
+      )
+        return
+      if (target.getBoundingClientRect().bottom > bar.getBoundingClientRect().top)
+        target.scrollIntoView({ block: "center" })
+    }
+    document.addEventListener("focusin", revealFocus)
+    document.addEventListener("pointerdown", onPointer, true)
+    document.addEventListener("keydown", onKey, true)
     resize()
     return () => {
       observer.disconnect()
       window.removeEventListener("resize", resize)
-      document.documentElement.style.removeProperty("--save-status-height")
+      document.removeEventListener("focusin", revealFocus)
+      document.removeEventListener("pointerdown", onPointer, true)
+      document.removeEventListener("keydown", onKey, true)
+      document.documentElement.style.removeProperty("--changes-bar-height")
     }
-  }, [])
+  }, [pending])
   const applied = snapshot.status === "applied" && snapshot.revision === snapshot.applied
   const compact = applied && !dirty && !busy && !localPending && !mcpDirty && !providerPending
   const reviewEditor = (target: EditorTarget) => {
@@ -77,85 +105,86 @@ export function SaveStatus({
   return (
     <AlertDialog.Root open={reviewOpen} onOpenChange={setReviewOpen}>
       <section
-        ref={ref}
         id="save-status"
         tabIndex={-1}
         aria-label="Save status and pending changes"
-        className={`save-status ${dirty ? "pending-bar" : "saved-state"}`}
+        className="save-status"
         data-pending={dirty}
         data-compact={compact}
       >
-        <div className="save-status-line">
-          <Badge
-            role="status"
-            data-saved={applied && !dirty && !busy}
-            color={applied && !dirty && !busy ? "green" : "orange"}
-          >
-            {busy
-              ? "Saving or checking…"
-              : snapshot.status === "failed"
-                ? "Saved, but application failed. Retry application."
-                : !applied
-                  ? "Saved changes are waiting to apply."
-                  : dirty
-                    ? countText(entries.length, "unsaved change")
-                    : compact
-                      ? "Settings saved and applied."
-                      : "Saved revision applied."}
+        <div className="application-status" id="application-status" tabIndex={-1}>
+          <Badge role="status" color={applied ? "gray" : "orange"} data-saved={applied}>
+            {snapshot.status === "failed"
+              ? "Saved, but application failed. Retry application."
+              : !applied
+                ? "Saved changes are waiting to apply."
+                : compact
+                  ? "Settings saved and applied."
+                  : "Saved revision applied."}
           </Badge>
           <details>
             <summary>Revision details</summary>
             Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
           </details>
+          {!applied && (
+            <Button variant="outline" disabled={busy || dirty || localPending} onClick={retry}>
+              Retry application
+            </Button>
+          )}
+          {busy && (
+            <Prose size="2" role="status">
+              Operation in progress…
+            </Prose>
+          )}
         </div>
-        {!compact && (
-          <div className="save-scopes">
-            {mcpDirty && (
-              <Button
-                variant="surface"
-                className="navigation-control"
-                onClick={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
-              >
-                MCP: Unsaved configuration
-              </Button>
-            )}
-            {providerPending && (
-              <Button
-                variant="surface"
-                className="navigation-control"
-                onClick={() => navigate("Model Providers")}
-              >
-                Provider: Unsaved selection or authentication
-              </Button>
-            )}
-            {unfinished.map((editor) => (
-              <div key={editor.label} className="unfinished-editor">
-                <Prose size="2">Finish or clear input in {editor.label} before saving.</Prose>
-                <Button variant="soft" onClick={() => openEditor(editor.target)}>
-                  Continue editing: {editor.label}
-                </Button>
+        {pending && (
+          <section ref={ref} className="changes-bar" aria-label="Pending changes">
+            <div className="save-status-line">
+              <Badge role="status" color="orange">
+                {dirty ? countText(changeCount, "unsaved change") : "Unsubmitted editor draft"}
+              </Badge>
+              {dirty && <span>Settings draft</span>}
+            </div>
+            {(mcpDirty || providerPending || unfinished.length > 0) && (
+              <div className="save-scopes">
+                {mcpDirty && (
+                  <Button
+                    variant="surface"
+                    className="navigation-control"
+                    onClick={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
+                  >
+                    MCP: Unsaved configuration
+                  </Button>
+                )}
+                {providerPending && (
+                  <Button
+                    variant="surface"
+                    className="navigation-control"
+                    onClick={() => navigate("Model Providers")}
+                  >
+                    Provider: Unsaved selection or authentication
+                  </Button>
+                )}
+                {unfinished.map((editor) => (
+                  <div key={editor.label} className="unfinished-editor">
+                    <Button variant="soft" onClick={() => openEditor(editor.target)}>
+                      Continue editing: {editor.label}
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-        {(dirty || !applied) && (
-          <div className="save-actions">
-            {dirty && (
-              <Button variant="soft" disabled={busy} onClick={discard}>
-                Discard settings changes
-              </Button>
-            )}
-            {!applied && (
-              <Button disabled={busy || dirty || localPending} onClick={retry}>
-                Retry application
-              </Button>
             )}
             {dirty && (
-              <AlertDialog.Trigger>
-                <Button disabled={busy || localPending}>Review and save changes</Button>
-              </AlertDialog.Trigger>
+              <div className="save-actions">
+                <Button variant="outline" disabled={busy} onClick={discard}>
+                  Discard settings changes
+                </Button>
+                <AlertDialog.Trigger>
+                  <Button disabled={busy || localPending}>Review and save changes</Button>
+                </AlertDialog.Trigger>
+              </div>
             )}
-          </div>
+          </section>
         )}
       </section>
       <AlertDialog.Content

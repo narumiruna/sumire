@@ -152,7 +152,7 @@ for (const width of [1440, 390]) {
       ]),
     )
     await page.reload()
-    await expect(page.locator(".pending-bar")).toHaveCount(0)
+    await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toHaveCount(0)
     await expect(
       page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toHaveCount(0)
@@ -199,10 +199,10 @@ for (const width of [1440, 390]) {
       .getByRole("tabpanel", { name: "Access", exact: true })
       .getByRole("button", { name: "Revoke access", exact: true })
       .click()
-    const bar = page.locator(".pending-bar")
+    const bar = page.getByRole("region", { name: "Pending changes", exact: true })
     await expect(bar).toContainText("1 unsaved change")
     await bar.scrollIntoViewIfNeeded()
-    expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("sticky")
+    expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed")
     const barBox = await bar.boundingBox()
     expect(barBox?.y).toBeGreaterThanOrEqual(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -259,7 +259,11 @@ test("provider workflow separates local authentication from model saving", async
     if (request.method() !== "GET") writes.push(request.url())
   })
   await navigate(page, "Model Providers")
-  await expect(page.getByText("Authentication not configured", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("region", { name: "Provider", exact: true })
+      .getByText("Authentication required", { exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByRole("button", { name: "Configure authentication", exact: true }),
   ).toBeVisible()
@@ -274,7 +278,9 @@ test("provider workflow separates local authentication from model saving", async
     page.getByRole("combobox", { name: "Shared default model", exact: true }),
   ).toBeVisible()
   await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
-  await expect(page.locator(".pending-bar")).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
+    "Unsubmitted editor draft",
+  )
   expect(writes).toEqual([])
 })
 
@@ -671,19 +677,26 @@ test("confirms MCP deletion, sends the saved revision, and refreshes inventory",
   await page.reload()
   await navigate(page, "MCP connections")
   await closeConnectionEditor(page)
-  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for obsolete", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Delete obsolete", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("stored secrets")
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
   expect(attempts).toBe(0)
   await closeConnectionEditor(page)
-  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for obsolete", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Delete obsolete", exact: true }).click()
   await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
   await expect(page.getByRole("alert")).toContainText("Settings changed; reload")
-  await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "Actions for obsolete", exact: true }),
+  ).toBeVisible()
   await closeConnectionEditor(page)
-  await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+  await page.getByRole("button", { name: "Actions for obsolete", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Delete obsolete", exact: true }).click()
   await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Actions for obsolete", exact: true })).toHaveCount(
+    0,
+  )
   expect(attempts).toBe(2)
 })
 
@@ -1552,10 +1565,10 @@ test("shows readable audit and import summaries with raw details and server pagi
   await expect(page.getByText(/3 model settings imported/)).toContainText("1 chat failed")
   await expect(
     page.getByRole("list", { name: "Configuration activity" }).getByRole("listitem").first(),
-  ).toContainText("Settings application — failed")
+  ).toContainText("Settings application")
   await expect(
     page.getByRole("list", { name: "Configuration activity" }).getByRole("listitem").first(),
-  ).toContainText("Actor 42 · Revision 1")
+  ).toContainText("Actor42")
   await page.getByText("Raw audit record", { exact: true }).first().click()
   await expect(page.getByText(/"operation": "settings.apply"/).first()).toBeVisible()
   const older = page.waitForRequest("**/api/audit?offset=100")
@@ -1664,7 +1677,7 @@ test("locks configuration inputs while policy submission is in flight", async ({
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect(page.getByLabel("Telegram ID to approve")).toBeDisabled()
-  await expect(page.getByText("Saving or checking…", { exact: true })).toBeVisible()
+  await expect(page.getByText("Operation in progress…", { exact: true })).toBeVisible()
   finish()
   await expect(page.getByLabel("Telegram ID to approve")).toBeEnabled()
   await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
@@ -1802,13 +1815,14 @@ for (const scenario of [
     await page.getByLabel("New secret value").fill("pending-fixture")
     await page.getByRole("button", { name: "Set pending secret replacement", exact: true }).click()
     await closeConnectionEditor(page)
-    await page.getByRole("button", { name: "Delete obsolete", exact: true }).click()
+    await page.getByRole("button", { name: "Actions for obsolete", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Delete obsolete", exact: true }).click()
     await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
     if (scenario.fails) await expect(page.getByRole("alert")).toContainText("Deletion failed")
     else
-      await expect(page.getByRole("button", { name: "Delete obsolete", exact: true })).toHaveCount(
-        0,
-      )
+      await expect(
+        page.getByRole("button", { name: "Actions for obsolete", exact: true }),
+      ).toHaveCount(0)
     if (scenario.draft === "obsolete" && !scenario.fails) {
       await expect(page.getByText("MCP: Unsaved configuration", { exact: true })).toHaveCount(0)
       await expect(page.getByLabel("MCP server name")).toHaveValue("")
@@ -1898,7 +1912,8 @@ for (const method of ["PUT", "DELETE"] as const) {
       await page.getByRole("button", { name: "Save connection", exact: true }).click()
     else {
       await closeConnectionEditor(page)
-      await page.getByRole("button", { name: "Delete existing", exact: true }).click()
+      await page.getByRole("button", { name: "Actions for existing", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Delete existing", exact: true }).click()
       await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
     }
     await expect(page.getByRole("alert")).toContainText("Application failed after saving")

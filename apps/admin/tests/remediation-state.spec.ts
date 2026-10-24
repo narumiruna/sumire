@@ -240,7 +240,7 @@ test("F2 navigation and authentication preserve an availability draft without co
   await page.getByRole("button", { name: "Edit shared default", exact: true }).click()
   await expect(
     page.getByRole("combobox", { name: "Shared default model", exact: true }),
-  ).toContainText("fixture/test")
+  ).toHaveAttribute("title", "fixture/test")
   await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
   await navigate(page, "Model Providers")
   await openDisclosure(page, "Authentication")
@@ -269,7 +269,7 @@ test("F2 a failed default-model save retains its exact draft for retry", async (
   await page.reload()
   await navigate(page, "Defaults")
   await page.getByRole("combobox", { name: "Shared default model", exact: true }).click()
-  await page.getByRole("option", { name: "fixture/other", exact: true }).click()
+  await page.getByRole("option", { name: "Other", exact: true }).click()
   state.fail()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()

@@ -1,5 +1,5 @@
-import { Box, type BoxProps, Flex, Heading, Text, type TextProps } from "@radix-ui/themes"
-import type { ComponentProps, ReactNode } from "react"
+import { Badge, Box, type BoxProps, Flex, Heading, Text, type TextProps } from "@radix-ui/themes"
+import { type ComponentProps, type ReactNode, useId } from "react"
 
 type PanelProps = Omit<BoxProps, "as" | "asChild"> &
   Pick<ComponentProps<"fieldset">, "disabled" | "form" | "name"> & {
@@ -58,6 +58,77 @@ export function PageHeader({
       </Flex>
     </header>
   )
+}
+
+/** A shared editorial section: context on the left, controls on the right. */
+export function SettingsSection({
+  title,
+  description,
+  children,
+  className,
+  ...props
+}: ComponentProps<"section"> & {
+  title: string
+  description?: string
+}) {
+  const heading = useId()
+  return (
+    <section
+      {...props}
+      aria-labelledby={heading}
+      className={["settings-section", className].filter(Boolean).join(" ")}
+    >
+      <header className="settings-section__intro">
+        <Heading as="h2" size="4" id={heading}>
+          {title}
+        </Heading>
+        {description && (
+          <Prose size="2" color="gray">
+            {description}
+          </Prose>
+        )}
+      </header>
+      <div className="settings-section__body">{children}</div>
+    </section>
+  )
+}
+
+export function StatusLabel({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "neutral" | "success" | "warning" | "danger"
+  children: ReactNode
+}) {
+  return (
+    <Badge
+      className="status-label"
+      color={
+        ({ neutral: "gray", success: "green", warning: "orange", danger: "red" } as const)[tone]
+      }
+    >
+      {children}
+    </Badge>
+  )
+}
+
+export function Disclosure({
+  title,
+  summaryId,
+  children,
+  className,
+  ...props
+}: Omit<ComponentProps<"details">, "title"> & { title: ReactNode; summaryId?: string }) {
+  return (
+    <details {...props} className={["disclosure", className].filter(Boolean).join(" ")}>
+      <summary id={summaryId}>{title}</summary>
+      {children}
+    </details>
+  )
+}
+
+export function TableToolbar({ className, ...props }: ComponentProps<"div">) {
+  return <div {...props} className={["table-toolbar", className].filter(Boolean).join(" ")} />
 }
 
 /** Paragraph typography with a bounded reading measure. */

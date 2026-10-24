@@ -1,8 +1,10 @@
-import { AlertDialog, Badge, Button, Callout, Flex, Grid } from "@radix-ui/themes"
+import { effectivePolicy } from "@narumitw/sumire-policy"
+import { AlertDialog, Button, Callout, Flex, Grid } from "@radix-ui/themes"
 import { useContext, useEffect, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
+import { modelIssues } from "./chat-state.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Prose, StatusLabel } from "./surfaces.js"
 
 export function defaultModelOptions(policy: Policy, inventory: Inventory) {
   return inventory.providers
@@ -32,14 +34,18 @@ export function selectDefaultModel(
 
 export function DefaultModel({
   policy,
+  saved = policy.defaults,
   inventory,
   onChange,
   onAvailability,
+  onProvider,
 }: {
   policy: Policy
+  saved?: Selection
   inventory: Inventory
   onChange(value: Selection): void
   onAvailability(): void
+  onProvider(provider: string): void
 }) {
   const active = useContext(SectionActive)
   const [clearOpen, setClearOpen] = useState(false)
@@ -49,14 +55,24 @@ export function DefaultModel({
   const value = policy.defaults
   const options = defaultModelOptions(policy, inventory)
   const current = options.find((option) => option.ref === value.model)
+  const modelNames = new Map<string, string>(
+    inventory.providers.flatMap((provider) =>
+      provider.models.map((model) => [`${provider.id}/${model.id}`, model.name] as const),
+    ),
+  )
   const thinkingValid = !value.model || Boolean(current?.levels.includes(value.thinking ?? "off"))
+  const providerId = value.model?.split("/")[0]
+  const provider = inventory.providers.find((item) => item.id === providerId)
+  const issue = modelIssues(effectivePolicy(policy, 0).model, value.model, inventory)[0]
   return (
-    <Panel as="fieldset" className="policy-model">
-      <legend>Default model</legend>
-      <Badge color="gray">Shared defaults</Badge>
+    <fieldset className="model-fields">
+      <legend className="visually-hidden">Default model</legend>
       <Grid gap="3" className="grid settings-grid policy-model__controls">
         <label className="form-field" htmlFor="default-model-selection">
-          Shared default model
+          <span>
+            Shared default model{" "}
+            {saved.model !== value.model && <StatusLabel tone="warning">Changed</StatusLabel>}
+          </span>
           <Select.Root
             value={value.model ?? "none"}
             onValueChange={(ref) => {
@@ -73,7 +89,11 @@ export function DefaultModel({
                 )
             }}
           >
-            <Select.Trigger id="default-model-selection" aria-label="Shared default model" />
+            <Select.Trigger
+              id="default-model-selection"
+              aria-label="Shared default model"
+              title={value.model ?? "Not configured"}
+            />
             <Select.Content>
               {!value.model && (
                 <Select.Item value="none" disabled>
@@ -86,15 +106,18 @@ export function DefaultModel({
                 </Select.Item>
               )}
               {options.map((option) => (
-                <Select.Item key={option.ref} value={option.ref}>
-                  {option.ref}
+                <Select.Item key={option.ref} value={option.ref} title={option.ref}>
+                  {modelNames.get(option.ref) ?? option.ref}
                 </Select.Item>
               ))}
             </Select.Content>
           </Select.Root>
         </label>
         <label className="form-field" htmlFor="default-thinking-selection">
-          Shared default thinking
+          <span>
+            Shared default thinking{" "}
+            {saved.thinking !== value.thinking && <StatusLabel tone="warning">Changed</StatusLabel>}
+          </span>
           <Select.Root
             value={value.thinking ?? "off"}
             disabled={!current}
@@ -129,11 +152,33 @@ export function DefaultModel({
       {!thinkingValid && (
         <Prose role="alert">Choose a supported thinking level before saving.</Prose>
       )}
-      <Prose size="2">
-        Globally allowed models → Shared defaults → Chat overrides. Shared changes affect only
-        inherited fields, within each chat's allowed models. Selecting a model also adds it to
-        shared Allowed models if needed.
-      </Prose>
+      <section
+        aria-label="Shared default model setup"
+        className="provider-readiness"
+        data-attention={Boolean(issue)}
+      >
+        <div>
+          <Flex gap="2" align="center" wrap="wrap">
+            <strong>{provider?.name ?? providerId ?? "No provider selected"}</strong>
+            <StatusLabel tone={issue ? "warning" : "neutral"}>
+              {issue?.code === "authentication"
+                ? "Authentication required"
+                : (issue?.label ?? "Configured locally")}
+            </StatusLabel>
+          </Flex>
+          {saved.model !== value.model && (
+            <Prose size="2">For the draft selection. Shared defaults are not saved yet.</Prose>
+          )}
+          <Prose size="2">
+            {issue?.reason ?? "Credentials configured locally. Model response not checked."}
+          </Prose>
+        </div>
+        {providerId && (
+          <Button variant="outline" onClick={() => onProvider(providerId)}>
+            Configure provider
+          </Button>
+        )}
+      </section>
       <Flex gap="2" wrap="wrap">
         <Button variant="soft" onClick={onAvailability}>
           Manage model availability
@@ -167,6 +212,6 @@ export function DefaultModel({
           </AlertDialog.Root>
         )}
       </Flex>
-    </Panel>
+    </fieldset>
   )
 }

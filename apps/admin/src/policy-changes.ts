@@ -16,6 +16,10 @@ export function withChatAccess(policy: Policy, id: number, allowed: boolean): Po
 }
 
 const different = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b)
+const differentSelection = (a: unknown, b: unknown) =>
+  Array.isArray(a) && Array.isArray(b)
+    ? a.some((value) => !b.includes(value)) || b.some((value) => !a.includes(value))
+    : different(a, b)
 
 const selectionFields = [
   ["tools", "Authorized tools"],
@@ -32,7 +36,7 @@ function selectionChanges(
   chat: boolean,
 ): string[] {
   return selectionFields.flatMap(([key, label]) => {
-    if (!different(saved?.[key] ?? null, draft?.[key] ?? null)) return []
+    if (!differentSelection(saved?.[key] ?? null, draft?.[key] ?? null)) return []
     const value = draft?.[key]
     const source =
       value == null
@@ -144,7 +148,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     if (fields.length) {
       const action = !before ? "added settings; " : !after ? "removed settings; " : ""
       const changed = selectionFields.find(([key]) =>
-        different(before?.[key] ?? null, after?.[key] ?? null),
+        differentSelection(before?.[key] ?? null, after?.[key] ?? null),
       )?.[0]
       const selector =
         changed === "tools" || changed === "servers" || changed === "skills" || changed === "models"
@@ -165,7 +169,9 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     changes.push({
       label: `Shared defaults: ${defaults.join(", ")} — affects chats inheriting each changed field; explicit overrides unchanged; does not grant access.`,
       targets: selectionFields
-        .filter(([key]) => different(saved.defaults[key] ?? null, draft.defaults[key] ?? null))
+        .filter(([key]) =>
+          differentSelection(saved.defaults[key] ?? null, draft.defaults[key] ?? null),
+        )
         .map(
           ([key]): EditorTarget =>
             key === "tools" || key === "servers"
@@ -181,7 +187,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     ["servers", "Global MCP availability"],
     ["models", "Global model availability"],
   ] as const)
-    if (different(saved[key], draft[key]))
+    if (differentSelection(saved[key], draft[key]))
       changes.push({
         label: `${label} (${key}): limits shared defaults and all chat selections, including explicit overrides; does not grant access.`,
         targets: [
@@ -199,6 +205,80 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
       targets: [{ page: "Model Providers", selector: "#endpoint-provider-id" }],
     })
   return changes
+}
+
+/** Count edited fields and changed list memberships, not grouped review summaries. */
+export function policyChangeCount(saved: Policy, draft: Policy): number {
+  const listCount = (
+    before: readonly (string | number)[] | null | undefined,
+    after: readonly (string | number)[] | null | undefined,
+  ) => {
+    if (!different(before ?? null, after ?? null)) return 0
+    if (before == null || after == null) return 1
+    return new Set([
+      ...before.filter((value) => !after.includes(value)),
+      ...after.filter((value) => !before.includes(value)),
+    ]).size
+  }
+  const selectionCount = (before?: Selection, after?: Selection) =>
+    selectionFields.reduce(
+      (count, [key]) =>
+        count +
+        (["model", "thinking"].includes(key)
+          ? Number(different(before?.[key] ?? null, after?.[key] ?? null))
+          : listCount(before?.[key] as string[] | null, after?.[key] as string[] | null)),
+      0,
+    )
+  let count = selectionCount(saved.defaults, draft.defaults)
+  for (const key of ["privateUsers", "groups", "tools", "servers", "skills", "models"] as const)
+    count += listCount(saved[key], draft[key])
+  for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {
+    count += selectionCount(saved.chats[id], draft.chats[id])
+    count += Number(saved.chats[id]?.enabled !== draft.chats[id]?.enabled)
+  }
+  for (const id of new Set(
+    [...saved.providers, ...draft.providers].map((provider) => provider.id),
+  )) {
+    const before = saved.providers.find((provider) => provider.id === id)
+    const after = draft.providers.find((provider) => provider.id === id)
+    if (!before || !after) {
+      count++
+      continue
+    }
+    for (const key of ["enabled", "baseUrl", "api"] as const)
+      count += Number(different(before[key], after[key]))
+    for (const modelId of new Set([...before.models, ...after.models].map((model) => model.id))) {
+      const oldModel = before.models.find((model) => model.id === modelId)
+      const newModel = after.models.find((model) => model.id === modelId)
+      if (!oldModel || !newModel) {
+        count++
+        continue
+      }
+      for (const key of ["name", "reasoning", "image", "contextWindow", "maxTokens"] as const)
+        count += Number(different(oldModel[key], newModel[key]))
+    }
+    if (
+      before.models.length === after.models.length &&
+      before.models.every((model) => after.models.some((item) => item.id === model.id))
+    )
+      count += Number(
+        different(
+          before.models.map((model) => model.id),
+          after.models.map((model) => model.id),
+        ),
+      )
+  }
+  if (
+    saved.providers.length === draft.providers.length &&
+    saved.providers.every((provider) => draft.providers.some((item) => item.id === provider.id))
+  )
+    count += Number(
+      different(
+        saved.providers.map((provider) => provider.id),
+        draft.providers.map((provider) => provider.id),
+      ),
+    )
+  return count
 }
 
 export function policyChanges(saved: Policy, draft: Policy): string[] {

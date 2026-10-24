@@ -1052,7 +1052,9 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
     page.getByRole("link", { includeHidden: true, name: "View conversation records", exact: true }),
   )
   await expectRecord(page, "Conversation", "conversation #7")
-  await expect(page.locator(".pending-bar")).toContainText("unsaved change")
+  await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
+    "unsaved change",
+  )
   await click(
     page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
   )
@@ -1067,7 +1069,9 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await prompt.dismiss()
   await clicking
   await expect(inspectorFor(page)).toBeVisible()
-  await expect(page.locator(".pending-bar")).toContainText("unsaved change")
+  await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
+    "unsaved change",
+  )
 })
 
 test("a chat change in history cancels the old chat read and clears object context", async ({
@@ -1121,7 +1125,9 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
 }) => {
   const state = await durableFixture(page, "/?section=Durable")
   await expect(
-    page.getByText("Select a chat above to inspect Durable.", { exact: true }),
+    page.getByText("Read stored messages and tool results. This view does not start work.", {
+      exact: true,
+    }),
   ).toBeVisible()
   expect(state.requests).toHaveLength(0)
   await page.goto("/?section=Durable&chat=42&view=tasks&conversationId=7&objectId=999")

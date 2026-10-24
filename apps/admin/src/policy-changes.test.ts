@@ -1,7 +1,12 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import type { ProviderSettings, Selection } from "./api.js"
-import { policyChangeEntries, policyChanges, withChatAccess } from "./policy-changes.js"
+import {
+  policyChangeCount,
+  policyChangeEntries,
+  policyChanges,
+  withChatAccess,
+} from "./policy-changes.js"
 
 const chatImpact = "this chat only; shared defaults and access approval unchanged."
 const defaultImpact =
@@ -74,6 +79,53 @@ describe("typed policy review destinations", () => {
     )
     expect(JSON.stringify(entries)).not.toContain(provider.baseUrl)
     expect(JSON.stringify(entries)).not.toContain("sensitive-")
+  })
+})
+
+describe("policyChangeCount", () => {
+  it("counts model and thinking independently of their grouped review entry", () => {
+    const saved = initialPolicy()
+    saved.defaults.model = "fixture/old"
+    saved.defaults.thinking = "off"
+    const draft = structuredClone(saved)
+    draft.defaults.model = "fixture/new"
+    draft.defaults.thinking = "high"
+    expect(policyChangeEntries(saved, draft)).toHaveLength(1)
+    expect(policyChangeCount(saved, draft)).toBe(2)
+    draft.defaults.model = saved.defaults.model
+    expect(policyChangeCount(saved, draft)).toBe(1)
+    draft.defaults.thinking = saved.defaults.thinking
+    expect(policyChangeCount(saved, draft)).toBe(0)
+  })
+  it("counts list membership edits without treating approval undo order as an edit", () => {
+    const saved = initialPolicy()
+    saved.tools = ["read", "write"]
+    saved.privateUsers = [42, 43]
+    const draft = structuredClone(saved)
+    draft.tools = ["read", "bash", "edit"]
+    expect(policyChangeCount(saved, draft)).toBe(3)
+    expect(
+      policyChangeCount(saved, withChatAccess(withChatAccess(saved, 42, false), 42, true)),
+    ).toBe(0)
+  })
+  it("does not report a restored permission as a change because its list position moved", () => {
+    const saved = initialPolicy()
+    saved.tools = ["read", "write"]
+    saved.defaults.tools = ["read", "write"]
+    const draft = structuredClone(saved)
+    draft.tools = ["write", "read"]
+    draft.defaults.tools = ["write", "read"]
+    expect(policyChangeCount(saved, draft)).toBe(0)
+    expect(policyChangeEntries(saved, draft)).toEqual([])
+  })
+  it("keeps empty overrides different from inheritance and ignores object key order", () => {
+    const saved = initialPolicy()
+    saved.chats["42"] = { ...inherited, enabled: true }
+    const draft = structuredClone(saved)
+    draft.chats["42"] = { enabled: true, ...inherited }
+    expect(policyChangeCount(saved, draft)).toBe(0)
+    draft.chats["42"].tools = []
+    expect(policyChangeCount(saved, draft)).toBe(1)
   })
 })
 

@@ -194,10 +194,15 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
         await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
       }
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-      const box = await bar.boundingBox()
-      expect(box?.y).toBeGreaterThanOrEqual(0)
-      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(900)
-      expect(await bar.evaluate((element) => getComputedStyle(element).position)).toBe("sticky")
+      const changes = page.getByRole("region", { name: "Pending changes", exact: true })
+      if (attention) {
+        const box = await changes.boundingBox()
+        expect(box?.y).toBeGreaterThanOrEqual(0)
+        expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(900)
+        expect(await changes.evaluate((element) => getComputedStyle(element).position)).toBe(
+          "fixed",
+        )
+      } else await expect(changes).toHaveCount(0)
     }
   }
   await tour(false)
@@ -235,7 +240,7 @@ test("Durable retains unfinished editor input and shows save chrome until it is 
   await navigate(page, "Durable")
   const bar = page.getByRole("region", { name: "Save status and pending changes" })
   await expect(bar).toBeVisible()
-  await expect(bar).toContainText("Finish or clear input in Chat access")
+  await expect(bar).toContainText("Continue editing: Chat access")
   await navigate(page, "Access")
   await expect(input).toHaveValue("1234")
   await input.clear()
@@ -268,7 +273,7 @@ test("Durable keeps pending or failed application and busy actions visible, then
   })
   try {
     await bar.getByRole("button", { name: "Retry application", exact: true }).click()
-    await expect(bar).toContainText("Saving or checking…")
+    await expect(bar).toContainText("Operation in progress…")
     await expect(bar.getByRole("button", { name: "Retry application", exact: true })).toBeDisabled()
   } finally {
     release()
@@ -326,7 +331,7 @@ test("audit filters query all records without clearing cross-section policy draf
   await page.getByLabel("Audit to", { exact: true }).fill("2026-10-16")
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText(
-    "Actor system",
+    "Actorsystem",
   )
   expect(state.auditQueries.at(-1)?.get("actor")).toBe("system")
   expect(state.auditQueries.at(-1)?.get("from")).toBe(String(Date.parse("2026-10-16T00:00:00Z")))
@@ -379,7 +384,7 @@ test("failed and stale audit queries cannot replace the current result or discar
   await expect(page.getByText("Could not load audit records. Retry the query.")).toBeVisible()
   await expect(page.getByRole("list", { name: "Configuration activity" })).toHaveCount(0)
   await page.getByRole("button", { name: "Clear audit filters" }).click()
-  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor 42")
+  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor42")
   await expect(page.getByRole("alert")).toHaveCount(0)
   let release = () => {}
   const gate = new Promise<void>((resolve) => {
@@ -411,7 +416,7 @@ test("failed and stale audit queries cannot replace the current result or discar
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await waiting
   await page.getByRole("button", { name: "Clear audit filters" }).click()
-  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor 42")
+  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor42")
   const stale = page.waitForResponse(
     (response) => new URL(response.url()).searchParams.get("actor") === "slow",
   )
@@ -439,7 +444,7 @@ test("audit retry clears the local error and HTTP 401 still clears the session",
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await expect(page.getByText("Could not load audit records. Retry the query.")).toBeVisible()
   await page.getByRole("button", { name: "Retry audit" }).click()
-  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor 42")
+  await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("Actor42")
   await expect(page.getByRole("alert")).toHaveCount(0)
   state.expire()
   await page.getByRole("button", { name: "Apply audit filters" }).click()
@@ -554,7 +559,9 @@ test("audit groups show failed retries without hiding the underlying records", a
   await page.reload()
   await navigate(page, "Audit")
   await expect(page.getByText("1 failed application.", { exact: false })).toBeVisible()
-  await page.getByText("Individual save and application records", { exact: true }).click()
+  await expect(
+    page.getByText("Individual save and application records", { exact: true }),
+  ).toBeVisible()
   await expect(page.getByText("Raw audit record", { exact: true })).toHaveCount(3)
   await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText("failed")
 })

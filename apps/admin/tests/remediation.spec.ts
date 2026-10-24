@@ -55,7 +55,7 @@ for (const width of [1440, 390]) {
     await page.reload()
     await navigate(page, "Defaults")
     await page.getByRole("combobox", { name: "Shared default model", exact: true }).click()
-    await page.getByRole("option", { name: "fixture/other", exact: true }).click()
+    await page.getByRole("option", { name: "Other", exact: true }).click()
     await expect(
       page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeEnabled()
@@ -179,7 +179,7 @@ test("F6 Audit starts with records and offers exact-value choices", async ({ pag
   await navigate(page, "Audit")
   await page.evaluate(() => window.scrollTo(0, 0))
   await expect(page.getByLabel("Audit actor", { exact: true })).toBeHidden()
-  await visibleInViewport(page.locator(".activity-record-heading").first())
+  await visibleInViewport(page.locator(".audit-record-fields").first())
   await page.getByText("Filters", { exact: true }).click()
   await page.getByRole("combobox", { name: "Audit operation", exact: true }).click()
   await page.getByRole("option", { name: "Settings saved", exact: true }).click()

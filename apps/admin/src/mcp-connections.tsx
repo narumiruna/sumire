@@ -1,5 +1,6 @@
 import {
   CheckIcon,
+  DotsHorizontalIcon,
   InfoCircledIcon,
   LockClosedIcon,
   Pencil2Icon,
@@ -14,18 +15,20 @@ import {
   Callout,
   Code,
   DataList,
+  DropdownMenu,
   Flex,
   Heading,
   Text,
   TextArea,
 } from "@radix-ui/themes"
-import { useEffect, useRef, useState } from "react"
+import { useContext, useEffect, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { focusEditor, type PendingEditor } from "./navigation.js"
 import { Field, SecretFields } from "./policy-editors.js"
+import { SectionActive } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Disclosure, Panel, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
 
 type Props = {
   inventory: Inventory
@@ -60,6 +63,11 @@ export function McpConnections({
   run,
   load,
 }: Props) {
+  const active = useContext(SectionActive)
+  const [deleting, setDeleting] = useState<string>()
+  useEffect(() => {
+    if (!active) setDeleting(undefined)
+  }, [active])
   const [mcpName, setMcpName] = useState("")
   const [editing, setEditing] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -106,7 +114,7 @@ export function McpConnections({
   }
   return (
     <Box className="page-content settings-stack">
-      <Flex gap="3" wrap="wrap" hidden={editorOpen}>
+      <TableToolbar hidden={editorOpen}>
         <Button id="mcp-add" disabled={busy} onClick={() => startEditor()}>
           Add connection
         </Button>
@@ -125,7 +133,7 @@ export function McpConnections({
         <Button variant="soft" onClick={onTools}>
           Manage tool and MCP server permissions
         </Button>
-      </Flex>
+      </TableToolbar>
       <Box className="mcp-workspace mcp-list-only">
         <Panel className="mcp-step mcp-chooser" hidden={editorOpen}>
           <Heading as="h2" size="3" className="section-heading">
@@ -157,9 +165,14 @@ export function McpConnections({
                       </Badge>
                     )}
                   </Flex>
+                  <Flex gap="2" wrap="wrap" className="mcp-summary-state">
+                    <StatusLabel>{m.enabled === false ? "Disabled" : "Enabled"}</StatusLabel>
+                    <StatusLabel>Connection test: {m.connection}</StatusLabel>
+                    <Text size="2">{countText(m.tools.length, "discovered tool")}</Text>
+                  </Flex>
                   <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
                     <Button
-                      variant="soft"
+                      variant="solid"
                       disabled={busy || dirty || localPending}
                       onClick={() =>
                         void run(async () => {
@@ -174,18 +187,41 @@ export function McpConnections({
                       <Pencil2Icon aria-hidden="true" />
                       Edit fields for {m.name}
                     </Button>
-                    <AlertDialog.Root>
-                      <AlertDialog.Trigger>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger>
                         <Button
-                          color="red"
+                          id={`connection-actions-${encodeURIComponent(m.name)}`}
                           variant="ghost"
-                          disabled={busy || dirty || localPending}
+                          aria-label={`Actions for ${m.name}`}
+                          disabled={busy}
                         >
-                          <TrashIcon aria-hidden="true" />
-                          Delete {m.name}
+                          <DotsHorizontalIcon aria-hidden />
                         </Button>
-                      </AlertDialog.Trigger>
-                      <AlertDialog.Content>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Content align="end">
+                        <DropdownMenu.Item
+                          color="red"
+                          disabled={busy || dirty || localPending}
+                          onSelect={() => setDeleting(m.name)}
+                        >
+                          <TrashIcon aria-hidden /> Delete {m.name}
+                        </DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Root>
+                    <AlertDialog.Root
+                      open={active && deleting === m.name}
+                      onOpenChange={(open) => {
+                        if (!open) setDeleting(undefined)
+                      }}
+                    >
+                      <AlertDialog.Content
+                        onCloseAutoFocus={(event) => {
+                          event.preventDefault()
+                          document
+                            .getElementById(`connection-actions-${encodeURIComponent(m.name)}`)
+                            ?.focus()
+                        }}
+                      >
                         <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
                         <AlertDialog.Description>
                           This deletes its configuration and stored secrets. Remove it from global,
@@ -227,50 +263,35 @@ export function McpConnections({
                       </AlertDialog.Content>
                     </AlertDialog.Root>
                   </Flex>
-                  <DataList.Root size="1" className="mcp-summary-facts data-list">
-                    <DataList.Item className="data-row">
-                      <DataList.Label minWidth="80px">Connection</DataList.Label>
-                      <DataList.Value>
-                        <Flex gap="2" wrap="wrap" className="mcp-summary-state">
-                          <Badge color={m.enabled === false ? "gray" : "green"}>
-                            {m.enabled === false ? "Disabled" : "Enabled"}
-                          </Badge>
-                          <Badge color="gray">Connection test: {m.connection}</Badge>
-                        </Flex>
-                      </DataList.Value>
-                    </DataList.Item>
-                    <DataList.Item className="data-row">
-                      <DataList.Label minWidth="80px">Exposure</DataList.Label>
-                      <DataList.Value>
-                        <Code>{m.exposure ?? "codemode"}</Code>
-                      </DataList.Value>
-                    </DataList.Item>
-                    <DataList.Item className="data-row">
-                      <DataList.Label minWidth="80px">Discovery</DataList.Label>
-                      <DataList.Value>
-                        {countText(m.tools.length, "discovered tool")}
-                      </DataList.Value>
-                    </DataList.Item>
-                    <DataList.Item className="data-row">
-                      <DataList.Label minWidth="80px">Execution</DataList.Label>
-                      <DataList.Value>
-                        <Flex direction="column" align="start" gap="2">
-                          <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
-                            {policy.servers.includes(m.name)
-                              ? "Globally available"
-                              : "Not globally available"}
-                          </Badge>
-                          <Text size="1" color="gray">
-                            {countText(
-                              m.tools.filter((name) => policy.tools.includes(name)).length,
-                              "globally approved tool name",
-                            )}{" "}
-                            · {dirty ? "Policy draft" : "Saved policy"}
-                          </Text>
-                        </Flex>
-                      </DataList.Value>
-                    </DataList.Item>
-                  </DataList.Root>
+                  <Disclosure title="Connection and permission details">
+                    <DataList.Root size="1" className="mcp-summary-facts data-list">
+                      <DataList.Item className="data-row">
+                        <DataList.Label minWidth="80px">Exposure</DataList.Label>
+                        <DataList.Value>
+                          <Code>{m.exposure ?? "codemode"}</Code>
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item className="data-row">
+                        <DataList.Label minWidth="80px">Execution</DataList.Label>
+                        <DataList.Value>
+                          <Flex direction="column" align="start" gap="2">
+                            <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
+                              {policy.servers.includes(m.name)
+                                ? "Globally available"
+                                : "Not globally available"}
+                            </Badge>
+                            <Text size="1" color="gray">
+                              {countText(
+                                m.tools.filter((name) => policy.tools.includes(name)).length,
+                                "globally approved tool name",
+                              )}{" "}
+                              · {dirty ? "Policy draft" : "Saved policy"}
+                            </Text>
+                          </Flex>
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
+                  </Disclosure>
                   <details className="mcp-disclosure">
                     <summary>Discovered tool names</summary>
                     <Flex direction="column" align="start" gap="2" mt="3">

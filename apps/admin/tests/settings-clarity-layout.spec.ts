@@ -119,7 +119,7 @@ for (const [width, height] of [
         )
         await expect(
           page.getByRole("combobox", { name: "Shared default model", exact: true }),
-        ).toContainText(id)
+        ).toHaveAttribute("title", `fixture/${id}`)
       }
       if (section === "Tool permissions") {
         await visibleGeometry(

@@ -57,12 +57,11 @@ test("an unsaved default cannot repair saved setup and missing references stay v
   await expect(
     page.getByRole("option", { name: "missing/model (unavailable)", exact: true }),
   ).toBeDisabled()
-  await page.getByRole("option", { name: "fixture/other", exact: true }).click()
-  await expect(setup).toContainText("missing/model")
-  await expect(setup).toContainText("excluded by model availability")
-  await expect(page.getByText("Policy draft model:", { exact: false })).toContainText(
-    "fixture/other",
-  )
+  await page.getByRole("option", { name: "Other", exact: true }).click()
+  await expect(setup).toContainText("For the draft selection.")
+  await expect(setup).toContainText("Shared defaults are not saved yet.")
+  await expect(model).toHaveAttribute("title", "fixture/other")
+  expect(state.policy().defaults.model).toBe("missing/model")
   await navigate(page, "Model Providers")
   await expect(
     page.getByText("Shared bot default in current settings", { exact: true }).locator(".."),
@@ -177,7 +176,7 @@ test("model review renders catalog text without interpreting markup", async ({ p
   await page.reload()
   await navigate(page, "Defaults")
   await page.getByRole("combobox", { name: "Shared default model", exact: true }).click()
-  await page.getByRole("option", { name: ref, exact: true }).click()
+  await page.getByRole("option", { name: "Markup fixture", exact: true }).click()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   const review = page.getByRole("alertdialog")
   await expect(review).toContainText(ref)

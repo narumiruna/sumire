@@ -191,7 +191,7 @@ for (const width of [390, 1440]) {
       const row = page
         .getByRole("listitem")
         .filter({ has: page.getByText("mcp__fixture__read", { exact: true }) })
-      await expect(row).toContainText("Blocked by global or default server permission")
+      await expect(row).toContainText("Blocked by server permission")
       await expect(
         row.getByRole("checkbox", {
           name: "Default chat permission for tool mcp__fixture__read",

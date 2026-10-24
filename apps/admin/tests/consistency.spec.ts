@@ -70,12 +70,6 @@ for (const width of [1440, 390, 320]) {
       ).toBeLessThanOrEqual(width)
       if (width === 1440 && section === "MCP connections")
         expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2054)
-      const panels = page.locator("main .panel:visible")
-      for (const panel of await panels.all()) {
-        await expect(panel).toHaveCSS("border-radius", "8px")
-        await expect(panel).toHaveCSS("border-top-style", "solid")
-        await expect(panel).toHaveCSS("border-top-width", "1px")
-      }
       const bar = page.getByRole("region", { name: "Save status and pending changes" })
       if (section === "Durable") {
         await expect(bar).toBeHidden()
@@ -120,12 +114,14 @@ test("Defaults omits an identical model draft after a tool-only edit", async ({ 
     })
     .uncheck()
   await navigate(page, "Defaults")
-  await expect(page.getByText(/Saved thinking:/)).toBeVisible()
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("off")
   await expect(page.getByText(/Policy draft model:/)).toHaveCount(0)
   await expect(
     page
       .getByRole("region", { name: "Shared defaults", exact: true })
-      .getByText(/Policy draft defaults:/),
+      .getByText("No tools allowed by default.", { exact: true }),
   ).toBeVisible()
 })
 
