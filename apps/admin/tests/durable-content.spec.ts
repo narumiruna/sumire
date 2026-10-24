@@ -162,7 +162,7 @@ test("empty, truncated, and old metadata-only entry details stay distinct", asyn
   await click(
     inspector(page).getByRole("button", {
       includeHidden: true,
-      name: "Refresh Durable",
+      name: "Refresh records",
       exact: true,
     }),
   )
@@ -174,7 +174,7 @@ test("empty, truncated, and old metadata-only entry details stay distinct", asyn
   await click(
     inspector(page).getByRole("button", {
       includeHidden: true,
-      name: "Refresh Durable",
+      name: "Refresh records",
       exact: true,
     }),
   )
@@ -184,7 +184,7 @@ test("empty, truncated, and old metadata-only entry details stay distinct", asyn
   await click(
     inspector(page).getByRole("button", {
       includeHidden: true,
-      name: "Refresh Durable",
+      name: "Refresh records",
       exact: true,
     }),
   )
@@ -342,7 +342,7 @@ test("tree conversation pages are explicit, retained across selections, and clea
   await click(
     inspector(page).getByRole("button", {
       includeHidden: true,
-      name: "Refresh Durable",
+      name: "Refresh records",
       exact: true,
     }),
   )

@@ -957,7 +957,7 @@ export function DurableInspector({
         >
           <Button
             variant="soft"
-            aria-label="Refresh Durable"
+            aria-label="Refresh records"
             disabled={!validChat || (!current && !selection)}
             onClick={() => {
               setPages([undefined])
@@ -965,7 +965,7 @@ export function DurableInspector({
             }}
           >
             <ReloadIcon aria-hidden />
-            <span className="durable-action-label">Refresh</span>
+            <span className="durable-action-label">Refresh records</span>
           </Button>
         </Flex>
       </header>

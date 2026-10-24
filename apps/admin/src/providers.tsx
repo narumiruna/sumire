@@ -1,3 +1,4 @@
+import { effectivePolicy } from "@narumitw/sumire-policy"
 import { ChevronDownIcon, InfoCircledIcon } from "@radix-ui/react-icons"
 import {
   AlertDialog,
@@ -15,6 +16,7 @@ import {
 } from "@radix-ui/themes"
 import { useContext, useEffect, useId, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Selection, type Snapshot } from "./api.js"
+import { ModelUse } from "./model-use.js"
 import { focusEditor } from "./navigation.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
@@ -164,8 +166,14 @@ export function Providers({
   authRequest,
   savedPolicy,
   onDefaults,
+  chat = "",
+  onChat,
+  onModelUse,
 }: {
-  authRequest?: { id: number; provider: string }
+  chat?: string
+  onChat?(): void
+  onModelUse?(policy: Policy): void
+  authRequest?: { id: number; provider: string; model?: string; thinking?: Selection["thinking"] }
   savedPolicy: Policy
   onDefaults(): void
   snapshot: Snapshot
@@ -227,6 +235,9 @@ export function Providers({
   const supported = selectedModel?.thinking ?? []
   const thinkingValid = thinking !== null && supported.includes(thinking)
   const modelChanged = Boolean(ref) && !snapshot.policy.models.includes(ref)
+  const savedUse = effectivePolicy(savedPolicy, Number(chat))
+  const draftUse = effectivePolicy(snapshot.policy, Number(chat))
+  const usePending = savedUse.model !== draftUse.model || savedUse.thinking !== draftUse.thinking
 
   useEffect(() => {
     if (!authRequest || handledAuthRequest.current === authRequest.id) return
@@ -235,7 +246,10 @@ export function Providers({
       setNotice("Finish or cancel the current operation before switching authentication.")
       return
     }
-    if (authRequest.provider !== provider) {
+    if (
+      authRequest.provider !== provider ||
+      (authRequest.model && (authRequest.model !== model || authRequest.thinking !== thinking))
+    ) {
       if (
         (draft || key || answer || authOpen) &&
         !window.confirm("Replace the pending provider selection and authentication input?")
@@ -246,15 +260,21 @@ export function Providers({
       setLogin(undefined)
       setAuthOpen(false)
       setDraft(
-        authRequest.provider === saved.provider
-          ? saved
-          : { provider: authRequest.provider, model: "", thinking: null },
+        authRequest.model
+          ? {
+              provider: authRequest.provider,
+              model: authRequest.model,
+              thinking: authRequest.thinking ?? null,
+            }
+          : authRequest.provider === saved.provider
+            ? saved
+            : { provider: authRequest.provider, model: "", thinking: null },
       )
       setDiscoveryCheck(undefined)
     }
     setAuthDetails({ provider: authRequest.provider, open: true })
     focusAuth.current = authRequest.provider
-  }, [authRequest, provider, draft, key, answer, authOpen, oauth, busy, saved])
+  }, [authRequest, provider, model, thinking, draft, key, answer, authOpen, oauth, busy, saved])
 
   useEffect(() => {
     if (
@@ -367,11 +387,43 @@ export function Providers({
               <InfoCircledIcon />
             </Callout.Icon>
             <Callout.Text>
-              Save or discard pending settings before changing provider credentials or applying a
-              model.
+              Save or discard pending settings before changing provider credentials or saving model
+              availability.
             </Callout.Text>
           </Callout.Root>
         )}
+        <ol className="model-setup-steps" aria-label="Model setup steps">
+          <li>
+            1. Connect provider{" "}
+            <strong>
+              {key || answer || oauth
+                ? "Pending"
+                : selected?.configured
+                  ? "Configured locally"
+                  : "Incomplete"}
+            </strong>
+          </li>
+          <li>
+            2. Enable model{" "}
+            <strong>
+              {ref && savedPolicy.models.includes(ref)
+                ? "Saved"
+                : modelChanged && draft
+                  ? "Pending"
+                  : "Incomplete"}
+            </strong>
+          </li>
+          <li>
+            3. Choose use{" "}
+            <strong>
+              {usePending
+                ? "Pending"
+                : ref && savedUse.model === ref && savedUse.thinking === thinking
+                  ? "Saved"
+                  : "Incomplete"}
+            </strong>
+          </li>
+        </ol>
         <SettingsSection
           title="Provider"
           description="Select a provider and configure its authentication."
@@ -609,9 +661,6 @@ export function Providers({
                       The selected thinking level is unavailable. Choose a supported level.
                     </Text>
                   )}
-                  <Prose size="2" color="gray">
-                    Makes this model available. The shared default and chat overrides do not change.
-                  </Prose>
                   <section className="provider-save">
                     <AlertDialog.Root>
                       <AlertDialog.Trigger>
@@ -743,9 +792,39 @@ export function Providers({
             </Flex>
           )}
 
-          <Button variant="ghost" onClick={onDefaults}>
-            Edit shared default
-          </Button>
+          <Flex gap="2" wrap="wrap" align="center">
+            {onModelUse && (
+              <ModelUse
+                key={`${chat}:${ref}`}
+                policy={snapshot.policy}
+                saved={savedPolicy}
+                model={ref}
+                thinking={thinking}
+                chat={chat}
+                disabled={
+                  busy ||
+                  Boolean(oauth) ||
+                  Boolean(key || answer) ||
+                  !selectedModel ||
+                  !thinkingValid ||
+                  !savedPolicy.models.includes(ref) ||
+                  custom?.enabled === false
+                }
+                onReview={onModelUse}
+              />
+            )}
+            <Button variant="ghost" onClick={onDefaults}>
+              Edit shared default
+            </Button>
+            {chat && onChat && (
+              <Button variant="ghost" onClick={onChat}>
+                Back to chat {chat}
+              </Button>
+            )}
+          </Flex>
+          {!savedPolicy.models.includes(ref) && (
+            <Prose size="2">Save model availability before choosing its use.</Prose>
+          )}
         </SettingsSection>
         <details className="provider-saved-settings">
           <summary>Saved model settings</summary>

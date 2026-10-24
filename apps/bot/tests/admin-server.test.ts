@@ -270,7 +270,16 @@ describe("admin HTTP security", () => {
       "__proto__=x",
     ])
       expect((await call(`/api/chats?${query}`, "GET", undefined, auth())).status, query).toBe(400)
-    for (let id = 1; id <= 1001; id++) store.observe(id, "private", `Bounded ${id}`)
+    // Batch fixture writes so this HTTP test does not require 1,000 disk commits in CI.
+    // Keep observe() in the loop to exercise the production directory cap.
+    store.db.exec("BEGIN")
+    try {
+      for (let id = 1; id <= 1001; id++) store.observe(id, "private", `Bounded ${id}`)
+      store.db.exec("COMMIT")
+    } catch (error) {
+      store.db.exec("ROLLBACK")
+      throw error
+    }
     const get = async (offset: number) =>
       JSON.parse(
         (await call(`/api/chats?offset=${offset}`, "GET", undefined, auth())).body,

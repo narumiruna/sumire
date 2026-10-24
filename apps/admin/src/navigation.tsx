@@ -84,14 +84,15 @@ const pageLabels = {
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
 const navigationGroups = [
-  { id: "chat-management", label: "Chat management", pages: ["Chats", "Access"] },
+  { id: "chat-management", label: "Chats", pages: ["Chats", "Access", "Durable"] },
+  { id: "models", label: "Models", pages: ["Model Providers"] },
   {
-    id: "models-and-tools",
-    label: "Models and tools",
-    pages: ["Model Providers", "Tool permissions", "Skills", "MCP connections"],
+    id: "tools-and-skills",
+    label: "Tools & skills",
+    pages: ["Tool permissions", "Skills", "MCP connections"],
   },
-  { id: "system-settings", label: "System settings", pages: ["Defaults"] },
-  { id: "activity", label: "Activity", pages: ["Durable", "Audit"] },
+  { id: "system-settings", label: "Defaults", pages: ["Defaults"] },
+  { id: "activity", label: "Activity", pages: ["Audit"] },
 ] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
 const technicalDescriptions: Partial<Record<Page, string>> = {
   Durable: "Durable Inspector: stored conversations and execution records.",
@@ -201,6 +202,7 @@ export function SideNavigation({
             <Heading
               as="h2"
               id={`navigation-${group.id}`}
+              aria-label={`${group.label} navigation`}
               className="navigation-group-title"
               size="1"
               weight="medium"

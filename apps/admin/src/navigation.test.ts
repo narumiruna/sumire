@@ -53,9 +53,10 @@ describe("admin navigation", () => {
   it("groups every destination by task in the planned order", () => {
     const html = renderNavigation()
     const groups = [
-      ["chat-management", "Chat management"],
-      ["models-and-tools", "Models and tools"],
-      ["system-settings", "System settings"],
+      ["chat-management", "Chats"],
+      ["models", "Models"],
+      ["tools-and-skills", "Tools &amp; skills"],
+      ["system-settings", "Defaults"],
       ["activity", "Activity"],
     ]
     let previous = -1
@@ -70,12 +71,12 @@ describe("admin navigation", () => {
     const orderedPages: Page[] = [
       "Chats",
       "Access",
+      "Durable",
       "Model Providers",
       "Tool permissions",
       "Skills",
       "MCP connections",
       "Defaults",
-      "Durable",
       "Audit",
     ]
     expect(links).toHaveLength(pages.length)

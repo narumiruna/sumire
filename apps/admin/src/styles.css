@@ -1005,6 +1005,9 @@ html {
 .chat-directory[data-natural-scroll="true"] .directory-list-region {
   overflow: visible;
 }
+.chat-mobile-actions {
+  display: none;
+}
 .chat-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1044,9 +1047,6 @@ html {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-}
-.chat-status[data-blocked="false"] .setup-details[open] {
-  flex-basis: 100%;
 }
 .chat-ready-summary {
   min-height: 32px;
@@ -1140,9 +1140,43 @@ html {
     overscroll-behavior-y: auto;
   }
   .chat-header {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+  }
+  .chat-mobile-actions {
+    display: inline-flex;
+  }
+  .chat-desktop-action {
+    display: none;
+  }
+  .chat-status {
+    margin-block: 4px;
+  }
+  .chat-setup-callout {
+    padding: 8px;
+  }
+  .chat-setup-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .chat-setup-body > .rt-Heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .chat-setup-body > p {
+    margin: 0;
+  }
+  .chat-identity-meta {
+    margin-top: 4px;
+  }
+  .mobile-directory-action {
+    margin-bottom: 0;
   }
   .chat-detail [role="tablist"] {
     margin-top: 8px;
@@ -1652,7 +1686,47 @@ html {
 }
 .tool-permissions {
   margin-top: 8px;
-  gap: 12px;
+  gap: 8px;
+}
+.tool-permissions > .permission-section {
+  margin-block: 0;
+  padding-block: 8px;
+}
+.tool-permissions .permission-toolbar {
+  margin-block: 4px;
+}
+.tool-permissions .permission-details {
+  margin-block: 0;
+}
+.tool-permissions .permission-row {
+  padding-block: 4px;
+}
+.permission-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 8px 24px;
+}
+@media (min-width: 1101px) {
+  .tool-permissions > .permission-section {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 20px;
+    align-items: center;
+  }
+  .permission-section > .section-heading,
+  .permission-section > .permission-toolbar,
+  .permission-section > .rt-Text {
+    margin-block: 0;
+  }
+  .permission-section > .permission-group,
+  .permission-section > .permission-list,
+  .permission-section > .permission-matrix-heading {
+    grid-column: 1 / -1;
+  }
+  .tool-permissions > .permission-section > .permission-group {
+    margin-top: 4px;
+  }
 }
 .tool-permissions > .section-heading {
   align-items: flex-start;
@@ -1734,6 +1808,9 @@ html {
   padding-block: 12px 0;
   border-top: 1px solid var(--gray-6);
 }
+.tool-permissions .permission-group {
+  padding-top: 0;
+}
 .permission-group + .permission-group {
   margin-top: 12px;
 }
@@ -1782,6 +1859,12 @@ html {
 .permission-manual {
   max-width: 720px;
   margin-top: 24px;
+}
+.permission-footer > .permission-manual {
+  margin-top: 0;
+}
+.permission-footer > .permission-manual[open] {
+  flex-basis: 100%;
 }
 .permission-manual .form-field {
   max-width: 100%;
@@ -1897,6 +1980,44 @@ html {
 .provider-workspace {
   align-items: start;
 }
+.model-setup-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.model-setup-steps strong {
+  display: block;
+}
+.admin-page--providers .settings-section {
+  padding-block: 12px;
+  gap: 16px;
+}
+.admin-page--providers .provider-readiness {
+  margin-block: 8px;
+  padding: 8px;
+}
+.admin-page--providers .provider-connection {
+  margin-block: 4px 0;
+}
+@media (min-width: 1101px) {
+  .admin-page--providers > .settings-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 24px;
+    align-items: start;
+  }
+  .admin-page--providers > .settings-stack > :not(.settings-section) {
+    grid-column: 1 / -1;
+  }
+  .admin-page--providers > .settings-stack > .settings-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
 .provider-connection .section-heading,
 .provider-model .section-heading {
   align-items: center;
@@ -1935,8 +2056,8 @@ html {
   white-space: normal;
 }
 .provider-checks {
-  padding-top: 16px;
-  margin-top: 16px;
+  padding-top: 4px;
+  margin-top: 4px;
   border-top: 1px solid var(--gray-6);
 }
 .provider-save {

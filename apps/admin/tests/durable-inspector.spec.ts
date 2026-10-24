@@ -124,13 +124,10 @@ for (const width of [1440, 390, 320]) {
         .getByRole("list", { includeHidden: true, name: "Chats on this page" })
         .getByRole("button", { includeHidden: true, name: /Idle chat/ }),
     )
-    await click(
-      page.getByRole("link", {
-        includeHidden: true,
-        name: "View conversation records",
-        exact: true,
-      }),
-    )
+    if (width <= 850) {
+      await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+      await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
+    } else await page.getByRole("link", { name: "View conversation records", exact: true }).click()
     await expectRecord(page, "Conversation", "conversation #17")
     await click(
       page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
@@ -141,13 +138,10 @@ for (const width of [1440, 390, 320]) {
         .getByRole("list", { includeHidden: true, name: "Chats on this page" })
         .getByRole("button", { includeHidden: true, name: /Unloaded chat/ }),
     )
-    await click(
-      page.getByRole("link", {
-        includeHidden: true,
-        name: "View conversation records",
-        exact: true,
-      }),
-    )
+    if (width <= 850) {
+      await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+      await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
+    } else await page.getByRole("link", { name: "View conversation records", exact: true }).click()
     await expect(inspector.getByRole("heading", { name: "Not loaded", exact: true })).toBeVisible()
     await expect(inspector).toContainText("Inspection will not open its database")
     expect(state.methods.every((method) => method === "GET")).toBe(true)
@@ -332,7 +326,7 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   expect(await page.evaluate(() => Object.hasOwn(window, "inspectorInjected"))).toBe(false)
   state.documentLimit = true
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(detailsFor(page)).toContainText(
     "The document value is withheld because it exceeds inspection limits.",
@@ -395,7 +389,7 @@ for (const selected of ["persisted", "null", "undefined"] as const) {
       await click(
         inspector.getByRole("button", {
           includeHidden: true,
-          name: "Refresh Durable",
+          name: "Refresh records",
           exact: true,
         }),
       )
@@ -441,7 +435,7 @@ test("direct Conversation ID lookup retrieves off-page conversation 9 by objectI
   expect(state.requests.at(-1)?.searchParams.has("conversationId")).toBe(false)
   expect(state.requests.at(-1)?.searchParams.has("cursor")).toBe(false)
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expectRecord(page, "Conversation", "conversation #9")
   await page.reload()
@@ -637,7 +631,7 @@ test("opaque pagination, previous page, manual refresh, and browser back", async
   )
   await expectRecord(page, "Conversation", "conversation #9")
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expectRecord(page, "Conversation", "conversation #7")
   await expect(previous).toBeDisabled()
@@ -668,7 +662,7 @@ test("deep links, context validation, distinct empty and read failure states", a
   await openDisclosure(inspector.locator(".durable-history-context"))
   state.selectedConversation = null
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(
     inspector.getByText("No selected-conversation metadata available.", { exact: true }),
@@ -702,13 +696,13 @@ test("deep links, context validation, distinct empty and read failure states", a
   ).toBeVisible()
   state.failed = true
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(inspector.getByRole("alert").last()).toHaveText("Read failed. Refresh to retry.")
   state.failed = false
   state.empty = false
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expectRecord(page, "Model response", "task #8")
 })
@@ -829,7 +823,7 @@ test("approved model and session fields explain absent values and retain session
   await expect(contextFor(page)).toContainText("Inspecting session documents")
   state.sessionActiveAbsent = true
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(field(approved, "Persisted selected conversation")).toHaveText("Not recorded")
   await expect(approved.getByRole("link")).toHaveCount(0)
@@ -956,7 +950,7 @@ test("session expiry clears loaded metadata and asks App to reauthenticate", asy
   await expect(page.locator(".durable-inspector pre").last()).toContainText("untrusted.invalid")
   state.expired = true
   await click(
-    page.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    page.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(
     page.getByRole("button", { includeHidden: true, name: "Sign in with passkey", exact: true }),
@@ -1140,7 +1134,7 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
     route.fulfill({ status: 404, json: { error: "Unavailable" } }),
   )
   await click(
-    page.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    page.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(
     page.getByRole("status").filter({
@@ -1176,7 +1170,7 @@ test("off-page persisted selection is separate from the inspection target and us
     },
   ]
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   const selection = inspector.getByRole("region", {
     includeHidden: true,
@@ -1213,7 +1207,7 @@ test("off-page persisted selection is separate from the inspection target and us
   await expect(inspector).not.toContainText(/healthy|idle execution|currently running/i)
   state.selectedConversation = null
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(selection).toContainText("No selected-conversation metadata available.")
   await expect(history).toContainText("No selected-conversation metadata to read.")
@@ -1236,7 +1230,7 @@ test("a partial history failure keeps selection and inspection with independent 
   expect(state.requests).toHaveLength(3)
   state.failures.set("tasks", 503)
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   const history = inspector.getByRole("region", {
     includeHidden: true,
@@ -1260,13 +1254,13 @@ test("a partial history failure keeps selection and inspection with independent 
   state.failures.delete("tasks")
   state.taskItems = []
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(history).toContainText("No task history on this page.")
   expect(state.requests).toHaveLength(9)
   state.failures.set("tasks", 403)
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(history.getByRole("alert")).toHaveText(
     "Permission denied. This data could not be read.",
@@ -1276,7 +1270,7 @@ test("a partial history failure keeps selection and inspection with independent 
   state.failures.delete("tasks")
   state.failures.set("conversations", 503)
   await click(
-    inspector.getByRole("button", { includeHidden: true, name: "Refresh Durable", exact: true }),
+    inspector.getByRole("button", { includeHidden: true, name: "Refresh records", exact: true }),
   )
   await expect(
     inspector
