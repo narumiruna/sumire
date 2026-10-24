@@ -147,7 +147,7 @@ export function validateReferences(policy: Policy): void {
     }
     if (choice.model && !(choice.models ?? policy.defaults.models ?? []).includes(choice.model))
       throw new Error(
-        `${scope}: model "${choice.model}" is not in Allowed models${choice.models === null ? " inherited from Defaults" : ""}. Add it to Allowed models, or change the ${scope === "Defaults" ? "default model in Model Providers" : "chat model override"}.`,
+        `${scope}: model "${choice.model}" is not in Allowed models${choice.models === null ? " inherited from Defaults" : ""}. Add it to Allowed models, or change the ${scope === "Defaults" ? "default model in Shared defaults" : "chat model override"}.`,
       )
   }
   for (const p of policy.providers) {

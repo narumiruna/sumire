@@ -39,6 +39,7 @@ import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { McpConnections } from "./mcp-connections.js"
+import { ModelSetup } from "./model-setup.js"
 import {
   type EditorTarget,
   focusEditor,
@@ -85,10 +86,10 @@ function App() {
   const { page, setPage, chat, setChat } = useNavigation()
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
-  const [defaultModelRequest, setDefaultModelRequest] = useState(0)
+  const [authRequest, setAuthRequest] = useState<{ id: number; provider: string }>()
   const [policyReviewOpen, setPolicyReviewOpen] = useState(false)
-  const openDefaultModel = () => {
-    setDefaultModelRequest((request) => request + 1)
+  const openProvider = (provider: string) => {
+    setAuthRequest((previous) => ({ id: (previous?.id ?? 0) + 1, provider }))
     setPage("Model Providers")
   }
   const openEditor = (target: EditorTarget) => {
@@ -107,10 +108,6 @@ function App() {
     })
     return () => cancelAnimationFrame(frame)
   }, [editorRequest, page])
-  const [focusRepairPage, setFocusRepairPage] = useState(0)
-  useEffect(() => {
-    if (focusRepairPage) document.getElementById("current-section-heading")?.focus()
-  }, [focusRepairPage])
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -136,7 +133,7 @@ function App() {
   }, [])
   const expireSession = useCallback(() => {
     setSession(null)
-    setDefaultModelRequest(0)
+    setAuthRequest(undefined)
     setPolicyReviewOpen(false)
     setEditorRequest(undefined)
     setToolName("")
@@ -389,6 +386,20 @@ function App() {
             reviewOpen={policyReviewOpen}
             onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
+            modelReview={
+              savedPolicy &&
+              (savedPolicy.defaults.model !== policy.defaults.model ||
+                JSON.stringify(savedPolicy.defaults.models) !==
+                  JSON.stringify(policy.defaults.models))
+                ? {
+                    before: savedPolicy.defaults.model,
+                    after: policy.defaults.model,
+                    added: (policy.defaults.models ?? []).filter(
+                      (ref) => !savedPolicy.defaults.models?.includes(ref),
+                    ),
+                  }
+                : undefined
+            }
             unfinished={(Object.keys(pendingEditors) as PendingEditor[])
               .filter((key) => editorPending[key])
               .map((key) => pendingEditors[key])}
@@ -446,10 +457,7 @@ function App() {
                 setPage("Access")
               }}
               onApplication={() => document.getElementById("save-status")?.focus()}
-              onProviders={() => {
-                setPage("Model Providers")
-                setFocusRepairPage((request) => request + 1)
-              }}
+              onProviders={openProvider}
               onTools={() => setPage("Tool permissions")}
               onDurable={() => setPage("Durable")}
             >
@@ -563,11 +571,15 @@ function App() {
                 aria-label="Default model settings"
               >
                 <Heading size="3">Model and thinking defaults</Heading>
-                <Prose size="2">
-                  Saved model: {savedPolicy?.defaults.model ?? "Not configured"} · Thinking:{" "}
-                  {savedPolicy?.defaults.thinking ?? "off"} · Allowed models:{" "}
-                  {savedPolicy?.defaults.models?.join(", ") || "None"}
-                </Prose>
+                <ModelSetup
+                  scope="Shared default model setup"
+                  model={effectivePolicy(savedPolicy ?? policy, 0).model}
+                  selected={(savedPolicy ?? policy).defaults.model}
+                  inventory={inventory}
+                  onModel={() => focusEditor("#default-model-selection")}
+                  onProvider={openProvider}
+                />
+                <Prose size="2">Saved thinking: {savedPolicy?.defaults.thinking ?? "off"}.</Prose>
                 {JSON.stringify([
                   policy.defaults.model,
                   policy.defaults.thinking,
@@ -587,7 +599,6 @@ function App() {
                 <Choices
                   navigate={setPage}
                   defaults
-                  onDefaultModel={openDefaultModel}
                   value={policy.defaults}
                   policy={policy}
                   effective={effectivePolicy(policy, 0)}
@@ -836,8 +847,24 @@ function App() {
               refresh={load}
               error={error}
               onPending={setProviderPending}
-              defaultModelRequest={defaultModelRequest}
+              authRequest={authRequest}
+              savedPolicy={savedPolicy ?? policy}
+              onDefaults={() => setPage("Defaults")}
             />
+            <section className="provider-availability" aria-label="Manage model availability">
+              <Heading as="h2" size="4" id="model-availability" tabIndex={-1}>
+                Manage model availability
+              </Heading>
+              <Prose size="2">
+                Add models with the provider flow above. Remove references from defaults and chats
+                before removing a model. Selecting a provider never grants its full catalog.
+              </Prose>
+              <ModelAvailability
+                key={snapshot.revision}
+                value={policy.models}
+                onChange={(models) => update({ ...policy, models })}
+              />
+            </section>
             <details className="provider-advanced">
               <summary>Custom endpoint</summary>
               <Prose size="2">
@@ -905,18 +932,6 @@ function App() {
                   setEditingProvider(undefined)
                   markPending("endpoint", false)
                 }}
-              />
-            </details>
-            <details className="provider-advanced">
-              <summary id="model-availability">Manage model availability</summary>
-              <Prose size="2">
-                Add models with the provider flow above. Remove references from defaults and chats
-                before removing a model. Selecting a provider never grants its full catalog.
-              </Prose>
-              <ModelAvailability
-                key={snapshot.revision}
-                value={policy.models}
-                onChange={(models) => update({ ...policy, models })}
               />
             </details>
           </EditorSection>

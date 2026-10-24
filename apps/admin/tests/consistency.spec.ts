@@ -82,7 +82,7 @@ for (const width of [1440, 390, 320]) {
         continue
       }
       await expect(bar).toHaveAttribute("data-compact", "true")
-      await expect(bar).toContainText("All settings saved and applied.")
+      await expect(bar).toContainText("Settings saved and applied.")
       await expect(bar.getByRole("button")).toHaveCount(0)
       await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
       if (width <= 390) {
@@ -120,7 +120,7 @@ test("Defaults omits an identical model draft after a tool-only edit", async ({ 
     })
     .uncheck()
   await navigate(page, "Defaults")
-  await expect(page.getByText(/Saved model:/)).toBeVisible()
+  await expect(page.getByText(/Saved thinking:/)).toBeVisible()
   await expect(page.getByText(/Policy draft model:/)).toHaveCount(0)
   await expect(
     page

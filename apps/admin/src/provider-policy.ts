@@ -1,4 +1,4 @@
-import type { Policy, Selection } from "./api.js"
+import type { Policy } from "./api.js"
 
 export function savedProviderSelection(policy: Policy) {
   const chatChoices = Object.values(policy.chats).filter((chat) => chat.model !== null)
@@ -26,24 +26,8 @@ export function savedProviderSelection(policy: Policy) {
 }
 
 /** Add one explicit model. Do not grant its provider's full catalog or alter chat overrides. */
-export function withProviderModel(
-  policy: Policy,
-  ref: string,
-  thinking: Selection["thinking"],
-  useDefault: boolean,
-): Policy {
-  return {
-    ...policy,
-    models: [...new Set([...policy.models, ref])],
-    defaults: useDefault
-      ? {
-          ...policy.defaults,
-          models: [...new Set([...(policy.defaults.models ?? []), ref])],
-          model: ref,
-          thinking,
-        }
-      : policy.defaults,
-  }
+export function withProviderModel(policy: Policy, ref: string): Policy {
+  return { ...policy, models: [...new Set([...policy.models, ref])] }
 }
 
 /** Provider login URLs are untrusted data. Never render executable URL schemes. */

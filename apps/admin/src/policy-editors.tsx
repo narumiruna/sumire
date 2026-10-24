@@ -1,19 +1,9 @@
 import type { effectivePolicy } from "@narumitw/sumire-policy"
-import {
-  Badge,
-  Button,
-  Callout,
-  Checkbox,
-  Code,
-  DataList,
-  Flex,
-  Grid,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { Badge, Button, Callout, Checkbox, Flex, Grid, Text, TextField } from "@radix-ui/themes"
 import { useId, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
-import { focusEditor, pageLabel } from "./navigation.js"
+import { DefaultModel } from "./default-model.js"
+import { focusEditor } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -202,7 +192,6 @@ export function Choices({
   onChange,
   defaults = false,
   navigate,
-  onDefaultModel,
 }: {
   value: Selection
   policy: Policy
@@ -210,7 +199,6 @@ export function Choices({
   inventory: Inventory
   onChange(value: Selection): void
   defaults?: boolean
-  onDefaultModel?(): void
   navigate(page: "Tool permissions" | "Skills" | "Model Providers"): void
 }) {
   const model = value.model ?? policy.defaults.model
@@ -220,37 +208,12 @@ export function Choices({
   return (
     <Flex direction="column" gap="4" className="settings-stack policy-choices">
       {defaults ? (
-        <Panel as="fieldset" className="policy-model">
-          <legend>Default model</legend>
-          <DataList.Root size="2" className="data-list">
-            <DataList.Item className="data-row">
-              <DataList.Label>Model</DataList.Label>
-              <DataList.Value>
-                <Flex gap="2" align="center" wrap="wrap">
-                  <Code variant="ghost">{policy.defaults.model ?? "Not configured"}</Code>
-                  <Badge color="gray">Shared defaults</Badge>
-                </Flex>
-              </DataList.Value>
-            </DataList.Item>
-            <DataList.Item className="data-row">
-              <DataList.Label>Thinking</DataList.Label>
-              <DataList.Value>
-                <Flex gap="2" align="center" wrap="wrap">
-                  <Text>{policy.defaults.thinking ?? "off"}</Text>
-                  <Badge color="gray">Shared defaults</Badge>
-                </Flex>
-              </DataList.Value>
-            </DataList.Item>
-          </DataList.Root>
-          <Prose size="2" color="gray" className="section-copy">
-            Allowed models and Global availability limit what chats can use. Shared defaults select
-            the model and thinking level for chats without an override. An unspecified thinking
-            level uses off.
-          </Prose>
-          <Button variant="soft" onClick={onDefaultModel ?? (() => navigate("Model Providers"))}>
-            Edit default model in {pageLabel("Model Providers")}
-          </Button>
-        </Panel>
+        <DefaultModel
+          policy={policy}
+          inventory={inventory}
+          onChange={onChange}
+          onAvailability={() => navigate("Model Providers")}
+        />
       ) : (
         <Panel as="fieldset" className="policy-model">
           <legend>Model and thinking</legend>
@@ -355,8 +318,7 @@ export function Choices({
             Model "{value.model}" is not in Allowed models
             {value.models === null ? " inherited from Defaults" : ""}. Review Allowed models
             {value.models === null ? " by editing Defaults or clearing Inherit default" : ""}, or
-            change the{" "}
-            {defaults ? `default model in ${pageLabel("Model Providers")}` : "chat model override"}.
+            change the {defaults ? "default model above" : "chat model override"}.
           </Callout.Text>
           <Button
             variant="soft"

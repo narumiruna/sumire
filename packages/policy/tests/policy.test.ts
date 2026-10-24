@@ -144,5 +144,6 @@ describe("shared policy", () => {
     const policy = initialPolicy()
     policy.defaults.model = "fixture/unknown"
     expect(() => validateReferences(policy)).toThrow("Allowed models")
+    expect(() => validateReferences(policy)).toThrow("default model in Shared defaults")
   })
 })

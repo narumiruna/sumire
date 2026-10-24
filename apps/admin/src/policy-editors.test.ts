@@ -140,14 +140,16 @@ describe("policy field scope and source labels", () => {
 
   it("labels shared list, model, and thinking defaults without chat override controls", () => {
     const html = renderChoices(fixture(), true)
-    expect(html.split(">Shared defaults<")).toHaveLength(4)
+    expect(html.split(">Shared defaults<")).toHaveLength(3)
     expect(fieldset(html, "Allowed models")).toContain(
       "Used by chats without an override. Global availability still limits this selection.",
     )
     expect(html).not.toContain('aria-label="Inherit default"')
     expect(html).not.toContain("From shared defaults")
     expect(html).not.toContain("This chat override")
-    expect(html).toContain("Edit default model in Model providers")
+    expect(html).toContain('aria-label="Shared default model"')
+    expect(html).toContain('aria-label="Shared default thinking"')
+    expect(html).toContain("Manage model availability")
   })
 
   it("does not describe null shared lists as inheriting global availability", () => {
