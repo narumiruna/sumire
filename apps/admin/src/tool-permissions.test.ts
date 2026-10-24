@@ -49,6 +49,20 @@ describe("tool permission presentation and existing policy rules", () => {
     expect(permissionMatches("servers", "offline", current, "missing")).toBe(true)
     expect(permissionMatches("tools", "stored", current, "all")).toBe(true)
   })
+  it("filters pending, selected, and blocked permissions without changing drafts", () => {
+    const saved = initialPolicy()
+    saved.tools = ["read", "mcp__fixture__new"]
+    const draft = structuredClone(saved)
+    draft.defaults.tools = ["read", "mcp__fixture__new"]
+    const before = structuredClone(draft)
+    expect(permissionMatches("tools", "read", inventory, "selected", draft, saved)).toBe(true)
+    expect(permissionMatches("tools", "read", inventory, "changed", draft, saved)).toBe(true)
+    expect(permissionMatches("tools", "read", inventory, "blocked", draft, saved)).toBe(false)
+    expect(
+      permissionMatches("tools", "mcp__fixture__new", inventory, "blocked", draft, saved),
+    ).toBe(true)
+    expect(draft).toEqual(before)
+  })
   it("counts unique names per scope even when two servers report the same tool", () => {
     const saved = initialPolicy()
     saved.tools = ["read", "mcp__fixture__new"]

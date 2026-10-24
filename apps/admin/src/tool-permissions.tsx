@@ -16,7 +16,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
 
 export function defaultPermissionSummary(policy: Policy) {
   const effective = effectivePolicy(policy, 0)
@@ -43,15 +43,42 @@ export function permissionNames(
   ]
 }
 
-export type PermissionFilter = "all" | "missing" | "unavailable"
+export type PermissionFilter =
+  | "all"
+  | "missing"
+  | "unavailable"
+  | "selected"
+  | "blocked"
+  | "changed"
 
 export function permissionMatches(
   key: "tools" | "servers",
   name: string,
   inventory: Inventory,
   filter: PermissionFilter,
+  policy?: Policy,
+  saved?: Policy,
 ) {
   if (filter === "all") return true
+  if (filter === "selected") return Boolean(policy?.defaults[key]?.includes(name))
+  if (filter === "changed")
+    return Boolean(
+      policy &&
+        saved &&
+        (policy[key].includes(name) !== saved[key].includes(name) ||
+          Boolean(policy.defaults[key]?.includes(name)) !==
+            Boolean(saved.defaults[key]?.includes(name))),
+    )
+  if (filter === "blocked") {
+    if (!policy?.defaults[key]?.includes(name)) return false
+    if (!policy[key].includes(name)) return true
+    const sources =
+      key === "tools" ? inventory.mcp.filter((server) => server.tools.includes(name)) : []
+    return sources.some(
+      (server) =>
+        !policy.servers.includes(server.name) || !policy.defaults.servers?.includes(server.name),
+    )
+  }
   if (filter === "unavailable")
     return key === "tools" && inventory.toolAvailability?.[name]?.available === false
   return key === "tools"
@@ -136,7 +163,7 @@ function PermissionGroup({
       <strong>{group ? "Tool name" : "Server name"}</strong>
       <strong hidden={!globalEditing}>Globally allowed</strong>
       <strong>Default chat permission</strong>
-      <strong>Status</strong>
+      <strong>Effective permission</strong>
     </div>
   )
   const content = <ul className="permission-list">{children}</ul>
@@ -235,13 +262,14 @@ export function ToolPermissions({
       names: group.names.filter(
         (name) =>
           `${name} ${group.label}`.toLowerCase().includes(term) &&
-          permissionMatches("tools", name, inventory, filter),
+          permissionMatches("tools", name, inventory, filter, policy, saved),
       ),
     }))
     .filter((group) => group.names.length > 0)
   const servers = permissionNames("servers", policy, saved, inventory).filter(
     (name) =>
-      name.toLowerCase().includes(term) && permissionMatches("servers", name, inventory, filter),
+      name.toLowerCase().includes(term) &&
+      permissionMatches("servers", name, inventory, filter, policy, saved),
   )
   const [expansion, setExpansion] = useState(() => readExpansion(actor))
   const expanded = expansion ?? allGroups.slice(0, 1).map((group) => group.id)
@@ -279,7 +307,7 @@ export function ToolPermissions({
           </Prose>
         )}
       </section>
-      <Flex gap="3" align="end" wrap="wrap" className="tool-search">
+      <TableToolbar className="tool-search">
         <label className="form-field" htmlFor={`${prefix}-search`}>
           Search tools and servers
           <TextField.Root
@@ -297,6 +325,9 @@ export function ToolPermissions({
             <Select.Trigger id={`${prefix}-filter`} aria-label="Tool status" />
             <Select.Content>
               <Select.Item value="all">All</Select.Item>
+              <Select.Item value="selected">Selected by default</Select.Item>
+              <Select.Item value="blocked">Blocked by policy</Select.Item>
+              <Select.Item value="changed">Pending changes</Select.Item>
               <Select.Item value="missing">Not in inventory</Select.Item>
               <Select.Item value="unavailable">Capability unavailable</Select.Item>
             </Select.Content>
@@ -309,7 +340,7 @@ export function ToolPermissions({
         >
           Edit global limits
         </Button>
-      </Flex>
+      </TableToolbar>
       {filtering && (
         <Flex gap="2" wrap="wrap" align="center">
           <Text role="status" size="2">
@@ -494,25 +525,33 @@ export function ToolPermissions({
                       </label>
                     </div>
                     <div>
-                      <Text as="p" size="2" id={`${id}-status`}>
-                        {!global
-                          ? "Unavailable globally"
-                          : selected
-                            ? servers.length
-                              ? "Selected · server gate required"
-                              : "Allowed"
-                            : "Not selected"}
-                        {!global && selected
-                          ? " · stored default selection retained; clear it explicitly to resolve the save conflict"
-                          : ""}
-                      </Text>
+                      <div id={`${id}-status`}>
+                        <StatusLabel tone={!global && selected ? "warning" : "neutral"}>
+                          {!global
+                            ? "Unavailable globally"
+                            : !selected
+                              ? "Not selected"
+                              : servers.some(
+                                    (server) =>
+                                      !policy.servers.includes(server.name) ||
+                                      !policy.defaults.servers?.includes(server.name),
+                                  )
+                                ? "Server gate blocked"
+                                : "Allowed"}
+                        </StatusLabel>
+                        {!global && selected && (
+                          <Text as="p" size="2">
+                            Default selection retained.
+                          </Text>
+                        )}
+                      </div>
                       {servers.map((server) => (
                         <Text key={server.name} as="p" size="2">
                           {server.name}:{" "}
                           {policy.servers.includes(server.name) &&
                           policy.defaults.servers?.includes(server.name)
-                            ? "Server gate selected for inheriting chats"
-                            : "Blocked by global or default server permission"}
+                            ? "Gate allowed"
+                            : "Blocked by server permission"}
                           .
                         </Text>
                       ))}

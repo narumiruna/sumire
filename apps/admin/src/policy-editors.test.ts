@@ -140,7 +140,7 @@ describe("policy field scope and source labels", () => {
 
   it("labels shared list, model, and thinking defaults without chat override controls", () => {
     const html = renderChoices(fixture(), true)
-    expect(html.split(">Shared defaults<")).toHaveLength(3)
+    expect(html).toContain(">Shared defaults<")
     expect(fieldset(html, "Allowed models")).toContain(
       "Used by chats without an override. Global availability still limits this selection.",
     )

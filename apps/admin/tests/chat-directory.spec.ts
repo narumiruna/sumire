@@ -111,9 +111,7 @@ for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
     const state = await fixture(page)
     await expect(selector(page).locator(":scope > details")).toHaveAttribute("open", "")
-    await expect(
-      inspector(page).getByRole("heading", { name: "Choose a chat", exact: true }),
-    ).toBeVisible()
+    await expect(inspector(page).getByText("Choose a chat", { exact: true })).toBeVisible()
     await expect(rows(page).getByRole("button")).toHaveCount(100)
     expect(state.durableReads).toEqual([])
     const search = selector(page).getByLabel("Search stored chats", { exact: true })
@@ -469,7 +467,9 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
-  await expect(page.locator(".pending-bar")).toContainText("1 unsaved change")
+  await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
+    "1 unsaved change",
+  )
 })
 
 test("manual ID input stays a local draft until an explicit chat choice", async ({ page }) => {

@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from "react"
 import { type Policy, parseIds } from "./api.js"
 import { type Chat, chatName } from "./chats.js"
 import { withChatAccess } from "./policy-changes.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel, Prose, SettingsSection } from "./surfaces.js"
 
 const pageSize = 20
 
@@ -182,69 +182,74 @@ export function ChatAccess({
   const [error, setError] = useState("")
   return (
     <Flex direction="column" gap="4">
-      <form
-        className="access-approve-form"
-        aria-label="Approve chat access"
-        onSubmit={(event) => {
-          event.preventDefault()
-          try {
-            const ids = parseIds(draft, Number(draft.trim()) > 0)
-            const [id] = ids
-            if (ids.length !== 1 || id === undefined)
-              throw new Error("Enter one non-zero Telegram user, group, or channel ID.")
-            if ((id > 0 ? policy.privateUsers : policy.groups).includes(id)) {
-              setError("This ID is already approved or pending approval.")
-              return
-            }
-            onChange(withChatAccess(policy, id, true))
-            setDraft("")
-            setError("")
-            onPending(false)
-            onReview()
-          } catch {
-            setError("Enter one non-zero whole-number Telegram user, group, or channel ID.")
-          }
-        }}
+      <SettingsSection
+        title="Approve a chat"
+        description="Review access for one Telegram user, group, or channel."
       >
-        <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
-          <label className="form-field" htmlFor="access-id-input">
-            Telegram ID to approve
-            <TextField.Root
-              id="access-id-input"
-              value={draft}
-              autoComplete="off"
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? "access-id-error" : undefined}
-              onChange={(event) => {
-                setDraft(event.target.value)
-                setError("")
-                onPending(Boolean(event.target.value))
-              }}
-            />
-          </label>
-          <Button type="submit" disabled={!draft}>
-            Review approval
-          </Button>
-          {draft && (
-            <Button
-              type="button"
-              variant="soft"
-              onClick={() => {
-                setDraft("")
-                setError("")
-                onPending(false)
-              }}
-            >
-              Clear ID input
+        <form
+          className="access-approve-form"
+          aria-label="Approve chat access"
+          onSubmit={(event) => {
+            event.preventDefault()
+            try {
+              const ids = parseIds(draft, Number(draft.trim()) > 0)
+              const [id] = ids
+              if (ids.length !== 1 || id === undefined)
+                throw new Error("Enter one non-zero Telegram user, group, or channel ID.")
+              if ((id > 0 ? policy.privateUsers : policy.groups).includes(id)) {
+                setError("This ID is already approved or pending approval.")
+                return
+              }
+              onChange(withChatAccess(policy, id, true))
+              setDraft("")
+              setError("")
+              onPending(false)
+              onReview()
+            } catch {
+              setError("Enter one non-zero whole-number Telegram user, group, or channel ID.")
+            }
+          }}
+        >
+          <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
+            <label className="form-field" htmlFor="access-id-input">
+              Telegram ID to approve
+              <TextField.Root
+                id="access-id-input"
+                value={draft}
+                autoComplete="off"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "access-id-error" : undefined}
+                onChange={(event) => {
+                  setDraft(event.target.value)
+                  setError("")
+                  onPending(Boolean(event.target.value))
+                }}
+              />
+            </label>
+            <Button type="submit" disabled={!draft}>
+              Review approval
             </Button>
+            {draft && (
+              <Button
+                type="button"
+                variant="soft"
+                onClick={() => {
+                  setDraft("")
+                  setError("")
+                  onPending(false)
+                }}
+              >
+                Clear ID input
+              </Button>
+            )}
+          </Flex>
+          {error && (
+            <Text as="p" id="access-id-error" role="alert" color="red" size="2">
+              {error}
+            </Text>
           )}
-        </Flex>
-        {error && (
-          <Text as="p" id="access-id-error" role="alert" color="red" size="2">
-            {error}
-          </Text>
-        )}
-      </form>
+        </form>
+      </SettingsSection>
       <div className="access-lists">
         <IdList
           label="Private-message access"

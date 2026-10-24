@@ -39,11 +39,9 @@ import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { McpConnections } from "./mcp-connections.js"
-import { ModelSetup } from "./model-setup.js"
 import {
   type EditorTarget,
   focusEditor,
-  navigationHref,
   type PendingEditor,
   pageLabel,
   pendingEditors,
@@ -51,17 +49,18 @@ import {
   useNavigation,
 } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
-import { policyChangeEntries, policyChanges } from "./policy-changes.js"
+import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { Providers } from "./providers.js"
 import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
+import { SharedDefaults } from "./shared-defaults.js"
 import { Skills } from "./skills.js"
 import { countText } from "./status-text.js"
-import { PageHeader, Panel, Prose } from "./surfaces.js"
-import { defaultPermissionSummary, ToolPermissions } from "./tool-permissions.js"
+import { PageHeader, Panel, Prose, SettingsSection } from "./surfaces.js"
+import { ToolPermissions } from "./tool-permissions.js"
 
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
@@ -71,7 +70,8 @@ const pageDescriptions = {
   Chats: "Review chat access and effective settings.",
   Durable: undefined,
   Access: "Approve private chats, groups, and channels.",
-  Defaults: "Set shared settings and inheritance.",
+  Defaults:
+    "Defaults for chats without corresponding overrides. Explicit chat overrides stay unchanged.",
   "Tool permissions": "Manage global, default, and chat permissions.",
   Skills: "Manage skill instructions for defaults and individual chats.",
   "MCP connections": "Manage connections and protected configuration.",
@@ -405,6 +405,7 @@ function App() {
             reviewOpen={policyReviewOpen}
             onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
+            changeCount={policyChangeCount(savedPolicy ?? policy, policy)}
             modelReview={
               savedPolicy &&
               (savedPolicy.defaults.model !== policy.defaults.model ||
@@ -521,9 +522,16 @@ function App() {
                     <details open={!chat}>
                       <summary aria-label="Find or switch chat">
                         <MixerHorizontalIcon aria-hidden />
-                        <span className="durable-action-label">Find or switch chat</span>
+                        <span className="durable-action-label">
+                          {chat ? "Switch chat" : "Choose a chat"}
+                        </span>
                       </summary>
-                      <ChatSelector directory={directory} chat={chat} onSelect={setChat} />
+                      <ChatSelector
+                        title={null}
+                        directory={directory}
+                        chat={chat}
+                        onSelect={setChat}
+                      />
                     </details>
                   </section>
                 }
@@ -582,104 +590,15 @@ function App() {
             aria-label="Shared defaults"
             className="admin-page--defaults"
           >
-            <div className="defaults-layout">
-              <section
-                id="default-model-settings"
-                tabIndex={-1}
-                className="defaults-model"
-                aria-label="Default model settings"
-              >
-                <Heading size="3">Model and thinking defaults</Heading>
-                <ModelSetup
-                  scope="Shared default model setup"
-                  model={effectivePolicy(savedPolicy ?? policy, 0).model}
-                  selected={(savedPolicy ?? policy).defaults.model}
-                  inventory={inventory}
-                  onModel={() => focusEditor("#default-model-selection")}
-                  onProvider={openProvider}
-                />
-                <Prose size="2">Saved thinking: {savedPolicy?.defaults.thinking ?? "off"}.</Prose>
-                {JSON.stringify([
-                  policy.defaults.model,
-                  policy.defaults.thinking,
-                  policy.defaults.models,
-                ]) !==
-                  JSON.stringify([
-                    (savedPolicy ?? policy).defaults.model,
-                    (savedPolicy ?? policy).defaults.thinking,
-                    (savedPolicy ?? policy).defaults.models,
-                  ]) && (
-                  <Prose size="2">
-                    Policy draft model: {policy.defaults.model ?? "Not configured"} · Thinking:{" "}
-                    {policy.defaults.thinking ?? "off"} · Allowed models:{" "}
-                    {policy.defaults.models?.join(", ") || "None"}
-                  </Prose>
-                )}
-                <Choices
-                  navigate={setPage}
-                  defaults
-                  value={policy.defaults}
-                  policy={policy}
-                  effective={effectivePolicy(policy, 0)}
-                  inventory={inventory}
-                  onChange={(v) => update({ ...policy, defaults: v })}
-                />
-              </section>
-              <Flex direction="column" gap="4" className="defaults-capabilities">
-                <Panel className="defaults-summary">
-                  <Heading size="3">Default tool permissions</Heading>
-                  <Prose>
-                    Applies to chats without a tool or MCP-server permission override. Explicit
-                    overrides are not changed.
-                  </Prose>
-                  <Prose>Saved defaults: {defaultPermissionSummary(savedPolicy ?? policy)}.</Prose>
-                  {dirty && (
-                    <Prose>Policy draft defaults: {defaultPermissionSummary(policy)}.</Prose>
-                  )}
-                  <Button variant="soft" asChild>
-                    <a
-                      href={navigationHref(
-                        "Tool permissions",
-                        chat,
-                        new URL("#default-tool-permissions", window.location.href),
-                      )}
-                      onClick={(event) => {
-                        if (
-                          event.button !== 0 ||
-                          event.metaKey ||
-                          event.ctrlKey ||
-                          event.shiftKey ||
-                          event.altKey
-                        )
-                          return
-                        event.preventDefault()
-                        setPage("Tool permissions", "default-tool-permissions")
-                      }}
-                    >
-                      Manage default tool permissions
-                    </a>
-                  </Button>
-                </Panel>
-                <Panel className="defaults-summary">
-                  <Heading size="3">Default skills</Heading>
-                  <Prose>
-                    Saved skills:{" "}
-                    {effectivePolicy(savedPolicy ?? policy, 0).skills.join(", ") || "None"}.
-                  </Prose>
-                  {dirty && (
-                    <Prose>
-                      Policy draft skills: {effectivePolicy(policy, 0).skills.join(", ") || "None"}.
-                    </Prose>
-                  )}
-                  <Prose size="2">
-                    Applies to chats without a skill override. Skills do not grant tool access.
-                  </Prose>
-                  <Button variant="soft" onClick={() => setPage("Skills")}>
-                    Manage default skills
-                  </Button>
-                </Panel>
-              </Flex>
-            </div>
+            <SharedDefaults
+              policy={policy}
+              saved={savedPolicy ?? policy}
+              chat={chat}
+              inventory={inventory}
+              onChange={update}
+              navigate={setPage}
+              onProvider={openProvider}
+            />
             <details className="defaults-advanced">
               <summary>Advanced actions</summary>
               <section className="defaults-reset" aria-label="Default inheritance">
@@ -870,20 +789,18 @@ function App() {
               savedPolicy={savedPolicy ?? policy}
               onDefaults={() => setPage("Defaults")}
             />
-            <section className="provider-availability" aria-label="Manage model availability">
-              <Heading as="h2" size="4" id="model-availability" tabIndex={-1}>
-                Manage model availability
-              </Heading>
-              <Prose size="2">
-                Add models with the provider flow above. Remove references from defaults and chats
-                before removing a model. Selecting a provider never grants its full catalog.
-              </Prose>
+            <SettingsSection
+              title="Manage model availability"
+              id="model-availability"
+              tabIndex={-1}
+              description="Remove references from defaults and chats before removing a model. Selecting a provider never grants its full catalog."
+            >
               <ModelAvailability
                 key={snapshot.revision}
                 value={policy.models}
                 onChange={(models) => update({ ...policy, models })}
               />
-            </section>
+            </SettingsSection>
             <details className="provider-advanced">
               <summary>Custom endpoint</summary>
               <Prose size="2">
@@ -963,8 +880,8 @@ function App() {
               <section className="audit-configuration" aria-label="Configuration operations">
                 <Heading size="3">Configuration activity</Heading>
                 <Prose size="2">
-                  Latest configuration operations. Secret values and conversation contents are
-                  excluded.
+                  Latest configuration operations. Field-level changes were not recorded. Secret
+                  values and conversation contents are excluded.
                 </Prose>
                 <AuditHistory revision={snapshot.revision} run={run} />
               </section>
@@ -994,7 +911,7 @@ function App() {
 const root = document.getElementById("root")
 if (root)
   createRoot(root).render(
-    <Theme appearance="light" accentColor="teal" grayColor="sand" radius="medium">
+    <Theme appearance="light" accentColor="teal" grayColor="sand" radius="small">
       <App />
     </Theme>,
   )

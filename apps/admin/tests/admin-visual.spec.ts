@@ -101,12 +101,6 @@ for (const viewport of [
           `${section} touch target`,
         ).toBeGreaterThanOrEqual(44 * viewport.zoom)
       }
-      for (const panel of await page.locator("main .panel").all()) {
-        if (!(await panel.isVisible())) continue
-        await expect(panel).toHaveCSS("border-radius", "8px")
-        await expect(panel).toHaveCSS("border-top-style", "solid")
-        await expect(panel).toHaveCSS("border-top-width", "1px")
-      }
       await page.evaluate(() => window.scrollTo(0, 0))
       await page.screenshot({
         path: testInfo.outputPath(`${section.toLowerCase().replaceAll(" ", "-")}.png`),

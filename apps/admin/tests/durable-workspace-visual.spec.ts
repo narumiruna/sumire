@@ -159,7 +159,7 @@ for (const viewport of [
           }),
         })
         if (viewport.font)
-          await expect(page.locator("#current-section-heading")).toHaveCSS(
+          await expect(page.locator(".durable-summary-header h2")).toHaveCSS(
             "font-family",
             new RegExp(viewport.font),
           )

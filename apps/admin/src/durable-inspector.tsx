@@ -923,30 +923,38 @@ export function DurableInspector({
 
   const header = (
     <>
-      <header className="durable-summary-header">
-        <div>
-          <Heading as="h2" size="5">
-            {!validChat
-              ? "Choose a chat"
-              : metadataLoading
-                ? "Loading chat name…"
-                : metadataError
-                  ? "Chat name unavailable"
-                  : metadata
-                    ? chatName(metadata)
-                    : "Chat name unknown"}
-          </Heading>
-          {validChat && (
-            <Flex gap="2" align="center" wrap="wrap">
-              <Text size="2">
-                <code>{chat}</code>
-                {metadata ? ` · ${metadata.type}` : ""}
-              </Text>
-            </Flex>
-          )}
-        </div>
+      <header className="durable-summary-header" data-selected={validChat}>
+        {validChat && (
+          <div>
+            <Heading as="h2" size="5">
+              {!validChat
+                ? "Choose a chat"
+                : metadataLoading
+                  ? "Loading chat name…"
+                  : metadataError
+                    ? "Chat name unavailable"
+                    : metadata
+                      ? chatName(metadata)
+                      : "Chat name unknown"}
+            </Heading>
+            {validChat && (
+              <Flex gap="2" align="center" wrap="wrap">
+                <Text size="2">
+                  <code>{chat}</code>
+                  {metadata ? ` · ${metadata.type}` : ""}
+                </Text>
+              </Flex>
+            )}
+          </div>
+        )}
         {chatSelector}
-        <Flex gap="2" wrap="wrap" align="center" className="durable-header-actions">
+        <Flex
+          gap="2"
+          wrap="wrap"
+          align="center"
+          className="durable-header-actions"
+          hidden={!validChat}
+        >
           <Button
             variant="soft"
             aria-label="Refresh Durable"
@@ -1206,7 +1214,7 @@ export function DurableInspector({
   return (
     <section className="durable-inspector" aria-label="Durable Inspector">
       {header}
-      <div className="durable-context-bar">
+      <div className="durable-context-bar" hidden={!validChat}>
         <span>
           <span className="durable-context-key">Inspecting</span>
           <strong>
@@ -1218,7 +1226,7 @@ export function DurableInspector({
           </strong>
         </span>
         <section aria-label="Persisted selection" className="durable-persisted-compact">
-          <span className="durable-context-key">Persisted selection</span>
+          <span className="durable-context-key">Saved conversation</span>
           <strong>
             {!selection
               ? "Loading…"
@@ -1237,7 +1245,7 @@ export function DurableInspector({
       </div>
       {!validChat ? (
         <Panel>
-          <Text as="p">Select a chat above to inspect Durable.</Text>
+          <Text as="p">Read stored messages and tool results. This view does not start work.</Text>
         </Panel>
       ) : (
         <>

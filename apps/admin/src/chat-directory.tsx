@@ -136,17 +136,19 @@ export function ChatSelector({
   visibleChats?: Chat[]
   badge?(chat: Chat): ReactNode
   footer?: ReactNode
-  title?: string
+  title?: string | null
   summary?: ReactNode
 }) {
   const searchId = useId()
   return (
     <>
       <div className="directory-header">
-        <Flex className="directory-heading" align="center" gap="2">
-          <ChatBubbleIcon aria-hidden="true" />
-          <Heading size="3">{title}</Heading>
-        </Flex>
+        {title && (
+          <Flex className="directory-heading" align="center" gap="2">
+            <ChatBubbleIcon aria-hidden="true" />
+            <Heading size="3">{title}</Heading>
+          </Flex>
+        )}
         <div className="directory-toolbar">
           <label className="directory-search" htmlFor={searchId}>
             <Text size="1" weight="medium">

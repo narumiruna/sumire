@@ -75,7 +75,10 @@ for (const width of [1440, 390]) {
       exact: true,
     })
     await expect(
-      page.getByText("Load a public page with URL tools.", { exact: true }),
+      page
+        .getByRole("region", { name: "Skill load-public-url", exact: true })
+        .getByText("Load a public page with URL tools.", { exact: true })
+        .first(),
     ).toBeVisible()
     await expect(
       page.getByRole("checkbox", {
@@ -91,10 +94,10 @@ for (const width of [1440, 390]) {
       page.getByRole("region", { name: "Skill load-public-url", exact: true }),
     ).toHaveCount(0)
     await navigate(page, "Defaults")
-    await expect(
-      page.getByText("Policy draft skills: load-public-url, missing, expenses.", { exact: true }),
-    ).toBeVisible()
-    await page.getByRole("button", { name: "Manage default skills", exact: true }).click()
+    await expect(page.getByRole("list", { name: "Default skill summary" })).toContainText(
+      "expenses",
+    )
+    await page.getByRole("link", { name: "Manage default skills", exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Search skills" })).toHaveValue("expenses")
     await expect(defaults).toBeChecked()
     expect(state.writes).toEqual([])

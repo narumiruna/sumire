@@ -241,7 +241,7 @@ export function SideNavigation({
                             return
                           const heading = document.getElementById("current-section-heading")
                           heading?.focus({ preventScroll: true })
-                          heading?.scrollIntoView({ block: "start", behavior: "instant" })
+                          window.scrollTo({ top: 0, behavior: "instant" })
                         })
                       }
                     }}

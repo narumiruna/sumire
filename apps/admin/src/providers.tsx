@@ -1,4 +1,4 @@
-import { InfoCircledIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons"
+import { ChevronDownIcon, InfoCircledIcon } from "@radix-ui/react-icons"
 import {
   AlertDialog,
   Badge,
@@ -15,11 +15,10 @@ import {
 } from "@radix-ui/themes"
 import { useContext, useEffect, useId, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Selection, type Snapshot } from "./api.js"
-import { ModelSetup } from "./model-setup.js"
 import { focusEditor } from "./navigation.js"
 import { loginUrl, savedProviderSelection, withProviderModel } from "./provider-policy.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel, Prose, SettingsSection, StatusLabel } from "./surfaces.js"
 
 type Option = { id: string; label: string; detail?: string }
 export function SearchChoice({
@@ -76,8 +75,8 @@ export function SearchChoice({
             aria-label={`${label}: ${displayValue}`}
             aria-haspopup="dialog"
           >
-            <MagnifyingGlassIcon />
-            {displayValue}
+            <span>{displayValue}</span>
+            <ChevronDownIcon aria-hidden />
           </Button>
         </Popover.Trigger>
         <Popover.Content
@@ -368,15 +367,15 @@ export function Providers({
               <InfoCircledIcon />
             </Callout.Icon>
             <Callout.Text>
-              Save or discard the unsaved settings above before changing provider credentials or
-              applying a model.
+              Save or discard pending settings before changing provider credentials or applying a
+              model.
             </Callout.Text>
           </Callout.Root>
         )}
-        <Panel className="provider-task">
-          <Heading as="h2" size="4" className="section-heading">
-            Add an available model
-          </Heading>
+        <SettingsSection
+          title="Provider"
+          description="Select a provider and configure its authentication."
+        >
           <div id="provider-choice" tabIndex={-1}>
             <SearchChoice
               label="Provider"
@@ -397,21 +396,16 @@ export function Providers({
               }}
             />
           </div>
+
           {selected && (
-            <ModelSetup
-              scope={draft ? "Selected model setup — not saved" : "Selected model setup"}
-              providerAction={
-                selected.apiKey || selected.oauth ? "Review authentication" : "Review host setup"
-              }
-              model={ref || null}
-              selected={ref || null}
-              inventory={inventory}
-              onModel={() => focusEditor("#provider-choice")}
-              onProvider={() => {
-                setAuthDetails({ provider, open: true })
-                focusAuth.current = provider
-              }}
-            />
+            <div className="provider-readiness" data-attention={!selected.configured}>
+              <StatusLabel tone={selected.configured ? "neutral" : "warning"}>
+                {selected.configured
+                  ? "Authentication configured locally"
+                  : "Authentication required"}
+              </StatusLabel>
+              <Prose size="2">Remote acceptance is not checked.</Prose>
+            </div>
           )}
           {provider && !selected && (
             <Text as="p" color="orange" mt="3">
@@ -420,6 +414,145 @@ export function Providers({
             </Text>
           )}
 
+          {selected && (
+            <details
+              key={provider}
+              className="provider-authentication"
+              open={authDetails?.provider === provider ? authDetails.open : !selected.configured}
+              onToggle={(event) => setAuthDetails({ provider, open: event.currentTarget.open })}
+            >
+              <summary id="provider-authentication">Authentication</summary>
+              <Panel className="provider-connection">
+                <Flex align="center" gap="3" wrap="wrap">
+                  {selected.apiKey || selected.oauth ? (
+                    <Dialog.Trigger>
+                      <Button
+                        id="provider-auth-action"
+                        variant="soft"
+                        disabled={blocked}
+                        onClick={configureAuth}
+                      >
+                        Configure authentication
+                      </Button>
+                    </Dialog.Trigger>
+                  ) : (
+                    <Text id="provider-auth-action" tabIndex={-1} size="2">
+                      This provider uses host credentials. Configure them on the trusted host.
+                    </Text>
+                  )}
+                  <Button
+                    variant="ghost"
+                    disabled={blocked}
+                    onClick={() =>
+                      void run(async () => {
+                        try {
+                          const result = await request<{ configured: boolean }>(
+                            `providers/${provider}/test`,
+                            csrf,
+                          )
+                          setCredentialCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            status: result.configured ? "Configured locally" : "Not configured",
+                          })
+                          setNotice(
+                            result.configured
+                              ? "Authentication is available. No tokens were generated."
+                              : "Authentication is not available. Check provider setup.",
+                          )
+                        } catch (error) {
+                          setCredentialCheck({
+                            provider,
+                            revision: snapshot.revision,
+                            status: "Check failed",
+                          })
+                          throw error
+                        }
+                      })
+                    }
+                  >
+                    Check authentication
+                  </Button>
+                  {selected.configured && (
+                    <AlertDialog.Root>
+                      <AlertDialog.Trigger>
+                        <Button variant="ghost" color="red" disabled={blocked}>
+                          Remove credential
+                        </Button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Content>
+                        <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
+                        <AlertDialog.Description>
+                          Replace model references first. Ambient environment credentials are not
+                          removed.
+                        </AlertDialog.Description>
+                        <Flex gap="3" mt="4">
+                          <AlertDialog.Cancel>
+                            <Button variant="soft">Cancel</Button>
+                          </AlertDialog.Cancel>
+                          <AlertDialog.Action>
+                            <Button
+                              color="red"
+                              onClick={() =>
+                                void run(async () => {
+                                  await request(`providers/${provider}/credential`, csrf, {
+                                    key: null,
+                                    revision: snapshot.revision,
+                                  })
+                                  await refresh()
+                                })
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </AlertDialog.Action>
+                        </Flex>
+                      </AlertDialog.Content>
+                    </AlertDialog.Root>
+                  )}
+                </Flex>
+                <details className="provider-checks">
+                  <summary>Credential checks</summary>
+                  <Prose size="2">
+                    Provider ID: <Code>{selected.id}</Code>
+                  </Prose>
+                  <DataList.Root size="2" orientation="vertical">
+                    <DataList.Item>
+                      <DataList.Label>Credential resolution</DataList.Label>
+                      <DataList.Value>
+                        <Text as="p" size="2" role="status">
+                          Local credential check:{" "}
+                          {credentialCheck?.provider === provider &&
+                          credentialCheck.revision === snapshot.revision
+                            ? credentialCheck.status
+                            : "Not checked"}
+                        </Text>
+                      </DataList.Value>
+                    </DataList.Item>
+                    <DataList.Item>
+                      <DataList.Label>Remote acceptance</DataList.Label>
+                      <DataList.Value>
+                        <Text as="p" size="2">
+                          Remote verification: Not checked. Local credential checks do not verify
+                          remote acceptance.
+                        </Text>
+                      </DataList.Value>
+                    </DataList.Item>
+                  </DataList.Root>
+                  <Prose size="2" color="gray" mt="3" className="section-copy">
+                    Model availability is unverified. Check authentication resolves credentials
+                    without generating model output. You can select and save a model before
+                    authentication.
+                  </Prose>
+                </details>
+              </Panel>
+            </details>
+          )}
+        </SettingsSection>
+        <SettingsSection
+          title="Add an available model"
+          description="Add models to global availability. Shared defaults and chat overrides do not change."
+        >
           {selected ? (
             <>
               <SearchChoice
@@ -613,160 +746,7 @@ export function Providers({
           <Button variant="ghost" onClick={onDefaults}>
             Edit shared default
           </Button>
-        </Panel>
-        {selected && (
-          <details
-            key={provider}
-            className="provider-authentication"
-            open={authDetails?.provider === provider ? authDetails.open : !selected.configured}
-            onToggle={(event) => setAuthDetails({ provider, open: event.currentTarget.open })}
-          >
-            <summary id="provider-authentication">Authentication</summary>
-            <Panel className="provider-connection">
-              <DataList.Root
-                size="2"
-                my="3"
-                orientation={{ initial: "vertical", sm: "horizontal" }}
-              >
-                <DataList.Item>
-                  <DataList.Label>Provider ID</DataList.Label>
-                  <DataList.Value>
-                    <Code>{selected.id}</Code>
-                  </DataList.Value>
-                </DataList.Item>
-                <DataList.Item>
-                  <DataList.Label>Authentication</DataList.Label>
-                  <DataList.Value>
-                    <Badge color={selected.configured ? "teal" : "orange"}>
-                      {selected.configured
-                        ? "Authentication configured locally"
-                        : "Authentication not configured"}
-                    </Badge>
-                  </DataList.Value>
-                </DataList.Item>
-              </DataList.Root>
-              <Flex align="center" gap="3" wrap="wrap">
-                {selected.apiKey || selected.oauth ? (
-                  <Dialog.Trigger>
-                    <Button
-                      id="provider-auth-action"
-                      variant="soft"
-                      disabled={blocked}
-                      onClick={configureAuth}
-                    >
-                      Configure authentication
-                    </Button>
-                  </Dialog.Trigger>
-                ) : (
-                  <Text id="provider-auth-action" tabIndex={-1} size="2">
-                    This provider uses host credentials. Configure them on the trusted host.
-                  </Text>
-                )}
-                <Button
-                  variant="ghost"
-                  disabled={blocked}
-                  onClick={() =>
-                    void run(async () => {
-                      try {
-                        const result = await request<{ configured: boolean }>(
-                          `providers/${provider}/test`,
-                          csrf,
-                        )
-                        setCredentialCheck({
-                          provider,
-                          revision: snapshot.revision,
-                          status: result.configured ? "Configured locally" : "Not configured",
-                        })
-                        setNotice(
-                          result.configured
-                            ? "Authentication is available. No tokens were generated."
-                            : "Authentication is not available. Check provider setup.",
-                        )
-                      } catch (error) {
-                        setCredentialCheck({
-                          provider,
-                          revision: snapshot.revision,
-                          status: "Check failed",
-                        })
-                        throw error
-                      }
-                    })
-                  }
-                >
-                  Check authentication
-                </Button>
-                {selected.configured && (
-                  <AlertDialog.Root>
-                    <AlertDialog.Trigger>
-                      <Button variant="ghost" color="red" disabled={blocked}>
-                        Remove credential
-                      </Button>
-                    </AlertDialog.Trigger>
-                    <AlertDialog.Content>
-                      <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
-                      <AlertDialog.Description>
-                        Replace model references first. Ambient environment credentials are not
-                        removed.
-                      </AlertDialog.Description>
-                      <Flex gap="3" mt="4">
-                        <AlertDialog.Cancel>
-                          <Button variant="soft">Cancel</Button>
-                        </AlertDialog.Cancel>
-                        <AlertDialog.Action>
-                          <Button
-                            color="red"
-                            onClick={() =>
-                              void run(async () => {
-                                await request(`providers/${provider}/credential`, csrf, {
-                                  key: null,
-                                  revision: snapshot.revision,
-                                })
-                                await refresh()
-                              })
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </AlertDialog.Action>
-                      </Flex>
-                    </AlertDialog.Content>
-                  </AlertDialog.Root>
-                )}
-              </Flex>
-              <details className="provider-checks">
-                <summary>Credential checks</summary>
-                <DataList.Root size="2" orientation="vertical">
-                  <DataList.Item>
-                    <DataList.Label>Credential resolution</DataList.Label>
-                    <DataList.Value>
-                      <Text as="p" size="2" role="status">
-                        Local credential check:{" "}
-                        {credentialCheck?.provider === provider &&
-                        credentialCheck.revision === snapshot.revision
-                          ? credentialCheck.status
-                          : "Not checked"}
-                      </Text>
-                    </DataList.Value>
-                  </DataList.Item>
-                  <DataList.Item>
-                    <DataList.Label>Remote acceptance</DataList.Label>
-                    <DataList.Value>
-                      <Text as="p" size="2">
-                        Remote verification: Not checked. Local credential checks do not verify
-                        remote acceptance.
-                      </Text>
-                    </DataList.Value>
-                  </DataList.Item>
-                </DataList.Root>
-                <Prose size="2" color="gray" mt="3" className="section-copy">
-                  Model availability is unverified. Check authentication resolves credentials
-                  without generating model output. You can select and save a model before
-                  authentication.
-                </Prose>
-              </details>
-            </Panel>
-          </details>
-        )}
+        </SettingsSection>
         <details className="provider-saved-settings">
           <summary>Saved model settings</summary>
           <Panel className="provider-current-summary">

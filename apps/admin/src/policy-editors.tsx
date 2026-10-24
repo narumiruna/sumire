@@ -13,9 +13,11 @@ export function Check({
   checked,
   onChange,
   disabled = false,
+  visibleLabel,
 }: {
   id?: string
   label: string
+  visibleLabel?: string
   checked: boolean
   disabled?: boolean
   onChange(value: boolean): void
@@ -31,7 +33,7 @@ export function Check({
         disabled={disabled}
         onCheckedChange={(v) => onChange(v === true)}
       />
-      {label}
+      {visibleLabel ?? label}
     </label>
   )
 }
@@ -213,6 +215,7 @@ export function Choices({
           inventory={inventory}
           onChange={onChange}
           onAvailability={() => navigate("Model Providers")}
+          onProvider={() => navigate("Model Providers")}
         />
       ) : (
         <Panel as="fieldset" className="policy-model">

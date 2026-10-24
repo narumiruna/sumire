@@ -1,8 +1,7 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
-import { ClockIcon } from "@radix-ui/react-icons"
-import { Badge, Code, DataList, Flex, Heading, Text } from "@radix-ui/themes"
+import { Badge, Code, Flex, Heading, Text } from "@radix-ui/themes"
 import { countText } from "./status-text.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Disclosure, Panel, Prose, StatusLabel } from "./surfaces.js"
 
 export type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 
@@ -146,41 +145,48 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
   const time = new Date(entry.time)
   return (
     <Flex direction="column" gap="2" className="activity-record">
-      <Flex align="center" gap="2" wrap="wrap" className="activity-record-heading">
-        <Text size="2" weight="medium">
-          {auditValueLabel("operation", entry.operation)} —{" "}
-          <Badge
-            color={
-              entry.outcome === "failed" ? "red" : entry.outcome === "applied" ? "teal" : "gray"
-            }
-          >
-            {entry.outcome}
-          </Badge>
-        </Text>
-      </Flex>
-      <DataList.Root size="1" className="activity-metadata">
-        <DataList.Item>
-          <DataList.Label>
-            <ClockIcon aria-hidden="true" /> Recorded
-          </DataList.Label>
-          <DataList.Value>
+      <dl className="audit-record-fields">
+        <div>
+          <dt>Timestamp</dt>
+          <dd>
             <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
-          </DataList.Value>
-        </DataList.Item>
-        <DataList.Item>
-          <DataList.Label>Context</DataList.Label>
-          <DataList.Value>
-            <Flex align="center" gap="2" wrap="wrap">
-              <Text>{`Actor ${entry.actor} · Revision ${entry.revision}`}</Text>
-              <Code size="1">{entry.target}</Code>
-            </Flex>
-          </DataList.Value>
-        </DataList.Item>
-      </DataList.Root>
-      <details>
-        <summary>Raw audit record</summary>
+          </dd>
+        </div>
+        <div>
+          <dt>Actor</dt>
+          <dd>{entry.actor}</dd>
+        </div>
+        <div>
+          <dt>Action</dt>
+          <dd>{auditValueLabel("operation", entry.operation)}</dd>
+        </div>
+        <div>
+          <dt>Target</dt>
+          <dd>
+            <Code variant="ghost">{entry.target}</Code>
+          </dd>
+        </div>
+        <div>
+          <dt>Result</dt>
+          <dd>
+            <StatusLabel
+              tone={
+                entry.outcome === "failed"
+                  ? "danger"
+                  : entry.outcome === "applied"
+                    ? "success"
+                    : "neutral"
+              }
+            >
+              {entry.outcome}
+            </StatusLabel>
+          </dd>
+        </div>
+      </dl>
+      <Disclosure title="Raw audit record">
+        <Prose size="2">Revision {entry.revision}. Field-level changes were not recorded.</Prose>
         <pre>{JSON.stringify(entry, null, 2)}</pre>
-      </details>
+      </Disclosure>
     </Flex>
   )
 }
@@ -214,8 +220,8 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
                 className="activity-group-heading"
               >
                 <Text size="2" weight="medium">
-                  Revision {group[0]?.revision}:{" "}
-                  {countText(group.length, "save/application record")}
+                  {countText(group.length, "save/application record")} ·{" "}
+                  {group[0] && new Date(group[0].time).toLocaleString()}
                 </Text>
                 <Flex gap="2" wrap="wrap">
                   {[...new Set(group.map((entry) => entry.outcome))].map((outcome) => (
@@ -235,7 +241,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
                 )}
                 . Field-level changes were not recorded.
               </Text>
-              <details>
+              <details open>
                 <summary>Individual save and application records</summary>
                 <ul className="activity-group-records">
                   {group.map((entry) => (

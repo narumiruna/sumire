@@ -19,6 +19,7 @@ function render(props: Partial<Props> = {}, snapshot: Partial<Snapshot> = {}) {
         ...snapshot,
       },
       entries: [],
+      changeCount: 0,
       unfinished: [],
       reviewOpen: false,
       onReviewOpenChange: () => {},
@@ -88,6 +89,7 @@ describe("SaveStatus", () => {
   it("has one policy review entry point while preserving separate save scopes", () => {
     const html = render({
       dirty: true,
+      changeCount: 1,
       entries: [
         {
           label: "Global tool availability",

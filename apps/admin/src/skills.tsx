@@ -1,9 +1,9 @@
-import { Badge, Button, Flex, Heading } from "@radix-ui/themes"
+import { Button, Code, Flex, Heading } from "@radix-ui/themes"
 import { useState } from "react"
 import type { Inventory, Policy } from "./api.js"
 import { focusEditor } from "./navigation.js"
 import { Check, Field } from "./policy-editors.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Disclosure, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
 
 export function skillNames(policy: Policy, saved: Policy, inventory: Inventory): string[] {
   return [
@@ -50,11 +50,18 @@ export function Skills({
           files.
         </Prose>
       </details>
-      <Field id="skill-search" label="Search skills" value={query} onChange={setQuery} />
-      <Prose size="2">
-        {visible.length} matching of {names.length} known skills. Changes use Review and save
-        changes.
-      </Prose>
+      <TableToolbar>
+        <Field id="skill-search" label="Search skills" value={query} onChange={setQuery} />
+        <Prose size="2">
+          {visible.length} of {names.length} skills
+        </Prose>
+      </TableToolbar>
+      <div className="skill-columns" aria-hidden="true">
+        <strong>Skill</strong>
+        <strong>Global enablement</strong>
+        <strong>Default selection</strong>
+        <strong>Effective state</strong>
+      </div>
       {!visible.length && (
         <Prose className="empty-state">
           {names.length ? "No matching skills." : "No skills loaded or selected."}
@@ -74,69 +81,82 @@ export function Skills({
           global !== (saved.skills ?? []).includes(name) ||
           selected !== (saved.defaults.skills?.includes(name) ?? false)
         return (
-          <Panel key={name} aria-label={`Skill ${name}`}>
-            <Flex direction="column" align="start" gap="3">
-              <Heading size="3">{name}</Heading>
-              <Prose size="2">
-                {skill
-                  ? skill.description || "No description available."
-                  : "This skill is not in the loaded inventory. Retained selections can be removed below."}
+          <section key={name} aria-label={`Skill ${name}`} className="skill-row">
+            <div className="skill-identity">
+              <Heading as="h3" size="3">
+                <Code variant="ghost">{name}</Code>
+              </Heading>
+              <Prose size="2" className="summary-description">
+                {skill?.description ||
+                  (skill ? "No description available." : "Not in the loaded inventory.")}
               </Prose>
-              <Flex gap="2" wrap="wrap">
-                {!skill && <Badge color="orange">Not loaded</Badge>}
-                {pending && <Badge color="orange">Pending policy change</Badge>}
-                <Badge color={global && selected ? "green" : "gray"}>
-                  {global && selected
-                    ? "Selected for inheriting chats"
-                    : "Not selected for inheriting chats"}
-                </Badge>
-              </Flex>
-              <Check
-                label={`Globally enable skill ${name}`}
-                checked={global}
-                onChange={(checked) =>
-                  onChange({
-                    ...policy,
+              {skill?.description && (
+                <Disclosure title="Full description">
+                  <Prose size="2">{skill.description}</Prose>
+                </Disclosure>
+              )}
+            </div>
+            <Check
+              label={`Globally enable skill ${name}`}
+              visibleLabel="Enabled globally"
+              checked={global}
+              onChange={(checked) =>
+                onChange({
+                  ...policy,
+                  skills: checked
+                    ? [...(policy.skills ?? []), name]
+                    : (policy.skills ?? []).filter((value) => value !== name),
+                })
+              }
+            />
+            <Check
+              label={`Default chat selection for skill ${name}`}
+              visibleLabel="Use by default"
+              checked={selected}
+              disabled={!global && !selected}
+              onChange={(checked) =>
+                onChange({
+                  ...policy,
+                  defaults: {
+                    ...policy.defaults,
                     skills: checked
-                      ? [...(policy.skills ?? []), name]
-                      : (policy.skills ?? []).filter((value) => value !== name),
-                  })
-                }
-              />
-              <Check
-                label={`Default chat selection for skill ${name}`}
-                checked={selected}
-                disabled={!global && !selected}
-                onChange={(checked) =>
-                  onChange({
-                    ...policy,
-                    defaults: {
-                      ...policy.defaults,
-                      skills: checked
-                        ? [...(policy.defaults.skills ?? []), name]
-                        : (policy.defaults.skills ?? []).filter((value) => value !== name),
-                    },
-                  })
-                }
-              />
-              {!global && (selected || refs.length > 0) && (
-                <Prose size="2" color="orange">
-                  Clear retained default and chat selections, or restore global availability before
-                  saving.
-                </Prose>
-              )}
-              {refs.length > 0 && (
-                <Flex gap="2" align="center" wrap="wrap">
-                  <Prose size="2">Explicit chat selections:</Prose>
-                  {refs.map(([id]) => (
-                    <Button key={id} variant="ghost" onClick={() => onChat(id)}>
-                      Chat {id}
-                    </Button>
-                  ))}
-                </Flex>
-              )}
+                      ? [...(policy.defaults.skills ?? []), name]
+                      : (policy.defaults.skills ?? []).filter((value) => value !== name),
+                  },
+                })
+              }
+            />
+            <Flex direction="column" align="start" gap="2">
+              <StatusLabel tone={global && selected ? "success" : "neutral"}>
+                {global && selected
+                  ? "Selected by default"
+                  : !global && selected
+                    ? "Blocked globally"
+                    : "Not selected"}
+              </StatusLabel>
+              {!skill && <StatusLabel tone="warning">Not loaded</StatusLabel>}
+              {pending && <StatusLabel tone="warning">Pending change</StatusLabel>}
             </Flex>
-          </Panel>
+            {!global && (selected || refs.length > 0) && (
+              <Prose size="2" color="orange" className="skill-impact">
+                Clear retained default and chat selections, or restore global availability before
+                saving.
+              </Prose>
+            )}
+            {refs.length > 0 && (
+              <Disclosure
+                title={`Explicit chat selections (${refs.length})`}
+                className="skill-impact"
+                open={!global}
+              >
+                {refs.map(([id]) => (
+                  <Button key={id} variant="ghost" onClick={() => onChat(id)}>
+                    Chat {id}
+                  </Button>
+                ))}
+              </Disclosure>
+            )}
+          </section>
         )
       })}
     </Flex>
