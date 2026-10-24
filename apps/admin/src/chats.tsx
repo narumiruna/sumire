@@ -5,6 +5,7 @@ import {
   ChatBubbleIcon,
   CheckCircledIcon,
   CopyIcon,
+  DotsHorizontalIcon,
   ExclamationTriangleIcon,
   MinusCircledIcon,
   PersonIcon,
@@ -16,13 +17,14 @@ import {
   Callout,
   Code,
   DataList,
+  DropdownMenu,
   Flex,
   Heading,
   Tabs,
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { type ReactNode, useEffect, useRef, useState } from "react"
+import { type ReactNode, useContext, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy, Snapshot } from "./api.js"
 import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
@@ -30,7 +32,7 @@ import { type ChatRepair, chatState } from "./chat-state.js"
 import { type EditorTarget, focusEditor, navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
-import { SectionSelect } from "./sections.js"
+import { SectionActive, SectionSelect } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
@@ -118,6 +120,11 @@ export function ChatWorkspace({
   onAudit(): void
   children: ReactNode
 }) {
+  const active = useContext(SectionActive)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  useEffect(() => {
+    if (!active) setActionsOpen(false)
+  }, [active])
   const { chats, selected: metadataState } = directory
   const [chatDraft, setChatDraft] = useState(chat)
   useEffect(() => setChatDraft(chat), [chat])
@@ -223,6 +230,14 @@ export function ChatWorkspace({
     setRepairRequest({ target })
   }
   const [copyStatus, setCopyStatus] = useState({ chat: "", message: "" })
+  const copyChatId = async () => {
+    try {
+      await navigator.clipboard.writeText(chat)
+      setCopyStatus({ chat, message: "Chat ID copied." })
+    } catch {
+      setCopyStatus({ chat, message: "Could not copy. Select the ID to copy it manually." })
+    }
+  }
   const filtered = chats.filter(
     (c) =>
       (type === "all" || chatType(c) === type) &&
@@ -433,7 +448,7 @@ export function ChatWorkspace({
             <Button
               className="mobile-directory-action"
               variant="ghost"
-              mb="3"
+              mb="0"
               onClick={() => setShowDirectory(true)}
             >
               <ArrowLeftIcon aria-hidden="true" />
@@ -474,24 +489,42 @@ export function ChatWorkspace({
                   </Code>
                   <Button
                     variant="ghost"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(chat)
-                        setCopyStatus({ chat, message: "Chat ID copied." })
-                      } catch {
-                        setCopyStatus({
-                          chat,
-                          message: "Could not copy. Select the ID to copy it manually.",
-                        })
-                      }
-                    }}
+                    className="chat-desktop-action"
+                    onClick={() => void copyChatId()}
                   >
                     <CopyIcon aria-hidden="true" />
                     Copy chat ID
                   </Button>
                 </Flex>
               </div>
-              <Flex className="chat-header-actions" gap="2" align="center" wrap="wrap">
+              <DropdownMenu.Root open={actionsOpen && active} onOpenChange={setActionsOpen}>
+                <DropdownMenu.Trigger>
+                  <Button className="chat-mobile-actions" variant="soft" aria-label="Chat actions">
+                    <DotsHorizontalIcon />
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content
+                  align="end"
+                  onCloseAutoFocus={(event) => {
+                    if (!active) event.preventDefault()
+                  }}
+                >
+                  <DropdownMenu.Item onSelect={() => void copyChatId()}>
+                    Copy chat ID
+                  </DropdownMenu.Item>
+                  {valid && (
+                    <DropdownMenu.Item onSelect={onDurable}>
+                      View conversation records
+                    </DropdownMenu.Item>
+                  )}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+              <Flex
+                className="chat-header-actions chat-desktop-action"
+                gap="2"
+                align="center"
+                wrap="wrap"
+              >
                 {valid && (
                   <Button variant="soft" asChild>
                     <a
@@ -554,6 +587,29 @@ export function ChatWorkspace({
                       </Text>
                     </Flex>
                   )}
+
+                  {preview && (
+                    <Text as="p" size="2" className="chat-draft-status">
+                      Draft preview — not saved: {draftState.label}. {draftState.reason} Current
+                      state above is unchanged.
+                    </Text>
+                  )}
+                </section>
+                <Tabs.Root value={tab} onValueChange={changeTab}>
+                  <Tabs.List ref={tabsRef} aria-label="Selected chat views">
+                    <Tabs.Trigger type="button" value="overview" data-view="overview">
+                      Overview
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="access" data-view="access">
+                      Access
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="configuration" data-view="configuration">
+                      Model &amp; Tools
+                    </Tabs.Trigger>
+                    <Tabs.Trigger type="button" value="history" data-view="history">
+                      History
+                    </Tabs.Trigger>
+                  </Tabs.List>
                   <details className="setup-details">
                     <summary className="chat-readiness-toggle">Readiness details</summary>
                     <DataList.Root className="chat-facts effective-settings readiness" size="2">
@@ -599,28 +655,6 @@ export function ChatWorkspace({
                       remote model request.
                     </Text>
                   </details>
-                  {preview && (
-                    <Text as="p" size="2" className="chat-draft-status">
-                      Draft preview — not saved: {draftState.label}. {draftState.reason} Current
-                      state above is unchanged.
-                    </Text>
-                  )}
-                </section>
-                <Tabs.Root value={tab} onValueChange={changeTab}>
-                  <Tabs.List ref={tabsRef} aria-label="Selected chat views">
-                    <Tabs.Trigger type="button" value="overview" data-view="overview">
-                      Overview
-                    </Tabs.Trigger>
-                    <Tabs.Trigger type="button" value="access" data-view="access">
-                      Access
-                    </Tabs.Trigger>
-                    <Tabs.Trigger type="button" value="configuration" data-view="configuration">
-                      Model &amp; Tools
-                    </Tabs.Trigger>
-                    <Tabs.Trigger type="button" value="history" data-view="history">
-                      History
-                    </Tabs.Trigger>
-                  </Tabs.List>
                   {preview && (
                     <Text className="draft-context" as="p" size="2" color="gray">
                       Unsaved preview. Authentication and connection status reflect the loaded

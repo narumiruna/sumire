@@ -86,10 +86,26 @@ function App() {
   const { page, setPage, chat, setChat } = useNavigation()
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
-  const [authRequest, setAuthRequest] = useState<{ id: number; provider: string }>()
+  const [authRequest, setAuthRequest] = useState<{
+    id: number
+    provider: string
+    model?: string
+    thinking?: Selection["thinking"]
+  }>()
   const [policyReviewOpen, setPolicyReviewOpen] = useState(false)
   const openProvider = (provider: string) => {
-    setAuthRequest((previous) => ({ id: (previous?.id ?? 0) + 1, provider }))
+    const selection =
+      savedPolicy && effectivePolicy(savedPolicy, page === "Chats" ? Number(chat) : 0)
+    setAuthRequest((previous) => ({
+      id: (previous?.id ?? 0) + 1,
+      provider,
+      ...(selection?.model?.startsWith(`${provider}/`)
+        ? {
+            model: selection.model.slice(provider.length + 1),
+            thinking: selection.thinking,
+          }
+        : {}),
+    }))
     setPage("Model Providers")
   }
   const openEditor = (target: EditorTarget) => {
@@ -319,18 +335,20 @@ function App() {
           description={pageDescriptions[page]}
           actions={
             <>
-              <Button
-                variant="ghost"
-                aria-label="Reload"
-                disabled={busy || dirty || localPending}
-                onClick={() => {
-                  refreshChats()
-                  void run(load)
-                }}
-              >
-                <ReloadIcon />
-                <span className="workspace-action-label">Reload</span>
-              </Button>
+              {page !== "Durable" && (
+                <Button
+                  variant="ghost"
+                  aria-label="Reload"
+                  disabled={busy || dirty || localPending}
+                  onClick={() => {
+                    refreshChats()
+                    void run(load)
+                  }}
+                >
+                  <ReloadIcon />
+                  <span className="workspace-action-label">Reload</span>
+                </Button>
+              )}
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
                   <Button variant="ghost" aria-label="Account" disabled={busy}>
@@ -704,49 +722,51 @@ function App() {
                 page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
               }
             />
-            <details className="permission-manual">
-              <summary>Approve an exact tool name</summary>
-              <Panel as="fieldset">
-                <legend>Manual tool approval</legend>
-                <Field
-                  id="tool-input"
-                  label="Additional approved tool name"
-                  value={toolName}
-                  onChange={(v) => {
-                    setToolName(v)
-                    markPending("tool", Boolean(v))
-                  }}
-                />
-                <Button
-                  disabled={!toolName}
-                  onClick={() => {
-                    update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
-                    setToolName("")
-                    markPending("tool", false)
-                  }}
-                >
-                  Add tool to pending approval
-                </Button>
-                {toolName && (
+            <div className="permission-footer">
+              <details className="permission-manual">
+                <summary>Approve an exact tool name</summary>
+                <Panel as="fieldset">
+                  <legend>Manual tool approval</legend>
+                  <Field
+                    id="tool-input"
+                    label="Additional approved tool name"
+                    value={toolName}
+                    onChange={(v) => {
+                      setToolName(v)
+                      markPending("tool", Boolean(v))
+                    }}
+                  />
                   <Button
-                    variant="soft"
+                    disabled={!toolName}
                     onClick={() => {
+                      update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
                       setToolName("")
                       markPending("tool", false)
                     }}
                   >
-                    Clear tool input
+                    Add tool to pending approval
                   </Button>
-                )}
-                <Prose size="2">
-                  Enter an exact tool name even if discovery is unavailable. This stages global
-                  approval only; default and chat permissions remain unchanged.
-                </Prose>
-              </Panel>
-            </details>
-            <Button variant="soft" onClick={() => setPage("MCP connections")}>
-              Manage Tool connections
-            </Button>
+                  {toolName && (
+                    <Button
+                      variant="soft"
+                      onClick={() => {
+                        setToolName("")
+                        markPending("tool", false)
+                      }}
+                    >
+                      Clear tool input
+                    </Button>
+                  )}
+                  <Prose size="2">
+                    Enter an exact tool name even if discovery is unavailable. This stages global
+                    approval only; default and chat permissions remain unchanged.
+                  </Prose>
+                </Panel>
+              </details>
+              <Button variant="soft" onClick={() => setPage("MCP connections")}>
+                Manage Tool connections
+              </Button>
+            </div>
           </EditorSection>
           <EditorSection
             active={page === "MCP connections"}
@@ -787,7 +807,15 @@ function App() {
               onPending={setProviderPending}
               authRequest={authRequest}
               savedPolicy={savedPolicy ?? policy}
-              onDefaults={() => setPage("Defaults")}
+              onDefaults={() =>
+                openEditor({ page: "Defaults", selector: "#default-model-selection" })
+              }
+              chat={chat}
+              onChat={() => openEditor({ page: "Chats", chat, selector: "#model-selection" })}
+              onModelUse={(next) => {
+                update(next)
+                setPolicyReviewOpen(true)
+              }}
             />
             <SettingsSection
               title="Manage model availability"

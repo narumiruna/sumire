@@ -308,14 +308,18 @@ for (const width of [1440, 390, 320]) {
         exact: true,
       })
       await expect(primaryAction).toBeVisible()
-      const details = status.locator("details")
+      const details = page.locator(".setup-details")
       await expect(details).not.toHaveAttribute("open", "")
       await details.locator("summary").click()
       await expect(
-        status.getByText("Model authentication is not configured.", { exact: true }),
+        page
+          .locator(".chat-detail")
+          .getByText("Model authentication is not configured.", { exact: true }),
       ).toBeVisible()
       await expect(
-        status.getByRole("button", { name: "Configure authentication", exact: true }),
+        page
+          .locator(".chat-detail")
+          .getByRole("button", { name: "Configure authentication", exact: true }),
       ).toBeVisible()
       const approval = status.getByRole("button", { name: "Review access approval", exact: true })
       if (approved) await expect(approval).toHaveCount(0)
@@ -326,17 +330,21 @@ for (const width of [1440, 390, 320]) {
         ).toBeVisible()
       await expect(details).toContainText("Not checked — no remote model request")
       await details.locator("summary").click()
-      const copy = page.getByRole("button", { name: "Copy chat ID", exact: true })
+      const copy = page.getByRole("button", {
+        name: width <= 850 ? "Chat actions" : "Copy chat ID",
+        exact: true,
+      })
       await copy.scrollIntoViewIfNeeded()
       const action = await copy.boundingBox()
       const header = await page.locator(".chat-header").boundingBox()
       if (!action || !header) throw new Error("Missing header geometry")
       const id = await page.locator(".chat-header code").boundingBox()
       if (!id) throw new Error("Missing chat ID geometry")
-      expect(action.y).toBeGreaterThanOrEqual(id.y - action.height)
+      if (width > 850) expect(action.y).toBeGreaterThanOrEqual(id.y - action.height)
+      else expect(action.x).toBeGreaterThanOrEqual(header.x + header.width - action.width - 1)
       expect(action.y + action.height).toBeLessThanOrEqual(header.y + header.height)
       if (width > 850) await expect(rows.nth(index)).toHaveAttribute("aria-current", "true")
-      else expect(action.y).toBeGreaterThan(header.y)
+      else expect(action.y).toBeGreaterThanOrEqual(header.y)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )

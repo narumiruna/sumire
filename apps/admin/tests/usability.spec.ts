@@ -259,6 +259,7 @@ test("Durable keeps pending or failed application and busy actions visible, then
     "Saved changes are waiting to apply.",
   )
   state.fail()
+  await navigate(page, "Defaults")
   await page.getByRole("button", { name: "Reload", exact: true }).click()
   await navigate(page, "Durable")
   const bar = page.getByRole("region", { name: "Save status and pending changes" })

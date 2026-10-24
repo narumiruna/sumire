@@ -182,9 +182,9 @@ for (const width of [1440, 390]) {
     await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
     const status = page.getByRole("region", { name: "Chat setup status" })
     await expect(status).toContainText("Setup required")
-    await status.getByText("Readiness details", { exact: true }).click()
-    await expect(status).toContainText("This chat is approved by policy.")
-    await expect(status).toContainText("Runtime availability is unchecked")
+    await page.locator(".setup-details > summary").click()
+    await expect(page.locator(".setup-details")).toContainText("This chat is approved by policy.")
+    await expect(page.locator(".setup-details")).toContainText("Runtime availability is unchecked")
     await expect(status.getByRole("button", { name: "Configure authentication" })).toBeVisible()
     await expect(
       status.getByText("Model authentication is not configured.", { exact: true }),
@@ -2256,9 +2256,8 @@ test("filters the loaded directory by type and effective policy access without t
   await expect(directory).toContainText("Team")
   await expect(directory).toContainText("Disabled")
   await directory.getByRole("button").click()
-  await expect(page.getByRole("region", { name: "Chat setup status", exact: true })).toContainText(
-    "Approved",
-  )
+  await page.locator(".setup-details > summary").click()
+  await expect(page.locator(".setup-details")).toContainText("Approved")
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(

@@ -168,9 +168,11 @@ for (const scenario of scenarios) {
     if (scenario.name === "locally configured") {
       await expect(status(page).getByRole("heading")).toHaveCount(0)
       await expect(status(page).locator(".chat-ready-summary")).toContainText(scenario.label)
-      await expect(status(page).locator(".setup-details")).not.toHaveAttribute("open", "")
-      await status(page).getByText("Readiness details", { exact: true }).click()
-      await expect(status(page)).toContainText("Not checked — no remote model request")
+      await expect(page.locator(".setup-details")).not.toHaveAttribute("open", "")
+      await page.locator(".setup-details > summary").click()
+      await expect(page.locator(".setup-details")).toContainText(
+        "Not checked — no remote model request",
+      )
     } else await expect(status(page).getByRole("heading")).toHaveText(scenario.label)
     await expect(status(page).getByText(scenario.reason, { exact: true })).toBeVisible()
     if (scenario.action) {
@@ -407,7 +409,9 @@ for (const [width, height, zoom] of [
     await row.click()
     await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(1)
     await expect(page.getByRole("heading", { name: "Fixture chat 1", exact: true })).toBeVisible()
-    await page.getByRole("button", { name: "Copy chat ID", exact: true }).focus()
+    await page
+      .getByRole("button", { name: width <= 850 ? "Chat actions" : "Copy chat ID", exact: true })
+      .focus()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
     if (width <= 850) await back.click()
