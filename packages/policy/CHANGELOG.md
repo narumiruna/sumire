@@ -1,5 +1,11 @@
 # @narumitw/sumire-policy
 
+## 0.4.1
+
+### Patch Changes
+
+- 9377d61: Separate saved settings from local model setup, add long-list permission filters and fixed editing context, and edit shared model defaults in place. Keep provider authentication, global availability, and chat overrides separate.
+
 ## 0.4.0
 
 ### Minor Changes
