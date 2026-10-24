@@ -17,7 +17,7 @@ import {
   Text,
   Theme,
 } from "@radix-ui/themes"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
@@ -110,6 +110,17 @@ function App() {
   }, [editorRequest, page])
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const errorAlert = useRef<HTMLDivElement>(null)
+  const focusError = useRef(false)
+  useEffect(() => {
+    if (busy || !error || !focusError.current) return
+    focusError.current = false
+    const alert = errorAlert.current
+    // Keep modal focus inside its dialog; authentication errors are also shown there.
+    if (!alert || alert.closest('[aria-hidden="true"], [inert]')) return
+    alert.focus({ preventScroll: true })
+    alert.scrollIntoView({ block: "center", behavior: "instant" })
+  }, [busy, error])
   const [dirty, setDirty] = useState(false)
   const [accessTarget, setAccessTarget] = useState("")
   const [audit, setAudit] = useState<AuditEntry[]>([])
@@ -150,13 +161,15 @@ function App() {
     setError("Administrator session expired. Sign in again.")
   }, [expireSession])
   const run = useCallback(
-    async (action: () => Promise<void>) => {
+    async (action: () => Promise<void>, focusFailure = true) => {
+      focusError.current = false
       setBusy(true)
       setError("")
       try {
         await action()
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) expireSession()
+        else focusError.current = focusFailure
         setError(e instanceof Error ? e.message : "Operation failed")
       } finally {
         setBusy(false)
@@ -202,7 +215,7 @@ function App() {
     })
   }, [])
   useEffect(() => {
-    if (session) void run(load)
+    if (session) void run(load, false)
   }, [session, run, load])
   useEffect(() => {
     if (!pending) return
@@ -351,7 +364,13 @@ function App() {
           }
         />
         {error && (
-          <Callout.Root color="red" role="alert" className="workspace-error">
+          <Callout.Root
+            ref={errorAlert}
+            tabIndex={-1}
+            color="red"
+            role="alert"
+            className="workspace-error"
+          >
             <Callout.Icon>
               <ExclamationTriangleIcon />
             </Callout.Icon>

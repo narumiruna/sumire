@@ -43,6 +43,9 @@ export function SearchChoice({
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const id = useId()
+  const displayValue =
+    options.find((option) => option.id === value)?.label ??
+    (value || `Choose ${label.toLowerCase()}`)
   const filtered = options.filter((v) =>
     `${v.label} ${v.id}`.toLowerCase().includes(query.toLowerCase()),
   )
@@ -67,10 +70,14 @@ export function SearchChoice({
         }}
       >
         <Popover.Trigger>
-          <Button variant="surface" disabled={disabled} aria-label={label} aria-haspopup="dialog">
+          <Button
+            variant="surface"
+            disabled={disabled}
+            aria-label={`${label}: ${displayValue}`}
+            aria-haspopup="dialog"
+          >
             <MagnifyingGlassIcon />
-            {options.find((v) => v.id === value)?.label ??
-              (value || `Choose ${label.toLowerCase()}`)}
+            {displayValue}
           </Button>
         </Popover.Trigger>
         <Popover.Content
@@ -169,7 +176,7 @@ export function Providers({
   busy: boolean
   error: string
   onPending(value: boolean): void
-  run(action: () => Promise<void>): Promise<void>
+  run(action: () => Promise<void>, focusFailure?: boolean): Promise<void>
   refresh(): Promise<void>
 }) {
   const sectionActive = useContext(SectionActive)
@@ -291,7 +298,7 @@ export function Providers({
               setNotice(
                 "Provider authenticated. Save or discard your policy edits before reloading the new revision.",
               )
-            else await run(refresh)
+            else await run(refresh, false)
           }
         }
       } catch (error) {
@@ -300,7 +307,7 @@ export function Providers({
           setNotice("Could not read provider login. Retry or cancel the interaction.")
           await run(async () => {
             throw error
-          })
+          }, false)
         }
       } finally {
         polling = false

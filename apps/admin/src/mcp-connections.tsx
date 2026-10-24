@@ -19,7 +19,7 @@ import {
   Text,
   TextArea,
 } from "@radix-ui/themes"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { focusEditor, type PendingEditor } from "./navigation.js"
@@ -63,6 +63,13 @@ export function McpConnections({
   const [mcpName, setMcpName] = useState("")
   const [editing, setEditing] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
+  const focusAdd = useRef(false)
+  useEffect(() => {
+    if (busy || editorOpen || !focusAdd.current) return
+    focusAdd.current = false
+    const add = document.getElementById("mcp-add")
+    if (add?.checkVisibility()) add.focus()
+  }, [busy, editorOpen])
   const [mcpSecrets, setMcpSecrets] = useState<{
     env: Record<string, string>
     headers: Record<string, string>
@@ -416,7 +423,7 @@ export function McpConnections({
                     setEditing(false)
                     setEditorOpen(false)
                     setMcpEditorVersion((version) => version + 1)
-                    requestAnimationFrame(() => document.getElementById("mcp-add")?.focus())
+                    focusAdd.current = true
                   })
                 }
               >

@@ -163,6 +163,13 @@ export function SideNavigation({
 }) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
+  const navigationFrame = useRef<number | undefined>(undefined)
+  useEffect(
+    () => () => {
+      if (navigationFrame.current !== undefined) cancelAnimationFrame(navigationFrame.current)
+    },
+    [],
+  )
   return (
     <aside className="sidebar" aria-label="Administration navigation">
       <Flex direction="column" gap="1" className="sidebar-brand">
@@ -221,9 +228,22 @@ export function SideNavigation({
                       )
                         return
                       event.preventDefault()
+                      if (navigationFrame.current !== undefined)
+                        cancelAnimationFrame(navigationFrame.current)
                       onNavigate(item)
                       setOpen(false)
-                      if (open) trigger.current?.focus()
+                      if (trigger.current?.checkVisibility()) trigger.current.focus()
+                      else {
+                        const link = event.currentTarget
+                        navigationFrame.current = requestAnimationFrame(() => {
+                          navigationFrame.current = undefined
+                          if (!link.isConnected || link.getAttribute("aria-current") !== "page")
+                            return
+                          const heading = document.getElementById("current-section-heading")
+                          heading?.focus({ preventScroll: true })
+                          heading?.scrollIntoView({ block: "start", behavior: "instant" })
+                        })
+                      }
                     }}
                   >
                     <Icon aria-hidden />

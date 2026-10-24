@@ -8,7 +8,7 @@ type Props = {
   csrf: string
   snapshot: Snapshot
   disabled: boolean
-  run: (action: () => Promise<void>) => Promise<void>
+  run: (action: () => Promise<void>, focusFailure?: boolean) => Promise<void>
   refresh: () => Promise<void>
 }
 type Pending = { id: number; type: string; name: string; expires: number; revision: number }
@@ -47,7 +47,7 @@ export function AccessApproval({
         if (error instanceof ApiError && error.status === 410) clear()
         void run(async () => {
           throw error
-        })
+        }, false)
       },
     )
     return () => {

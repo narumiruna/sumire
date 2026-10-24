@@ -77,7 +77,7 @@ test("authentication repair targets a chat override and pending provider replace
   state.policy().models = state.policy().models.filter((ref) => ref !== "fixture/other")
   await page.reload()
   await navigate(page, "Model Providers")
-  await page.getByRole("button", { name: "Model", exact: true }).click()
+  await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
   const repair = async () => {
     await navigate(page, "Chats")
@@ -89,11 +89,11 @@ test("authentication repair targets a chat override and pending provider replace
   }
   page.once("dialog", (dialog) => dialog.dismiss())
   await repair()
-  await expect(page.getByRole("button", { name: "Model", exact: true })).toContainText("Other")
+  await expect(page.getByRole("button", { name: /^Model: / })).toContainText("Other")
   await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
   page.once("dialog", (dialog) => dialog.accept())
   await repair()
-  await expect(page.getByRole("button", { name: "Provider", exact: true })).toContainText("Second")
+  await expect(page.getByRole("button", { name: /^Provider: / })).toContainText("Second")
   await expect(page.locator("#provider-authentication")).toBeFocused()
   expect(state.writes).toEqual([])
 })
