@@ -149,7 +149,9 @@ it("uses default and per-chat skill selections without changing tool permissions
   expect(unavailableSession.systemPrompt).toBe(emptySession.systemPrompt)
   expect(selectedSession.getActiveToolNames()).toEqual(["read"])
   expect(emptySession.getActiveToolNames()).toContain("read_url_content")
-  expect(selectedSession.systemPrompt).toContain(emptySession.systemPrompt)
+  expect(selectedSession.systemPrompt).toContain("<addendum>")
+  expect(selectedSession.systemPrompt).not.toContain("- bash:")
+  expect(emptySession.systemPrompt).toContain("- bash:")
   const result = await callDurableTool(selectedSession, "read", {
     path: path.join(fixture.settings.botSkillsDir, "alpha/SKILL.md"),
   })

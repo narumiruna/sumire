@@ -46,6 +46,7 @@ import {
 } from "./imagegen.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
+import { buildPiSystemPrompt } from "./pi-system-prompt.js"
 import { createReadImageExtension } from "./read-image.js"
 
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
@@ -99,7 +100,7 @@ export async function createPiSessionFactory(
   })
   const skills = loadedSkills.map(({ name, description }) => ({ name, description }))
   control.store.registerSkills(skills.map(({ name }) => name))
-  const baseSystemPrompt = await buildSystemPrompt(settings)
+  const appendSystemPrompt = await loadAppendSystemPrompt(settings)
   const urlTool = createUrlTool(createBotUrlLoader(settings), {
     selectableLoaders: selectableUrlLoaders,
     traceLoad: (url, requestedLoader, toolCallId, load) =>
@@ -124,9 +125,9 @@ export async function createPiSessionFactory(
   ]
   control.store.registerTools([IMAGEGEN_TOOL], false)
   control.store.registerTools(toolNames)
-  logger.info(`Bot instructions loaded\n${baseSystemPrompt}`, {
-    sha256: createHash("sha256").update(baseSystemPrompt).digest("hex"),
-    chars: baseSystemPrompt.length,
+  logger.info(`Bot instructions loaded\n${appendSystemPrompt}`, {
+    sha256: createHash("sha256").update(appendSystemPrompt).digest("hex"),
+    chars: appendSystemPrompt.length,
     tools: toolNames,
   })
 
@@ -163,8 +164,16 @@ export async function createPiSessionFactory(
       const state = control.store.snapshot()
       control.store.assertChat(chatId, state.revision)
       const policy = effectivePolicy(state.policy, chatId)
+      const promptTools = coding.filter((tool) => control.store.allowsTool(chatId, tool.name))
       const systemPrompt = [
-        baseSystemPrompt,
+        buildPiSystemPrompt({
+          cwd: settings.botWorkdir,
+          selectedTools: promptTools.map((tool) => tool.name),
+          toolSnippets: Object.fromEntries(
+            promptTools.map((tool) => [tool.name, tool.description]),
+          ),
+          appendSystemPrompt,
+        }),
         formatSkillsForPrompt(loadedSkills.filter((skill) => policy.skills.includes(skill.name))),
       ]
         .filter(Boolean)
@@ -468,7 +477,7 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT"
 }
 
-async function buildSystemPrompt(settings: Settings): Promise<string> {
+async function loadAppendSystemPrompt(settings: Settings): Promise<string> {
   const [template, soul] = await Promise.all([
     readFile(settings.botSystemPromptPath, "utf8"),
     loadSoul(settings),
