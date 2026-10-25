@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@polymarket/client": "0.13.0"
+    "@polymarket/client": "0.14.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
