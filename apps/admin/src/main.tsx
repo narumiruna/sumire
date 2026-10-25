@@ -52,6 +52,7 @@ import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
 import { ProviderEditor } from "./provider-editor.js"
+import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
 import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
@@ -821,13 +822,17 @@ function App() {
               title="Manage model availability"
               id="model-availability"
               tabIndex={-1}
-              description="Remove references from defaults and chats before removing a model. Selecting a provider never grants its full catalog."
+              description="Removing a model also removes it from shared and chat allowed-model lists. Matching shared model and thinking defaults are cleared. Matching chat model and thinking overrides reset to shared defaults. Review and save to apply."
             >
               <ModelAvailability
                 key={snapshot.revision}
                 value={policy.models}
-                onChange={(models) => update({ ...policy, models })}
+                onChange={(models) => update(withModelAvailability(policy, models))}
               />
+              <Prose size="2">
+                Selecting a model again restores availability only. Discard settings changes to undo
+                removal. Selecting a provider never grants its full catalog.
+              </Prose>
             </SettingsSection>
             <details className="provider-advanced">
               <summary>Custom endpoint</summary>

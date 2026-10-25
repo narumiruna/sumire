@@ -1,3 +1,4 @@
+import { inherited, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import type { Policy } from "../src/api.js"
 import { basePolicy, inventory, navigate } from "./admin-fixture.js"
@@ -36,6 +37,11 @@ async function fixture(
       if (state.conflict)
         return route.fulfill({ status: 409, json: { error: "Revision conflict" } })
       if (path === "settings") {
+        try {
+          validateReferences(body.policy)
+        } catch (error) {
+          return route.fulfill({ status: 400, json: { error: (error as Error).message } })
+        }
         state.policy = body.policy
         state.revision++
         state.status = state.failApply ? "failed" : "applied"
@@ -106,6 +112,59 @@ async function saveReview(page: Page) {
     .click()
   await expect(page.locator("#save-status")).toContainText("Settings saved and applied.")
 }
+
+test("model removal clears default and chat references in one reviewed save", async ({ page }) => {
+  const state = await fixture(page, { configured: true })
+  state.policy.models.push("fixture/other")
+  state.policy.defaults.models?.push("fixture/other")
+  state.policy.chats = {
+    "42": {
+      ...inherited,
+      enabled: false,
+      tools: [],
+      models: ["fixture/test", "fixture/other"],
+      model: "fixture/test",
+      thinking: "off",
+    },
+    "43": { ...inherited, enabled: true },
+  }
+  const before = structuredClone(state.policy)
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  const model = page.getByRole("checkbox", { name: "fixture/test", exact: true })
+  await model.uncheck()
+  expect(state.writes).toEqual([])
+  expect(state.policy).toEqual(before)
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  const review = page.getByRole("alertdialog", { name: "Save settings changes?", exact: true })
+  await expect(review).toContainText("Shared defaults: Allowed models")
+  await expect(review).toContainText("Chat 42: Allowed models")
+  await expect(
+    review.getByRole("region", { name: "Shared model change", exact: true }),
+  ).toContainText("fixture/test → Not configured")
+  await review.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(model).not.toBeChecked()
+  expect(state.writes).toEqual([])
+  page.once("dialog", (dialog) => dialog.accept())
+  await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
+  await expect(model).toBeChecked()
+  expect(state.policy).toEqual(before)
+  await model.uncheck()
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await saveReview(page)
+  expect(state.policy).toEqual({
+    ...before,
+    models: ["fixture/other"],
+    defaults: { ...before.defaults, models: ["fixture/other"], model: null, thinking: null },
+    chats: {
+      ...before.chats,
+      "42": { ...before.chats["42"], models: ["fixture/other"], model: null, thinking: null },
+    },
+  })
+  expect(state.writes.map((write) => write.path)).toEqual(["settings"])
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await expect(page.getByRole("checkbox", { name: "fixture/test", exact: true })).toHaveCount(0)
+})
 
 test("API key, model availability, and shared use have separate writes and retain completed steps on cancellation", async ({
   page,
