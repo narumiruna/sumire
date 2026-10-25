@@ -1,5 +1,11 @@
 # @narumitw/sumire
 
+## 0.15.2
+
+### Patch Changes
+
+- 66bfb7c: Rename the bot instructions to `instructions/APPEND_SYSTEM.md` and append them to Pi's default system prompt instead of replacing it. Preserve persona rendering and per-chat skill selection.
+
 ## 0.15.1
 
 ### Patch Changes
