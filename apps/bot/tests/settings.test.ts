@@ -44,7 +44,7 @@ describe("loadSettings", () => {
     expect(settings.botAdminId).toBe(7)
     expect(settings.botSessionLogDir).toBe("/workspace/project/.telegramagent/sessions")
     expect(settings.botSkillsDir).toBe("/workspace/project/skills")
-    expect(settings.botSystemPromptPath).toBe("/workspace/project/instructions/SYSTEM.md")
+    expect(settings.botSystemPromptPath).toBe("/workspace/project/instructions/APPEND_SYSTEM.md")
     expect(settings.botSoulPath).toBe("/workspace/project/instructions/SOUL.md")
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
   })
@@ -108,7 +108,7 @@ describe("loadSettings", () => {
     expect(settings.botWorkdir).toBe("/workdir")
     expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
     expect(settings.botSessionLogDir).toBe("/app/.telegramagent/sessions")
-    expect(settings.botSystemPromptPath).toBe("/app/instructions/SYSTEM.md")
+    expect(settings.botSystemPromptPath).toBe("/app/instructions/APPEND_SYSTEM.md")
   })
 
   it("lists only supported bootstrap variables in .env.example", async () => {

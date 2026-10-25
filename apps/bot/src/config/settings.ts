@@ -116,7 +116,7 @@ export function loadSettings(
     botGroupPassiveContextEnabled: true,
     botSkillsDir: path.resolve(root, "skills"),
     botEnabledSkills: new Set<string>(),
-    botSystemPromptPath: path.resolve(root, "instructions/SYSTEM.md"),
+    botSystemPromptPath: path.resolve(root, "instructions/APPEND_SYSTEM.md"),
     botSoulPath: path.resolve(root, "instructions/SOUL.md"),
     botSoulRequired: false,
     botSoulMaxChars: 8_000,
