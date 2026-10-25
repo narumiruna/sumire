@@ -458,7 +458,7 @@
     "secure": false,
     "readOnly": true,
     "signature": "(request?: ListPerpsFillsRequest): Paginated<PerpsAccountFill[]>",
-    "description": "Lists Perps fills",
+    "description": "Lists Perps fills for the authenticated account, optionally by instrument.",
     "args": [
       {
         "name": "request",
@@ -469,6 +469,13 @@
             {
               "type": "object",
               "properties": {
+                "instrumentId": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
                 "start": {
                   "anyOf": [
                     {

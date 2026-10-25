@@ -25,6 +25,7 @@ import { LegacyCodemodeCallTask } from "./migration.js"
 
 const policyMemo = "sumire.codemode-policy.v1"
 export const ToolSelectionDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.tool-selection",
   version: 1,
   scope: "task",

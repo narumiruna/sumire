@@ -47,6 +47,7 @@ const outcomes = [
 const statuses = [
   ["pending", "Pending"],
   ["running", "Running"],
+  ["sleeping", "Sleeping"],
   ["waiting", "Waiting"],
   ["completing", "Completing"],
   ["terminal", "Terminal"],
