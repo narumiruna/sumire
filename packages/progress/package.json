@@ -54,7 +54,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "typebox": "1.4.2"
+    "typebox": "1.4.3"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
