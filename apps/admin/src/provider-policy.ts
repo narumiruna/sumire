@@ -1,4 +1,4 @@
-import type { Policy } from "./api.js"
+import type { Policy, Selection } from "./api.js"
 
 export function savedProviderSelection(policy: Policy) {
   const chatChoices = Object.values(policy.chats).filter((chat) => chat.model !== null)
@@ -28,6 +28,23 @@ export function savedProviderSelection(policy: Policy) {
 /** Add one explicit model. Do not grant its provider's full catalog or alter chat overrides. */
 export function withProviderModel(policy: Policy, ref: string): Policy {
   return { ...policy, models: [...new Set([...policy.models, ref])] }
+}
+
+/** Remove dependent selections only for models explicitly removed from global availability. */
+export function withModelAvailability(policy: Policy, models: string[]): Policy {
+  const removed = new Set(policy.models.filter((ref) => !models.includes(ref)))
+  if (removed.size === 0) return { ...policy, models }
+  const clean = <T extends Selection>(selection: T): T => ({
+    ...selection,
+    models: selection.models?.filter((ref) => !removed.has(ref)) ?? null,
+    ...(selection.model && removed.has(selection.model) ? { model: null, thinking: null } : {}),
+  })
+  return {
+    ...policy,
+    models,
+    defaults: clean(policy.defaults),
+    chats: Object.fromEntries(Object.entries(policy.chats).map(([id, chat]) => [id, clean(chat)])),
+  }
 }
 
 /** Provider login URLs are untrusted data. Never render executable URL schemes. */
