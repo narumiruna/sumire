@@ -63,7 +63,7 @@ describe("client-backed tools", () => {
       [...new Set(polymarketApi.filter((item) => !item.secure).map((item) => item.method))].sort(),
     ).toEqual(Object.keys(client).sort())
     await client.closeSubscriptions()
-    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(113)
+    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(123)
   })
 
   it("registers the public-only extension and shutdown cleanup", () => {
@@ -123,6 +123,20 @@ describe("client-backed tools", () => {
       }),
     ).toEqual({ bids: [{ price: "0.5", size: "20" }], asks: [] })
     expect(fetchOrderBook).toHaveBeenCalledOnce()
+  })
+
+  it("discovers and dispatches optional SDK request options", async () => {
+    const fetchOrderBook = vi.fn(async () => ({ bids: [], asks: [] }))
+    const { value } = setup({ fetchOrderBook })
+    const methods = await value("polymarket_api", { method: "fetchOrderBook" })
+    expect(methods[0].args.at(-1)).toMatchObject({ name: "options", optional: true })
+    expect(
+      await value("polymarket_market_data_query", {
+        action: "fetchOrderBook",
+        args: [{ tokenId: "123" }, {}],
+      }),
+    ).toEqual({ bids: [], asks: [] })
+    expect(fetchOrderBook).toHaveBeenCalledExactlyOnceWith({ tokenId: "123" }, {})
   })
 
   it("rejects unknown actions, wrong arity, and non-selected authenticated operations", async () => {

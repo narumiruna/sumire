@@ -5,6 +5,7 @@ import { type ConversationId, defineDoc, type EntryId } from "@earendil-works/pi
 import type { GeneratedMedia } from "./media.js"
 
 export const BotSessionDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.session",
   version: 1,
   scope: "session",
@@ -12,6 +13,7 @@ export const BotSessionDoc = defineDoc({
 })
 
 export const ProgressDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.progress",
   version: 1,
   scope: "conversation",
@@ -21,6 +23,7 @@ export const ProgressDoc = defineDoc({
 })
 
 export const CodemodeStoreDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.codemode-store",
   version: 1,
   scope: "conversation",
@@ -47,6 +50,7 @@ export type PendingResponse = {
 }
 
 export const OutboxDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.outbox",
   version: 1,
   scope: "session",

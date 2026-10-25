@@ -92,6 +92,7 @@ export function taskObservation(item: DurableTaskItem): string {
   const statuses = {
     pending: "Pending",
     running: "Running",
+    sleeping: "Sleeping",
     waiting: "Waiting",
     completing: "Completing",
     terminal: "Terminal",

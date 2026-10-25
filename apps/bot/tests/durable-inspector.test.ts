@@ -25,6 +25,7 @@ import {
 
 const secret = "INSPECTOR_SECRET_SENTINEL"
 const Unknown = defineDoc({
+  checkpointWhen: () => false,
   kind: "fixture.unknown",
   version: 1,
   scope: "conversation",
@@ -33,6 +34,7 @@ const Unknown = defineDoc({
   initial: () => ({ secret, large: "x".repeat(512 * 1024) }),
 })
 const Family = defineDocFamily({
+  checkpointWhen: () => false,
   kind: "fixture.family",
   version: 1,
   scope: "conversation",
@@ -42,6 +44,7 @@ const Family = defineDocFamily({
   initial: (seed: string) => ({ seed }),
 })
 const ReservedFamily = defineDocFamily({
+  checkpointWhen: () => false,
   kind: "pi.agent",
   version: 1,
   scope: "conversation",
@@ -51,24 +54,28 @@ const ReservedFamily = defineDocFamily({
   initial: () => ({ model: { provider: secret, modelId: secret } }),
 })
 const Outbox = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.outbox",
   version: 1,
   scope: "session",
   initial: () => ({ pending: [{ requestId: secret, content: secret }] }),
 })
 const TaskDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "fixture.task",
   version: 1,
   scope: "task",
   initial: () => ({ secret }),
 })
 const SessionDoc = defineDoc({
+  checkpointWhen: () => false,
   kind: "sumire.session",
   version: 1,
   scope: "session",
   initial: () => ({ activeConversation: 1, sessionId: secret, trustKey: secret }),
 })
 const Usage = defineDoc<JsonObject>({
+  checkpointWhen: () => false,
   kind: "pi.usage",
   version: 1,
   scope: "conversation",
@@ -89,6 +96,7 @@ const Usage = defineDoc<JsonObject>({
   }),
 })
 const Agent = defineDoc<JsonObject>({
+  checkpointWhen: () => false,
   kind: "pi.agent",
   version: 1,
   scope: "conversation",
@@ -504,6 +512,40 @@ describe("durable metadata field allowlists", () => {
     )
     expect(documents.items.length).toBeGreaterThan(0)
     expect(JSON.stringify(documents)).not.toContain(secret)
+  })
+
+  it("reads sleeping task metadata without exposing checkpoint data or changing storage", async () => {
+    const f = await fixture()
+    const row = await f.storage.task(f.pending, context)
+    assert.ok(row)
+    const sleeping = {
+      ...row,
+      state: {
+        status: "sleeping",
+        until: Date.now() + 60_000,
+        checkpoint: { phase: "blocked", secret },
+      },
+    }
+    f.reads.scanTasks.mockResolvedValueOnce({ items: [sleeping] })
+    f.reads.task.mockResolvedValueOnce(sleeping)
+    const before = await snapshot(f.storage)
+    const commits = vi.spyOn(f.storage, "commit")
+    for (const objectId of [undefined, row.id]) {
+      const result = await f.inspect(
+        query({ view: "tasks", conversationId: f.root.id, ...(objectId ? { objectId } : {}) }),
+        signal(),
+      )
+      expect(result.items).toEqual([
+        expect.objectContaining({ type: "task", id: row.id, status: "sleeping" }),
+      ])
+      expect(result.items[0]).not.toHaveProperty("outcome")
+      const json = JSON.stringify(result)
+      expect(json).not.toContain(secret)
+      expect(json).not.toContain("checkpoint")
+      expect(json).not.toContain("until")
+    }
+    expect(commits).not.toHaveBeenCalled()
+    expect(await snapshot(f.storage)).toBe(before)
   })
 
   it("rejects object payloads in every task metadata scalar and enum", async () => {

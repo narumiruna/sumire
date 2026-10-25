@@ -28,7 +28,7 @@ export type DurableTaskItem = {
   ownerTaskId?: number
   background: boolean
   abortRequested: boolean
-  status: "pending" | "running" | "waiting" | "completing" | "terminal"
+  status: "pending" | "running" | "sleeping" | "waiting" | "completing" | "terminal"
   outcome?: "completed" | "failed" | "aborted" | "orphaned" | "faulted"
   startedAt?: number
   endedAt?: number

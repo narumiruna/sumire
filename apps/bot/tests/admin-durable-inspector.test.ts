@@ -167,6 +167,7 @@ describe("authenticated durable inspection HTTP", () => {
     const conversation = await currentConversation(session)
     const secret = "INSPECTOR_PRIVATE_SENTINEL"
     const unknown = defineDoc({
+      checkpointWhen: () => false,
       kind: "fixture.private",
       version: 1,
       scope: "session",

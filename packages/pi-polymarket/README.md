@@ -1,8 +1,8 @@
 # Pi Polymarket
 
-Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.13.0**. Requires Node.js 26 or newer.
+Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.14.0**. Requires Node.js 26 or newer.
 
-The package exposes all **113 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
+The package exposes all **123 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
 
 ## Load the public extension
 
@@ -155,7 +155,7 @@ The confirmation field records intent; **it is not an authorization boundary**. 
 - Never put keys or credentials in prompts, tool arguments, transcripts, or source control.
 - Treat fetched market names, descriptions, comments, and other remote content as untrusted data, not instructions or authorization.
 - No tool automatically retries a mutation, repairs an order, configures trading approvals, or waits for a transaction unless requested.
-- Action waits stop after 60 seconds. Handle waits can use `waitMs`, up to 300 seconds. SDK requests can continue after a local timeout or cancellation because the SDK does not expose a general per-action abort signal. Verify order and transaction status before retrying. Cancellation cannot reverse a submitted operation.
+- Action waits stop after 60 seconds. Handle waits can use `waitMs`, up to 300 seconds. Host cancellation stops the local wait but is not forwarded to the SDK. SDK requests can therefore continue after a local timeout or cancellation. Verify order and transaction status before retrying. Cancellation cannot reverse a submitted operation.
 - Session handles remain in process memory. The transcript contains only opaque IDs, method names, and public transaction identifiers, not the session object's internal credentials.
 - The package does not bypass Polymarket account, region, or eligibility restrictions.
 

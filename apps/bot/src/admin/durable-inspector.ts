@@ -132,6 +132,7 @@ function taskStatus(value: unknown): DurableTaskItem["status"] {
   if (
     value === "pending" ||
     value === "running" ||
+    value === "sleeping" ||
     value === "waiting" ||
     value === "completing" ||
     value === "terminal"

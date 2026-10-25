@@ -13,6 +13,7 @@ import { CodemodeStoreDoc as NativeCodemodeStoreDoc } from "@earendil-works/pi-d
 import { CodemodeStoreDoc as LegacyCodemodeStoreDoc } from "./state.js"
 
 export const CodemodeMigrationDoc = defineDoc<{ migrated: boolean }>({
+  checkpointWhen: () => false,
   kind: "sumire.codemode-migration",
   version: 1,
   scope: "conversation",
