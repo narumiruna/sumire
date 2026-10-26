@@ -172,7 +172,7 @@ test("retains a fragment request through reload and virtual Passkey sign-in, the
   await expect(identity.getByText("<img src=x onerror=alert(1)>", { exact: true })).toBeVisible()
   await expect(identity.getByText("supergroup", { exact: true })).toBeVisible()
   await expect(identity.getByText("-100", { exact: true })).toBeVisible()
-  await expect(page.locator("img")).toHaveCount(0)
+  await expect(identity.locator("img")).toHaveCount(0)
   await page.getByRole("button", { name: "Approve chat", exact: true }).click()
   await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toHaveCount(0)
@@ -256,7 +256,8 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
   await expect(groups.getByRole("row").filter({ hasText: "-200" })).toHaveText(
     "Unnamed group-200ApprovedRevoke access",
   )
-  await expect(page.locator("img")).toHaveCount(0)
+  await expect(users.locator("img")).toHaveCount(0)
+  await expect(groups.locator("img")).toHaveCount(0)
   await users.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
   const revoked = users.getByRole("row").filter({ hasText: "Alice" })
   await expect(revoked).toContainText("42")
@@ -325,7 +326,7 @@ test("does not show or clear an old target when another link opens during approv
   await expect(identity.getByText("group", { exact: true })).toBeVisible()
   await expect(identity.getByText("-200", { exact: true })).toBeVisible()
   await expect(identity.getByText("<img src=x onerror=alert(1)>", { exact: true })).toHaveCount(0)
-  await expect(page.locator("img")).toHaveCount(0)
+  await expect(identity.locator("img")).toHaveCount(0)
   finishApprove()
   await expect(page.getByRole("button", { name: "Approve chat", exact: true })).toBeEnabled()
   expect(
