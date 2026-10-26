@@ -1,5 +1,20 @@
 # @narumitw/sumire
 
+## 0.15.3
+
+### Patch Changes
+
+- 203d5d3: Update Pi to 1.4.0 and refresh workspace dependencies and development tools. Add explicit Durable document checkpoint policies without changing document identities or fork behavior. Support sleeping tasks in administration inspection and regenerate the Polymarket 0.14.0 SDK catalog.
+  
+  Pi Durable automatically upgrades SQLite storage to schema version 2. Before deployment, stop the bot and take a consistent state backup. Rollback to Pi Durable 1.3.0 or earlier requires the previous image and matching pre-upgrade state backup.
+- 9aefc3b: Include workspace-local production dependencies in the Docker image so bot startup can resolve packages such as `typebox`. Share the assembled application with an offline Docker import check in pull-request CI.
+- Updated dependencies [203d5d3]
+  - @narumitw/sumire-contracts@0.6.2
+  - @narumitw/sumire-pi-polymarket@0.2.2
+  - @narumitw/sumire-pi-url-reader@0.6.3
+  - @narumitw/sumire-progress@0.3.2
+  - @narumitw/sumire-url-reader@0.25.3
+
 ## 0.15.2
 
 ### Patch Changes
