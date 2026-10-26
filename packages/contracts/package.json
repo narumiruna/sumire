@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-contracts",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Shared Sumire management API data contracts",
   "type": "module",
