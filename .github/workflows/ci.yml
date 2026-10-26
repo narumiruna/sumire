@@ -8,6 +8,8 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"
+      - "Dockerfile"
+      - ".dockerignore"
       - "apps/bot/**"
       - "apps/admin/**"
       - "packages/contracts/**"
@@ -26,6 +28,8 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"
+      - "Dockerfile"
+      - ".dockerignore"
       - "apps/bot/**"
       - "apps/admin/**"
       - "packages/contracts/**"
@@ -79,3 +83,20 @@ jobs:
           path: apps/admin/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  container:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Check production application imports
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime-application
+          push: false
+          cache-from: type=gha,scope=sumire-runtime-application
+          cache-to: type=gha,mode=max,scope=sumire-runtime-application

@@ -38,7 +38,7 @@ describe("Node.js runtime baseline", () => {
   it("uses Node.js 26 for every Node-based Docker stage", async () => {
     const dockerfile = await readFile(path.join(root, "Dockerfile"), "utf8")
     const images = [...dockerfile.matchAll(/^FROM (node:\S+)/gm)].map((match) => match[1])
-    expect(images).toHaveLength(4)
+    expect(images).toHaveLength(5)
     expect(images.every((image) => image === "node:26-bookworm-slim")).toBe(true)
   })
 })

@@ -188,10 +188,11 @@ describe("bot Polymarket integration", () => {
       "COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist",
     )
     expect(dockerfile).toContain(
-      "COPY --from=polymarket-build --chown=app:app /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist",
+      "COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist",
     )
     expect(dockerfile).toContain(
-      "/build/packages/pi-polymarket/package.json /app/packages/pi-polymarket/package.json",
+      "COPY --from=production-dependencies /build/packages /app/packages",
     )
+    expect(dockerfile).toContain("COPY --from=runtime-application --chown=app:app /app /app")
   })
 })
