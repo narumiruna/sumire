@@ -163,16 +163,21 @@ main {
   gap: 9px;
   letter-spacing: -0.4px;
 }
-.brand svg {
-  width: 22px;
-  height: 22px;
-  color: var(--teal-11);
+.brand-icon {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.session-card > .brand-icon {
+  width: 48px;
+  height: 48px;
 }
 .sidebar-brand {
   padding-inline: 12px;
 }
 .brand-caption {
-  padding-left: 31px;
+  padding-left: 37px;
 }
 .sidebar nav {
   display: flex;

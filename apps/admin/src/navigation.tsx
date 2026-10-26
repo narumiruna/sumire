@@ -2,7 +2,6 @@ import {
   ActivityLogIcon,
   ChatBubbleIcon,
   ComponentInstanceIcon,
-  GearIcon,
   HamburgerMenuIcon,
   LayersIcon,
   LockClosedIcon,
@@ -13,6 +12,7 @@ import {
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
 import { Fragment, useEffect, useRef, useState } from "react"
+import { BrandIcon } from "./brand-icon.js"
 
 export const pages = [
   "Chats",
@@ -70,7 +70,7 @@ const pageIcons = {
   "MCP connections": ComponentInstanceIcon,
   "Model Providers": ReaderIcon,
   Audit: ActivityLogIcon,
-} satisfies Record<Page, typeof GearIcon>
+} satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
   Chats: "Chats",
   Durable: "Conversation records",
@@ -175,7 +175,7 @@ export function SideNavigation({
     <aside className="sidebar" aria-label="Administration navigation">
       <Flex direction="column" gap="1" className="sidebar-brand">
         <Heading size="5" className="brand">
-          <GearIcon aria-hidden /> Sumire
+          <BrandIcon /> Sumire
         </Heading>
         <Text size="1" color="gray" className="brand-caption">
           Administration
