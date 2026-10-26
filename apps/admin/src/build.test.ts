@@ -19,6 +19,15 @@ it("builds the browser application without warnings and splits the React runtime
   expect(warnings).toEqual([])
   expect(react?.moduleIds.some((id) => id.includes("/react-dom/"))).toBe(true)
   expect(entry?.imports).toContain(react?.fileName)
+
+  const assets = result.output.filter((output) => output.type === "asset")
+  const icon = assets.find((asset) =>
+    /^assets\/sumire-icon-[A-Za-z0-9_-]+\.svg$/.test(asset.fileName),
+  )
+  const html = assets.find((asset) => asset.fileName === "index.html")
+  expect(icon).toBeDefined()
+  expect(html?.source).toEqual(expect.stringContaining(`href="/${icon?.fileName}"`))
+  expect(entry?.code).toContain(`/${icon?.fileName}`)
   for (const chunk of chunks)
     expect(Buffer.byteLength(chunk.code), chunk.fileName).toBeLessThanOrEqual(500_000)
 })

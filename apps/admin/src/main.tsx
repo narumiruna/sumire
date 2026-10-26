@@ -34,6 +34,7 @@ import {
   type Snapshot,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
+import { BrandIcon } from "./brand-icon.js"
 import { ChatAccess } from "./chat-access.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
@@ -253,6 +254,7 @@ function App() {
     return (
       <main className="session-screen">
         <Panel className="session-card" aria-busy="true">
+          <BrandIcon />
           <PageHeader title="Sumire administration" description="Loading administrator session…" />
           <Text size="2" color="gray" role="status">
             Checking your administrator session.
@@ -264,6 +266,7 @@ function App() {
     return (
       <main className="session-screen">
         <Panel className="session-card">
+          <BrandIcon />
           <PageHeader
             title="Sumire administration"
             description={
@@ -304,6 +307,7 @@ function App() {
     return (
       <main className="session-screen">
         <Panel className="session-card">
+          <BrandIcon />
           <PageHeader
             title="Sumire administration"
             description="Load the saved policy and connected services."

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Sumire</title>
+  <rect width="64" height="64" rx="16" fill="#3f6353"/>
+  <path fill="#f8f6f1" d="M30 29C24 29 16 24 17 18C18 12 26 11 29 17C31 21 31 25 30 29ZM34 29C40 29 48 24 47 18C46 12 38 11 35 17C33 21 33 25 34 29ZM27 32C22 27 14 27 12 33C10 39 17 44 23 40L29 35ZM37 32C42 27 50 27 52 33C54 39 47 44 41 40L35 35ZM32 36C27 39 22 43 24 48C27 55 37 55 40 48C42 43 37 39 32 36Z"/>
+  <circle cx="32" cy="32" r="3" fill="#e7c78a"/>
+</svg>
