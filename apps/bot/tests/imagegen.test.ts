@@ -801,9 +801,8 @@ it("packages the image client in every Docker stage and CI path filter", async (
   expect(docker).toContain(
     "COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist",
   )
-  expect(docker).toContain(
-    "/build/packages/imagegen/package.json /app/packages/imagegen/package.json",
-  )
+  expect(docker).toContain("COPY --from=production-dependencies /build/packages /app/packages")
+  expect(docker).toContain("COPY --from=runtime-application --chown=app:app /app /app")
   expect(docker).toContain("/build/packages/imagegen/dist /app/packages/imagegen/dist")
   expect(docker).toContain("import('/app/packages/imagegen/dist/index.js')")
   const ci = await readFile(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8")

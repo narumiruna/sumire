@@ -122,6 +122,29 @@ FROM dependencies AS production-dependencies
 RUN --mount=type=cache,target=/root/.npm \
     npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
 
+# Assemble the same application tree for CI import checks and the final image.
+FROM node:26-bookworm-slim AS runtime-application
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=production-dependencies /build/node_modules /app/node_modules
+# These directories contain only manifests and workspace-local production dependencies.
+COPY --from=production-dependencies /build/apps/bot /app/apps/bot
+COPY --from=production-dependencies /build/packages /app/packages
+COPY --from=policy-build /build/packages/policy/dist /app/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /app/packages/contracts/dist
+COPY --from=progress-build /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=imagegen-build /build/packages/imagegen/dist /app/packages/imagegen/dist
+COPY --from=url-reader-build /build/packages/url-reader/dist /app/packages/url-reader/dist
+COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
+COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
+COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
+COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
+
+# Import without credentials or network access; do not start the bot.
+RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+
 FROM node:26-bookworm-slim AS audio-dependencies
 
 ARG TARGETARCH
@@ -178,35 +201,17 @@ RUN groupadd --system app \
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
 COPY --from=audio-dependencies /opt/audio /opt/audio
-COPY --from=production-dependencies --chown=app:app /build/node_modules /app/node_modules
+COPY --from=runtime-application --chown=app:app /app /app
 
 ENV NODE_ENV=production
 ENV PATH="/opt/audio/bin:/app/node_modules/.bin:${PATH}"
 
-COPY --from=production-dependencies --chown=app:app /build/apps/bot/package.json /app/apps/bot/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/contracts/package.json /app/packages/contracts/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/policy/package.json /app/packages/policy/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/login/package.json /app/packages/login/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/progress/package.json /app/packages/progress/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/imagegen/package.json /app/packages/imagegen/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/url-reader/package.json /app/packages/url-reader/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/pi-url-reader/package.json /app/packages/pi-url-reader/package.json
-COPY --from=production-dependencies --chown=app:app /build/packages/pi-polymarket/package.json /app/packages/pi-polymarket/package.json
-COPY --from=policy-build --chown=app:app /build/packages/policy/dist /app/packages/policy/dist
-COPY --from=contracts-build --chown=app:app /build/packages/contracts/dist /app/packages/contracts/dist
-COPY --from=progress-build --chown=app:app /build/packages/progress/dist /app/packages/progress/dist
-COPY --from=imagegen-build --chown=app:app /build/packages/imagegen/dist /app/packages/imagegen/dist
-COPY --from=polymarket-build --chown=app:app /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
-COPY --from=url-reader-build --chown=app:app /build/packages/url-reader/dist /app/packages/url-reader/dist
-COPY --from=pi-url-reader-build --chown=app:app /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
-COPY --from=build --chown=app:app /build/apps/bot/dist /app/apps/bot/dist
-COPY --from=admin-build --chown=app:app /build/apps/admin/dist /app/apps/admin/dist
 COPY --chown=app:app packages/pi-url-reader/skills/ /app/packages/pi-url-reader/skills/
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
 COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/
 
-# Fail the build if production pruning removed a module needed at startup.
+# Check startup again in the complete runtime image.
 RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 ENV HOME=/workdir
