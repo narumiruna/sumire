@@ -91,7 +91,7 @@ export function sectionLabel(name: string): string {
     Access: "Chat access",
     Defaults: "Shared defaults",
     Durable: "Conversation records",
-    "MCP connections": "Tool connections",
+    "MCP connections": "MCP Servers",
     "Model Providers": "Model providers",
   }
   return labels[name] ?? name
