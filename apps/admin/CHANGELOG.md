@@ -1,5 +1,11 @@
 # @narumitw/sumire-admin
 
+## 0.7.3
+
+### Patch Changes
+
+- 9ee71d1: Rename Tool connections to MCP Servers in the WebUI without changing existing section URLs.
+
 ## 0.7.2
 
 ### Patch Changes
