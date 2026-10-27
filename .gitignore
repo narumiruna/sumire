@@ -145,4 +145,6 @@ dmypy.json
 # Codex CLI
 .codex
 
+# Project
 third_party/
+.hallmark/

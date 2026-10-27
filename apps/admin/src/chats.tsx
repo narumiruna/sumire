@@ -927,7 +927,7 @@ export function ChatWorkspace({
                       <Text as="p" size="2">
                         Available capabilities, configured selection, and effective permission are
                         different. Global availability limits chat choices. MCP tools also require
-                        their server's permission and applicable exposure.
+                        their server’s permission and applicable exposure.
                       </Text>
                       <ul>
                         {[

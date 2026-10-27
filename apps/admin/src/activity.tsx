@@ -36,7 +36,7 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
                   {name}
                 </Heading>
                 {failedImports(report) > 0 && (
-                  <Badge color="red">Import failures — review details</Badge>
+                  <Badge color="red">Import failures: review details</Badge>
                 )}
                 {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
                   (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
