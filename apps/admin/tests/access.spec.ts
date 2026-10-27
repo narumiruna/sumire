@@ -270,6 +270,74 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
   ).toBeVisible()
 })
 
+for (const mode of [
+  { width: 1440, zoom: 1 },
+  { width: 1200, zoom: 1 },
+  { width: 390, zoom: 1 },
+  { width: 320, zoom: 1 },
+  { width: 640, zoom: 2 },
+]) {
+  test(`access undo labels fit their controls at ${mode.width}px and ${mode.zoom}x zoom`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: mode.width, height: 900 })
+    await fixture(page)
+    const ids = [1234567890, -1001234567890]
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({
+        json: {
+          revision: 1,
+          applied: 1,
+          status: "applied",
+          policy: { ...policy, privateUsers: [ids[0]], groups: [ids[1]] },
+        },
+      }),
+    )
+    const writes: string[] = []
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/") && request.method() !== "GET")
+        writes.push(`${request.method()} ${request.url()}`)
+    })
+    await page.goto("/?section=Access")
+    await page.evaluate((zoom) => {
+      document.documentElement.style.zoom = String(zoom)
+    }, mode.zoom)
+    for (const id of ids) {
+      const revoke = page.getByRole("button", { name: `Revoke access for ID ${id}`, exact: true })
+      await revoke.click()
+      const undo = page.getByRole("button", { name: `Undo revocation for ${id}`, exact: true })
+      await expect(undo).toBeVisible()
+      const geometry = await undo.evaluate((element) => {
+        const button = element.getBoundingClientRect()
+        const cell = element.closest("td")?.getBoundingClientRect()
+        if (!cell) throw new Error("Missing access action cell")
+        const text = document.createRange()
+        text.selectNodeContents(element)
+        return {
+          textOverflow: Math.max(
+            ...Array.from(text.getClientRects(), (rect) =>
+              Math.max(button.left - rect.left, rect.right - button.right),
+            ),
+          ),
+          buttonOverflow: Math.max(cell.left - button.left, button.right - cell.right),
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+        }
+      })
+      expect(geometry.textOverflow, String(id)).toBeLessThanOrEqual(1)
+      expect(geometry.buttonOverflow, String(id)).toBeLessThanOrEqual(1)
+      expect(geometry.scrollWidth, String(id)).toBeLessThanOrEqual(geometry.clientWidth + 1)
+      await undo.click()
+      await expect(revoke).toBeVisible()
+      await expect(undo).toHaveCount(0)
+      await expect(
+        page.getByRole("button", { name: "Review and save changes", exact: true }),
+      ).toHaveCount(0)
+    }
+    expect(writes).toEqual([])
+  })
+}
+
 test("captures links opened in an existing WebUI tab without a document reload", async ({
   page,
 }) => {

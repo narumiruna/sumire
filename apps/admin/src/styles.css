@@ -3601,7 +3601,6 @@ h1[tabindex="-1"]:focus:not(:focus-visible),
 }
 .access-table button.rt-Button {
   font-size: var(--text-sm);
-  white-space: nowrap;
 }
 @media (max-width: 650px) {
   .chat-detail .rt-TabsTrigger {
