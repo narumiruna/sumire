@@ -17,7 +17,7 @@ const taskLabels = {
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
-  "MCP connections": "Tool connections",
+  "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
   Audit: "Audit",
 } satisfies Record<Page, string>
@@ -93,11 +93,11 @@ describe("admin navigation", () => {
     }
   })
 
-  it("keeps MCP and Durable in accessible descriptions, not primary link names", () => {
+  it("keeps protocol and inspector details in accessible descriptions", () => {
     const html = renderNavigation()
     for (const [id, label, technicalTerm] of [
       ["Durable", "Conversation records", "Durable Inspector"],
-      ["MCP-connections", "Tool connections", "Model Context Protocol (MCP)"],
+      ["MCP-connections", "MCP Servers", "Model Context Protocol (MCP)"],
     ]) {
       const descriptionId = `navigation-description-${id}`
       const link = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].find((match) =>

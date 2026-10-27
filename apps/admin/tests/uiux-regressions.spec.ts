@@ -275,7 +275,7 @@ test("a connection save completed after navigation does not focus its hidden sec
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeHidden()
   expect(state.writes.map((write) => write.path)).toEqual(["/api/mcp/fixture"])
   await navigate(page, "MCP connections")
-  await expect(page.getByRole("heading", { name: "Tool connections", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "MCP Servers", exact: true })).toBeFocused()
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeVisible()
 })
 

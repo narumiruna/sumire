@@ -927,13 +927,13 @@ function App() {
                 </Panel>
               </details>
               <Button variant="soft" onClick={() => setPage("MCP connections")}>
-                Manage Tool connections
+                Manage MCP Servers
               </Button>
             </div>
           </EditorSection>
           <EditorSection
             active={page === "MCP connections"}
-            aria-label="MCP connections"
+            aria-label={pageLabel("MCP connections")}
             className="admin-page--mcp"
           >
             <McpConnections

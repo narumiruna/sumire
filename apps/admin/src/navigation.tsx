@@ -43,7 +43,7 @@ export const pendingEditors = {
     target: { page: "Model Providers", selector: "#endpoint-provider-id" },
   },
   secret: {
-    label: "Tool connections — Secret replacement",
+    label: "MCP Servers — Secret replacement",
     target: { page: "MCP connections", selector: "#secret-name" },
   },
 } satisfies Record<string, { label: string; target: EditorTarget }>
@@ -78,7 +78,7 @@ const pageLabels = {
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
-  "MCP connections": "Tool connections",
+  "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
   Audit: "Audit",
 } satisfies Record<Page, string>

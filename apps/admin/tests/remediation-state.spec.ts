@@ -28,7 +28,7 @@ const unfinished = [
     section: "MCP connections",
     field: "Secret field name",
     value: "TEST_TOKEN",
-    label: "Tool connections — Secret replacement",
+    label: "MCP Servers — Secret replacement",
     clear: "Clear secret input",
   },
 ]
@@ -304,7 +304,7 @@ test("F4 dirty connection switching and closed secret inputs retain the same dra
   await navigate(page, "Audit")
   await page
     .getByRole("button", {
-      name: "Continue editing: Tool connections — Secret replacement",
+      name: "Continue editing: MCP Servers — Secret replacement",
       exact: true,
     })
     .click()
