@@ -80,8 +80,9 @@ for (const viewport of [
         true,
       )
       if (viewport.width === 1440) {
-        // Measured at 1044px and 980px with the 16px body; allow one 44px control row.
-        const maxHeight = section === "Model providers" ? 1088 : 1024
+        // Providers measure 1044px on macOS and 1095px on Linux with system fonts.
+        // Permissions measure 980px on both. Allow one 44px control row above each baseline.
+        const maxHeight = section === "Model providers" ? 1095 + 44 : 980 + 44
         expect(
           await page.evaluate(() => document.documentElement.scrollHeight),
         ).toBeLessThanOrEqual(maxHeight)
