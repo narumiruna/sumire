@@ -40,7 +40,7 @@ for (const width of [1440, 390, 320]) {
       await page.getByLabel("MCP server name", { exact: true }).fill("navigation-draft")
       await page.getByLabel("Connection command", { exact: true }).fill("npx")
       await navigate(page, "Defaults")
-      await openDisclosure(page, "Allowed models · 1 effective")
+      await openDisclosure(page, "Allowed models (1 effective)")
       await page.evaluate(() => {
         const url = new URL(window.location.href)
         url.searchParams.set("existing", "retained")
@@ -102,7 +102,7 @@ for (const width of [1440, 390, 320]) {
     const destination =
       width === 1440
         ? page.getByRole("heading", { name: "Shared defaults", exact: true })
-        : page.getByRole("button", { name: "Sections · Shared defaults", exact: true })
+        : page.getByRole("button", { name: "Sections: Shared defaults", exact: true })
     await expect(destination).toBeFocused()
     if (width === 1440) expect(await page.evaluate(() => window.scrollY)).toBe(0)
     else await expect(destination).toHaveAttribute("aria-expanded", "false")

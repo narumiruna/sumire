@@ -74,7 +74,7 @@ async function navigate(page: Page, name: string) {
     name: sectionLabel(name),
     exact: true,
   })
-  const menu = page.getByRole("button", { name: /Sections ·/ })
+  const menu = page.getByRole("button", { name: /Sections:/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
   if (name === "Tool permissions") await openGlobalLimits(page)
@@ -1923,7 +1923,9 @@ for (const method of ["PUT", "DELETE"] as const) {
       page.getByText("Saved, but application failed. Retry application.", { exact: true }),
     ).toBeVisible()
     await page.getByText("Revision details", { exact: true }).click()
-    await expect(page.getByText("Saved 2 · Applied 1 · failed", { exact: false })).toBeVisible()
+    await expect(
+      page.getByText("Saved revision 2, applied revision 1, status failed.", { exact: false }),
+    ).toBeVisible()
     const checkDraft = async () => {
       await expect(page.getByLabel("MCP server name")).toHaveValue("existing")
       await expect(page.getByLabel("Server configuration JSON")).toHaveValue('{"enabled":false}')
@@ -2024,7 +2026,7 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
   await expect(detail).toContainText("Access approval is missing.")
   await detail.getByText("Readiness details", { exact: true }).click()
   await expect(detail.locator(".readiness")).toContainText("Configured locally")
-  await expect(detail.locator(".readiness")).toContainText("Not checked — no remote model request")
+  await expect(detail.locator(".readiness")).toContainText("Not checked: no remote model request")
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
@@ -2081,17 +2083,17 @@ test("separates saved chat status from draft effects without remote checks or im
   const detail = page.getByRole("region", { name: "Chat details" })
   await expect(detail.getByRole("region", { name: "Chat setup status" })).toContainText("Disabled")
   await detail.getByText("Readiness details", { exact: true }).click()
-  await expect(detail).toContainText("None · This chat override")
-  await expect(detail).toContainText("fixture/test · From shared defaults")
+  await expect(detail).toContainText("None, This chat override")
+  await expect(detail).toContainText("fixture/test, From shared defaults")
   await expect(detail).toContainText("Model authentication is not configured.")
   await expect(detail.getByRole("button", { name: "Configure authentication" })).toBeVisible()
   await openChatConfiguration(page)
   await detail.getByRole("checkbox", { name: "Chat enabled", exact: true }).check()
-  await expect(detail).toContainText("Draft preview — not saved")
+  await expect(detail).toContainText("Draft preview, not saved")
   await expect(
     detail.getByRole("region", { name: "Chat setup status" }).getByRole("heading"),
   ).toHaveText("Disabled")
-  await expect(detail).toContainText("Draft preview — not saved: Setup required.")
+  await expect(detail).toContainText("Draft preview, not saved: Setup required.")
   await expect(page.getByText("1 unsaved change", { exact: true })).toBeVisible()
   page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
@@ -2365,7 +2367,7 @@ test("stages contextual grant and revoke actions without enabling a disabled cha
   })
   await panel.getByRole("button", { name: "Grant access", exact: true }).click()
   await expect(panel).toContainText("Pending access grant")
-  await expect(panel).toContainText("Blocked by policy · Chat disabled independently of approval")
+  await expect(panel).toContainText("Blocked by policy. Chat disabled independently of approval")
   await expect(panel).toContainText("Group and channel access")
   expect(writes).toBe(0)
   await panel.getByRole("button", { name: "Undo pending grant", exact: true }).click()
@@ -2462,8 +2464,8 @@ test("explains selected tools that global policy excludes without granting their
   await expect(page.getByRole("tab", { name: "Model & Tools", exact: true })).toBeFocused()
   await page.getByText("Inspect individual tool permissions", { exact: true }).click()
   await expect(
-    page.getByRole("listitem").filter({ hasText: "read_url_content · In loaded inventory" }),
-  ).toContainText("Excluded by global policy · Selected · Tool permission denied")
+    page.getByRole("listitem").filter({ hasText: "read_url_content, In loaded inventory" }),
+  ).toContainText("Excluded by global policy, Selected, Tool permission denied")
   await expect(
     page.getByRole("button", { name: "Review and save changes", exact: true }),
   ).toHaveCount(0)

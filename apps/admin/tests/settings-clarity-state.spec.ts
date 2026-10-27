@@ -32,7 +32,7 @@ for (const scenario of [
     await expect(setup).not.toContainText("Ready")
     if (scenario === "no default") {
       await navigate(page, "Chats")
-      await page.getByRole("button", { name: "Duplicate name · 43", exact: true }).click()
+      await page.getByRole("button", { name: "Duplicate name, 43", exact: true }).click()
       await expect(
         page.getByRole("region", { name: "Chat setup status", exact: true }),
       ).toContainText("Model authentication is not configured.")
@@ -80,7 +80,7 @@ test("authentication repair targets a chat override and pending provider replace
   await page.getByRole("option", { name: /Other/ }).click()
   const repair = async () => {
     await navigate(page, "Chats")
-    await page.getByRole("button", { name: "Duplicate name · 43", exact: true }).click()
+    await page.getByRole("button", { name: "Duplicate name, 43", exact: true }).click()
     await page
       .getByRole("region", { name: "Chat setup status", exact: true })
       .getByRole("button", { name: "Configure authentication", exact: true })

@@ -123,7 +123,7 @@ for (const viewport of [
       const state = await fixture(page, record)
       if (viewport.font)
         await page.addStyleTag({
-          content: `.radix-themes { --default-font-family: ${viewport.font}, sans-serif; }`,
+          content: `.radix-themes { --font-body: ${viewport.font}, sans-serif; --font-display: ${viewport.font}, sans-serif; }`,
         })
       await expect.poll(() => state.requests.length).toBe(3)
       const detail = page.getByRole("region", { name: "Selected item details", exact: true })
@@ -136,8 +136,10 @@ for (const viewport of [
         await body.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
       ).toBeGreaterThanOrEqual(14)
       const family = await body.evaluate((element) => getComputedStyle(element).fontFamily)
-      if (record === "user") expect(family).not.toContain("monospace")
-      else expect(family).toContain("monospace")
+      if (record === "user") {
+        expect(family).not.toContain("monospace")
+        if (viewport.font) expect(family).toContain(viewport.font)
+      } else expect(family).toContain("monospace")
       expect(await body.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
         true,
       )
@@ -163,7 +165,8 @@ for (const viewport of [
             "font-family",
             new RegExp(viewport.font),
           )
-        if (viewport.width <= 650) expect((await body.boundingBox())?.y).toBeLessThanOrEqual(410)
+        // Mobile content starts at 417px, or 451px with the wider fallback font.
+        if (viewport.width <= 650) expect((await body.boundingBox())?.y).toBeLessThanOrEqual(464)
         await page.screenshot({ path: testInfo.outputPath("workspace-closed.png"), fullPage: true })
       } else {
         await expect(tree(page)).toBeVisible()

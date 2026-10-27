@@ -81,7 +81,7 @@ for (const width of [1440, 320])
       content(page).getByText("Recorded result · not an error", { exact: true }),
     ).toBeVisible()
     await expect(
-      content(page).getByRole("heading", { name: "fixture_tool · Arguments", exact: true }),
+      content(page).getByRole("heading", { name: "Arguments for fixture_tool", exact: true }),
     ).toBeVisible()
     await expect(content(page).getByText("JSON text", { exact: true })).toBeVisible()
     await expect(inspector(page).locator(".durable-json pre:visible")).toHaveCount(0)
@@ -284,7 +284,7 @@ test("tree partial collections have explicit pagination, failure retry, and expi
   await page.goto("/?section=Durable&chat=42")
   await click(tree(page).getByRole("button", { name: "Expand Conversation 7", exact: true }))
   await expect(
-    tree(page).getByText("Partial tasks · more records may exist.", { exact: true }),
+    tree(page).getByText("Partial tasks: more records may exist.", { exact: true }),
   ).toBeVisible()
   await click(
     tree(page).getByRole("button", { includeHidden: true, name: "Load more tasks", exact: true }),

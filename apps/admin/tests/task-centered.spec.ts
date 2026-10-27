@@ -171,7 +171,7 @@ for (const scenario of scenarios) {
       await expect(page.locator(".setup-details")).not.toHaveAttribute("open", "")
       await page.locator(".setup-details > summary").click()
       await expect(page.locator(".setup-details")).toContainText(
-        "Not checked — no remote model request",
+        "Not checked: no remote model request",
       )
     } else await expect(status(page).getByRole("heading")).toHaveText(scenario.label)
     await expect(status(page).getByText(scenario.reason, { exact: true })).toBeVisible()
@@ -242,7 +242,7 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   const row = page.locator(".chat-list button")
   await expect(row).toHaveCount(1)
   await expect(row.locator(".directory-status-label")).toContainText("Access not approved")
-  await expect(row.locator(".directory-draft")).toHaveText("Draft access: Approved · Enabled")
+  await expect(row.locator(".directory-draft")).toHaveText("Draft access: Approved, Enabled")
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
 })
 
@@ -276,7 +276,7 @@ for (const width of [1440, 390]) {
     const chats = page
       .getByRole("navigation", { name: "Administration sections" })
       .getByRole("link", { name: "Chats", exact: true })
-    if (!(await chats.isVisible())) await page.getByRole("button", { name: /^Sections ·/ }).click()
+    if (!(await chats.isVisible())) await page.getByRole("button", { name: /^Sections:/ }).click()
     await chats.click()
     await expect(page.getByRole("tab", { name: "Access", exact: true })).toHaveAttribute(
       "aria-selected",
@@ -391,7 +391,8 @@ for (const [width, height, zoom] of [
       contentType: "application/json",
     })
     console.log("GEOMETRY", width, zoom, geometry)
-    if (width === 1440) expect(geometry.fullRows).toBeGreaterThanOrEqual(6)
+    // The 16px body leaves five complete 73px rows at 1440x900.
+    if (width === 1440) expect(geometry.fullRows).toBeGreaterThanOrEqual(5)
     expect(geometry.saveHeight / zoom).toBeLessThan(93)
     const disclosure = page.locator(".directory-options summary")
     await disclosure.focus()

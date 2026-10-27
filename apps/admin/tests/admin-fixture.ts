@@ -150,7 +150,7 @@ export async function navigate(page: Page, name: string) {
   const link = page
     .getByRole("navigation", { name: "Administration sections" })
     .getByRole("link", { name: sectionLabel(name), exact: true })
-  const menu = page.getByRole("button", { name: /^Sections ·/ })
+  const menu = page.getByRole("button", { name: /^Sections:/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
 }

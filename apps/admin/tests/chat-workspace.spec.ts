@@ -328,7 +328,7 @@ for (const width of [1440, 390, 320]) {
         await expect(
           details.locator("dt").filter({ hasText: new RegExp(`^${text}$`) }),
         ).toBeVisible()
-      await expect(details).toContainText("Not checked — no remote model request")
+      await expect(details).toContainText("Not checked: no remote model request")
       await details.locator("summary").click()
       const copy = page.getByRole("button", {
         name: width <= 850 ? "Chat actions" : "Copy chat ID",

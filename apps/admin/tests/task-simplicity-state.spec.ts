@@ -17,7 +17,7 @@ for (const width of [390, 1440]) {
       await page
         .getByRole("button", { name: "Next private-message access page", exact: true })
         .click()
-      await expect(page.getByText("21–40 of 100", { exact: true })).toBeVisible()
+      await expect(page.getByText("21 to 40 of 100", { exact: true })).toBeVisible()
       const search = page.getByRole("textbox", {
         name: "Search private-message access",
         exact: true,
@@ -206,7 +206,7 @@ for (const width of [390, 1440]) {
       await search.fill("")
       await expect(defaults).toBeHidden()
       await expect(
-        page.getByRole("button", { name: "MCP: fixture · 1 tool", exact: true }),
+        page.getByRole("button", { name: "MCP: fixture 1 tool", exact: true }),
       ).toHaveAttribute("aria-expanded", "false")
       await search.fill("read_url_content")
       await expect(defaults).not.toBeChecked()

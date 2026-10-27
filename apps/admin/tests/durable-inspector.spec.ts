@@ -108,7 +108,7 @@ for (const width of [1440, 390, 320]) {
       }),
     ).toContainText("1 task record on the loaded page")
     await expect(
-      inspector.getByText(/Truncated · the server read limit/).filter({ visible: true }),
+      inspector.getByText(/Truncated: the server read limit/).filter({ visible: true }),
     ).toBeVisible()
     await click(
       page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
@@ -178,7 +178,7 @@ test("default reading answers context, selection, recorded outcomes, and related
   await expect(context.getByRole("heading", { name: "Inspecting conversation 7" })).toBeVisible()
   await expect(context).toContainText("This is the persisted selected conversation.")
   await expect(context).toContainText("Selection does not mean work is running.")
-  await expect(history).toContainText("Model response · Recorded outcome: Completed")
+  await expect(history).toContainText("Model response, Recorded outcome: Completed")
   await expect(history).toContainText("1 task record on the loaded page")
   // The requested conversation page reuses the selection response, not a third read block.
   await expect(inspector.locator(".durable-read-time")).toHaveCount(2)
@@ -266,7 +266,7 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   await expect(
     inspector
       .locator(".durable-selected-area > div")
-      .getByText("Empty · no records in this view.", { exact: true }),
+      .getByText("No records in this view.", { exact: true }),
   ).toBeVisible()
   expect(state.requests.at(-1)?.searchParams.get("taskId")).toBe("8")
   await expect(
@@ -379,7 +379,7 @@ for (const selected of ["persisted", "null", "undefined"] as const) {
       await expect(
         inspector
           .locator(".durable-selected-area > div")
-          .getByText("Empty · no records in this view.", { exact: true }),
+          .getByText("No records in this view.", { exact: true }),
       ).toBeVisible()
       expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
       if (view === "documents")
@@ -396,7 +396,7 @@ for (const selected of ["persisted", "null", "undefined"] as const) {
       await expect(
         inspector
           .locator(".durable-selected-area > div")
-          .getByText("Empty · no records in this view.", { exact: true }),
+          .getByText("No records in this view.", { exact: true }),
       ).toBeVisible()
       expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
       await reveal(contextFor(page))
@@ -451,7 +451,7 @@ test("direct Conversation ID lookup retrieves off-page conversation 9 by objectI
   await expect(
     inspector
       .locator(".durable-selected-area > div")
-      .getByText("Empty · no records in this view.", { exact: true }),
+      .getByText("No records in this view.", { exact: true }),
   ).toBeVisible()
   await reveal(contextFor(page))
   await expect(contextFor(page)).toContainText("Inspecting conversation 9")
@@ -464,7 +464,7 @@ test("direct Conversation ID lookup retrieves off-page conversation 9 by objectI
   await expect(
     inspector
       .locator(".durable-selected-area > div")
-      .getByText("Empty · no records in this view.", { exact: true }),
+      .getByText("No records in this view.", { exact: true }),
   ).toBeVisible()
   await reveal(contextFor(page))
   await expect(contextFor(page)).toContainText("Inspecting conversation 9")
@@ -517,7 +517,7 @@ for (const view of ["Tasks", "Documents", "Entries"]) {
     await expect(
       inspector
         .locator(".durable-selected-area > div")
-        .getByText("Empty · no records in this view.", { exact: true }),
+        .getByText("No records in this view.", { exact: true }),
     ).toBeVisible()
     expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("10")
     await reveal(contextFor(page))
@@ -541,7 +541,7 @@ for (const view of ["tasks", "documents", "entries"] as const) {
       await expect(
         inspector
           .locator(".durable-selected-area > div")
-          .getByText("Empty · no records in this view.", { exact: true }),
+          .getByText("No records in this view.", { exact: true }),
       ).toBeVisible()
       await click(rawTab(inspector, "Conversations"))
       await expectRecord(page, "Conversation", "conversation #9")
@@ -552,7 +552,7 @@ for (const view of ["tasks", "documents", "entries"] as const) {
       await expect(
         inspector
           .locator(".durable-selected-area > div")
-          .getByText("Empty · no records in this view.", { exact: true }),
+          .getByText("No records in this view.", { exact: true }),
       ).toBeVisible()
       await expect(page).toHaveURL(new RegExp(`view=${view}&conversationId=9`))
       expect(state.requests.at(-1)?.searchParams.get("conversationId")).toBe("9")
@@ -692,7 +692,7 @@ test("deep links, context validation, distinct empty and read failure states", a
   await expect(
     inspector
       .locator(".durable-selected-area > div")
-      .getByText("Empty · no records in this view.", { exact: true }),
+      .getByText("No records in this view.", { exact: true }),
   ).toBeVisible()
   state.failed = true
   await click(
@@ -741,7 +741,7 @@ test("approved usage fields keep zero, missing totals, per-model values, and rep
   await expect(field(approved, "Total tokens").nth(0)).toHaveText("0")
   await expect(field(approved, "Total cost \\(reported\\)").nth(0)).toHaveText("0")
   const modelA = approved.locator("details").filter({
-    has: page.getByText("fixture/model-a · 15 total tokens", { exact: true }),
+    has: page.getByText("fixture/model-a, 15 total tokens", { exact: true }),
   })
   await click(modelA.locator("summary"))
   await expect(field(modelA, "Input tokens")).toHaveText("12")
@@ -752,7 +752,7 @@ test("approved usage fields keep zero, missing totals, per-model values, and rep
   await expect(field(modelA, "Output cost \\(reported\\)")).toHaveText("0.002")
   await expect(field(modelA, "Total cost \\(reported\\)")).toHaveText("0.003")
   const modelB = approved.locator("details").filter({
-    has: page.getByText("fixture/model-b · Total not recorded", { exact: true }),
+    has: page.getByText("fixture/model-b, Total not recorded", { exact: true }),
   })
   await click(modelB.locator("summary"))
   await expect(field(modelB, "Input tokens")).toHaveText("Not recorded")
@@ -1189,7 +1189,7 @@ test("off-page persisted selection is separate from the inspection target and us
   await expect(contextFor(page)).toContainText(
     "This is not the persisted selected conversation (conversation 99).",
   )
-  await expect(history).toContainText("1 task record on the loaded page · more may exist")
+  await expect(history).toContainText("1 task record on the loaded page, and more may exist")
   await expect(history).toContainText("Recorded status: Running · no outcome recorded")
   await expect(history).toContainText("2026-10-19 12:00:01 UTC")
   await expect(selection).toContainText("2026-10-19 12:00:00 UTC")
@@ -1465,7 +1465,7 @@ for (const width of [1440, 390, 320])
     await expect(
       inspector
         .locator(".durable-selected-area > div")
-        .getByText("Empty · no records in this view.", { exact: true }),
+        .getByText("No records in this view.", { exact: true }),
     ).toBeVisible()
     await reveal(contextFor(page))
     await expect(contextFor(page)).toContainText("Inspecting conversation 7")

@@ -4,9 +4,17 @@ import type { Locator } from "@playwright/test"
 export async function contrast(locator: Locator) {
   return locator.evaluate((element) => {
     type Color = [number, number, number, number]
+    // Rasterize computed CSS colors into sRGB before alpha compositing.
+    const canvas = document.createElement("canvas")
+    canvas.width = canvas.height = 1
+    const context = canvas.getContext("2d", { willReadFrequently: true })
+    if (!context) throw new Error("A 2D canvas is required to measure contrast")
     const parse = (value: string): Color => {
-      const values = value.match(/[\d.]+/g)?.map(Number) ?? []
-      return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0, values[3] ?? 1]
+      context.clearRect(0, 0, 1, 1)
+      context.fillStyle = value
+      context.fillRect(0, 0, 1, 1)
+      const [red = 0, green = 0, blue = 0, alpha = 0] = context.getImageData(0, 0, 1, 1).data
+      return [red, green, blue, alpha / 255]
     }
     const over = (front: Color, back: Color): Color => [
       front[0] * front[3] + back[0] * (1 - front[3]),

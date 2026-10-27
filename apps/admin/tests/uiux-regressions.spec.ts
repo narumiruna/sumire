@@ -136,7 +136,7 @@ for (const width of [1440, 390]) {
       }
     }
     if (width === 390)
-      await check("mobile Sections", page.getByRole("button", { name: /^Sections ·/ }))
+      await check("mobile Sections", page.getByRole("button", { name: /^Sections:/ }))
     else {
       await check(
         "active section",

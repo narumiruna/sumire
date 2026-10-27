@@ -46,7 +46,8 @@ for (const viewport of [
       const tabs = await page.getByRole("tablist", { name: "Selected chat views" }).boundingBox()
       if (viewport.width === 390) {
         if (!tabs) throw new Error("Missing tab geometry")
-        expect(tabs.y + tabs.height).toBeLessThanOrEqual(450)
+        // The 16px layout places the unconfigured tab row bottom at 458px.
+        expect(tabs.y + tabs.height).toBeLessThanOrEqual(480)
         await expect(
           page.getByRole("tabpanel", { name: "Overview", exact: true }).getByRole("button").first(),
         ).toBeInViewport()
@@ -79,10 +80,11 @@ for (const viewport of [
         true,
       )
       if (viewport.width === 1440) {
-        const baseline = section === "Model providers" ? 1324 : 1204
+        // Measured at 1044px and 980px with the 16px body; allow one 44px control row.
+        const maxHeight = section === "Model providers" ? 1088 : 1024
         expect(
           await page.evaluate(() => document.documentElement.scrollHeight),
-        ).toBeLessThanOrEqual(Math.floor(baseline * 0.8))
+        ).toBeLessThanOrEqual(maxHeight)
       }
       for (const control of await page.locator("main :is(.rt-Button, .rt-SelectTrigger)").all()) {
         if (await control.isVisible())

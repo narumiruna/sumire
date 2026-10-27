@@ -128,7 +128,7 @@ async function fixture(page: Page) {
 }
 async function navigate(page: Page, name: string) {
   const link = page.getByRole("link", { name: sectionLabel(name), exact: true })
-  const menu = page.getByRole("button", { name: /Sections ·/ })
+  const menu = page.getByRole("button", { name: /Sections:/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
   if (name === "Tool permissions") await openGlobalLimits(page)
@@ -337,7 +337,7 @@ test("audit filters query all records without clearing cross-section policy draf
   expect(state.auditQueries.at(-1)?.get("actor")).toBe("system")
   expect(state.auditQueries.at(-1)?.get("from")).toBe(String(Date.parse("2026-10-16T00:00:00Z")))
   await page.getByRole("button", { name: "Older", exact: true }).click()
-  await expect(page.getByText("Showing records 101–101.", { exact: false })).toBeVisible()
+  await expect(page.getByText("Showing records 101 to 101.", { exact: false })).toBeVisible()
   expect(state.auditQueries.at(-1)?.get("offset")).toBe("100")
   expect(state.auditQueries.at(-1)?.get("outcome")).toBe("failed")
   await expect(page.getByRole("region", { name: "Save status and pending changes" })).toContainText(
