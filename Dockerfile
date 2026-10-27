@@ -37,6 +37,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/admin/package.json apps/admin/package.json
+COPY apps/admin2/package.json apps/admin2/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
@@ -46,7 +47,7 @@ COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
 COPY packages/pi-polymarket/package.json packages/pi-polymarket/package.json
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
+    npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --workspace @narumitw/sumire-admin2 --include-workspace-root=false --no-audit --no-fund
 
 # Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
 FROM dependencies AS policy-build
@@ -117,6 +118,15 @@ COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html ap
 COPY apps/admin/src/ apps/admin/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-admin
 
+FROM dependencies AS admin2-build
+
+COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
+
+COPY apps/admin2/tsconfig.json apps/admin2/vite.config.ts apps/admin2/index.html apps/admin2/
+COPY apps/admin2/src/ apps/admin2/src/
+RUN npm --ignore-scripts run build --workspace @narumitw/sumire-admin2
+
 FROM dependencies AS production-dependencies
 
 RUN --mount=type=cache,target=/root/.npm \
@@ -141,6 +151,7 @@ COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /app/packages
 COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
+COPY --from=admin2-build /build/apps/admin2/dist /app/apps/admin2/dist
 
 # Import without credentials or network access; do not start the bot.
 RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"

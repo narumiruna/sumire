@@ -1,0 +1,23 @@
+/* Only the weights the console uses, Latin subset, woff2 only. */
+@font-face {
+  font-family: "Host Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@fontsource/host-grotesk/files/host-grotesk-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Host Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("@fontsource/host-grotesk/files/host-grotesk-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@fontsource/atkinson-hyperlegible-mono/files/atkinson-hyperlegible-mono-latin-400-normal.woff2")
+    format("woff2");
+}

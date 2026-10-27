@@ -14,6 +14,8 @@ export interface AdminConfig {
   port: number
   host: string
   assets: string
+  /** The v2 console build, served under /v2/; omitted when it is not deployed. */
+  assetsV2?: string
 }
 
 type Pending = {

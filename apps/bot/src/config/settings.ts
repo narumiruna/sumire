@@ -103,6 +103,7 @@ export function loadSettings(
     port,
     host: parsed.ADMIN_HOST,
     assets: path.join(root, "apps/admin/dist"),
+    assetsV2: path.join(root, "apps/admin2/dist"),
   }
   return {
     admin,

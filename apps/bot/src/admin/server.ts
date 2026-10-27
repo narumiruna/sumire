@@ -186,10 +186,17 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     }
     if (!url.pathname.startsWith("/api/")) {
       if (method !== "GET") throw new AdminError(405, "Method not allowed")
-      const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1)
-      if (!/^(index\.html|assets\/[A-Za-z0-9_.-]+\.(js|css|svg))$/.test(name))
+      const v2 = url.pathname === "/v2" || url.pathname.startsWith("/v2/")
+      const relative = v2 ? url.pathname.slice("/v2".length) : url.pathname
+      // v2 routes its sections client-side, so every section path loads its shell.
+      const name =
+        relative === "/" || relative === "" || (v2 && /^\/[a-z-]+\/?$/.test(relative))
+          ? "index.html"
+          : relative.slice(1)
+      const assets = v2 ? config.assetsV2 : config.assets
+      if (!assets || !/^(index\.html|assets\/[A-Za-z0-9_.-]+\.(js|css|svg|woff2))$/.test(name))
         throw new AdminError(404, "Not found")
-      const file = path.join(config.assets, name)
+      const file = path.join(assets, name)
       const metadata = await stat(file).catch((error: unknown) => {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
           throw new AdminError(404, "Not found")
@@ -204,7 +211,9 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
             ? "text/css"
             : name.endsWith(".svg")
               ? "image/svg+xml"
-              : "text/html; charset=utf-8",
+              : name.endsWith(".woff2")
+                ? "font/woff2"
+                : "text/html; charset=utf-8",
       })
       res.end(data)
       return

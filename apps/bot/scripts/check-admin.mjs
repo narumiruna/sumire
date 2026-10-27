@@ -59,6 +59,7 @@ try {
       host: "127.0.0.1",
       port: 0,
       assets: path.resolve(import.meta.dirname, "../../admin/dist"),
+      assetsV2: path.resolve(import.meta.dirname, "../../admin2/dist"),
     },
     {
       store,
@@ -130,6 +131,9 @@ try {
   const root = await call("/")
   assert.equal(root.status, 200)
   assert.match(root.body, /assets\//)
+  const v2 = await call("/v2/audit")
+  assert.equal(v2.status, 200)
+  assert.match(v2.body, /\/v2\/assets\//)
   const auth = {
     cookie: `__Host-sumire-session=${session.value}`,
     origin,

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { request as httpRequest } from "node:http"
 import type { AddressInfo } from "node:net"
 import os from "node:os"
@@ -95,6 +95,7 @@ beforeEach(async () => {
       host: "127.0.0.1",
       port: 0,
       assets: directory,
+      assetsV2: path.join(directory, "v2"),
     },
     {
       store,
@@ -749,5 +750,30 @@ describe("admin HTTP security", () => {
     expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'")
     expect(response.headers["referrer-policy"]).toBe("no-referrer")
     expect((await call("/api/session", "GET", undefined, auth())).status).toBe(401)
+  })
+})
+
+describe("admin static consoles", () => {
+  it("serves the v2 shell for its section paths and only its built asset types", async () => {
+    mkdirSync(path.join(directory, "v2", "assets"), { recursive: true })
+    writeFileSync(path.join(directory, "index.html"), "v1 shell")
+    writeFileSync(path.join(directory, "v2", "index.html"), "v2 shell")
+    writeFileSync(path.join(directory, "v2", "assets", "face.woff2"), "font")
+    writeFileSync(path.join(directory, "v2", "assets", "notes.txt"), "secret")
+    expect((await call("/")).body).toBe("v1 shell")
+    for (const route of ["/v2", "/v2/", "/v2/audit", "/v2/chats/"]) {
+      const response = await call(route)
+      expect(response.status).toBe(200)
+      expect(response.body).toBe("v2 shell")
+      expect(response.headers["content-security-policy"]).toContain("default-src 'self'")
+    }
+    const font = await call("/v2/assets/face.woff2")
+    expect(font.status).toBe(200)
+    expect(font.headers["content-type"]).toBe("font/woff2")
+    expect((await call("/v2/assets/notes.txt")).status).toBe(404)
+    expect((await call("/v2/audit/deep/path")).status).toBe(404)
+    expect((await call("/v2/../admin.sqlite")).status).toBe(404)
+    expect((await call("/v2x")).status).toBe(404)
+    expect((await call("/v2/", "POST", "{}")).status).toBe(405)
   })
 })

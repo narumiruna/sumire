@@ -1,0 +1,40 @@
+{
+  "name": "@narumitw/sumire-admin2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 17467 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts",
+    "predev": "npm run build:dependencies",
+    "prebuild": "npm run build:dependencies",
+    "pretest": "npm run build:dependencies",
+    "pretypecheck": "npm run build:dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible-mono": "5.3.0",
+    "@fontsource/host-grotesk": "5.3.0",
+    "@narumitw/sumire-contracts": "0.6.2",
+    "@narumitw/sumire-policy": "0.4.1",
+    "@simplewebauthn/browser": "14.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}
