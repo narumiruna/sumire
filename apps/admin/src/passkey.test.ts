@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from "vitest"
 import { captureSetupLink } from "./passkey.js"
 
 describe("passkey setup fragments", () => {
+  it("leaves non-setup navigation fragments unchanged", () => {
+    for (const hash of ["#model-availability", "#default-tool-permissions", "#unrelated"]) {
+      const replaceState = vi.fn()
+      expect(
+        captureSetupLink(
+          { hash, pathname: "/", search: "?section=Model+Providers" } as Location,
+          { replaceState } as unknown as History,
+        ),
+      ).toBe("")
+      expect(replaceState).not.toHaveBeenCalled()
+    }
+  })
   it("captures the secret once and removes it from the browser URL", () => {
     const secret = "s".repeat(43)
     const replaceState = vi.fn()

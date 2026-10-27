@@ -115,11 +115,11 @@ for (const width of [1440, 390]) {
       ".audit-filters .rt-TextFieldRoot, .audit-filters button[role=combobox]",
     )
     await expect(fields).toHaveCount(5)
-    for (const key of ["from", "to"]) {
-      await expect(page.getByLabel(`Audit ${key}`, { exact: true })).toHaveAttribute("type", "date")
-      await expect(page.getByLabel(`Audit ${key}`, { exact: true }).locator("..")).toHaveClass(
-        /rt-TextFieldRoot/,
-      )
+    for (const label of ["From date (UTC)", "Through date (UTC)"]) {
+      const date = page.getByLabel(label, { exact: true })
+      await expect(date).toHaveAccessibleName(label)
+      await expect(date).toHaveAttribute("type", "date")
+      await expect(date.locator("..")).toHaveClass(/rt-TextFieldRoot/)
     }
     const boxes = await fields.evaluateAll((elements) =>
       elements.map((element) => {
@@ -135,13 +135,13 @@ for (const width of [1440, 390]) {
       expect(new Set(boxes.map((box) => box.x)).size).toBe(1)
       expect(new Set(boxes.map((box) => box.y)).size).toBe(5)
     }
-    await page.getByLabel("Audit from", { exact: true }).fill("2026-10-20")
-    await page.getByLabel("Audit to", { exact: true }).fill("2026-10-21")
+    await page.getByLabel("From date (UTC)", { exact: true }).fill("2026-10-20")
+    await page.getByLabel("Through date (UTC)", { exact: true }).fill("2026-10-21")
     await page.getByRole("button", { name: "Apply audit filters", exact: true }).click()
     await expect.poll(() => auditQueries.at(-1)?.get("from")).toBe(String(Date.UTC(2026, 9, 20)))
     expect(auditQueries.at(-1)?.get("to")).toBe(String(Date.UTC(2026, 9, 22) - 1))
     const count = auditQueries.length
-    await page.getByLabel("Audit from", { exact: true }).fill("2026-10-22")
+    await page.getByLabel("From date (UTC)", { exact: true }).fill("2026-10-22")
     await page.getByRole("button", { name: "Apply audit filters", exact: true }).click()
     await expect(page.getByRole("alert")).toContainText("Start date must precede end date.")
     expect(auditQueries).toHaveLength(count)

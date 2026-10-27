@@ -117,6 +117,19 @@ describe("SaveStatus", () => {
       /<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/,
     )
   })
+  it("does not imply that an unknown save outcome was discarded or applied", () => {
+    const html = render({ recover: () => {}, dirty: false }, { status: "failed" })
+    expect(html).toContain('data-compact="false"')
+    expect(html).toContain('data-saved="false"')
+    expect(html).toContain("Save attempt needs review. Last confirmed revision shown.")
+    expect(html).toContain("Load latest and review draft")
+    expect(html).not.toContain("Settings saved and applied.")
+    expect(html).toMatch(/<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/)
+    expect(render({ recover: () => {}, dirty: true })).toMatch(
+      /<button(?=[^>]*disabled=)[^>]*>Review and save changes<\/button>/,
+    )
+  })
+
   it("blocks review and application actions while busy", () => {
     const html = render({ dirty: true, busy: true }, { status: "failed" })
     for (const label of [

@@ -14,7 +14,7 @@ import {
   Text,
   TextField,
 } from "@radix-ui/themes"
-import { useContext, useEffect, useId, useRef, useState } from "react"
+import { useContext, useEffect, useId, useMemo, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Selection, type Snapshot } from "./api.js"
 import { ModelUse } from "./model-use.js"
 import { focusEditor } from "./navigation.js"
@@ -43,16 +43,20 @@ export function SearchChoice({
   }, [sectionActive])
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const tabExit = useRef(false)
   const id = useId()
   const displayValue =
     options.find((option) => option.id === value)?.label ??
     (value || `Choose ${label.toLowerCase()}`)
-  const filtered = options.filter((v) =>
-    `${v.label} ${v.id}`.toLowerCase().includes(query.toLowerCase()),
+  const filtered = useMemo(
+    () => options.filter((v) => `${v.label} ${v.id}`.toLowerCase().includes(query.toLowerCase())),
+    [options, query],
   )
   useEffect(() => {
-    if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" })
-  }, [active, id, open])
+    if (open && filtered[active])
+      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" })
+  }, [active, filtered, id, open])
   const choose = (value: string) => {
     onChange(value)
     setOpen(false)
@@ -65,6 +69,7 @@ export function SearchChoice({
       <Popover.Root
         open={open && sectionActive}
         onOpenChange={(v) => {
+          if (v) tabExit.current = false
           setOpen(v)
           setQuery("")
           setActive(0)
@@ -72,6 +77,7 @@ export function SearchChoice({
       >
         <Popover.Trigger>
           <Button
+            ref={trigger}
             variant="surface"
             disabled={disabled}
             aria-label={`${label}: ${displayValue}`}
@@ -86,7 +92,8 @@ export function SearchChoice({
           aria-label={`Choose ${label.toLowerCase()}`}
           onCloseAutoFocus={(event) => {
             // Navigation must keep focus on the destination, not a hidden trigger.
-            if (!sectionActive) event.preventDefault()
+            if (!sectionActive || tabExit.current || !trigger.current?.checkVisibility())
+              event.preventDefault()
           }}
         >
           <TextField.Root
@@ -102,7 +109,13 @@ export function SearchChoice({
               setActive(0)
             }}
             onKeyDown={(e) => {
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              if (e.key === "Tab") {
+                // Leave Radix's looping focus scope. Native Tab then moves from the trigger.
+                e.stopPropagation()
+                tabExit.current = true
+                setOpen(false)
+                if (sectionActive && trigger.current?.checkVisibility()) trigger.current.focus()
+              } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault()
                 setActive((v) =>
                   Math.max(0, Math.min(filtered.length - 1, v + (e.key === "ArrowDown" ? 1 : -1))),
@@ -119,9 +132,11 @@ export function SearchChoice({
                 <button
                   type="button"
                   role="option"
+                  tabIndex={-1}
                   id={`${id}-${index}`}
                   aria-selected={v.id === value}
                   data-active={index === active}
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => choose(v.id)}
                 >
                   <strong>{v.label}</strong>

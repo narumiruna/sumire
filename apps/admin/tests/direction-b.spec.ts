@@ -1,6 +1,6 @@
 import { inherited } from "@narumitw/sumire-policy"
 import { expect, test } from "@playwright/test"
-import { adminFixture, navigate, sectionLabel } from "./admin-fixture.js"
+import { adminFixture, navigate, reviewPolicyRecovery, sectionLabel } from "./admin-fixture.js"
 import { durableFixture } from "./durable-fixture.js"
 import { remediationFixture } from "./remediation-fixture.js"
 
@@ -71,7 +71,7 @@ test("two default edits retain their draft after failure and preserve explicit c
   await expect(changes).toContainText("2 unsaved changes")
   expect(state.policy().defaults.model).toBe("fixture/test")
   state.fail(false)
-  await changes.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await reviewPolicyRecovery(page)
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect(changes).toHaveCount(0)
   expect(state.policy().defaults.model).toBe("fixture/other")

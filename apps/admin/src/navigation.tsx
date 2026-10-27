@@ -112,7 +112,13 @@ export function readNavigation(url: URL) {
   }
 }
 
+const sectionAnchors: Record<string, Page> = {
+  "#model-availability": "Model Providers",
+  "#default-tool-permissions": "Tool permissions",
+}
+
 export function navigationHref(page: Page, chat: string, url = new URL(window.location.href)) {
+  if (sectionAnchors[url.hash] && sectionAnchors[url.hash] !== page) url.hash = ""
   if (page !== "Durable" || url.searchParams.get("chat") !== chat) {
     for (const key of ["view", "conversationId", "scope", "taskId", "objectId"])
       url.searchParams.delete(key)
@@ -124,29 +130,70 @@ export function navigationHref(page: Page, chat: string, url = new URL(window.lo
   return `${url.pathname}${url.search}${url.hash}`
 }
 
-export function useNavigation() {
-  const [state, setState] = useState(() => readNavigation(new URL(window.location.href)))
+export function useNavigation(ready = true) {
+  const [state, setState] = useState(() => {
+    const url = new URL(window.location.href)
+    const navigation = readNavigation(url)
+    return {
+      ...navigation,
+      target: sectionAnchors[url.hash] === navigation.page ? url.hash.slice(1) : undefined,
+    }
+  })
+  const targetFrame = useRef<number | undefined>(undefined)
+  const hasBeenReady = useRef(ready)
+  const cancelTargetFocus = () => {
+    if (targetFrame.current !== undefined) cancelAnimationFrame(targetFrame.current)
+    targetFrame.current = undefined
+  }
   useEffect(() => {
-    const restore = () => setState(readNavigation(new URL(window.location.href)))
+    const restore = () => {
+      if (targetFrame.current !== undefined) cancelAnimationFrame(targetFrame.current)
+      targetFrame.current = undefined
+      setState({ ...readNavigation(new URL(window.location.href)), target: undefined })
+    }
     window.addEventListener("popstate", restore)
     return () => window.removeEventListener("popstate", restore)
   }, [])
+  useEffect(() => {
+    // Wait for the first destination render, but do not retain a request across session expiry.
+    if (!ready) {
+      if (hasBeenReady.current && state.target)
+        setState((current) => ({ ...current, target: undefined }))
+      return
+    }
+    hasBeenReady.current = true
+    const target = state.target
+    if (target) {
+      targetFrame.current = requestAnimationFrame(() => {
+        targetFrame.current = undefined
+        focusEditor(`#${CSS.escape(target)}`)
+        setState((current) => (current === state ? { ...current, target: undefined } : current))
+      })
+    }
+    return () => {
+      if (targetFrame.current !== undefined) cancelAnimationFrame(targetFrame.current)
+      targetFrame.current = undefined
+    }
+  }, [ready, state])
   return {
-    ...state,
+    page: state.page,
+    chat: state.chat,
     setPage: (page: Page, anchor?: string) => {
+      cancelTargetFocus()
       const url = new URL(window.location.href)
       if (anchor) url.hash = anchor
-      else if (url.hash === "#default-tool-permissions") url.hash = ""
+      else if (sectionAnchors[url.hash]) url.hash = ""
       const href = navigationHref(page, readNavigation(url).chat, url)
       if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
         window.history.pushState(null, "", href)
-      setState((current) => ({ ...current, page }))
+      setState((current) => ({ ...current, page, target: anchor || undefined }))
     },
     setChat: (chat: string) => {
+      cancelTargetFocus()
       const href = navigationHref(state.page, chat)
       if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
         window.history.pushState(null, "", href)
-      setState((current) => ({ ...current, chat }))
+      setState((current) => ({ ...current, chat, target: undefined }))
     },
   }
 }

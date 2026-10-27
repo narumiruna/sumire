@@ -111,66 +111,63 @@ export function AuditHistory({
               ].map(({ className, keys }) => (
                 <div className={className} key={className}>
                   {keys.map((key) => (
-                    <label key={key} htmlFor={`audit-${key}`} className="form-field">
-                      {
+                    <div key={key} className="form-field">
+                      <label htmlFor={`audit-${key}`}>
                         {
-                          actor: "Actor (exact)",
-                          operation: "Operation type",
-                          outcome: "Result",
-                          from: "From date (UTC)",
-                          to: "Through date (UTC)",
-                        }[key]
-                      }
+                          {
+                            actor: "Actor (exact)",
+                            operation: "Operation type",
+                            outcome: "Result",
+                            from: "From date (UTC)",
+                            to: "Through date (UTC)",
+                          }[key]
+                        }
+                      </label>
                       {key === "operation" || key === "outcome" ? (
-                        <>
-                          <Select.Root
-                            value={custom[key] ? "__custom" : draft[key] || "__all"}
-                            onValueChange={(value) => {
-                              setCustom((previous) => ({
-                                ...previous,
-                                [key]: value === "__custom",
-                              }))
-                              setDraft((previous) => ({
-                                ...previous,
-                                [key]: value === "__custom" || value === "__all" ? "" : value,
-                              }))
-                            }}
-                          >
-                            <Select.Trigger id={`audit-${key}`} aria-label={`Audit ${key}`} />
-                            <Select.Content>
-                              <Select.Item value="__all">All</Select.Item>
-                              {Object.entries(
-                                key === "operation" ? operationNames : outcomeNames,
-                              ).map(([value, label]) => (
-                                <Select.Item key={value} value={value}>
-                                  {label}
-                                </Select.Item>
-                              ))}
-                              <Select.Item value="__custom">Other exact value</Select.Item>
-                            </Select.Content>
-                          </Select.Root>
-                          {custom[key] && (
-                            <TextField.Root
-                              aria-label={`Audit ${key} exact value`}
-                              maxLength={128}
-                              value={draft[key]}
-                              onChange={(event) =>
-                                setDraft({ ...draft, [key]: event.target.value })
-                              }
-                            />
-                          )}
-                        </>
+                        <Select.Root
+                          value={custom[key] ? "__custom" : draft[key] || "__all"}
+                          onValueChange={(value) => {
+                            setCustom((previous) => ({
+                              ...previous,
+                              [key]: value === "__custom",
+                            }))
+                            setDraft((previous) => ({
+                              ...previous,
+                              [key]: value === "__custom" || value === "__all" ? "" : value,
+                            }))
+                          }}
+                        >
+                          <Select.Trigger id={`audit-${key}`} />
+                          <Select.Content>
+                            <Select.Item value="__all">All</Select.Item>
+                            {Object.entries(
+                              key === "operation" ? operationNames : outcomeNames,
+                            ).map(([value, label]) => (
+                              <Select.Item key={value} value={value}>
+                                {label}
+                              </Select.Item>
+                            ))}
+                            <Select.Item value="__custom">Other exact value</Select.Item>
+                          </Select.Content>
+                        </Select.Root>
                       ) : (
                         <TextField.Root
                           id={`audit-${key}`}
-                          aria-label={`Audit ${key}`}
                           type={key === "actor" ? "text" : "date"}
                           maxLength={128}
                           value={draft[key]}
                           onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
                         />
                       )}
-                    </label>
+                      {(key === "operation" || key === "outcome") && custom[key] && (
+                        <TextField.Root
+                          aria-label={`Audit ${key} exact value`}
+                          maxLength={128}
+                          value={draft[key]}
+                          onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               ))}

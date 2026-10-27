@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { navigate, openDisclosure } from "./admin-fixture.js"
+import { navigate, openDisclosure, reviewPolicyRecovery } from "./admin-fixture.js"
 import { remediationFixture as fixture } from "./remediation-fixture.js"
 
 for (const width of [390, 1440]) {
@@ -45,7 +45,7 @@ for (const width of [390, 1440]) {
       await expect(page.getByRole("alert").first()).toContainText("Settings changed; reload")
       expect(state.policy()).toEqual(original)
       state.fail(false)
-      await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+      await reviewPolicyRecovery(page)
       await expect(review).toContainText("approve -246")
       await review.getByRole("button", { name: "Save changes", exact: true }).click()
       const expected = {

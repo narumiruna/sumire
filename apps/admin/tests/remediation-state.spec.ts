@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { navigate, openDisclosure } from "./admin-fixture.js"
+import { navigate, openDisclosure, reviewPolicyRecovery } from "./admin-fixture.js"
 import { remediationFixture as fixture } from "./remediation-fixture.js"
 
 const unfinished = [
@@ -278,7 +278,7 @@ test("F2 a failed default-model save retains its exact draft for retry", async (
   await page.screenshot({ path: testInfo.outputPath("failed-default-save.png"), fullPage: true })
   expect(state.policy().defaults.model).toBe("fixture/test")
   state.fail(false)
-  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await reviewPolicyRecovery(page)
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect.poll(() => state.policy().defaults.model).toBe("fixture/other")
   expect(state.writes[0]?.body).toEqual(state.writes[1]?.body)
@@ -380,7 +380,12 @@ for (const value of ["historical.operation", "constructor"]) {
     await navigate(page, "Audit")
     await openDisclosure(page, "Filters")
     for (const field of ["operation", "outcome"]) {
-      await page.getByRole("combobox", { name: `Audit ${field}`, exact: true }).click()
+      await page
+        .getByRole("combobox", {
+          name: field === "operation" ? "Operation type" : "Result",
+          exact: true,
+        })
+        .click()
       await page.getByRole("option", { name: "Other exact value", exact: true }).click()
       await page.getByLabel(`Audit ${field} exact value`, { exact: true }).fill(value)
     }

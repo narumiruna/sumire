@@ -1,7 +1,7 @@
 import { inherited, validateReferences } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import type { Policy } from "../src/api.js"
-import { basePolicy, inventory, navigate } from "./admin-fixture.js"
+import { basePolicy, inventory, navigate, reviewPolicyRecovery } from "./admin-fixture.js"
 
 async function fixture(
   page: Page,
@@ -23,6 +23,13 @@ async function fixture(
     login: "pending",
     writes: [] as { path: string; body: Record<string, unknown> }[],
   }
+  const snapshot = () => ({
+    policy: state.policy,
+    revision: state.revision,
+    applied: state.applied,
+    status: state.status,
+    epoch: state.revision,
+  })
   const provider = state.inventory.providers[0]
   if (!provider) throw new Error("Missing fixture provider")
   provider.configured = options.configured ?? false
@@ -46,6 +53,7 @@ async function fixture(
         state.revision++
         state.status = state.failApply ? "failed" : "applied"
         if (!state.failApply) state.applied = state.revision
+        return route.fulfill({ json: snapshot() })
       } else if (path.endsWith("/credential")) {
         provider.configured = true
         state.applied = ++state.revision
@@ -63,12 +71,7 @@ async function fixture(
     const chat = { id: 42, name: "Fixture chat", type: "private" }
     const data: Record<string, unknown> = {
       session: { actor: "42", csrf: "fixture" },
-      settings: {
-        policy: state.policy,
-        revision: state.revision,
-        applied: state.applied,
-        status: state.status,
-      },
+      settings: snapshot(),
       inventory: state.inventory,
       chats: [chat],
       "chats/42": chat,
@@ -286,7 +289,7 @@ test("conflicts retain model-use drafts, failed application remains distinct fro
   ).toBeVisible()
   state.conflict = false
   state.failApply = true
-  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await reviewPolicyRecovery(page)
   await page
     .getByRole("alertdialog")
     .getByRole("button", { name: "Save changes", exact: true })

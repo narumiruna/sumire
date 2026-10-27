@@ -1,6 +1,8 @@
-import { expect, type Locator, test } from "@playwright/test"
+import { generateKeyPairSync } from "node:crypto"
+import { expect, type Locator, type Page, test } from "@playwright/test"
 import { navigate, openDisclosure } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
+import { policyRecoveryFixture } from "./policy-recovery-fixture.js"
 import { remediationFixture } from "./remediation-fixture.js"
 
 for (const width of [1440, 390, 320]) {
@@ -336,4 +338,630 @@ test("credential-save errors stay inside the authentication dialog", async ({ pa
     .poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]'))))
     .toBe(true)
   await expect(dialog.getByLabel("API key", { exact: true })).toHaveValue("synthetic-review-key")
+})
+
+async function stageRecoveryDraft(page: Page) {
+  await navigate(page, "Defaults")
+  await page.getByRole("combobox", { name: "Shared default thinking", exact: true }).click()
+  await page.getByRole("option", { name: "high", exact: true }).click()
+}
+
+async function submitRecoveryDraft(page: Page) {
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+}
+
+async function openRecovery(page: Page) {
+  await page.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Review recovered settings draft", exact: true })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+for (const width of [1440, 390, 320]) {
+  test(`policy recovery retains disjoint edits and saves only after review at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
+    const fixture = await policyRecoveryFixture(page)
+    await stageRecoveryDraft(page)
+    fixture.advance((policy) => {
+      policy.privateUsers.push(43)
+    })
+    await submitRecoveryDraft(page)
+    await expect(page.getByRole("alert")).toContainText("Fixture revision advanced")
+    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    const dialog = await openRecovery(page)
+    await expect(dialog).toContainText("Shared defaults: Thinking level")
+    expect(fixture.writes).toHaveLength(1)
+    await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+    await page.getByRole("button", { name: "Save changes", exact: true }).click()
+    await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+    expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+    expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
+    expect(fixture.snapshot().policy.privateUsers).toEqual([42, 43])
+  })
+}
+
+for (const resource of ["/api/inventory", "/api/audit"]) {
+  test(`a confirmed policy save remains saved if ${resource} refresh fails`, async ({ page }) => {
+    const fixture = await policyRecoveryFixture(page)
+    await stageRecoveryDraft(page)
+    fixture.state.failedReads.add(resource)
+    await submitRecoveryDraft(page)
+    await expect(page.getByRole("alert")).toContainText("Settings were saved")
+    await expect(page.locator("#save-status")).toContainText("Settings saved and applied.")
+    await expect(
+      page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+    ).toHaveCount(0)
+    expect(fixture.writes).toHaveLength(1)
+    fixture.state.failedReads.clear()
+    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await expect(page.getByRole("alert")).toHaveCount(0)
+    expect(fixture.writes).toHaveLength(1)
+    expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
+  })
+}
+
+test("an unknown save outcome can be confirmed without a duplicate PUT", async ({ page }) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.state.loseSaveResponse = true
+  await submitRecoveryDraft(page)
+  const dialog = await openRecovery(page)
+  await expect(dialog).toContainText("Already saved")
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  await expect(page.getByRole("alertdialog")).toHaveCount(0)
+  expect(fixture.writes).toHaveLength(1)
+})
+
+test("a malformed successful save response retains recovery instead of corrupting the workspace", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.state.malformedSaveResponse = true
+  await submitRecoveryDraft(page)
+  const dialog = await openRecovery(page)
+  await expect(dialog).toContainText("Already saved")
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes).toHaveLength(1)
+})
+
+test("recovery comparison renders untrusted policy values as text without loading their URLs", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  const untrusted =
+    '<img src="https://untrusted.invalid/recovery" onerror="window.recoveryInjected=true">'
+  const external: string[] = []
+  await page.route("https://untrusted.invalid/**", (route) => route.abort())
+  page.on("request", (request) => {
+    if (request.url().startsWith("https://untrusted.invalid/")) external.push(request.url())
+  })
+  await navigate(page, "Tool permissions")
+  await openDisclosure(page, "Approve an exact tool name")
+  await page.getByLabel("Additional approved tool name", { exact: true }).fill(untrusted)
+  await page.getByRole("button", { name: "Add tool to pending approval", exact: true }).click()
+  fixture.advance((policy) => {
+    policy.tools = ["read_url_content"]
+  })
+  await submitRecoveryDraft(page)
+  const dialog = await openRecovery(page)
+  await dialog.getByText("Compare values for Global tool availability", { exact: true }).click()
+  await expect(
+    dialog.locator("pre").filter({ hasText: "untrusted.invalid/recovery" }),
+  ).toContainText("<img")
+  await expect(dialog.locator("img")).toHaveCount(0)
+  expect(await page.evaluate(() => Object.hasOwn(window, "recoveryInjected"))).toBe(false)
+  expect(external).toEqual([])
+  expect(fixture.writes).toHaveLength(1)
+})
+
+for (const choice of ["Keep saved value", "Use draft value"]) {
+  test(`overlapping recovery requires the explicit choice: ${choice}`, async ({ page }) => {
+    const fixture = await policyRecoveryFixture(page)
+    await stageRecoveryDraft(page)
+    fixture.advance((policy) => {
+      policy.defaults.thinking = "low"
+    })
+    await submitRecoveryDraft(page)
+    const dialog = await openRecovery(page)
+    await expect(
+      dialog.getByRole("button", { name: "Use recovered draft", exact: true }),
+    ).toBeDisabled()
+    const scope = dialog.getByRole("radiogroup", {
+      name: "Shared defaults: Thinking level",
+      exact: true,
+    })
+    await scope.getByRole("radio", { name: choice, exact: true }).click()
+    await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+    if (choice === "Use draft value") {
+      await page.getByRole("button", { name: "Save changes", exact: true }).click()
+      await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+      expect(fixture.writes.at(-1)?.revision).toBe(2)
+      expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
+    } else {
+      await expect(page.getByRole("alertdialog")).toHaveCount(0)
+      await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+      expect(fixture.snapshot().policy.defaults.thinking).toBe("low")
+      expect(fixture.writes).toHaveLength(1)
+    }
+  })
+}
+
+test("cancelled and failed recovery reads retain the draft and original save base", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(43)
+  })
+  await submitRecoveryDraft(page)
+  let dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+  ).toBeFocused()
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("high")
+  fixture.state.failedReads.add("/api/settings")
+  await page.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Fixture read failed")
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("high")
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1])
+  fixture.state.failedReads.clear()
+  dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+})
+
+test("recovery preserves an MCP draft and unfinished access input across revision changes", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(43)
+  })
+  await submitRecoveryDraft(page)
+  await navigate(page, "Access")
+  await page.getByLabel("Telegram ID to approve", { exact: true }).fill("8001")
+  await navigate(page, "MCP connections")
+  await page.getByRole("button", { name: "Add connection", exact: true }).click()
+  await page.getByLabel("MCP server name", { exact: true }).fill("recovery-draft")
+  await page.getByLabel("Connection command", { exact: true }).fill("npx")
+  await openDisclosure(page, "Secrets (optional)")
+  await page.getByLabel("Secret field name", { exact: true }).fill("FIXTURE_KEY")
+  await page.getByLabel("New secret value", { exact: true }).fill("synthetic-retained-value")
+  const dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  const review = page.getByRole("alertdialog")
+  await expect(review.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled()
+  await review.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("recovery-draft")
+  await expect(page.getByLabel("New secret value", { exact: true })).toHaveValue(
+    "synthetic-retained-value",
+  )
+  await navigate(page, "Access")
+  await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toHaveValue("8001")
+  await page.getByRole("button", { name: "Clear ID input", exact: true }).click()
+  await navigate(page, "MCP connections")
+  await page.getByRole("button", { name: "Clear secret input", exact: true }).click()
+  await submitRecoveryDraft(page)
+  await expect(page.locator("#save-status")).not.toContainText("unsaved change")
+  await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue("recovery-draft")
+  await expect(page.getByLabel("Connection command", { exact: true })).toHaveValue("npx")
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+})
+
+test("another revision advance requires another recovery review", async ({ page }) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(43)
+  })
+  await submitRecoveryDraft(page)
+  let dialog = await openRecovery(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(44)
+  })
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Fixture revision advanced")
+  dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2, 3])
+  expect(fixture.snapshot().policy.privateUsers).toEqual([42, 43, 44])
+})
+
+test("a non-revision 409 retains its save error without claiming a revision conflict", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.state.saveFailure = 409
+  await submitRecoveryDraft(page)
+  const dialog = await openRecovery(page)
+  await expect(dialog).toContainText("The saved revision has not changed")
+  await expect(dialog).toContainText("Fixture save rejected")
+  await expect(dialog.getByRole("radio")).toHaveCount(0)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Fixture save rejected")
+  fixture.state.saveFailure = 0
+  await submitRecoveryDraft(page)
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 1])
+})
+
+test("a recovered draft cannot save references removed by a concurrent change", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await navigate(page, "Tool permissions")
+  await page
+    .getByRole("checkbox", { name: "Default chat permission for tool bash", exact: true })
+    .check()
+  fixture.advance((policy) => {
+    policy.tools = ["read_url_content"]
+  })
+  await submitRecoveryDraft(page)
+  const dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("selection exceeds global availability")
+  expect(fixture.writes).toHaveLength(1)
+  await page
+    .getByRole("checkbox", { name: "Default chat permission for tool bash", exact: true })
+    .uncheck()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+})
+
+for (const status of ["failed", "pending"]) {
+  test(`a ${status} application remains distinct from a successful save and failed refresh`, async ({
+    page,
+  }) => {
+    const fixture = await policyRecoveryFixture(page)
+    await stageRecoveryDraft(page)
+    fixture.state.status = status
+    fixture.state.lag = 1
+    fixture.state.failedReads.add("/api/inventory")
+    await submitRecoveryDraft(page)
+    await expect(page.getByRole("alert")).toContainText("Settings were saved")
+    await expect(page.locator("#save-status")).toContainText(
+      status === "failed" ? "Saved, but application failed" : "Saved changes are waiting to apply",
+    )
+    await expect(page.getByRole("button", { name: "Retry application", exact: true })).toBeEnabled()
+    await expect(
+      page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+    ).toHaveCount(0)
+    expect(fixture.writes).toHaveLength(1)
+  })
+}
+
+for (const discard of [false, true]) {
+  test(`an unknown outcome preserves ${discard ? "review after discard" : "edits made after submission"}`, async ({
+    page,
+  }) => {
+    const fixture = await policyRecoveryFixture(page)
+    await stageRecoveryDraft(page)
+    fixture.state.loseSaveResponse = true
+    await submitRecoveryDraft(page)
+    await expect(
+      page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+    ).toBeVisible()
+    if (discard) {
+      page.once("dialog", (dialog) => dialog.accept())
+      await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
+      await expect(page.locator("#save-status")).toContainText("Save attempt needs review")
+      await expect(page.locator('#save-status [data-saved="false"]')).toBeVisible()
+      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    } else {
+      await page.getByRole("combobox", { name: "Shared default thinking", exact: true }).click()
+      await page.getByRole("option", { name: "off", exact: true }).click()
+      // Another submission is blocked until the first outcome has been read and reviewed.
+      await navigate(page, "Tool permissions")
+      await page
+        .getByRole("checkbox", {
+          name: "Default chat permission for tool read_url_content",
+          exact: true,
+        })
+        .uncheck()
+      await expect(
+        page.getByRole("button", { name: "Review and save changes", exact: true }),
+      ).toBeDisabled()
+    }
+    expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
+    const dialog = await openRecovery(page)
+    await expect(
+      dialog.getByRole("button", { name: "Use recovered draft", exact: true }),
+    ).toBeDisabled()
+    const conflict = dialog.getByRole("radiogroup", {
+      name: "Shared defaults: Thinking level",
+      exact: true,
+    })
+    await conflict
+      .getByRole("radio", { name: discard ? "Keep saved value" : "Use draft value", exact: true })
+      .click()
+    await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+    if (discard) {
+      await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+      expect(fixture.writes).toHaveLength(1)
+      expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
+    } else {
+      await page.getByRole("button", { name: "Save changes", exact: true }).click()
+      await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+      expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+      expect(fixture.snapshot().policy.defaults.thinking).toBe("off")
+      expect(fixture.snapshot().policy.defaults.tools).toEqual([])
+    }
+  })
+}
+
+test("a direct approval review cannot bypass a failed save and can open recovery", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.state.loseSaveResponse = true
+  await submitRecoveryDraft(page)
+  await navigate(page, "Access")
+  await page.getByLabel("Telegram ID to approve", { exact: true }).fill("43")
+  await page.getByRole("button", { name: "Review approval", exact: true }).click()
+  let review = page.getByRole("alertdialog", { name: "Save settings changes?", exact: true })
+  await expect(review.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled()
+  await review.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  const recovery = page.getByRole("dialog", {
+    name: "Review recovered settings draft",
+    exact: true,
+  })
+  await expect(recovery).toBeVisible()
+  expect(fixture.writes).toHaveLength(1)
+  await recovery.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  review = page.getByRole("alertdialog", { name: "Save settings changes?", exact: true })
+  await review.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+  expect(fixture.snapshot().policy.privateUsers).toEqual([42, 43])
+})
+
+test("every failed policy attempt must be reconciled before another submission", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.state.saveFailure = 500
+  await submitRecoveryDraft(page)
+  await expect(
+    page.getByRole("button", { name: "Review and save changes", exact: true }),
+  ).toBeDisabled()
+  await page.getByRole("combobox", { name: "Shared default thinking", exact: true }).click()
+  await page.getByRole("option", { name: "off", exact: true }).click()
+  await navigate(page, "Tool permissions")
+  await page
+    .getByRole("checkbox", {
+      name: "Default chat permission for tool read_url_content",
+      exact: true,
+    })
+    .uncheck()
+  fixture.state.saveFailure = 0
+  fixture.state.loseSaveResponse = true
+  await expect(
+    page.getByRole("button", { name: "Review and save changes", exact: true }),
+  ).toBeDisabled()
+  expect(fixture.writes).toHaveLength(1)
+  let dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+  ).toBeVisible()
+  await page
+    .getByRole("checkbox", {
+      name: "Default chat permission for tool read_url_content",
+      exact: true,
+    })
+    .check()
+  dialog = await openRecovery(page)
+  await expect(
+    dialog.getByRole("button", { name: "Use recovered draft", exact: true }),
+  ).toBeDisabled()
+  await dialog
+    .getByRole("radiogroup", { name: "Shared defaults: Authorized tools", exact: true })
+    .getByRole("radio", { name: "Use draft value", exact: true })
+    .click()
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 1, 2])
+  expect(fixture.snapshot().policy.defaults.tools).toEqual(["read_url_content"])
+})
+
+test("an invalid recovery revision cannot replace the original save base or draft", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(43)
+  })
+  await submitRecoveryDraft(page)
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({ json: { policy: fixture.snapshot().policy, status: "applied" } }),
+  )
+  await page.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("Could not verify saved settings")
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("high")
+  await expect(page.locator('#save-status[data-compact="false"]')).toBeVisible()
+  await page.unroute("**/api/settings")
+  const dialog = await openRecovery(page)
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  expect(fixture.writes.map((write) => write.revision)).toEqual([1, 2])
+})
+
+test("an old application retry cannot reload or erase a new session's draft", async ({
+  page,
+  context,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  const local = new URL(page.url())
+  local.hostname = "localhost"
+  await page.goto(local.href)
+  const client = await context.newCDPSession(page)
+  await client.send("WebAuthn.enable")
+  const { authenticatorId } = await client.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  })
+  const privateKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({
+    type: "pkcs8",
+    format: "der",
+  })
+  await client.send("WebAuthn.addCredential", {
+    authenticatorId,
+    credential: {
+      credentialId: Buffer.from("recovery-session-credential").toString("base64"),
+      isResidentCredential: true,
+      rpId: "localhost",
+      privateKey: privateKey.toString("base64"),
+      userHandle: Buffer.from("42").toString("base64"),
+      signCount: 0,
+    },
+  })
+  await page.route("**/auth/passkey/**", async (route) => {
+    if (route.request().url().endsWith("options"))
+      return route.fulfill({
+        json: {
+          challenge: Buffer.from("recovery-session-challenge").toString("base64url"),
+          rpId: "localhost",
+          userVerification: "required",
+        },
+      })
+    fixture.state.status = "applied"
+    fixture.state.lag = 0
+    return route.fulfill({ json: { csrf: "new-fixture-session", actor: "42" } })
+  })
+  fixture.state.status = "failed"
+  fixture.state.lag = 1
+  await page.reload()
+  let expire: () => void = () => undefined
+  const expiry = new Promise<void>((resolve) => {
+    expire = resolve
+  })
+  await page.route("**/api/chats?*", async (route) => {
+    await expiry
+    await route.fulfill({ status: 401, json: { error: "Session expired" } })
+  })
+  const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
+  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
+  await directoryRequest
+  let complete: () => void = () => undefined
+  const held = new Promise<void>((resolve) => {
+    complete = resolve
+  })
+  await page.route("**/api/apply", async (route) => {
+    await held
+    await route.fulfill({ json: fixture.snapshot() })
+  })
+  const applyRequest = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === "/api/apply",
+  )
+  await page.getByRole("button", { name: "Retry application", exact: true }).click()
+  await applyRequest
+  expire()
+  const signIn = page.getByRole("button", { name: "Sign in with passkey", exact: true })
+  await expect(signIn).toBeVisible()
+  await page.unroute("**/api/chats?*")
+  await signIn.click()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  await stageRecoveryDraft(page)
+  const reads = fixture.reads.filter((path) => path === "/api/settings").length
+  const oldResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/apply",
+  )
+  complete()
+  await oldResponse
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  )
+  expect(fixture.reads.filter((path) => path === "/api/settings")).toHaveLength(reads)
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("high")
+  await expect(page.locator("#save-status")).toContainText("unsaved change")
+  expect(fixture.writes).toHaveLength(0)
+  await client.detach()
+})
+
+test("session expiry clears recovery and ignores a late successful settings read", async ({
+  page,
+}) => {
+  const fixture = await policyRecoveryFixture(page)
+  await stageRecoveryDraft(page)
+  fixture.advance((policy) => {
+    policy.privateUsers.push(43)
+  })
+  await submitRecoveryDraft(page)
+  await navigate(page, "Chats")
+  let expire: () => void = () => undefined
+  const expiry = new Promise<void>((resolve) => {
+    expire = resolve
+  })
+  await page.route("**/api/chats?*", async (route) => {
+    await expiry
+    await route.fulfill({ status: 401, json: { error: "Session expired" } })
+  })
+  const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
+  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
+  await directoryRequest
+  let complete: () => void = () => undefined
+  const held = new Promise<void>((resolve) => {
+    complete = resolve
+  })
+  await page.route("**/api/settings", async (route) => {
+    await held
+    await route.fulfill({ json: fixture.snapshot() })
+  })
+  const recoveryRequest = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === "/api/settings",
+  )
+  await page.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  await recoveryRequest
+  expire()
+  const signIn = page.getByRole("button", { name: "Sign in with passkey", exact: true })
+  await expect(signIn).toBeVisible()
+  await signIn.focus()
+  complete()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(
+    page.getByRole("button", { name: "Load latest and review draft", exact: true }),
+  ).toHaveCount(0)
+  await expect(signIn).toBeFocused()
+  expect(fixture.writes).toHaveLength(1)
 })

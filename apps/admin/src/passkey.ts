@@ -7,8 +7,9 @@ import {
 import { ApiError } from "./api.js"
 
 export function captureSetupLink(location: Location, history: History) {
-  const value = new URLSearchParams(location.hash.slice(1)).get("setup") ?? ""
-  if (location.hash) history.replaceState(null, "", location.pathname + location.search)
+  const params = new URLSearchParams(location.hash.slice(1))
+  const value = params.get("setup") ?? ""
+  if (params.has("setup")) history.replaceState(null, "", location.pathname + location.search)
   return /^[A-Za-z0-9_-]{43}$/.test(value) ? value : ""
 }
 

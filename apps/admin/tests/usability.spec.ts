@@ -323,13 +323,13 @@ test("audit filters query all records without clearing cross-section policy draf
   const state = await fixture(page)
   await stagePolicy(page)
   await navigate(page, "Audit")
-  await page.getByRole("textbox", { name: "Audit actor", exact: true }).fill("system")
-  await page.getByRole("combobox", { name: "Audit operation", exact: true }).click()
+  await page.getByRole("textbox", { name: "Actor (exact)", exact: true }).fill("system")
+  await page.getByRole("combobox", { name: "Operation type", exact: true }).click()
   await page.getByRole("option", { name: "Settings application", exact: true }).click()
-  await page.getByRole("combobox", { name: "Audit outcome", exact: true }).click()
+  await page.getByRole("combobox", { name: "Result", exact: true }).click()
   await page.getByRole("option", { name: "Failed", exact: true }).click()
-  await page.getByLabel("Audit from", { exact: true }).fill("2026-10-16")
-  await page.getByLabel("Audit to", { exact: true }).fill("2026-10-16")
+  await page.getByLabel("From date (UTC)", { exact: true }).fill("2026-10-16")
+  await page.getByLabel("Through date (UTC)", { exact: true }).fill("2026-10-16")
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await expect(page.getByRole("list", { name: "Configuration activity" })).toContainText(
     "Actorsystem",
@@ -380,7 +380,7 @@ test("failed and stale audit queries cannot replace the current result or discar
       return route.fulfill({ status: 500, json: { error: "Fixture audit failure" } })
     await route.fallback()
   })
-  await page.getByLabel("Audit actor", { exact: true }).fill("broken")
+  await page.getByLabel("Actor (exact)", { exact: true }).fill("broken")
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await expect(page.getByText("Could not load audit records. Retry the query.")).toBeVisible()
   await expect(page.getByRole("list", { name: "Configuration activity" })).toHaveCount(0)
@@ -413,7 +413,7 @@ test("failed and stale audit queries cannot replace the current result or discar
       ],
     })
   })
-  await page.getByLabel("Audit actor", { exact: true }).fill("slow")
+  await page.getByLabel("Actor (exact)", { exact: true }).fill("slow")
   await page.getByRole("button", { name: "Apply audit filters" }).click()
   await waiting
   await page.getByRole("button", { name: "Clear audit filters" }).click()

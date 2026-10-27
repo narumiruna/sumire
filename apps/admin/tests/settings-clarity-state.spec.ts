@@ -204,7 +204,9 @@ test("a filtered global conflict cannot bypass save validation or erase retained
     "limits shared defaults and all chat selections",
   )
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
-  await expect(page.getByRole("alert").first()).toContainText("Invalid references")
+  await expect(page.getByRole("alert").first()).toContainText(
+    "selection exceeds global availability: builtin_99",
+  )
   expect(state.policy().tools).toContain("builtin_99")
   await page.getByRole("button", { name: "Clear tool filters", exact: true }).click()
   const row = page.locator(".permission-row").filter({
@@ -214,5 +216,5 @@ test("a filtered global conflict cannot bypass save validation or erase retained
   await expect(
     row.getByRole("checkbox", { name: "Default chat permission for tool builtin_99", exact: true }),
   ).toBeChecked()
-  expect(state.writes).toHaveLength(1)
+  expect(state.writes).toHaveLength(0)
 })

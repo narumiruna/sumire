@@ -182,6 +182,22 @@ describe("admin navigation", () => {
       expect(navigationHref("Chats", chat, url)).toBe(`/admin?section=Chats&chat=${chat}`)
     }
   })
+  it("removes known section targets only when their destination changes", () => {
+    for (const [page, anchor] of [
+      ["Model Providers", "model-availability"],
+      ["Tool permissions", "default-tool-permissions"],
+    ] as const) {
+      const source = new URL(
+        `https://example.com/admin?section=${encodeURIComponent(page)}&chat=42&existing=1#${anchor}`,
+      )
+      const same = new URL(navigationHref(page, "42", new URL(source)), source)
+      expect(same.hash).toBe(`#${anchor}`)
+      const changed = new URL(navigationHref("Defaults", "42", new URL(source)), source)
+      expect(changed.hash).toBe("")
+      expect(changed.searchParams.get("existing")).toBe("1")
+      expect(changed.searchParams.get("chat")).toBe("42")
+    }
+  })
   it("creates compatible same-path section links while retaining other URL state", () => {
     expect(
       navigationHref("Tool permissions", "42", new URL("https://example.com/?existing=1")),
