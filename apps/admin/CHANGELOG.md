@@ -1,5 +1,12 @@
 # @narumitw/sumire-admin
 
+## 0.7.2
+
+### Patch Changes
+
+- bf6de77: Preserve settings drafts through revision conflicts and unknown save outcomes. Correct model-picker keyboard navigation, explicit section targets, Audit labels, and focus after MCP draft discard.
+- c7276b3: Add a violet-flower SVG icon for the browser tab, navigation, and administrator sign-in screens. Match the existing forest-green and warm neutral theme.
+
 ## 0.7.1
 
 ### Patch Changes
