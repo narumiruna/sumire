@@ -154,3 +154,12 @@ export async function navigate(page: Page, name: string) {
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()
   await link.click()
 }
+
+export async function reviewPolicyRecovery(page: Page) {
+  await page.getByRole("button", { name: "Load latest and review draft", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Review recovered settings draft", exact: true })
+  await dialog.getByRole("button", { name: "Use recovered draft", exact: true }).click()
+  await expect(
+    page.getByRole("alertdialog", { name: "Save settings changes?", exact: true }),
+  ).toBeVisible()
+}

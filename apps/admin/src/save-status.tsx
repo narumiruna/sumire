@@ -24,6 +24,7 @@ type Props = {
   apply(): void
   retry(): void
   discard(): void
+  recover?(): void
 }
 
 export function SaveStatus({
@@ -44,9 +45,10 @@ export function SaveStatus({
   apply,
   retry,
   discard,
+  recover,
 }: Props) {
   const ref = useRef<HTMLElement>(null)
-  const pending = dirty || localPending || mcpDirty || providerPending
+  const pending = dirty || localPending || mcpDirty || providerPending || Boolean(recover)
   const navigating = useRef(false)
   useEffect(() => {
     const bar = ref.current
@@ -96,7 +98,8 @@ export function SaveStatus({
     }
   }, [pending])
   const applied = snapshot.status === "applied" && snapshot.revision === snapshot.applied
-  const compact = applied && !dirty && !busy && !localPending && !mcpDirty && !providerPending
+  const compact =
+    applied && !dirty && !busy && !localPending && !mcpDirty && !providerPending && !recover
   const reviewEditor = (target: EditorTarget) => {
     navigating.current = true
     setReviewOpen(false)
@@ -113,21 +116,31 @@ export function SaveStatus({
         data-compact={compact}
       >
         <div className="application-status" id="application-status" tabIndex={-1}>
-          <Badge role="status" color={applied ? "gray" : "orange"} data-saved={applied}>
-            {snapshot.status === "failed"
-              ? "Saved, but application failed. Retry application."
-              : !applied
-                ? "Saved changes are waiting to apply."
-                : compact
-                  ? "Settings saved and applied."
-                  : "Saved revision applied."}
+          <Badge
+            role="status"
+            color={applied && !recover ? "gray" : "orange"}
+            data-saved={applied && !recover}
+          >
+            {recover
+              ? "Save attempt needs review. Last confirmed revision shown."
+              : snapshot.status === "failed"
+                ? "Saved, but application failed. Retry application."
+                : !applied
+                  ? "Saved changes are waiting to apply."
+                  : compact
+                    ? "Settings saved and applied."
+                    : "Saved revision applied."}
           </Badge>
           <details>
             <summary>Revision details</summary>
             Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
           </details>
           {!applied && (
-            <Button variant="outline" disabled={busy || dirty || localPending} onClick={retry}>
+            <Button
+              variant="outline"
+              disabled={busy || dirty || localPending || Boolean(recover)}
+              onClick={retry}
+            >
               Retry application
             </Button>
           )}
@@ -141,7 +154,11 @@ export function SaveStatus({
           <section ref={ref} className="changes-bar" aria-label="Pending changes">
             <div className="save-status-line">
               <Badge role="status" color="orange">
-                {dirty ? countText(changeCount, "unsaved change") : "Unsubmitted editor draft"}
+                {dirty
+                  ? countText(changeCount, "unsaved change")
+                  : recover
+                    ? "Save outcome needs review"
+                    : "Unsubmitted editor draft"}
               </Badge>
               {dirty && <span>Settings draft</span>}
             </div>
@@ -174,13 +191,25 @@ export function SaveStatus({
                 ))}
               </div>
             )}
+            {recover && (
+              <Button
+                id="policy-recovery-trigger"
+                variant="outline"
+                disabled={busy}
+                onClick={recover}
+              >
+                Load latest and review draft
+              </Button>
+            )}
             {dirty && (
               <div className="save-actions">
                 <Button variant="outline" disabled={busy} onClick={discard}>
                   Discard settings changes
                 </Button>
                 <AlertDialog.Trigger>
-                  <Button disabled={busy || localPending}>Review and save changes</Button>
+                  <Button disabled={busy || localPending || Boolean(recover)}>
+                    Review and save changes
+                  </Button>
                 </AlertDialog.Trigger>
               </div>
             )}
@@ -252,8 +281,21 @@ export function SaveStatus({
           <AlertDialog.Cancel>
             <Button variant="soft">Cancel</Button>
           </AlertDialog.Cancel>
+          {recover && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                navigating.current = true
+                setReviewOpen(false)
+                recover()
+              }}
+            >
+              Load latest and review draft
+            </Button>
+          )}
           <AlertDialog.Action>
-            <Button disabled={busy || localPending || !dirty} onClick={apply}>
+            <Button disabled={busy || localPending || !dirty || Boolean(recover)} onClick={apply}>
               Save changes
             </Button>
           </AlertDialog.Action>

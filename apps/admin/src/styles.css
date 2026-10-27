@@ -702,6 +702,9 @@ pre {
   border-bottom: 1px solid var(--surface-line);
 }
 .application-status > .rt-Badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   background: transparent;
   padding: 0;
   color: var(--gray-11);
@@ -728,6 +731,33 @@ pre {
   background: var(--surface-main);
   max-height: 25dvh;
   overflow: auto;
+}
+.policy-recovery-changes {
+  list-style: none;
+  padding: 0;
+}
+.policy-recovery-changes > li {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--surface-line);
+}
+.policy-recovery-changes .rt-RadioGroupRoot {
+  margin-top: 12px;
+}
+.policy-recovery-changes .rt-RadioGroupItem {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  gap: 8px;
+}
+.policy-recovery-value {
+  max-height: 160px;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--gray-2);
+  font-size: 12px;
 }
 .save-status-line {
   display: flex;
@@ -1597,6 +1627,12 @@ html {
 }
 .form-field {
   width: 100%;
+}
+.audit-filters .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 .access-list__search {
   max-width: none;

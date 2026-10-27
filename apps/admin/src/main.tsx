@@ -1,4 +1,9 @@
-import { effectivePolicy, inherited as inherit } from "@narumitw/sumire-policy"
+import {
+  effectivePolicy,
+  inherited as inherit,
+  policySchema,
+  validateReferences,
+} from "@narumitw/sumire-policy"
 import {
   ExclamationTriangleIcon,
   ExitIcon,
@@ -29,6 +34,7 @@ import {
   type Inventory,
   type Policy,
   type ProviderSettings,
+  parseSnapshot,
   request,
   type Selection,
   type Snapshot,
@@ -43,6 +49,7 @@ import { McpConnections } from "./mcp-connections.js"
 import {
   type EditorTarget,
   focusEditor,
+  type Page,
   type PendingEditor,
   pageLabel,
   pendingEditors,
@@ -52,6 +59,7 @@ import {
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
+import { PolicyRecoveryDialog } from "./policy-recovery-dialog.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
@@ -84,10 +92,45 @@ function App() {
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [savedPolicy, setSavedPolicy] = useState<Policy>()
+  const sessionVersion = useRef(0)
+  const sessionGeneration = sessionVersion.current
+  const [failedPolicySave, setFailedPolicySave] = useState<{
+    base: Policy
+    submitted: Policy
+    revision: number
+    message: string
+  }>()
+  const [recoveryReview, setRecoveryReview] = useState<{
+    base: Policy
+    draft: Policy
+    submitted: Policy
+    revision: number
+    failure: string
+    latest: Snapshot
+  }>()
+  const [refreshError, setRefreshError] = useState("")
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
-  const { page, setPage, chat, setChat } = useNavigation()
+  const {
+    page,
+    setPage: navigatePage,
+    chat,
+    setChat: navigateChat,
+  } = useNavigation(Boolean(session && snapshot))
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
+  const setPage = (page: Page, anchor?: string) => {
+    setEditorRequest(undefined)
+    navigatePage(page, anchor)
+  }
+  const setChat = (chat: string) => {
+    setEditorRequest(undefined)
+    navigateChat(chat)
+  }
+  useEffect(() => {
+    const cancel = () => setEditorRequest(undefined)
+    window.addEventListener("popstate", cancel)
+    return () => window.removeEventListener("popstate", cancel)
+  }, [])
   const [authRequest, setAuthRequest] = useState<{
     id: number
     provider: string
@@ -131,14 +174,14 @@ function App() {
   const errorAlert = useRef<HTMLDivElement>(null)
   const focusError = useRef(false)
   useEffect(() => {
-    if (busy || !error || !focusError.current) return
+    if (busy || !(error || refreshError) || !focusError.current) return
     focusError.current = false
     const alert = errorAlert.current
     // Keep modal focus inside its dialog; authentication errors are also shown there.
     if (!alert || alert.closest('[aria-hidden="true"], [inert]')) return
     alert.focus({ preventScroll: true })
     alert.scrollIntoView({ block: "center", behavior: "instant" })
-  }, [busy, error])
+  }, [busy, error, refreshError])
   const [dirty, setDirty] = useState(false)
   const [accessTarget, setAccessTarget] = useState("")
   const [audit, setAudit] = useState<AuditEntry[]>([])
@@ -149,7 +192,7 @@ function App() {
   const localPending = Object.values(editorPending).some(Boolean)
   const markPending = (key: PendingEditor, value: boolean) =>
     setEditorPending((previous) => ({ ...previous, [key]: value }))
-  const pending = dirty || mcpDirty || providerPending || localPending
+  const pending = dirty || mcpDirty || providerPending || localPending || Boolean(failedPolicySave)
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
@@ -161,6 +204,10 @@ function App() {
     setAccessToken("")
   }, [])
   const expireSession = useCallback(() => {
+    sessionVersion.current++
+    setFailedPolicySave(undefined)
+    setRecoveryReview(undefined)
+    setRefreshError("")
     setSession(null)
     setAuthRequest(undefined)
     setPolicyReviewOpen(false)
@@ -173,6 +220,7 @@ function App() {
     setDirty(false)
     setSnapshot(undefined)
     setSavedPolicy(undefined)
+    setBusy(false)
   }, [])
   const expireInspectorSession = useCallback(() => {
     expireSession()
@@ -180,35 +228,56 @@ function App() {
   }, [expireSession])
   const run = useCallback(
     async (action: () => Promise<void>, focusFailure = true) => {
+      const version = sessionVersion.current
       focusError.current = false
       setBusy(true)
       setError("")
       try {
         await action()
       } catch (e) {
+        if (version !== sessionVersion.current) return
         if (e instanceof ApiError && e.status === 401) expireSession()
         else focusError.current = focusFailure
         setError(e instanceof Error ? e.message : "Operation failed")
       } finally {
-        setBusy(false)
+        if (version === sessionVersion.current) setBusy(false)
       }
     },
     [expireSession],
   )
+  const refreshResources = useCallback(async () => {
+    const version = sessionGeneration
+    if (version !== sessionVersion.current) return
+    const [i, a, reports] = await Promise.all([
+      request<Inventory>("inventory"),
+      request<AuditEntry[]>("audit?offset=0"),
+      request<ImportReport[]>("imports"),
+    ])
+    if (version !== sessionVersion.current) return
+    setInventory(i)
+    setAudit(a)
+    setImports(Array.isArray(reports) ? reports : [])
+  }, [sessionGeneration])
   const load = useCallback(async () => {
+    const version = sessionGeneration
+    if (version !== sessionVersion.current) return
     const [s, i, a, reports] = await Promise.all([
       request<Snapshot>("settings"),
       request<Inventory>("inventory"),
       request<AuditEntry[]>("audit?offset=0"),
       request<ImportReport[]>("imports"),
     ])
+    if (version !== sessionVersion.current) return
+    setRefreshError("")
+    setFailedPolicySave(undefined)
+    setRecoveryReview(undefined)
     setSnapshot(s)
     setSavedPolicy(s.policy)
     setInventory(i)
     setAudit(a)
     setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
-  }, [])
+  }, [sessionGeneration])
   const directory = useChatDirectory(Boolean(session), chat, expireInspectorSession)
   const { knownChats } = directory
   const refreshChats = directory.refresh
@@ -344,7 +413,7 @@ function App() {
                 <Button
                   variant="ghost"
                   aria-label="Reload"
-                  disabled={busy || dirty || localPending}
+                  disabled={busy || dirty || localPending || Boolean(failedPolicySave)}
                   onClick={() => {
                     refreshChats()
                     void run(load)
@@ -386,7 +455,7 @@ function App() {
             </>
           }
         />
-        {error && (
+        {(error || refreshError) && (
           <Callout.Root
             ref={errorAlert}
             tabIndex={-1}
@@ -398,9 +467,11 @@ function App() {
               <ExclamationTriangleIcon />
             </Callout.Icon>
             <Callout.Text>
-              {error} Review the input and retry. If settings were saved but application failed,
-              reload the saved state to check it; discard policy edits only when you no longer need
-              them.
+              {error || refreshError}{" "}
+              {error &&
+                (failedPolicySave
+                  ? "Your settings draft is retained. Load the latest settings and review it before saving again."
+                  : "Review the input and retry. Check application status before repeating a saved operation.")}
             </Callout.Text>
           </Callout.Root>
         )}
@@ -453,15 +524,72 @@ function App() {
             mcpDirty={mcpDirty}
             providerPending={providerPending}
             navigate={setPage}
+            recover={
+              failedPolicySave
+                ? () =>
+                    void run(async () => {
+                      const version = sessionVersion.current
+                      const latest = await request<Snapshot>("settings")
+                      if (version !== sessionVersion.current) return
+                      setRecoveryReview({
+                        base: failedPolicySave.base,
+                        draft: policy,
+                        submitted: failedPolicySave.submitted,
+                        revision: failedPolicySave.revision,
+                        failure: failedPolicySave.message,
+                        latest: parseSnapshot(latest),
+                      })
+                    })
+                : undefined
+            }
             apply={() =>
               void run(async () => {
-                await request(
-                  "settings",
-                  session.csrf,
-                  { revision: snapshot.revision, policy },
-                  "PUT",
-                )
-                await load()
+                if (failedPolicySave)
+                  throw new Error("Load latest and review draft before another save.")
+                const submitted = policySchema.parse(policy)
+                validateReferences(submitted)
+                const version = sessionVersion.current
+                let committed: Snapshot
+                try {
+                  committed = await request<Snapshot>(
+                    "settings",
+                    session.csrf,
+                    { revision: snapshot.revision, policy: submitted },
+                    "PUT",
+                  )
+                  committed = parseSnapshot(committed)
+                  if (committed.revision <= snapshot.revision)
+                    throw new Error(
+                      "Save outcome is unknown. Load the latest settings before another save.",
+                    )
+                } catch (failure) {
+                  if (version !== sessionVersion.current) return
+                  if (!(failure instanceof ApiError && failure.status === 401))
+                    setFailedPolicySave((previous) => ({
+                      base: previous?.base ?? savedPolicy ?? policy,
+                      submitted: previous?.submitted ?? submitted,
+                      revision: previous?.revision ?? snapshot.revision,
+                      message:
+                        failure instanceof Error ? failure.message : "Save outcome is unknown",
+                    }))
+                  throw failure
+                }
+                if (version !== sessionVersion.current) return
+                setSnapshot(committed)
+                setSavedPolicy(committed.policy)
+                setDirty(false)
+                setFailedPolicySave(undefined)
+                setRefreshError("")
+                try {
+                  await refreshResources()
+                } catch (failure) {
+                  if (version !== sessionVersion.current) return
+                  if (failure instanceof ApiError && failure.status === 401) throw failure
+                  focusError.current = true
+                  setRefreshError(
+                    "Settings were saved, but related data could not be refreshed. Check application status, then Reload to refresh related data without repeating the save.",
+                  )
+                }
               })
             }
             retry={() =>
@@ -472,11 +600,42 @@ function App() {
             }
             discard={() => {
               if (
-                window.confirm("Discard pending policy edits? Other editor drafts stay unchanged.")
+                window.confirm(
+                  failedPolicySave
+                    ? "Discard local policy edits? The save outcome still needs review. This does not undo a save. Load the latest settings to check it."
+                    : "Discard pending policy edits? Other editor drafts stay unchanged.",
+                )
               ) {
                 setSnapshot({ ...snapshot, policy: savedPolicy ?? policy })
                 setDirty(false)
               }
+            }}
+          />
+        )}
+        {recoveryReview && (
+          <PolicyRecoveryDialog
+            {...recoveryReview}
+            onReturnFocus={() => {
+              if (document.querySelector('[role="alertdialog"]')) return
+              const target =
+                document.getElementById("policy-recovery-trigger") ??
+                document.getElementById("save-status")
+              if (target?.checkVisibility()) target.focus()
+            }}
+            onCancel={() => {
+              setRecoveryReview(undefined)
+              setError(recoveryReview.failure)
+            }}
+            onConfirm={(recovered) => {
+              const latest = recoveryReview.latest
+              const hasChanges = policyChanges(latest.policy, recovered).length > 0
+              setSavedPolicy(latest.policy)
+              setSnapshot({ ...latest, policy: recovered })
+              setDirty(hasChanges)
+              setFailedPolicySave(undefined)
+              setRecoveryReview(undefined)
+              setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
+              if (hasChanges) setPolicyReviewOpen(true)
             }}
           />
         )}
@@ -588,7 +747,6 @@ function App() {
               </Panel>
             )}
             <ChatAccess
-              key={snapshot.revision}
               policy={policy}
               saved={savedPolicy ?? policy}
               target={accessTarget}
@@ -784,7 +942,7 @@ function App() {
               snapshot={snapshot}
               csrf={session.csrf}
               busy={busy}
-              dirty={dirty}
+              dirty={dirty || Boolean(failedPolicySave)}
               localPending={localPending}
               mcpDirty={mcpDirty}
               secretPending={Boolean(editorPending.secret)}
@@ -804,7 +962,7 @@ function App() {
               snapshot={snapshot}
               inventory={inventory}
               csrf={session.csrf}
-              dirty={dirty || mcpDirty || localPending}
+              dirty={dirty || mcpDirty || localPending || Boolean(failedPolicySave)}
               busy={busy}
               run={run}
               refresh={load}

@@ -72,12 +72,29 @@ export function McpConnections({
   const [editing, setEditing] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const focusAdd = useRef(false)
+  const editorFrame = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (busy || editorOpen || !focusAdd.current) return
+    if (!active) focusAdd.current = false
+    return () => {
+      focusAdd.current = false
+      if (editorFrame.current !== undefined) cancelAnimationFrame(editorFrame.current)
+      editorFrame.current = undefined
+    }
+  }, [active])
+  useEffect(() => {
+    if (!active || busy || editorOpen || !focusAdd.current) return
     focusAdd.current = false
     const add = document.getElementById("mcp-add")
-    if (add?.checkVisibility()) add.focus()
-  }, [busy, editorOpen])
+    if (add instanceof HTMLButtonElement && !add.disabled && add.checkVisibility()) add.focus()
+  }, [active, busy, editorOpen])
+  const requestEditorFocus = (selector: string) => {
+    if (editorFrame.current !== undefined) cancelAnimationFrame(editorFrame.current)
+    if (!active) return
+    editorFrame.current = requestAnimationFrame(() => {
+      editorFrame.current = undefined
+      focusEditor(selector)
+    })
+  }
   const [mcpSecrets, setMcpSecrets] = useState<{
     env: Record<string, string>
     headers: Record<string, string>
@@ -102,7 +119,7 @@ export function McpConnections({
     setMcpDirty(false)
     setEditing(true)
     setEditorOpen(true)
-    requestAnimationFrame(() => focusEditor("#mcp-name"))
+    requestEditorFocus("#mcp-name")
   }
   let mcpPreview: string[] = []
   let mcpValidation = ""
@@ -124,7 +141,7 @@ export function McpConnections({
             variant="soft"
             onClick={() => {
               setEditorOpen(true)
-              requestAnimationFrame(() => focusEditor("#mcp-name"))
+              requestEditorFocus("#mcp-name")
             }}
           >
             Resume connection draft
@@ -330,7 +347,7 @@ export function McpConnections({
               variant="soft"
               onClick={() => {
                 setEditorOpen(false)
-                requestAnimationFrame(() => document.getElementById("mcp-resume")?.focus())
+                requestEditorFocus("#mcp-resume")
               }}
             >
               Close connection editor
@@ -465,6 +482,10 @@ export function McpConnections({
                       setMcpDirty(false)
                       setMcpEditorVersion((version) => version + 1)
                       markPending("secret", false)
+                      if (editorFrame.current !== undefined)
+                        cancelAnimationFrame(editorFrame.current)
+                      editorFrame.current = undefined
+                      focusAdd.current = active
                     }
                   }}
                 >
