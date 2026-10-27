@@ -133,7 +133,8 @@ export function SaveStatus({
           </Badge>
           <details>
             <summary>Revision details</summary>
-            Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
+            Saved revision {snapshot.revision}, applied revision {snapshot.applied}, status{" "}
+            {snapshot.status}.
           </details>
           {!applied && (
             <Button

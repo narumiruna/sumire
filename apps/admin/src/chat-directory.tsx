@@ -212,7 +212,7 @@ export function ChatSelector({
                   <button
                     type="button"
                     aria-current={chat === String(value.id) ? "true" : undefined}
-                    aria-label={`${chatName(value)} · ${value.id}`}
+                    aria-label={`${chatName(value)}, ${value.id}`}
                     aria-describedby={badge ? `directory-state-${value.id}` : undefined}
                     onClick={() => onSelect(String(value.id))}
                   >

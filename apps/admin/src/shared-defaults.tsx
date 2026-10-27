@@ -82,7 +82,7 @@ export function SharedDefaults({
         )}
         <Disclosure
           summaryId="default-models-options"
-          title={`Allowed models · ${effective.models.length} effective`}
+          title={`Allowed models (${effective.models.length} effective)`}
         >
           <Prose size="2">
             Selecting a default model also adds it to this shared selection. Global availability
@@ -104,7 +104,7 @@ export function SharedDefaults({
       >
         <TableToolbar>
           <Prose size="2">
-            {countText(effective.tools.length, "tool")} · {countText(groups.length, "source")} ·{" "}
+            {countText(effective.tools.length, "tool")}, {countText(groups.length, "source")},{" "}
             {countText(effective.servers.length, "server gate")}
           </Prose>
           {managementLink(

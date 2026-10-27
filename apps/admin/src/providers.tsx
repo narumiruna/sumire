@@ -451,7 +451,7 @@ export function Providers({
               options={inventory.providers.map((p) => ({
                 id: p.id,
                 label: p.name,
-                detail: `${p.id} · ${p.configured ? "Configured" : "Not configured"}`,
+                detail: `${p.id}, ${p.configured ? "configured" : "not configured"}`,
               }))}
               onChange={(id) => {
                 if (id === provider) return
@@ -755,7 +755,7 @@ export function Providers({
                             configuration: discoveryConfiguration,
                             models,
                             status:
-                              "Verified — bounded model-list request only, not model execution",
+                              "Verified with a bounded model-list request only, not model execution",
                           })
                         } catch (error) {
                           setDiscoveryCheck({
@@ -892,7 +892,7 @@ export function Providers({
                   <ul>
                     {chatSelections.map(([id, chat]) => (
                       <li key={id}>
-                        Chat {id}: {chat.model} · Thinking:{" "}
+                        Chat {id}: {chat.model}, thinking{" "}
                         {chat.thinking ?? savedPolicy.defaults.thinking ?? "off"}
                       </li>
                     ))}

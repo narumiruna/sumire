@@ -69,10 +69,10 @@ function IdList({
       </label>
       <Prose size="2" color="gray" className="access-list__summary" aria-live="polite">
         {matches.length
-          ? `${offset + 1}–${offset + visible.length} of ${matches.length}`
+          ? `${offset + 1} to ${offset + visible.length} of ${matches.length}`
           : "No matching entries"}
-        {pending.length > 0 && ` · ${pending.length} pending approval`}
-        {revoked.length > 0 && ` · ${revoked.length} pending revocation`}
+        {pending.length > 0 && `, ${pending.length} pending approval`}
+        {revoked.length > 0 && `, ${revoked.length} pending revocation`}
       </Prose>
       <Table.Root size="1" className="access-table">
         <VisuallyHidden.Root asChild>

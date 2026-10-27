@@ -305,7 +305,7 @@ export function ChatWorkspace({
                 aria-label="Authentication on this directory page"
               >
                 <Text as="p" size="2" weight="medium">
-                  Authentication required · displayed page
+                  Authentication required on this page
                 </Text>
                 {[...authentication].map(([provider, count]) => (
                   <Flex key={provider} gap="2" align="center" wrap="wrap">
@@ -394,8 +394,8 @@ export function ChatWorkspace({
                     Draft access:{" "}
                     {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
                       ? "Approved"
-                      : "Not approved"}{" "}
-                    · {policy.chats[String(c.id)]?.enabled === false ? "Disabled" : "Enabled"}
+                      : "Not approved"}
+                    , {policy.chats[String(c.id)]?.enabled === false ? "Disabled" : "Enabled"}
                   </span>
                 )}
               </span>
@@ -590,7 +590,7 @@ export function ChatWorkspace({
 
                   {preview && (
                     <Text as="p" size="2" className="chat-draft-status">
-                      Draft preview — not saved: {draftState.label}. {draftState.reason} Current
+                      Draft preview, not saved: {draftState.label}. {draftState.reason} Current
                       state above is unchanged.
                     </Text>
                   )}
@@ -626,9 +626,7 @@ export function ChatWorkspace({
                               ? "Configured locally"
                               : "Setup required"}
                       </ChatFact>
-                      <ChatFact label="Verification">
-                        Not checked — no remote model request
-                      </ChatFact>
+                      <ChatFact label="Verification">Not checked: no remote model request</ChatFact>
                       <ChatFact label="Application">
                         {application.status === "failed"
                           ? "Failed"
@@ -663,7 +661,7 @@ export function ChatWorkspace({
                   )}
                   {preview && (
                     <Text as="p" size="2">
-                      Saved access: {saved.enabled ? "Approved and enabled" : "Blocked by policy"} ·
+                      Saved access: {saved.enabled ? "Approved and enabled" : "Blocked by policy"}.
                       Saved model: {saved.model ?? "No allowed model"}
                     </Text>
                   )}
@@ -682,7 +680,7 @@ export function ChatWorkspace({
                         detail={
                           effective.enabled ? undefined : (
                             <>
-                              Approval {approved ? "granted" : "not granted"} · Chat{" "}
+                              Approval {approved ? "granted" : "not granted"}. Chat{" "}
                               {override?.enabled === false ? "disabled" : "enabled"}
                             </>
                           )
@@ -744,25 +742,25 @@ export function ChatWorkspace({
                       <summary>Advanced configuration / Check details</summary>
                       <DataList.Root className="chat-facts effective-settings" size="2">
                         <ChatFact label="Tools">
-                          {effective.tools.join(", ") || "None"} ·{" "}
+                          {effective.tools.join(", ") || "None"},{" "}
                           {effective.sources.tools === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Skills">
-                          {effective.skills.join(", ") || "None"} ·{" "}
+                          {effective.skills.join(", ") || "None"},{" "}
                           {effective.sources.skills === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="MCP servers">
-                          {effective.servers.join(", ") || "None"} ·{" "}
+                          {effective.servers.join(", ") || "None"},{" "}
                           {effective.sources.servers === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Thinking">
-                          {effective.thinking} ·{" "}
+                          {effective.thinking},{" "}
                           {effective.sources.thinking === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
@@ -817,7 +815,7 @@ export function ChatWorkspace({
                         <ChatFact label="Policy access">
                           {effective.enabled ? "Approved and enabled" : "Blocked by policy"}
                           {override?.enabled === false
-                            ? " · Chat disabled independently of approval"
+                            ? ". Chat disabled independently of approval"
                             : ""}
                         </ChatFact>
                       </DataList.Root>
@@ -877,7 +875,7 @@ export function ChatWorkspace({
                       <summary>Effective settings and authentication</summary>
                       <DataList.Root className="chat-facts effective-settings" size="2">
                         <ChatFact label="Effective model">
-                          <Code variant="ghost">{effective.model ?? "No allowed model"}</Code> ·{" "}
+                          <Code variant="ghost">{effective.model ?? "No allowed model"}</Code>,{" "}
                           {effective.sources.model === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
@@ -886,25 +884,25 @@ export function ChatWorkspace({
                           <Code variant="ghost">{override?.model ?? "Inherit from defaults"}</Code>
                         </ChatFact>
                         <ChatFact label="Tools">
-                          {effective.tools.join(", ") || "None"} ·{" "}
+                          {effective.tools.join(", ") || "None"},{" "}
                           {effective.sources.tools === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Skills">
-                          {effective.skills.join(", ") || "None"} ·{" "}
+                          {effective.skills.join(", ") || "None"},{" "}
                           {effective.sources.skills === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="MCP servers">
-                          {effective.servers.join(", ") || "None"} ·{" "}
+                          {effective.servers.join(", ") || "None"},{" "}
                           {effective.sources.servers === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
                         </ChatFact>
                         <ChatFact label="Thinking">
-                          {effective.thinking} ·{" "}
+                          {effective.thinking},{" "}
                           {effective.sources.thinking === "chat"
                             ? "This chat override"
                             : "From shared defaults"}
@@ -938,19 +936,19 @@ export function ChatWorkspace({
                           ]),
                         ].map((name) => (
                           <li key={name}>
-                            <strong>{name}</strong> ·{" "}
+                            <strong>{name}</strong>,{" "}
                             {inventory.tools.includes(name)
                               ? "In loaded inventory"
-                              : "Not in loaded inventory"}{" "}
-                            ·{" "}
+                              : "Not in loaded inventory"}
+                            ,{" "}
                             {policy.tools.includes(name)
                               ? "Globally available"
-                              : "Excluded by global policy"}{" "}
-                            ·{" "}
+                              : "Excluded by global policy"}
+                            ,{" "}
                             {(override?.tools ?? policy.defaults.tools ?? []).includes(name)
                               ? "Selected"
-                              : "Not selected"}{" "}
-                            ·{" "}
+                              : "Not selected"}
+                            ,{" "}
                             {effective.tools.includes(name)
                               ? "Tool permission allowed"
                               : "Tool permission denied"}
@@ -971,7 +969,7 @@ export function ChatWorkspace({
                               <li key={name}>
                                 {name}:{" "}
                                 {server
-                                  ? `${server.enabled === false ? "Disabled · " : ""}${server.connection}`
+                                  ? `${server.enabled === false ? "Disabled, " : ""}${server.connection}`
                                   : "Not present in loaded inventory"}
                               </li>
                             )

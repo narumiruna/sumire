@@ -220,7 +220,7 @@ export function EntryContent({
     <section aria-label="Entry content" className="durable-entry-content">
       {content.truncated && (
         <Text as="p" role="status">
-          Content truncated · inspection limits were reached. Messages, blocks, or text may be
+          Content truncated: inspection limits were reached. Messages, blocks, or text may be
           incomplete.
         </Text>
       )}
@@ -291,7 +291,7 @@ export function EntryContent({
                   <section key={blockIndex} aria-label="Tool call">
                     <div className="durable-message-heading">
                       <Heading as="h5" size="2">
-                        {block.name} · Arguments
+                        Arguments for {block.name}
                       </Heading>
                       <span>JSON text</span>
                     </div>
@@ -575,8 +575,8 @@ export function DurableInspector({
                 {link(`Conversation ${item.parent.conversationId}`, {
                   view: "conversations",
                   objectId: item.parent.conversationId,
-                })}{" "}
-                ·{" "}
+                })}
+                ,{" "}
                 {link(`Fork entry ${item.parent.at}`, {
                   view: "entries",
                   conversationId: item.parent.conversationId,
@@ -785,7 +785,7 @@ export function DurableInspector({
                   {Object.entries(item.value.models).map(([model, usage]) => (
                     <details key={model} className="durable-model-usage">
                       <summary>
-                        {model} ·{" "}
+                        {model},{" "}
                         {usage.total === undefined
                           ? "Total not recorded"
                           : countText(usage.total, "total token")}
@@ -915,7 +915,7 @@ export function DurableInspector({
           </details>
         </div>
         <footer className="durable-detail-footer">
-          Read-only persisted record · not live execution state
+          Read-only persisted record, not live execution state
         </footer>
       </section>
     )
@@ -941,7 +941,7 @@ export function DurableInspector({
               <Flex gap="2" align="center" wrap="wrap">
                 <Text size="2">
                   <code>{chat}</code>
-                  {metadata ? ` · ${metadata.type}` : ""}
+                  {metadata ? `, ${metadata.type}` : ""}
                 </Text>
               </Flex>
             )}
@@ -1105,7 +1105,7 @@ export function DurableInspector({
                               view: "conversations",
                               objectId: selected.parent.conversationId,
                             })}{" "}
-                            · fork{" "}
+                            fork{" "}
                             {link(`entry ${selected.parent.at}`, {
                               view: "entries",
                               conversationId: selected.parent.conversationId,
@@ -1113,7 +1113,7 @@ export function DurableInspector({
                             })}
                           </>
                         )}
-                        {selected.parent && selected.owner ? " · " : ""}
+                        {selected.parent && selected.owner ? ". " : ""}
                         {selected.owner && (
                           <>
                             Owner{" "}
@@ -1167,7 +1167,7 @@ export function DurableInspector({
                     <Text as="p">
                       {countText(history.data?.items.length ?? 0, "task record")} on the loaded page
                       {history.data?.nextCursor || history.data?.truncated
-                        ? " · more may exist"
+                        ? ", and more may exist"
                         : ""}
                       .
                     </Text>
@@ -1186,8 +1186,8 @@ export function DurableInspector({
                                   conversationId: item.conversationId,
                                   objectId: item.id,
                                 })}
-                                {" · "}
-                                {recordTitle(item)} · {taskObservation(item)}
+                                {": "}
+                                {recordTitle(item)}, {taskObservation(item)}
                               </li>
                             ),
                         )}
@@ -1327,16 +1327,14 @@ export function DurableInspector({
                   </div>
                 ) : !detail ? (
                   <Text as="p">
-                    {location.objectId
-                      ? "Retired or unavailable"
-                      : "Empty · no records in this view."}
+                    {location.objectId ? "Retired or unavailable" : "No records in this view."}
                   </Text>
                 ) : (
                   row(detail)
                 )}
                 {data?.truncated && (
                   <Text as="p" role="status">
-                    Truncated · the server read limit was reached. Some records are not shown.
+                    Truncated: the server read limit was reached. Some records are not shown.
                   </Text>
                 )}
                 {current !== selection && current !== history && readTime(current)}
@@ -1391,7 +1389,7 @@ export function DurableInspector({
                     )}
                     {location.objectId && (
                       <Text as="p">
-                        Object #{location.objectId} ·{" "}
+                        Object #{location.objectId},{" "}
                         {link(`Back to ${labels[location.view].toLowerCase()}`, {
                           ...location,
                           objectId: undefined,
@@ -1431,7 +1429,7 @@ export function DurableInspector({
                               <>
                                 {data.truncated && (
                                   <Text as="p" role="status">
-                                    Truncated · the server read limit was reached. Some records are
+                                    Truncated: the server read limit was reached. Some records are
                                     not shown.
                                   </Text>
                                 )}
@@ -1439,7 +1437,7 @@ export function DurableInspector({
                                   <Text as="p">
                                     {location.objectId
                                       ? "Retired or unavailable"
-                                      : "Empty · no records in this view."}
+                                      : "No records in this view."}
                                   </Text>
                                 ) : (
                                   <div className="durable-browser">

@@ -180,7 +180,7 @@ function PermissionGroup({
         <Heading as="h4" size="2">
           {searching ? (
             <Text>
-              {group.label} · {countText(group.names.length, "tool")}
+              {group.label} ({countText(group.names.length, "tool")})
             </Text>
           ) : (
             <Button
@@ -195,7 +195,7 @@ function PermissionGroup({
               ) : (
                 <ChevronRightIcon aria-hidden="true" />
               )}
-              <Text>{group.label} ·</Text>
+              <Text>{group.label}</Text>
               <Badge color="gray" variant="soft">
                 {countText(group.names.length, "tool")}
               </Badge>
@@ -297,8 +297,8 @@ export function ToolPermissions({
         </Heading>
         {(changes.global > 0 || changes.defaults > 0) && (
           <Text as="p" size="2">
-            {countText(changes.global, "global change")} ·{" "}
-            {countText(changes.defaults, "default change")} · Includes filtered names
+            {countText(changes.global, "global change")},{" "}
+            {countText(changes.defaults, "default change")}, including filtered names
           </Text>
         )}
         {globalEditing && (
@@ -344,7 +344,7 @@ export function ToolPermissions({
       {filtering && (
         <Flex gap="2" wrap="wrap" align="center">
           <Text role="status" size="2">
-            {countText(new Set(groups.flatMap((group) => group.names)).size, "matching tool")} ·{" "}
+            {countText(new Set(groups.flatMap((group) => group.names)).size, "matching tool")},{" "}
             {countText(servers.length, "matching server")}
           </Text>
           <Button
@@ -394,7 +394,7 @@ export function ToolPermissions({
               className="permission-toolbar"
             >
               <Text size="2" color="gray">
-                {countText(permissionNames(key, policy, saved, inventory).length, "tool name")} ·{" "}
+                {countText(permissionNames(key, policy, saved, inventory).length, "tool name")},{" "}
                 {countText(groups.length, "source group")}
               </Text>
               <Flex gap="2" wrap="wrap">
@@ -468,8 +468,8 @@ export function ToolPermissions({
                       )}
                       {servers.length > 1 && (
                         <Text as="p" size="2">
-                          MCP server: {servers.map((m) => m.name).join(", ")} · server gate also
-                          required
+                          MCP server: {servers.map((m) => m.name).join(", ")}. Its server gate is
+                          also required
                         </Text>
                       )}
                       {key === "tools" && !inventory.tools.includes(name) && !servers.length && (

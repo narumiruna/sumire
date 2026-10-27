@@ -237,7 +237,7 @@ export function SideNavigation({
         onClick={() => setOpen(!open)}
       >
         <HamburgerMenuIcon aria-hidden />
-        <span className="section-trigger-label">Sections · {pageLabel(page)}</span>
+        <span className="section-trigger-label">Sections: {pageLabel(page)}</span>
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
         {navigationGroups.map((group) => (

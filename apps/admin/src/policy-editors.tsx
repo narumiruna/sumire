@@ -345,7 +345,7 @@ export function Choices({
           return (
             <details key={key} className="policy-options">
               <summary id={`${defaults ? "default" : "chat"}-${key}-options`}>
-                {label} · {effective[key].length} effective ·{" "}
+                {label}: {effective[key].length} effective,{" "}
                 {value[key] == null ? "Shared defaults" : "Custom selection"}
               </summary>
               <List

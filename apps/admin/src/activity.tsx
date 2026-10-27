@@ -220,7 +220,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
                 className="activity-group-heading"
               >
                 <Text size="2" weight="medium">
-                  {countText(group.length, "save/application record")} ·{" "}
+                  {countText(group.length, "save/application record")},{" "}
                   {group[0] && new Date(group[0].time).toLocaleString()}
                 </Text>
                 <Flex gap="2" wrap="wrap">

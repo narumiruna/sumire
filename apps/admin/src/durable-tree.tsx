@@ -259,7 +259,7 @@ function CollectionStatus({ collection, label }: { collection: Collection; label
         !collection.unloaded &&
         collection.items.length === 0 && <Text as="p">No {label} on the loaded page.</Text>}
       {(collection.nextCursor || collection.truncated) && (
-        <Text as="p">Partial {label} · more records may exist.</Text>
+        <Text as="p">Partial {label}: more records may exist.</Text>
       )}
       {collection.nextCursor && (
         <Button size="1" variant="soft" disabled={collection.loading} onClick={collection.more}>
@@ -340,7 +340,7 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
               parents.has(task.ownerTaskId) &&
               parents.get(task.id) === undefined && (
                 <Text as="p" size="1">
-                  Parent task cycle · shown at root.
+                  Parent task cycle, shown at root.
                 </Text>
               )}
             <ul>
@@ -439,7 +439,7 @@ export function DurableTree(props: TreeProps) {
               Branched from conversation {item.parent.conversationId} at entry {item.parent.at}.
               {!known.has(item.parent.conversationId) ? " Parent is not on the loaded pages." : ""}
               {cycles.has(item.id)
-                ? " Parent relationship cycle · shown once in loaded records."
+                ? " Parent relationship cycle, shown once in loaded records."
                 : ""}
             </Text>
           )}

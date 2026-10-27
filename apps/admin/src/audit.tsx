@@ -200,7 +200,7 @@ export function AuditHistory({
               ([key, value]) =>
                 `${key}: ${key === "operation" || key === "outcome" ? auditValueLabel(key, value) : value}`,
             )
-            .join(" · ")}
+            .join(", ")}
         </Prose>
       )}
       {error && (
@@ -218,7 +218,8 @@ export function AuditHistory({
       )}
       <Flex direction="column" gap="1" className="audit-results-summary">
         <Text as="p" size="2" weight="medium">
-          Showing records {entries.length ? query.offset + 1 : 0}–{query.offset + entries.length}.
+          Showing records {entries.length ? query.offset + 1 : 0} to {query.offset + entries.length}
+          .
         </Text>
         <details>
           <summary>History scope and limits</summary>

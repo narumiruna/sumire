@@ -302,7 +302,7 @@ export function McpConnections({
                                 m.tools.filter((name) => policy.tools.includes(name)).length,
                                 "globally approved tool name",
                               )}{" "}
-                              · {dirty ? "Policy draft" : "Saved policy"}
+                              in the {dirty ? "policy draft" : "saved policy"}
                             </Text>
                           </Flex>
                         </DataList.Value>
