@@ -1,3 +1,4 @@
+import { initialPolicy } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
 import {
   openConnectionEditor,
@@ -27,14 +28,9 @@ async function fixture(page: Page, section = "Chats") {
         applied: 1,
         status: "applied",
         policy: {
-          tools: [],
-          servers: [],
-          models: [],
-          providers: [],
-          defaults: { tools: [], servers: [], models: [] },
+          ...initialPolicy(),
           privateUsers: [42],
           groups: [-100],
-          chats: {},
         },
       },
       "/api/inventory": {
