@@ -25,6 +25,7 @@ COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
 COPY packages/imagegen/package.json packages/imagegen/package.json
+COPY packages/github-notifications/package.json packages/github-notifications/package.json
 COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
 COPY packages/pi-polymarket/package.json packages/pi-polymarket/package.json
@@ -63,6 +64,12 @@ COPY packages/imagegen/tsconfig*.json packages/imagegen/
 COPY packages/imagegen/src/ packages/imagegen/src/
 RUN npm run build --workspace @narumitw/sumire-imagegen
 
+FROM dependencies AS github-notifications-build
+
+COPY packages/github-notifications/tsconfig*.json packages/github-notifications/
+COPY packages/github-notifications/src/ packages/github-notifications/src/
+RUN npm run build --workspace @narumitw/sumire-github-notifications
+
 FROM dependencies AS polymarket-build
 
 COPY packages/pi-polymarket/tsconfig*.json packages/pi-polymarket/
@@ -92,6 +99,7 @@ COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contr
 
 COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
 COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist
+COPY --from=github-notifications-build /build/packages/github-notifications/dist /build/packages/github-notifications/dist
 COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
 COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
@@ -130,6 +138,7 @@ COPY --from=progress-build /build/packages/progress/dist /app/packages/progress/
 COPY --from=imagegen-build /build/packages/imagegen/dist /app/packages/imagegen/dist
 COPY --from=url-reader-build /build/packages/url-reader/dist /app/packages/url-reader/dist
 COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
+COPY --from=github-notifications-build /build/packages/github-notifications/dist /app/packages/github-notifications/dist
 COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist

@@ -173,3 +173,27 @@ Production verification remains with these roles:
 ## Trust boundary
 
 This is not an OS sandbox. Authorized shell/file tools and administrator-supplied stdio MCP code run with the bot user's permissions and can access same-user state, processes, and networking. Encryption, environment filtering, and tool permissions do not isolate the key/database from such code. Do not enable unrestricted tools for untrusted chats. Use a separate tested OS/VM boundary when that isolation is required.
+
+## Private GitHub notifications
+
+Use **Secrets & variables** to store `GITHUB_NOTIFICATIONS_TOKEN` as a dedicated secret and
+`GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS` as a variable containing a JSON array of unique positive
+Telegram user IDs, for example `[123456789]`. Empty or missing lists deny everyone, including
+administrators. Enable `read_github_notifications` in global and per-chat tool permissions as well.
+Only private chats whose verified chat ID is listed can receive tool results; groups are always denied.
+These notifications belong to one configured GitHub account shared by all listed users, not a separate
+GitHub account for each Telegram user. Titles and repository metadata are sent to the selected model
+and retained in that private chat's durable transcript. Standard long-reply delivery can also
+publish content through the configured Morsel service and return a share link; the allowlist is
+not a local-only data-processing guarantee.
+
+Use a credential supported by GitHub's Notifications REST API, such as a classic PAT with
+`notifications` scope, and verify any organization requirements with the GitHub account owner.
+The dedicated credential is never passed to bash and never falls back to GH_TOKEN or host credentials.
+The tool reads one bounded page without marking notifications read or modifying subscriptions.
+There is no background polling or unsolicited delivery. Replacement/deletion and allowlist edits use
+the existing revision/application path; revocation does not erase previously delivered data.
+
+See [the notification package](../packages/github-notifications/README.md) for limits, tests, and
+trust boundaries. This feature does not restrict existing GH_TOKEN-based shell access or same-user
+filesystem access; those capabilities remain for trusted users only.

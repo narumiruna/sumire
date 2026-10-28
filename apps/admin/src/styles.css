@@ -3210,3 +3210,7 @@ main .durable-record-meta a {
   overflow-wrap: anywhere;
   font: inherit;
 }
+
+.runtime-config .prose code {
+  overflow-wrap: anywhere;
+}

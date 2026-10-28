@@ -51,6 +51,7 @@ describe("codemode through Bot Pi sessions", () => {
         "read_variable",
         "publish_markdown_to_morsel",
         ...publicPolymarketToolNames,
+        "read_github_notifications",
       ],
     })
     const result = await fixture.script(

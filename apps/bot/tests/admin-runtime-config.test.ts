@@ -242,3 +242,30 @@ describe("runtime configuration administration", () => {
     expect(runtime.snapshot().entries).toEqual([])
   })
 })
+
+it("validates notification allowlists and keeps dedicated credentials secret-only", () => {
+  const before = store.snapshot()
+  for (const value of ["invalid", "{}", "[0]", "[-100]", '["42"]', "[42,42]"])
+    expect(() => put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", value, "variable")).toThrow(
+      "GitHub allowlist",
+    )
+  expect(() => put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[42]", "secret")).toThrow(
+    "must be a variable",
+  )
+  expect(() => put("GITHUB_NOTIFICATIONS_TOKEN", "fixture-token", "variable")).toThrow(
+    "must be a nonempty secret",
+  )
+  expect(() => put("GITHUB_NOTIFICATIONS_TOKEN", "fixture\ntoken")).toThrow(
+    "must be a nonempty secret",
+  )
+  expect(store.snapshot()).toEqual(before)
+  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[42]", "variable")
+  put("GITHUB_NOTIFICATIONS_TOKEN", "notification-secret-sentinel")
+  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBeUndefined()
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBe("notification-secret-sentinel")
+  expect(JSON.stringify(runtime.snapshot())).not.toContain("notification-secret-sentinel")
+  expect(JSON.stringify(store.listAudit(0))).not.toContain("notification-secret-sentinel")
+  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[]", "variable")
+  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBeUndefined()
+})

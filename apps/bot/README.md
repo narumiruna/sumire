@@ -418,3 +418,12 @@ Runtime limits below remain fixed while the database owns authorization and capa
 | URL loading | 15-second built-in/DNS phase, 180-second total deadline, 12,000 output characters; public HTTP(S) only. |
 
 Keep state volumes during upgrades. Revoke channel image access by removing its ID from group/channel access in the WebUI and applying the policy. Existing metadata remains stored but `read_image` checks the current authorization before reading it.
+
+### GitHub notifications
+
+`read_github_notifications` is a read-only, private-chat-only tool, disabled by default. Configure a
+dedicated `GITHUB_NOTIFICATIONS_TOKEN` secret and a `GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS`
+JSON-array variable in the admin WebUI's **Secrets & variables**, then enable the tool for the
+intended private chats. Groups cannot receive results, and the admin role does not bypass the list.
+See [setup, privacy and limits](../../packages/github-notifications/README.md). No new host environment
+variables are needed; the dedicated token is not passed to bash.
