@@ -2,6 +2,10 @@ import type { Browser } from "playwright"
 
 import { remainingMilliseconds, withDeadline } from "./core/execution.js"
 import {
+  type FirecrawlCredentialOptions,
+  resolveFirecrawlApiKey,
+} from "./core/firecrawl-credentials.js"
+import {
   assertPublicUrl,
   type FetchImplementation,
   type PublicUrlResolver,
@@ -79,7 +83,7 @@ class Semaphore {
   }
 }
 
-export interface UrlContentClientOptions {
+export interface UrlContentClientOptions extends FirecrawlCredentialOptions {
   allowedSchemes?: ReadonlySet<string>
   deadlineSeconds?: number
   requestLimit?: number
@@ -89,7 +93,7 @@ export interface UrlContentClientOptions {
   resolve?: PublicUrlResolver
 }
 
-export interface UrlContentLoadOptions {
+export interface UrlContentLoadOptions extends FirecrawlCredentialOptions {
   firecrawlFallback?: boolean
   loaderNames?: readonly string[]
   signal?: AbortSignal
@@ -103,6 +107,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   private readonly fetchImplementation?: FetchImplementation
   private readonly resolve?: PublicUrlResolver
   private readonly allowedSchemes: ReadonlySet<string>
+  private readonly firecrawlApiKey?: string | null
   private active = false
   private impersPromise?: Promise<ImpersSession>
   private proxyPromise?: Promise<PublicProxy>
@@ -118,6 +123,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     if ([requestLimit, browserLimit, workerLimit].some((value) => value <= 0)) {
       throw new RangeError("concurrency limits must be positive")
     }
+    this.firecrawlApiKey = options.firecrawlApiKey
     this.deadlineSeconds = options.deadlineSeconds
     this.requestSlots = new Semaphore(requestLimit)
     this.browserSlots = new Semaphore(browserLimit)
@@ -237,8 +243,12 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
     options: UrlContentLoadOptions,
   ): Promise<LoadResult> {
     this.checkActive()
+    const firecrawlApiKey = resolveFirecrawlApiKey(
+      options.firecrawlApiKey === undefined ? this.firecrawlApiKey : options.firecrawlApiKey,
+    )
     const chainOptions = {
-      getFactory: (name: string) => () => createLoader(name, this),
+      firecrawlApiKey,
+      getFactory: (name: string) => () => createLoader(name, this, { firecrawlApiKey }),
       getRequirements: getLoaderRequirements,
       getContentType: getLoaderContentType,
       admit: (name: string, operation: () => Promise<string>, signal?: AbortSignal) =>

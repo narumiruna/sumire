@@ -24,6 +24,7 @@ import {
 import { useContext, useEffect, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
+import { McpReferenceEditor } from "./mcp-reference-editor.js"
 import { focusEditor, type PendingEditor } from "./navigation.js"
 import { Field, SecretFields } from "./policy-editors.js"
 import { SectionActive } from "./sections.js"
@@ -190,7 +191,13 @@ export function McpConnections({
                   <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
                     <Button
                       variant="solid"
-                      disabled={busy || dirty || localPending}
+                      disabled={
+                        busy ||
+                        dirty ||
+                        localPending ||
+                        snapshot.status !== "applied" ||
+                        snapshot.revision !== snapshot.applied
+                      }
                       onClick={() =>
                         void run(async () => {
                           await request(`mcp/${encodeURIComponent(m.name)}/discover`, csrf)
@@ -241,9 +248,10 @@ export function McpConnections({
                       >
                         <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
                         <AlertDialog.Description>
-                          This deletes its configuration and stored secrets. Remove it from global,
-                          default, and chat selections first. Application cancels active work and
-                          retains transcripts.
+                          This deletes its configuration and inline credentials. Referenced runtime
+                          values remain in Secrets & variables. Remove it from global, default, and
+                          chat selections first. Application cancels active work and retains
+                          transcripts.
                         </AlertDialog.Description>
                         <Flex gap="3" justify="end" mt="4">
                           <AlertDialog.Cancel>
@@ -395,6 +403,21 @@ export function McpConnections({
                 setMcpDirty(true)
               }}
             />
+            <details className="mcp-disclosure">
+              <summary>Stored references (recommended)</summary>
+              <McpReferenceEditor
+                key={mcpEditorVersion}
+                run={run}
+                onPending={(value) => markPending("mcpReference", value)}
+                onAdd={({ scope, name, value }) => {
+                  setMcpDirty(true)
+                  setMcpSecrets((previous) => ({
+                    ...previous,
+                    [scope]: { ...previous[scope], [name]: value },
+                  }))
+                }}
+              />
+            </details>
             <details className="mcp-secret-editor mcp-disclosure">
               <summary>Secrets (optional)</summary>
               <SecretFields

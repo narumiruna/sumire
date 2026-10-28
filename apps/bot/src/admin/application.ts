@@ -5,6 +5,7 @@ import type { AdminConfig } from "./auth.js"
 import { importLegacyModels } from "./import.js"
 import type { McpAdmin } from "./mcp.js"
 import { ProviderAdmin } from "./providers.js"
+import type { RuntimeConfigAdmin } from "./runtime-config.js"
 import { createAdminServer } from "./server.js"
 import type { AdminStore } from "./store.js"
 
@@ -45,7 +46,7 @@ export function createPolicyApplier(
 
 export async function startAdmin(
   config: AdminConfig,
-  control: { store: AdminStore; mcp: McpAdmin },
+  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin },
   factory: PiSessionFactory,
   sessions: ChatSessionRegistry,
 ) {
@@ -67,7 +68,11 @@ export async function startAdmin(
     )
     await apply()
   })
-  const apply = createPolicyApplier(store, sessions, providers)
+  const applyPolicy = createPolicyApplier(store, sessions, providers)
+  const apply = () => {
+    mcp.discovered.clear()
+    return applyPolicy()
+  }
   // A failed application must not prevent the administrator from repairing settings.
   await apply().catch(() => {})
   for (const id of await factory.listChats())
@@ -75,6 +80,7 @@ export async function startAdmin(
   const server = createAdminServer(config, {
     store,
     mcp,
+    ...(control.runtime ? { runtime: control.runtime } : {}),
     providers,
     apply,
     tools: () => factory.toolNames ?? [],

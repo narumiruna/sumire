@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"
@@ -27,6 +28,7 @@ on:
     branches:
       - main
     paths:
+      - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/publish.yml"

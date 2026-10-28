@@ -1,5 +1,6 @@
 import type { RunnerHandle } from "@grammyjs/runner"
 import type { PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
+import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
@@ -65,6 +66,7 @@ export interface TelegramAgentBot {
 
 interface TelegramBotDependencies {
   control: import("../admin/store.js").AdminStore
+  runtime?: RuntimeConfigReader
   recoverChats?: () => Promise<number[]>
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
@@ -124,8 +126,10 @@ export function createTelegramAgentBot(
       logger.warn("Could not send Telegram lifecycle notification", error)
     }
   }
-  const morselPublisher = dependencies.morselPublisher ?? createMorselPublisher(settings)
-  const articleUrlLoader = dependencies.articleUrlLoader ?? createBotUrlLoader(settings)
+  const morselPublisher =
+    dependencies.morselPublisher ?? createMorselPublisher(settings, dependencies.runtime)
+  const articleUrlLoader =
+    dependencies.articleUrlLoader ?? createBotUrlLoader(settings, dependencies.runtime)
   const audioTranscriber =
     dependencies.audioTranscriber ??
     new TelegramAudioTranscriber({

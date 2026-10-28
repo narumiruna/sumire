@@ -19,6 +19,7 @@ const taskLabels = {
   Skills: "Skills",
   "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
+  "Secrets & variables": "Secrets &amp; variables",
   Audit: "Audit",
 } satisfies Record<Page, string>
 
@@ -40,7 +41,7 @@ function renderNavigation(page: Page = "Durable") {
 describe("admin navigation", () => {
   it("uses task labels without changing stable page IDs or selected chat URLs", () => {
     for (const page of pages) {
-      expect(pageLabel(page)).toBe(taskLabels[page])
+      expect(pageLabel(page)).toBe(taskLabels[page].replaceAll("&amp;", "&"))
       const url = new URL(
         navigationHref(page, "-100", new URL("https://example.com/admin")),
         "https://example.com",
@@ -77,6 +78,7 @@ describe("admin navigation", () => {
       "Skills",
       "MCP connections",
       "Defaults",
+      "Secrets & variables",
       "Audit",
     ]
     expect(links).toHaveLength(pages.length)

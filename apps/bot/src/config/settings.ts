@@ -24,7 +24,6 @@ const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
   BOT_ADMIN_ID: optionalTelegramUserId,
   LOGFIRE_TOKEN: optionalString,
-  MORSEL_API_KEY: optionalString,
   ADMIN_ORIGIN: optionalString,
   ADMIN_PORT: z.unknown().optional(),
   ADMIN_HOST: optionalString.transform((value) => value ?? "127.0.0.1"),
@@ -73,7 +72,6 @@ export interface Settings {
   botAudioMaxTranscriptChars: number
   logfireToken?: string
   morselUrl: string
-  morselApiKey?: string
   morselMode: "disabled" | "rich_only" | "smart"
   morselLongReplyThreshold: number
   morselShareExpiresInSeconds: number
@@ -147,7 +145,6 @@ export function loadSettings(
     botAudioMaxTranscriptChars: 12_000,
     ...(parsed.LOGFIRE_TOKEN ? { logfireToken: parsed.LOGFIRE_TOKEN } : {}),
     morselUrl: "https://morsel.narumi.dev/",
-    ...(parsed.MORSEL_API_KEY ? { morselApiKey: parsed.MORSEL_API_KEY } : {}),
     morselMode: "smart",
     morselLongReplyThreshold: 1_000,
     morselShareExpiresInSeconds: 2_592_000,

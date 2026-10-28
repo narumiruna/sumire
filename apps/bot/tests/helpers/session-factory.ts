@@ -1,6 +1,7 @@
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { McpAdmin } from "../../src/admin/mcp.js"
+import { RuntimeConfigAdmin } from "../../src/admin/runtime-config.js"
 import type { AdminStore } from "../../src/admin/store.js"
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import type { Settings } from "../../src/config/settings.js"
@@ -13,21 +14,29 @@ export async function createTestSessionFactory(
   logger: Logger,
   images?: ChannelImageIndex,
   runtime?: ModelRuntime,
-  supplied?: { store: AdminStore; mcp: McpAdmin },
+  supplied?: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin },
 ) {
   if (supplied)
     return {
       ...(await createPiSessionFactory(settings, logger, supplied, images, runtime)),
       control: supplied.store,
+      runtime: supplied.runtime,
     }
   const store = new TestAdminStore(
     path.join(settings.projectRoot, "fixture-admin.sqlite"),
     new Set([7, 8, 42, 43, 123, 456, -100]),
     settings.botAdminId,
   )
-  const mcp = new McpAdmin(store, settings.botWorkdir)
+  const runtimeConfig = new RuntimeConfigAdmin(store, Buffer.alloc(32, 7).toString("base64"))
+  const mcp = new McpAdmin(store, settings.botWorkdir, runtimeConfig)
   await mcp.import(settings.botMcpConfigPath)
-  const factory = await createPiSessionFactory(settings, logger, { store, mcp }, images, runtime)
+  const factory = await createPiSessionFactory(
+    settings,
+    logger,
+    { store, mcp, runtime: runtimeConfig },
+    images,
+    runtime,
+  )
   // The fixture explicitly approves a finite tool/model catalog, never arbitrary chat IDs.
   if (store.snapshot().policy.models.length === 0) {
     const policy = store.snapshot().policy
@@ -50,5 +59,5 @@ export async function createTestSessionFactory(
     store.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(JSON.stringify(policy))
     store.applied(store.snapshot().revision, true)
   }
-  return { ...factory, control: store }
+  return { ...factory, control: store, runtime: runtimeConfig }
 }

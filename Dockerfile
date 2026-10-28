@@ -20,6 +20,7 @@ COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/admin/package.json apps/admin/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/runtime-config/package.json packages/runtime-config/package.json
 COPY packages/policy/package.json packages/policy/package.json
 COPY packages/login/package.json packages/login/package.json
 COPY packages/progress/package.json packages/progress/package.json
@@ -31,6 +32,12 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
 
 # Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
+FROM dependencies AS runtime-config-build
+
+COPY packages/runtime-config/tsconfig*.json packages/runtime-config/
+COPY packages/runtime-config/src/ packages/runtime-config/src/
+RUN npm run build --workspace @narumitw/sumire-runtime-config
+
 FROM dependencies AS policy-build
 
 COPY packages/policy/tsconfig*.json packages/policy/
@@ -78,6 +85,8 @@ RUN npm --ignore-scripts run build --workspace @narumitw/sumire-pi-url-reader
 
 FROM dependencies AS build
 
+COPY --from=runtime-config-build /build/packages/runtime-config/dist /build/packages/runtime-config/dist
+
 COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
 
@@ -114,6 +123,7 @@ COPY --from=production-dependencies /build/node_modules /app/node_modules
 # These directories contain only manifests and workspace-local production dependencies.
 COPY --from=production-dependencies /build/apps/bot /app/apps/bot
 COPY --from=production-dependencies /build/packages /app/packages
+COPY --from=runtime-config-build /build/packages/runtime-config/dist /app/packages/runtime-config/dist
 COPY --from=policy-build /build/packages/policy/dist /app/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /app/packages/contracts/dist
 COPY --from=progress-build /build/packages/progress/dist /app/packages/progress/dist

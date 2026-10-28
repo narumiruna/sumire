@@ -3193,3 +3193,20 @@ main .durable-record-meta a {
     padding: 10px;
   }
 }
+
+.runtime-config label {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.runtime-config .panel {
+  min-width: 0;
+}
+.runtime-entry-name {
+  overflow-wrap: anywhere;
+}
+.runtime-variable-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}

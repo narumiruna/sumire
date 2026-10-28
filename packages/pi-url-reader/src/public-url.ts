@@ -29,6 +29,7 @@ export function assertUrlLoaderName(loader: string): void {
 }
 
 export interface PublicUrlLoadOptions {
+  firecrawlApiKey?: string | null
   loader?: string
   signal?: AbortSignal
 }
@@ -38,6 +39,8 @@ export interface PublicUrlLoader {
 }
 
 export interface PublicUrlLoaderOptions {
+  /** undefined uses the standalone environment; null disables credential fallback. */
+  firecrawlApiKey?: string | null
   allowedSchemes?: ReadonlySet<string>
   maxChars?: number
   timeoutMs?: number
@@ -52,10 +55,18 @@ export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): Pub
     timeoutMs: options.timeoutMs ?? 15_000,
     urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
     firecrawlFallback: options.firecrawlFallback ?? false,
+    firecrawlApiKey: options.firecrawlApiKey,
   }
   return {
     load(url, loadOptions = {}) {
-      return loadPublicUrl(url, { ...config, ...loadOptions })
+      return loadPublicUrl(url, {
+        ...config,
+        ...loadOptions,
+        firecrawlApiKey:
+          loadOptions.firecrawlApiKey === undefined
+            ? config.firecrawlApiKey
+            : loadOptions.firecrawlApiKey,
+      })
     },
   }
 }
@@ -106,6 +117,7 @@ type UrlContentLoadImplementation = (
     allowedSchemes?: ReadonlySet<string>
     deadlineSeconds?: number
     firecrawlFallback?: boolean
+    firecrawlApiKey?: string | null
     loaderNames?: readonly string[]
     signal?: AbortSignal
   },
@@ -115,6 +127,7 @@ interface LoadPublicUrlOptions extends FetchPublicUrlOptions {
   loader?: string
   urlContentTimeoutSeconds: number
   firecrawlFallback?: boolean
+  firecrawlApiKey?: string | null
   deadlineAt?: number
   urlContentLoadImplementation?: UrlContentLoadImplementation
 }
@@ -201,6 +214,7 @@ async function loadSourceUrl(
     allowedSchemes: options.allowedSchemes,
     deadlineSeconds: remaining,
     ...(options.firecrawlFallback ? { firecrawlFallback: true } : {}),
+    ...(options.firecrawlApiKey !== undefined ? { firecrawlApiKey: options.firecrawlApiKey } : {}),
     ...(loaderNames ? { loaderNames } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   })

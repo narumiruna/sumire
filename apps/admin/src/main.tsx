@@ -63,6 +63,7 @@ import { PolicyRecoveryDialog } from "./policy-recovery-dialog.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
+import { RuntimeConfig } from "./runtime-config.js"
 import { SaveStatus } from "./save-status.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
@@ -86,6 +87,7 @@ const pageDescriptions = {
   Skills: "Manage skill instructions for defaults and individual chats.",
   "MCP connections": "Manage connections and protected configuration.",
   "Model Providers": "Manage models and provider authentication.",
+  "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
   Audit: "Review configuration activity and imports.",
 }
 function App() {
@@ -110,12 +112,14 @@ function App() {
   }>()
   const [refreshError, setRefreshError] = useState("")
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
+  const runtimeGuard = useRef<(() => boolean) | undefined>(undefined)
+  const [runtimePending, setRuntimePending] = useState(false)
   const {
     page,
     setPage: navigatePage,
     chat,
     setChat: navigateChat,
-  } = useNavigation(Boolean(session && snapshot))
+  } = useNavigation(Boolean(session && snapshot), () => runtimeGuard.current?.() ?? true)
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
   const setPage = (page: Page, anchor?: string) => {
@@ -192,7 +196,13 @@ function App() {
   const localPending = Object.values(editorPending).some(Boolean)
   const markPending = (key: PendingEditor, value: boolean) =>
     setEditorPending((previous) => ({ ...previous, [key]: value }))
-  const pending = dirty || mcpDirty || providerPending || localPending || Boolean(failedPolicySave)
+  const pending =
+    dirty ||
+    mcpDirty ||
+    providerPending ||
+    localPending ||
+    runtimePending ||
+    Boolean(failedPolicySave)
   const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
@@ -217,6 +227,7 @@ function App() {
     setMcpDirty(false)
     setProviderPending(false)
     setEditorPending({})
+    setRuntimePending(false)
     setDirty(false)
     setSnapshot(undefined)
     setSavedPolicy(undefined)
@@ -413,7 +424,9 @@ function App() {
                 <Button
                   variant="ghost"
                   aria-label="Reload"
-                  disabled={busy || dirty || localPending || Boolean(failedPolicySave)}
+                  disabled={
+                    busy || dirty || localPending || runtimePending || Boolean(failedPolicySave)
+                  }
                   onClick={() => {
                     refreshChats()
                     void run(load)
@@ -520,7 +533,7 @@ function App() {
             openEditor={openEditor}
             dirty={dirty}
             busy={busy}
-            localPending={localPending}
+            localPending={localPending || runtimePending}
             mcpDirty={mcpDirty}
             providerPending={providerPending}
             navigate={setPage}
@@ -1066,6 +1079,39 @@ function App() {
               />
             </details>
           </EditorSection>
+          {page === "Secrets & variables" && (
+            <EditorSection active aria-label="Secrets & variables">
+              <RuntimeConfig
+                key={sessionGeneration}
+                csrf={session.csrf}
+                revision={snapshot.revision}
+                blocked={
+                  busy ||
+                  dirty ||
+                  mcpDirty ||
+                  providerPending ||
+                  localPending ||
+                  Boolean(failedPolicySave)
+                }
+                onPending={setRuntimePending}
+                guard={runtimeGuard}
+                onSessionExpired={expireInspectorSession}
+                onCommitted={(value) =>
+                  setSnapshot((current) =>
+                    current
+                      ? {
+                          ...current,
+                          revision: value.revision,
+                          applied: value.applied,
+                          status: value.status,
+                        }
+                      : current,
+                  )
+                }
+                refresh={load}
+              />
+            </EditorSection>
+          )}
           <EditorSection
             active={page === "Audit"}
             aria-label="Audit history"

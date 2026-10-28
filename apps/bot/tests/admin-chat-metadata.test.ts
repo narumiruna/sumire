@@ -34,7 +34,7 @@ it("merges each observed field independently and keeps bootstrap metadata insert
   expect(store.snapshot()).toEqual(before)
   expect(store.allows(-100)).toBe(false)
   expect(store.listAudit(0)).toEqual([])
-  expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 3 })
+  expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 4 })
 })
 
 it("reads legacy blank and ID-only rows without a rewrite and accepts later observed metadata", async () => {

@@ -63,8 +63,8 @@ describe("loadSettings", () => {
     expect(settings).not.toHaveProperty("botWhitelist")
     expect(settings.botAdminId).toBe(123)
     expect(settings.logfireToken).toBe("logfire-token")
-    expect(settings.morselApiKey).toBe("morsel-key")
-    // Firecrawl and Otter read their credentials directly, not through Bot settings.
+    expect(settings).not.toHaveProperty("morselApiKey")
+    // Managed credentials are resolved by the host store, not retained in Settings.
     expect(settings).not.toHaveProperty("firecrawlApiKey")
     expect(settings).not.toHaveProperty("otterToken")
   })
@@ -123,6 +123,7 @@ describe("loadSettings", () => {
       "ADMIN_ORIGIN",
       "ADMIN_HOST",
       "ADMIN_PORT",
+      "SUMIRE_SECRETS_KEY",
       "FIRECRAWL_API_KEY",
       "OTTER_TOKEN",
       "LOGFIRE_TOKEN",
@@ -203,7 +204,9 @@ describe("loadSettings", () => {
     expect(() => loadSettings({ BOT_ADMIN_ID: "" })).toThrow("BOT_ADMIN_ID is required")
     expect(() => loadSettings({ BOT_ADMIN_ID: "  " })).toThrow("BOT_ADMIN_ID is required")
     expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).logfireToken).toBeUndefined()
-    expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " }).morselApiKey).toBeUndefined()
+    expect(loadSettings({ LOGFIRE_TOKEN: " ", MORSEL_API_KEY: " " })).not.toHaveProperty(
+      "morselApiKey",
+    )
     expect(loadSettings({}, "relative").projectRoot).toBe(path.resolve("relative"))
   })
 })

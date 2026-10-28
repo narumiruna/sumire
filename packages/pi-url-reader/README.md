@@ -115,6 +115,7 @@ const extension = createUrlExtension({
   timeoutMs: 15_000,
   urlContentTimeoutSeconds: 180,
   firecrawlFallback: false,
+  firecrawlApiKey: null, // Explicitly disable environment fallback.
   selectableLoaders: ["built-in", "httpx", "playwright"],
 })
 
@@ -125,7 +126,9 @@ const additionalSkillPaths = [urlReaderSkillsPath]
 
 All options are optional. The default export uses the loading defaults above and is auto-only; omitting `selectableLoaders` leaves `loader` out of the tool schema. Hosts should expose only loaders whose runtime dependencies, latency, and external costs they accept. Loader names are validated during extension registration, while missing requirements such as `FIRECRAWL_API_KEY` fail through the normal tool error path when selected. The package does not read bot environment variables or depend on Telegram.
 
-`createPublicUrlLoader(options)` and `createUrlTool(loader, { selectableLoaders })` are also exported for hosts that need a standalone tool or an injected loader. `PublicUrlLoader.load` accepts `load(url, { signal, loader })`; injected implementations using the old positional `load(url, signal)` contract must migrate. The default extension and standalone tool register the same name; use only one per session.
+`createPublicUrlLoader(options)` and `createUrlTool(loader, { selectableLoaders })` are also exported for hosts that need a standalone tool or an injected loader. `PublicUrlLoader.load` accepts `load(url, { signal, loader, firecrawlApiKey })`; injected implementations using the old positional `load(url, signal)` contract must migrate. The default extension and standalone tool register the same name; use only one per session.
+
+`firecrawlApiKey?: string | null` is a host-only option on `createUrlExtension`, `createPublicUrlLoader`, `loadPublicUrl`, and each `PublicUrlLoader.load` call. It is not part of the model-facing tool schema. A per-load key or `null` overrides the configured value. Omitted or `undefined` retains the standalone URL reader's `FIRECRAWL_API_KEY` environment behavior; explicit `null` forbids environment fallback in both requirement planning and requests. Hosts with a mutable credential store must read one snapshot for each load and pass the key or `null`, including when the store is unavailable. Firecrawl removes exact credential echoes from Markdown and returns fixed errors without upstream bodies or causes; the operation retains this protection during rotation or deletion. This does not remove transformed or encoded values and is not an isolation boundary.
 
 ## Checks
 

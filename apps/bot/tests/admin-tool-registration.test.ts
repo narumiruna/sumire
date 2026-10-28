@@ -109,6 +109,28 @@ it.each([0, 511, 512])("keeps full policies available (default tools: %s)", asyn
   }
 })
 
+it.each([513, 1024])(
+  "remembers %s denied discovery names without applying the permission-list count limit",
+  async (count) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-discovery-"))
+    const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)
+    try {
+      const names = Array.from({ length: count }, (_, index) => `mcp__bulk__tool_${index}`)
+      const before = store.snapshot()
+      expect(() => store.registerTools([...names, ""], false)).toThrow()
+      expect(store.db.prepare("SELECT name FROM known_tools").all()).toEqual([])
+      store.registerTools(names, false)
+      expect(store.db.prepare("SELECT name FROM known_tools").all()).toHaveLength(count)
+      expect(store.snapshot()).toEqual(before)
+      store.registerTools(names)
+      expect(store.snapshot()).toEqual(before)
+    } finally {
+      store.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 it("remembers approval-only tools without changing policy or enabling them later", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-tools-"))
   const store = new AdminStore(path.join(directory, "admin.sqlite"), 42)

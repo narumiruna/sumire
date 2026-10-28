@@ -1,5 +1,6 @@
 import { Type } from "@earendil-works/pi-ai"
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent"
+import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 
 import type { Settings } from "./config/settings.js"
 import { type Logger, withLogSpan } from "./logging.js"
@@ -13,7 +14,7 @@ export class MorselPublisher {
 
   constructor(
     baseUrl: string,
-    private readonly apiKey: string | undefined,
+    private readonly keySource: string | undefined | (() => string | undefined),
     private readonly options: {
       timeoutMs: number
       expiresInSeconds: number
@@ -24,12 +25,22 @@ export class MorselPublisher {
     this.#baseUrl = validateMorselOrigin(baseUrl)
   }
 
+  private readKey(): string | undefined {
+    try {
+      return typeof this.keySource === "function" ? this.keySource() : this.keySource
+    } catch {
+      return undefined
+    }
+  }
+
   get isConfigured(): boolean {
-    return Boolean(this.apiKey)
+    return Boolean(this.readKey())
   }
 
   async publish(content: string): Promise<string> {
-    if (!this.apiKey) throw new MorselPublishError("MORSEL_API_KEY is not configured")
+    // Snapshot the credential for this operation, not the lifetime of the publisher.
+    const apiKey = this.readKey()
+    if (!apiKey) throw new MorselPublishError("MORSEL_API_KEY is not configured")
     const payload: Record<string, unknown> = {
       content,
       preview: previewMetadata(content),
@@ -43,28 +54,37 @@ export class MorselPublisher {
       response = await fetchImplementation(new URL("/v1/shares", this.#baseUrl), {
         body: JSON.stringify(payload),
         headers: {
-          authorization: `Bearer ${this.apiKey}`,
+          authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
         method: "POST",
         redirect: "manual",
         signal: AbortSignal.timeout(this.options.timeoutMs),
       })
-    } catch (error) {
-      throw new MorselPublishError("Failed to create Morsel share", { cause: error })
+    } catch {
+      // Fetch errors can contain request headers. Never retain their causes.
+      throw new MorselPublishError("Failed to create Morsel share")
     }
-    if (response.status !== 201)
+    if (response.status !== 201) {
+      await response.body?.cancel().catch(() => {})
       throw new MorselPublishError(`Morsel share creation failed with HTTP ${response.status}`)
-    const bytes = await readBoundedResponse(response, 65_536)
+    }
     let metadata: unknown
     try {
-      metadata = JSON.parse(new TextDecoder().decode(bytes))
-    } catch (error) {
-      throw new MorselPublishError("Morsel returned invalid share metadata", { cause: error })
+      const bytes = await readBoundedResponse(response, 65_536)
+      const text = new TextDecoder().decode(bytes)
+      if (text.includes(apiKey)) throw new Error("Credential echo")
+      metadata = JSON.parse(text)
+    } catch {
+      throw new MorselPublishError("Morsel returned invalid share metadata")
     }
     if (!isShareMetadata(metadata))
       throw new MorselPublishError("Morsel returned invalid share metadata")
-    return validateShareUrl(metadata.share_url, this.#baseUrl)
+    const shareUrl = validateShareUrl(metadata.share_url, this.#baseUrl)
+    // JSON escapes can hide a credential from the raw-wire check above.
+    if (shareUrl.includes(apiKey))
+      throw new MorselPublishError("Morsel returned invalid share metadata")
+    return shareUrl
   }
 }
 
@@ -99,8 +119,11 @@ export function publishMorselWithTrace(
   )
 }
 
-export function createMorselPublisher(settings: Settings): MorselPublisher {
-  return new MorselPublisher(settings.morselUrl, settings.morselApiKey, {
+export function createMorselPublisher(
+  settings: Settings,
+  runtime?: RuntimeConfigReader,
+): MorselPublisher {
+  return new MorselPublisher(settings.morselUrl, () => runtime?.readSecret("MORSEL_API_KEY"), {
     timeoutMs: Math.round(settings.morselTimeoutSeconds * 1_000),
     expiresInSeconds: settings.morselShareExpiresInSeconds,
     telegramInstantView: settings.morselTelegramInstantView,
@@ -112,7 +135,7 @@ export function buildMorselTools(
   mode: Settings["morselMode"],
   logger: Logger,
 ): ToolDefinition[] {
-  if (mode === "disabled" || !publisher.isConfigured) return []
+  if (mode === "disabled") return []
   return [
     defineTool({
       name: "publish_markdown_to_morsel",
