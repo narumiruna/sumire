@@ -12,6 +12,12 @@
 - Apply formatting with `npm run format`; run a focused script with `npm run <script> --workspace <package-name>` when only one workspace is affected.
 - Run the bot through `docker compose ...` from the repository root so the build can access all workspaces and shared runtime resources.
 
+## Environment variables
+
+- When adding, renaming, or removing a runtime environment variable, update `.env.example` and the relevant setup documentation in the same change.
+  - Update `.github/workflows/deploy.yml` so `Prepare environment file` writes deployment-supplied values to `.env`, using GitHub Actions `secrets` for confidential values and `vars` for non-confidential values.
+  - Verify that `compose.yaml` passes the variable to the service through `env_file` or `environment`, and report any GitHub Actions secret or variable that an administrator must configure.
+
 ## Boundaries
 
 - Pi Durable's `Harness` owns model turns, retries, compaction, transcript persistence, and tool scheduling; use durable submissions, waits, forks, and aborts instead of constructing an `AgentSession` or another model loop.
