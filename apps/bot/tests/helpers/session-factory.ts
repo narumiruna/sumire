@@ -1,5 +1,6 @@
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import type { GitHubAuth } from "../../src/admin/github-auth.js"
 import { McpAdmin } from "../../src/admin/mcp.js"
 import { RuntimeConfigAdmin } from "../../src/admin/runtime-config.js"
 import type { AdminStore } from "../../src/admin/store.js"
@@ -14,7 +15,12 @@ export async function createTestSessionFactory(
   logger: Logger,
   images?: ChannelImageIndex,
   runtime?: ModelRuntime,
-  supplied?: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin },
+  supplied?: {
+    store: AdminStore
+    mcp: McpAdmin
+    runtime?: RuntimeConfigAdmin
+    github?: GitHubAuth
+  },
 ) {
   if (supplied)
     return {

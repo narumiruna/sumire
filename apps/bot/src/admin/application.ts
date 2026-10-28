@@ -2,6 +2,7 @@ import path from "node:path"
 import type { PiSessionFactory } from "../agent/pi-session-factory.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import type { AdminConfig } from "./auth.js"
+import type { GitHubAuth } from "./github-auth.js"
 import { importLegacyModels } from "./import.js"
 import type { McpAdmin } from "./mcp.js"
 import { ProviderAdmin } from "./providers.js"
@@ -46,7 +47,7 @@ export function createPolicyApplier(
 
 export async function startAdmin(
   config: AdminConfig,
-  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin },
+  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin; github?: GitHubAuth },
   factory: PiSessionFactory,
   sessions: ChatSessionRegistry,
 ) {
@@ -81,6 +82,7 @@ export async function startAdmin(
     store,
     mcp,
     ...(control.runtime ? { runtime: control.runtime } : {}),
+    ...(control.github ? { github: control.github } : {}),
     providers,
     apply,
     tools: () => factory.toolNames ?? [],

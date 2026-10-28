@@ -17,6 +17,7 @@ import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-read
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 import { createDurableInspector } from "../admin/durable-inspector.js"
+import type { GitHubAuth } from "../admin/github-auth.js"
 import type { McpAdmin } from "../admin/mcp.js"
 import { chatModelRuntime } from "../admin/providers.js"
 import { adminShellEnvironment } from "../admin/shell.js"
@@ -66,7 +67,7 @@ export interface PiSessionFactory {
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
-  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigReader },
+  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigReader; github?: GitHubAuth },
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
   modelRuntimeOverride?: ModelRuntime,
 ): Promise<PiSessionFactory> {
@@ -108,7 +109,11 @@ export async function createPiSessionFactory(
     traceLoad: (url, requestedLoader, toolCallId, load) =>
       traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
   })
-  const coding = await nativeCodingTools(() => adminShellEnvironment(process.env, control.runtime))
+  const shellEnvironment = async (signal?: AbortSignal) => {
+    await control.github?.resolveToken(signal)
+    return adminShellEnvironment(process.env, control.runtime)
+  }
+  const coding = await nativeCodingTools(shellEnvironment)
   const morselPublisher = createMorselPublisher(settings, control.runtime)
   const baseTools = [
     urlTool,
@@ -256,7 +261,18 @@ export async function createPiSessionFactory(
             authorize(IMAGEGEN_TOOL),
           )
         : undefined
-      const chatCoding = [...coding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
+      const sessionCoding = await nativeCodingTools(shellEnvironment, () => {
+        authorize("bash")
+        const epoch = control.store.snapshot().epoch
+        return (environment) => {
+          authorize("bash")
+          if (control.store.snapshot().epoch !== epoch)
+            throw new Error("Settings changed before shell dispatch")
+          if (environment.GH_TOKEN !== control.runtime?.readSecret("GH_TOKEN"))
+            throw new Error("GitHub credentials changed before shell dispatch")
+        }
+      })
+      const chatCoding = [...sessionCoding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
         control.store.allowsTool(chatId, tool.name),
       )
       const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)

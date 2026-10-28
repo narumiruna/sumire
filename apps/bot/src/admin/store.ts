@@ -354,6 +354,15 @@ export class AdminStore {
     this.db.prepare("UPDATE sessions SET touched=? WHERE hash=?").run(now, digest(value))
     return row
   }
+  /** Background authorization checks must not keep a browser session alive. */
+  sessionDeadline(hash: string, now = Date.now()): number | undefined {
+    const row = this.db
+      .prepare("SELECT actor,created,touched FROM sessions WHERE hash=?")
+      .get(hash) as { actor: string; created: number; touched: number } | undefined
+    if (!this.adminId || !row || row.actor !== String(this.adminId)) return undefined
+    const deadline = Math.min(row.created + sessionMaxAgeMs, row.touched + sessionIdleTimeoutMs)
+    return deadline > now ? deadline : undefined
+  }
   revoke(value: string) {
     this.db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(value))
   }
