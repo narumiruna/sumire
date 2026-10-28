@@ -73,11 +73,36 @@ Secret drafts exist only in component memory. Successful persistence, Cancel, co
   - Existing MCP field, credential-byte, transport, redaction, and exposure limits still apply. A stored 8 KiB value can exceed MCP's stricter 4 KiB per-credential bound and make that connection unavailable.
   - A running administrator connection test blocks runtime-value writes. Apply saved settings before starting a new test.
 - `read_variable({ name })` returns a literal value or `{ found: false }`. Secret names behave like missing variables. This tool and newly introduced publishing capability names start denied until explicitly approved in Tool permissions.
-- Native shell tools do not receive managed Firecrawl/Morsel keys or the master key. The existing Otter environment behavior remains unchanged.
+- Native shell tools receive only the applied `GH_TOKEN` from the managed secret store, in addition to existing runtime paths and the Otter credential. They do not receive managed Firecrawl/Morsel keys or the master key.
 
 Credential saves and MCP discovery never grant chat, tool, skill, server, or model permissions. Newly discovered MCP tools require explicit approval; existing saved approvals remain unchanged. Local configured/available status does not prove that a provider accepts the key. No remote verification, model request, or publication starts automatically.
 
 Each service operation retains its own credential for response/error redaction, including after replacement or deletion. Public errors do not retain credential-bearing upstream causes. Exact-value redaction does not guarantee removal of encoded/transformed values.
+
+## GitHub CLI authentication
+
+The production image includes `gh`. Use the existing Secrets tab to configure GitHub.com authentication:
+
+1. Configure and back up `ENCRYPTION_KEY` as described above. Deploy the rebuilt image with `docker compose up -d --build sumire` from the repository root.
+2. Create a GitHub Personal Access Token with only the required repositories and permissions. Prefer a fine-grained token. Do not submit it through Telegram or include it in commands, URLs, or logs.
+3. In **Secrets & variables → Secrets**, select **Add secret**. Set the name to `GH_TOKEN`, enter the token, and select **Save secret**. Do not create a public variable.
+4. Wait for **Saved and applied**. The next direct or codemode `bash` execution uses the applied token. Replacement and deletion use the same controls and do not require a bot restart. Pending, failed, locked, or unavailable secret storage does not supply a managed token; a variable named `GH_TOKEN` is not a credential.
+5. Approve `bash` only for trusted chats, within both global and chat policy limits. Saving a token does not grant permissions. Every chat with `bash` access can use or read this token; this is not an admin-only GitHub action.
+6. The GitHub account owner can explicitly verify the account with the read-only command `gh api user --jq .login`. Automated tests do not contact GitHub, and configured state does not prove token acceptance or repository access.
+
+Sumire resolves the token for each shell call without changing `process.env`. It does not run `gh auth login` or write the token to CLI credential files. `GH_PROMPT_DISABLED=1` disables interactive prompts. Tokens containing a null character are rejected before process creation with a fixed error that does not include the token. Host `GH_TOKEN`, `GITHUB_TOKEN`, and enterprise tokens are not inherited or imported. OAuth/device login and GitHub Enterprise configuration are not included.
+
+Deleting the managed secret stops its injection after application. It does not revoke the token on GitHub, remove manually configured GitHub CLI credentials, erase backups/history, or undo an already started GitHub operation. Revoke obsolete or compromised tokens on GitHub. Do not print tokens with shell commands or `gh auth token`; tool output can remain in conversation history. The deployment administrator must maintain a recoverable database/key backup. Verify production sign-in and ingress log redaction before real token entry.
+
+### GitHub CLI verification and deployment restriction
+
+Checks completed on 2026-10-28:
+
+- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. Unit/integration tests: 2305 across 11 workspaces. The existing unrelated lint warning remains.
+- The complete administration browser suite passed: 517 tests, using an isolated local port.
+- The production image built successfully. Offline tests under the non-root user verified `gh` token lookup, replacement, and deletion with synthetic credentials. These tests used Docker's default seccomp profile, no network, no host credentials, and no persistent state mounts.
+
+In this validation environment, the repository's configured custom seccomp profile prevents Node from creating a thread (`uv_thread_create`, exit 134). The existing `sumire:local` image fails the same startup check. This change does not alter that profile. The deployment administrator must verify startup under the configured profile before production activation and resolve this failure where it occurs. Do not substitute the test security override for production configuration without a separate review. Live GitHub acceptance, production Passkey sign-in, and master-key backup remain account-owner and deployment-administrator checks.
 
 ## Upgrade and import
 

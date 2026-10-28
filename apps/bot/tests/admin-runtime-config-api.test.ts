@@ -10,6 +10,7 @@ import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { RuntimeConfigAdmin } from "../src/admin/runtime-config.js"
 import { createAdminServer } from "../src/admin/server.js"
+import { adminShellEnvironment } from "../src/admin/shell.js"
 import { AdminStore } from "../src/admin/store.js"
 
 let directory: string
@@ -115,6 +116,29 @@ afterEach(async () => {
 })
 
 describe("authenticated runtime configuration API", () => {
+  it("manages GitHub CLI authentication without exposing the token or granting tool access", async () => {
+    const policy = store.snapshot().policy
+    for (const token of ["github-api-fixture-first", "github-api-fixture-replacement"]) {
+      const response = await call("/api/runtime-config/GH_TOKEN", "PUT", mutation("secret", token))
+      expect(response.status).toBe(200)
+      expect(response.body).not.toContain(token)
+      expect(JSON.parse(response.body).entries).toContainEqual(
+        expect.objectContaining({ name: "GH_TOKEN", kind: "secret", configured: true }),
+      )
+      expect(adminShellEnvironment({ GH_TOKEN: "host-token" }, runtime).GH_TOKEN).toBe(token)
+      expect((await call()).body).not.toContain(token)
+      expect(JSON.stringify(store.listAudit(0))).not.toContain(token)
+      expect(store.snapshot().policy).toEqual(policy)
+    }
+    const removed = await call("/api/runtime-config/GH_TOKEN", "DELETE", {
+      revision: store.snapshot().revision,
+    })
+    expect(removed.status).toBe(200)
+    expect(adminShellEnvironment({ GH_TOKEN: "host-token" }, runtime)).not.toHaveProperty(
+      "GH_TOKEN",
+    )
+    expect(store.snapshot().policy).toEqual(policy)
+  })
   it("never serializes secrets and applies committed mutations without changing policy grants", async () => {
     const before = store.snapshot()
     const secret = "synthetic-secret-value"

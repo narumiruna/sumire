@@ -356,6 +356,8 @@ Supported custom API types are OpenAI Completions, OpenAI Responses, Anthropic M
 
 Provision the host-only `ENCRYPTION_KEY` before entering credentials. Missing/wrong keys lock secret operations, not administrator login or variable management. Saving and applying a value changes the next operation without restarting the bot; application cancels active model work and replaces old MCP connections. A committed write with failed application remains saved: retry application, not the secret submission. Unknown network outcomes require explicit safe metadata reload before another replacement.
 
+For GitHub CLI authentication, add a **Secret** named `GH_TOKEN` containing a GitHub.com Personal Access Token. The next `bash` call uses it after successful application, without restarting the bot. All chats with `bash` access can use or read the token. Saving it does not grant access or check GitHub acceptance. See [GitHub CLI setup and trust limits](runtime-config.md#github-cli-authentication).
+
 The schema advances to version 4. See [runtime configuration setup, migration, backup, recovery, verification, and deployment handoff](runtime-config.md). Back up the master key separately from state. Same-user tool access is not isolated.
 
 ## MCP configuration and secrets
@@ -382,7 +384,7 @@ MCP may depend on private Docker endpoints. Existing MCP HTTP protections remain
 
 Tools are capabilities, not an OS sandbox. Pi, shell tools, and stdio MCP processes run with the container user's permissions. A working directory does not confine file access. A shell or file tool can read process-readable state, modify policy or credential files, and reach the network without using another named tool. Administrator-supplied MCP code has the same trust requirement.
 
-Shell tools receive a restricted environment: system and runtime paths, locale fields, and the existing Otter skill credential. Managed Firecrawl/Morsel secrets and the runtime master key are not injected. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. MCP retains its existing explicit environment policy.
+Shell tools receive a restricted environment: system and runtime paths, locale fields, the existing Otter skill credential, and the applied managed `GH_TOKEN`. GitHub CLI prompts are disabled. Managed Firecrawl/Morsel secrets and the runtime master key are not injected. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. MCP retains its existing explicit environment policy.
 
 Sumire does not inject stored model provider credentials into tool or MCP environments, but same-user file access is not isolated. Do not enable shell or unrestricted file tools for untrusted chats. Do not claim credential isolation when these capabilities are enabled. Use a separate tested OS or VM boundary if that isolation is required. This release does not add such a boundary.
 

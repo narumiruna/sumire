@@ -167,7 +167,7 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean
 RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 ffmpeg libcurl4
+    && apt-get install -y --no-install-recommends ca-certificates git gh openssh-client python3 ffmpeg libcurl4
 
 # Resolve OS dependencies with the exact same locked CLI as the browser download.
 RUN --mount=type=bind,from=dependencies,source=/build/node_modules,target=/build/node_modules \
@@ -221,7 +221,7 @@ RUN --network=none node /app/apps/bot/scripts/check-curl-impersonate.mjs
 # Verify URL diagnostics and installed media tools without external requests or model downloads.
 RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs
 
-# Fail the build if Git or SSH tools are unavailable to the bot user.
-RUN git --version && ssh -V && command -v ssh-keygen
+# Fail the build if Git, GitHub CLI, or SSH tools are unavailable to the bot user.
+RUN --network=none git --version && gh --version && ssh -V && command -v ssh-keygen
 
 ENTRYPOINT ["node", "/app/apps/bot/dist/index.js"]

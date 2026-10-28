@@ -1,4 +1,6 @@
-// Preserve runtime paths and the existing Otter credential, not managed or provider secrets.
+import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+
+// Preserve runtime paths, Otter, and the applied GitHub CLI credential only.
 // This prevents direct environment inheritance. It does not isolate same-user files or processes.
 const shellFields = [
   "PATH",
@@ -15,8 +17,20 @@ const shellFields = [
   "IMPER_DOWNLOAD_LIBCURL",
   "OTTER_TOKEN",
 ] as const
-export function adminShellEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(
-    shellFields.flatMap((key) => (environment[key] === undefined ? [] : [[key, environment[key]]])),
-  )
+export function adminShellEnvironment(
+  environment: NodeJS.ProcessEnv,
+  runtime?: RuntimeConfigReader,
+): NodeJS.ProcessEnv {
+  const token = runtime?.readSecret("GH_TOKEN")
+  if (token?.includes("\0"))
+    throw new Error("Stored GH_TOKEN is invalid; replace it in Secrets & variables.")
+  return {
+    ...Object.fromEntries(
+      shellFields.flatMap((key) =>
+        environment[key] === undefined ? [] : [[key, environment[key]]],
+      ),
+    ),
+    GH_PROMPT_DISABLED: "1",
+    ...(token ? { GH_TOKEN: token } : {}),
+  }
 }
