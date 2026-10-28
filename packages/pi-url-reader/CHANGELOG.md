@@ -1,5 +1,16 @@
 # @narumitw/sumire-pi-url-reader
 
+## 0.7.0
+
+### Minor Changes
+
+- 593c3df: Add administrator-managed encrypted runtime secrets and non-confidential variables. Resolve current stored credentials for Morsel, Firecrawl, and explicit MCP bindings after settings application. Add a deny-by-default variable reader and preserve standalone URL-reader environment compatibility. Keep newly discovered MCP tools denied until explicitly approved so credential activation cannot expand permissions.
+
+### Patch Changes
+
+- Updated dependencies [593c3df]
+  - @narumitw/sumire-url-reader@0.26.0
+
 ## 0.6.3
 
 ### Patch Changes

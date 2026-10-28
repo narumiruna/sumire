@@ -1,5 +1,11 @@
 # @narumitw/sumire-contracts
 
+## 0.7.0
+
+### Minor Changes
+
+- 593c3df: Add administrator-managed encrypted runtime secrets and non-confidential variables. Resolve current stored credentials for Morsel, Firecrawl, and explicit MCP bindings after settings application. Add a deny-by-default variable reader and preserve standalone URL-reader environment compatibility. Keep newly discovered MCP tools denied until explicitly approved so credential activation cannot expand permissions.
+
 ## 0.6.2
 
 ### Patch Changes

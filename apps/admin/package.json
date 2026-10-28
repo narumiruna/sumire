@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-admin",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -32,7 +32,7 @@
     "vitest": "5.0.5"
   },
   "dependencies": {
-    "@narumitw/sumire-contracts": "0.6.2",
+    "@narumitw/sumire-contracts": "0.7.0",
     "@narumitw/sumire-policy": "0.4.1",
     "@radix-ui/colors": "3.0.0",
     "@radix-ui/react-icons": "1.3.2",
