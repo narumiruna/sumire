@@ -447,12 +447,12 @@ test("pending MCP draft blocks runtime mutation; stored-reference editor stages 
   await expect(page.getByRole("button", { name: "Add secret", exact: true })).toBeDisabled()
 })
 
-test("notification setup reuses the write-only GH_TOKEN secret and a separate recipients page", async ({
+test("mention replies reuse the write-only GH_TOKEN secret and a separate author allowlist", async ({
   page,
 }) => {
   const state = await fixture(page)
-  await expect(page.getByText(/^GitHub notifications also use/)).toContainText(
-    "Manage Telegram recipients on the GitHub notifications page, not in Variables.",
+  await expect(page.getByText(/^GitHub mentions use/)).toContainText(
+    "Allow mention authors by GitHub username on the GitHub mentions page, not in Variables.",
   )
   await add(page, "secret", "GH_TOKEN", "fixture-notifications-private-token")
   await page.getByRole("button", { name: "Save secret", exact: true }).click()
@@ -463,10 +463,10 @@ test("notification setup reuses the write-only GH_TOKEN secret and a separate re
   await noLeak(page, "fixture-notifications-private-token")
 })
 
-test("notification configuration guidance fits a narrow mobile screen", async ({ page }) => {
+test("mention configuration guidance fits a narrow mobile screen", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await fixture(page)
-  await expect(page.getByText(/^GitHub notifications also use/)).toBeVisible()
+  await expect(page.getByText(/^GitHub mentions use/)).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )

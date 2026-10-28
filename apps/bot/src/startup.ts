@@ -8,6 +8,7 @@ import { createPiSessionFactory } from "./agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "./agent/session-registry.js"
 import { loadSettings } from "./config/settings.js"
 import { AnyDocConverter, type DocumentConverter } from "./documents/converter.js"
+import { type GithubMentionWorker, startGithubMentionWorker } from "./github/runtime.js"
 import { createLogger } from "./logging.js"
 import { createTelegramAgentBot } from "./telegram/bot.js"
 import { ChannelImageIndex } from "./telegram/channel-images.js"
@@ -25,6 +26,7 @@ export async function startApplication(): Promise<void> {
   let control: { store: AdminStore; mcp: McpAdmin; runtime: RuntimeConfigAdmin } | undefined
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
+  let github: GithubMentionWorker | undefined
   try {
     const store = new AdminStore(
       path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
@@ -52,6 +54,8 @@ export async function startApplication(): Promise<void> {
     )
     sessions = registry
     adminServer = await startAdmin(settings.admin, control, piFactory, registry)
+    if (!piFactory.modelRuntime) throw new Error("Shared model runtime is unavailable")
+    github = startGithubMentionWorker(settings, logger, control, piFactory.modelRuntime)
     const telegram = createTelegramAgentBot(settings, registry, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
@@ -60,34 +64,38 @@ export async function startApplication(): Promise<void> {
       recoverChats: () => piFactory.listChats(),
     })
 
+    const closeRuntime = () =>
+      closeApplicationResources([
+        () => github?.close(),
+        () => telegram.stop(),
+        () => adminServer?.stop(),
+        () => registry.dispose(),
+      ])
     let stopping = false
     const stop = async (signal: string) => {
       if (stopping) return
       stopping = true
       logger.info(`Received ${signal}; stopping Telegram bot`)
-      await telegram.stop()
-      await adminServer?.stop()
+      await closeRuntime()
       adminServer = undefined
-      await registry.dispose()
     }
-    process.once(
-      "SIGINT",
-      () => void stop("SIGINT").catch(() => logger.warn("Application shutdown failed")),
-    )
-    process.once(
-      "SIGTERM",
-      () => void stop("SIGTERM").catch(() => logger.warn("Application shutdown failed")),
-    )
+    const onInterrupt = () =>
+      void stop("SIGINT").catch(() => logger.warn("Application shutdown failed"))
+    const onTerminate = () =>
+      void stop("SIGTERM").catch(() => logger.warn("Application shutdown failed"))
+    process.once("SIGINT", onInterrupt)
+    process.once("SIGTERM", onTerminate)
 
     try {
       await telegram.start()
     } finally {
-      await telegram.stop()
-      await adminServer?.stop()
-      await registry.dispose()
+      process.removeListener("SIGINT", onInterrupt)
+      process.removeListener("SIGTERM", onTerminate)
+      await closeRuntime()
     }
   } finally {
     await closeApplicationResources([
+      () => github?.close(),
       () => adminServer?.stop(),
       () => sessions?.dispose(),
       () => control?.mcp.close(),

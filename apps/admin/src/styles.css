@@ -3205,34 +3205,34 @@ main .durable-record-meta a {
 .runtime-entry-name {
   overflow-wrap: anywhere;
 }
-.github-recipient-form {
+.github-author-form {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 12px;
 }
-.github-recipient-form .form-field {
+.github-author-form .form-field {
   flex: 1 1 240px;
   max-width: 360px;
 }
-.github-recipient-form > p {
+.github-author-form > p {
   flex-basis: 100%;
   margin: 0;
 }
-.github-recipient-list {
+.github-author-list {
   display: grid;
   gap: 12px;
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
 }
-.github-recipient-list li {
+.github-author-list li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
-.github-recipient-list code {
+.github-author-list code {
   min-width: 0;
   overflow-wrap: anywhere;
 }

@@ -1,280 +1,416 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import type { JsonObject } from "@earendil-works/pi-ai"
-import { expect, it, vi } from "vitest"
-import { AdminStore } from "../src/admin/store.js"
-import { createGithubNotificationsTool } from "../src/agent/github-notifications.js"
-import { callDurableTool } from "./helpers/durable-session.js"
-import { createPiFixture } from "./helpers/pi-fixture.js"
+import { DatabaseSync } from "node:sqlite"
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import type { Snapshot } from "@narumitw/sumire-contracts"
+import type { GithubMention, MentionPage } from "@narumitw/sumire-github-notifications"
+import { initialPolicy } from "@narumitw/sumire-policy"
+import { afterEach, expect, it, vi } from "vitest"
+import { GithubMentionWorker, type GithubWorkerOptions } from "../src/github/runtime.js"
 
-const toolName = "read_github_notifications"
-const execute = (tool: ReturnType<typeof createGithubNotificationsTool>) =>
-  tool.execute("id", {}, undefined, undefined, undefined as never)
-const setRecipients = (store: AdminStore, allowedUserIds: number[]) => {
-  const state = store.snapshot()
-  state.policy.githubNotifications.allowedUserIds = allowedUserIds
-  store.save(state.policy, state.revision, "7")
-}
-const toolArgs = (name: string): JsonObject =>
-  name === "codemode" ? { code: "text(await tools.read_github_notifications({}))" } : {}
-
-it.each([123, -100, 7])(
-  "blocks non-allowlisted private users, groups, and administrator chat %s before HTTP",
-  async (chatId) => {
-    const fetcher = vi.fn<typeof fetch>()
-    const readSecret = vi.fn(() => "synthetic-token")
-    const tool = createGithubNotificationsTool(chatId, {
-      allowedUserIds: () => [42],
-      assertAccess() {},
-      runtime: { readSecret, readVariable: () => "[123,7]" },
-      fetch: fetcher,
-    })
-    await expect(execute(tool)).rejects.toThrow("restricted")
-    expect(readSecret).not.toHaveBeenCalled()
-    expect(fetcher).not.toHaveBeenCalled()
-  },
-)
-it("rejects groups even when the caller's private ID is allowed", async () => {
-  const fetcher = vi.fn<typeof fetch>()
-  const tool = createGithubNotificationsTool(-100, {
-    allowedUserIds: () => [7, 123],
-    assertAccess() {},
-    runtime: { readSecret: () => "fixture-token", readVariable: () => undefined },
-    fetch: fetcher,
-  })
-  await expect(execute(tool)).rejects.toThrow("restricted")
-  expect(fetcher).not.toHaveBeenCalled()
+const now = Date.parse("2030-01-01T12:00:00Z")
+const account = { id: 42, login: "sumire-bot" }
+const mention = (overrides: Partial<GithubMention> = {}): GithubMention => ({
+  key: "42:issue-comment:1:2030-01-01T11:59:30Z",
+  account,
+  author: "trusted-author",
+  repository: "owner/repo",
+  issueNumber: 12,
+  title: "Question",
+  body: "@sumire-bot Please explain this.",
+  url: "https://github.com/owner/repo/issues/12#issuecomment-1",
+  source: { kind: "issue-comment", id: 1, updatedAt: "2030-01-01T11:59:30Z" },
+  threadId: "123",
+  ...overrides,
 })
-it("uses only managed GH_TOKEN and never reads runtime variables or host credentials", async () => {
-  vi.stubEnv("GH_TOKEN", "host-token")
-  vi.stubEnv("GITHUB_TOKEN", "host-fallback-token")
-  const readSecret = vi.fn((name: string) =>
-    name === "GITHUB_NOTIFICATIONS_TOKEN" ? "legacy-token" : undefined,
+const cleanup: Array<() => Promise<void>> = []
+afterEach(async () => {
+  vi.useRealTimers()
+  await Promise.all(cleanup.splice(0).map((close) => close()))
+})
+
+async function fixture() {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-github-worker-"))
+  const policy = initialPolicy()
+  policy.githubNotifications.allowedUsernames = ["trusted-author"]
+  policy.models = ["openai/gpt-6.1-sol"]
+  policy.defaults.models = [...policy.models]
+  policy.defaults.model = policy.models[0] as string
+  policy.providers = [{ id: "openai", enabled: true, models: [] }]
+  const state: Snapshot = { revision: 1, applied: 1, status: "applied", epoch: 1, policy }
+  const secret = { token: "managed-token" as string | undefined }
+  const model = { provider: "openai", id: "gpt-6.1-sol", reasoning: false }
+  const modelRuntime = {
+    getModel: vi.fn((provider: string, id: string) => ({ ...model, provider, id })),
+    getPhysicalModel: vi.fn((provider: string, id: string) => ({ ...model, provider, id })),
+    checkAuth: vi.fn(async () => true),
+  } as unknown as ModelRuntime
+  const page: MentionPage = {
+    account,
+    mentions: [mention()],
+    hasMore: false,
+    pollIntervalSeconds: 60,
+  }
+  const scan = vi.fn<NonNullable<GithubWorkerOptions["client"]>["scan"]>(async () =>
+    structuredClone(page),
   )
-  const readVariable = vi.fn(() => "[123]")
-  const fetcher = vi.fn<typeof fetch>()
-  const tool = createGithubNotificationsTool(123, {
-    allowedUserIds: () => [123],
-    assertAccess() {},
-    runtime: { readSecret, readVariable },
-    fetch: fetcher,
-  })
-  try {
-    await expect(execute(tool)).rejects.toThrow("applied GH_TOKEN secret is required")
-    expect(readSecret).toHaveBeenCalledExactlyOnceWith("GH_TOKEN")
-    expect(readVariable).not.toHaveBeenCalled()
-    expect(fetcher).not.toHaveBeenCalled()
-    const withoutRuntime = createGithubNotificationsTool(123, {
-      allowedUserIds: () => [123],
-      assertAccess() {},
-      fetch: fetcher,
-    })
-    await expect(execute(withoutRuntime)).rejects.toThrow("applied GH_TOKEN secret is required")
-    expect(fetcher).not.toHaveBeenCalled()
-  } finally {
-    vi.unstubAllEnvs()
+  const reply = vi.fn<NonNullable<GithubWorkerOptions["client"]>["reply"]>(async () => ({
+    status: "sent",
+  }))
+  const generate = vi.fn<GithubWorkerOptions["generate"]>(async () => ({
+    text: "Generated **Markdown**.",
+    model: "openai/gpt-6.1-sol",
+  }))
+  const logger = { warn: vi.fn() }
+  const options: GithubWorkerOptions = {
+    directory,
+    store: { snapshot: () => structuredClone(state) },
+    runtime: { readSecret: (name) => (name === "GH_TOKEN" ? secret.token : undefined) },
+    modelRuntime,
+    generate,
+    logger,
+    client: { scan, reply },
+    now: () => now,
   }
-})
-it("returns metadata only to an allowed private chat and rechecks the latest recipients", async () => {
-  let allowedUserIds = [123]
-  const readSecret = vi.fn(() => "synthetic-token")
-  const fetcher = vi.fn<typeof fetch>(async () => new Response("[]"))
-  const tool = createGithubNotificationsTool(123, {
-    allowedUserIds: () => allowedUserIds,
-    assertAccess() {},
-    runtime: { readSecret, readVariable: () => undefined },
-    fetch: fetcher,
-  })
-  expect((await execute(tool)).details).toMatchObject({ notifications: [] })
-  expect(readSecret).toHaveBeenCalledExactlyOnceWith("GH_TOKEN")
-  allowedUserIds = []
-  await expect(execute(tool)).rejects.toThrow("restricted")
-  expect(fetcher).toHaveBeenCalledTimes(1)
-})
-it("checks host tool access before resolving recipients, credentials, or HTTP", async () => {
-  const allowedUserIds = vi.fn(() => [123])
-  const readSecret = vi.fn(() => "fixture-token")
-  const fetcher = vi.fn<typeof fetch>()
-  const tool = createGithubNotificationsTool(123, {
-    allowedUserIds,
-    assertAccess() {
-      throw new Error("Tool is not allowed")
-    },
-    runtime: { readSecret, readVariable: () => undefined },
-    fetch: fetcher,
-  })
-  await expect(execute(tool)).rejects.toThrow("Tool is not allowed")
-  expect(allowedUserIds).not.toHaveBeenCalled()
-  expect(readSecret).not.toHaveBeenCalled()
-  expect(fetcher).not.toHaveBeenCalled()
-})
-it("defaults old persisted policies closed and persists recipient changes with revisions and audit", () => {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "sumire-notification-policy-"))
-  const file = path.join(directory, "admin.sqlite")
-  let store = new AdminStore(file, 7)
-  try {
-    const oldPolicy: Record<string, unknown> = { ...store.snapshot().policy }
-    delete oldPolicy.githubNotifications
-    store.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(JSON.stringify(oldPolicy))
-    expect(store.snapshot().policy.githubNotifications).toEqual({ allowedUserIds: [] })
-    store.close()
-    store = new AdminStore(file, 7)
-    expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([])
-    const original = store.snapshot()
-    setRecipients(store, [123])
-    expect(store.snapshot()).toMatchObject({
-      revision: original.revision + 1,
-      status: "pending",
-      policy: { githubNotifications: { allowedUserIds: [123] } },
-    })
-    expect(() => store.save(original.policy, original.revision, "7")).toThrow("Settings changed")
-    const invalid = store.snapshot()
-    invalid.policy.githubNotifications.allowedUserIds = [123, 123]
-    expect(() => store.save(invalid.policy, invalid.revision, "7")).toThrow()
-    expect(store.snapshot().revision).toBe(original.revision + 1)
-    store.applied(store.snapshot().revision, true)
-    store.close()
-    store = new AdminStore(file, 7)
-    expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([123])
-    setRecipients(store, [])
-    store.applied(store.snapshot().revision, true)
-    store.close()
-    store = new AdminStore(file, 7)
-    expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([])
-    expect(
-      store.listAudit(0).filter((entry) => entry.operation === "settings.update"),
-    ).toHaveLength(2)
-  } finally {
-    store.close()
-    rmSync(directory, { recursive: true, force: true })
+  const workers: GithubMentionWorker[] = []
+  const create = () => {
+    const worker = new GithubMentionWorker(options)
+    workers.push(worker)
+    return worker
   }
-})
-it.each([toolName, "codemode"])(
-  "enforces persisted recipient policy through the real durable %s path",
-  async (name) => {
-    const fixture = await createPiFixture()
+  const worker = create()
+  cleanup.push(async () => {
+    await Promise.all(workers.map((worker) => worker.close()))
+    await rm(directory, { recursive: true, force: true })
+  })
+  const read = (sql: string) => {
+    const db = new DatabaseSync(path.join(directory, "state.sqlite"), { readOnly: true })
     try {
-      const { control } = fixture.factory
-      const session = await fixture.createSession()
-      const denied = await callDurableTool(session, name, toolArgs(name))
-      expect(denied.isError).toBe(true)
-      expect(JSON.stringify(denied)).toContain("restricted")
-      setRecipients(control, [123])
-      control.applied(control.snapshot().revision, true)
-      const noToken = await callDurableTool(session, name, toolArgs(name))
-      expect(noToken.isError).toBe(true)
-      expect(JSON.stringify(noToken)).toContain("GH_TOKEN")
+      return db.prepare(sql).all()
     } finally {
-      await fixture.cleanup()
+      db.close()
     }
+  }
+  return { worker, create, state, secret, page, scan, reply, generate, options, read, logger }
+}
+
+it.each(["pending", "failed", "unapplied", "empty", "no-token"])(
+  "does not poll, generate, or write when %s",
+  async (gate) => {
+    const f = await fixture()
+    if (gate === "pending" || gate === "failed") f.state.status = gate
+    if (gate === "unapplied") f.state.applied = 0
+    if (gate === "empty") f.state.policy.githubNotifications.allowedUsernames = []
+    if (gate === "no-token") f.secret.token = undefined
+    expect(await f.worker.poll()).toBe(60)
+    expect(f.scan).not.toHaveBeenCalled()
+    expect(f.generate).not.toHaveBeenCalled()
+    expect(f.reply).not.toHaveBeenCalled()
   },
 )
-it("honors normal tool denial for direct and nested catalogs", async () => {
-  const fixture = await createPiFixture()
-  try {
-    const { control } = fixture.factory
-    const policy = control.snapshot().policy
-    policy.tools = policy.tools.filter((name) => name !== toolName)
-    policy.defaults.tools = policy.defaults.tools?.filter((name) => name !== toolName) ?? []
-    control.save(policy, control.snapshot().revision, "7")
-    control.applied(control.snapshot().revision, true)
-    const session = await fixture.createSession()
-    expect(session.getActiveToolNames()).not.toContain(toolName)
-    const nested = await callDurableTool(session, "codemode", {
-      code: "await tools.read_github_notifications({})",
-    })
-    expect(nested.isError).toBe(true)
-  } finally {
-    await fixture.cleanup()
-  }
+
+it("ignores nonallowed authors before admission or model generation", async () => {
+  const f = await fixture()
+  f.page.mentions = [mention({ author: "stranger" })]
+  await f.worker.poll()
+  expect(f.generate).not.toHaveBeenCalled()
+  expect(f.reply).not.toHaveBeenCalled()
+  expect(f.read("SELECT * FROM mentions")).toEqual([])
 })
-it.each([toolName, "codemode"])(
-  "requires applied policy and GH_TOKEN, and honors persisted removals through %s",
-  async (name) => {
-    const fixture = await createPiFixture()
-    const fetcher = vi.fn<typeof fetch>(async () => new Response("[]"))
-    try {
-      const { runtime, control } = fixture.factory
-      if (!runtime) throw new Error("Missing runtime fixture")
-      const session = await fixture.createSession()
-      setRecipients(control, [123])
-      runtime.save(
-        "GH_TOKEN",
-        {
-          revision: control.snapshot().revision,
-          kind: "secret",
-          value: "synthetic-notification-token",
-        },
-        "7",
-      )
-      vi.stubGlobal("fetch", fetcher)
-      expect((await callDurableTool(session, name, toolArgs(name))).isError).toBe(true)
-      control.applied(control.snapshot().revision, false)
-      expect((await callDurableTool(session, name, toolArgs(name))).isError).toBe(true)
-      expect(fetcher).not.toHaveBeenCalled()
-      control.applied(control.snapshot().revision, true)
-      const result = await callDurableTool(session, name, toolArgs(name))
-      expect(result.isError).toBeFalsy()
-      expect(JSON.stringify(result)).toContain("notifications")
-      expect(JSON.stringify(result)).not.toContain("synthetic-notification-token")
-      expect(fetcher).toHaveBeenCalledTimes(1)
-      expect(String(fetcher.mock.calls[0]?.[0])).toContain("https://api.github.com/notifications")
-      expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({
-        Authorization: "Bearer synthetic-notification-token",
-      })
-      setRecipients(control, [])
-      control.applied(control.snapshot().revision, true)
-      expect((await callDurableTool(session, name, toolArgs(name))).isError).toBe(true)
-      setRecipients(control, [123])
-      runtime.remove("GH_TOKEN", control.snapshot().revision, "7")
-      control.applied(control.snapshot().revision, true)
-      const noToken = await callDurableTool(session, name, toolArgs(name))
-      expect(noToken.isError).toBe(true)
-      expect(JSON.stringify(noToken)).toContain("GH_TOKEN")
-      expect(fetcher).toHaveBeenCalledTimes(1)
-    } finally {
-      vi.unstubAllGlobals()
-      await fixture.cleanup()
-    }
+
+it("accepts case-insensitive authors, persists response before delivery, and deduplicates after restart", async () => {
+  const f = await fixture()
+  f.page.mentions = [mention({ author: "TRUSTED-AUTHOR" })]
+  f.reply.mockImplementationOnce(async () => {
+    expect(f.read("SELECT response,status FROM mentions")).toEqual([
+      { response: "Generated **Markdown**.", status: "pending" },
+    ])
+    return { status: "sent" }
+  })
+  await f.worker.poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  await f.worker.close()
+  await f.create().poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+})
+
+it("retains the same generated outbox response after ambiguous delivery and restart", async () => {
+  const f = await fixture()
+  f.reply.mockRejectedValueOnce(new Error("POST response lost"))
+  await expect(f.worker.poll()).rejects.toThrow("POST response lost")
+  await f.worker.close()
+  f.page.mentions = []
+  f.reply.mockResolvedValueOnce({ status: "already-replied" })
+  await f.create().poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(2)
+  expect(f.reply.mock.calls[0]?.slice(0, 2)).toEqual(f.reply.mock.calls[1]?.slice(0, 2))
+  expect(f.read("SELECT status FROM mentions")).toEqual([{ status: "sent" }])
+})
+
+it("starts with a small overlap and ignores historical comments inside active threads", async () => {
+  const f = await fixture()
+  f.page.mentions = [
+    mention({ source: { kind: "issue-comment", id: 1, updatedAt: "2020-01-01T00:00:00Z" } }),
+  ]
+  await f.worker.poll()
+  expect(f.scan).toHaveBeenCalledWith(
+    { since: "2030-01-01T11:58:00.000Z", page: 1, perPage: 20 },
+    expect.any(AbortSignal),
+  )
+  expect(f.generate).not.toHaveBeenCalled()
+  expect(f.reply).not.toHaveBeenCalled()
+})
+
+it("persists the first-enable cutoff before the first HTTP request, including initial failures and restart", async () => {
+  const f = await fixture()
+  f.scan.mockRejectedValueOnce(new Error("GitHub unavailable"))
+  await expect(f.worker.poll()).rejects.toThrow("GitHub unavailable")
+  await f.worker.close()
+  f.options.now = () => now + 600_000
+  await f.create().poll()
+  expect(f.scan.mock.calls[1]?.[0]?.since).toBe("2030-01-01T11:58:00.000Z")
+  expect(f.generate).toHaveBeenCalledTimes(1)
+})
+
+it("advances the cursor only after all bounded pages succeed, preserving it across failures and restart", async () => {
+  const f = await fixture()
+  await f.worker.poll()
+  await f.worker.close()
+  const later = now + 600_000
+  f.options.now = () => later
+  f.scan.mockResolvedValueOnce({ ...f.page, mentions: [], hasMore: true })
+  f.scan.mockRejectedValueOnce(new Error("page 2 failed"))
+  const worker = f.create()
+  await expect(worker.poll()).rejects.toThrow("page 2 failed")
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
+  await worker.poll()
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T12:08:00.000Z" }])
+})
+
+it("does not advance the cursor after the ten-page limit and can deliver already admitted work", async () => {
+  const f = await fixture()
+  await f.worker.poll()
+  await f.worker.close()
+  f.options.now = () => now + 600_000
+  f.page.hasMore = true
+  f.scan.mockClear()
+  await f.create().poll()
+  expect(f.scan).toHaveBeenCalledTimes(10)
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
+  expect(f.logger.warn).toHaveBeenCalledWith(expect.stringContaining("10 pages"))
+})
+
+it.each(["allowlist", "token", "pending", "revision"])(
+  "blocks in-flight scan results after %s changes",
+  async (change) => {
+    const f = await fixture()
+    f.scan.mockImplementationOnce(async () => {
+      if (change === "allowlist") f.state.policy.githubNotifications.allowedUsernames = []
+      if (change === "token") f.secret.token = "different-token"
+      if (change === "pending") f.state.status = "pending"
+      if (change === "revision") {
+        f.state.revision++
+        f.state.applied++
+      }
+      return f.page
+    })
+    await expect(f.worker.poll()).rejects.toThrow()
+    expect(f.generate).not.toHaveBeenCalled()
+    expect(f.reply).not.toHaveBeenCalled()
+    expect(f.read("SELECT * FROM mentions")).toEqual([])
   },
 )
-it.each([
-  [toolName, "recipients"],
-  [toolName, "tool"],
-  ["codemode", "recipients"],
-  ["codemode", "tool"],
-])("rechecks persisted %s access after in-flight %s revocation", async (name, gate) => {
-  const fixture = await createPiFixture()
-  try {
-    const { control, runtime } = fixture.factory
-    if (!runtime) throw new Error("Missing runtime fixture")
-    setRecipients(control, [123])
-    runtime.save(
-      "GH_TOKEN",
-      { revision: control.snapshot().revision, kind: "secret", value: "synthetic-token" },
-      "7",
+
+it.each(["author", "token", "model", "provider", "pending"])(
+  "blocks delivery when %s changes during generation",
+  async (change) => {
+    const f = await fixture()
+    f.generate.mockImplementationOnce(async () => {
+      if (change === "author")
+        f.state.policy.githubNotifications.allowedUsernames = ["another-author"]
+      if (change === "token") f.secret.token = "different-token"
+      if (change === "model") f.state.policy.models = []
+      if (change === "provider") {
+        const provider = f.state.policy.providers[0]
+        if (provider) provider.enabled = false
+      }
+      if (change === "pending") f.state.status = "pending"
+      f.state.revision++
+      f.state.applied++
+      return { text: "Not delivered", model: "openai/gpt-6.1-sol" }
+    })
+    await expect(f.worker.poll()).rejects.toThrow()
+    expect(f.generate).toHaveBeenCalledTimes(1)
+    expect(f.reply).not.toHaveBeenCalled()
+  },
+)
+
+it("keeps removed-author outbox work blocked even when another author enables polling", async () => {
+  const f = await fixture()
+  f.reply.mockRejectedValueOnce(new Error("delivery failed"))
+  await expect(f.worker.poll()).rejects.toThrow()
+  f.state.policy.githubNotifications.allowedUsernames = ["another-author"]
+  f.page.mentions = []
+  await f.worker.poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  expect(f.read("SELECT status FROM mentions")).toEqual([{ status: "pending" }])
+})
+
+it("never sends old-account work with a different authenticated account, and resumes on same-account rotation", async () => {
+  const f = await fixture()
+  f.reply.mockRejectedValueOnce(new Error("delivery failed"))
+  await expect(f.worker.poll()).rejects.toThrow()
+  f.secret.token = "other-account-token"
+  f.page.account = { id: 99, login: "other-bot" }
+  f.page.mentions = []
+  await f.worker.poll()
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  f.secret.token = "rotated-original-account-token"
+  f.page.account = account
+  await f.worker.poll()
+  expect(f.reply).toHaveBeenCalledTimes(2)
+  expect(f.generate).toHaveBeenCalledTimes(1)
+})
+
+it.each(["model-global", "model-default", "provider", "auth"])(
+  "does not generate or deliver without %s authorization",
+  async (gate) => {
+    const f = await fixture()
+    if (gate === "model-global") f.state.policy.models = []
+    if (gate === "model-default") f.state.policy.defaults.models = []
+    if (gate === "provider") f.state.policy.providers = []
+    if (gate === "auth")
+      vi.mocked(f.options.modelRuntime.checkAuth).mockResolvedValue(false as never)
+    await expect(f.worker.poll()).rejects.toThrow()
+    if (gate !== "auth") expect(f.generate).not.toHaveBeenCalled()
+    expect(f.reply).not.toHaveBeenCalled()
+  },
+)
+
+it("does not create another model turn for a terminal empty generation", async () => {
+  const f = await fixture()
+  f.generate.mockResolvedValueOnce(undefined)
+  await f.worker.poll()
+  await f.worker.poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).not.toHaveBeenCalled()
+  expect(f.read("SELECT status FROM mentions")).toEqual([{ status: "failed" }])
+})
+
+it("shuts down an in-flight scan, then closes the state store idempotently", async () => {
+  const f = await fixture()
+  let entered = () => {}
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  f.scan.mockImplementationOnce(async (_query, signal) => {
+    entered()
+    return new Promise((_resolve, reject) =>
+      signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
     )
-    control.applied(control.snapshot().revision, true)
-    const session = await fixture.createSession()
-    const fetcher = vi.fn<typeof fetch>(async () => {
-      const state = control.snapshot()
-      if (gate === "recipients") state.policy.githubNotifications.allowedUserIds = []
-      else
-        state.policy.defaults.tools =
-          state.policy.defaults.tools?.filter((n) => n !== toolName) ?? []
-      control.save(state.policy, state.revision, "7")
-      control.applied(control.snapshot().revision, true)
-      return new Response("[]")
+  })
+  f.worker.start()
+  await started
+  await f.worker.close()
+  await f.worker.close()
+  expect(f.generate).not.toHaveBeenCalled()
+  expect(f.reply).not.toHaveBeenCalled()
+})
+
+it("shuts down generation without delivery and retains admitted work for restart", async () => {
+  const f = await fixture()
+  let entered = () => {}
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  f.generate.mockImplementationOnce(async (_mention, _authorize, signal) => {
+    entered()
+    return new Promise((_resolve, reject) =>
+      signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
+    )
+  })
+  f.worker.start()
+  await started
+  await f.worker.close()
+  expect(f.reply).not.toHaveBeenCalled()
+  await f.create().poll()
+  expect(f.generate).toHaveBeenCalledTimes(2)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+})
+
+it("blocks an existing outbox response if its model is no longer allowed, even when a new default is valid", async () => {
+  const f = await fixture()
+  f.reply.mockRejectedValueOnce(new Error("delivery failed"))
+  await expect(f.worker.poll()).rejects.toThrow()
+  f.state.policy.models = ["openai/other-model"]
+  f.state.policy.defaults.models = [...f.state.policy.models]
+  f.state.policy.defaults.model = "openai/other-model"
+  f.page.mentions = []
+  await f.worker.poll()
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  expect(f.read("SELECT response,model,status FROM mentions")).toEqual([
+    { response: "Generated **Markdown**.", model: "openai/gpt-6.1-sol", status: "pending" },
+  ])
+})
+
+it.each(["scan", "generation"])(
+  "interrupts in-flight %s within one second of an applied policy change",
+  async (stage) => {
+    const f = await fixture()
+    let entered = () => {}
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
     })
-    vi.stubGlobal("fetch", fetcher)
-    const result = await callDurableTool(session, name, toolArgs(name))
-    expect(result.isError).toBe(true)
-    expect(JSON.stringify(result)).toContain(gate === "recipients" ? "restricted" : "not allowed")
-    expect(JSON.stringify(result)).not.toContain('"notifications":[]')
-    expect(fetcher).toHaveBeenCalledTimes(1)
-  } finally {
-    vi.unstubAllGlobals()
-    await fixture.cleanup()
-  }
+    if (stage === "scan")
+      f.scan.mockImplementationOnce(async (_query, signal) => {
+        entered()
+        return new Promise((_resolve, reject) =>
+          signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
+        )
+      })
+    else
+      f.generate.mockImplementationOnce(async (_mention, _authorize, signal) => {
+        entered()
+        return new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
+        )
+      })
+    vi.useFakeTimers()
+    const polling = f.worker.poll()
+    const stopped = expect(polling).rejects.toThrow("cancelled")
+    await started
+    f.state.revision++
+    f.state.applied++
+    f.secret.token = "rotated-token"
+    await vi.advanceTimersByTimeAsync(1000)
+    await stopped
+    expect(f.reply).not.toHaveBeenCalled()
+  },
+)
+
+it("rejects page identity changes without advancing the cursor or generating", async () => {
+  const f = await fixture()
+  f.scan.mockResolvedValueOnce({ ...f.page, hasMore: true })
+  f.scan.mockResolvedValueOnce({ ...f.page, account: { id: 99, login: "another-bot" } })
+  await expect(f.worker.poll()).rejects.toThrow("account changed")
+  expect(f.generate).not.toHaveBeenCalled()
+  expect(f.reply).not.toHaveBeenCalled()
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
+})
+
+it("honors server poll intervals and cancels an idle wait on shutdown", async () => {
+  const f = await fixture()
+  f.page.mentions = []
+  f.page.pollIntervalSeconds = 120
+  expect(await f.worker.poll()).toBe(120)
+  f.worker.start()
+  await vi.waitFor(() => expect(f.scan).toHaveBeenCalledTimes(2))
+  await f.worker.close()
+  expect(f.scan).toHaveBeenCalledTimes(2)
 })

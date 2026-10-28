@@ -11,6 +11,7 @@ import {
   validateReferences,
 } from "@narumitw/sumire-policy"
 import { initializeRuntimeConfigStorage } from "@narumitw/sumire-runtime-config"
+import { z } from "zod"
 import type { AuditFilters } from "./audit-query.js"
 import type { ChatFilters } from "./chat-query.js"
 
@@ -40,7 +41,7 @@ export class AdminStore {
     this.db = new DatabaseSync(file)
     chmodSync(file, 0o600)
     const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number }
-    if (version.user_version > 4) {
+    if (version.user_version > 5) {
       this.db.close()
       throw new Error("Admin database schema is newer than this application")
     }
@@ -64,18 +65,53 @@ export class AdminStore {
       CREATE TABLE IF NOT EXISTS chat_access_requests (hash TEXT PRIMARY KEY, chat_id INTEGER NOT NULL UNIQUE, type TEXT NOT NULL, name TEXT NOT NULL, origin TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS access_reviews (fingerprint TEXT PRIMARY KEY, revision INTEGER NOT NULL, actor TEXT NOT NULL, reviewed INTEGER NOT NULL, decisions TEXT NOT NULL);
       DROP TABLE IF EXISTS login;
-      PRAGMA user_version = 4;
+      PRAGMA user_version = 5;
     `)
       initializeRuntimeConfigStorage(this.db)
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
         .run(JSON.stringify(initialPolicy()))
+      if (version.user_version < 5) this.migrateGithubMentionAuthors()
       this.db.exec("COMMIT")
     } catch (error) {
       this.db.exec("ROLLBACK")
       this.db.close()
       throw error
+    }
+  }
+  /** Schema v5 never treats the old Telegram recipient IDs as GitHub usernames. */
+  private migrateGithubMentionAuthors() {
+    const row = this.db.prepare("SELECT policy FROM settings WHERE id=1").get() as {
+      policy: string
+    }
+    const input = JSON.parse(row.policy)
+    const notifications = input?.githubNotifications
+    if (
+      notifications &&
+      typeof notifications === "object" &&
+      Object.hasOwn(notifications, "allowedUserIds")
+    ) {
+      z.object({
+        allowedUserIds: z
+          .array(z.number().int().positive().safe())
+          .max(1000)
+          .refine((ids) => new Set(ids).size === ids.length),
+      })
+        .strict()
+        .parse(notifications)
+      const policy = policySchema.parse({
+        ...input,
+        githubNotifications: { allowedUsernames: [] },
+      })
+      this.db
+        .prepare(
+          "UPDATE settings SET revision=revision+1, epoch=epoch+1, status='pending', policy=? WHERE id=1",
+        )
+        .run(JSON.stringify(policy))
+    } else {
+      // Missing settings default to no automatic replies. Malformed settings stop startup.
+      policySchema.parse(input)
     }
   }
   snapshot(): Snapshot {

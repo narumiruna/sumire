@@ -31,7 +31,7 @@ const lists = {
   privateUsers: "Private-message access",
   groups: "Group and channel access",
   providers: "Provider configuration and order",
-  githubNotifications: "GitHub notification recipients",
+  githubNotifications: "GitHub mention authors",
 } as const
 const defaults = {
   tools: "Authorized tools",

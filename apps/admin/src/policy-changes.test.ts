@@ -44,29 +44,29 @@ const provider: ProviderSettings = {
 }
 
 describe("typed policy review destinations", () => {
-  it("reviews recipient additions and removals without changing other access", () => {
+  it("reviews username additions and removals without changing other access", () => {
     const saved = initialPolicy()
-    saved.githubNotifications.allowedUserIds = [42]
+    saved.githubNotifications.allowedUsernames = ["octocat"]
     const draft = structuredClone(saved)
-    draft.githubNotifications.allowedUserIds = [43]
+    draft.githubNotifications.allowedUsernames = ["hubot"]
     expect(policyChangeCount(saved, draft)).toBe(2)
     expect(policyChangeEntries(saved, draft)).toEqual(
-      ["add recipient 43", "remove recipient 42"].map((action) => ({
-        label: `GitHub notifications: ${action} — private chats only; chat access and tool permissions unchanged.`,
-        targets: [{ page: "GitHub notifications", selector: "#github-notification-recipients" }],
+      ["add username hubot", "remove username octocat"].map((action) => ({
+        label: `GitHub mentions: ${action} — automatic replies on GitHub; no Telegram chat or tool permission dependency.`,
+        targets: [{ page: "GitHub mentions", selector: "#github-mention-authors" }],
       })),
     )
     expect(draft.privateUsers).toEqual([])
     expect(draft.tools).toEqual([])
-    draft.githubNotifications.allowedUserIds = [42]
+    draft.githubNotifications.allowedUsernames = ["octocat"]
     expect(policyChanges(saved, draft)).toEqual([])
     expect(policyChangeCount(saved, draft)).toBe(0)
   })
-  it("ignores recipient order when a removal is undone", () => {
+  it("ignores username order when a removal is undone", () => {
     const saved = initialPolicy()
-    saved.githubNotifications.allowedUserIds = [42, 43]
+    saved.githubNotifications.allowedUsernames = ["octocat", "hubot"]
     const draft = structuredClone(saved)
-    draft.githubNotifications.allowedUserIds.reverse()
+    draft.githubNotifications.allowedUsernames.reverse()
     expect(policyChanges(saved, draft)).toEqual([])
     expect(policyChangeCount(saved, draft)).toBe(0)
   })

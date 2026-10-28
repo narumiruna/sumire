@@ -25,7 +25,7 @@ export const pages = [
   "MCP connections",
   "Model Providers",
   "Secrets & variables",
-  "GitHub notifications",
+  "GitHub mentions",
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
@@ -37,9 +37,9 @@ export const pendingEditors = {
     label: "Chat access — Telegram ID to approve",
     target: { page: "Access", selector: "#access-id-input" },
   },
-  githubNotificationUser: {
-    label: "GitHub notifications — Telegram user ID to add",
-    target: { page: "GitHub notifications", selector: "#github-notification-user" },
+  githubMentionAuthor: {
+    label: "GitHub mentions — GitHub username to add",
+    target: { page: "GitHub mentions", selector: "#github-mention-author" },
   },
   tool: {
     label: "Tool permissions — Additional approved tool name",
@@ -81,7 +81,7 @@ const pageIcons = {
   "MCP connections": ComponentInstanceIcon,
   "Model Providers": ReaderIcon,
   "Secrets & variables": LockClosedIcon,
-  "GitHub notifications": GitHubLogoIcon,
+  "GitHub mentions": GitHubLogoIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
@@ -94,7 +94,7 @@ const pageLabels = {
   "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
   "Secrets & variables": "Secrets & variables",
-  "GitHub notifications": "GitHub notifications",
+  "GitHub mentions": "GitHub mentions",
   Audit: "Audit",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
@@ -104,9 +104,13 @@ const navigationGroups = [
   {
     id: "tools-and-skills",
     label: "Tools & skills",
-    pages: ["Tool permissions", "Skills", "MCP connections", "GitHub notifications"],
+    pages: ["Tool permissions", "Skills", "MCP connections"],
   },
-  { id: "system-settings", label: "Defaults", pages: ["Defaults", "Secrets & variables"] },
+  {
+    id: "system-settings",
+    label: "Defaults",
+    pages: ["Defaults", "Secrets & variables", "GitHub mentions"],
+  },
   { id: "activity", label: "Activity", pages: ["Audit"] },
 ] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
 const technicalDescriptions: Partial<Record<Page, string>> = {
@@ -116,7 +120,12 @@ const technicalDescriptions: Partial<Record<Page, string>> = {
 
 export function readNavigation(url: URL) {
   const raw = url.searchParams.get("section")
-  const section = raw === "Model providers" ? "Model Providers" : raw
+  const section =
+    raw === "Model providers"
+      ? "Model Providers"
+      : raw === "GitHub notifications"
+        ? "GitHub mentions"
+        : raw
   const chat = url.searchParams.get("chat") ?? ""
   return {
     page:

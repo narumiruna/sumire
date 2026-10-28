@@ -1,11 +1,9 @@
+export type { GithubMentionClientOptions } from "./api.js"
 export {
-  createNotificationClient,
-  type Notification,
-  type NotificationClientOptions,
-  type NotificationPage,
-  type NotificationQuery,
+  createGithubMentionClient,
+  type GithubAccount,
+  type GithubMention,
+  type MentionPage,
+  type MentionQuery,
 } from "./client.js"
-export {
-  allowsNotificationChat,
-  GITHUB_NOTIFICATIONS_TOOL,
-} from "./config.js"
+export { allowsMentionAuthor, mentionsAccount } from "./config.js"

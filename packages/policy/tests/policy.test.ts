@@ -26,9 +26,9 @@ describe("shared policy", () => {
     expect(initialPolicy().skills).toEqual([])
     expect(initialPolicy().defaults.skills).toEqual([])
     expect(inherited.skills).toBeNull()
-    expect(policy.githubNotifications).toEqual({ allowedUserIds: [] })
-    policy.githubNotifications.allowedUserIds.push(42)
-    expect(initialPolicy().githubNotifications.allowedUserIds).toEqual([])
+    expect(policy.githubNotifications).toEqual({ allowedUsernames: [] })
+    policy.githubNotifications.allowedUsernames.push("octocat")
+    expect(initialPolicy().githubNotifications.allowedUsernames).toEqual([])
   })
 
   it("parses old policies and literal selections with safe skills defaults", () => {
@@ -53,46 +53,63 @@ describe("shared policy", () => {
     } satisfies z.input<typeof policySchema>
     const parsed = policySchema.parse(oldPolicy)
     expect(parsed.skills).toEqual([])
-    expect(parsed.githubNotifications).toEqual({ allowedUserIds: [] })
-    parsed.githubNotifications.allowedUserIds.push(42)
-    expect(policySchema.parse(oldPolicy).githubNotifications.allowedUserIds).toEqual([])
+    expect(parsed.githubNotifications).toEqual({ allowedUsernames: [] })
+    parsed.githubNotifications.allowedUsernames.push("octocat")
+    expect(policySchema.parse(oldPolicy).githubNotifications.allowedUsernames).toEqual([])
     expect(parsed.defaults.skills).toBeNull()
     expect(parsed.chats["42"]?.skills).toBeNull()
     expect(effectivePolicy(parsed, 42).skills).toEqual([])
     expect(() => validateReferences(parsed)).not.toThrow()
   })
 
-  it("validates notification recipient IDs without coercion or unknown fields", () => {
+  it("validates and normalizes GitHub mention authors without accepting legacy Telegram IDs", () => {
     for (const githubNotifications of [
       null,
       [],
       {},
-      { allowedUserIds: null },
-      { allowedUserIds: "[42]" },
-      { allowedUserIds: ["42"] },
-      { allowedUserIds: [0] },
-      { allowedUserIds: [-100] },
-      { allowedUserIds: [1.5] },
-      { allowedUserIds: [Number.MAX_SAFE_INTEGER + 1] },
-      { allowedUserIds: [42, 42] },
-      { allowedUserIds: [], extra: true },
-      { allowedUserIds: Array.from({ length: 1001 }, (_, i) => i + 1) },
+      { allowedUserIds: [] },
+      { allowedUserIds: [42] },
+      { allowedUsernames: [], allowedUserIds: [] },
+      { allowedUsernames: null },
+      { allowedUsernames: "octocat" },
+      { allowedUsernames: [42] },
+      ...[
+        "",
+        "-cat",
+        "cat-",
+        "two--hyphens",
+        "@cat",
+        "cat.name",
+        "cat_name",
+        " cat",
+        "cat ",
+        "cat\n",
+        "cat\r\n",
+        "cat\u2028",
+        "cat\u0000",
+        "猫",
+        "a".repeat(40),
+      ].map((username) => ({ allowedUsernames: [username] })),
+      { allowedUsernames: ["octocat", "OCTOCAT"] },
+      { allowedUsernames: ["octocat", "octocat"] },
+      { allowedUsernames: [], extra: true },
+      { allowedUsernames: Array.from({ length: 1001 }, (_, i) => `user-${i}`) },
     ]) {
       expect(policySchema.safeParse({ ...initialPolicy(), githubNotifications }).success).toBe(
         false,
       )
     }
-    const allowedUserIds = Array.from({ length: 1000 }, (_, i) => i + 1)
+    const allowedUsernames = Array.from({ length: 1000 }, (_, i) => `user-${i}`)
     expect(
-      policySchema.parse({ ...initialPolicy(), githubNotifications: { allowedUserIds } })
-        .githubNotifications.allowedUserIds,
-    ).toEqual(allowedUserIds)
+      policySchema.parse({ ...initialPolicy(), githubNotifications: { allowedUsernames } })
+        .githubNotifications.allowedUsernames,
+    ).toEqual(allowedUsernames)
     expect(
-      policySchema.safeParse({
+      policySchema.parse({
         ...initialPolicy(),
-        githubNotifications: { allowedUserIds: [Number.MAX_SAFE_INTEGER] },
-      }).success,
-    ).toBe(true)
+        githubNotifications: { allowedUsernames: ["OctoCat", "A-1", "9", "a".repeat(39)] },
+      }).githubNotifications.allowedUsernames,
+    ).toEqual(["octocat", "a-1", "9", "a".repeat(39)])
   })
 
   it("intersects skills with global availability and distinguishes inheritance from empty", () => {

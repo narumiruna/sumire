@@ -371,10 +371,10 @@ describe("createPiSessionFactory", () => {
         "publish_markdown_to_morsel",
         "read_image",
         ...publicPolymarketToolNames,
-        "read_github_notifications",
         "update_progress",
         "codemode",
       ])
+      expect(session.getActiveToolNames()).not.toContain("read_github_notifications")
       expect(session.getActiveToolNames()).toContain("codemode")
       const urlTool = session.nativeTools.find((tool) => tool.name === "read_url_content")
       expect(urlTool).toBeDefined()
@@ -503,7 +503,6 @@ describe("createPiSessionFactory", () => {
         "publish_markdown_to_morsel",
         "read_image",
         ...publicPolymarketToolNames,
-        "read_github_notifications",
         "update_progress",
         "codemode",
       ])

@@ -89,7 +89,7 @@ const pageDescriptions = {
   "MCP connections": "Manage connections and protected configuration.",
   "Model Providers": "Manage models and provider authentication.",
   "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
-  "GitHub notifications": "Manage private-chat recipients for the shared GitHub account.",
+  "GitHub mentions": "Allow GitHub mention authors to trigger replies on GitHub.",
   Audit: "Review configuration activity and imports.",
 }
 function App() {
@@ -1082,13 +1082,13 @@ function App() {
               />
             </details>
           </EditorSection>
-          <EditorSection active={page === "GitHub notifications"} aria-label="GitHub notifications">
+          <EditorSection active={page === "GitHub mentions"} aria-label="GitHub mentions">
             <GithubNotifications
               policy={policy}
               saved={savedPolicy ?? policy}
               disabled={busy || runtimePending}
               onChange={update}
-              onPending={(value) => markPending("githubNotificationUser", value)}
+              onPending={(value) => markPending("githubMentionAuthor", value)}
               onNavigate={setPage}
             />
           </EditorSection>

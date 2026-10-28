@@ -358,17 +358,19 @@ Provision the host-only `ENCRYPTION_KEY` before entering credentials. Missing/wr
 
 For GitHub CLI authentication, add a **Secret** named `GH_TOKEN` containing a GitHub.com Personal Access Token. The next `bash` call uses it after successful application, without restarting the bot. All chats with `bash` access can use or read the token. Saving it does not grant access or check GitHub acceptance. See [GitHub CLI setup and trust limits](runtime-config.md#github-cli-authentication).
 
-The schema advances to version 4. See [runtime configuration setup, migration, backup, recovery, verification, and deployment handoff](runtime-config.md). Back up the master key separately from state. Same-user tool access is not isolated.
+Runtime secret storage uses schema v4; GitHub mention policy migration advances the admin database to v5. See [runtime configuration setup, migration, backup, recovery, verification, and deployment handoff](runtime-config.md). Back up the master key separately from state. Same-user tool access is not isolated.
 
-## GitHub notification recipients
+## GitHub mention authors
 
-Open **GitHub notifications** under **Tools & skills** to manage private Telegram recipients. Enter one positive Telegram user ID, select **Add recipient**, then use **Review and save changes → Save changes**. No JSON is needed. Additions and removals remain drafts until saved; **Undo removal** restores a staged removal. Empty saved lists deny everyone, including the administrator. Groups are always denied.
+Open **GitHub mentions** under **Defaults** to manage the GitHub authors who may trigger automatic replies. Enter one GitHub username without `@`, select **Add username**, then select **Review and save changes → Save changes**. Names are saved in lowercase and compared without case. Additions and removals remain drafts until saved; **Undo removal** restores a staged removal. An empty saved list disables this channel. The previous `?section=GitHub+notifications` URL opens the renamed page.
 
-The page stores the recipient list in the shared policy, with validation, audit, revision conflict checks, and application. Concurrent changes require an explicit saved/draft choice; recipient lists are not combined. Adding a recipient does not approve chat access or grant `read_github_notifications`; use the page's links to configure these separately.
+The allowlist checks the **author of the mention**, not a Telegram recipient or repository owner. When an allowed author directly mentions the account authenticated by `GH_TOKEN`, Sumire replies on GitHub. Other authors are ignored. Telegram chat access and tool permissions are not required and are not granted by this list.
 
-Notifications share the encrypted **Secret** `GH_TOKEN` with GitHub CLI. Use **Manage GH_TOKEN** to open the existing write-only secret editor. The token must be accepted by GitHub's Notifications API, such as a classic PAT with `notifications` scope, and saved settings must apply successfully. All recipients read the same GitHub account's notifications. Chats with `bash` access can read or use this token independently of the recipient list. Metadata reaches the selected model and durable history; long replies can also use Morsel. Removing access does not erase previous transcripts or exports.
+Use **Manage GH_TOKEN** to configure the shared encrypted secret. The token must permit Notifications API reads and comment writes in the relevant repositories. Configure an authenticated, allowed shared default model before use. Configured state does not prove upstream acceptance.
 
-Old policies start with no notification recipients. Generic notification token/allowlist entries are not imported. No host environment or GitHub Actions configuration is added. The deployment administrator must enter the real token and verify account permissions; synthetic tests do not verify live GitHub access. See [notification setup and trust limits](runtime-config.md#private-github-notifications).
+Edits use normal validation, review, audit, revision/application, and conflict recovery. Concurrent allowlist drafts are not combined automatically. Removing an author blocks pending and future delivery while access is denied; it does not delete existing GitHub comments or transcripts. Chats with `bash` access can independently use the shared token.
+
+Schema v5 clears legacy Telegram recipient IDs instead of interpreting them as GitHub usernames. Review and apply the new GitHub allowlist after migration. No host environment or GitHub Actions configuration is added. See [setup, supported sources, recovery, and trust limits](runtime-config.md#github-mention-replies).
 
 ## MCP configuration and secrets
 

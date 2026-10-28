@@ -8,25 +8,27 @@ function policies() {
 }
 
 describe("policy recovery", () => {
-  it("recovers recipient edits without unioning concurrent grants or revocations", () => {
+  it("recovers mention author edits without unioning concurrent grants or revocations", () => {
     const { base, draft, latest } = policies()
-    base.githubNotifications.allowedUserIds = [42]
-    draft.githubNotifications.allowedUserIds = []
-    latest.githubNotifications.allowedUserIds = [42, 43]
+    base.githubNotifications.allowedUsernames = ["octocat"]
+    draft.githubNotifications.allowedUsernames = []
+    latest.githubNotifications.allowedUsernames = ["octocat", "hubot"]
     const result = recoverPolicy(base, draft, latest)
     expect(result.unresolved).toBe(1)
     expect(result.changes[0]).toMatchObject({
       id: "githubNotifications",
-      label: "GitHub notification recipients",
+      label: "GitHub mention authors",
       state: "conflict",
     })
-    expect(result.policy.githubNotifications.allowedUserIds).toEqual([42, 43])
+    expect(result.policy.githubNotifications.allowedUsernames).toEqual(["octocat", "hubot"])
     expect(
       recoverPolicy(base, draft, latest, { githubNotifications: "draft" }).policy
-        .githubNotifications.allowedUserIds,
+        .githubNotifications.allowedUsernames,
     ).toEqual([])
-    latest.githubNotifications.allowedUserIds = [42]
-    expect(recoverPolicy(base, draft, latest).policy.githubNotifications.allowedUserIds).toEqual([])
+    latest.githubNotifications.allowedUsernames = ["octocat"]
+    expect(recoverPolicy(base, draft, latest).policy.githubNotifications.allowedUsernames).toEqual(
+      [],
+    )
   })
   it("keeps concurrent values outside local edits", () => {
     const { base, draft, latest } = policies()

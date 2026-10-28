@@ -106,7 +106,7 @@ In this validation environment, the repository's configured custom seccomp profi
 
 ## Upgrade and import
 
-The administration schema advances from version 3 to 4. The migration retains policies, Passkeys, administrator sessions, imports, and audit history; durable databases are unchanged.
+Runtime secret storage was added in schema v4, preserving existing policies, Passkeys, administrator sessions, imports, and audit history. The current administration schema is v5; the [GitHub mention migration](#migration-and-trust-limits) clears legacy Telegram recipient lists. Existing Telegram durable databases are unchanged.
 
 1. Stop the bot and prepare the backups described below before upgrade.
 2. Configure and separately back up `ENCRYPTION_KEY`.
@@ -143,7 +143,7 @@ COMMIT;
 
 Retain variables, policies, Passkeys, administrator sessions, audit history, import markers, and transcripts. Provision a new master key through trusted host configuration, restart, and enter replacement service credentials in the authenticated UI. This discards every encrypted runtime secret, including any other service keys, and must not run against a live database. There is no HTTP reset endpoint. Retaining the import marker prevents legacy credentials from returning.
 
-For rollback, stop ingress and the bot and restore the old image with its matching pre-upgrade state/bootstrap snapshot. Older binaries reject schema version 4. Review access and revoke administrator sessions before reopening ingress; old backups can restore revoked permissions or keys. Do not delete volumes or automatically replay interrupted Morsel/MCP side effects.
+For rollback, stop ingress and the bot and restore the old image with its matching pre-upgrade state/bootstrap snapshot. Older binaries reject databases newer than their supported schema. Review access and revoke administrator sessions before reopening ingress; old backups can restore revoked permissions or keys. Do not delete volumes or automatically replay interrupted Morsel/MCP side effects.
 
 ## Verification and deployment handoff
 
@@ -174,40 +174,44 @@ Production verification remains with these roles:
 
 This is not an OS sandbox. Authorized shell/file tools and administrator-supplied stdio MCP code run with the bot user's permissions and can access same-user state, processes, and networking. Encryption, environment filtering, and tool permissions do not isolate the key/database from such code. Do not enable unrestricted tools for untrusted chats. Use a separate tested OS/VM boundary when that isolation is required.
 
-## Private GitHub notifications
+## GitHub mention replies
 
-1. In **Secrets & variables → Secrets**, save the shared GitHub.com token as `GH_TOKEN` and wait for successful application. Notifications and GitHub CLI use the same encrypted secret. Do not create a variable or host environment entry for this token.
-2. Open **GitHub notifications** under **Tools & skills**. Enter a positive Telegram user ID and select **Add recipient**. Repeat for each intended recipient; no JSON is needed. Select **Review and save changes**, check the recipient additions/removals, then select **Save changes**.
-3. Approve each recipient in **Chat access** and enable `read_github_notifications` in global and applicable chat tool permissions. Recipient edits do not grant these permissions.
-4. Check **Settings saved and applied** before use. To revoke notification access, select **Remove**, review, and save. **Undo removal** restores a staged removal. An empty saved list denies everyone, including administrators.
+The allowlist identifies **authors on GitHub**, not Telegram recipients. If an allowed author directly mentions the account authenticated by `GH_TOKEN`, Sumire generates a reply and posts it on GitHub. Other authors are ignored without a model turn or reply.
 
-The page stores validated, unique positive safe-integer IDs in `policy.githubNotifications.allowedUserIds`, with a limit of 1,000 recipients. Existing policies without this field default to an empty list. No recipient variable is read or automatically imported. Old notification-specific entries in Secrets & variables are ignored; configure the shared secret and new recipient page before deleting obsolete entries.
+### Setup
 
-Before downgrading to an older application, restore its matching database backup; older policy schemas reject the new field. Keep the encryption key with its matching database.
+1. In **Secrets & variables → Secrets**, save the shared GitHub.com token as `GH_TOKEN`. Use a token accepted by the Notifications REST API, such as a classic PAT with `notifications` and the repository permissions needed to read sources and write comments (`public_repo` for public repositories or `repo` for private repositories). Confirm organization requirements and the account's repository access.
+2. Under **Defaults → GitHub mentions**, enter each allowed author's **GitHub username**, without `@`, and select **Add username**. Select **Review and save changes → Save changes**.
+3. Configure an authenticated provider and an allowed shared default model and thinking level. Both global and default model selections must permit that model.
+4. Wait for **Settings saved and applied**. Have an allowed author mention the token account in a GitHub issue, PR, comment, or review. The reply appears on GitHub, not Telegram. Telegram chat access and tool permissions do not control this channel.
+5. To stop automatic replies, remove the relevant usernames, review, and save. An empty saved allowlist disables polling and replies.
 
-Only private chats whose verified chat ID is listed can receive tool results; groups are always denied.
-These notifications belong to one configured GitHub account shared by all listed users, not a separate
-GitHub account for each Telegram user. Titles and repository metadata are sent to the selected model
-and retained in that private chat's durable transcript. Standard long-reply delivery can also
-publish content through the configured Morsel service and return a share link; the allowlist is
-not a local-only data-processing guarantee.
+Usernames contain 1–39 ASCII letters/digits with single interior hyphens. Names are stored in lowercase; duplicates are rejected after case normalization. The limit is 1,000 names in `policy.githubNotifications.allowedUsernames`. The previous `?section=GitHub+notifications` link opens the renamed page.
 
-Use a credential supported by GitHub's Notifications REST API, such as a classic PAT with
-`notifications` scope, and verify any organization requirements with the GitHub account owner.
-Only the applied managed `GH_TOKEN` is used; host credentials and GitHub CLI login are not fallback sources. Chats with `bash` permission can use or read this shared token independently of the notification recipient list.
-The tool reads one bounded page without marking notifications read or modifying subscriptions.
-There is no background polling or unsolicited delivery. Secret replacement/deletion and recipient edits use
-the existing authenticated, CSRF-protected revision/application path. Concurrent recipient edits require an explicit recovery choice; lists are never combined automatically. Recipient and tool access are checked again before results are returned. Revocation does not erase previously delivered data.
+### Processing and recovery
 
-No new deployment environment variable or GitHub Actions secret/variable is required. The deployment administrator must configure the real token through the encrypted secret editor and verify GitHub permissions with the account owner. Automated tests use synthetic tokens and intercepted HTTP; they do not verify live account access.
+- The sequential worker polls at least 60 seconds apart and honors longer GitHub polling intervals, up to one hour. It reads notification reason `mention` and checks each source's author and direct `@account` address. Repository ownership and the latest comment author do not authorize an earlier source.
+- Supported sources are issue/PR bodies, issue/PR comments, submitted PR reviews, and inline review comments. Inline comments receive a reply in their review thread; other sources receive an issue/PR comment. Discussions, commit comments, team mentions, assignments, subscriptions, and review requests do not trigger replies.
+- The first enabled poll stores a cutoff two minutes before that poll, before any HTTP request. Retries preserve this cutoff; older historical mentions are not replayed. Later scans use persisted per-account checkpoints with a two-minute overlap. Downtime can delay replies.
+- The worker scans at most ten notification pages of 20 items per pass. Source lists have at most ten pages of 20 items each. A scan that exceeds a bound retains its cursor instead of claiming that truncated data is complete. Large backlogs can require administrator investigation.
+- Notifications are not marked read, subscriptions are not changed, and upstream pagination URLs are never followed. Each request uses a fixed validated GitHub API destination, a 15-second deadline, and a streamed 2 MiB response limit. Each scan/reply operation has a 120-second deadline, a 200-request limit, and an 8 MiB aggregate response limit.
+- The worker stores account identity, checkpoints, admitted mentions, and generated replies in `.telegramagent/github/state.sqlite`. Each mention has separate Pi Durable storage under `.telegramagent/github/turns/`. Keep this directory with the application's persistent state.
+- Pi Durable owns generation, retries, and transcript persistence. The channel uses no shell, file, MCP, or publication tools. The model receives the allowed mention's title, body, author, repository, and URL; it cannot inspect code or follow links.
+- Generated replies are saved before delivery. A hidden source-version marker in bot-authored comments permits duplicate checks after restart or an uncertain POST result. A changed source is not answered with the old generated reply.
+- Applied policy, author access, credential changes, model access, and authenticated bot identity are checked before work and delivery. Account changes cannot redirect pending replies. Removed authors remain blocked; already submitted requests and posted comments cannot be recalled.
 
-### Notification administration verification
+### Migration and trust limits
 
-- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. All 2,371 tests across 12 workspaces passed. Lint retains one existing, unrelated `innerText` warning.
-- Browser regression checks passed: 162 tests across `github-notifications.spec.ts`, `admin.spec.ts`, `consistency.spec.ts`, and `uiux-regressions.spec.ts`, plus 19 tests across `runtime-config.spec.ts` and `runtime-config-navigation.spec.ts`. Runs used `npm run test:browser --workspace @narumitw/sumire-admin -- <test files> --workers=2`.
-- Coverage includes write-only shared credentials, staged recipient edits, empty-list denial, persistence, tool/recipient revocation during HTTP, conflict recovery, session expiry, recipient capacity, and desktop/mobile layouts.
-- Tests use synthetic credentials and intercepted HTTP. No live GitHub fetch, notification mutation, production credential change, deployment, or Docker image build was performed.
+Admin database schema v5 replaces the incorrect Telegram-recipient policy. Valid legacy `allowedUserIds` lists become **empty** GitHub allowlists, never usernames. Converted settings receive a new pending revision and must apply before use. Missing blocks default empty. Current save requests reject the legacy field; malformed legacy state stops migration. Restore a matching database backup and encryption key before downgrading to v4.
 
-See [the notification package](../packages/github-notifications/README.md) for limits, tests, and
-trust boundaries. This feature does not restrict existing GH_TOKEN-based shell access or same-user
-filesystem access; those capabilities remain for trusted users only.
+Only the applied encrypted `GH_TOKEN` is used. There is no host environment or GitHub CLI credential fallback. Chats with `bash` access can independently read or use this shared token; this allowlist is not a host sandbox.
+
+Allowed mention data is sent to the selected model and retained in dedicated durable transcripts. Replies are published in the source repository. Removing a username does not erase transcripts, backups, or posted replies. Approve only authors and repositories for which these transfers are acceptable.
+
+### Verification and deployment handoff
+
+Local verification uses synthetic credentials, stubbed HTTP, a faux model provider, and browser fixtures. It covers author admission, source/account checks, revocation, cursor/delivery recovery, bounds, schema migration, and administration edits. No live GitHub request, model charge, comment publication, credential change, or deployment is part of those checks.
+
+The deployment administrator must configure the real token and shared model, review the allowlist, and confirm GitHub permissions before enabling this worker in production. Account owners must verify organization requirements. These live behaviors remain unverified. No new host environment variable or GitHub Actions secret/variable is required.
+
+See [the GitHub mention package](../packages/github-notifications/README.md) for the API and limits.
