@@ -25,7 +25,7 @@ describe("container application packaging", () => {
 
   it("builds the same application target in CI when Docker inputs change", async () => {
     const workflow = await readFile(ciUrl, "utf8")
-    for (const input of ["Dockerfile", ".dockerignore"])
+    for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])
       expect(workflow.split(`- "${input}"`)).toHaveLength(3)
     const container = workflow.split("\n  container:\n")[1]
     expect(container).toContain("uses: docker/build-push-action@v7")

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 
 import { beforeEach, expect, it, vi } from "vitest"
 
@@ -51,11 +51,10 @@ it("preserves a fingerprint failure and releases the native handle", async () =>
 it.skipIf(process.platform === "win32")(
   "rejects unsupported image architectures before downloading an archive",
   () => {
-    const dockerfile = readFileSync(new URL("../../../Dockerfile", import.meta.url), "utf8")
-    const script = /^RUN (set -eu;[\s\S]*?)\n\n/mu.exec(dockerfile)?.[1]
-    if (!script) throw new Error("Missing curl-impersonate archive installation step")
-
-    const result = spawnSync("/bin/sh", ["-c", script], {
+    const script = fileURLToPath(
+      new URL("../../../scripts/install-curl-impersonate.sh", import.meta.url),
+    )
+    const result = spawnSync("/bin/sh", [script], {
       env: { TARGETARCH: "unsupported", PATH: "/nonexistent" },
       encoding: "utf8",
       timeout: 5_000,
