@@ -354,7 +354,7 @@ Supported custom API types are OpenAI Completions, OpenAI Responses, Anthropic M
 
 **Secrets & variables** has separate **Secrets** and **Variables** tabs. The existing administrator can create, replace/edit, and confirm deletion of entries. Secrets are encrypted and write-only in the management API; variables are non-confidential data that approved chats can read with `read_variable`. Credential writes do not grant tool or server access.
 
-Provision the host-only `SUMIRE_SECRETS_KEY` before entering credentials. Missing/wrong keys lock secret operations, not administrator login or variable management. Saving and applying a value changes the next operation without restarting the bot; application cancels active model work and replaces old MCP connections. A committed write with failed application remains saved: retry application, not the secret submission. Unknown network outcomes require explicit safe metadata reload before another replacement.
+Provision the host-only `ENCRYPTION_KEY` before entering credentials. Missing/wrong keys lock secret operations, not administrator login or variable management. Saving and applying a value changes the next operation without restarting the bot; application cancels active model work and replaces old MCP connections. A committed write with failed application remains saved: retry application, not the secret submission. Unknown network outcomes require explicit safe metadata reload before another replacement.
 
 The schema advances to version 4. See [runtime configuration setup, migration, backup, recovery, verification, and deployment handoff](runtime-config.md). Back up the master key separately from state. Same-user tool access is not isolated.
 

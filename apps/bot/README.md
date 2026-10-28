@@ -146,7 +146,7 @@ The durable API is experimental and pinned to 1.4.0 alongside the other Pi packa
 
 ## Runtime secrets and variables
 
-Use **Secrets & variables** in the administration Web UI to manage `FIRECRAWL_API_KEY`, `MORSEL_API_KEY`, and non-confidential variables. Secrets use AES-256-GCM with the host-only `SUMIRE_SECRETS_KEY`; saved values are never returned to the browser. Updates become effective after successful settings application without a bot restart. Application cancels active model work and replaces old MCP connections; it does not revoke upstream keys or replay side effects. `read_variable` and newly introduced publishing tools require explicit policy approval. See [setup, one-time import, recovery, and trust limits](../../docs/runtime-config.md).
+Use **Secrets & variables** in the administration Web UI to manage `FIRECRAWL_API_KEY`, `MORSEL_API_KEY`, and non-confidential variables. Secrets use AES-256-GCM with the host-only `ENCRYPTION_KEY`; saved values are never returned to the browser. Updates become effective after successful settings application without a bot restart. Application cancels active model work and replaces old MCP connections; it does not revoke upstream keys or replay side effects. `read_variable` and newly introduced publishing tools require explicit policy approval. See [setup, one-time import, recovery, and trust limits](../../docs/runtime-config.md).
 
 ## Model configuration
 
@@ -394,7 +394,7 @@ The root [`.env.example`](../../.env.example) lists bot credentials and optional
 | --- | --- |
 | `BOT_TOKEN` | Required Telegram bot credential. |
 | `BOT_ADMIN_ID` | Administrator user ID for private `/admin` setup, Web UI access, and admin context. |
-| `SUMIRE_SECRETS_KEY` | Host-only canonical Base64 32-byte encryption key; back up separately from state. |
+| `ENCRYPTION_KEY` | Host-only 32-byte encryption key as 64 hex characters; back up separately from state. |
 | `FIRECRAWL_API_KEY` | One-time legacy import source for the managed Firecrawl fallback and MCP credential. |
 | `OTTER_TOKEN` | Credential for the Otter expense skill. |
 | `LOGFIRE_TOKEN` | Optional redacted telemetry export. |

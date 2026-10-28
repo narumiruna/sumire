@@ -10,7 +10,7 @@ it("does not inherit administrator or provider secrets into native shell tools",
   vi.stubEnv("OTTER_TOKEN", "skill-fixture")
   vi.stubEnv("FIRECRAWL_API_KEY", "managed-fixture")
   vi.stubEnv("MORSEL_API_KEY", "morsel-fixture")
-  vi.stubEnv("SUMIRE_SECRETS_KEY", "master-fixture")
+  vi.stubEnv("ENCRYPTION_KEY", "master-fixture")
   try {
     const environment = adminShellEnvironment(process.env)
     for (const name of [
@@ -19,7 +19,7 @@ it("does not inherit administrator or provider secrets into native shell tools",
       "TELEGRAM_LOGIN_CLIENT_SECRET",
       "FIRECRAWL_API_KEY",
       "MORSEL_API_KEY",
-      "SUMIRE_SECRETS_KEY",
+      "ENCRYPTION_KEY",
     ])
       expect(environment).not.toHaveProperty(name)
     const fixture = await createPiFixture()

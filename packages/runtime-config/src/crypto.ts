@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 
 export function parseKey(value?: string): Buffer | undefined {
   if (typeof value !== "string") return undefined
+  if (/^[0-9a-f]{64}$/i.test(value)) return Buffer.from(value, "hex")
+  // Keep existing Base64 keys usable without changing their bytes or ciphertext.
   const key = Buffer.from(value, "base64")
   return key.length === 32 && key.toString("base64") === value ? key : undefined
 }
