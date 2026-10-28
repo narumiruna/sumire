@@ -18,6 +18,14 @@ export type {
 } from "./durable-inspector.js"
 
 export type {
+  GitHubAccount,
+  GitHubApplicationState,
+  GitHubConnection,
+  GitHubFlow,
+  GitHubReceipt,
+} from "./github-auth.js"
+
+export type {
   RuntimeConfigEntry,
   RuntimeConfigMutation,
   RuntimeConfigResponse,

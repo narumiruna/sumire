@@ -15,6 +15,7 @@ import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import { parseChatQuery } from "./chat-query.js"
 import { parseDurableInspectionQuery } from "./durable-inspector.js"
+import type { GitHubAuth } from "./github-auth.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
 import type { RuntimeConfigAdmin } from "./runtime-config.js"
@@ -25,6 +26,7 @@ interface AdminServices {
   providers: ProviderAdmin
   mcp: McpAdmin
   runtime?: RuntimeConfigAdmin
+  github?: GitHubAuth
   apply(): Promise<void>
   tools(): string[]
   toolAvailability?(): Promise<Inventory["toolAvailability"]>
@@ -74,6 +76,7 @@ const reply = (res: ServerResponse, status: number, value: unknown) => {
 
 export function createAdminServer(config: AdminConfig, services: AdminServices) {
   const { store, providers, mcp } = services
+  services.github?.configure(services.apply, () => Boolean(mcp.probes.size))
   const login = new PasskeyAdminLogin(config, store)
   const access = new ChatAccess(store)
   const buckets = new Map<string, { start: number; count: number }>()
@@ -177,6 +180,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       const old = readCookie(req, "__Host-sumire-session")
       store.revoke(old)
       await providers.cancelOwner(digest(old))
+      await services.github?.cancelOwner(digest(old))
       const session = store.createSession(actor)
       store.audit(actor, "admin.login", store.snapshot().revision, "completed", "administrator")
       res.setHeader("set-cookie", [
@@ -215,9 +219,13 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     const session = store.session(sessionToken)
     if (!session) {
       await providers.cancelOwner(digest(sessionToken))
+      await services.github?.cancelOwner(digest(sessionToken))
       throw new AdminError(401, "Sign in with a passkey")
     }
     const owner = digest(sessionToken)
+    const assertCurrentSession = () => {
+      if (!store.sessionDeadline(owner)) throw new AdminError(401, "Administrator session expired")
+    }
     if (method !== "GET") {
       if (req.headers.origin !== config.origin || req.headers["x-csrf-token"] !== session.csrf)
         throw new AdminError(403, "Request verification failed")
@@ -237,6 +245,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         "administrator",
       )
       await providers.cancelOwner(owner)
+      await services.github?.cancelOwner(owner)
       res.setHeader("set-cookie", cookie("__Host-sumire-session", "", 0))
       reply(res, 200, { ok: true })
       return
@@ -264,6 +273,77 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       }
       return
     }
+    if (url.pathname.startsWith("/api/github/")) {
+      const github = services.github
+      if (!github) throw new AdminError(503, "GitHub authentication is unavailable")
+      if (url.pathname === "/api/github/connection") {
+        if (method !== "GET") throw new AdminError(405, "Method not allowed")
+        reply(res, 200, github.connection(owner))
+        return
+      }
+      if (url.pathname === "/api/github/oauth") {
+        if (method !== "POST") throw new AdminError(405, "Method not allowed")
+        const input = z
+          .object({ revision: z.number().int().positive(), replace: z.boolean() })
+          .strict()
+          .parse(await body(req, 4096))
+        assertCurrentSession()
+        reply(res, 200, await github.start(owner, input.revision, input.replace))
+        return
+      }
+      if (url.pathname === "/api/github/connection/disconnect") {
+        if (method !== "POST") throw new AdminError(405, "Method not allowed")
+        const input = z
+          .object({ revision: z.number().int().positive(), confirm: z.literal(true) })
+          .strict()
+          .parse(await body(req, 4096))
+        if (!services.runtime) throw new AdminError(503, "Runtime configuration is unavailable")
+        if (mcp.probes.size) throw new AdminError(409, "Wait for the MCP connection test to finish")
+        const references = [
+          ...new Set([...mcp.references("GH_TOKEN"), ...mcp.references("GITHUB_OAUTH_STATE")]),
+        ]
+        if (references.length)
+          throw new AdminError(409, `Referenced by MCP servers: ${references.join(", ")}`)
+        assertCurrentSession()
+        services.runtime.disconnectGitHub(input.revision, session.actor)
+        github.invalidate()
+        const saved = store.snapshot().revision
+        try {
+          await services.apply()
+        } catch {
+          const current = store.snapshot()
+          if (
+            current.revision === saved &&
+            (current.status !== "applied" || current.applied !== saved)
+          )
+            store.applied(saved, false)
+        }
+        reply(res, 200, github.connection(owner))
+        return
+      }
+      const flow = /^\/api\/github\/oauth\/([A-Za-z0-9_-]{43})(?:\/(complete|cancel))?$/.exec(
+        url.pathname,
+      )
+      if (!flow) throw new AdminError(404, "Not found")
+      if (!flow[2]) {
+        if (method !== "GET") throw new AdminError(405, "Method not allowed")
+        reply(res, 200, github.state(flow[1] as string, owner))
+      } else {
+        if (method !== "POST") throw new AdminError(405, "Method not allowed")
+        z.object({})
+          .strict()
+          .parse(await body(req, 4096))
+        assertCurrentSession()
+        reply(
+          res,
+          200,
+          await (flow[2] === "complete"
+            ? github.complete(flow[1] as string, owner)
+            : github.cancel(flow[1] as string, owner)),
+        )
+      }
+      return
+    }
     const runtimeRoute = /^\/api\/runtime-config(?:\/([^/]+))?$/.exec(url.pathname)
     if (runtimeRoute) {
       const name = runtimeRoute[1]
@@ -276,6 +356,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         return
       }
       const input = await body(req, 65536)
+      assertCurrentSession()
       if (mcp.probes.size) throw new AdminError(409, "Wait for the MCP connection test to finish")
       if (method === "PUT") {
         const mutation = z
@@ -297,6 +378,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           throw new AdminError(409, `Referenced by MCP servers: ${references.join(", ")}`)
         runtime.remove(name, deletion.revision, session.actor)
       }
+      services.github?.invalidate()
       const revision = runtime.snapshot().revision
       try {
         await services.apply()
@@ -568,7 +650,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           server.close((error) => (error ? reject(error) : resolve()))
           server.closeIdleConnections()
         })
-        await Promise.all([providers.cancelOwner(), mcp.close(), drained])
+        await Promise.all([providers.cancelOwner(), services.github?.close(), mcp.close(), drained])
       })()
       return closing
     },

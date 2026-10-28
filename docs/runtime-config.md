@@ -81,28 +81,61 @@ Each service operation retains its own credential for response/error redaction, 
 
 ## GitHub CLI authentication
 
-The production image includes `gh`. Use the existing Secrets tab to configure GitHub.com authentication:
+The production image includes `gh`. The Secrets tab supports **Connect GitHub** through Device Flow and the existing manual PAT controls.
 
-1. Configure and back up `ENCRYPTION_KEY` as described above. Deploy the rebuilt image with `docker compose up -d --build sumire` from the repository root.
-2. Create a GitHub Personal Access Token with only the required repositories and permissions. Prefer a fine-grained token. Do not submit it through Telegram or include it in commands, URLs, or logs.
-3. In **Secrets & variables → Secrets**, select **Add secret**. Set the name to `GH_TOKEN`, enter the token, and select **Save secret**. Do not create a public variable.
-4. Wait for **Saved and applied**. The next direct or codemode `bash` execution uses the applied token. Replacement and deletion use the same controls and do not require a bot restart. Pending, failed, locked, or unavailable secret storage does not supply a managed token; a variable named `GH_TOKEN` is not a credential.
-5. Approve `bash` only for trusted chats, within both global and chat policy limits. Saving a token does not grant permissions. Every chat with `bash` access can use or read this token; this is not an admin-only GitHub action.
-6. The GitHub account owner can explicitly verify the account with the read-only command `gh api user --jq .login`. Automated tests do not contact GitHub, and configured state does not prove token acceptance or repository access.
+### Connect with a GitHub OAuth App
 
-Sumire resolves the token for each shell call without changing `process.env`. It does not run `gh auth login` or write the token to CLI credential files. `GH_PROMPT_DISABLED=1` disables interactive prompts. Tokens containing a null character are rejected before process creation with a fixed error that does not include the token. Host `GH_TOKEN`, `GITHUB_TOKEN`, and enterprise tokens are not inherited or imported. OAuth/device login and GitHub Enterprise configuration are not included.
+1. Configure and separately back up `ENCRYPTION_KEY` as described above. Before deployment, verify the production startup restriction below.
+2. The deployment administrator registers a dedicated [GitHub OAuth App](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app) and enables **Device Flow**. Keep the default token-expiration setting. Registration can require account-owner access and MFA. Use only public, non-secret registration metadata. Device Flow does not use a callback handler or client secret.
+3. Open **Secrets & variables → Secrets → Configure GitHub Client ID**. Enter the app's public Client ID, then select **Save GitHub Client ID**. It is saved as the non-confidential runtime variable `GITHUB_OAUTH_CLIENT_ID`; no environment or GitHub Actions variable is required. Wait for successful application.
+4. Select **Connect GitHub** and review the fixed `repo` and `read:org` scopes. `repo` includes public/private repository read/write and some organization resources. OAuth cannot restrict access to one selected repository. Explicitly confirm replacement if `GH_TOKEN` is already configured.
+5. Select **Start GitHub authorization**, open the displayed GitHub device link, and enter the temporary user code. Only authorize a code from your own current interaction. No credential is saved yet.
+6. Check the verified account and actual granted scopes, then select **Save and apply this account**. Account verification contacts GitHub; it does not prove access to every repository. Successful application makes the token available to the next authorized direct or codemode `bash` call without restart.
 
-Deleting the managed secret stops its injection after application. It does not revoke the token on GitHub, remove manually configured GitHub CLI credentials, erase backups/history, or undo an already started GitHub operation. Revoke obsolete or compromised tokens on GitHub. Do not print tokens with shell commands or `gh auth token`; tool output can remain in conversation history. The deployment administrator must maintain a recoverable database/key backup. Verify production sign-in and ingress log redaction before real token entry.
+A changed settings revision invalidates an unfinished login. Cancellation, logout, session expiry, and server shutdown stop the local interaction. Pending authorizations do not resume after restart. Device codes expire within 15 minutes; only the initiating administrator session can inspect or cancel a flow.
+
+If a response is lost, use **Reload GitHub status**. Completed receipts retain their saved revision for five minutes, within a 16-state bound. A later settings revision is shown separately. **Saved; application failed** requires only **Retry application**, not another login or save. An evicted receipt or restarted server can leave the historical outcome unknown; inspect current safe metadata before another action. Page loads and local status checks never start a new GitHub authorization.
+
+### Expiry, refresh, and reset
+
+The access token remains encrypted as `GH_TOKEN`. Its server-owned companion, `GITHUB_OAUTH_STATE`, stores encrypted refresh credentials and account/expiry metadata. This entry is not available through generic secret controls, variable reads, MCP bindings, or browser responses. No schema migration is needed. The existing 256-entry and 8 KiB-per-value bounds apply; a new OAuth connection needs two credential entries.
+
+An authorized shell call refreshes an expiring token when less than 60 seconds remain. Refresh uses the app that issued the stored token. Editing the Client ID changes later authorizations, not the existing grant. Concurrent callers share one refresh. An encrypted attempt marker is committed before exchange; success rotates the access/refresh pair atomically. Rotation does not advance the policy revision, call global application, or abort the requesting model turn. Current application and tool authorization are checked again before dispatch.
+
+An unresolved attempt after restart, uncertain exchange/persistence, expired refresh token, or invalid stored pair requires **Reconnect GitHub**. No exchange is automatically repeated after an uncertain outcome. Malformed/orphaned companion state or a digest mismatch fails closed; it is not treated as a manual PAT. A late refresh cannot restore a manually replaced/deleted credential or invalidate a newer connection.
+
+Use **Disconnect GitHub** or **Reset GitHub connection** to explicitly remove `GH_TOKEN` and `GITHUB_OAUTH_STATE`, including orphan/collision data. Review the named entries before confirming; reset can remove an existing entry with the reserved companion name. Saved MCP references must be removed first. Ordinary manual `GH_TOKEN` replacement/deletion clears a valid companion atomically, even when the replacement value is unchanged. Invalid/colliding state requires explicit reset instead.
+
+Lazy refresh updates native shell credentials only. It does not update credentials copied into an existing MCP transport. Use a separate credential for such connections.
+
+### Manual PAT and trust limits
+
+For fine-grained repository restrictions, create a GitHub PAT and use **Add secret → GH_TOKEN → Save secret**. Do not use a public variable. Manual PATs and non-expiring OAuth tokens do not trigger refresh. A public variable named `GH_TOKEN` is not a credential. Without `GITHUB_OAUTH_STATE`, it does not block shell execution and is never injected into the shell environment. Reset that kind collision before connecting GitHub. A companion entry still requires a valid managed pair; malformed or orphaned state fails closed.
+
+Approve `bash` only for trusted chats, within global and chat policy limits. Every chat with `bash` access can use or read the effective token. Connection does not grant permissions and is not an admin-only GitHub action. The account owner must explicitly verify intended repository access, including organization/SSO approval where required; `gh api user --jq .login` is a read-only account check. Never send credentials through Telegram or include them in commands, URLs, or logs.
+
+Sumire resolves the token for each shell call without changing `process.env`. It does not run `gh auth login` or write the token to CLI credential files. `GH_PROMPT_DISABLED=1` disables interactive prompts. Tokens containing a null character are rejected before process creation with a fixed error that does not include the token. Host `GH_TOKEN`, `GITHUB_TOKEN`, and enterprise tokens are not inherited or imported. GitHub Enterprise, multiple accounts, Git credential-helper setup, and SSH-key provisioning are not included.
+
+Disconnecting or deleting the managed credential stops its injection after application. It does not revoke the token on GitHub, remove manually configured GitHub CLI credentials, erase backups/history, or undo an already started GitHub operation. Revoke obsolete or compromised tokens on GitHub. Do not print tokens with shell commands or `gh auth token`; tool output can remain in conversation history. The deployment administrator must maintain a recoverable database/key backup. Verify production sign-in and ingress log redaction before real token entry.
+
+Before rolling back to token-only code, disconnect the managed OAuth connection or replace it with a PAT and apply the change. Confirm that the companion entry is removed. Older code cannot refresh an expiring token. Preserve state volumes and the matching key; never replay interrupted GitHub writes.
 
 ### GitHub CLI verification and deployment restriction
 
-Checks completed on 2026-10-28:
+Checks completed on 2026-10-29:
 
-- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. Unit/integration tests: 2305 across 11 workspaces. The existing unrelated lint warning remains.
-- The complete administration browser suite passed: 517 tests, using an isolated local port.
-- The production image built successfully. Offline tests under the non-root user verified `gh` token lookup, replacement, and deletion with synthetic credentials. These tests used Docker's default seccomp profile, no network, no host credentials, and no persistent state mounts.
+- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. Unit/integration tests: 2,619 across 11 workspaces. The existing unrelated lint warning remains.
+- The complete administration browser suite passed: 545 tests, using an isolated local port. The 42 focused GitHub/runtime-secret browser tests also passed.
+- The production image built successfully. Offline tests under the non-root user verified Device Flow, account confirmation, encrypted save, single-flight refresh, `gh` authentication, and disconnect with synthetic credentials. These tests used Docker's default seccomp profile, no network, no host credentials, and no persistent state mounts.
+- Independent review found and fixed post-body session revocation, pre-spawn authorization races after filesystem checks, and premature receipt eviction during application. Controlled tests also verify that adapter/status-read failures after commit preserve the saved outcome without repeating persistence. Final independent review found no implementation blocker.
 
 In this validation environment, the repository's configured custom seccomp profile prevents Node from creating a thread (`uv_thread_create`, exit 134). The existing `sumire:local` image fails the same startup check. This change does not alter that profile. The deployment administrator must verify startup under the configured profile before production activation and resolve this failure where it occurs. Do not substitute the test security override for production configuration without a separate review. Live GitHub acceptance, production Passkey sign-in, and master-key backup remain account-owner and deployment-administrator checks.
+
+Production handoff remains external to automated verification:
+
+- **OAuth App owner:** register the dedicated app, enable Device Flow, retain token expiration, and provide its public Client ID through the WebUI. Registration/MFA and real authorization were not performed by the implementation agent.
+- **GitHub account/organization owner:** approve the displayed scopes and verify the identity plus an intended repository, including organization/SSO restrictions. Do not enable production use until this live verification succeeds. Synthetic tests do not establish repository entitlement.
+- **Deployment administrator:** maintain separately protected matching database/key backups, verify real Passkey sign-in and ingress body-log exclusion, and verify Node startup under the intended production security profile. Resolve the reproduced profile failure where it occurs; the isolated test override is not a production configuration change.
 
 ## Upgrade and import
 

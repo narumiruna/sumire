@@ -1,4 +1,5 @@
 import type {
+  GitHubApplicationState,
   RuntimeConfigEntry,
   RuntimeConfigMutation,
   RuntimeConfigResponse,
@@ -17,6 +18,7 @@ import {
 } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { GitHubConnection } from "./github-connection.js"
 import { parseRuntimeConfig, runtimeValueError } from "./runtime-config-state.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -25,9 +27,10 @@ type Props = {
   csrf: string
   blocked: boolean
   revision: number
+  application?: GitHubApplicationState
   onPending(value: boolean): void
   guard: React.MutableRefObject<(() => boolean) | undefined>
-  onCommitted(value: RuntimeConfigResponse): void
+  onCommitted(value: GitHubApplicationState): void
   onSessionExpired(): void
   refresh(): Promise<void>
 }
@@ -36,6 +39,7 @@ export function RuntimeConfig({
   csrf,
   blocked,
   revision,
+  application,
   onPending,
   guard,
   onCommitted,
@@ -48,6 +52,8 @@ export function RuntimeConfig({
   const [draft, setDraft] = useState<Draft>()
   const [deleting, setDeleting] = useState<RuntimeConfigEntry>()
   const [busy, setBusy] = useState(false)
+  const [githubPending, setGithubPending] = useState(false)
+  const githubGuard = useRef<(() => boolean) | undefined>(undefined)
   const [error, setError] = useState("")
   const [recovery, setRecovery] = useState(false)
   const [notice, setNotice] = useState("")
@@ -60,11 +66,12 @@ export function RuntimeConfig({
   const canLeave = () => {
     if (busy) return false
     if (draft && !window.confirm("Discard the runtime value draft and leave?")) return false
+    if (githubGuard.current && !githubGuard.current()) return false
     clear()
     return true
   }
   guard.current = canLeave
-  const pending = Boolean(draft) || busy || recovery
+  const pending = Boolean(draft) || busy || recovery || githubPending
   useEffect(() => onPending(pending), [onPending, pending])
   useEffect(
     () => () => {
@@ -162,7 +169,7 @@ export function RuntimeConfig({
   }
   const stale = Boolean(data && data.revision !== revision)
   const unavailable = kind === "secret" && data?.secretStatus !== "ready"
-  const disabled = busy || blocked || recovery || stale
+  const disabled = busy || blocked || recovery || stale || githubPending
   const start = (entry?: RuntimeConfigEntry) => {
     focusTarget.current = entry ? "runtime-value" : "runtime-name"
     setError("")
@@ -195,6 +202,21 @@ export function RuntimeConfig({
               ? "Saved secrets are write-only. Only names, configured state, and update times are shown. Enter a new value only to create or replace a secret."
               : "Variables are not confidential. Authorized chats with read_variable can read all variables in this installation. Returned values can remain in conversation history. Do not store credentials here."}
           </Prose>
+          {kind === "secret" && (
+            <GitHubConnection
+              csrf={csrf}
+              revision={revision}
+              application={application}
+              blocked={blocked || busy || recovery || Boolean(draft)}
+              onPending={setGithubPending}
+              guard={githubGuard}
+              onCommitted={onCommitted}
+              onSessionExpired={onSessionExpired}
+              refresh={async () => {
+                await Promise.all([load(), refresh()])
+              }}
+            />
+          )}
           {kind === "secret" && (
             <Prose>
               For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access
@@ -251,6 +273,7 @@ export function RuntimeConfig({
                   )
                 )
                   return
+                if (githubGuard.current && !githubGuard.current()) return
                 clear()
                 const version = generation.current
                 void load().then(async () => {
@@ -300,6 +323,12 @@ export function RuntimeConfig({
                       : "Edit variable"
                     : `Add ${kind}`}
                 </Heading>
+                {draft.name === "GH_TOKEN" && (
+                  <Prose size="2">
+                    A manual GH_TOKEN save removes GITHUB_OAUTH_STATE in the same change. It does
+                    not revoke GitHub authorization.
+                  </Prose>
+                )}
                 <label htmlFor="runtime-name">
                   Name
                   <TextField.Root
@@ -415,8 +444,10 @@ export function RuntimeConfig({
               <AlertDialog.Title>Delete {deleting?.name}?</AlertDialog.Title>
               <AlertDialog.Description>
                 Delete this {deleting?.kind} and apply the change? Remove saved MCP references
-                first. Deletion does not erase backups or conversation history and does not revoke
-                an upstream key. To change a secret into a public variable, delete it first and
+                first.{" "}
+                {deleting?.name === "GH_TOKEN" && "This removes GH_TOKEN and GITHUB_OAUTH_STATE. "}
+                Deletion does not erase backups or conversation history and does not revoke an
+                upstream key. To change a secret into a public variable, delete it first and
                 explicitly create a variable.
               </AlertDialog.Description>
               <Flex gap="3" mt="4">
