@@ -93,7 +93,10 @@ export function durableToolResult(
 
 /** Native tools use the call's Harness environment; the host owns its lifecycle. */
 export async function nativeCodingTools(
-  shellEnvironment: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv) = {},
+  shellEnvironment:
+    | NodeJS.ProcessEnv
+    | ((signal?: AbortSignal) => NodeJS.ProcessEnv | Promise<NodeJS.ProcessEnv>) = {},
+  authorizeShell?: () => (environment: NodeJS.ProcessEnv) => void,
 ): Promise<ToolRegistration[]> {
   const read = createReadTool({ images: await createNodePhotonImages({ worker: false }) })
   return [
@@ -122,15 +125,30 @@ export async function nativeCodingTools(
     }),
     {
       ...createBashTool({
-        prepare(execution) {
+        async prepare(execution, _api, context) {
           // NodeExecutionEnv.shellEnv alone still inherits process.env.
           execution.inheritEnv = false
-          // Resolve managed credentials for this call, not at factory startup.
-          execution.env = Object.fromEntries(
-            Object.entries(
-              typeof shellEnvironment === "function" ? shellEnvironment() : shellEnvironment,
-            ).filter((entry): entry is [string, string] => entry[1] !== undefined),
+          const authorize = authorizeShell?.()
+          const environment =
+            typeof shellEnvironment === "function"
+              ? await shellEnvironment(context.abortSignal)
+              : shellEnvironment
+          context.abortSignal?.throwIfAborted()
+          authorize?.(environment)
+          const fields = Object.fromEntries(
+            Object.entries(environment).filter(
+              (entry): entry is [string, string] => entry[1] !== undefined,
+            ),
           )
+          // NodeExecutionEnv clones env beside spawn, after awaited shell/cwd checks.
+          // Guard that materialization too, not only this earlier preparation hook.
+          execution.env = new Proxy(fields, {
+            ownKeys(target) {
+              context.abortSignal?.throwIfAborted()
+              authorize?.(target)
+              return Reflect.ownKeys(target)
+            },
+          })
         },
       }),
       replay: "unsafe",

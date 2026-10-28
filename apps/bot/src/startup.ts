@@ -1,6 +1,7 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { startAdmin } from "./admin/application.js"
+import { GitHubAuth } from "./admin/github-auth.js"
 import { McpAdmin } from "./admin/mcp.js"
 import { RuntimeConfigAdmin } from "./admin/runtime-config.js"
 import { AdminStore } from "./admin/store.js"
@@ -22,7 +23,9 @@ export async function startApplication(): Promise<void> {
     settings.logfireToken,
   )
   let adminStore: AdminStore | undefined
-  let control: { store: AdminStore; mcp: McpAdmin; runtime: RuntimeConfigAdmin } | undefined
+  let control:
+    | { store: AdminStore; mcp: McpAdmin; runtime: RuntimeConfigAdmin; github: GitHubAuth }
+    | undefined
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
   try {
@@ -34,7 +37,8 @@ export async function startApplication(): Promise<void> {
     const runtime = new RuntimeConfigAdmin(store, process.env.ENCRYPTION_KEY)
     runtime.importLegacy(process.env)
     const mcp = new McpAdmin(store, settings.botWorkdir, runtime)
-    control = { store, mcp, runtime }
+    const github = new GitHubAuth(store, runtime)
+    control = { store, mcp, runtime, github }
     await mcp.import(settings.botMcpConfigPath)
     const documentConverter = await createConfiguredDocumentConverter(settings)
     const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
@@ -90,6 +94,7 @@ export async function startApplication(): Promise<void> {
     await closeApplicationResources([
       () => adminServer?.stop(),
       () => sessions?.dispose(),
+      () => control?.github.close(),
       () => control?.mcp.close(),
       () => adminStore?.close(),
       () => logger.shutdown?.(),

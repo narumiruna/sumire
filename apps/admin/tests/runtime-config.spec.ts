@@ -184,12 +184,13 @@ test("GH_TOKEN uses existing secret controls without exposing tokens or starting
   await expect(guidance).toHaveText(
     "For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access Token. Once saved and applied, the token is available to the next bash execution without restart. All chats with bash access can use and read the token; give bash only to trusted chats. Configured state does not prove that GitHub accepts the token.",
   )
-  await expect(page.getByRole("tabpanel").getByRole("button")).toHaveText([
-    "Add secret",
-    "Reload safe metadata",
-    "Replace EXISTING",
-    "Delete EXISTING",
-  ])
+  await expect(page.getByRole("region", { name: "GitHub connection", exact: true })).toContainText(
+    "GitHub connection is unavailable. Manual GH_TOKEN controls remain available.",
+  )
+  for (const name of ["Add secret", "Reload safe metadata", "Replace EXISTING", "Delete EXISTING"])
+    await expect(
+      page.getByRole("tabpanel").getByRole("button", { name, exact: true }),
+    ).toBeEnabled()
   await expect(page.getByRole("tabpanel").getByRole("link")).toHaveCount(0)
   await page.getByRole("tab", { name: "Variables", exact: true }).click()
   await expect(guidance).toHaveCount(0)

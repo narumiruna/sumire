@@ -1085,6 +1085,7 @@ function App() {
                 key={sessionGeneration}
                 csrf={session.csrf}
                 revision={snapshot.revision}
+                application={snapshot}
                 blocked={
                   busy ||
                   dirty ||
