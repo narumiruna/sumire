@@ -90,9 +90,12 @@ try {
   assert.equal(result.isError, true)
   assert.deepEqual(result.details, failure)
   assert.ok(!JSON.stringify(result).includes(url))
+  await runCommand("pip", ["show", "yt-dlp-ejs"])
+  const javascript = await runCommand("deno", ["eval", "--no-config", "console.log(1 + 1)"])
+  assert.equal(javascript.stdout.trim(), "2")
   await runCommand("whisper", ["--help"])
   console.log(
-    "Offline URL checks passed: captions, real yt-dlp metadata, duration rejection, Telegram message, Pi error result, Whisper CLI",
+    "Offline URL checks passed: captions, real yt-dlp metadata, duration rejection, Telegram message, Pi error result, YouTube EJS, Deno, Whisper CLI",
   )
 } finally {
   globalThis.fetch = originalFetch

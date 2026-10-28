@@ -37,6 +37,27 @@ describe("container application packaging", () => {
     )
   })
 
+  it("installs YouTube JavaScript dependencies and checks them offline as the bot user", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const audio = dockerfile
+      .split("FROM node:26-bookworm-slim AS audio-dependencies\n")[1]
+      ?.split("\nFROM ")[0]
+    expect(audio).toContain('"yt-dlp[default,deno]==')
+
+    const runtimeUser = dockerfile.split("\nUSER app\n")[1]
+    expect(runtimeUser).toContain(
+      "RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs",
+    )
+    const check = await readFile(
+      new URL("../scripts/check-url-failures.mjs", import.meta.url),
+      "utf8",
+    )
+    expect(check).toContain('await runCommand("pip", ["show", "yt-dlp-ejs"])')
+    expect(check).toContain(
+      'await runCommand("deno", ["eval", "--no-config", "console.log(1 + 1)"])',
+    )
+  })
+
   it("builds the same application target in CI when Docker inputs change", async () => {
     const workflow = await readFile(ciUrl, "utf8")
     for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])

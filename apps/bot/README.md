@@ -335,11 +335,11 @@ The production image currently qualifies the AnyDoc native adapter on Linux x86_
 
 ## Local audio transcription
 
-The production image installs `yt-dlp`, FFmpeg, and the Python `openai-whisper` CLI with a CPU PyTorch runtime. The YouTube loader tries captions first, then downloads audio and transcribes it with the local `tiny` model; Instagram Reels use the same local audio transcription path. URL media remains subject to the public URL validation and the URL content timeout. It does not call OpenAI's hosted audio API.
+The production image installs `yt-dlp[default,deno]`, FFmpeg, and the Python `openai-whisper` CLI with a CPU PyTorch runtime. The yt-dlp extras include matching `yt-dlp-ejs` scripts and Deno, the default JavaScript runtime for YouTube challenges. The YouTube loader tries captions first, then downloads audio and transcribes it with the local `tiny` model; Instagram Reels use the same local audio transcription path. URL media remains subject to the public URL validation and the URL content timeout. It does not call OpenAI's hosted audio API.
 
 Voice notes and audio attachments sent to Sumire (or replied to with an addressed message) are downloaded only when their conversion slot is free. The streamed download is bounded to 20,000,000 bytes; Telegram's reported duration is checked against a fixed 600-second limit. This metadata check does not verify the actual audio duration: the transcription also has a 180-second deadline and a 12,000-character transcript limit. Only one Telegram audio input transcribes at once; each request uses a private temporary file removed after success or failure. Transcripts are passed to Pi as explicitly untrusted reference text alongside the caption or question. Audio input is enabled by default with no environment disable switch. Unsupported/corrupt audio, download errors, and missing local tools produce a direct error rather than an invented transcript. Cancellation skips queued work and suppresses late results; an already running transcription finishes or times out before freeing its slot.
 
-The first use of the local `tiny` model downloads model weights. Compose keeps the cache in the `whisper-cache` volume, so later restarts do not repeat that download; the container needs network access for the first transcription. Local development requires `yt-dlp`, `whisper` from `openai-whisper`, and FFmpeg on `PATH`. This CPU-only stack increases image size and may take time to build or transcribe.
+The first use of the local `tiny` model downloads model weights. Compose keeps the cache in the `whisper-cache` volume, so later restarts do not repeat that download; the container needs network access for the first transcription. Local development requires `yt-dlp[default,deno]`, `whisper` from `openai-whisper`, and FFmpeg on `PATH`. This CPU-only stack increases image size and may take time to build or transcribe.
 
 ## URL content loading
 
@@ -367,7 +367,7 @@ For example, when no captions were obtained and metadata confirms a 5,198-second
 
 User messages and URL failure diagnostics exclude raw upstream errors, command stderr, local paths, source URLs, and credentials. Logs retain allowlisted loader IDs, phase codes, elapsed time, numeric facts, and keyed URL fingerprints. Skipped optional fallbacks do not change the displayed reason or next action. Cancellation and reset keep their existing responses. Logfire receives redacted text through a fixed message template, so braces in structured details cannot be interpreted as template fields.
 
-The production image build runs `apps/bot/scripts/check-url-failures.mjs` with networking disabled. This checks caption success, unavailable captions, the installed yt-dlp JSON template against local metadata, confirmed duration rejection, the Telegram message, the Pi error result, and the installed Whisper CLI. It does not start the bot, contact Telegram, or download model weights.
+The production image build runs `apps/bot/scripts/check-url-failures.mjs` with networking disabled. This checks caption success, unavailable captions, the installed yt-dlp JSON template against local metadata, confirmed duration rejection, the Telegram message, the Pi error result, and the installed Whisper CLI. It also checks that `yt-dlp-ejs` is installed and runs JavaScript with Deno as the bot user. It does not start the bot, contact Telegram, download model weights, or verify live YouTube extraction.
 
 ## Docker
 

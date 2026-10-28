@@ -151,8 +151,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/audio/bin/pip install --upgrade pip \
     && /opt/audio/bin/pip install torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cpu
 # Keep the heavyweight torch layer reusable when audio tool versions change.
+# YouTube extraction needs EJS scripts and Deno, yt-dlp's default JavaScript runtime.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /opt/audio/bin/pip install openai-whisper==20250625 yt-dlp==2026.8.19
+    /opt/audio/bin/pip install openai-whisper==20250625 "yt-dlp[default,deno]==2026.8.19"
 
 FROM dependencies AS browser-download
 
