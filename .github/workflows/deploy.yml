@@ -1,25 +1,31 @@
 name: Deploy
 
 on:
-  workflow_dispatch:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - main
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy
-  cancel-in-progress: true
-
 jobs:
   deploy:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'changeset-release/main' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
+    concurrency:
+      group: deploy
+      cancel-in-progress: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Prepare environment file
         run: |

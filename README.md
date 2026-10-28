@@ -96,6 +96,8 @@ npm run changeset
 
 Use `npm run changeset -- --empty` when no package version should change. On each push to `main`, [`.github/workflows/publish.yml`](.github/workflows/publish.yml) uses Changesets to create or update a release pull request. Merging that pull request publishes the pending package versions to npm with provenance. Configure the `NPM_TOKEN` repository secret with publish access to the `@narumitw` scope, and allow GitHub Actions to create pull requests in the repository Actions settings.
 
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) deploys only when the `changeset-release/main` pull request from this repository is merged into `main`. It checks out that merge commit. Direct pushes, other pull requests, and unmerged closures do not deploy; manual workflow dispatch is disabled.
+
 ## Security
 
 Never commit `.env`, bot tokens, API keys, cookies, private URLs, or sensitive personal data. Keep `instructions/` free of secrets.
