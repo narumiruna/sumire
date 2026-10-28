@@ -22,13 +22,11 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Prepare environment file
-        env:
-          ENCRYPTION_KEY: ${{secrets.ENCRYPTION_KEY}}
         run: |
           install -m 600 /dev/null .env
           {
             echo "BOT_TOKEN=${{secrets.BOT_TOKEN}}"
-            printf 'ENCRYPTION_KEY=%s\n' "$ENCRYPTION_KEY"
+            echo "ENCRYPTION_KEY=${{secrets.ENCRYPTION_KEY}}"
             echo "BOT_ADMIN_ID=${{vars.BOT_ADMIN_ID}}"
             echo "ADMIN_ORIGIN=${{vars.ADMIN_ORIGIN}}"
             echo "FIRECRAWL_API_KEY=${{secrets.FIRECRAWL_API_KEY}}"
