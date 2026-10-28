@@ -23,6 +23,20 @@ describe("container application packaging", () => {
     expect(runtime).not.toContain("COPY --from=production-dependencies")
   })
 
+  it("installs GitHub CLI in the runtime and checks tools offline as the bot user", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const dependencies = dockerfile
+      .split("FROM node:26-bookworm-slim AS runtime-dependencies\n")[1]
+      ?.split("\nFROM ")[0]
+    expect(dependencies).toMatch(/apt-get install[^\n]*\bgh\b/)
+
+    const runtime = dockerfile.split("FROM runtime-dependencies AS runtime\n")[1]
+    const runtimeUser = runtime?.split("\nUSER app\n")[1]
+    expect(runtimeUser).toContain(
+      "RUN --network=none git --version && gh --version && ssh -V && command -v ssh-keygen",
+    )
+  })
+
   it("builds the same application target in CI when Docker inputs change", async () => {
     const workflow = await readFile(ciUrl, "utf8")
     for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])

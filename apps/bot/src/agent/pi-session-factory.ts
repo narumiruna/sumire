@@ -108,7 +108,7 @@ export async function createPiSessionFactory(
     traceLoad: (url, requestedLoader, toolCallId, load) =>
       traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
   })
-  const coding = await nativeCodingTools(adminShellEnvironment(process.env))
+  const coding = await nativeCodingTools(() => adminShellEnvironment(process.env, control.runtime))
   const morselPublisher = createMorselPublisher(settings, control.runtime)
   const baseTools = [
     urlTool,

@@ -93,14 +93,9 @@ export function durableToolResult(
 
 /** Native tools use the call's Harness environment; the host owns its lifecycle. */
 export async function nativeCodingTools(
-  shellEnvironment: NodeJS.ProcessEnv = {},
+  shellEnvironment: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv) = {},
 ): Promise<ToolRegistration[]> {
   const read = createReadTool({ images: await createNodePhotonImages({ worker: false }) })
-  const shellEnv = Object.fromEntries(
-    Object.entries(shellEnvironment).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
   return [
     defineTool({
       ...read,
@@ -130,7 +125,12 @@ export async function nativeCodingTools(
         prepare(execution) {
           // NodeExecutionEnv.shellEnv alone still inherits process.env.
           execution.inheritEnv = false
-          execution.env = { ...shellEnv }
+          // Resolve managed credentials for this call, not at factory startup.
+          execution.env = Object.fromEntries(
+            Object.entries(
+              typeof shellEnvironment === "function" ? shellEnvironment() : shellEnvironment,
+            ).filter((entry): entry is [string, string] => entry[1] !== undefined),
+          )
         },
       }),
       replay: "unsafe",

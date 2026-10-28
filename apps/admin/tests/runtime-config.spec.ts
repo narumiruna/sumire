@@ -171,6 +171,87 @@ test("secret CRUD is write-only, replacements are empty, search and confirmed de
   await expect(page.getByRole("button", { name: /reveal|copy|export|download/i })).toHaveCount(0)
 })
 
+test("GH_TOKEN uses existing secret controls without exposing tokens or starting authentication", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  const url = page.url()
+  const navigations: string[] = []
+  let popups = 0
+  page.on("framenavigated", (frame) => navigations.push(frame.url()))
+  page.on("popup", () => popups++)
+  const guidance = page.getByText(/^For GitHub CLI,/)
+  await expect(guidance).toHaveText(
+    "For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access Token. Once saved and applied, the token is available to the next bash execution without restart. All chats with bash access can use and read the token; give bash only to trusted chats. Configured state does not prove that GitHub accepts the token.",
+  )
+  await expect(page.getByRole("tabpanel").getByRole("button")).toHaveText([
+    "Add secret",
+    "Reload safe metadata",
+    "Replace EXISTING",
+    "Delete EXISTING",
+  ])
+  await expect(page.getByRole("tabpanel").getByRole("link")).toHaveCount(0)
+  await page.getByRole("tab", { name: "Variables", exact: true }).click()
+  await expect(guidance).toHaveCount(0)
+  await page.getByRole("tab", { name: "Secrets", exact: true }).click()
+  await expect(guidance).toBeVisible()
+
+  const tokens = ["github-create-sentinel", "github-replace-sentinel"]
+  for (const [index, token] of tokens.entries()) {
+    if (index === 0) await add(page, "secret", "GH_TOKEN", token)
+    else {
+      await page.getByRole("button", { name: "Replace GH_TOKEN", exact: true }).click()
+      await expect(page.getByLabel("Runtime secret value")).toHaveValue("")
+      await expect(page.getByLabel("Name", { exact: true })).toBeDisabled()
+      await page.getByLabel("Runtime secret value").fill(token)
+    }
+    await expect(page.getByLabel("Runtime secret value")).toHaveAttribute("type", "password")
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+    await noLeak(page, token)
+    const response = page.waitForResponse("**/api/runtime-config/GH_TOKEN")
+    await page.getByRole("button", { name: "Save secret", exact: true }).click()
+    const metadata: { entries: Entry[] } = await (await response).json()
+    expect(metadata.entries.find((entry) => entry.name === "GH_TOKEN")).toEqual({
+      name: "GH_TOKEN",
+      kind: "secret",
+      configured: true,
+      updatedAt: 1790000001000,
+      revision: index + 2,
+    })
+    await expect(page.getByText("Saved and applied.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("region", { name: "GH_TOKEN secret", exact: true })).toContainText(
+      "Configured · ••••••••",
+    )
+    await expect(page.getByLabel("Runtime secret value")).toHaveCount(0)
+    for (const sentinel of tokens) {
+      expect(JSON.stringify(metadata)).not.toContain(sentinel)
+      await noLeak(page, sentinel)
+    }
+  }
+
+  await page.getByRole("button", { name: "Delete GH_TOKEN", exact: true }).click()
+  const dialog = page.getByRole("alertdialog", { name: "Delete GH_TOKEN?", exact: true })
+  await expect(dialog).toBeVisible()
+  const response = page.waitForResponse("**/api/runtime-config/GH_TOKEN")
+  await dialog.getByRole("button", { name: "Delete and apply", exact: true }).click()
+  const metadata: { entries: Entry[] } = await (await response).json()
+  expect(metadata.entries.some((entry) => entry.name === "GH_TOKEN")).toBe(false)
+  await expect(page.getByRole("button", { name: "Replace GH_TOKEN", exact: true })).toHaveCount(0)
+  for (const token of tokens) {
+    expect(JSON.stringify(metadata)).not.toContain(token)
+    await noLeak(page, token)
+  }
+  expect(state.mutations).toEqual([
+    { method: "PUT", name: "GH_TOKEN", body: { revision: 1, kind: "secret", value: tokens[0] } },
+    { method: "PUT", name: "GH_TOKEN", body: { revision: 2, kind: "secret", value: tokens[1] } },
+    { method: "DELETE", name: "GH_TOKEN", body: { revision: 3 } },
+  ])
+  expect(state.applies()).toBe(0)
+  await expect(page).toHaveURL(url)
+  expect(navigations).toEqual([])
+  expect(popups).toBe(0)
+})
+
 test("variables preserve escaped values and empty edits without changing permissions", async ({
   page,
 }) => {

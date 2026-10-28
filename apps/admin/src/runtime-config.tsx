@@ -195,6 +195,14 @@ export function RuntimeConfig({
               ? "Saved secrets are write-only. Only names, configured state, and update times are shown. Enter a new value only to create or replace a secret."
               : "Variables are not confidential. Authorized chats with read_variable can read all variables in this installation. Returned values can remain in conversation history. Do not store credentials here."}
           </Prose>
+          {kind === "secret" && (
+            <Prose>
+              For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access
+              Token. Once saved and applied, the token is available to the next bash execution
+              without restart. All chats with bash access can use and read the token; give bash only
+              to trusted chats. Configured state does not prove that GitHub accepts the token.
+            </Prose>
+          )}
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">
               <Callout.Text>
