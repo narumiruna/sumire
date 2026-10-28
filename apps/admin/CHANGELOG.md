@@ -1,5 +1,11 @@
 # @narumitw/sumire-admin
 
+## 0.9.0
+
+### Minor Changes
+
+- d0ad4cd: Include GitHub CLI in the production image and resolve its GH_TOKEN from administrator-managed encrypted secrets for each shell call after settings application. Reuse the WebUI secret controls with GitHub setup guidance, retain existing tool permissions, and do not inherit host GitHub credentials.
+
 ## 0.8.0
 
 ### Minor Changes
