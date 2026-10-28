@@ -268,9 +268,11 @@ export async function createPiSessionFactory(
       const chatBaseTools = [
         ...baseTools,
         ...polymarket.tools,
-        createGithubNotificationsTool(chatId, control.runtime, undefined, () =>
-          authorize(GITHUB_NOTIFICATIONS_TOOL),
-        ),
+        createGithubNotificationsTool(chatId, {
+          runtime: control.runtime,
+          allowedUserIds: () => control.store.snapshot().policy.githubNotifications.allowedUserIds,
+          assertAccess: () => authorize(GITHUB_NOTIFICATIONS_TOOL),
+        }),
       ]
         .filter(allowed)
         .map(guard)

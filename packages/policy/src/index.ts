@@ -59,6 +59,15 @@ export const policySchema = z
     servers: names,
     models: names,
     defaults: selectionSchema,
+    githubNotifications: z
+      .object({
+        allowedUserIds: z
+          .array(z.number().int().positive().safe())
+          .max(1000)
+          .refine((ids) => new Set(ids).size === ids.length),
+      })
+      .strict()
+      .default(() => ({ allowedUserIds: [] })),
     privateUsers: z.array(z.number().int().positive().safe()).max(1000),
     groups: z.array(z.number().int().negative().safe()).max(1000),
     chats: z
@@ -98,6 +107,7 @@ export function initialPolicy(): Policy {
     servers: [],
     models: [],
     defaults: { ...inherited, tools: [], skills: [], servers: [], models: [], thinking: "off" },
+    githubNotifications: { allowedUserIds: [] },
     privateUsers: [],
     groups: [],
     chats: {},

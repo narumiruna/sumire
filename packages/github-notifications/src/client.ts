@@ -52,7 +52,7 @@ export function createNotificationClient(options: NotificationClientOptions) {
       signal?.throwIfAborted()
       const token = options.token()
       if (!token || !/^[\x21-\x7e]+$/.test(token))
-        throw new Error("An applied GITHUB_NOTIFICATIONS_TOKEN secret is required")
+        throw new Error("An applied GH_TOKEN secret is required")
       const url = new URL("https://api.github.com/notifications")
       url.searchParams.set("page", String(page))
       url.searchParams.set("per_page", String(perPage))

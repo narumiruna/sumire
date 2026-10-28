@@ -204,16 +204,10 @@ export function RuntimeConfig({
             </Prose>
           )}
           <Prose>
-            GitHub notifications: store a dedicated GitHub.com token as the secret{" "}
-            <code>GITHUB_NOTIFICATIONS_TOKEN</code> (classic PAT with notifications scope), and set
-            the variable <code>GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS</code> to a JSON array of
-            Telegram user IDs, for example <code>[123456789]</code>. An empty array disables access.
-            Only these users in private chats can use <code>read_github_notifications</code>; also
-            enable it in tool permissions for those chats. Groups are always denied. Notifications
-            belong to this one GitHub account, not each Telegram user's account. This token is not
-            supplied to bash. Notification metadata reaches the selected model and chat history;
-            normal long-reply delivery can also use Morsel. Shell/file access is still trusted host
-            access, not a security sandbox.
+            GitHub notifications also use the secret <code>GH_TOKEN</code>. The token needs access
+            to the Notifications API, for example a classic Personal Access Token with the{" "}
+            <code>notifications</code> scope. Manage Telegram recipients on the GitHub notifications
+            page, not in Variables. Recipients also need chat access and tool permissions.
           </Prose>
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">

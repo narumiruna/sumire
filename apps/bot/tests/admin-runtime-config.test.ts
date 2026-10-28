@@ -243,29 +243,26 @@ describe("runtime configuration administration", () => {
   })
 })
 
-it("validates notification allowlists and keeps dedicated credentials secret-only", () => {
-  const before = store.snapshot()
-  for (const value of ["invalid", "{}", "[0]", "[-100]", '["42"]', "[42,42]"])
-    expect(() => put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", value, "variable")).toThrow(
-      "GitHub allowlist",
-    )
-  expect(() => put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[42]", "secret")).toThrow(
-    "must be a variable",
-  )
-  expect(() => put("GITHUB_NOTIFICATIONS_TOKEN", "fixture-token", "variable")).toThrow(
-    "must be a nonempty secret",
-  )
-  expect(() => put("GITHUB_NOTIFICATIONS_TOKEN", "fixture\ntoken")).toThrow(
-    "must be a nonempty secret",
-  )
-  expect(store.snapshot()).toEqual(before)
-  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[42]", "variable")
-  put("GITHUB_NOTIFICATIONS_TOKEN", "notification-secret-sentinel")
-  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBeUndefined()
+it("keeps GH_TOKEN under the general managed secret controls", () => {
+  put("GH_TOKEN", "managed-github-secret-sentinel")
+  expect(runtime.readSecret("GH_TOKEN")).toBeUndefined()
   store.applied(store.snapshot().revision, true)
-  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBe("notification-secret-sentinel")
-  expect(JSON.stringify(runtime.snapshot())).not.toContain("notification-secret-sentinel")
-  expect(JSON.stringify(store.listAudit(0))).not.toContain("notification-secret-sentinel")
-  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "[]", "variable")
-  expect(runtime.readSecret("GITHUB_NOTIFICATIONS_TOKEN")).toBeUndefined()
+  expect(runtime.readSecret("GH_TOKEN")).toBe("managed-github-secret-sentinel")
+  expect(JSON.stringify(runtime.snapshot())).not.toContain("managed-github-secret-sentinel")
+  expect(JSON.stringify(store.listAudit(0))).not.toContain("managed-github-secret-sentinel")
+  expect(() => put("GH_TOKEN", "variable", "variable")).toThrow("Delete")
+  runtime.remove("GH_TOKEN", store.snapshot().revision, "42")
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GH_TOKEN")).toBeUndefined()
+  // Generic runtime configuration does not impose a GitHub-specific token format.
+  put("GH_TOKEN", "literal\nsecret")
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GH_TOKEN")).toBe("literal\nsecret")
+})
+
+it("does not interpret legacy notification runtime names as recipient policy", () => {
+  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "not an ID list", "variable")
+  put("GITHUB_NOTIFICATIONS_TOKEN", "ordinary variable", "variable")
+  expect(runtime.readVariable("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS")).toBe("not an ID list")
+  expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([])
 })

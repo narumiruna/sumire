@@ -3,27 +3,30 @@ import { defineTool } from "@earendil-works/pi-coding-agent"
 import {
   allowsNotificationChat,
   createNotificationClient,
-  GITHUB_NOTIFICATIONS_TOKEN,
   GITHUB_NOTIFICATIONS_TOOL,
-  GITHUB_NOTIFICATIONS_USERS,
 } from "@narumitw/sumire-github-notifications"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+
+interface GithubNotificationsToolOptions {
+  allowedUserIds(): readonly number[]
+  assertAccess(): void
+  runtime?: RuntimeConfigReader
+  fetch?: typeof fetch
+}
 
 /** No recipient/user ID can be supplied by a model; the session owns the private chat ID. */
 export function createGithubNotificationsTool(
   chatId: number,
-  runtime?: RuntimeConfigReader,
-  fetcher?: typeof fetch,
-  assertAccess?: () => void,
+  options: GithubNotificationsToolOptions,
 ) {
   const client = createNotificationClient({
     authorize() {
-      assertAccess?.()
-      if (!allowsNotificationChat(chatId, runtime?.readVariable(GITHUB_NOTIFICATIONS_USERS)))
+      options.assertAccess()
+      if (!allowsNotificationChat(chatId, options.allowedUserIds()))
         throw new Error("GitHub notifications are restricted to explicitly allowed private users")
     },
-    token: () => runtime?.readSecret(GITHUB_NOTIFICATIONS_TOKEN),
-    fetch: fetcher,
+    token: () => options.runtime?.readSecret("GH_TOKEN"),
+    fetch: options.fetch,
   })
   return defineTool({
     name: GITHUB_NOTIFICATIONS_TOOL,

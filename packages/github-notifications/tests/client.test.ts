@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import {
-  allowsNotificationChat,
-  createNotificationClient,
-  parseAllowedUserIds,
-} from "../src/index.js"
+import { allowsNotificationChat, createNotificationClient } from "../src/index.js"
 
 const record = {
   id: "1",
@@ -31,27 +27,17 @@ function setup(response = () => new Response(JSON.stringify([record]))) {
 }
 
 describe("allowlist", () => {
-  it.each([
-    "{}",
-    "null",
-    "[0]",
-    "[-1]",
-    "[1,1]",
-    '["1"]',
-    "[1.5]",
-    "invalid",
-    "[9007199254740992]",
-  ])("rejects %s", (value) => {
-    expect(() => parseAllowedUserIds(value)).toThrow()
-    expect(allowsNotificationChat(1, value)).toBe(false)
-  })
-  it("defaults closed and only admits exact positive private IDs", () => {
-    expect(parseAllowedUserIds("[]")).toEqual([])
-    expect(allowsNotificationChat(1)).toBe(false)
-    expect(allowsNotificationChat(1, "[1]")).toBe(true)
-    expect(allowsNotificationChat(2, "[1]")).toBe(false)
-    expect(allowsNotificationChat(-1, "[1]")).toBe(false)
-    expect(allowsNotificationChat(0, "[1]")).toBe(false)
+  it("only admits exact positive private IDs from structured policy", () => {
+    expect(allowsNotificationChat(1, [])).toBe(false)
+    expect(allowsNotificationChat(1, [1])).toBe(true)
+    expect(allowsNotificationChat(2, [1])).toBe(false)
+    expect(allowsNotificationChat(-1, [1])).toBe(false)
+    expect(allowsNotificationChat(0, [1])).toBe(false)
+    expect(allowsNotificationChat(-1, [-1])).toBe(false)
+    expect(allowsNotificationChat(1.5, [1.5])).toBe(false)
+    expect(allowsNotificationChat(Number.MAX_SAFE_INTEGER + 1, [Number.MAX_SAFE_INTEGER + 1])).toBe(
+      false,
+    )
   })
 })
 

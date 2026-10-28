@@ -176,10 +176,15 @@ This is not an OS sandbox. Authorized shell/file tools and administrator-supplie
 
 ## Private GitHub notifications
 
-Use **Secrets & variables** to store `GITHUB_NOTIFICATIONS_TOKEN` as a dedicated secret and
-`GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS` as a variable containing a JSON array of unique positive
-Telegram user IDs, for example `[123456789]`. Empty or missing lists deny everyone, including
-administrators. Enable `read_github_notifications` in global and per-chat tool permissions as well.
+1. In **Secrets & variables → Secrets**, save the shared GitHub.com token as `GH_TOKEN` and wait for successful application. Notifications and GitHub CLI use the same encrypted secret. Do not create a variable or host environment entry for this token.
+2. Open **GitHub notifications** under **Tools & skills**. Enter a positive Telegram user ID and select **Add recipient**. Repeat for each intended recipient; no JSON is needed. Select **Review and save changes**, check the recipient additions/removals, then select **Save changes**.
+3. Approve each recipient in **Chat access** and enable `read_github_notifications` in global and applicable chat tool permissions. Recipient edits do not grant these permissions.
+4. Check **Settings saved and applied** before use. To revoke notification access, select **Remove**, review, and save. **Undo removal** restores a staged removal. An empty saved list denies everyone, including administrators.
+
+The page stores validated, unique positive safe-integer IDs in `policy.githubNotifications.allowedUserIds`, with a limit of 1,000 recipients. Existing policies without this field default to an empty list. No recipient variable is read or automatically imported. Old notification-specific entries in Secrets & variables are ignored; configure the shared secret and new recipient page before deleting obsolete entries.
+
+Before downgrading to an older application, restore its matching database backup; older policy schemas reject the new field. Keep the encryption key with its matching database.
+
 Only private chats whose verified chat ID is listed can receive tool results; groups are always denied.
 These notifications belong to one configured GitHub account shared by all listed users, not a separate
 GitHub account for each Telegram user. Titles and repository metadata are sent to the selected model
@@ -189,10 +194,19 @@ not a local-only data-processing guarantee.
 
 Use a credential supported by GitHub's Notifications REST API, such as a classic PAT with
 `notifications` scope, and verify any organization requirements with the GitHub account owner.
-The dedicated credential is never passed to bash and never falls back to GH_TOKEN or host credentials.
+Only the applied managed `GH_TOKEN` is used; host credentials and GitHub CLI login are not fallback sources. Chats with `bash` permission can use or read this shared token independently of the notification recipient list.
 The tool reads one bounded page without marking notifications read or modifying subscriptions.
-There is no background polling or unsolicited delivery. Replacement/deletion and allowlist edits use
-the existing revision/application path; revocation does not erase previously delivered data.
+There is no background polling or unsolicited delivery. Secret replacement/deletion and recipient edits use
+the existing authenticated, CSRF-protected revision/application path. Concurrent recipient edits require an explicit recovery choice; lists are never combined automatically. Recipient and tool access are checked again before results are returned. Revocation does not erase previously delivered data.
+
+No new deployment environment variable or GitHub Actions secret/variable is required. The deployment administrator must configure the real token through the encrypted secret editor and verify GitHub permissions with the account owner. Automated tests use synthetic tokens and intercepted HTTP; they do not verify live account access.
+
+### Notification administration verification
+
+- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. All 2,371 tests across 12 workspaces passed. Lint retains one existing, unrelated `innerText` warning.
+- Browser regression checks passed: 162 tests across `github-notifications.spec.ts`, `admin.spec.ts`, `consistency.spec.ts`, and `uiux-regressions.spec.ts`, plus 19 tests across `runtime-config.spec.ts` and `runtime-config-navigation.spec.ts`. Runs used `npm run test:browser --workspace @narumitw/sumire-admin -- <test files> --workers=2`.
+- Coverage includes write-only shared credentials, staged recipient edits, empty-list denial, persistence, tool/recipient revocation during HTTP, conflict recovery, session expiry, recipient capacity, and desktop/mobile layouts.
+- Tests use synthetic credentials and intercepted HTTP. No live GitHub fetch, notification mutation, production credential change, deployment, or Docker image build was performed.
 
 See [the notification package](../packages/github-notifications/README.md) for limits, tests, and
 trust boundaries. This feature does not restrict existing GH_TOKEN-based shell access or same-user

@@ -421,9 +421,12 @@ Keep state volumes during upgrades. Revoke channel image access by removing its 
 
 ### GitHub notifications
 
-`read_github_notifications` is a read-only, private-chat-only tool, disabled by default. Configure a
-dedicated `GITHUB_NOTIFICATIONS_TOKEN` secret and a `GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS`
-JSON-array variable in the admin WebUI's **Secrets & variables**, then enable the tool for the
-intended private chats. Groups cannot receive results, and the admin role does not bypass the list.
+`read_github_notifications` is a read-only, private-chat-only tool, disabled by default. Save the
+shared `GH_TOKEN` secret in **Secrets & variables**. On **GitHub notifications**, enter each Telegram
+user ID with **Add recipient**, then review and save the list. No JSON variable is needed. Approve
+chat access and tool permissions separately. Groups cannot receive results, and the admin role does
+not bypass the list. An empty saved list denies everyone. Existing policies default to an empty list;
+legacy notification entries are ignored, not imported.
 See [setup, privacy and limits](../../packages/github-notifications/README.md). No new host environment
-variables are needed; the dedicated token is not passed to bash.
+variables are needed. Chats with `bash` access can use or read the same `GH_TOKEN`, independently of
+notification recipient permissions.

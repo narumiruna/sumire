@@ -9,6 +9,7 @@ import {
 } from "./provider-policy.js"
 
 const policy: Policy = {
+  githubNotifications: { allowedUserIds: [] },
   skills: [],
   tools: ["bash"],
   servers: ["fixture"],

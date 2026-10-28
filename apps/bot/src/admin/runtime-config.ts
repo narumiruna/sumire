@@ -1,10 +1,5 @@
 import type { RuntimeConfigMutation, RuntimeConfigResponse } from "@narumitw/sumire-contracts"
 import {
-  GITHUB_NOTIFICATIONS_TOKEN,
-  GITHUB_NOTIFICATIONS_USERS,
-  parseAllowedUserIds,
-} from "@narumitw/sumire-github-notifications"
-import {
   RuntimeConfigError,
   type RuntimeConfigReader,
   RuntimeConfigStore,
@@ -50,25 +45,6 @@ export class RuntimeConfigAdmin implements RuntimeConfigReader {
   }
   save(name: string, input: RuntimeConfigMutation, actor: string): void {
     const data = mutationSchema.parse(input)
-    if (name === GITHUB_NOTIFICATIONS_USERS) {
-      if (data.kind !== "variable") throw new AdminError(400, "GitHub allowlist must be a variable")
-      try {
-        parseAllowedUserIds(data.value)
-      } catch {
-        throw new AdminError(
-          400,
-          "GitHub allowlist must be a JSON array of unique positive user IDs",
-        )
-      }
-    }
-    if (
-      name === GITHUB_NOTIFICATIONS_TOKEN &&
-      (data.kind !== "secret" || !/^[\x21-\x7e]+$/.test(data.value))
-    )
-      throw new AdminError(
-        400,
-        "GitHub notification token must be a nonempty secret without whitespace",
-      )
     this.change(() =>
       this.store.save(
         this.store.snapshot().policy,
