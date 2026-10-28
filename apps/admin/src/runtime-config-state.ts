@@ -44,7 +44,7 @@ export function runtimeValueError(name: string, kind: "secret" | "variable", val
   if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name))
     return "Use an uppercase name starting with A–Z, with only A–Z, digits, and underscores (maximum 128 characters)."
   if (
-    ["BOT_TOKEN", "BOT_ADMIN_ID", "LOGFIRE_TOKEN", "SUMIRE_SECRETS_KEY"].includes(name) ||
+    ["BOT_TOKEN", "BOT_ADMIN_ID", "LOGFIRE_TOKEN", "ENCRYPTION_KEY"].includes(name) ||
     name.startsWith("ADMIN_")
   )
     return "This name is reserved for host configuration."

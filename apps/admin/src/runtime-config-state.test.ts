@@ -50,7 +50,7 @@ describe("runtime management metadata", () => {
       "BOT_ADMIN_ID",
       "LOGFIRE_TOKEN",
       "ADMIN_PORT",
-      "SUMIRE_SECRETS_KEY",
+      "ENCRYPTION_KEY",
     ])
       expect(runtimeValueError(name, "variable", "x")).not.toBe("")
   })

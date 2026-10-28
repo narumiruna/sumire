@@ -199,8 +199,8 @@ export function RuntimeConfig({
             <Callout.Root color="orange" role="status">
               <Callout.Text>
                 {data.secretStatus === "locked"
-                  ? "Secret store locked. Restore the matching SUMIRE_SECRETS_KEY through trusted host configuration and restart. Do not change the key independently of the database."
-                  : "Secret store unavailable. Configure a valid SUMIRE_SECRETS_KEY through trusted host configuration and restart."}{" "}
+                  ? "Secret store locked. Restore the matching ENCRYPTION_KEY through trusted host configuration and restart. Do not change the key independently of the database."
+                  : "Secret store unavailable. Configure a valid ENCRYPTION_KEY through trusted host configuration and restart."}{" "}
                 Variable management remains available.
               </Callout.Text>
             </Callout.Root>

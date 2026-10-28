@@ -31,7 +31,7 @@ export async function startApplication(): Promise<void> {
       settings.botAdminId,
     )
     adminStore = store
-    const runtime = new RuntimeConfigAdmin(store, process.env.SUMIRE_SECRETS_KEY)
+    const runtime = new RuntimeConfigAdmin(store, process.env.ENCRYPTION_KEY)
     runtime.importLegacy(process.env)
     const mcp = new McpAdmin(store, settings.botWorkdir, runtime)
     control = { store, mcp, runtime }

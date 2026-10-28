@@ -7,10 +7,10 @@ Private Node.js 26 package for encrypted runtime secrets and literal variables. 
 Generate a master key with this noninteractive local command. Do not record its output in logs, examples, instructions, or Git.
 
 ```sh
-node --input-type=module -e 'import { randomBytes } from "node:crypto"; process.stdout.write(randomBytes(32).toString("base64"))'
+openssl rand -hex 32
 ```
 
-Supply the output as the bootstrap `SUMIRE_SECRETS_KEY`. Keep a separate protected backup of this key and a consistent database backup. The key must be canonical Base64 for exactly 32 bytes. Do not change the key independently of stored ciphertext. In-place master-key rotation is not supported.
+Supply the output as the bootstrap `ENCRYPTION_KEY`. Keep a separate protected backup of this key and a consistent database backup. Use 64 hex characters for exactly 32 bytes. Canonical Base64 for the same 32 bytes remains supported for existing installations. Do not change the key independently of stored ciphertext. In-place master-key rotation is not supported.
 
 The host must restrict the database to mode `0600` and its directory to `0700`. Stop the service or use a consistent SQLite backup procedure. Restore the matching key and database together.
 
@@ -30,7 +30,7 @@ The store does not enforce the saved/applied revision gate. The bot adapter owns
 
 ## Storage rules
 
-Store at most 256 entries. Names match `^[A-Z][A-Z0-9_]{0,127}$`. `BOT_TOKEN`, `BOT_ADMIN_ID`, `LOGFIRE_TOKEN`, `SUMIRE_SECRETS_KEY`, and `ADMIN_*` are reserved. Each value is at most 8 KiB of UTF-8. Secrets cannot be empty. Variables can be empty. Invalid Unicode strings are rejected; accepted strings are preserved exactly, including whitespace and template syntax. Kind changes require deletion first.
+Store at most 256 entries. Names match `^[A-Z][A-Z0-9_]{0,127}$`. `BOT_TOKEN`, `BOT_ADMIN_ID`, `LOGFIRE_TOKEN`, `ENCRYPTION_KEY`, and `ADMIN_*` are reserved. Each value is at most 8 KiB of UTF-8. Secrets cannot be empty. Variables can be empty. Invalid Unicode strings are rejected; accepted strings are preserved exactly, including whitespace and template syntax. Kind changes require deletion first. A legacy entry whose name becomes reserved remains deletable; new values and replacements under reserved names are rejected.
 
 Secrets use AES-256-GCM with a fresh 12-byte nonce and 16-byte authentication tag. Authenticated additional data binds the envelope version, name, and secret kind. All existing ciphertext must authenticate before secret writes. Variables remain usable without the matching key. Never fall back to legacy environment values or plaintext storage.
 

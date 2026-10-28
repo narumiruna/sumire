@@ -46,7 +46,7 @@ Send `/allow` in a private chat or group to request access. The administrator op
 
 ### Secrets and variables
 
-Administrators manage service credentials and non-confidential values on **Secrets & variables**. Secrets use AES-256-GCM with the host-only `SUMIRE_SECRETS_KEY`; saved values are never returned to the browser. Approved bot capabilities read current stored values after settings application, without a bot restart. See [setup, migration, trust limits, and recovery](docs/runtime-config.md).
+Administrators manage service credentials and non-confidential values on **Secrets & variables**. Secrets use AES-256-GCM with the host-only `ENCRYPTION_KEY`; saved values are never returned to the browser. Approved bot capabilities read current stored values after settings application, without a bot restart. See [setup, migration, trust limits, and recovery](docs/runtime-config.md).
 
 ### Build cache
 

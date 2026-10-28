@@ -13,7 +13,7 @@ The administrator manages service credentials and non-confidential values on **S
 - Names use uppercase ASCII letters, digits, and underscores, start with a letter, and have at most 128 characters. Names must not contain sensitive values.
 - The installation supports at most 256 entries and 8 KiB of UTF-8 per value. Empty variables are valid; empty secrets are not. Values retain whitespace and are not expanded.
 - Names are unique across kinds. To convert a secret into a public variable, delete the secret and explicitly create a variable after reviewing the disclosure warning.
-- `BOT_TOKEN`, `BOT_ADMIN_ID`, `LOGFIRE_TOKEN`, `ADMIN_*`, and `SUMIRE_SECRETS_KEY` remain host bootstrap settings. Model-provider authentication stays in Pi's existing credential store.
+- `BOT_TOKEN`, `BOT_ADMIN_ID`, `LOGFIRE_TOKEN`, `ADMIN_*`, and `ENCRYPTION_KEY` remain host bootstrap settings. Model-provider authentication stays in Pi's existing credential store.
 
 The package is [`@narumitw/sumire-runtime-config`](../packages/runtime-config/README.md). The bot owns authorization, audit, transactions, and application. The frontend does not import the Node-only store.
 
@@ -24,10 +24,11 @@ Do this on the trusted deployment host, before entering real service credentials
 Generate a 32-byte key in a private host file. This command refuses to overwrite an existing key and does not print it:
 
 ```sh
-node --input-type=module -e 'const {randomBytes}=await import("node:crypto"); const {mkdirSync,writeFileSync}=await import("node:fs"); const {dirname}=await import("node:path"); const file=process.argv[1]; mkdirSync(dirname(file),{recursive:true,mode:0o700}); writeFileSync(file,randomBytes(32).toString("base64"),{flag:"wx",mode:0o600})' "$HOME/.config/sumire/runtime-key"
+install -d -m 700 "$HOME/.config/sumire"
+(umask 077; set -C; key=$(openssl rand -hex 32) && printf '%s' "$key" > "$HOME/.config/sumire/runtime-key")
 ```
 
-Use trusted deployment tooling to configure that file's exact content as `SUMIRE_SECRETS_KEY` in the ignored root `.env` or equivalent bootstrap environment. Keep `.env` private. Do not add the file or value to Git, the database, a browser variable, or `instructions/`. The supplied Compose service already loads root `.env`; no public endpoint or additional port is required.
+Use trusted deployment tooling to configure that file's exact content as `ENCRYPTION_KEY` in the ignored root `.env` or equivalent bootstrap environment. Keep `.env` private. Do not add the file or value to Git, the database, a browser variable, or `instructions/`. The supplied Compose service already loads root `.env`; no public endpoint or additional port is required.
 
 Restart through the repository-root Compose workflow:
 
@@ -35,9 +36,13 @@ Restart through the repository-root Compose workflow:
 docker compose up -d --build sumire
 ```
 
-The key must be canonical Base64 for exactly 32 bytes. Every existing encrypted entry is authenticated before secret writes or import are allowed. A missing/invalid key shows **unavailable**; a valid-format key that cannot authenticate existing ciphertext shows **locked**. Authentication failure does not overwrite ciphertext or create mixed-key data.
+Use `openssl rand -hex 32` to generate 64 hex characters representing exactly 32 bytes. Existing canonical Base64 keys remain supported, so an environment-variable rename does not require changing the key bytes or ciphertext. Every existing encrypted entry is authenticated before secret writes or import are allowed. A missing/invalid key shows **unavailable**; a valid-format key that cannot authenticate existing ciphertext shows **locked**. Authentication failure does not overwrite ciphertext or create mixed-key data.
 
 Administrator login and variable management remain available while secrets are unavailable/locked. Secret consumers and mutations fail closed. Repair the key through trusted host configuration and restart. Do not change the master key independently of its ciphertext. In-place master-key rotation is not included in this release.
+
+## Rename an existing bootstrap setting
+
+If a deployment already uses `SUMIRE_SECRETS_KEY`, rename it to `ENCRYPTION_KEY` and keep its existing value. The old environment-variable name is no longer read. Existing canonical Base64 values remain valid under `ENCRYPTION_KEY`; no database migration or re-encryption is needed. Do not generate a new key for an existing encrypted database. Restore the matching key if the store becomes locked. If a stored entry already uses the newly reserved name, it remains visible and can be deleted explicitly; creation and replacement under that name are blocked.
 
 ## Add or change a value
 
@@ -79,7 +84,7 @@ Each service operation retains its own credential for response/error redaction, 
 The administration schema advances from version 3 to 4. The migration retains policies, Passkeys, administrator sessions, imports, and audit history; durable databases are unchanged.
 
 1. Stop the bot and prepare the backups described below before upgrade.
-2. Configure and separately back up `SUMIRE_SECRETS_KEY`.
+2. Configure and separately back up `ENCRYPTION_KEY`.
 3. Start the upgraded image with the existing state volume.
    - Before MCP import and consumer creation, the first unlocked startup imports nonempty legacy `FIRECRAWL_API_KEY` and `MORSEL_API_KEY` values only when their names are absent.
    - Existing entries of either kind win. No other environment values are scanned or imported.
@@ -123,12 +128,14 @@ Verified on 2026-10-28:
 
 | Check | Result |
 | --- | --- |
-| Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` | Passed; 2,275 unit/integration tests across 11 workspaces. |
+| Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` | Passed; 2,301 unit/integration tests across 11 workspaces. |
 | `npm run test:browser --workspace @narumitw/sumire-admin -- --workers=4` | Passed; 516 tests, including CRUD/failure/lifecycle cases and all ten pages in shared geometry checks. |
 | `docker build --target runtime-application .` | Passed; production startup import runs with networking disabled. |
 | Independent diff/security review | Credential-triggered MCP grants, JSON-escaped Morsel key echoes, and the 513-tool discovery boundary were fixed and have regression tests. No remaining implementation blocker was identified. |
 
 The root lint command retains one pre-existing `innerText` performance warning in an unrelated Durable visual test. Production `npm audit --omit=dev` still reports one high and one moderate finding in the existing Undici/Pi dependency chain. A baseline audit with all `origin/main` workspace manifests confirms identical findings; this feature adds no third-party runtime dependency. Those dependency advisories remain unresolved and are not described as a passed security audit.
+
+The bootstrap-key follow-up also verifies hex/Base64 startup selection, malformed key rejection, same-key Base64/hex reopening without ciphertext changes, and explicit cleanup of legacy entries whose names became reserved.
 
 Full-suite testing also found and fixed a fixture-only UTF-8 issue: local model HTTP requests now buffer bytes before decoding, so split multibyte prompts remain intact. Browser tests run separately from workspace builds to avoid development-server reloads from linked dependency outputs. Failed intermediate runs were corrected and the complete checks above were rerun successfully.
 

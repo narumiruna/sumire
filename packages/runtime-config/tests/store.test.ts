@@ -1,13 +1,14 @@
 import { randomBytes } from "node:crypto"
 import { DatabaseSync } from "node:sqlite"
 import { afterEach, describe, expect, it } from "vitest"
+import { encrypt } from "../src/crypto.js"
 import {
   initializeRuntimeConfigStorage,
   RuntimeConfigError,
   RuntimeConfigStore,
 } from "../src/index.js"
 
-const key = randomBytes(32).toString("base64")
+const key = randomBytes(32).toString("hex")
 const metadata = { updatedAt: 123, revision: 2 }
 const databases: DatabaseSync[] = []
 function fixture(master: string | undefined = key) {
@@ -46,7 +47,7 @@ describe("runtime configuration storage", () => {
     "BOT_TOKEN",
     "BOT_ADMIN_ID",
     "LOGFIRE_TOKEN",
-    "SUMIRE_SECRETS_KEY",
+    "ENCRYPTION_KEY",
     "ADMIN_ORIGIN",
     "",
     "lower",
@@ -57,6 +58,31 @@ describe("runtime configuration storage", () => {
     expect(() => store.setVariable(name, "literal", metadata)).toThrow(RuntimeConfigError)
     expect(store.listMetadata()).toEqual([])
   })
+  it.each(["secret", "variable"] as const)(
+    "permits cleanup of a legacy %s whose name is now reserved",
+    (kind) => {
+      const { db, store } = fixture()
+      const payload =
+        kind === "secret"
+          ? encrypt(Buffer.from(key, "hex"), "ENCRYPTION_KEY", "legacy-value")
+          : "legacy-value"
+      db.prepare("INSERT INTO runtime_config VALUES (?,?,?,?,?)").run(
+        "ENCRYPTION_KEY",
+        kind,
+        payload,
+        1,
+        1,
+      )
+      expect(() => store.setVariable("ENCRYPTION_KEY", "replacement", metadata)).toThrow(
+        RuntimeConfigError,
+      )
+      expect(() => store.setSecret("ENCRYPTION_KEY", "replacement", metadata)).toThrow(
+        RuntimeConfigError,
+      )
+      store.delete("ENCRYPTION_KEY")
+      expect(store.listMetadata()).toEqual([])
+    },
+  )
   it("enforces UTF-8 byte limits, kind separation, exact strings, and nonempty secrets", () => {
     const { store } = fixture()
     store.setVariable("EMPTY", "", metadata)
@@ -77,17 +103,40 @@ describe("runtime configuration storage", () => {
     store.setVariable("V_0", "replacement", metadata)
     expect(store.listMetadata()).toHaveLength(256)
   })
-  it.each([undefined, "", "not base64", Buffer.alloc(31).toString("base64"), `${key}\n`])(
-    "permits variables without a canonical master key (%s)",
-    (master) => {
-      const { db } = fixture()
-      const store = new RuntimeConfigStore(db, master)
-      expect(store.secretStatus).toBe("unavailable")
-      store.setVariable("VISIBLE", "literal", metadata)
-      expect(store.readVariable("VISIBLE")).toBe("literal")
-      expect(() => store.setSecret("KEY", "synthetic", metadata)).toThrow("unavailable")
-    },
-  )
+  it.each([
+    undefined,
+    "",
+    "not a key",
+    Buffer.alloc(31).toString("base64"),
+    "0".repeat(63),
+    "0".repeat(65),
+    "g".repeat(64),
+    `0x${key}`,
+    `${key}\n`,
+  ])("permits variables without a valid 32-byte master key (%s)", (master) => {
+    const { db } = fixture()
+    const store = new RuntimeConfigStore(db, master)
+    expect(store.secretStatus).toBe("unavailable")
+    store.setVariable("VISIBLE", "literal", metadata)
+    expect(store.readVariable("VISIBLE")).toBe("literal")
+    expect(() => store.setSecret("KEY", "synthetic", metadata)).toThrow("unavailable")
+  })
+  it("opens existing Base64 ciphertext with the same hex key without re-encryption", () => {
+    const base64 = Buffer.from(key, "hex").toString("base64")
+    const { db, store } = fixture(base64)
+    store.setSecret("KEY", "legacy-secret-fixture", metadata)
+    const original = db
+      .prepare("SELECT payload FROM runtime_config WHERE name='KEY'")
+      .get()?.payload
+    const reopened = new RuntimeConfigStore(db, key)
+    expect(reopened.secretStatus).toBe("ready")
+    expect(reopened.readSecret("KEY")).toBe("legacy-secret-fixture")
+    expect(db.prepare("SELECT payload FROM runtime_config WHERE name='KEY'").get()?.payload).toBe(
+      original,
+    )
+    reopened.setSecret("KEY", "updated-secret-fixture", metadata)
+    expect(new RuntimeConfigStore(db, base64).readSecret("KEY")).toBe("updated-secret-fixture")
+  })
   it("locks a wrong key without leaking crypto details and permits variable changes", () => {
     const { db, store } = fixture()
     store.setSecret("KEY", "synthetic", metadata)

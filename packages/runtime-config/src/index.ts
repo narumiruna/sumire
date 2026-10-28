@@ -42,11 +42,14 @@ export function initializeRuntimeConfigStorage(db: DatabaseSync): void {
   )`)
 }
 
+function hasNameFormat(name: string): boolean {
+  return typeof name === "string" && /^[A-Z][A-Z0-9_]{0,127}$/.test(name)
+}
+
 export function validateRuntimeConfigName(name: string): void {
   if (
-    typeof name !== "string" ||
-    !/^[A-Z][A-Z0-9_]{0,127}$/.test(name) ||
-    /^(BOT_TOKEN|BOT_ADMIN_ID|LOGFIRE_TOKEN|SUMIRE_SECRETS_KEY)$/.test(name) ||
+    !hasNameFormat(name) ||
+    /^(BOT_TOKEN|BOT_ADMIN_ID|LOGFIRE_TOKEN|ENCRYPTION_KEY)$/.test(name) ||
     name.startsWith("ADMIN_")
   )
     throw new RuntimeConfigError("invalid")
@@ -116,7 +119,8 @@ export class RuntimeConfigStore implements RuntimeConfigReader {
     this.put(name, "variable", value, metadata)
   }
   delete(name: string): void {
-    validateRuntimeConfigName(name)
+    // Administrators can remove legacy entries whose names became reserved after an upgrade.
+    if (!hasNameFormat(name)) throw new RuntimeConfigError("invalid")
     const row = this.row(name)
     if (!row) throw new RuntimeConfigError("missing")
     if (row.kind === "secret") this.assertSecrets()

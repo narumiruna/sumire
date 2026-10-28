@@ -123,7 +123,7 @@ describe("loadSettings", () => {
       "ADMIN_ORIGIN",
       "ADMIN_HOST",
       "ADMIN_PORT",
-      "SUMIRE_SECRETS_KEY",
+      "ENCRYPTION_KEY",
       "FIRECRAWL_API_KEY",
       "OTTER_TOKEN",
       "LOGFIRE_TOKEN",
