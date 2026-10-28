@@ -164,6 +164,16 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
       })
     }
   }
+  for (const [before, after, action] of [
+    [saved.githubNotifications.allowedUserIds, draft.githubNotifications.allowedUserIds, "add"],
+    [draft.githubNotifications.allowedUserIds, saved.githubNotifications.allowedUserIds, "remove"],
+  ] as const)
+    for (const id of after)
+      if (!before.includes(id))
+        changes.push({
+          label: `GitHub notifications: ${action} recipient ${id} — private chats only; chat access and tool permissions unchanged.`,
+          targets: [{ page: "GitHub notifications", selector: "#github-notification-recipients" }],
+        })
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
     changes.push({
@@ -230,6 +240,10 @@ export function policyChangeCount(saved: Policy, draft: Policy): number {
       0,
     )
   let count = selectionCount(saved.defaults, draft.defaults)
+  count += listCount(
+    saved.githubNotifications.allowedUserIds,
+    draft.githubNotifications.allowedUserIds,
+  )
   for (const key of ["privateUsers", "groups", "tools", "servers", "skills", "models"] as const)
     count += listCount(saved[key], draft[key])
   for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {

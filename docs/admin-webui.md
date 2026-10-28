@@ -362,6 +362,16 @@ A saved account and current application status are separate. Recover lost replie
 
 The schema advances to version 4. See [runtime configuration setup, migration, backup, recovery, verification, and deployment handoff](runtime-config.md). Back up the master key separately from state. Same-user tool access is not isolated.
 
+## GitHub notification recipients
+
+Open **GitHub notifications** under **Tools & skills** to manage private Telegram recipients. Enter one positive Telegram user ID, select **Add recipient**, then use **Review and save changes → Save changes**. No JSON is needed. Additions and removals remain drafts until saved; **Undo removal** restores a staged removal. Empty saved lists deny everyone, including the administrator. Groups are always denied.
+
+The page stores the recipient list in the shared policy, with validation, audit, revision conflict checks, and application. Concurrent changes require an explicit saved/draft choice; recipient lists are not combined. Adding a recipient does not approve chat access or grant `read_github_notifications`; use the page's links to configure these separately.
+
+Notifications share the encrypted **Secret** `GH_TOKEN` with GitHub CLI. Use **Manage GH_TOKEN** to open the existing write-only secret editor. The token must be accepted by GitHub's Notifications API, such as a classic PAT with `notifications` scope, and saved settings must apply successfully. All recipients read the same GitHub account's notifications. Chats with `bash` access can read or use this token independently of the recipient list. Metadata reaches the selected model and durable history; long replies can also use Morsel. Removing access does not erase previous transcripts or exports.
+
+Old policies start with no notification recipients. Generic notification token/allowlist entries are not imported. No host environment or GitHub Actions configuration is added. The deployment administrator must enter the real token and verify account permissions; synthetic tests do not verify live GitHub access. See [notification setup and trust limits](runtime-config.md#private-github-notifications).
+
 ## MCP configuration and secrets
 
 Only the administrator can change MCP commands, endpoints, environment fields, headers, timeouts, and exposure rules. Starting a configured stdio server executes administrator-supplied code. Connection tests can therefore have startup effects even though they do not invoke tools. Stdio connection tests use the bot working directory, including as the base for a relative server `cwd`.

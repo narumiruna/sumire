@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 
 export const basePolicy = {
+  githubNotifications: { allowedUserIds: [] },
   tools: ["read_url_content"],
   servers: [],
   models: ["fixture/test"],
@@ -92,6 +93,7 @@ export const sections = [
   "MCP connections",
   "Model providers",
   "Secrets & variables",
+  "GitHub notifications",
   "Audit",
 ]
 export function sectionLabel(name: string): string {

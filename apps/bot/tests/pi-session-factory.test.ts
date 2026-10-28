@@ -371,6 +371,7 @@ describe("createPiSessionFactory", () => {
         "publish_markdown_to_morsel",
         "read_image",
         ...publicPolymarketToolNames,
+        "read_github_notifications",
         "update_progress",
         "codemode",
       ])
@@ -502,6 +503,7 @@ describe("createPiSessionFactory", () => {
         "publish_markdown_to_morsel",
         "read_image",
         ...publicPolymarketToolNames,
+        "read_github_notifications",
         "update_progress",
         "codemode",
       ])

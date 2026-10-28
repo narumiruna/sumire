@@ -2,6 +2,7 @@ import {
   ActivityLogIcon,
   ChatBubbleIcon,
   ComponentInstanceIcon,
+  GitHubLogoIcon,
   HamburgerMenuIcon,
   LayersIcon,
   LockClosedIcon,
@@ -24,6 +25,7 @@ export const pages = [
   "MCP connections",
   "Model Providers",
   "Secrets & variables",
+  "GitHub notifications",
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
@@ -34,6 +36,10 @@ export const pendingEditors = {
   access: {
     label: "Chat access — Telegram ID to approve",
     target: { page: "Access", selector: "#access-id-input" },
+  },
+  githubNotificationUser: {
+    label: "GitHub notifications — Telegram user ID to add",
+    target: { page: "GitHub notifications", selector: "#github-notification-user" },
   },
   tool: {
     label: "Tool permissions — Additional approved tool name",
@@ -75,6 +81,7 @@ const pageIcons = {
   "MCP connections": ComponentInstanceIcon,
   "Model Providers": ReaderIcon,
   "Secrets & variables": LockClosedIcon,
+  "GitHub notifications": GitHubLogoIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
@@ -87,6 +94,7 @@ const pageLabels = {
   "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
   "Secrets & variables": "Secrets & variables",
+  "GitHub notifications": "GitHub notifications",
   Audit: "Audit",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
@@ -96,7 +104,7 @@ const navigationGroups = [
   {
     id: "tools-and-skills",
     label: "Tools & skills",
-    pages: ["Tool permissions", "Skills", "MCP connections"],
+    pages: ["Tool permissions", "Skills", "MCP connections", "GitHub notifications"],
   },
   { id: "system-settings", label: "Defaults", pages: ["Defaults", "Secrets & variables"] },
   { id: "activity", label: "Activity", pages: ["Audit"] },

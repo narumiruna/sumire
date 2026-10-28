@@ -26,6 +26,9 @@ describe("shared policy", () => {
     expect(initialPolicy().skills).toEqual([])
     expect(initialPolicy().defaults.skills).toEqual([])
     expect(inherited.skills).toBeNull()
+    expect(policy.githubNotifications).toEqual({ allowedUserIds: [] })
+    policy.githubNotifications.allowedUserIds.push(42)
+    expect(initialPolicy().githubNotifications.allowedUserIds).toEqual([])
   })
 
   it("parses old policies and literal selections with safe skills defaults", () => {
@@ -50,10 +53,46 @@ describe("shared policy", () => {
     } satisfies z.input<typeof policySchema>
     const parsed = policySchema.parse(oldPolicy)
     expect(parsed.skills).toEqual([])
+    expect(parsed.githubNotifications).toEqual({ allowedUserIds: [] })
+    parsed.githubNotifications.allowedUserIds.push(42)
+    expect(policySchema.parse(oldPolicy).githubNotifications.allowedUserIds).toEqual([])
     expect(parsed.defaults.skills).toBeNull()
     expect(parsed.chats["42"]?.skills).toBeNull()
     expect(effectivePolicy(parsed, 42).skills).toEqual([])
     expect(() => validateReferences(parsed)).not.toThrow()
+  })
+
+  it("validates notification recipient IDs without coercion or unknown fields", () => {
+    for (const githubNotifications of [
+      null,
+      [],
+      {},
+      { allowedUserIds: null },
+      { allowedUserIds: "[42]" },
+      { allowedUserIds: ["42"] },
+      { allowedUserIds: [0] },
+      { allowedUserIds: [-100] },
+      { allowedUserIds: [1.5] },
+      { allowedUserIds: [Number.MAX_SAFE_INTEGER + 1] },
+      { allowedUserIds: [42, 42] },
+      { allowedUserIds: [], extra: true },
+      { allowedUserIds: Array.from({ length: 1001 }, (_, i) => i + 1) },
+    ]) {
+      expect(policySchema.safeParse({ ...initialPolicy(), githubNotifications }).success).toBe(
+        false,
+      )
+    }
+    const allowedUserIds = Array.from({ length: 1000 }, (_, i) => i + 1)
+    expect(
+      policySchema.parse({ ...initialPolicy(), githubNotifications: { allowedUserIds } })
+        .githubNotifications.allowedUserIds,
+    ).toEqual(allowedUserIds)
+    expect(
+      policySchema.safeParse({
+        ...initialPolicy(),
+        githubNotifications: { allowedUserIds: [Number.MAX_SAFE_INTEGER] },
+      }).success,
+    ).toBe(true)
   })
 
   it("intersects skills with global availability and distinguishes inheritance from empty", () => {

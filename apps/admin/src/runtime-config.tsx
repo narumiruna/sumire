@@ -225,6 +225,12 @@ export function RuntimeConfig({
               to trusted chats. Configured state does not prove that GitHub accepts the token.
             </Prose>
           )}
+          <Prose>
+            GitHub notifications also use the secret <code>GH_TOKEN</code>. The token needs access
+            to the Notifications API, for example a classic Personal Access Token with the{" "}
+            <code>notifications</code> scope. Manage Telegram recipients on the GitHub notifications
+            page, not in Variables. Recipients also need chat access and tool permissions.
+          </Prose>
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">
               <Callout.Text>

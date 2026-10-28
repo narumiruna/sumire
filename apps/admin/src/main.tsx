@@ -45,6 +45,7 @@ import { ChatAccess } from "./chat-access.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
+import { GithubNotifications } from "./github-notifications.js"
 import { McpConnections } from "./mcp-connections.js"
 import {
   type EditorTarget,
@@ -88,6 +89,7 @@ const pageDescriptions = {
   "MCP connections": "Manage connections and protected configuration.",
   "Model Providers": "Manage models and provider authentication.",
   "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
+  "GitHub notifications": "Manage private-chat recipients for the shared GitHub account.",
   Audit: "Review configuration activity and imports.",
 }
 function App() {
@@ -282,8 +284,9 @@ function App() {
     setRefreshError("")
     setFailedPolicySave(undefined)
     setRecoveryReview(undefined)
-    setSnapshot(s)
-    setSavedPolicy(s.policy)
+    const parsed = parseSnapshot(s)
+    setSnapshot(parsed)
+    setSavedPolicy(parsed.policy)
     setInventory(i)
     setAudit(a)
     setImports(Array.isArray(reports) ? reports : [])
@@ -1078,6 +1081,16 @@ function App() {
                 }}
               />
             </details>
+          </EditorSection>
+          <EditorSection active={page === "GitHub notifications"} aria-label="GitHub notifications">
+            <GithubNotifications
+              policy={policy}
+              saved={savedPolicy ?? policy}
+              disabled={busy || runtimePending}
+              onChange={update}
+              onPending={(value) => markPending("githubNotificationUser", value)}
+              onNavigate={setPage}
+            />
           </EditorSection>
           {page === "Secrets & variables" && (
             <EditorSection active aria-label="Secrets & variables">

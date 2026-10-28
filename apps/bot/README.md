@@ -418,3 +418,15 @@ Runtime limits below remain fixed while the database owns authorization and capa
 | URL loading | 15-second built-in/DNS phase, 180-second total deadline, 12,000 output characters; public HTTP(S) only. |
 
 Keep state volumes during upgrades. Revoke channel image access by removing its ID from group/channel access in the WebUI and applying the policy. Existing metadata remains stored but `read_image` checks the current authorization before reading it.
+
+### GitHub notifications
+
+`read_github_notifications` is a read-only, private-chat-only tool, disabled by default. Save the
+shared `GH_TOKEN` secret in **Secrets & variables**. On **GitHub notifications**, enter each Telegram
+user ID with **Add recipient**, then review and save the list. No JSON variable is needed. Approve
+chat access and tool permissions separately. Groups cannot receive results, and the admin role does
+not bypass the list. An empty saved list denies everyone. Existing policies default to an empty list;
+legacy notification entries are ignored, not imported.
+See [setup, privacy and limits](../../packages/github-notifications/README.md). No new host environment
+variables are needed. Chats with `bash` access can use or read the same `GH_TOKEN`, independently of
+notification recipient permissions.

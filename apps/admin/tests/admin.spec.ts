@@ -25,6 +25,7 @@ function chatResponse(route: Route, chats: { id: number; name: string; type: str
 }
 
 const policy = {
+  githubNotifications: { allowedUserIds: [] },
   skills: [],
   tools: ["read_url_content"],
   servers: [],
@@ -402,7 +403,16 @@ for (const existing of [false, true]) {
       enabled: true,
       baseUrl: "https://models.example.test/v1",
       api: "openai-completions",
-      models: [],
+      models: [
+        {
+          id: "test",
+          name: "Test",
+          reasoning: false,
+          image: false,
+          contextWindow: 8000,
+          maxTokens: 1000,
+        },
+      ],
     }
     if (existing) {
       await page.route("**/api/settings", (route) =>
