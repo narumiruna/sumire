@@ -1,3 +1,4 @@
+import type { FirecrawlCredentialOptions } from "./core/firecrawl-credentials.js"
 import type { Loader, LoaderFactory } from "./core/loader.js"
 import type { ResourceProvider } from "./core/resources.js"
 
@@ -141,7 +142,11 @@ export function listLoaderNames(options: { cliVisible?: boolean } = {}): string[
   return listLoaderDefs(options).map((item) => item.name)
 }
 
-export async function createLoader(name: string, resources?: ResourceProvider): Promise<Loader> {
+export async function createLoader(
+  name: string,
+  resources?: ResourceProvider,
+  options: FirecrawlCredentialOptions = {},
+): Promise<Loader> {
   switch (name) {
     case ANYDOC: {
       const { AnyDocLoader } = await import("./loaders/anydoc.js")
@@ -227,14 +232,18 @@ export async function createLoader(name: string, resources?: ResourceProvider): 
     }
     case FIRECRAWL: {
       const { FirecrawlLoader } = await import("./loaders/firecrawl.js")
-      return new FirecrawlLoader({ resources })
+      return new FirecrawlLoader({ resources, apiKey: options.firecrawlApiKey })
     }
     default:
       throw new Error(`Unknown loader: ${name}`)
   }
 }
 
-export function getLoaderFactory(name: string, resources?: ResourceProvider): LoaderFactory {
+export function getLoaderFactory(
+  name: string,
+  resources?: ResourceProvider,
+  options: FirecrawlCredentialOptions = {},
+): LoaderFactory {
   getLoaderDef(name)
-  return () => createLoader(name, resources)
+  return () => createLoader(name, resources, options)
 }

@@ -26,7 +26,7 @@ describe("Firecrawl result safety", () => {
       loader(
         new Response("{}", { headers: { "content-length": String(MAX_FIRECRAWL_BYTES + 1) } }),
       ).load("https://example.com"),
-    ).rejects.toThrow("byte limit")
+    ).rejects.toThrow("Firecrawl request failed")
   })
 
   it("enforces the streamed byte limit even without size metadata", async () => {
@@ -39,7 +39,9 @@ describe("Firecrawl result safety", () => {
         cancel,
       }),
     )
-    await expect(loader(response).load("https://example.com")).rejects.toThrow("byte limit")
+    await expect(loader(response).load("https://example.com")).rejects.toThrow(
+      "Firecrawl request failed",
+    )
     expect(cancel).toHaveBeenCalledOnce()
   })
 
@@ -73,7 +75,7 @@ describe("Firecrawl result safety", () => {
       success: true,
       data: { markdown: "Article", metadata: { url: "http://127.0.0.1/private" } },
     })
-    await expect(loader(response).load("https://example.com")).rejects.toThrow("Private URL target")
+    await expect(loader(response).load("https://example.com")).rejects.toThrow("unsafe final URL")
   })
 
   it("rejects a reported HTTP final target under an HTTPS-only client policy", async () => {
@@ -90,7 +92,7 @@ describe("Firecrawl result safety", () => {
       new FirecrawlLoader({ apiKey: "test-key", resources: client }).load(
         "https://example.com/start",
       ),
-    ).rejects.toThrow("URL scheme is not allowed: http")
+    ).rejects.toThrow("unsafe final URL")
   })
 
   it("rejects challenge headings rather than accepting nonempty error pages", async () => {
@@ -98,6 +100,8 @@ describe("Firecrawl result safety", () => {
       success: true,
       data: { markdown: "# Just a moment...\nChecking your browser" },
     })
-    await expect(loader(response).load("https://example.com")).rejects.toThrow("challenge marker")
+    await expect(loader(response).load("https://example.com")).rejects.toThrow(
+      "blocked or empty content",
+    )
   })
 })

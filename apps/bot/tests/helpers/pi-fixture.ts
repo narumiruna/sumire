@@ -39,9 +39,10 @@ export async function createPiFixture(overrides: Partial<Settings> = {}) {
     })
     try {
       assert.equal(request.url, "/v1/chat/completions")
-      let body = ""
-      for await (const chunk of request) body += chunk
-      const payload = JSON.parse(body) as CompletionRequest
+      // Decode once so HTTP chunk boundaries cannot corrupt multibyte prompts.
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as CompletionRequest
       requests.push(payload)
 
       const gate = nextRequestGate

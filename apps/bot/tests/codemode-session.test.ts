@@ -48,6 +48,8 @@ describe("codemode through Bot Pi sessions", () => {
         "edit",
         "write",
         "read_url_content",
+        "read_variable",
+        "publish_markdown_to_morsel",
         ...publicPolymarketToolNames,
       ],
     })

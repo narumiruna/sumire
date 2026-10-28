@@ -1,8 +1,9 @@
 import path from "node:path"
 import type { Inventory } from "@narumitw/sumire-contracts"
+import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 import { z } from "zod"
-import { McpCapability } from "../agent/mcp-capability.js"
-import { MCP_MAX_SERVERS, parseMcpConfig } from "../agent/mcp-config.js"
+import { createMcpTransport, McpCapability } from "../agent/mcp-capability.js"
+import { MCP_MAX_SERVERS, mcpFieldReferences, parseMcpConfig } from "../agent/mcp-config.js"
 import { readMcpConfigFile } from "../agent/mcp-config-file.js"
 import { AdminError, type AdminStore } from "./store.js"
 
@@ -32,6 +33,7 @@ export class McpAdmin {
   constructor(
     readonly store: AdminStore,
     private readonly workdir: string,
+    private readonly runtime?: RuntimeConfigReader,
   ) {
     store.db.exec("CREATE TABLE IF NOT EXISTS mcp (name TEXT PRIMARY KEY, config TEXT NOT NULL)")
   }
@@ -60,6 +62,8 @@ export class McpAdmin {
             invalid = true
           },
         },
+        {},
+        "structure",
       )
       if (!invalid && (entry.data.enabled === false || validated.servers.length === 1))
         candidates.push([name, entry.data])
@@ -103,8 +107,38 @@ export class McpAdmin {
     }[]
     return Object.fromEntries(rows.map((r) => [r.name, entrySchema.parse(JSON.parse(r.config))]))
   }
+  references(name: string): string[] {
+    const reference = `\${${name}}`
+    return Object.entries(this.raw())
+      .filter(([, entry]) =>
+        [...Object.values(entry.env ?? {}), ...Object.values(entry.headers ?? {})].some(
+          (value) => typeof value === "string" && value.includes(reference),
+        ),
+      )
+      .map(([server]) => server)
+  }
   config() {
-    return parseMcpConfig({ mcpServers: this.raw() }, { warn: () => {} })
+    const raw = this.raw()
+    const environment: NodeJS.ProcessEnv = Object.create(null)
+    // Only administrator-bound fields can resolve a stored value. Never inherit the host env.
+    for (const entry of Object.values(raw)) {
+      if (entry.enabled === false) continue
+      for (const value of [
+        ...Object.values(entry.env ?? {}),
+        ...Object.values(entry.headers ?? {}),
+      ]) {
+        if (typeof value !== "string") continue
+        try {
+          for (const name of mcpFieldReferences(value)) {
+            const resolved = this.runtime?.readVariable(name) ?? this.runtime?.readSecret(name)
+            if (resolved !== undefined) environment[name] = resolved
+          }
+        } catch {
+          // The parser reports a fixed unavailable diagnostic for invalid or locked bindings.
+        }
+      }
+    }
+    return parseMcpConfig({ mcpServers: raw }, { warn: () => {} }, environment)
   }
   inventory(): Inventory["mcp"] {
     return Object.entries(this.raw()).map(([name, entry]) => ({
@@ -126,6 +160,9 @@ export class McpAdmin {
   }
   async discover(name: string) {
     if (this.probes.size) throw new AdminError(409, "An MCP connection test is already running")
+    const snapshot = this.store.snapshot()
+    if (snapshot.status !== "applied" || snapshot.applied !== snapshot.revision)
+      throw new AdminError(409, "Apply saved settings before testing a connection")
     const config = this.config()
     const server = config.servers.find((s) => s.name === name)
     if (!server) throw new AdminError(400, "MCP server is disabled or invalid")
@@ -135,12 +172,22 @@ export class McpAdmin {
       path.join(path.dirname(this.store.file), "admin-mcp"),
       { warn: () => {} },
       () => {},
+      (server, cwd, home) => {
+        const current = this.store.snapshot()
+        if (
+          current.epoch !== snapshot.epoch ||
+          current.status !== "applied" ||
+          current.applied !== current.revision
+        )
+          throw new AdminError(409, "MCP connection settings changed")
+        return createMcpTransport(server, cwd, home)
+      },
     )
     this.probes.add(capability)
     try {
       await capability.ready(AbortSignal.timeout(15_000))
       const tools = capability.tools.map((tool) => tool.name)
-      this.store.registerTools(tools)
+      this.store.registerTools(tools, false)
       const state = {
         status: tools.length ? "connected" : "no visible tools or unavailable",
         tools,
@@ -227,9 +274,11 @@ export class McpAdmin {
           invalid = true
         },
       },
+      {},
+      "structure",
     )
     if (invalid || (entry.enabled !== false && !validated.servers.some((s) => s.name === name)))
-      throw new AdminError(400, "Invalid MCP configuration or missing environment value")
+      throw new AdminError(400, "Invalid MCP configuration")
     this.commitChange(revision, () => {
       this.store.db
         .prepare(

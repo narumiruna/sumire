@@ -8,9 +8,19 @@ it("does not inherit administrator or provider secrets into native shell tools",
   vi.stubEnv("BOT_TOKEN", "bot-fixture")
   vi.stubEnv("TELEGRAM_LOGIN_CLIENT_SECRET", "login-fixture")
   vi.stubEnv("OTTER_TOKEN", "skill-fixture")
+  vi.stubEnv("FIRECRAWL_API_KEY", "managed-fixture")
+  vi.stubEnv("MORSEL_API_KEY", "morsel-fixture")
+  vi.stubEnv("SUMIRE_SECRETS_KEY", "master-fixture")
   try {
     const environment = adminShellEnvironment(process.env)
-    for (const name of ["OPENAI_API_KEY", "BOT_TOKEN", "TELEGRAM_LOGIN_CLIENT_SECRET"])
+    for (const name of [
+      "OPENAI_API_KEY",
+      "BOT_TOKEN",
+      "TELEGRAM_LOGIN_CLIENT_SECRET",
+      "FIRECRAWL_API_KEY",
+      "MORSEL_API_KEY",
+      "SUMIRE_SECRETS_KEY",
+    ])
       expect(environment).not.toHaveProperty(name)
     const fixture = await createPiFixture()
     try {

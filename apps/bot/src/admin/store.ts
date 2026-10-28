@@ -10,6 +10,7 @@ import {
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
+import { initializeRuntimeConfigStorage } from "@narumitw/sumire-runtime-config"
 import type { AuditFilters } from "./audit-query.js"
 import type { ChatFilters } from "./chat-query.js"
 
@@ -35,10 +36,11 @@ export class AdminStore {
     readonly adminId: number,
   ) {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+    chmodSync(path.dirname(file), 0o700)
     this.db = new DatabaseSync(file)
     chmodSync(file, 0o600)
     const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number }
-    if (version.user_version > 3) {
+    if (version.user_version > 4) {
       this.db.close()
       throw new Error("Admin database schema is newer than this application")
     }
@@ -62,8 +64,9 @@ export class AdminStore {
       CREATE TABLE IF NOT EXISTS chat_access_requests (hash TEXT PRIMARY KEY, chat_id INTEGER NOT NULL UNIQUE, type TEXT NOT NULL, name TEXT NOT NULL, origin TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS access_reviews (fingerprint TEXT PRIMARY KEY, revision INTEGER NOT NULL, actor TEXT NOT NULL, reviewed INTEGER NOT NULL, decisions TEXT NOT NULL);
       DROP TABLE IF EXISTS login;
-      PRAGMA user_version = 3;
+      PRAGMA user_version = 4;
     `)
+      initializeRuntimeConfigStorage(this.db)
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
@@ -144,8 +147,13 @@ export class AdminStore {
     try {
       const state = this.snapshot()
       const remember = this.db.prepare(`INSERT OR IGNORE INTO known_${key} VALUES (?)`)
-      if (!enableNew)
-        for (const name of policySchema.shape[key].parse([...new Set(names)])) remember.run(name)
+      if (!enableNew) {
+        // Discovery can exceed the permission-list limit; validate each remembered name.
+        for (const name of new Set(names)) {
+          policySchema.shape[key].parse([name])
+          remember.run(name)
+        }
+      }
       // Existing selections are already known, including selections denied globally.
       for (const name of [
         ...state.policy[key],

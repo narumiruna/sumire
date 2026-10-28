@@ -60,6 +60,13 @@ export async function adminFixture(
       "/api/session": { csrf: "fixture", actor: "42" },
       "/api/settings": { revision: 1, applied: 1, status: "applied", policy: basePolicy },
       "/api/inventory": inventory,
+      "/api/runtime-config": {
+        revision: 1,
+        applied: 1,
+        status: "applied",
+        secretStatus: "ready",
+        entries: [],
+      },
       "/api/imports": [],
       "/api/audit": url.pathname === "/api/audit" && auditReads++ > 0 ? globalAudit : audit,
       "/api/chats": [
@@ -84,6 +91,7 @@ export const sections = [
   "Skills",
   "MCP connections",
   "Model providers",
+  "Secrets & variables",
   "Audit",
 ]
 export function sectionLabel(name: string): string {

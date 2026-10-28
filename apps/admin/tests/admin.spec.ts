@@ -679,7 +679,10 @@ test("confirms MCP deletion, sends the saved revision, and refreshes inventory",
   await closeConnectionEditor(page)
   await page.getByRole("button", { name: "Actions for obsolete", exact: true }).click()
   await page.getByRole("menuitem", { name: "Delete obsolete", exact: true }).click()
-  await expect(page.getByRole("alertdialog")).toContainText("stored secrets")
+  await expect(page.getByRole("alertdialog")).toContainText("inline credentials")
+  await expect(page.getByRole("alertdialog")).toContainText(
+    "Referenced runtime values remain in Secrets & variables",
+  )
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
   expect(attempts).toBe(0)
   await closeConnectionEditor(page)

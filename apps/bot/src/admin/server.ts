@@ -17,12 +17,14 @@ import { parseChatQuery } from "./chat-query.js"
 import { parseDurableInspectionQuery } from "./durable-inspector.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
+import type { RuntimeConfigAdmin } from "./runtime-config.js"
 import { AdminError, type AdminStore, digest, sessionMaxAgeMs } from "./store.js"
 
 interface AdminServices {
   store: AdminStore
   providers: ProviderAdmin
   mcp: McpAdmin
+  runtime?: RuntimeConfigAdmin
   apply(): Promise<void>
   tools(): string[]
   toolAvailability?(): Promise<Inventory["toolAvailability"]>
@@ -260,6 +262,54 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           revision: store.snapshot().revision,
         })
       }
+      return
+    }
+    const runtimeRoute = /^\/api\/runtime-config(?:\/([^/]+))?$/.exec(url.pathname)
+    if (runtimeRoute) {
+      const name = runtimeRoute[1]
+      if ((!name && method !== "GET") || (name && method !== "PUT" && method !== "DELETE"))
+        throw new AdminError(405, "Method not allowed")
+      const runtime = services.runtime
+      if (!runtime) throw new AdminError(503, "Runtime configuration is unavailable")
+      if (!name) {
+        reply(res, 200, runtime.snapshot())
+        return
+      }
+      const input = await body(req, 65536)
+      if (mcp.probes.size) throw new AdminError(409, "Wait for the MCP connection test to finish")
+      if (method === "PUT") {
+        const mutation = z
+          .object({
+            revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+            kind: z.enum(["secret", "variable"]),
+            value: z.string(),
+          })
+          .strict()
+          .parse(input)
+        runtime.save(name, mutation, session.actor)
+      } else {
+        const deletion = z
+          .object({ revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) })
+          .strict()
+          .parse(input)
+        const references = mcp.references(name)
+        if (references.length)
+          throw new AdminError(409, `Referenced by MCP servers: ${references.join(", ")}`)
+        runtime.remove(name, deletion.revision, session.actor)
+      }
+      const revision = runtime.snapshot().revision
+      try {
+        await services.apply()
+      } catch {
+        // Persistence has committed. Report saved state, not an ambiguous write failure.
+        const current = store.snapshot()
+        if (
+          current.revision === revision &&
+          (current.status !== "applied" || current.applied !== revision)
+        )
+          store.applied(revision, false)
+      }
+      reply(res, 200, runtime.snapshot())
       return
     }
     if (url.pathname === "/api/settings" && method === "GET") {

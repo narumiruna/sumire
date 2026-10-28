@@ -23,6 +23,7 @@ export const pages = [
   "Skills",
   "MCP connections",
   "Model Providers",
+  "Secrets & variables",
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
@@ -41,6 +42,10 @@ export const pendingEditors = {
   endpoint: {
     label: "Model providers — Custom endpoint",
     target: { page: "Model Providers", selector: "#endpoint-provider-id" },
+  },
+  mcpReference: {
+    label: "MCP Servers — Stored reference input",
+    target: { page: "MCP connections", selector: "#mcp-reference-editor" },
   },
   secret: {
     label: "MCP Servers — Secret replacement",
@@ -69,6 +74,7 @@ const pageIcons = {
   Skills: ReaderIcon,
   "MCP connections": ComponentInstanceIcon,
   "Model Providers": ReaderIcon,
+  "Secrets & variables": LockClosedIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
@@ -80,6 +86,7 @@ const pageLabels = {
   Skills: "Skills",
   "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
+  "Secrets & variables": "Secrets & variables",
   Audit: "Audit",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
@@ -91,7 +98,7 @@ const navigationGroups = [
     label: "Tools & skills",
     pages: ["Tool permissions", "Skills", "MCP connections"],
   },
-  { id: "system-settings", label: "Defaults", pages: ["Defaults"] },
+  { id: "system-settings", label: "Defaults", pages: ["Defaults", "Secrets & variables"] },
   { id: "activity", label: "Activity", pages: ["Audit"] },
 ] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
 const technicalDescriptions: Partial<Record<Page, string>> = {
@@ -130,7 +137,10 @@ export function navigationHref(page: Page, chat: string, url = new URL(window.lo
   return `${url.pathname}${url.search}${url.hash}`
 }
 
-export function useNavigation(ready = true) {
+export function useNavigation(ready = true, canLeave: () => boolean = () => true) {
+  const guard = useRef(canLeave)
+  guard.current = canLeave
+  const currentHref = useRef(window.location.href)
   const [state, setState] = useState(() => {
     const url = new URL(window.location.href)
     const navigation = readNavigation(url)
@@ -147,6 +157,11 @@ export function useNavigation(ready = true) {
   }
   useEffect(() => {
     const restore = () => {
+      if (!guard.current()) {
+        window.history.pushState(null, "", currentHref.current)
+        return
+      }
+      currentHref.current = window.location.href
       if (targetFrame.current !== undefined) cancelAnimationFrame(targetFrame.current)
       targetFrame.current = undefined
       setState({ ...readNavigation(new URL(window.location.href)), target: undefined })
@@ -179,6 +194,7 @@ export function useNavigation(ready = true) {
     page: state.page,
     chat: state.chat,
     setPage: (page: Page, anchor?: string) => {
+      if (page !== state.page && !guard.current()) return
       cancelTargetFocus()
       const url = new URL(window.location.href)
       if (anchor) url.hash = anchor
@@ -186,13 +202,16 @@ export function useNavigation(ready = true) {
       const href = navigationHref(page, readNavigation(url).chat, url)
       if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
         window.history.pushState(null, "", href)
+      currentHref.current = window.location.href
       setState((current) => ({ ...current, page, target: anchor || undefined }))
     },
     setChat: (chat: string) => {
+      if (chat !== state.chat && !guard.current()) return
       cancelTargetFocus()
       const href = navigationHref(state.page, chat)
       if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== href)
         window.history.pushState(null, "", href)
+      currentHref.current = window.location.href
       setState((current) => ({ ...current, chat, target: undefined }))
     },
   }

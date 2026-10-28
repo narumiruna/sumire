@@ -15,6 +15,10 @@ import {
   withAttemptSink,
   withDeadline,
 } from "./core/execution.js"
+import {
+  type FirecrawlCredentialOptions,
+  resolveFirecrawlApiKey,
+} from "./core/firecrawl-credentials.js"
 import { retainInterruptedAttempts, runBounded } from "./core/interruption.js"
 import type { LoaderFactory } from "./core/loader.js"
 import { type AttemptRecord, AttemptStatus, type LoadResult } from "./core/results.js"
@@ -69,7 +73,7 @@ export class LoadChainExplanation {
   }
 }
 
-interface LoadChainOptions {
+interface LoadChainOptions extends FirecrawlCredentialOptions {
   getFactory: (name: string) => LoaderFactory
   explanation: LoadChainExplanation
   getRequirements: RequirementsLookup
@@ -85,8 +89,10 @@ export class LoadChain {
   readonly getContentType: ContentTypeLookup
   readonly admit?: Admission
   readonly automaticGeneric: boolean
+  private readonly firecrawlApiKey: string | null
 
   constructor(options: LoadChainOptions) {
+    this.firecrawlApiKey = resolveFirecrawlApiKey(options.firecrawlApiKey)
     this.getFactory = options.getFactory
     this.explanation = options.explanation
     this.getRequirements = options.getRequirements
@@ -112,7 +118,10 @@ export class LoadChain {
     const errors: string[] = []
     for (const [index, plannedLoaderName] of this.explanation.executionPlan.entries()) {
       if (signal?.aborted) throw signal.reason
-      const missing = missingRequirements(this.getRequirements(plannedLoaderName))
+      const missing = missingRequirements(
+        this.getRequirements(plannedLoaderName),
+        this.firecrawlApiKey,
+      )
       if (missing.length > 0) {
         const message = `Missing requirement(s): ${missing.join(", ")}`
         errors.push(`${plannedLoaderName}: Skipped (${message})`)
@@ -158,7 +167,10 @@ export class LoadChain {
       }
       const alternatives = this.explanation.executionPlan
         .slice(index)
-        .filter((name) => missingRequirements(this.getRequirements(name)).length === 0).length
+        .filter(
+          (name) =>
+            missingRequirements(this.getRequirements(name), this.firecrawlApiKey).length === 0,
+        ).length
       const budget = this.automaticGeneric
         ? Math.min(
             genericAttemptLimit(plannedLoaderName),
@@ -349,8 +361,13 @@ function mergeUnique(groups: readonly (readonly string[])[]): string[] {
   return [...new Set(groups.flat())]
 }
 
-function missingRequirements(requirements: readonly string[]): string[] {
-  return requirements.filter((name) => !process.env[name])
+function missingRequirements(
+  requirements: readonly string[],
+  firecrawlApiKey: string | null,
+): string[] {
+  return requirements.filter((name) =>
+    name === "FIRECRAWL_API_KEY" ? !firecrawlApiKey : !process.env[name],
+  )
 }
 
 function buildExplanation(options: {
@@ -362,13 +379,16 @@ function buildExplanation(options: {
   fallbackLoaders?: readonly string[]
   executionPlan?: readonly string[]
   getRequirements?: RequirementsLookup
+  firecrawlApiKey: string | null
 }): LoadChainExplanation {
   const targeted = options.targetedLoaders ?? []
   const fallback = options.fallbackLoaders ?? []
   const loaders = options.executionPlan ?? [...targeted, ...fallback]
   const lookup = options.getRequirements ?? getLoaderRequirements
   const requirements = mergeUnique(loaders.map((name) => lookup(name)))
-  const eligible = loaders.filter((name) => missingRequirements(lookup(name)).length === 0)
+  const eligible = loaders.filter(
+    (name) => missingRequirements(lookup(name), options.firecrawlApiKey).length === 0,
+  )
   return new LoadChainExplanation(
     options.url,
     options.pipeline,
@@ -377,16 +397,15 @@ function buildExplanation(options: {
     fallback,
     loaders,
     requirements,
-    missingRequirements(requirements),
+    missingRequirements(requirements, options.firecrawlApiKey),
     eligible,
     loaders.filter((name) => !eligible.includes(name)),
     options.contentContract,
   )
 }
 
-function ensureAnyEligible(explanation: LoadChainExplanation, lookup: RequirementsLookup): void {
-  if (explanation.executionPlan.some((name) => missingRequirements(lookup(name)).length === 0))
-    return
+function ensureAnyEligible(explanation: LoadChainExplanation): void {
+  if (explanation.eligibleLoaders.length > 0) return
   if (explanation.missingRequirements.length > 0) {
     throw new MissingRequirementError(explanation.missingRequirements)
   }
@@ -394,7 +413,10 @@ function ensureAnyEligible(explanation: LoadChainExplanation, lookup: Requiremen
 
 export function explainLoadChain(
   url: string,
-  options: { firecrawlFallback?: boolean } = {},
+  options: FirecrawlCredentialOptions & {
+    firecrawlFallback?: boolean
+    getRequirements?: RequirementsLookup
+  } = {},
 ): LoadChainExplanation {
   const plan = planForUrl(url, options)
   return buildExplanation({
@@ -405,6 +427,8 @@ export function explainLoadChain(
     targetedLoaders: plan.targetedLoaders,
     fallbackLoaders: plan.fallbackLoaders,
     executionPlan: plan.executionPlan,
+    getRequirements: options.getRequirements,
+    firecrawlApiKey: resolveFirecrawlApiKey(options.firecrawlApiKey),
   })
 }
 
@@ -412,17 +436,21 @@ export function resolveLoadChain(
   url: string,
   options: {
     firecrawlFallback?: boolean
+    firecrawlApiKey?: string | null
     getFactory?: (name: string) => LoaderFactory
     getRequirements?: RequirementsLookup
     getContentType?: ContentTypeLookup
     admit?: Admission
   } = {},
 ): LoadChain {
+  const firecrawlApiKey = resolveFirecrawlApiKey(options.firecrawlApiKey)
   const getRequirements = options.getRequirements ?? getLoaderRequirements
-  const explanation = explainLoadChain(url, options)
-  ensureAnyEligible(explanation, getRequirements)
+  const explanation = explainLoadChain(url, { ...options, firecrawlApiKey })
+  ensureAnyEligible(explanation)
   return new LoadChain({
-    getFactory: options.getFactory ?? getLoaderFactory,
+    firecrawlApiKey,
+    getFactory:
+      options.getFactory ?? ((name) => getLoaderFactory(name, undefined, { firecrawlApiKey })),
     explanation,
     automaticGeneric: explanation.pipeline === undefined,
     getRequirements,
@@ -435,6 +463,7 @@ export function resolveExplicitLoadChain(
   url: string,
   loaderNames: readonly string[],
   options: {
+    firecrawlApiKey?: string | null
     getFactory?: (name: string) => LoaderFactory
     getRequirements?: RequirementsLookup
     getContentType?: ContentTypeLookup
@@ -442,6 +471,7 @@ export function resolveExplicitLoadChain(
   } = {},
 ): LoadChain {
   if (loaderNames.length === 0) throw new Error("Load chain execution plan cannot be empty.")
+  const firecrawlApiKey = resolveFirecrawlApiKey(options.firecrawlApiKey)
   const isDefaultFactory = options.getFactory === undefined
   const getRequirements =
     options.getRequirements ?? (isDefaultFactory ? getLoaderRequirements : () => [])
@@ -454,10 +484,13 @@ export function resolveExplicitLoadChain(
     contentContract: ContentContract.GenericHtml,
     executionPlan: loaderNames,
     getRequirements,
+    firecrawlApiKey,
   })
-  ensureAnyEligible(explanation, getRequirements)
+  ensureAnyEligible(explanation)
   return new LoadChain({
-    getFactory: options.getFactory ?? getLoaderFactory,
+    firecrawlApiKey,
+    getFactory:
+      options.getFactory ?? ((name) => getLoaderFactory(name, undefined, { firecrawlApiKey })),
     explanation,
     getRequirements,
     getContentType,

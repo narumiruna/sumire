@@ -225,7 +225,7 @@ it("deletes unreferenced MCP entries with revision, probe, and reference checks 
 })
 
 it.each([false, true])(
-  "imports valid entries independently (all invalid: %s)",
+  "retains unresolved references when other entries are invalid (no resolved entries: %s)",
   async (allInvalid) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "sumire-admin-import-"))
     const store = new AdminStore(path.join(directory, "admin.sqlite"), new Set([42]), 42)
@@ -246,14 +246,16 @@ it.each([false, true])(
       })
       await writeFile(source, input)
       await mcp.import(source)
-      expect(Object.keys(mcp.raw())).toEqual(allInvalid ? [] : ["valid"])
+      expect(Object.keys(mcp.raw())).toEqual(allInvalid ? ["missing"] : ["missing", "valid"])
+      expect(mcp.references("SUMIRE_MISSING_IMPORT_FIXTURE_9D83")).toEqual(["missing"])
+      expect(mcp.config().servers.map((server) => server.name)).toEqual(allInvalid ? [] : ["valid"])
       expect(await readFile(source, "utf8")).toBe(input)
       const row = store.db.prepare("SELECT report FROM imports WHERE name='mcp'").get() as {
         report: string
       }
       expect(JSON.parse(row.report)).toEqual({
-        servers: allInvalid ? 0 : 1,
-        skippedServers: 6,
+        servers: allInvalid ? 1 : 2,
+        skippedServers: 5,
         reviewRequired: true,
       })
       expect(row.report).not.toContain("rejected-secret")
@@ -285,9 +287,10 @@ it.each([undefined, "subdir"])(
         1,
         "42",
       )
+      store.applied(store.snapshot().revision, true)
       expect((await mcp.discover("fixture")).tools).toContain("mcp__fixture__echo")
-      expect(store.snapshot().policy.tools).toContain("mcp__fixture__echo")
-      expect(store.snapshot().policy.defaults.tools).toContain("mcp__fixture__echo")
+      expect(store.snapshot().policy.tools).not.toContain("mcp__fixture__echo")
+      expect(store.snapshot().policy.defaults.tools).not.toContain("mcp__fixture__echo")
       expect(store.snapshot().policy.servers).toEqual([])
       const revision = store.snapshot().revision
       await mcp.discover("fixture")

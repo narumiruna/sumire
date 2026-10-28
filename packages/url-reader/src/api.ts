@@ -1,10 +1,11 @@
 import { UrlContentClient } from "./client.js"
+import type { FirecrawlCredentialOptions } from "./core/firecrawl-credentials.js"
 import { runBounded } from "./core/interruption.js"
 import type { LoadResult } from "./core/results.js"
 import { explainLoadChain } from "./load-chain.js"
 import { listLoaderNames } from "./loader-registry.js"
 
-export interface LoadUrlOptions {
+export interface LoadUrlOptions extends FirecrawlCredentialOptions {
   allowedSchemes?: ReadonlySet<string>
   deadlineSeconds?: number
   firecrawlFallback?: boolean
@@ -19,6 +20,7 @@ export async function loadUrlDetailed(
   const client = new UrlContentClient({
     allowedSchemes: options.allowedSchemes,
     deadlineSeconds: options.deadlineSeconds,
+    firecrawlApiKey: options.firecrawlApiKey,
   }).start()
   // Cleanup continues cooperatively, but cannot indefinitely delay the result.
   const close = () => runBounded(() => client.close(), 5_000)
@@ -47,6 +49,9 @@ export function availableLoaders(): string[] {
   return listLoaderNames()
 }
 
-export function explainPlan(url: string): Record<string, unknown> {
-  return explainLoadChain(url).toObject()
+export function explainPlan(
+  url: string,
+  options: FirecrawlCredentialOptions & { firecrawlFallback?: boolean } = {},
+): Record<string, unknown> {
+  return explainLoadChain(url, options).toObject()
 }

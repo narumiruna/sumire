@@ -17,6 +17,12 @@ export type {
   DurableTaskItem,
 } from "./durable-inspector.js"
 
+export type {
+  RuntimeConfigEntry,
+  RuntimeConfigMutation,
+  RuntimeConfigResponse,
+} from "./runtime-config.js"
+
 export type Snapshot = {
   revision: number
   applied: number

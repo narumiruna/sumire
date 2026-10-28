@@ -2,6 +2,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { startAdmin } from "./admin/application.js"
 import { McpAdmin } from "./admin/mcp.js"
+import { RuntimeConfigAdmin } from "./admin/runtime-config.js"
 import { AdminStore } from "./admin/store.js"
 import { createPiSessionFactory } from "./agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "./agent/session-registry.js"
@@ -21,7 +22,7 @@ export async function startApplication(): Promise<void> {
     settings.logfireToken,
   )
   let adminStore: AdminStore | undefined
-  let control: { store: AdminStore; mcp: McpAdmin } | undefined
+  let control: { store: AdminStore; mcp: McpAdmin; runtime: RuntimeConfigAdmin } | undefined
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
   try {
@@ -30,8 +31,10 @@ export async function startApplication(): Promise<void> {
       settings.botAdminId,
     )
     adminStore = store
-    const mcp = new McpAdmin(store, settings.botWorkdir)
-    control = { store, mcp }
+    const runtime = new RuntimeConfigAdmin(store, process.env.SUMIRE_SECRETS_KEY)
+    runtime.importLegacy(process.env)
+    const mcp = new McpAdmin(store, settings.botWorkdir, runtime)
+    control = { store, mcp, runtime }
     await mcp.import(settings.botMcpConfigPath)
     const documentConverter = await createConfiguredDocumentConverter(settings)
     const channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger)
@@ -53,6 +56,7 @@ export async function startApplication(): Promise<void> {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
       control: store,
+      runtime,
       recoverChats: () => piFactory.listChats(),
     })
 

@@ -15,6 +15,7 @@ import type { Inventory } from "@narumitw/sumire-contracts"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
+import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 import { createDurableInspector } from "../admin/durable-inspector.js"
 import type { McpAdmin } from "../admin/mcp.js"
 import { chatModelRuntime } from "../admin/providers.js"
@@ -48,6 +49,7 @@ import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { buildPiSystemPrompt } from "./pi-system-prompt.js"
 import { createReadImageExtension } from "./read-image.js"
+import { createVariableTool } from "./variables.js"
 
 const selectableUrlLoaders = ["built-in", "httpx", "curl-cffi", "playwright", "firecrawl"]
 const soulSectionPlaceholder = "{{SOUL_SECTION}}"
@@ -64,7 +66,7 @@ export interface PiSessionFactory {
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
-  control: { store: AdminStore; mcp: McpAdmin },
+  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigReader },
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
   modelRuntimeOverride?: ModelRuntime,
 ): Promise<PiSessionFactory> {
@@ -101,15 +103,17 @@ export async function createPiSessionFactory(
   const skills = loadedSkills.map(({ name, description }) => ({ name, description }))
   control.store.registerSkills(skills.map(({ name }) => name))
   const appendSystemPrompt = await loadAppendSystemPrompt(settings)
-  const urlTool = createUrlTool(createBotUrlLoader(settings), {
+  const urlTool = createUrlTool(createBotUrlLoader(settings, control.runtime), {
     selectableLoaders: selectableUrlLoaders,
     traceLoad: (url, requestedLoader, toolCallId, load) =>
       traceUrlLoad(logger, url, requestedLoader, toolCallId, load),
   })
   const coding = await nativeCodingTools(adminShellEnvironment(process.env))
+  const morselPublisher = createMorselPublisher(settings, control.runtime)
   const baseTools = [
     urlTool,
-    ...buildMorselTools(createMorselPublisher(settings), settings.morselMode, logger),
+    createVariableTool(control.runtime),
+    ...buildMorselTools(morselPublisher, settings.morselMode, logger),
     ...(settings.botChannelImageInputEnabled && settings.botImageInputEnabled
       ? await collectTools(createReadImageExtension(settings, channelImages, logger, control.store))
       : []),
@@ -123,7 +127,7 @@ export async function createPiSessionFactory(
     "codemode",
     "update_progress",
   ]
-  control.store.registerTools([IMAGEGEN_TOOL], false)
+  control.store.registerTools([IMAGEGEN_TOOL, "read_variable", "publish_markdown_to_morsel"], false)
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${appendSystemPrompt}`, {
     sha256: createHash("sha256").update(appendSystemPrompt).digest("hex"),
@@ -136,7 +140,15 @@ export async function createPiSessionFactory(
     toolNames,
     skills,
     async toolAvailability() {
-      return { [IMAGEGEN_TOOL]: await getImagegenAvailability(modelRuntime) }
+      return {
+        [IMAGEGEN_TOOL]: await getImagegenAvailability(modelRuntime),
+        publish_markdown_to_morsel: {
+          available: morselPublisher.isConfigured,
+          reason: morselPublisher.isConfigured
+            ? "Stored credential is available; remote acceptance is not checked."
+            : "Requires an available MORSEL_API_KEY and applied settings.",
+        },
+      }
     },
 
     async listChats() {
@@ -307,7 +319,7 @@ export async function createPiSessionFactory(
                 return createMcpTransport(server, cwd, home)
               },
               (server, tool) => control.store.allowsTool(chatId, tool, server),
-              (names) => control.store.registerTools(names),
+              (names) => control.store.registerTools(names, false),
             )
           : undefined
       const cleanup = async () => {

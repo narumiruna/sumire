@@ -69,10 +69,19 @@ export async function loadMcpConfig(
   return parseMcpConfig(input, logger, environment)
 }
 
+export function mcpFieldReferences(value: string): string[] {
+  if (value.trimStart().startsWith("!")) throw new Error("Credential commands are not supported")
+  const pattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+  const names = [...value.matchAll(pattern)].map((match) => match[1] as string)
+  if (value.replace(pattern, "").includes("${")) throw new Error("Invalid MCP placeholder")
+  return [...new Set(names)]
+}
+
 export function parseMcpConfig(
   input: unknown,
   logger: Pick<Logger, "warn">,
   environment: NodeJS.ProcessEnv = process.env,
+  mode: "resolve" | "structure" = "resolve",
 ): McpConfig {
   const top = z
     .object({ mcpServers: z.record(z.string(), z.unknown()) })
@@ -89,16 +98,14 @@ export function parseMcpConfig(
     validateMcpSecrets(entrySecrets)
   }
   const expand = (value: string, entrySecrets: Set<string>) => {
-    if (value.trimStart().startsWith("!")) throw new Error("Credential commands are not supported")
-    const expanded = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
+    mcpFieldReferences(value)
+    if (mode === "structure") return value
+    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
       const replacement = Object.hasOwn(environment, name) ? environment[name] : undefined
-      if (typeof replacement !== "string" || !replacement)
-        throw new Error("Missing MCP environment variable")
+      if (typeof replacement !== "string") throw new Error("Missing MCP environment variable")
       record(replacement, entrySecrets)
       return replacement
     })
-    if (expanded.includes("${")) throw new Error("Invalid MCP environment placeholder")
-    return expanded
   }
   const candidates: Array<{
     server: McpServer
@@ -111,7 +118,7 @@ export function parseMcpConfig(
       if (name.length > MCP_MAX_SERVER_NAME_LENGTH || !/^[A-Za-z0-9_-]+$/.test(name))
         throw new Error("Invalid or colliding server name")
       const server = serverSchema.parse(raw)
-      if (!server.enabled) continue
+      if (!server.enabled && mode === "resolve") continue
       const entrySecrets = new Set<string>()
       const entryBoundarySecrets = new Set<string>()
       const recordComponent = (value: string) => {
