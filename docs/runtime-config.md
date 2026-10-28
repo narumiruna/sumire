@@ -110,7 +110,7 @@ Lazy refresh updates native shell credentials only. It does not update credentia
 
 ### Manual PAT and trust limits
 
-For fine-grained repository restrictions, create a GitHub PAT and use **Add secret → GH_TOKEN → Save secret**. Do not use a public variable. Manual PATs and non-expiring OAuth tokens do not trigger refresh. A public variable named `GH_TOKEN` is not a credential; reset a kind collision before connecting.
+For fine-grained repository restrictions, create a GitHub PAT and use **Add secret → GH_TOKEN → Save secret**. Do not use a public variable. Manual PATs and non-expiring OAuth tokens do not trigger refresh. A public variable named `GH_TOKEN` is not a credential. Without `GITHUB_OAUTH_STATE`, it does not block shell execution and is never injected into the shell environment. Reset that kind collision before connecting GitHub. A companion entry still requires a valid managed pair; malformed or orphaned state fails closed.
 
 Approve `bash` only for trusted chats, within global and chat policy limits. Every chat with `bash` access can use or read the effective token. Connection does not grant permissions and is not an admin-only GitHub action. The account owner must explicitly verify intended repository access, including organization/SSO approval where required; `gh api user --jq .login` is a read-only account check. Never send credentials through Telegram or include them in commands, URLs, or logs.
 

@@ -3,7 +3,7 @@ import { syncBuiltinESMExports } from "node:module"
 import path from "node:path"
 import { expect, it, vi } from "vitest"
 import { GitHubAuth } from "../src/admin/github-auth.js"
-import { githubAccessDigest } from "../src/admin/github-state.js"
+import { githubAccessDigest, githubStateName } from "../src/admin/github-state.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import type { GitHubTransport } from "../src/github-client.js"
 import { callDurableTool } from "./helpers/durable-session.js"
@@ -11,6 +11,111 @@ import { createPiFixture } from "./helpers/pi-fixture.js"
 import { createTestSessionFactory } from "./helpers/session-factory.js"
 
 for (const tool of ["bash", "codemode"] as const) {
+  it.each([
+    ["public variable", "public-data", undefined],
+    ["empty public variable", "", undefined],
+    ["public variable with secret companion", "public-data", "secret"],
+    ["public variable with public companion", "public-data", "variable"],
+    ["orphaned secret companion", undefined, "secret"],
+  ] as const)(
+    `${tool} handles %s with production GitHub wiring`,
+    async (_name, value, companion) => {
+      const fixture = await createPiFixture()
+      let github: GitHubAuth | undefined
+      let session: Awaited<ReturnType<typeof fixture.createSession>> | undefined
+      try {
+        vi.stubEnv("GH_TOKEN", "ambient-github-secret")
+        vi.stubEnv("GITHUB_TOKEN", "ambient-github-fallback")
+        const { control: store, runtime } = fixture.factory
+        if (!runtime) throw new Error("Missing runtime fixture")
+        if (value !== undefined) {
+          runtime.save(
+            "GH_TOKEN",
+            { revision: store.snapshot().revision, kind: "variable", value },
+            "7",
+          )
+          store.applied(store.snapshot().revision, true)
+        }
+        if (companion) {
+          const metadata = { revision: store.snapshot().revision, updatedAt: Date.now() }
+          if (companion === "secret")
+            runtime.values.setSecret(githubStateName, "invalid-companion-data", metadata)
+          else runtime.values.setVariable(githubStateName, "invalid-companion-data", metadata)
+        }
+        const unexpected = async (): Promise<never> => {
+          throw new Error("Unexpected GitHub request")
+        }
+        const client: GitHubTransport = {
+          device: vi.fn(unexpected),
+          exchange: vi.fn(unexpected),
+          account: vi.fn(unexpected),
+          refresh: vi.fn(unexpected),
+        }
+        github = new GitHubAuth(store, runtime, client)
+        const mcp = new McpAdmin(store, fixture.settings.botWorkdir, runtime)
+        const factory = await createTestSessionFactory(
+          fixture.settings,
+          fixture.logger,
+          undefined,
+          fixture.modelRuntime,
+          { store, runtime, mcp, github },
+        )
+        session = await factory.create(123)
+        const before = runtime.values.listMetadata()
+        const audit = store.listAudit(0)
+        const args = {
+          command:
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Bash expands these environment checks.
+            'if [ "${GH_TOKEN+x}" = x ] || [ "${GITHUB_TOKEN+x}" = x ]; then printf unexpected-auth; exit 1; fi; printf ready; printf dispatched > public-gh-variable.txt',
+          timeout: 5,
+        }
+        const result = await callDurableTool(
+          session,
+          tool,
+          tool === "bash"
+            ? args
+            : { code: `text((await tools.bash(${JSON.stringify(args)})).output)` },
+        )
+        if (companion) {
+          expect(result.isError).toBe(true)
+          expect(JSON.stringify(result.content)).toContain("Reconnect GitHub")
+          await expect(
+            readFile(path.join(fixture.settings.botWorkdir, "public-gh-variable.txt")),
+          ).rejects.toMatchObject({ code: "ENOENT" })
+        } else {
+          expect(result.isError).toBeFalsy()
+          expect(result.content).toContainEqual({ type: "text", text: "ready" })
+          expect(
+            await readFile(
+              path.join(fixture.settings.botWorkdir, "public-gh-variable.txt"),
+              "utf8",
+            ),
+          ).toBe("dispatched")
+        }
+        expect(runtime.readVariable("GH_TOKEN")).toBe(value)
+        expect(runtime.readSecret("GH_TOKEN")).toBeUndefined()
+        expect(runtime.githubCredentials().kind).toBe("invalid")
+        expect(runtime.values.listMetadata()).toEqual(before)
+        expect(store.listAudit(0)).toEqual(audit)
+        for (const method of Object.values(client)) expect(method).not.toHaveBeenCalled()
+        const history = JSON.stringify(session.messages)
+        for (const sentinel of [
+          "public-data",
+          "ambient-github-secret",
+          "ambient-github-fallback",
+          "invalid-companion-data",
+        ])
+          expect(history).not.toContain(sentinel)
+      } finally {
+        await session?.abort()
+        await session?.dispose()
+        await github?.close()
+        await fixture.cleanup()
+        vi.unstubAllEnvs()
+      }
+    },
+  )
+
   it.each([
     "allowed",
     "revoked",

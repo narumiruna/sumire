@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto"
 import type { GitHubConnection, GitHubFlow, GitHubReceipt } from "@narumitw/sumire-contracts"
 import { GitHubClient, type GitHubToken, type GitHubTransport } from "../github-client.js"
-import { type GitHubCredentials, type GitHubPair, githubAccessDigest } from "./github-state.js"
+import {
+  type GitHubCredentials,
+  type GitHubPair,
+  githubAccessDigest,
+  githubStateName,
+} from "./github-state.js"
 import type { RuntimeConfigAdmin } from "./runtime-config.js"
 import { AdminError, type AdminStore, token } from "./store.js"
 
@@ -318,7 +323,16 @@ export class GitHubAuth {
     signal?.throwIfAborted()
     this.assertApplied()
     const stored = this.runtime.githubCredentials()
-    if (stored.kind === "invalid") throw reconnect()
+    if (stored.kind === "invalid") {
+      const entries = this.runtime.values.listMetadata()
+      const publicVariable = entries.some(
+        (entry) => entry.name === "GH_TOKEN" && entry.kind === "variable",
+      )
+      const companion = entries.some((entry) => entry.name === githubStateName)
+      // A public variable is data, not a broken credential. Managed pairs still fail closed.
+      if (publicVariable && !companion) return undefined
+      throw reconnect()
+    }
     if (stored.kind === "none") return undefined
     if (stored.kind === "manual") return stored.token
     const state = stored.state
