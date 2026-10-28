@@ -5,6 +5,7 @@ import { stageModelUse } from "./model-use.js"
 
 function policy(): Policy {
   return {
+    githubNotifications: { allowedUserIds: [] },
     tools: ["read"],
     servers: [],
     skills: [],

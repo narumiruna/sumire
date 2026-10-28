@@ -242,3 +242,27 @@ describe("runtime configuration administration", () => {
     expect(runtime.snapshot().entries).toEqual([])
   })
 })
+
+it("keeps GH_TOKEN under the general managed secret controls", () => {
+  put("GH_TOKEN", "managed-github-secret-sentinel")
+  expect(runtime.readSecret("GH_TOKEN")).toBeUndefined()
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GH_TOKEN")).toBe("managed-github-secret-sentinel")
+  expect(JSON.stringify(runtime.snapshot())).not.toContain("managed-github-secret-sentinel")
+  expect(JSON.stringify(store.listAudit(0))).not.toContain("managed-github-secret-sentinel")
+  expect(() => put("GH_TOKEN", "variable", "variable")).toThrow("Delete")
+  runtime.remove("GH_TOKEN", store.snapshot().revision, "42")
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GH_TOKEN")).toBeUndefined()
+  // Generic runtime configuration does not impose a GitHub-specific token format.
+  put("GH_TOKEN", "literal\nsecret")
+  store.applied(store.snapshot().revision, true)
+  expect(runtime.readSecret("GH_TOKEN")).toBe("literal\nsecret")
+})
+
+it("does not interpret legacy notification runtime names as recipient policy", () => {
+  put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "not an ID list", "variable")
+  put("GITHUB_NOTIFICATIONS_TOKEN", "ordinary variable", "variable")
+  expect(runtime.readVariable("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS")).toBe("not an ID list")
+  expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([])
+})

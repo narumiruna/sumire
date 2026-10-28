@@ -446,3 +446,28 @@ test("pending MCP draft blocks runtime mutation; stored-reference editor stages 
   await expect(page.getByText(/Save or discard pending policy, MCP/)).toBeVisible()
   await expect(page.getByRole("button", { name: "Add secret", exact: true })).toBeDisabled()
 })
+
+test("notification setup reuses the write-only GH_TOKEN secret and a separate recipients page", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  await expect(page.getByText(/^GitHub notifications also use/)).toContainText(
+    "Manage Telegram recipients on the GitHub notifications page, not in Variables.",
+  )
+  await add(page, "secret", "GH_TOKEN", "fixture-notifications-private-token")
+  await page.getByRole("button", { name: "Save secret", exact: true }).click()
+  await expect(page.getByRole("status").filter({ hasText: "Saved and applied." })).toBeVisible()
+  expect(state.mutations.map(({ name, body }) => ({ name, kind: body.kind }))).toEqual([
+    { name: "GH_TOKEN", kind: "secret" },
+  ])
+  await noLeak(page, "fixture-notifications-private-token")
+})
+
+test("notification configuration guidance fits a narrow mobile screen", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await fixture(page)
+  await expect(page.getByText(/^GitHub notifications also use/)).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+})
