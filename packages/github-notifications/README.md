@@ -1,28 +1,66 @@
-# GitHub notifications
+# GitHub mention replies
 
-Private workspace package for bounded, read-only GitHub.com notification metadata. No third-party runtime dependencies. It does not execute `gh`, read environment credentials, mark notifications read, subscribe, poll in the background, or fetch thread bodies.
+Discover direct mentions of the GitHub account authenticated by `GH_TOKEN`. Return only sources authored by an allowlisted GitHub username, then post a generated reply on GitHub. This package does not generate model responses or use Telegram identities.
 
-## Administration WebUI setup
+## Administration setup
 
-1. In **Secrets & variables → Secrets**, add or replace the shared `GH_TOKEN`: a GitHub.com credential accepted by the Notifications REST API (a classic PAT with `notifications` scope). GitHub CLI uses this same secret. Private repository access remains subject to GitHub permissions and organization requirements. Configured state is not proof of upstream acceptance.
-2. Open **GitHub notifications** under **Tools & skills**. Enter a positive Telegram user ID and select **Add recipient** for each recipient. Review and save the changes. Use **Remove** to revoke a recipient; **Undo removal** restores a staged removal. No JSON or generic variable is needed. The list permits at most 1,000 unique positive safe-integer IDs. An empty saved list denies everyone, with no administrator exemption.
-3. Enable `read_github_notifications` in global tool availability and in the intended private chats' tool selection, and approve those chats as usual. The tool starts disabled by default. All saved settings must apply successfully.
-4. Ask the bot in an allowlisted user's **private chat** to read notifications. Groups are always rejected, even if an allowed user asks there. A single configured GitHub account is shared with every allowlisted recipient; this is not per-user GitHub login.
+1. Save the encrypted **Secret** `GH_TOKEN` in **Secrets & variables** and apply it. The token must support GitHub's Notifications REST API, source reads, and comment writes. A classic PAT needs `notifications` and applicable repository permissions, such as `public_repo` or `repo`. Confirm organization restrictions with the account owner. GitHub CLI uses this same managed secret.
+2. In **Defaults → GitHub mentions**, add the **GitHub usernames of mention authors**. Enter names without `@`; review and save the list. Names are normalized to lowercase. The list permits at most 1,000 unique usernames, each 1–39 ASCII letters/digits with single interior hyphens.
+3. Configure an authenticated provider and a shared default model allowed globally and in defaults. Wait for successful application.
+4. Have an allowed author directly mention the token's account on GitHub. Sumire replies there. Nonallowlisted authors are ignored without starting a model turn. An empty allowlist disables polling and replies. Telegram access and chat tool permissions are unrelated.
 
-The authenticated administration UI provides encrypted write-only secrets, revision conflict checks, application, and audit. Recipients are stored in `policy.githubNotifications.allowedUserIds`; old policies default to an empty list. Legacy generic notification entries are ignored, not imported. No new host environment variables or database tables are required. Keep tokens out of variables, prompts, source, and logs. Only the applied managed `GH_TOKEN` is used; there is no host credential or CLI fallback. Chats with `bash` permission can use and read this shared token independently of the recipient list.
+The policy field is `githubNotifications.allowedUsernames`. The previous administration URL `?section=GitHub+notifications` opens the renamed page. Admin schema v5 clears the incorrect legacy Telegram `allowedUserIds` lists instead of converting them to GitHub identities. Converted settings become a new pending revision. Missing blocks default empty; current saves reject the old field.
+
+## Supported sources
+
+- Issue and PR bodies.
+- Issue and PR comments.
+- Submitted PR review bodies.
+- Inline PR review comments, including replies within a review thread.
+
+The Notifications API must report reason `mention`. Each source must also contain a direct, case-insensitive `@account` address. Code spans, code blocks, and HTML comments do not count as addressing. An HTML comment delimiter inside code does not hide a later visible mention. Team, assignment, subscription, and review-request notifications do not qualify. Self-authored sources are ignored. The source author, not the repository owner or latest notification activity, determines admission.
+
+Issue/PR bodies, issue comments, and review bodies receive an issue/PR comment. Inline review comments receive a threaded reply. Discussions and commit comments are not supported. The package never marks notifications read, changes subscriptions, or follows upstream pagination URLs.
 
 ## API
 
-`createNotificationClient({ authorize, token, fetch? }).list(query?, signal?)` checks the host-owned authorization callback before credential resolution and after the response. The host must bind it to a trusted recipient and current applied configuration; never accept a model-supplied user ID. `allowsNotificationChat(chatId, allowedUserIds)` checks the structured recipient IDs supplied by the host. The bot validates and persists the list through the shared policy schema, not the generic runtime variable store.
+`createGithubMentionClient({ authorize, token, allowedUsernames, fetch? })` provides:
 
-Queries: `all` (false by default), `participating` (false), `page` (1–1000, default 1), `perPage` (1–50, default 20). Each call performs one GET to the fixed GitHub API endpoint, with no redirects, retries, arbitrary URL input, or automatic pagination. Results include `hasMore`; no untrusted Link header is followed. Deadline: 15 seconds including body consumption; response limit: 512 KiB, enforced while reading. Errors never include upstream bodies, credentials, or arbitrary transport messages.
+- `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, a `skippedThreads` count, `hasMore`, a `pageKey` hash of the notification rows, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
+- `reply(mention, text, signal?)`: revalidate the current account, source version, author, and admission before posting. Return `sent`, `already-replied`, or `ignored`. Replies must contain 1–60,000 UTF-8 bytes. A deterministic hidden source marker identifies an existing bot-authored reply after an uncertain write.
 
-Results contain bounded ID, repository name/private flag, title/type, reason, unread state, update time, and a canonical GitHub issue/PR URL where possible. Other upstream fields are discarded. Titles/metadata are untrusted data, never instructions. No cache is shared between chats.
+Issue/PR body keys use the account, repository, source ID, author, and body content. The issue activity timestamp does not change that identity. Marker checks for body replies scan the bounded comment history without an activity-time cutoff. A real body or author change still prevents delivery of an old answer.
 
-## Security boundary
+A source GET with HTTP 404 or 410 is unavailable. Scans skip that source, and delivery returns `ignored` without a write. Account, marker-list, and POST failures are not treated as missing sources.
 
-The Bot additionally applies normal tool/chat policy to direct and codemode calls. The verified positive private chat ID identifies the Telegram recipient. Revocation blocks subsequent calls and in-flight results once observed; already-delivered content, transcripts, backups, and upstream requests cannot be recalled. Notifications are sent to the configured model and stored in that authorized chat's durable transcript. Existing Telegram delivery rules still apply: long model replies may be published through the configured Morsel service and returned as a share link. This package does not provide local-only processing or control later exports by an authorized user. Only grant the feature where these data transfers are acceptable; authorized users can copy or forward information.
+A source history with more than ten pages skips its whole thread during discovery. No body, comment, or review from that incomplete thread is returned. `skippedThreads` counts these threads. Other threads can still be discovered, and the bot logs a fixed warning without source data. Global notification checkpoints continue. Older skipped mentions are not replayed; the administrator must investigate an oversized thread.
 
-This allowlist is a capability boundary, not an OS sandbox. Same-user shell/file tools and administrator-supplied MCP code may access credential storage or other local transcripts; do not grant unrestricted host capabilities to untrusted users. Existing GH_TOKEN-based bash access can separately reach GitHub and is not governed by this tool's allowlist. Isolate untrusted execution in a separate OS/VM/service if required.
+This exception applies only to the typed source pagination limit. Other failures still stop the scan. A pagination limit during reply-marker checks still prevents a write and keeps the saved response pending.
 
-Tests use synthetic credentials and stubbed HTTP responses; no live GitHub request or notification mutation is performed.
+The host owns `authorize()`, applied credentials, and the allowlist. It must bind them to trusted application state, not model arguments. Each operation uses one token; credential replacement interrupts it. A persisted mention from another account is never posted under the new account.
+
+All requests use validated paths on `https://api.github.com`, reject redirects, and have a 15-second deadline. Each response is limited to 2 MiB while streaming. One operation is limited to 120 seconds, 200 requests, and 8 MiB total response bytes. Invalid data and exceeded bounds fail closed without returning partial source lists. Errors omit upstream bodies, tokens, private URLs, and raw transport details. No CLI or environment credential fallback is used.
+
+## Bot orchestration and recovery
+
+The bot owns polling, checkpoints, durable generation, and delivery. Its sequential worker polls at least 60 seconds apart, up to the server's one-hour bounded interval. An enabled poll resolves managed credentials before capturing its token. Expiring OAuth credentials use the shared refresh process. Applied policy and the allowlist are checked before refresh and after the wait; disabled polling makes no refresh request.
+
+The first enabled scan stores a cutoff two minutes before that scan, before notification requests; retries retain it. Subsequent scans use stored per-account cursors with a two-minute overlap. A pass reads at most ten notification pages of five items. A PR can need 31 source requests, so a five-item scan needs at most 157 requests including account and notification reads. This stays below the unchanged 200-request operation limit. Each complete page saves its page number, notification hash, and original scan cutoff. The next poll rechecks that account's last complete page before it continues. A changed page restarts the scan at page 1, so moved notification offsets do not skip older entries. This continuation survives a page cap, failure, restart, or same-account token rotation. The checkpoint advances only after the full scan, using its original cutoff rather than the continuation time. New activity remains eligible for the next scan. The API's page-number limit of 1000 and source-list bounds still apply.
+
+Keep `.telegramagent/github/` on persistent storage. `state.sqlite` records account bindings, cursors, scan continuations, admitted sources, response bodies, and delivery status. Separate per-mention databases under `turns/` keep Pi Durable transcripts. The Harness owns model turns and retries. The worker saves generated text before a GitHub write and retries the same response, with a bot-authored marker check, after an uncertain result.
+
+An ordinary delivery failure retains the saved answer and does not stop later pending items. Retry uses the same answer and marker. Abort, policy, token, author, model, and provider failures still stop the poll. Large comment histories can exceed the existing page bound; delivery then stays pending instead of risking a duplicate.
+
+The channel exposes no shell, file, MCP, or publication tools. Its model receives only the supplied mention context and cannot inspect code or follow links. Applied settings, current author admission, account identity, and model access are checked at work and delivery boundaries; active work is interrupted on settings changes. Source edits prevent posting stale generated text. Already submitted external requests cannot be recalled.
+
+## Trust and deployment
+
+Allowed source bodies and titles are untrusted user data, not system instructions or host authorization. The selected model receives this data, and durable storage retains it. A generated reply is published in the source repository. Removing a username cannot erase posted comments, transcripts, backups, or copies.
+
+The allowlist is not an OS sandbox. Chats with `bash` permission can independently use/read the shared `GH_TOKEN`, and trusted host tools can read local storage. Do not grant host capabilities to untrusted users.
+
+Back up the admin database, encryption key, and GitHub state before deployment. Downgrade only with the matching pre-v5 database backup. No new deployment environment variable or GitHub Actions secret/variable is required.
+
+Tests use synthetic credentials, stubbed HTTP, and a faux model provider. No live GitHub request or comment publication is performed. Before production enablement, the deployment administrator must configure the real token/model and review the allowlist; the GitHub account owner must confirm repository and organization permissions. Live authorization, model charges, and publication remain unverified by local tests.
+
+See [runtime setup and recovery](../../docs/runtime-config.md#github-mention-replies).

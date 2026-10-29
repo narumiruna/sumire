@@ -64,7 +64,7 @@ describe("runtime configuration administration", () => {
     expect(store.db.prepare("SELECT report FROM imports WHERE name='fixture'").get()?.report).toBe(
       '{"imported":1}',
     )
-    expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 4 })
+    expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 5 })
     expect(statSync(file).mode & 0o777).toBe(0o600)
     expect(statSync(directory).mode & 0o777).toBe(0o700)
     expect(runtime.snapshot().entries).toEqual([])
@@ -260,9 +260,9 @@ it("keeps GH_TOKEN under the general managed secret controls", () => {
   expect(runtime.readSecret("GH_TOKEN")).toBe("literal\nsecret")
 })
 
-it("does not interpret legacy notification runtime names as recipient policy", () => {
+it("does not interpret legacy notification runtime names as GitHub author policy", () => {
   put("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS", "not an ID list", "variable")
   put("GITHUB_NOTIFICATIONS_TOKEN", "ordinary variable", "variable")
   expect(runtime.readVariable("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS")).toBe("not an ID list")
-  expect(store.snapshot().policy.githubNotifications.allowedUserIds).toEqual([])
+  expect(store.snapshot().policy.githubNotifications.allowedUsernames).toEqual([])
 })

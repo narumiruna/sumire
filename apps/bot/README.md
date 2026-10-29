@@ -419,14 +419,20 @@ Runtime limits below remain fixed while the database owns authorization and capa
 
 Keep state volumes during upgrades. Revoke channel image access by removing its ID from group/channel access in the WebUI and applying the policy. Existing metadata remains stored but `read_image` checks the current authorization before reading it.
 
-### GitHub notifications
+### GitHub mention replies
 
-`read_github_notifications` is a read-only, private-chat-only tool, disabled by default. Save the
-shared `GH_TOKEN` secret in **Secrets & variables**. On **GitHub notifications**, enter each Telegram
-user ID with **Add recipient**, then review and save the list. No JSON variable is needed. Approve
-chat access and tool permissions separately. Groups cannot receive results, and the admin role does
-not bypass the list. An empty saved list denies everyone. Existing policies default to an empty list;
-legacy notification entries are ignored, not imported.
-See [setup, privacy and limits](../../packages/github-notifications/README.md). No new host environment
-variables are needed. Chats with `bash` access can use or read the same `GH_TOKEN`, independently of
-notification recipient permissions.
+On **Defaults → GitHub mentions**, allow the GitHub usernames whose mentions Sumire should answer.
+The authenticated `GH_TOKEN` account is the bot identity, not an allowlist entry. When an allowed
+author directly mentions that account in an issue/PR body, comment, or submitted review, the
+background worker generates a reply and posts it on GitHub. Other authors are ignored. This does
+not use Telegram IDs, Telegram chat access, or chat tool permissions.
+
+Save and apply the encrypted `GH_TOKEN` with notification-read and comment-write permissions, and
+configure an authenticated, allowed shared default model. Empty allowlists disable polling and
+replies. Legacy Telegram recipient lists migrate to empty GitHub allowlists under admin schema v5.
+
+Keep `.telegramagent/github/` on persistent storage for per-account checkpoints, dedicated Pi
+Durable transcripts, and reply recovery. The channel exposes no shell, file, MCP, or publication
+tools. It does not mark notifications read. See [setup, privacy, supported sources, and limits](../../packages/github-notifications/README.md).
+No new host environment variables are required. Chats with `bash` access can independently read
+or use the shared `GH_TOKEN`.

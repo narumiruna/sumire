@@ -1,16 +1,18 @@
+import { githubUsernameSchema } from "@narumitw/sumire-policy"
 import { Badge, Button, Callout, Code, Flex, Text, TextField } from "@radix-ui/themes"
 import { useRef, useState } from "react"
 import type { Policy } from "./api.js"
 import type { Page } from "./navigation.js"
 import { Panel, Prose, SettingsSection } from "./surfaces.js"
 
-export function notificationRecipientError(value: string, ids: readonly number[]): string {
-  const id = value.trim()
-  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)))
-    return "Enter a positive Telegram user ID. Groups, usernames, and fractional IDs are not accepted."
-  if (ids.includes(Number(id))) return "This user is already a notification recipient."
-  if (ids.length >= 1000)
-    return "Remove a recipient before adding another. The limit is 1,000 users."
+export function mentionAuthorError(value: string, usernames: readonly string[]): string {
+  const parsed = githubUsernameSchema.safeParse(value.trim())
+  if (!parsed.success)
+    return "Enter a GitHub username: 1–39 letters or digits, with single interior hyphens only."
+  if (usernames.some((username) => username.toLowerCase() === parsed.data))
+    return "This GitHub username is already allowed."
+  if (usernames.length >= 1000)
+    return "Remove a username before adding another. The limit is 1,000 usernames."
   return ""
 }
 
@@ -32,51 +34,53 @@ export function GithubNotifications({
   const [value, setValue] = useState("")
   const [error, setError] = useState("")
   const input = useRef<HTMLInputElement>(null)
-  const ids = policy.githubNotifications.allowedUserIds
-  const savedIds = saved.githubNotifications.allowedUserIds
-  const removed = savedIds.filter((id) => !ids.includes(id))
-  const update = (allowedUserIds: number[]) =>
-    onChange({ ...policy, githubNotifications: { allowedUserIds } })
+  const usernames = policy.githubNotifications.allowedUsernames
+  const savedUsernames = saved.githubNotifications.allowedUsernames
+  const removed = savedUsernames.filter((username) => !usernames.includes(username))
+  const update = (allowedUsernames: string[]) =>
+    onChange({ ...policy, githubNotifications: { allowedUsernames } })
   return (
     <div className="settings-stack github-notifications">
       <SettingsSection
-        title="Notification recipients"
-        description="Choose who may read the shared GitHub account's notifications in a private Telegram chat."
+        title="Mention author allowlist"
+        description="Choose which GitHub authors can trigger automatic replies on GitHub."
       >
         <Prose>
-          Enter one Telegram user ID at a time. Add or remove recipients, then select Review and
-          save changes. This list does not approve chat access or grant tool permissions. Groups are
-          always denied, and administrators must also be listed.
+          When someone mentions the GitHub account authenticated by GH_TOKEN, Sumire replies on
+          GitHub only if the mention author is in this allowlist. Mentions from other authors are
+          ignored. Enter one GitHub username at a time, then select Review and save changes.
+          Telegram chat access and tool permissions are not required.
         </Prose>
         <form
-          className="github-recipient-form"
+          className="github-author-form"
           onSubmit={(event) => {
             event.preventDefault()
             if (disabled) return
-            const message = notificationRecipientError(value, ids)
+            const message = mentionAuthorError(value, usernames)
             setError(message)
             if (message) {
               input.current?.focus()
               return
             }
-            update([...ids, Number(value.trim())])
+            update([...usernames, githubUsernameSchema.parse(value.trim())])
             setValue("")
             onPending(false)
             input.current?.focus()
           }}
         >
-          <label className="form-field" htmlFor="github-notification-user">
-            Telegram user ID
+          <label className="form-field" htmlFor="github-mention-author">
+            GitHub username
             <TextField.Root
               ref={input}
-              id="github-notification-user"
-              inputMode="numeric"
+              id="github-mention-author"
               autoComplete="off"
-              placeholder="123456789"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="octocat"
               value={value}
               disabled={disabled}
               aria-invalid={Boolean(error)}
-              aria-describedby={error ? "github-recipient-error" : "github-recipient-help"}
+              aria-describedby={error ? "github-author-error" : "github-author-help"}
               onChange={(event) => {
                 setValue(event.target.value)
                 setError("")
@@ -85,34 +89,37 @@ export function GithubNotifications({
             />
           </label>
           <Button type="submit" disabled={disabled || !value.trim()}>
-            Add recipient
+            Add username
           </Button>
-          <Text as="p" size="2" color="gray" id="github-recipient-help">
-            Use a positive numeric user ID, not a username or group ID. No JSON is needed.
+          <Text as="p" size="2" color="gray" id="github-author-help">
+            Use a GitHub username without @, not a Telegram user ID. Usernames are saved in
+            lowercase. The limit is 1,000 usernames.
           </Text>
           {error && (
-            <Text as="p" id="github-recipient-error" role="alert" color="red">
+            <Text as="p" id="github-author-error" role="alert" color="red">
               {error}
             </Text>
           )}
         </form>
-        <Panel id="github-notification-recipients" tabIndex={-1} aria-label="Recipient list">
+        <Panel id="github-mention-authors" tabIndex={-1} aria-label="Allowed GitHub usernames">
           <Text as="p" weight="medium" aria-live="polite">
-            {ids.length} selected {ids.length === 1 ? "recipient" : "recipients"}
+            {usernames.length} allowed {usernames.length === 1 ? "username" : "usernames"}
           </Text>
-          {ids.length === 0 && (
-            <Prose>No recipients selected. An empty saved list denies everyone.</Prose>
+          {usernames.length === 0 && (
+            <Prose>
+              No usernames allowed. An empty saved allowlist disables automatic replies.
+            </Prose>
           )}
-          <ul className="github-recipient-list">
-            {[...ids, ...removed].map((id) => {
-              const revoked = removed.includes(id)
+          <ul className="github-author-list">
+            {[...usernames, ...removed].map((username) => {
+              const revoked = removed.includes(username)
               return (
-                <li key={id}>
-                  <Code variant="ghost">{id}</Code>
-                  <Badge color={revoked || !savedIds.includes(id) ? "orange" : "gray"}>
+                <li key={username}>
+                  <Code variant="ghost">{username}</Code>
+                  <Badge color={revoked || !savedUsernames.includes(username) ? "orange" : "gray"}>
                     {revoked
                       ? "Pending removal"
-                      : savedIds.includes(id)
+                      : savedUsernames.includes(username)
                         ? "Saved"
                         : "Pending addition"}
                   </Badge>
@@ -120,17 +127,21 @@ export function GithubNotifications({
                     variant="soft"
                     color={revoked ? "gray" : "red"}
                     disabled={disabled}
-                    aria-label={`${revoked ? "Restore" : "Remove"} recipient ${id}`}
+                    aria-label={`${revoked ? "Restore" : "Remove"} username ${username}`}
                     onClick={() => {
                       if (revoked) {
-                        const message = notificationRecipientError(String(id), ids)
+                        const message = mentionAuthorError(username, usernames)
                         if (message) {
                           setError(message)
                           input.current?.focus()
                           return
                         }
                       }
-                      update(revoked ? [...ids, id] : ids.filter((value) => value !== id))
+                      update(
+                        revoked
+                          ? [...usernames, username]
+                          : usernames.filter((value) => value !== username),
+                      )
                       setError("")
                       input.current?.focus()
                     }}
@@ -145,36 +156,25 @@ export function GithubNotifications({
       </SettingsSection>
       <SettingsSection
         title="GitHub account & permissions"
-        description="Notifications use the same encrypted GH_TOKEN secret as GitHub CLI."
+        description="GH_TOKEN determines which GitHub account Sumire uses."
       >
         <Prose>
-          Save a GitHub.com token accepted by the Notifications API as the secret{" "}
-          <Code>GH_TOKEN</Code>, for example a classic Personal Access Token with the{" "}
-          <Code>notifications</Code> scope. The token must be saved and applied. Configured state
-          does not prove that GitHub accepts it. All recipients read notifications for this one
-          account, not their own GitHub accounts.
-        </Prose>
-        <Prose>
-          Each recipient also needs approved chat access and permission to use{" "}
-          <Code>read_github_notifications</Code>. Adding a recipient here does not enable that tool.
+          Save and apply the encrypted <Code>GH_TOKEN</Code> secret in Secrets & variables. The
+          token must allow Sumire to read mentions and post replies in the relevant repositories.
+          Configured state does not prove that GitHub accepts the token. Replies are posted on
+          GitHub as the account authenticated by this token, not sent to Telegram.
         </Prose>
         <Flex gap="3" wrap="wrap">
           <Button variant="soft" onClick={() => onNavigate("Secrets & variables")}>
             Manage GH_TOKEN
           </Button>
-          <Button variant="soft" onClick={() => onNavigate("Access")}>
-            Manage chat access
-          </Button>
-          <Button variant="soft" onClick={() => onNavigate("Tool permissions")}>
-            Manage tool permissions
-          </Button>
         </Flex>
         <Callout.Root color="orange">
           <Callout.Text>
-            Chats with bash access can use and read GH_TOKEN, independently of this recipient list.
-            Shell and file access remain trusted host access, not a security sandbox. Notification
-            metadata reaches the selected model and conversation history; long replies can also use
-            Morsel. Removing a recipient does not erase earlier transcripts or exports.
+            Chats with bash access can use and read GH_TOKEN, independently of this author
+            allowlist. Shell and file access remain trusted host access, not a security sandbox.
+            Removing a username stops future automatic replies; it does not delete replies already
+            posted on GitHub.
           </Callout.Text>
         </Callout.Root>
       </SettingsSection>

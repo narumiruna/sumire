@@ -2,6 +2,13 @@ import { z } from "zod"
 
 export const POLICY_MAX_NAMES = 512
 
+export const githubUsernameSchema = z
+  .string()
+  .min(1)
+  .max(39)
+  .regex(/^[a-z\d]+(?:-[a-z\d]+)*(?![\s\S])/i)
+  .transform((username) => username.toLowerCase())
+
 const names = z
   .array(z.string().min(1).max(256))
   .max(POLICY_MAX_NAMES)
@@ -61,13 +68,13 @@ export const policySchema = z
     defaults: selectionSchema,
     githubNotifications: z
       .object({
-        allowedUserIds: z
-          .array(z.number().int().positive().safe())
+        allowedUsernames: z
+          .array(githubUsernameSchema)
           .max(1000)
-          .refine((ids) => new Set(ids).size === ids.length),
+          .refine((usernames) => new Set(usernames).size === usernames.length),
       })
       .strict()
-      .default(() => ({ allowedUserIds: [] })),
+      .default(() => ({ allowedUsernames: [] })),
     privateUsers: z.array(z.number().int().positive().safe()).max(1000),
     groups: z.array(z.number().int().negative().safe()).max(1000),
     chats: z
@@ -107,7 +114,7 @@ export function initialPolicy(): Policy {
     servers: [],
     models: [],
     defaults: { ...inherited, tools: [], skills: [], servers: [], models: [], thinking: "off" },
-    githubNotifications: { allowedUserIds: [] },
+    githubNotifications: { allowedUsernames: [] },
     privateUsers: [],
     groups: [],
     chats: {},

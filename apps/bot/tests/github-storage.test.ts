@@ -169,7 +169,7 @@ describe("GitHub paired credential persistence", () => {
     restart()
     expect(persisted()).toEqual(saved)
     expect(runtime.githubCredentials()).toEqual({ kind: "oauth", token: accessToken, state })
-    expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 4 })
+    expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 5 })
   })
 
   it("preserves normal manual PATs only when the companion is absent", () => {

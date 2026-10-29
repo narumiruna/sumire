@@ -165,14 +165,18 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     }
   }
   for (const [before, after, action] of [
-    [saved.githubNotifications.allowedUserIds, draft.githubNotifications.allowedUserIds, "add"],
-    [draft.githubNotifications.allowedUserIds, saved.githubNotifications.allowedUserIds, "remove"],
+    [saved.githubNotifications.allowedUsernames, draft.githubNotifications.allowedUsernames, "add"],
+    [
+      draft.githubNotifications.allowedUsernames,
+      saved.githubNotifications.allowedUsernames,
+      "remove",
+    ],
   ] as const)
-    for (const id of after)
-      if (!before.includes(id))
+    for (const username of after)
+      if (!before.includes(username))
         changes.push({
-          label: `GitHub notifications: ${action} recipient ${id} — private chats only; chat access and tool permissions unchanged.`,
-          targets: [{ page: "GitHub notifications", selector: "#github-notification-recipients" }],
+          label: `GitHub mentions: ${action} username ${username} — automatic replies on GitHub; no Telegram chat or tool permission dependency.`,
+          targets: [{ page: "GitHub mentions", selector: "#github-mention-authors" }],
         })
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
@@ -241,8 +245,8 @@ export function policyChangeCount(saved: Policy, draft: Policy): number {
     )
   let count = selectionCount(saved.defaults, draft.defaults)
   count += listCount(
-    saved.githubNotifications.allowedUserIds,
-    draft.githubNotifications.allowedUserIds,
+    saved.githubNotifications.allowedUsernames,
+    draft.githubNotifications.allowedUsernames,
   )
   for (const key of ["privateUsers", "groups", "tools", "servers", "skills", "models"] as const)
     count += listCount(saved[key], draft[key])

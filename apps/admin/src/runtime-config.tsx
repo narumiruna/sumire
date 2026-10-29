@@ -226,10 +226,11 @@ export function RuntimeConfig({
             </Prose>
           )}
           <Prose>
-            GitHub notifications also use the secret <code>GH_TOKEN</code>. The token needs access
-            to the Notifications API, for example a classic Personal Access Token with the{" "}
-            <code>notifications</code> scope. Manage Telegram recipients on the GitHub notifications
-            page, not in Variables. Recipients also need chat access and tool permissions.
+            GitHub mentions use the secret <code>GH_TOKEN</code> to determine the bot account. Allow
+            mention authors by GitHub username on the GitHub mentions page, not in Variables. Sumire
+            replies on GitHub only to mentions from allowed authors; an empty allowlist disables
+            automatic replies. Telegram chat access and tool permissions are not required. The token
+            must allow access to mentions and replies in the relevant repositories.
           </Prose>
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">

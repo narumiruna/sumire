@@ -20,7 +20,7 @@ const taskLabels = {
   "MCP connections": "MCP Servers",
   "Model Providers": "Model providers",
   "Secrets & variables": "Secrets &amp; variables",
-  "GitHub notifications": "GitHub notifications",
+  "GitHub mentions": "GitHub mentions",
   Audit: "Audit",
 } satisfies Record<Page, string>
 
@@ -78,9 +78,9 @@ describe("admin navigation", () => {
       "Tool permissions",
       "Skills",
       "MCP connections",
-      "GitHub notifications",
       "Defaults",
       "Secrets & variables",
+      "GitHub mentions",
       "Audit",
     ]
     expect(links).toHaveLength(pages.length)
@@ -142,6 +142,18 @@ describe("admin navigation", () => {
     })
     expect(readNavigation(new URL("https://example.com/?section=MCP+connections"))).toEqual({
       page: "MCP connections",
+      chat: "",
+    })
+  })
+  it("opens legacy GitHub notifications links as GitHub mentions", () => {
+    expect(
+      readNavigation(new URL("https://example.com/?section=GitHub+notifications&chat=42")),
+    ).toEqual({
+      page: "GitHub mentions",
+      chat: "42",
+    })
+    expect(readNavigation(new URL("https://example.com/?section=GitHub+mentions"))).toEqual({
+      page: "GitHub mentions",
       chat: "",
     })
   })

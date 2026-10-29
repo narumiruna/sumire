@@ -12,7 +12,6 @@ import { createRegistry, defineExtension, Harness, section } from "@earendil-wor
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import type { Inventory } from "@narumitw/sumire-contracts"
-import { GITHUB_NOTIFICATIONS_TOOL } from "@narumitw/sumire-github-notifications"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createUrlTool, urlReaderSkillsPath } from "@narumitw/sumire-pi-url-reader"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
@@ -41,7 +40,6 @@ import { createProgressExtension } from "./durable/progress.js"
 import { DurableSession } from "./durable/session.js"
 import { BotSessionDoc } from "./durable/state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
-import { createGithubNotificationsTool } from "./github-notifications.js"
 import {
   createImagegenTool,
   getImagegenAvailability,
@@ -130,15 +128,11 @@ export async function createPiSessionFactory(
     ...coding.map((tool) => tool.name),
     ...baseTools.map((tool) => tool.name),
     ...publicPolymarketToolNames,
-    GITHUB_NOTIFICATIONS_TOOL,
     IMAGEGEN_TOOL,
     "codemode",
     "update_progress",
   ]
-  control.store.registerTools(
-    [IMAGEGEN_TOOL, "read_variable", "publish_markdown_to_morsel", GITHUB_NOTIFICATIONS_TOOL],
-    false,
-  )
+  control.store.registerTools([IMAGEGEN_TOOL, "read_variable", "publish_markdown_to_morsel"], false)
   control.store.registerTools(toolNames)
   logger.info(`Bot instructions loaded\n${appendSystemPrompt}`, {
     sha256: createHash("sha256").update(appendSystemPrompt).digest("hex"),
@@ -281,17 +275,7 @@ export async function createPiSessionFactory(
       const chatCoding = [...sessionCoding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
         control.store.allowsTool(chatId, tool.name),
       )
-      const chatBaseTools = [
-        ...baseTools,
-        ...polymarket.tools,
-        createGithubNotificationsTool(chatId, {
-          runtime: control.runtime,
-          allowedUserIds: () => control.store.snapshot().policy.githubNotifications.allowedUserIds,
-          assertAccess: () => authorize(GITHUB_NOTIFICATIONS_TOOL),
-        }),
-      ]
-        .filter(allowed)
-        .map(guard)
+      const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
       const nativeTools = [...chatBaseTools]
       let mcpTools: import("./durable/tools.js").NativeTool[] = []
       let currentGenerations: Record<string, string> = {}

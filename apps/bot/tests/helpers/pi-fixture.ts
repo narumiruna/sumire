@@ -166,6 +166,9 @@ export async function createPiFixture(overrides: Partial<Settings> = {}) {
       get disconnectedRequests() {
         return disconnectedRequests
       },
+      get pendingReplies() {
+        return replies.length
+      },
       pauseNextRequest() {
         let release = () => {}
         nextRequestGate = new Promise<void>((resolve) => {

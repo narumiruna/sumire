@@ -25,7 +25,7 @@ function chatResponse(route: Route, chats: { id: number; name: string; type: str
 }
 
 const policy = {
-  githubNotifications: { allowedUserIds: [] },
+  githubNotifications: { allowedUsernames: [] },
   skills: [],
   tools: ["read_url_content"],
   servers: [],
