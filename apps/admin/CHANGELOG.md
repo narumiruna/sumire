@@ -1,5 +1,24 @@
 # @narumitw/sumire-admin
 
+## 0.10.0
+
+### Minor Changes
+
+- 0ca1947: Add WebUI GitHub Device Flow with verified-account confirmation, encrypted paired access/refresh credentials, session-owned cancellation and outcome recovery, and single-flight refresh before authorized shell execution. Preserve manual PATs and existing tool permissions, protect refresh state from generic APIs, and prevent stale credential writes or subprocess dispatch after revocation.
+- 825ca3c: Replace Telegram notification recipients with GitHub mention author usernames. Reply on GitHub only to allowed authors who directly mention the account authenticated by GH_TOKEN. Add bounded polling, isolated Pi Durable generation, persisted response recovery, and delivery authorization checks.
+  
+  Migrate legacy Telegram ID lists to empty GitHub allowlists under admin schema v5. Remove the Telegram notification-reading tool and update the administration page, setup guidance, and compatibility links.
+
+### Patch Changes
+
+- 76b6b56: Use the applied managed GH_TOKEN for GitHub notifications and replace the generic recipient variable with a dedicated administration page. Store validated recipient IDs in policy settings with review, application, audit, and conflict recovery. Keep private-chat and tool permission checks before and after notification requests.
+- 316f0d5: Add bounded read-only GitHub notification tools that share the applied encrypted GH_TOKEN with GitHub CLI. Manage private Telegram recipients on a dedicated administration page with validated policy storage, review, application, and conflict recovery. Preserve normal tool permissions for direct and codemode execution.
+- Updated dependencies [0ca1947]
+- Updated dependencies [825ca3c]
+- Updated dependencies [76b6b56]
+  - @narumitw/sumire-contracts@0.8.0
+  - @narumitw/sumire-policy@0.5.0
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,43 @@
 # @narumitw/sumire
 
+## 0.18.0
+
+### Minor Changes
+
+- 0ca1947: Add WebUI GitHub Device Flow with verified-account confirmation, encrypted paired access/refresh credentials, session-owned cancellation and outcome recovery, and single-flight refresh before authorized shell execution. Preserve manual PATs and existing tool permissions, protect refresh state from generic APIs, and prevent stale credential writes or subprocess dispatch after revocation.
+- 825ca3c: Replace Telegram notification recipients with GitHub mention author usernames. Reply on GitHub only to allowed authors who directly mention the account authenticated by GH_TOKEN. Add bounded polling, isolated Pi Durable generation, persisted response recovery, and delivery authorization checks.
+  
+  Migrate legacy Telegram ID lists to empty GitHub allowlists under admin schema v5. Remove the Telegram notification-reading tool and update the administration page, setup guidance, and compatibility links.
+- 316f0d5: Add bounded read-only GitHub notification tools that share the applied encrypted GH_TOKEN with GitHub CLI. Manage private Telegram recipients on a dedicated administration page with validated policy storage, review, application, and conflict recovery. Preserve normal tool permissions for direct and codemode execution.
+
+### Patch Changes
+
+- 506d8bf: Install yt-dlp's matching EJS scripts and default Deno runtime in the production image for YouTube audio extraction. Check both dependencies offline during image builds.
+- ffa6896: Refresh managed GitHub credentials before enabled mention polls. Keep disabled-policy and cancellation checks around credential resolution.
+  
+  Save per-account scan continuations after complete pages. Recheck the saved page boundary before continuing. Restart a moved boundary without advancing the original cutoff. Resume bounded scans after restart and keep the original cutoff until the full scan completes.
+  
+  Recognize HTML comment delimiters only outside code so literal code does not hide a later direct mention.
+- 9a7860e: Keep issue and PR body reply identities stable when unrelated thread activity changes updated_at. Check the bounded comment history for an existing body reply marker.
+  
+  Skip unavailable sources by structured HTTP status. Keep ordinary delivery failures local to one pending item and retain its saved answer for retry. Preserve access and cancellation checks before later work.
+- 76b6b56: Use the applied managed GH_TOKEN for GitHub notifications and replace the generic recipient variable with a dedicated administration page. Store validated recipient IDs in policy settings with review, application, audit, and conflict recovery. Keep private-chat and tool permission checks before and after notification requests.
+- f17ecad: Scan five GitHub notifications per operation. Even five PRs with three complete ten-page source histories stay below the existing 200-request limit. Keep the ten-page poll bound, saved page continuations, and outbox delivery. Document the smaller notification batches.
+- fab0c1a: Isolate source pagination limits to the affected GitHub thread during mention discovery. Discard its incomplete sources, return a skipped-thread count, and keep other threads and saved replies moving. Preserve all other scan failures and bounded reply-marker checks.
+- d411346: Keep native shell execution available when GH_TOKEN is a public variable without OAuth state. Do not inject the variable or ambient GitHub credentials, and keep invalid managed OAuth pairs blocked.
+- f999430: 在系統附加指令中註明 Sumire Bot 的公開原始碼儲存庫與連結。
+- Updated dependencies [0ca1947]
+- Updated dependencies [825ca3c]
+- Updated dependencies [ffa6896]
+- Updated dependencies [9a7860e]
+- Updated dependencies [76b6b56]
+- Updated dependencies [316f0d5]
+- Updated dependencies [f17ecad]
+- Updated dependencies [fab0c1a]
+  - @narumitw/sumire-contracts@0.8.0
+  - @narumitw/sumire-github-notifications@0.2.0
+  - @narumitw/sumire-policy@0.5.0
+
 ## 0.17.0
 
 ### Minor Changes
