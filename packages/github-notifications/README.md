@@ -26,12 +26,16 @@ Issue/PR bodies, issue comments, and review bodies receive an issue/PR comment. 
 
 `createGithubMentionClient({ authorize, token, allowedUsernames, fetch? })` provides:
 
-- `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, `hasMore`, a `pageKey` hash of the notification rows, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
+- `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, a `skippedThreads` count, `hasMore`, a `pageKey` hash of the notification rows, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
 - `reply(mention, text, signal?)`: revalidate the current account, source version, author, and admission before posting. Return `sent`, `already-replied`, or `ignored`. Replies must contain 1–60,000 UTF-8 bytes. A deterministic hidden source marker identifies an existing bot-authored reply after an uncertain write.
 
 Issue/PR body keys use the account, repository, source ID, author, and body content. The issue activity timestamp does not change that identity. Marker checks for body replies scan the bounded comment history without an activity-time cutoff. A real body or author change still prevents delivery of an old answer.
 
 A source GET with HTTP 404 or 410 is unavailable. Scans skip that source, and delivery returns `ignored` without a write. Account, marker-list, and POST failures are not treated as missing sources.
+
+A source history with more than ten pages skips its whole thread during discovery. No body, comment, or review from that incomplete thread is returned. `skippedThreads` counts these threads. Other threads can still be discovered, and the bot logs a fixed warning without source data. Global notification checkpoints continue. Older skipped mentions are not replayed; the administrator must investigate an oversized thread.
+
+This exception applies only to the typed source pagination limit. Other failures still stop the scan. A pagination limit during reply-marker checks still prevents a write and keeps the saved response pending.
 
 The host owns `authorize()`, applied credentials, and the allowlist. It must bind them to trusted application state, not model arguments. Each operation uses one token; credential replacement interrupts it. A persisted mention from another account is never posted under the new account.
 

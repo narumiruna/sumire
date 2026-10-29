@@ -93,6 +93,7 @@ function fixture(expiresAt = now - 1) {
   const page: MentionPage = {
     account: githubAccount,
     mentions: [mention],
+    skippedThreads: 0,
     hasMore: false,
     pageKey: "fixture-page",
     pollIntervalSeconds: 60,

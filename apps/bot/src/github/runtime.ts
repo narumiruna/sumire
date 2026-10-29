@@ -205,6 +205,8 @@ export class GithubMentionWorker {
       for (; ; page++) {
         authorize()
         if (result.account.id !== account.id) throw new Error("GitHub account changed during scan")
+        if (result.skippedThreads > 0)
+          this.options.logger.warn("GitHub source history exceeded 10 pages; thread was skipped")
         seconds = Math.max(seconds, result.pollIntervalSeconds)
         this.#pollSeconds = seconds
         for (const mention of result.mentions) {

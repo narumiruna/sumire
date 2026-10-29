@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto"
-import { GithubHttpError, type GithubMentionClientOptions, invalid, openApi } from "./api.js"
+import {
+  GithubError,
+  GithubHttpError,
+  type GithubMentionClientOptions,
+  invalid,
+  openApi,
+} from "./api.js"
 import { allowsMentionAuthor, mentionsAccount } from "./config.js"
 
 export interface GithubAccount {
@@ -30,6 +36,7 @@ export interface MentionQuery {
 export interface MentionPage {
   account: GithubAccount
   mentions: GithubMention[]
+  skippedThreads: number
   hasMore: boolean
   pageKey: string
   pollIntervalSeconds: number
@@ -44,6 +51,8 @@ type Thread = {
 }
 const listSize = 20
 const maxPages = 10
+class SourcePaginationLimitError extends GithubError {}
+
 const minimumPollSeconds = 60
 const username = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}(?![\s\S])/i
 
@@ -79,6 +88,7 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
       const rows = array(response.data, perPage)
       const found = new Map<string, GithubMention>()
       const seenThreads = new Set<string>()
+      let skippedThreads = 0
       for (const value of rows) {
         const notification = object(value)
         // Subscription, assignment, team, and review-request notifications are not direct mentions.
@@ -87,27 +97,33 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
         if (!thread || seenThreads.has(`${thread.repository}/${thread.number}`)) continue
         seenThreads.add(`${thread.repository}/${thread.number}`)
         const base = `/repos/${thread.repository}`
-        const issue = await readSource(api, `${base}/issues/${thread.number}`)
-        if (!issue) continue
-        thread.title = text(issue.title, 2048)
-        const records: { kind: GithubMention["source"]["kind"]; value: unknown }[] = [
-          { kind: "issue", value: issue },
-        ]
-        for (const value of await list(
-          api,
-          `${base}/issues/${thread.number}/comments`,
-          query.since,
-        ))
-          records.push({ kind: "issue-comment", value })
-        if (thread.pull) {
+        let records: { kind: GithubMention["source"]["kind"]; value: unknown }[]
+        try {
+          const issue = await readSource(api, `${base}/issues/${thread.number}`)
+          if (!issue) continue
+          thread.title = text(issue.title, 2048)
+          records = [{ kind: "issue", value: issue }]
           for (const value of await list(
             api,
-            `${base}/pulls/${thread.number}/comments`,
+            `${base}/issues/${thread.number}/comments`,
             query.since,
           ))
-            records.push({ kind: "review-comment", value })
-          for (const value of await list(api, `${base}/pulls/${thread.number}/reviews`))
-            records.push({ kind: "review", value })
+            records.push({ kind: "issue-comment", value })
+          if (thread.pull) {
+            for (const value of await list(
+              api,
+              `${base}/pulls/${thread.number}/comments`,
+              query.since,
+            ))
+              records.push({ kind: "review-comment", value })
+            for (const value of await list(api, `${base}/pulls/${thread.number}/reviews`))
+              records.push({ kind: "review", value })
+          }
+        } catch (error) {
+          if (!(error instanceof SourcePaginationLimitError)) throw error
+          api.assert()
+          skippedThreads++
+          continue
         }
         for (const record of records) {
           const mention = normalizeMention(
@@ -126,6 +142,7 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
       return {
         account,
         mentions,
+        skippedThreads,
         hasMore: hasNext(response.headers),
         pageKey: createHash("sha256").update(JSON.stringify(rows)).digest("hex"),
         pollIntervalSeconds: Math.min(
@@ -250,7 +267,7 @@ async function list(api: Api, path: string, since?: string): Promise<unknown[]> 
     if (!hasNext(response.headers)) return result
   }
   // Never return partial source data or claim a duplicate is absent after a truncated scan.
-  throw new Error("GitHub mention source pagination limit exceeded")
+  throw new SourcePaginationLimitError("GitHub mention source pagination limit exceeded")
 }
 function hasNext(headers: Headers): boolean {
   // Only the relation is used. Upstream URLs never select a request destination.

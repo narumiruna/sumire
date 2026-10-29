@@ -57,6 +57,7 @@ async function fixture() {
   const page: MentionPage = {
     account,
     mentions: [mention()],
+    skippedThreads: 0,
     hasMore: false,
     pageKey: "fixture-page",
     pollIntervalSeconds: 60,

@@ -286,13 +286,13 @@ describe("mention scans", () => {
     )
   })
 
-  it("fails closed after ten source pages instead of returning a partial scan", async () => {
+  it("discards an oversized thread after ten source pages instead of returning partial sources", async () => {
     const { state, client, fetcher } = setup()
     state.hook = (url) =>
       url.pathname === `${issuePath}/comments`
         ? json([source(201)], { link: '<https://hostile.invalid>; rel="next"' })
         : undefined
-    await expect(client.scan()).rejects.toThrow("source pagination limit exceeded")
+    expect(await client.scan()).toMatchObject({ mentions: [], skippedThreads: 1 })
     expect(fetcher).toHaveBeenCalledTimes(13)
   })
 
