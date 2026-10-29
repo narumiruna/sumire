@@ -7,6 +7,7 @@ import {
   type GithubMention,
 } from "@narumitw/sumire-github-notifications"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+import type { GitHubAuth } from "../admin/github-auth.js"
 import type { AdminStore } from "../admin/store.js"
 import type { Settings } from "../config/settings.js"
 import type { Logger } from "../logging.js"
@@ -33,6 +34,7 @@ export interface GithubWorkerOptions {
   directory: string
   store: Pick<AdminStore, "snapshot">
   runtime: Pick<RuntimeConfigReader, "readSecret">
+  github: Pick<GitHubAuth, "resolveToken">
   modelRuntime: ModelRuntime
   logger: Pick<Logger, "warn">
   generate: GenerateReply
@@ -68,7 +70,7 @@ export class GithubMentionWorker {
       })
   }
 
-  #enabled() {
+  #policy() {
     this.#controller.signal.throwIfAborted()
     const state = this.options.store.snapshot()
     if (
@@ -77,6 +79,11 @@ export class GithubMentionWorker {
       !state.policy.githubNotifications.allowedUsernames.length
     )
       throw new Error("GitHub mention responses are not enabled by applied policy")
+    return state
+  }
+
+  #enabled() {
+    const state = this.#policy()
     const token = this.options.runtime.readSecret("GH_TOKEN")
     if (!token) throw new Error("GitHub mention responses require applied GH_TOKEN")
     return { state, token }
@@ -115,13 +122,20 @@ export class GithubMentionWorker {
 
   async #poll(): Promise<number> {
     // Disabled policy performs no GitHub requests, model turns, or external writes.
-    let initial: { state: ReturnType<GithubWorkerOptions["store"]["snapshot"]>; token: string }
+    let policy: ReturnType<GithubWorkerOptions["store"]["snapshot"]>
     try {
-      initial = this.#enabled()
+      policy = this.#policy()
     } catch {
       return defaultPollSeconds
     }
-    const fingerprint = tokenHash(initial.token)
+    await this.options.github.resolveToken(this.#controller.signal)
+    const state = this.#policy()
+    if (state.revision !== policy.revision || state.epoch !== policy.epoch)
+      throw new Error("GitHub applied settings changed during credential resolution")
+    const token = this.options.runtime.readSecret("GH_TOKEN")
+    if (!token) return defaultPollSeconds
+    const initial = { state, token }
+    const fingerprint = tokenHash(token)
     const operation = new AbortController()
     const signal = AbortSignal.any([this.#controller.signal, operation.signal])
     const authorize = (mention?: GithubMention) => {
@@ -157,23 +171,38 @@ export class GithubMentionWorker {
       const tokenSince = this.#state.start(fingerprint, freshSince)
       const knownAccount = this.#state.account(fingerprint)
       let since = knownAccount ? (this.#state.since(knownAccount) ?? tokenSince) : tokenSince
+      let progress = knownAccount ? this.#state.scan(knownAccount) : undefined
+      let page = progress?.page ?? 1
       authorize()
-      let result = await this.#client.scan({ since, page: 1, perPage: 20 }, signal)
+      let result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+      let scanned = 1
       this.#pollSeconds = Math.max(defaultPollSeconds, result.pollIntervalSeconds)
       authorize()
       const account = result.account
       this.#state.bind(fingerprint, account.id)
       // A rotated token for the same account must retain its checkpoint and pending work.
       const savedSince = this.#state.since(account.id)
-      if ((savedSince ?? tokenSince) !== since) {
+      progress = this.#state.scan(account.id)
+      const savedPage = progress?.page ?? 1
+      if ((savedSince ?? tokenSince) !== since || savedPage !== page) {
         since = savedSince ?? tokenSince
-        result = await this.#client.scan({ since, page: 1, perPage: 20 }, signal)
+        page = savedPage
+        result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+        scanned++
         authorize()
       }
-      // Persist the first-enable cutoff even if this scan later fails or reaches the page cap.
+      // Page offsets can move while polling is idle. Recheck the last complete page before resuming.
+      if (progress && result.pageKey !== progress.pageKey) {
+        page = 1
+        result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+        scanned++
+        authorize()
+      }
+      // Keep the original pass cutoff across page limits, failures, restart, and token rotation.
+      const checkpoint = progress?.checkpoint ?? freshSince
       if (!savedSince) this.#state.checkpoint(account.id, since)
       let complete = false
-      for (let page = 1; page <= maxPages; page++) {
+      for (; ; page++) {
         authorize()
         if (result.account.id !== account.id) throw new Error("GitHub account changed during scan")
         seconds = Math.max(seconds, result.pollIntervalSeconds)
@@ -193,12 +222,14 @@ export class GithubMentionWorker {
           complete = true
           break
         }
-        if (page < maxPages)
-          result = await this.#client.scan({ since, page: page + 1, perPage: 20 }, signal)
+        this.#state.progress(account.id, page, result.pageKey, checkpoint)
+        if (scanned >= maxPages) break
+        result = await this.#client.scan({ since, page: page + 1, perPage: 20 }, signal)
+        scanned++
       }
       authorize()
-      if (complete) this.#state.checkpoint(account.id, freshSince)
-      else this.options.logger.warn("GitHub scan exceeded 10 pages; cursor was not advanced")
+      if (complete) this.#state.completeScan(account.id, checkpoint)
+      else this.options.logger.warn("GitHub scan reached 10 pages; continuation is saved")
 
       for (const pending of this.#state.pending(account.id)) {
         const mention = pending.mention
@@ -290,7 +321,7 @@ export class GithubMentionWorker {
 export function startGithubMentionWorker(
   settings: Settings,
   logger: Logger,
-  control: { store: AdminStore; runtime: RuntimeConfigReader },
+  control: { store: AdminStore; runtime: RuntimeConfigReader; github: GitHubAuth },
   modelRuntime: ModelRuntime,
 ): GithubMentionWorker {
   const directory = path.join(settings.projectRoot, ".telegramagent", "github")

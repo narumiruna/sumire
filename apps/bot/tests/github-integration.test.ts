@@ -89,6 +89,7 @@ it.each(["allowed", "denied", "uncertain-post"])(
       directory,
       store,
       runtime,
+      github: { resolveToken: async () => token },
       modelRuntime: f.modelRuntime,
       logger: f.logger,
       client,

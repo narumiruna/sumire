@@ -18,7 +18,7 @@ The policy field is `githubNotifications.allowedUsernames`. The previous adminis
 - Submitted PR review bodies.
 - Inline PR review comments, including replies within a review thread.
 
-The Notifications API must report reason `mention`. Each source must also contain a direct, case-insensitive `@account` address. Team, assignment, subscription, and review-request notifications do not qualify. Self-authored sources are ignored. The source author, not the repository owner or latest notification activity, determines admission.
+The Notifications API must report reason `mention`. Each source must also contain a direct, case-insensitive `@account` address. Code spans, code blocks, and HTML comments do not count as addressing. An HTML comment delimiter inside code does not hide a later visible mention. Team, assignment, subscription, and review-request notifications do not qualify. Self-authored sources are ignored. The source author, not the repository owner or latest notification activity, determines admission.
 
 Issue/PR bodies, issue comments, and review bodies receive an issue/PR comment. Inline review comments receive a threaded reply. Discussions and commit comments are not supported. The package never marks notifications read, changes subscriptions, or follows upstream pagination URLs.
 
@@ -26,7 +26,7 @@ Issue/PR bodies, issue comments, and review bodies receive an issue/PR comment. 
 
 `createGithubMentionClient({ authorize, token, allowedUsernames, fetch? })` provides:
 
-- `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, `hasMore`, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
+- `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, `hasMore`, a `pageKey` hash of the notification rows, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
 - `reply(mention, text, signal?)`: revalidate the current account, source version, author, and admission before posting. Return `sent`, `already-replied`, or `ignored`. Replies must contain 1–60,000 UTF-8 bytes. A deterministic hidden source marker identifies an existing bot-authored reply after an uncertain write.
 
 Issue/PR body keys use the account, repository, source ID, author, and body content. The issue activity timestamp does not change that identity. Marker checks for body replies scan the bounded comment history without an activity-time cutoff. A real body or author change still prevents delivery of an old answer.
@@ -39,9 +39,11 @@ All requests use validated paths on `https://api.github.com`, reject redirects, 
 
 ## Bot orchestration and recovery
 
-The bot owns polling, checkpoints, durable generation, and delivery. Its sequential worker polls at least 60 seconds apart, up to the server's one-hour bounded interval. The first enabled poll stores a cutoff two minutes before that poll, before HTTP; retries retain it. Subsequent scans use stored per-account cursors with a two-minute overlap. A pass reads at most ten notification pages of 20 items and retains its cursor if the page cap is reached.
+The bot owns polling, checkpoints, durable generation, and delivery. Its sequential worker polls at least 60 seconds apart, up to the server's one-hour bounded interval. An enabled poll resolves managed credentials before capturing its token. Expiring OAuth credentials use the shared refresh process. Applied policy and the allowlist are checked before refresh and after the wait; disabled polling makes no refresh request.
 
-Keep `.telegramagent/github/` on persistent storage. `state.sqlite` records account bindings, cursors, admitted sources, response bodies, and delivery status. Separate per-mention databases under `turns/` keep Pi Durable transcripts. The Harness owns model turns and retries. The worker saves generated text before a GitHub write and retries the same response, with a bot-authored marker check, after an uncertain result.
+The first enabled scan stores a cutoff two minutes before that scan, before notification requests; retries retain it. Subsequent scans use stored per-account cursors with a two-minute overlap. A pass reads at most ten notification pages of 20 items. Each complete page saves its page number, notification hash, and original scan cutoff. The next poll rechecks that account's last complete page before it continues. A changed page restarts the scan at page 1, so moved notification offsets do not skip older entries. This continuation survives a page cap, failure, restart, or same-account token rotation. The checkpoint advances only after the full scan, using its original cutoff rather than the continuation time. New activity remains eligible for the next scan. The API's page-number limit of 1000 and source-list bounds still apply.
+
+Keep `.telegramagent/github/` on persistent storage. `state.sqlite` records account bindings, cursors, scan continuations, admitted sources, response bodies, and delivery status. Separate per-mention databases under `turns/` keep Pi Durable transcripts. The Harness owns model turns and retries. The worker saves generated text before a GitHub write and retries the same response, with a bot-authored marker check, after an uncertain result.
 
 An ordinary delivery failure retains the saved answer and does not stop later pending items. Retry uses the same answer and marker. Abort, policy, token, author, model, and provider failures still stop the poll. Large comment histories can exceed the existing page bound; delivery then stays pending instead of risking a duplicate.
 

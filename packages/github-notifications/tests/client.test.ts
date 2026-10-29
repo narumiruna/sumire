@@ -60,6 +60,18 @@ describe("mention scans", () => {
     expect(JSON.stringify(result)).not.toContain("untrusted.invalid")
   })
 
+  it("returns a stable page key and changes it when notification rows move", async () => {
+    const { state, client } = setup()
+    const first = (await client.scan()).pageKey
+    expect(first).toMatch(/^[a-f0-9]{64}$/)
+    expect((await client.scan()).pageKey).toBe(first)
+    // Non-mention rows also change offsets and must be part of the boundary check.
+    state.notifications.unshift(notification("Issue", "subscribed", "new-thread"))
+    expect((await client.scan()).pageKey).not.toBe(first)
+    state.notifications.shift()
+    expect((await client.scan()).pageKey).toBe(first)
+  })
+
   it("uses source authors, not repository owners or the latest notification actor", async () => {
     const { state, client } = setup()
     state.allowed = ["aLiCe"]

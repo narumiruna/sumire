@@ -24,6 +24,10 @@ export class GithubState {
       PRAGMA synchronous = FULL;
       CREATE TABLE IF NOT EXISTS accounts (token_hash TEXT PRIMARY KEY, account_id INTEGER, since TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS cursors (account_id INTEGER PRIMARY KEY, since TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS scans (
+        account_id INTEGER PRIMARY KEY, page INTEGER NOT NULL,
+        page_key TEXT NOT NULL, checkpoint TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS mentions (
         key TEXT PRIMARY KEY, account_id INTEGER NOT NULL, mention TEXT NOT NULL,
         response TEXT, model TEXT, status TEXT NOT NULL DEFAULT 'pending'
@@ -64,6 +68,32 @@ export class GithubState {
         "INSERT INTO cursors VALUES (?,?) ON CONFLICT(account_id) DO UPDATE SET since=MAX(since,excluded.since)",
       )
       .run(accountId, since)
+  }
+
+  scan(accountId: number): { page: number; pageKey: string; checkpoint: string } | undefined {
+    return this.#db
+      .prepare("SELECT page,page_key AS pageKey,checkpoint FROM scans WHERE account_id=?")
+      .get(accountId) as { page: number; pageKey: string; checkpoint: string } | undefined
+  }
+
+  progress(accountId: number, page: number, pageKey: string, checkpoint: string) {
+    this.#db
+      .prepare(
+        "INSERT INTO scans VALUES (?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET page=excluded.page,page_key=excluded.page_key,checkpoint=excluded.checkpoint",
+      )
+      .run(accountId, page, pageKey, checkpoint)
+  }
+
+  completeScan(accountId: number, since: string) {
+    this.#db.exec("BEGIN IMMEDIATE")
+    try {
+      this.checkpoint(accountId, since)
+      this.#db.prepare("DELETE FROM scans WHERE account_id=?").run(accountId)
+      this.#db.exec("COMMIT")
+    } catch (error) {
+      this.#db.exec("ROLLBACK")
+      throw error
+    }
   }
 
   admit(mention: GithubMention) {

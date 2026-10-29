@@ -81,6 +81,56 @@ describe("direct account mentions", () => {
     expect(mentionsAccount(body, "sumire-bot")).toBe(false)
   })
 
+  it.each([
+    "What does `<!--` mean, @sumire-bot?",
+    "```html\n<!--\n```\n@sumire-bot",
+    "~~~html\n<!--\n~~~\n@sumire-bot",
+    "    <!--\n@sumire-bot",
+    "\t<!--\n@sumire-bot",
+    "`<!--` <!-- hidden --> @sumire-bot",
+    "`-->` <!-- hidden --> @sumire-bot",
+    "<!-- ` --> @sumire-bot",
+    "<!-- ```\n--> @sumire-bot",
+    "``<!-- ` literal -->`` @sumire-bot",
+    "`first\n<!--\nlast` @sumire-bot",
+    "``first\n` <!-- -->\nlast`` @sumire-bot",
+    "````html\n<!--\n```\n````\n@sumire-bot",
+    "```html\n<!--\n````\n@sumire-bot",
+    "unmatched ` @sumire-bot",
+    "unmatched `` ` @sumire-bot",
+    "`literal\n\n    `<!--\n\n@sumire-bot",
+    "`literal\n\n```html\n`<!--\n```\n@sumire-bot",
+    "`literal\n\n~~~html\n`<!--\n~~~\n@sumire-bot",
+  ])("preserves visible mentions after mixed code and comments: %s", (body) => {
+    expect(mentionsAccount(body, "sumire-bot")).toBe(true)
+  })
+
+  it.each([
+    "`<!--` <!-- @sumire-bot -->",
+    "`-->` <!-- @sumire-bot -->",
+    "```html\n<!--\n```\n<!-- @sumire-bot -->",
+    "~~~html\n-->\n~~~\n<!-- @sumire-bot -->",
+    "    <!--\n<!-- @sumire-bot -->",
+    "\t-->\n<!-- @sumire-bot -->",
+    "<!-- ` @sumire-bot -->",
+    "<!-- ```\n@sumire-bot\n``` -->",
+    "<!-- ` --> `@sumire-bot`",
+    "<!-- ```\n-->\n```\n@sumire-bot\n```",
+    "`first\n@sumire-bot <!--\nlast`",
+    "``first ` @sumire-bot <!--\nlast``",
+    "````html\n<!--\n```\n@sumire-bot\n````",
+    "<!-- unclosed `\n@sumire-bot",
+    "```html\n<!--\n@sumire-bot",
+    "~~~html\n-->\n@sumire-bot",
+    "unmatched ` <!-- @sumire-bot -->",
+    "``<!-- @sumire-bot -->`",
+    "`literal\n\n<!-- ` @sumire-bot -->",
+    "`literal\n\n```text\n` @sumire-bot\n```",
+    "`literal\n\n    ` @sumire-bot",
+  ])("keeps mixed code and comment mentions hidden: %s", (body) => {
+    expect(mentionsAccount(body, "sumire-bot")).toBe(false)
+  })
+
   it.each(["", "bot.*", "@sumire-bot", "bad/name"])("rejects invalid account %s", (login) => {
     expect(mentionsAccount("@sumire-bot", login)).toBe(false)
   })

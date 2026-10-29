@@ -129,6 +129,7 @@ it.each(["body-activity", "deleted-comment", "uncertain-post"])(
       directory,
       store: { snapshot: () => structuredClone(snapshot) },
       runtime: { readSecret: () => token },
+      github: { resolveToken: async () => token },
       modelRuntime: f.modelRuntime,
       logger,
       client,

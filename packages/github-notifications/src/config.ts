@@ -24,21 +24,46 @@ export function mentionsAccount(body: string, login: string): boolean {
 }
 
 function visibleText(body: string): string {
-  const lines: string[] = []
-  let fence: { char: string; length: number } | undefined
-  for (const line of body.replace(/<!--[\s\S]*?(?:-->|$)/g, " ").split("\n")) {
-    const run = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
-    if (fence) {
-      if (run && run[0] === fence.char && run.length >= fence.length && line.trim() === run)
-        fence = undefined
-      lines.push("")
-    } else if (run) {
-      fence = { char: run[0] as string, length: run.length }
-      lines.push("")
-    } else {
-      lines.push(/^(?: {4}|\t)/.test(line) ? "" : line)
+  // Index matching runs once so unmatched backticks do not cause repeated suffix scans.
+  const spanEnds = new Map<number, number>()
+  const previous = new Map<number, number>()
+  const spans = /^ {0,3}(?:`{3,}|~{3,})[^\n]*|^(?: {4}|\t)[^\n]*|^[ \t\r]*$|(`+)/gm
+  for (const match of body.matchAll(spans)) {
+    if (!match[1]) {
+      // Inline spans cannot cross paragraph or code-block boundaries.
+      previous.clear()
+      continue
     }
+    const length = match[1].length
+    const start = previous.get(length)
+    if (start !== undefined) spanEnds.set(start, match.index + length)
+    previous.set(length, match.index)
   }
-  // A backtick span closes only with the same delimiter length, including multiline spans.
-  return lines.join("\n").replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, " ")
+
+  const visible: string[] = []
+  const tokens = /^ {0,3}(`{3,}|~{3,})[^\n]*|^(?: {4}|\t)[^\n]*|<!--|(`+)/gm
+  let cursor = 0
+  for (let match = tokens.exec(body); match; match = tokens.exec(body)) {
+    let end = tokens.lastIndex
+    const fence = match[1]
+    if (fence) {
+      const closing = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[^\\S\\n]*$`, "gm")
+      closing.lastIndex = end
+      const close = closing.exec(body)
+      end = close ? close.index + close[0].length : body.length
+    } else if (match[0] === "<!--") {
+      const close = body.indexOf("-->", end)
+      end = close === -1 ? body.length : close + 3
+    } else if (match[2]) {
+      // Spans can cross lines, but only an equally long run closes them.
+      const close = spanEnds.get(match.index)
+      if (close === undefined) continue
+      end = close
+    }
+    visible.push(body.slice(cursor, match.index), " ")
+    cursor = end
+    tokens.lastIndex = end
+  }
+  visible.push(body.slice(cursor))
+  return visible.join("")
 }

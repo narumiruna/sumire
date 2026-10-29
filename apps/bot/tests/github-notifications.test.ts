@@ -58,6 +58,7 @@ async function fixture() {
     account,
     mentions: [mention()],
     hasMore: false,
+    pageKey: "fixture-page",
     pollIntervalSeconds: 60,
   }
   const scan = vi.fn<NonNullable<GithubWorkerOptions["client"]>["scan"]>(async () =>
@@ -75,6 +76,7 @@ async function fixture() {
     directory,
     store: { snapshot: () => structuredClone(state) },
     runtime: { readSecret: (name) => (name === "GH_TOKEN" ? secret.token : undefined) },
+    github: { resolveToken: vi.fn(async () => secret.token) },
     modelRuntime,
     generate,
     logger,
@@ -312,7 +314,7 @@ it("starts with a small overlap and ignores historical comments inside active th
   expect(f.reply).not.toHaveBeenCalled()
 })
 
-it("persists the first-enable cutoff before the first HTTP request, including initial failures and restart", async () => {
+it("persists the first-enable cutoff before the first notification request, including initial failures and restart", async () => {
   const f = await fixture()
   f.scan.mockRejectedValueOnce(new Error("GitHub unavailable"))
   await expect(f.worker.poll()).rejects.toThrow("GitHub unavailable")
@@ -333,12 +335,15 @@ it("advances the cursor only after all bounded pages succeed, preserving it acro
   f.scan.mockRejectedValueOnce(new Error("page 2 failed"))
   const worker = f.create()
   await expect(worker.poll()).rejects.toThrow("page 2 failed")
+  f.scan.mockResolvedValueOnce({ ...f.page, hasMore: true })
   expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
   await worker.poll()
+  expect(f.scan.mock.calls.at(-1)?.[0]?.page).toBe(2)
   expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T12:08:00.000Z" }])
+  expect(f.read("SELECT * FROM scans")).toEqual([])
 })
 
-it("does not advance the cursor after the ten-page limit and can deliver already admitted work", async () => {
+it("saves a continuation after the ten-page limit and can deliver already admitted work", async () => {
   const f = await fixture()
   await f.worker.poll()
   await f.worker.close()
@@ -349,6 +354,152 @@ it("does not advance the cursor after the ten-page limit and can deliver already
   expect(f.scan).toHaveBeenCalledTimes(10)
   expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
   expect(f.logger.warn).toHaveBeenCalledWith(expect.stringContaining("10 pages"))
+  expect(f.read("SELECT page,checkpoint FROM scans")).toEqual([
+    { page: 10, checkpoint: "2030-01-01T12:08:00.000Z" },
+  ])
+})
+
+it("drains 201 entries across bounded polls and restart without moving the original scan cutoff", async () => {
+  const f = await fixture()
+  f.page.mentions = []
+  await f.worker.poll()
+  await f.worker.close()
+  f.options.now = () => now + 600_000
+  const backlog = Array.from({ length: 201 }, (_, index) =>
+    mention({ key: `backlog-${index}`, source: { ...mention().source, id: index + 1 } }),
+  )
+  f.scan.mockImplementation(async (query) => {
+    const offset = ((query?.page ?? 1) - 1) * 20
+    return {
+      ...f.page,
+      mentions: backlog.slice(offset, offset + 20),
+      pageKey: JSON.stringify(backlog.slice(offset, offset + 20).map((item) => item.key)),
+      hasMore: offset + 20 < backlog.length,
+    }
+  })
+  f.scan.mockClear()
+  const first = f.create()
+  await first.poll()
+  expect(f.scan.mock.calls.map(([query]) => query?.page)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  expect(f.generate).toHaveBeenCalledTimes(200)
+  expect(f.reply).toHaveBeenCalledTimes(200)
+  await first.close()
+  f.options.now = () => now + 1_200_000
+  const second = f.create()
+  await second.poll()
+  expect(f.scan.mock.calls.at(-1)?.[0]).toEqual({
+    since: "2030-01-01T11:58:00.000Z",
+    page: 11,
+    perPage: 20,
+  })
+  expect(f.generate).toHaveBeenCalledTimes(201)
+  expect(f.reply).toHaveBeenCalledTimes(201)
+  expect(f.read("SELECT status,COUNT(*) AS count FROM mentions GROUP BY status")).toEqual([
+    { status: "sent", count: 201 },
+  ])
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T12:08:00.000Z" }])
+  expect(f.read("SELECT * FROM scans")).toEqual([])
+
+  // Activity during the continued scan must remain inside the next scan's overlap.
+  f.scan.mockResolvedValueOnce({
+    ...f.page,
+    mentions: [
+      mention({
+        key: "during-scan",
+        source: { ...mention().source, updatedAt: "2030-01-01T12:15:00Z" },
+      }),
+    ],
+  })
+  await second.poll()
+  expect(f.scan.mock.calls.at(-1)?.[0]).toEqual({
+    since: "2030-01-01T12:08:00.000Z",
+    page: 1,
+    perPage: 20,
+  })
+  expect(f.generate).toHaveBeenCalledTimes(202)
+})
+
+it.each(["deletion", "insertion"])(
+  "restarts a moved page boundary after notification %s without skipping the backlog",
+  async (change) => {
+    const f = await fixture()
+    f.page.mentions = []
+    await f.worker.poll()
+    await f.worker.close()
+    f.options.now = () => now + 600_000
+    const backlog = Array.from({ length: 201 }, (_, index) => mention({ key: `backlog-${index}` }))
+    f.scan.mockImplementation(async (query) => {
+      const offset = ((query?.page ?? 1) - 1) * 20
+      const items = backlog.slice(offset, offset + 20)
+      return {
+        ...f.page,
+        mentions: items,
+        pageKey: JSON.stringify(items.map((item) => item.key)),
+        hasMore: offset + 20 < backlog.length,
+      }
+    })
+    const worker = f.create()
+    await worker.poll()
+    expect(f.generate).toHaveBeenCalledTimes(200)
+    if (change === "deletion") backlog.shift()
+    else backlog.unshift(mention({ key: "new-activity" }))
+    f.options.now = () => now + 1_200_000
+    f.scan.mockClear()
+    await worker.poll()
+    expect(f.scan.mock.calls.map(([query]) => query?.page)).toEqual([10, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    f.scan.mockClear()
+    await worker.poll()
+    expect(f.scan.mock.calls.length).toBeLessThanOrEqual(10)
+    expect(f.generate.mock.calls.map(([item]) => item.key)).toContain("backlog-200")
+    expect(f.generate).toHaveBeenCalledTimes(change === "deletion" ? 201 : 202)
+    expect(f.reply).toHaveBeenCalledTimes(change === "deletion" ? 201 : 202)
+    expect(f.read("SELECT * FROM scans")).toEqual([])
+    expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T12:08:00.000Z" }])
+  },
+)
+
+it("resumes the failed page after restart and retains its original cutoff", async () => {
+  const f = await fixture()
+  f.scan.mockResolvedValueOnce({ ...f.page, hasMore: true })
+  f.scan.mockRejectedValueOnce(new Error("page 2 failed"))
+  await expect(f.worker.poll()).rejects.toThrow("page 2 failed")
+  expect(f.read("SELECT page,checkpoint FROM scans")).toEqual([
+    { page: 1, checkpoint: "2030-01-01T11:58:00.000Z" },
+  ])
+  await f.worker.close()
+  f.options.now = () => now + 600_000
+  f.scan.mockResolvedValueOnce({ ...f.page, hasMore: true })
+  await f.create().poll()
+  expect(f.scan.mock.calls.slice(-2).map(([query]) => query?.page)).toEqual([1, 2])
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
+  expect(f.read("SELECT * FROM scans")).toEqual([])
+})
+
+it("keeps scan continuations account-owned across token rotation", async () => {
+  const f = await fixture()
+  f.page.hasMore = true
+  await f.worker.poll()
+  expect(f.read("SELECT account_id,page FROM scans")).toEqual([{ account_id: 42, page: 10 }])
+  await f.worker.close()
+  f.secret.token = "other-account-token"
+  f.page.account = { id: 99, login: "other-bot" }
+  f.page.mentions = []
+  f.page.hasMore = false
+  f.scan.mockClear()
+  const worker = f.create()
+  await worker.poll()
+  expect(f.scan.mock.calls[0]?.[0]?.page).toBe(1)
+  expect(f.read("SELECT account_id,page FROM scans")).toEqual([{ account_id: 42, page: 10 }])
+
+  f.secret.token = "rotated-original-account-token"
+  f.page.account = account
+  f.scan.mockClear()
+  await worker.poll()
+  expect(f.scan.mock.calls.map(([query]) => query?.page)).toEqual([1, 10])
+  expect(f.read("SELECT * FROM scans")).toEqual([])
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
 })
 
 it.each(["allowlist", "token", "pending", "revision"])(

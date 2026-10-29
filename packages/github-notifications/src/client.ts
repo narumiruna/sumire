@@ -31,6 +31,7 @@ export interface MentionPage {
   account: GithubAccount
   mentions: GithubMention[]
   hasMore: boolean
+  pageKey: string
   pollIntervalSeconds: number
 }
 type Api = ReturnType<typeof openApi>
@@ -126,6 +127,7 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
         account,
         mentions,
         hasMore: hasNext(response.headers),
+        pageKey: createHash("sha256").update(JSON.stringify(rows)).digest("hex"),
         pollIntervalSeconds: Math.min(
           3600,
           Math.max(
