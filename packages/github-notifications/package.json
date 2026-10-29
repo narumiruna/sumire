@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire-github-notifications",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Bounded GitHub mention discovery and replies with host-owned author authorization",
   "license": "MIT",
