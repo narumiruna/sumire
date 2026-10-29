@@ -254,7 +254,16 @@ export class GithubMentionWorker {
           throw new Error("GitHub reply model authentication is unavailable")
         deliver()
         this.#authorize = deliver
-        const receipt = await this.#client.reply(mention, response, signal)
+        let receipt: Awaited<ReturnType<MentionClient["reply"]>>
+        try {
+          receipt = await this.#client.reply(mention, response, signal)
+        } catch {
+          deliver()
+          this.options.logger.warn("GitHub reply delivery failed; saved response is retained")
+          continue
+        } finally {
+          this.#authorize = authorize
+        }
         authorize(mention)
         this.#state.finish(mention.key, receipt.status === "ignored" ? "ignored" : "sent")
       }

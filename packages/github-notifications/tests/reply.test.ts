@@ -37,7 +37,9 @@ describe("mention replies", () => {
       "/user",
       target,
     ])
-    expect(String(fetcher.mock.calls[2]?.[0])).toContain(`since=${encodeURIComponent(timestamp)}`)
+    expect(new URL(String(fetcher.mock.calls[2]?.[0])).searchParams.get("since")).toBe(
+      kind === "issue" ? null : timestamp,
+    )
     expect(posts).toEqual([
       { path: target, body: { body: `Checked this.\n\n<!-- sumire-mention:${found.key} -->` } },
     ])

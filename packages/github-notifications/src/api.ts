@@ -7,6 +7,11 @@ export interface GithubMentionClientOptions {
 }
 
 export class GithubError extends Error {}
+export class GithubHttpError extends GithubError {
+  constructor(readonly status: number) {
+    super(`GitHub mention request failed (HTTP ${status})`)
+  }
+}
 export const invalid = () => new GithubError("GitHub returned invalid mention data")
 
 /** One operation keeps one credential and fixed API origin, with bounded time, bytes, and requests. */
@@ -53,8 +58,7 @@ export function openApi(options: GithubMentionClientOptions, signal?: AbortSigna
           },
           ...(body ? { body: JSON.stringify(body) } : {}),
         })
-        if (!response.ok)
-          throw new GithubError(`GitHub mention request failed (HTTP ${response.status})`)
+        if (!response.ok) throw new GithubHttpError(response.status)
         const length = response.headers.get("content-length")
         if (length && Number(length) > 2 * 1024 * 1024)
           throw new GithubError("GitHub mention response exceeds the size limit")

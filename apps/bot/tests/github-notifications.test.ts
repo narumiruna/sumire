@@ -24,6 +24,14 @@ const mention = (overrides: Partial<GithubMention> = {}): GithubMention => ({
   threadId: "123",
   ...overrides,
 })
+const anotherMention = () =>
+  mention({
+    key: "42:issue-comment:2:2030-01-01T11:59:30Z",
+    author: "another-author",
+    repository: "other/project",
+    url: "https://github.com/other/project/issues/12#issuecomment-2",
+    source: { kind: "issue-comment", id: 2, updatedAt: "2030-01-01T11:59:30Z" },
+  })
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => {
   vi.useRealTimers()
@@ -140,7 +148,10 @@ it("accepts case-insensitive authors, persists response before delivery, and ded
 it("retains the same generated outbox response after ambiguous delivery and restart", async () => {
   const f = await fixture()
   f.reply.mockRejectedValueOnce(new Error("POST response lost"))
-  await expect(f.worker.poll()).rejects.toThrow("POST response lost")
+  await expect(f.worker.poll()).resolves.toBe(60)
+  expect(f.read("SELECT response,model,status FROM mentions")).toEqual([
+    { response: "Generated **Markdown**.", model: "openai/gpt-6.1-sol", status: "pending" },
+  ])
   await f.worker.close()
   f.page.mentions = []
   f.reply.mockResolvedValueOnce({ status: "already-replied" })
@@ -149,6 +160,142 @@ it("retains the same generated outbox response after ambiguous delivery and rest
   expect(f.reply).toHaveBeenCalledTimes(2)
   expect(f.reply.mock.calls[0]?.slice(0, 2)).toEqual(f.reply.mock.calls[1]?.slice(0, 2))
   expect(f.read("SELECT status FROM mentions")).toEqual([{ status: "sent" }])
+})
+
+it.each(["network failure", "HTTP 500", "uncertain POST"])(
+  "isolates %s across authors and repositories and retries saved responses after restart",
+  async (failure) => {
+    const f = await fixture()
+    f.state.policy.githubNotifications.allowedUsernames.push("another-author")
+    const first = mention()
+    const second = anotherMention()
+    const third = anotherMention()
+    third.key = "42:issue-comment:3:2030-01-01T11:59:30Z"
+    third.source.id = 3
+    third.url = "https://github.com/other/project/issues/12#issuecomment-3"
+    f.page.mentions = [first, second]
+    f.generate.mockImplementation(async (item) => ({
+      text: `Response for ${item.key}`,
+      model: "openai/gpt-6.1-sol",
+    }))
+    f.reply.mockRejectedValueOnce(new Error(`${failure}: managed-token private-source-body`))
+    await expect(f.worker.poll()).resolves.toBe(60)
+    expect(f.reply.mock.calls.map(([item]) => item.repository)).toEqual([
+      "owner/repo",
+      "other/project",
+    ])
+    expect(f.read("SELECT response,model,status FROM mentions ORDER BY rowid")).toEqual([
+      { response: `Response for ${first.key}`, model: "openai/gpt-6.1-sol", status: "pending" },
+      { response: `Response for ${second.key}`, model: "openai/gpt-6.1-sol", status: "sent" },
+    ])
+    f.page.mentions = [third]
+    f.reply.mockRejectedValueOnce(new Error(`${failure}: managed-token private-source-body`))
+    await expect(f.worker.poll()).resolves.toBe(60)
+    expect(f.reply.mock.calls.map(([item]) => item.key)).toEqual([
+      first.key,
+      second.key,
+      first.key,
+      third.key,
+    ])
+    expect(f.generate).toHaveBeenCalledTimes(3)
+    await f.worker.close()
+    f.page.mentions = []
+    f.reply.mockResolvedValueOnce({ status: "already-replied" })
+    await f.create().poll()
+    expect(f.generate).toHaveBeenCalledTimes(3)
+    expect(f.reply).toHaveBeenCalledTimes(5)
+    const original = f.reply.mock.calls[0]?.slice(0, 2)
+    expect(f.reply.mock.calls[2]?.slice(0, 2)).toEqual(original)
+    expect(f.reply.mock.calls[4]?.slice(0, 2)).toEqual(original)
+    expect(f.read("SELECT status FROM mentions ORDER BY rowid")).toEqual([
+      { status: "sent" },
+      { status: "sent" },
+      { status: "sent" },
+    ])
+    expect(f.logger.warn.mock.calls).toEqual([
+      ["GitHub reply delivery failed; saved response is retained"],
+      ["GitHub reply delivery failed; saved response is retained"],
+    ])
+  },
+)
+
+it.each([
+  "token",
+  "applied-policy",
+  "unapplied",
+  "revision",
+  "epoch",
+  "author",
+  "model",
+  "provider",
+  "response-model",
+])("stops later work when %s changes during a failed delivery", async (change) => {
+  const f = await fixture()
+  f.state.policy.githubNotifications.allowedUsernames.push("another-author")
+  f.page.mentions.push(anotherMention())
+  const failure = new Error("sensitive delivery error: managed-token")
+  f.reply.mockImplementationOnce(async () => {
+    if (change === "token") f.secret.token = "rotated-token"
+    if (change === "applied-policy") f.state.status = "pending"
+    if (change === "unapplied") f.state.applied = 0
+    if (change === "revision") {
+      f.state.revision++
+      f.state.applied++
+    }
+    if (change === "epoch") f.state.epoch++
+    if (change === "author")
+      f.state.policy.githubNotifications.allowedUsernames = ["another-author"]
+    if (change === "model") f.state.policy.models = []
+    if (change === "provider") f.state.policy.providers = []
+    if (change === "response-model") {
+      f.state.policy.models = ["openai/other-model"]
+      f.state.policy.defaults.models = [...f.state.policy.models]
+      f.state.policy.defaults.model = "openai/other-model"
+    }
+    throw failure
+  })
+  const polling = f.worker.poll()
+  await expect(polling).rejects.toBeInstanceOf(Error)
+  await expect(polling).rejects.not.toBe(failure)
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  expect(f.read("SELECT response,model,status FROM mentions ORDER BY rowid")).toEqual([
+    { response: "Generated **Markdown**.", model: "openai/gpt-6.1-sol", status: "pending" },
+    { response: null, model: null, status: "pending" },
+  ])
+  expect(f.logger.warn).not.toHaveBeenCalled()
+})
+
+it("propagates shutdown during a failed delivery without starting later work", async () => {
+  const f = await fixture()
+  f.state.policy.githubNotifications.allowedUsernames.push("another-author")
+  f.page.mentions.push(anotherMention())
+  let entered = () => {}
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  f.reply.mockImplementationOnce(async (_mention, _response, signal) => {
+    entered()
+    return new Promise((_resolve, reject) =>
+      signal?.addEventListener(
+        "abort",
+        () => reject(new Error("sensitive delivery error: managed-token")),
+        { once: true },
+      ),
+    )
+  })
+  const polling = f.worker.poll()
+  const stopped = expect(polling).rejects.toMatchObject({ name: "AbortError" })
+  await started
+  await f.worker.close()
+  await stopped
+  expect(f.generate).toHaveBeenCalledTimes(1)
+  expect(f.reply).toHaveBeenCalledTimes(1)
+  expect(f.read("SELECT response,model,status FROM mentions ORDER BY rowid")).toEqual([
+    { response: "Generated **Markdown**.", model: "openai/gpt-6.1-sol", status: "pending" },
+    { response: null, model: null, status: "pending" },
+  ])
+  expect(f.logger.warn).not.toHaveBeenCalled()
 })
 
 it("starts with a small overlap and ignores historical comments inside active threads", async () => {
@@ -252,7 +399,7 @@ it.each(["author", "token", "model", "provider", "pending"])(
 it("keeps removed-author outbox work blocked even when another author enables polling", async () => {
   const f = await fixture()
   f.reply.mockRejectedValueOnce(new Error("delivery failed"))
-  await expect(f.worker.poll()).rejects.toThrow()
+  await expect(f.worker.poll()).resolves.toBe(60)
   f.state.policy.githubNotifications.allowedUsernames = ["another-author"]
   f.page.mentions = []
   await f.worker.poll()
@@ -264,7 +411,7 @@ it("keeps removed-author outbox work blocked even when another author enables po
 it("never sends old-account work with a different authenticated account, and resumes on same-account rotation", async () => {
   const f = await fixture()
   f.reply.mockRejectedValueOnce(new Error("delivery failed"))
-  await expect(f.worker.poll()).rejects.toThrow()
+  await expect(f.worker.poll()).resolves.toBe(60)
   f.secret.token = "other-account-token"
   f.page.account = { id: 99, login: "other-bot" }
   f.page.mentions = []
@@ -346,7 +493,7 @@ it("shuts down generation without delivery and retains admitted work for restart
 it("blocks an existing outbox response if its model is no longer allowed, even when a new default is valid", async () => {
   const f = await fixture()
   f.reply.mockRejectedValueOnce(new Error("delivery failed"))
-  await expect(f.worker.poll()).rejects.toThrow()
+  await expect(f.worker.poll()).resolves.toBe(60)
   f.state.policy.models = ["openai/other-model"]
   f.state.policy.defaults.models = [...f.state.policy.models]
   f.state.policy.defaults.model = "openai/other-model"

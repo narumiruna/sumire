@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { type GithubMentionClientOptions, invalid, openApi } from "./api.js"
+import { GithubHttpError, type GithubMentionClientOptions, invalid, openApi } from "./api.js"
 import { allowsMentionAuthor, mentionsAccount } from "./config.js"
 
 export interface GithubAccount {
@@ -86,7 +86,8 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
         if (!thread || seenThreads.has(`${thread.repository}/${thread.number}`)) continue
         seenThreads.add(`${thread.repository}/${thread.number}`)
         const base = `/repos/${thread.repository}`
-        const issue = object((await api.request(`${base}/issues/${thread.number}`)).data)
+        const issue = await readSource(api, `${base}/issues/${thread.number}`)
+        if (!issue) continue
         thread.title = text(issue.title, 2048)
         const records: { kind: GithubMention["source"]["kind"]; value: unknown }[] = [
           { kind: "issue", value: issue },
@@ -159,7 +160,8 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
             : mention.source.kind === "review-comment"
               ? `${base}/pulls/comments/${mention.source.id}`
               : `${pullPath}/reviews/${mention.source.id}`
-      const source = object((await api.request(sourcePath)).data)
+      const source = await readSource(api, sourcePath)
+      if (!source) return { status: "ignored" }
       if (
         (mention.source.kind === "issue-comment" &&
           source.issue_url !== `https://api.github.com${issuePath}`) ||
@@ -184,8 +186,12 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
       const marker = `<!-- sumire-mention:${mention.key} -->`
       const commentsPath =
         mention.source.kind === "review-comment" ? `${pullPath}/comments` : `${issuePath}/comments`
-      // A reply cannot predate its source version. This also bounds recovery on old, long threads.
-      const comments = await list(api, commentsPath, mention.source.updatedAt)
+      // An issue update can occur after a body reply. Keep its marker in the search.
+      const comments = await list(
+        api,
+        commentsPath,
+        mention.source.kind === "issue" ? undefined : mention.source.updatedAt,
+      )
       for (const value of comments) {
         const comment = object(value)
         const user = object(comment.user)
@@ -208,6 +214,18 @@ export function createGithubMentionClient(options: GithubMentionClientOptions) {
       await api.request(target, { body: `${reply}\n\n${marker}` })
       return { status: "sent" }
     },
+  }
+}
+
+async function readSource(api: Api, path: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    return object((await api.request(path)).data)
+  } catch (error) {
+    if (error instanceof GithubHttpError && (error.status === 404 || error.status === 410)) {
+      api.assert()
+      return undefined
+    }
+    throw error
   }
 }
 
@@ -286,7 +304,7 @@ function normalizeMention(
         thread.number,
         kind,
         sourceId,
-        updatedAt,
+        kind === "issue" ? null : updatedAt,
         body,
         author.toLowerCase(),
       ]),

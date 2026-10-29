@@ -98,9 +98,7 @@ it.each(["allowed", "denied", "uncertain-post"])(
     let worker = new GithubMentionWorker(options)
     try {
       if (scenario !== "denied") f.enqueueAnswer("A generated **GitHub** reply.")
-      if (scenario === "uncertain-post")
-        await expect(worker.poll()).rejects.toThrow("GitHub mention request failed or timed out")
-      else await worker.poll()
+      await expect(worker.poll()).resolves.toBe(60)
       expect(f.requests).toHaveLength(scenario === "denied" ? 0 : 1)
       expect(posted).toBe(scenario === "denied" ? 0 : 1)
       expect(JSON.stringify(f.requests)).not.toContain(token)

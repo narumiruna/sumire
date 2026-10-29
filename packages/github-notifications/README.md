@@ -29,6 +29,10 @@ Issue/PR bodies, issue comments, and review bodies receive an issue/PR comment. 
 - `scan({ since?, page?, perPage? }?, signal?)`: resolve the authenticated account, read one notification page, and discover authorized mention sources. The result contains the account, normalized mentions, `hasMore`, and a bounded `pollIntervalSeconds`. Notification pages are 1–1000, with 1–50 items (default 20). Source/comment lists are explicitly paged with a limit of ten pages of 20 items.
 - `reply(mention, text, signal?)`: revalidate the current account, source version, author, and admission before posting. Return `sent`, `already-replied`, or `ignored`. Replies must contain 1–60,000 UTF-8 bytes. A deterministic hidden source marker identifies an existing bot-authored reply after an uncertain write.
 
+Issue/PR body keys use the account, repository, source ID, author, and body content. The issue activity timestamp does not change that identity. Marker checks for body replies scan the bounded comment history without an activity-time cutoff. A real body or author change still prevents delivery of an old answer.
+
+A source GET with HTTP 404 or 410 is unavailable. Scans skip that source, and delivery returns `ignored` without a write. Account, marker-list, and POST failures are not treated as missing sources.
+
 The host owns `authorize()`, applied credentials, and the allowlist. It must bind them to trusted application state, not model arguments. Each operation uses one token; credential replacement interrupts it. A persisted mention from another account is never posted under the new account.
 
 All requests use validated paths on `https://api.github.com`, reject redirects, and have a 15-second deadline. Each response is limited to 2 MiB while streaming. One operation is limited to 120 seconds, 200 requests, and 8 MiB total response bytes. Invalid data and exceeded bounds fail closed without returning partial source lists. Errors omit upstream bodies, tokens, private URLs, and raw transport details. No CLI or environment credential fallback is used.
@@ -38,6 +42,8 @@ All requests use validated paths on `https://api.github.com`, reject redirects, 
 The bot owns polling, checkpoints, durable generation, and delivery. Its sequential worker polls at least 60 seconds apart, up to the server's one-hour bounded interval. The first enabled poll stores a cutoff two minutes before that poll, before HTTP; retries retain it. Subsequent scans use stored per-account cursors with a two-minute overlap. A pass reads at most ten notification pages of 20 items and retains its cursor if the page cap is reached.
 
 Keep `.telegramagent/github/` on persistent storage. `state.sqlite` records account bindings, cursors, admitted sources, response bodies, and delivery status. Separate per-mention databases under `turns/` keep Pi Durable transcripts. The Harness owns model turns and retries. The worker saves generated text before a GitHub write and retries the same response, with a bot-authored marker check, after an uncertain result.
+
+An ordinary delivery failure retains the saved answer and does not stop later pending items. Retry uses the same answer and marker. Abort, policy, token, author, model, and provider failures still stop the poll. Large comment histories can exceed the existing page bound; delivery then stays pending instead of risking a duplicate.
 
 The channel exposes no shell, file, MCP, or publication tools. Its model receives only the supplied mention context and cannot inspect code or follow links. Applied settings, current author admission, account identity, and model access are checked at work and delivery boundaries; active work is interrupted on settings changes. Source edits prevent posting stale generated text. Already submitted external requests cannot be recalled.
 

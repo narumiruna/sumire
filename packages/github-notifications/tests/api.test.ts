@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { openApi } from "../src/api.js"
+import { GithubHttpError, openApi } from "../src/api.js"
 import { json, setup, source, tokenValue } from "./fixtures.js"
 
 const responseLimit = 2 * 1024 * 1024
@@ -26,9 +26,7 @@ describe("bounded GitHub API transport", () => {
     async (status) => {
       const { state, client, fetcher } = setup()
       state.hook = () => new Response(`${tokenValue} confidential upstream data`, { status })
-      await expect(client.scan()).rejects.toThrow(
-        new Error(`GitHub mention request failed (HTTP ${status})`),
-      )
+      await expect(client.scan()).rejects.toThrow(new GithubHttpError(status))
       expect(fetcher).toHaveBeenCalledTimes(1)
       expect(fetcher.mock.calls[0]?.[1]?.redirect).toBe("error")
     },
