@@ -20,6 +20,8 @@ import { GithubState } from "./state.js"
 
 const overlapMs = 120_000
 const maxPages = 10
+// Five PRs need at most 2 + 5 * (1 + 3 * 10) = 157 scan requests.
+const notificationsPerPage = 5
 const defaultPollSeconds = 60
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex")
 
@@ -174,7 +176,7 @@ export class GithubMentionWorker {
       let progress = knownAccount ? this.#state.scan(knownAccount) : undefined
       let page = progress?.page ?? 1
       authorize()
-      let result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+      let result = await this.#client.scan({ since, page, perPage: notificationsPerPage }, signal)
       let scanned = 1
       this.#pollSeconds = Math.max(defaultPollSeconds, result.pollIntervalSeconds)
       authorize()
@@ -187,14 +189,14 @@ export class GithubMentionWorker {
       if ((savedSince ?? tokenSince) !== since || savedPage !== page) {
         since = savedSince ?? tokenSince
         page = savedPage
-        result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+        result = await this.#client.scan({ since, page, perPage: notificationsPerPage }, signal)
         scanned++
         authorize()
       }
       // Page offsets can move while polling is idle. Recheck the last complete page before resuming.
       if (progress && result.pageKey !== progress.pageKey) {
         page = 1
-        result = await this.#client.scan({ since, page, perPage: 20 }, signal)
+        result = await this.#client.scan({ since, page, perPage: notificationsPerPage }, signal)
         scanned++
         authorize()
       }
@@ -226,7 +228,10 @@ export class GithubMentionWorker {
         }
         this.#state.progress(account.id, page, result.pageKey, checkpoint)
         if (scanned >= maxPages) break
-        result = await this.#client.scan({ since, page: page + 1, perPage: 20 }, signal)
+        result = await this.#client.scan(
+          { since, page: page + 1, perPage: notificationsPerPage },
+          signal,
+        )
         scanned++
       }
       authorize()

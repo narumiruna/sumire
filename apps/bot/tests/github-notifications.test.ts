@@ -308,7 +308,7 @@ it("starts with a small overlap and ignores historical comments inside active th
   ]
   await f.worker.poll()
   expect(f.scan).toHaveBeenCalledWith(
-    { since: "2030-01-01T11:58:00.000Z", page: 1, perPage: 20 },
+    { since: "2030-01-01T11:58:00.000Z", page: 1, perPage: 5 },
     expect.any(AbortSignal),
   )
   expect(f.generate).not.toHaveBeenCalled()
@@ -370,28 +370,38 @@ it("drains 201 entries across bounded polls and restart without moving the origi
     mention({ key: `backlog-${index}`, source: { ...mention().source, id: index + 1 } }),
   )
   f.scan.mockImplementation(async (query) => {
-    const offset = ((query?.page ?? 1) - 1) * 20
+    const size = query?.perPage ?? 5
+    const offset = ((query?.page ?? 1) - 1) * size
+    const items = backlog.slice(offset, offset + size)
     return {
       ...f.page,
-      mentions: backlog.slice(offset, offset + 20),
-      pageKey: JSON.stringify(backlog.slice(offset, offset + 20).map((item) => item.key)),
-      hasMore: offset + 20 < backlog.length,
+      mentions: items,
+      pageKey: JSON.stringify(items.map((item) => item.key)),
+      hasMore: offset + size < backlog.length,
     }
   })
   f.scan.mockClear()
   const first = f.create()
   await first.poll()
   expect(f.scan.mock.calls.map(([query]) => query?.page)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-  expect(f.generate).toHaveBeenCalledTimes(200)
-  expect(f.reply).toHaveBeenCalledTimes(200)
+  expect(f.generate).toHaveBeenCalledTimes(50)
+  expect(f.reply).toHaveBeenCalledTimes(50)
   await first.close()
   f.options.now = () => now + 1_200_000
   const second = f.create()
-  await second.poll()
+  for (let pass = 0; pass < 4; pass++) {
+    f.scan.mockClear()
+    await second.poll()
+    expect(f.scan.mock.calls.length).toBeLessThanOrEqual(10)
+    expect(f.scan.mock.calls.every(([query]) => query?.perPage === 5)).toBe(true)
+    if (pass === 0) expect(f.scan.mock.calls[0]?.[0]?.page).toBe(10)
+    if (pass < 3)
+      expect(f.read("SELECT since FROM cursors")).toEqual([{ since: "2030-01-01T11:58:00.000Z" }])
+  }
   expect(f.scan.mock.calls.at(-1)?.[0]).toEqual({
     since: "2030-01-01T11:58:00.000Z",
-    page: 11,
-    perPage: 20,
+    page: 41,
+    perPage: 5,
   })
   expect(f.generate).toHaveBeenCalledTimes(201)
   expect(f.reply).toHaveBeenCalledTimes(201)
@@ -415,7 +425,7 @@ it("drains 201 entries across bounded polls and restart without moving the origi
   expect(f.scan.mock.calls.at(-1)?.[0]).toEqual({
     since: "2030-01-01T12:08:00.000Z",
     page: 1,
-    perPage: 20,
+    perPage: 5,
   })
   expect(f.generate).toHaveBeenCalledTimes(202)
 })
@@ -430,27 +440,30 @@ it.each(["deletion", "insertion"])(
     f.options.now = () => now + 600_000
     const backlog = Array.from({ length: 201 }, (_, index) => mention({ key: `backlog-${index}` }))
     f.scan.mockImplementation(async (query) => {
-      const offset = ((query?.page ?? 1) - 1) * 20
-      const items = backlog.slice(offset, offset + 20)
+      const size = query?.perPage ?? 5
+      const offset = ((query?.page ?? 1) - 1) * size
+      const items = backlog.slice(offset, offset + size)
       return {
         ...f.page,
         mentions: items,
         pageKey: JSON.stringify(items.map((item) => item.key)),
-        hasMore: offset + 20 < backlog.length,
+        hasMore: offset + size < backlog.length,
       }
     })
     const worker = f.create()
     await worker.poll()
-    expect(f.generate).toHaveBeenCalledTimes(200)
+    expect(f.generate).toHaveBeenCalledTimes(50)
     if (change === "deletion") backlog.shift()
     else backlog.unshift(mention({ key: "new-activity" }))
     f.options.now = () => now + 1_200_000
     f.scan.mockClear()
     await worker.poll()
     expect(f.scan.mock.calls.map(([query]) => query?.page)).toEqual([10, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    f.scan.mockClear()
-    await worker.poll()
-    expect(f.scan.mock.calls.length).toBeLessThanOrEqual(10)
+    for (let pass = 0; pass < 4; pass++) {
+      f.scan.mockClear()
+      await worker.poll()
+      expect(f.scan.mock.calls.length).toBeLessThanOrEqual(10)
+    }
     expect(f.generate.mock.calls.map(([item]) => item.key)).toContain("backlog-200")
     expect(f.generate).toHaveBeenCalledTimes(change === "deletion" ? 201 : 202)
     expect(f.reply).toHaveBeenCalledTimes(change === "deletion" ? 201 : 202)
