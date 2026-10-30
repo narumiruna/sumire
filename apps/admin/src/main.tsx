@@ -132,6 +132,11 @@ function App() {
     setEditorRequest(undefined)
     navigateChat(chat)
   }
+  const openChat = (id: string) => {
+    setChat(id)
+    setPage("Chats")
+    if (id) setDetailsRequest((request) => request + 1)
+  }
   useEffect(() => {
     const cancel = () => setEditorRequest(undefined)
     window.addEventListener("popstate", cancel)
@@ -737,7 +742,7 @@ function App() {
                 metadataLoading={directory.selected.loading}
                 metadataError={directory.selected.error}
                 onMetadataRetry={directory.refresh}
-                onChats={() => setPage("Chats")}
+                onChats={() => openChat(chat)}
                 onSessionExpired={expireInspectorSession}
               />
             </SectionErrorBoundary>
@@ -754,7 +759,7 @@ function App() {
                   Review its access entry below. If approval is missing, add this ID to the
                   appropriate list.
                 </Prose>
-                <Button variant="soft" onClick={() => setPage("Chats")}>
+                <Button variant="soft" onClick={() => openChat(accessTarget)}>
                   Back to chat details
                 </Button>
                 <Button variant="ghost" onClick={() => setAccessTarget("")}>
@@ -867,11 +872,7 @@ function App() {
               saved={savedPolicy ?? policy}
               inventory={inventory}
               onChange={update}
-              onChat={(id) => {
-                setChat(id)
-                setPage("Chats")
-                setDetailsRequest((request) => request + 1)
-              }}
+              onChat={openChat}
             />
           </EditorSection>
           <EditorSection
@@ -893,10 +894,7 @@ function App() {
               saved={savedPolicy ?? policy}
               inventory={inventory}
               onChange={update}
-              onChat={(id) => {
-                setChat(id)
-                setPage("Chats")
-              }}
+              onChat={openChat}
               defaultContext={
                 page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
               }

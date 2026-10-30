@@ -80,6 +80,8 @@ test("authentication repair targets a chat override and pending provider replace
   await page.getByRole("option", { name: /Other/ }).click()
   const repair = async () => {
     await navigate(page, "Chats")
+    const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
+    if (await back.isVisible()) await back.click()
     await page.getByRole("button", { name: "Duplicate name · 43", exact: true }).click()
     await page
       .getByRole("region", { name: "Chat setup status", exact: true })

@@ -123,6 +123,8 @@ test("keeps a directory below a tall API error usable after document scrolling",
     await expect(row).toBeInViewport()
     await row.click()
     await expect(page.locator(".chat-header code")).toHaveText(String(chats[index]?.id))
+    await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+    await expect(row).toBeFocused()
   }
   const lastBox = await page.locator(".chat-list button").last().boundingBox()
   const footerBox = await page.locator(".directory-footer").boundingBox()
@@ -283,8 +285,12 @@ for (const width of [1440, 390, 320]) {
       }
       const before = await list.evaluate((el) => el.scrollTop)
       await rows.last().click()
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      await expect(rows.last()).toBeFocused()
       expect(await list.evaluate((el) => el.scrollTop)).toBe(before)
       await rows.nth(98).click()
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      await expect(rows.nth(98)).toBeFocused()
       expect(await list.evaluate((el) => el.scrollTop)).toBe(before)
     }
     if (width <= 850) {
@@ -330,29 +336,28 @@ for (const width of [1440, 390, 320]) {
         ).toBeVisible()
       await expect(details).toContainText("Not checked — no remote model request")
       await details.locator("summary").click()
-      const copy = page.getByRole("button", {
-        name: width <= 850 ? "Chat actions" : "Copy chat ID",
-        exact: true,
-      })
-      await copy.scrollIntoViewIfNeeded()
-      const action = await copy.boundingBox()
+      const actions = page.getByRole("button", { name: "Chat actions", exact: true })
+      await actions.scrollIntoViewIfNeeded()
+      const action = await actions.boundingBox()
       const header = await page.locator(".chat-header").boundingBox()
       if (!action || !header) throw new Error("Missing header geometry")
       const id = await page.locator(".chat-header code").boundingBox()
       if (!id) throw new Error("Missing chat ID geometry")
-      if (width > 850) expect(action.y).toBeGreaterThanOrEqual(id.y - action.height)
-      else expect(action.x).toBeGreaterThanOrEqual(header.x + header.width - action.width - 1)
+      expect(action.y).toBeLessThanOrEqual(id.y)
+      expect(action.x).toBeGreaterThanOrEqual(header.x + header.width - action.width - 1)
       expect(action.y + action.height).toBeLessThanOrEqual(header.y + header.height)
-      if (width > 850) await expect(rows.nth(index)).toHaveAttribute("aria-current", "true")
-      else expect(action.y).toBeGreaterThanOrEqual(header.y)
+      expect(action.y).toBeGreaterThanOrEqual(header.y)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
-      await copy.focus()
-      await copy.press("Tab")
+      await actions.focus()
+      await actions.press("Tab")
       await page.keyboard.press("Shift+Tab")
-      await expect(copy).toBeFocused()
-      expect(await copy.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
+      await expect(actions).toBeFocused()
+      expect(await actions.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
+      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+      await expect(rows.nth(index)).toHaveAttribute("aria-current", "true")
+      await expect(rows.nth(index)).toBeFocused()
     }
     await expect(page.locator(".pending-bar")).toHaveCount(0)
     expect(requests).toEqual([])
