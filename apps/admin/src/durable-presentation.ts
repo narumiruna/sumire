@@ -5,6 +5,7 @@ import {
   FileTextIcon,
   GearIcon,
   LayersIcon,
+  MagicWandIcon,
   PersonIcon,
 } from "@radix-ui/react-icons"
 
@@ -22,6 +23,7 @@ export function recordIcon(item: DurableInspectionItem) {
   if (item.type === "document") return FileTextIcon
   const tone = recordTone(item)
   if (tone === "user") return PersonIcon
+  if (tone === "assistant") return MagicWandIcon
   if (tone === "system") return GearIcon
   if (tone === "call") return CodeIcon
   if (tone === "result") return LayersIcon

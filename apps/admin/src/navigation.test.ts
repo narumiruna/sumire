@@ -56,10 +56,11 @@ describe("admin navigation", () => {
     const html = renderNavigation()
     const groups = [
       ["chat-management", "Chats"],
+      ["conversation", "Conversation"],
       ["models", "Models"],
       ["tools-and-skills", "Tools &amp; skills"],
-      ["system-settings", "Defaults"],
-      ["activity", "Activity"],
+      ["system-settings", "Configuration"],
+      ["activity", "Monitoring"],
     ]
     let previous = -1
     for (const [id, label] of groups) {

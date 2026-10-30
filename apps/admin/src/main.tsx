@@ -7,9 +7,9 @@ import {
 import {
   ExclamationTriangleIcon,
   ExitIcon,
-  MixerHorizontalIcon,
   PersonIcon,
   ReloadIcon,
+  SwitchIcon,
 } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
@@ -424,6 +424,7 @@ function App() {
       <main aria-busy={busy}>
         <PageHeader
           title={pageLabel(page)}
+          breadcrumb="Administration"
           description={pageDescriptions[page]}
           actions={
             <>
@@ -768,7 +769,7 @@ function App() {
                   <section className="durable-chat-selector" aria-label="Find a chat">
                     <details open={!chat}>
                       <summary aria-label="Find or switch chat">
-                        <MixerHorizontalIcon aria-hidden />
+                        <SwitchIcon aria-hidden />
                         <span className="durable-action-label">
                           {chat ? "Switch chat" : "Choose a chat"}
                         </span>

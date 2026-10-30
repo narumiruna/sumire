@@ -1,6 +1,6 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
 import { describe, expect, it } from "vitest"
-import { historyGroups, matchesHistory } from "./durable-history.js"
+import { entryPreview, historyGroups, matchesHistory } from "./durable-history.js"
 
 function entry(
   id: number,
@@ -21,6 +21,47 @@ function entry(
     },
   }
 }
+
+describe("compact history previews", () => {
+  it("keeps untrusted text literal and bounds previews without exposing thinking or tool arguments", () => {
+    const item = entry(8, "assistant")
+    item.content = {
+      truncated: false,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Hidden synthetic reasoning" },
+            { type: "toolCall", id: "call", name: "read_file", arguments: "Hidden tool arguments" },
+            { type: "text", text: "<script>Untrusted text</script>" },
+            { type: "image", mimeType: "image/png" },
+          ],
+        },
+      ],
+    }
+    expect(entryPreview(item)).toBe(
+      "read_file · Arguments\n<script>Untrusted text</script>\nImage omitted · image/png. Image bytes are not sent.",
+    )
+    item.content = {
+      truncated: false,
+      messages: [{ role: "assistant", content: [{ type: "text", text: "a".repeat(500) }] }],
+    }
+    expect(entryPreview(item)).toHaveLength(320)
+  })
+
+  it("keeps internal, empty, truncated, and missing content states distinct", () => {
+    expect(entryPreview(entry(4))).toBe(
+      "Stored event: custom.event. Internal payloads are not exposed.",
+    )
+    const empty = entry(5, "user")
+    empty.content = { truncated: false, messages: [] }
+    expect(entryPreview(empty)).toBe("No message content recorded.")
+    empty.content.truncated = true
+    expect(entryPreview(empty)).toContain("Content truncated")
+    empty.content = undefined
+    expect(entryPreview(empty)).toBe("Message content was not included in this response.")
+  })
+})
 
 describe("saved conversation history grouping", () => {
   it("reverses newest-first pages without timestamp sorting or changing ancestor attribution", () => {

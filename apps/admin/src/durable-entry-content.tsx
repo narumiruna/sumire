@@ -1,5 +1,35 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
-import { Heading, Text } from "@radix-ui/themes"
+import { ChatBubbleIcon, CopyIcon } from "@radix-ui/react-icons"
+import { Button, Heading, Text } from "@radix-ui/themes"
+import { useState } from "react"
+
+function CopyContent({ text }: { text: string }) {
+  const [status, setStatus] = useState("")
+  return (
+    <>
+      <Button
+        type="button"
+        size="1"
+        variant="outline"
+        onClick={() => {
+          void Promise.resolve()
+            .then(() => navigator.clipboard.writeText(text))
+            .then(
+              () => setStatus("Content copied."),
+              () => setStatus("Copy failed. Select and copy the content below."),
+            )
+        }}
+      >
+        <CopyIcon aria-hidden /> Copy content
+      </Button>
+      {status && (
+        <Text size="1" role="status">
+          {status}
+        </Text>
+      )}
+    </>
+  )
+}
 
 export function EntryContent({
   content,
@@ -35,6 +65,7 @@ export function EntryContent({
         // biome-ignore lint/suspicious/noArrayIndexKey: A read-only message snapshot has no message IDs.
         <section key={index} aria-label={`Message ${index + 1}`} className="durable-entry-message">
           <div className="durable-message-heading">
+            <ChatBubbleIcon aria-hidden />
             <Heading as="h4" size="2">
               {content.messages.length > 1
                 ? roles[message.role]
@@ -54,6 +85,21 @@ export function EntryContent({
                     ? "Recorded error"
                     : "Recorded result · not an error"}
               </span>
+            )}
+            {message.content.some(
+              (block) => block.type === "text" || block.type === "toolCall",
+            ) && (
+              <CopyContent
+                text={message.content
+                  .flatMap((block) =>
+                    block.type === "text"
+                      ? [block.text]
+                      : block.type === "toolCall"
+                        ? [block.arguments]
+                        : [],
+                  )
+                  .join("\n\n")}
+              />
             )}
           </div>
           {message.content.length === 0 && (
