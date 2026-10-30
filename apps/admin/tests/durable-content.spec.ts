@@ -235,7 +235,7 @@ test("relationship tree groups child tasks and tool results, keeps context visib
     },
     { type: "entry", id: 72, conversationId: 7, kind: "message", role: "user" },
   ]
-  await page.goto("/?section=Durable&chat=42")
+  await page.goto("/?section=Durable&chat=42&view=conversations")
   await expect(tree(page)).toBeVisible()
   await expect.poll(() => state.requests.length).toBe(2)
   await click(tree(page).getByRole("button", { name: "Expand Conversation 7", exact: true }))
@@ -281,7 +281,7 @@ test("tree partial collections have explicit pagination, failure retry, and expi
 }) => {
   const state = await durableFixture(page, "/?section=Durable")
   state.taskTruncated = true
-  await page.goto("/?section=Durable&chat=42")
+  await page.goto("/?section=Durable&chat=42&view=conversations")
   await click(tree(page).getByRole("button", { name: "Expand Conversation 7", exact: true }))
   await expect(
     tree(page).getByText("Partial tasks · more records may exist.", { exact: true }),
@@ -393,7 +393,7 @@ test("tree cancels pending collection reads on chat switch and does not keep old
     await click(tree(page).getByRole("button", { name: "Expand Conversation 7", exact: true }))
     await expect(tree(page).getByText("Loading tasks…", { exact: true })).toBeVisible()
     await page.evaluate(() => {
-      window.history.pushState(null, "", "?section=Durable&chat=43")
+      window.history.pushState(null, "", "?section=Durable&chat=43&view=conversations")
       window.dispatchEvent(new PopStateEvent("popstate"))
     })
     await aborted

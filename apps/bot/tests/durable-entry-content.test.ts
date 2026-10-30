@@ -113,6 +113,59 @@ describe("entry content projection", () => {
     }
   })
 
+  it("keeps bounded content as an ordered prefix when the next block does not fit", () => {
+    const prefix = Array.from({ length: 7 }, (_, index) => ({
+      type: "text" as const,
+      text: `${index}:`.padEnd(16 * 1024, "x"),
+    }))
+    const content = entryContent([
+      {
+        ...result,
+        content: [
+          ...prefix,
+          { type: "text", text: "\u0000".repeat(16 * 1024) },
+          { type: "text", text: "OMITTED_LATER_BLOCK" },
+        ],
+      },
+      { role: "user", content: "OMITTED_LATER_MESSAGE", timestamp: 3 },
+    ])
+    expect(content.truncated).toBe(true)
+    expect(content.messages).toHaveLength(1)
+    expect(content.messages[0]?.content).toEqual(prefix)
+    expect(JSON.stringify(content)).not.toContain("OMITTED_")
+    expect(Buffer.byteLength(JSON.stringify(content))).toBeLessThanOrEqual(128 * 1024)
+  })
+
+  it("marks tool identity and serialized arguments prefixes without repairing incomplete JSON", () => {
+    const argumentsValue = { text: "漢🙂".repeat(10000) }
+    const identity = "漢🙂".repeat(1000)
+    const content = entryContent([
+      {
+        ...assistant,
+        content: [{ type: "toolCall", id: identity, name: identity, arguments: argumentsValue }],
+      },
+      { ...result, toolName: identity, toolCallId: identity, content: [] },
+    ])
+    expect(content.truncated).toBe(true)
+    const block = content.messages[0]?.content[0]
+    if (block?.type !== "toolCall") throw new Error("Missing tool call")
+    for (const value of [
+      block.id,
+      block.name,
+      content.messages[1]?.toolName ?? "",
+      content.messages[1]?.toolCallId ?? "",
+    ]) {
+      expect(Buffer.byteLength(value)).toBeLessThanOrEqual(1024)
+      expect(value.length).toBeGreaterThan(0)
+      expect(identity.startsWith(value)).toBe(true)
+      expect(value).not.toContain("�")
+    }
+    expect(Buffer.byteLength(block.arguments)).toBeLessThanOrEqual(16 * 1024)
+    expect(JSON.stringify(argumentsValue).startsWith(block.arguments)).toBe(true)
+    expect(block.arguments).not.toContain("�")
+    expect(() => JSON.parse(block.arguments)).toThrow()
+  })
+
   it("bounds repeated message headers and rejects malformed scalar content", () => {
     const content = entryContent(Array.from({ length: 1000 }, () => ({ ...result, content: [] })))
     expect(content.truncated).toBe(true)

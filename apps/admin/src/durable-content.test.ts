@@ -67,6 +67,32 @@ describe("Durable entry content", () => {
     expect(html).not.toContain("Message content is available.")
   })
 
+  it("keeps tool arguments and results collapsed in the history reader", () => {
+    const html = renderToStaticMarkup(
+      createElement(EntryContent, {
+        collapseTools: true,
+        content: {
+          truncated: false,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "Checking the result." },
+                { type: "toolCall", id: "call", name: "lookup", arguments: "{}" },
+              ],
+            },
+            { role: "toolResult", content: [{ type: "text", text: "Saved output" }] },
+          ],
+        },
+      }),
+    )
+    expect(html).toContain('<details aria-label="Tool call"><summary>lookup · Arguments</summary>')
+    expect(html).toContain("<details><summary>Tool output</summary>")
+    expect(html).toContain("Checking the result.")
+    expect(html).toContain("Saved output")
+    expect(html).not.toContain("<details open")
+  })
+
   it("shows empty content and truncation independently", () => {
     expect(render({ messages: [], truncated: false })).toContain("No message content recorded.")
     expect(render({ messages: [], truncated: false })).not.toContain("Content truncated")

@@ -146,6 +146,10 @@ describe("authenticated durable inspection HTTP", () => {
     for (const query of [
       "view=other",
       "view=tasks",
+      "view=history",
+      "view=history&conversationId=1&scope=session",
+      "view=history&conversationId=1&taskId=2",
+      "view=history&conversationId=1&objectId=2&cursor=x",
       "limit=101",
       "limit=0",
       "limit=1&limit=2",
@@ -235,6 +239,89 @@ describe("authenticated durable inspection HTTP", () => {
       expect((await session.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
     } finally {
       stop()
+    }
+  })
+
+  it("returns saved history only for authenticated loaded owners without loading or mutating a chat", async () => {
+    const f = await setup()
+    const request = `${route}?view=history&conversationId=1`
+    expect((await f.get(request, "GET", false)).status).toBe(401)
+    expect(f.inspect).not.toHaveBeenCalled()
+    const unloaded = await f.get(request)
+    expect(unloaded.status).toBe(200)
+    expect(unloaded.data).toMatchObject({
+      version: 1,
+      state: "not-loaded",
+      view: "history",
+      items: [],
+      truncated: false,
+    })
+    expect(f.create).not.toHaveBeenCalled()
+    const session = await f.loaded()
+    const conversation = await currentConversation(session)
+    const entry = await session.harness.commit(
+      (tx) =>
+        tx.appendEntry(conversation.id, {
+          kind: "pi.user",
+          data: { credential: "PRIVATE_HISTORY_DATA" },
+          model: [{ role: "user", content: "Saved addressed input", timestamp: 1 }],
+        }),
+      context,
+    )
+    const before = await session.harness.inspect(context)
+    const commits = vi.fn()
+    const unsubscribe = session.harness.subscribeCommits(commits)
+    try {
+      const history = await f.get(`${route}?view=history&conversationId=${conversation.id}&limit=1`)
+      expect(history.status).toBe(200)
+      expect(history.data).toMatchObject({
+        state: "loaded",
+        view: "history",
+        truncated: false,
+        items: [
+          {
+            id: entry.id,
+            kind: "pi.user",
+            content: {
+              messages: [
+                { role: "user", content: [{ type: "text", text: "Saved addressed input" }] },
+              ],
+              truncated: false,
+            },
+          },
+        ],
+      })
+      expect(history.text).not.toContain("PRIVATE_")
+      expect(history.data).not.toHaveProperty("selectedConversation")
+      expect(Buffer.byteLength(history.text)).toBeLessThanOrEqual(256 * 1024)
+      if (history.data.state !== "loaded" || !history.data.nextCursor)
+        throw new Error("Missing history continuation")
+      const next = await f.get(
+        `${route}?view=history&conversationId=${conversation.id}&limit=1&cursor=${encodeURIComponent(history.data.nextCursor)}`,
+      )
+      expect(next.status).toBe(200)
+      expect(next.text).toContain("Private fixture message must stay hidden")
+      expect(next.data.items[0]?.id).not.toBe(entry.id)
+      const entries = await f.get(`${route}?view=entries&conversationId=${conversation.id}`)
+      expect(entries.status).toBe(200)
+      expect(entries.data.items.every((item) => !("content" in item))).toBe(true)
+      expect(entries.text).not.toContain("Saved addressed input")
+      const detail = await f.get(
+        `${route}?view=entries&conversationId=${conversation.id}&objectId=${entry.id}`,
+      )
+      const deepLink = await f.get(
+        `${route}?view=history&conversationId=${conversation.id}&objectId=${entry.id}`,
+      )
+      expect(detail.status).toBe(200)
+      expect(deepLink.status).toBe(200)
+      expect(detail.data.items).toEqual(history.data.items)
+      expect(deepLink.data.items).toEqual(detail.data.items)
+      expect(await session.harness.inspect(context)).toEqual(before)
+      expect(commits).not.toHaveBeenCalled()
+      expect(f.fixture.requests).toEqual([])
+      expect(f.create).toHaveBeenCalledOnce()
+    } finally {
+      unsubscribe()
     }
   })
 

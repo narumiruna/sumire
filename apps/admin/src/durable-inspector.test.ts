@@ -201,7 +201,84 @@ describe("bounded Durable overview reads", () => {
     ).rejects.toThrow("Cancelled")
   })
 })
+describe("history context reads", () => {
+  it("uses persisted selection for the default history and leaves entry detail to a separate scoped read", async () => {
+    const calls: string[] = []
+    const published = new Map<string, { data?: DurableInspectionResponse }>()
+    await readDurableContext(
+      "42",
+      { view: "history", objectId: 123 },
+      undefined,
+      async (path) => {
+        calls.push(path)
+        const view = new URL(path, "https://example.com").searchParams.get(
+          "view",
+        ) as DurableInspectionView
+        return { data: loaded(view) }
+      },
+      (name, block) => {
+        published.set(name, block)
+      },
+    )
+    expect(calls).toEqual([
+      "chats/42/durable?view=conversations&limit=25",
+      "chats/42/durable?view=tasks&limit=25&conversationId=99",
+      "chats/42/durable?view=history&limit=25&conversationId=99",
+    ])
+    expect(published.get("inspection")?.data?.view).toBe("history")
+  })
+
+  it("uses an explicitly inspected branch and history cursor without changing saved selection", async () => {
+    const calls: string[] = []
+    await readDurableContext(
+      "42",
+      { view: "history", conversationId: 7 },
+      "older-page",
+      async (path) => {
+        calls.push(path)
+        return { data: loaded("conversations") }
+      },
+      () => {},
+    )
+    expect(calls).toEqual([
+      "chats/42/durable?view=conversations&limit=25",
+      "chats/42/durable?view=tasks&limit=25&conversationId=99",
+      "chats/42/durable?view=history&limit=25&conversationId=7&cursor=older-page",
+    ])
+  })
+
+  it("does not select the first or active-marked row when persisted selection is unavailable", async () => {
+    const calls: string[] = []
+    const published = new Map<string, { data?: DurableInspectionResponse }>()
+    const data = loaded("conversations", null)
+    data.items = [{ type: "conversation", id: 7, active: true }]
+    await readDurableContext(
+      "42",
+      { view: "history" },
+      undefined,
+      async (path) => {
+        calls.push(path)
+        return { data }
+      },
+      (name, block) => {
+        published.set(name, block)
+      },
+    )
+    expect(calls).toEqual(["chats/42/durable?view=conversations&limit=25"])
+    expect(published.get("inspection")).toBe(published.get("selection"))
+  })
+})
+
 describe("Durable Inspector navigation", () => {
+  it("defaults to history while retaining explicit branch and entry deep links", () => {
+    expect(readDurableLocation(new URL(base))).toEqual({ view: "history" })
+    expect(
+      readDurableLocation(new URL(`${base}&view=history&conversationId=7&objectId=10`)),
+    ).toEqual({ view: "history", conversationId: 7, objectId: 10 })
+    expect(readDurableLocation(new URL(`${base}&view=conversations`))).toEqual({
+      view: "conversations",
+    })
+  })
   it("restores object and scope context from a deep link", () => {
     expect(
       readDurableLocation(
@@ -213,9 +290,9 @@ describe("Durable Inspector navigation", () => {
     for (const id of ["0", "-1", "01", "1.5", "9007199254740992", "<script>"]) {
       const url = new URL(base)
       for (const key of ["conversationId", "taskId", "objectId"]) url.searchParams.set(key, id)
-      expect(readDurableLocation(url)).toEqual({ view: "conversations" })
+      expect(readDurableLocation(url)).toEqual({ view: "history" })
     }
-    expect(readDurableLocation(new URL(`${base}&view=unknown`))).toEqual({ view: "conversations" })
+    expect(readDurableLocation(new URL(`${base}&view=unknown`))).toEqual({ view: "history" })
   })
   it("makes same-path links with no previous object or cursor", () => {
     expect(

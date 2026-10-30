@@ -110,6 +110,9 @@ describe("durable inspection owner lifecycle", () => {
       items: [],
       truncated: false,
     })
+    await expect(
+      f.registry.inspectDurable(123, { view: "history", conversationId: 1, limit: 25 }, signal()),
+    ).resolves.toMatchObject({ state: "not-loaded", view: "history", items: [] })
     expect(f.create).not.toHaveBeenCalled()
     expect(await f.fixture.factory.listChats()).toEqual([])
 
@@ -216,6 +219,7 @@ describe("durable inspection owner lifecycle", () => {
       const requests: DurableInspectionQuery[] = [
         { view: "tasks", conversationId: active.id, limit: 25 },
         { view: "entries", conversationId: active.id, limit: 25 },
+        { view: "history", conversationId: active.id, limit: 25 },
         { view: "documents", scope: "session", limit: 25 },
         { view: "documents", scope: "conversation", conversationId: active.id, limit: 25 },
       ]

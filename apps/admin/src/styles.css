@@ -3283,6 +3283,203 @@ main .durable-record-meta a {
   }
 }
 
+.durable-record-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block: 6px 12px;
+}
+.durable-record-toolbar .durable-context-bar {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.durable-view-navigation {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+main .durable-view-navigation a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid var(--durable-line);
+  border-radius: 4px;
+  color: var(--durable-ink);
+  text-decoration: none;
+}
+.durable-view-navigation a[aria-current="page"] {
+  border-color: var(--teal-8);
+  background: var(--teal-4);
+  color: var(--teal-12);
+  font-weight: 600;
+}
+.durable-history-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.durable-history-workspace[data-details="true"] {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+}
+.durable-conversation-history,
+.durable-event-details {
+  min-width: 0;
+}
+.durable-history-heading p {
+  max-width: 72ch;
+  color: var(--durable-muted);
+}
+.durable-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.durable-history-filters label {
+  display: grid;
+  flex: 1 1 180px;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.durable-history-filters label:first-child {
+  flex-grow: 2;
+}
+.durable-history-filters select {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--durable-line);
+  border-radius: 4px;
+  background: var(--durable-paper);
+  color: var(--durable-ink);
+  font: inherit;
+}
+.durable-turns {
+  display: grid;
+  gap: 24px;
+  margin-block: 16px;
+}
+.durable-turn > h4 {
+  margin-block: 0 8px;
+  color: var(--durable-muted);
+}
+.durable-history-entry {
+  min-width: 0;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--durable-line);
+  border-left: 3px solid var(--durable-role-ink);
+  border-radius: 5px;
+  background: var(--durable-paper);
+}
+.durable-history-entry[data-selected="true"] {
+  outline: 2px solid var(--teal-8);
+  outline-offset: 1px;
+}
+.durable-history-entry-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 12px;
+}
+.durable-history-entry-heading strong {
+  color: var(--durable-role-ink);
+}
+.durable-history-entry-heading time {
+  color: var(--durable-muted);
+  font-size: 12px;
+}
+.durable-history-entry .durable-entry-content {
+  margin-block: 8px;
+}
+.durable-history-entry .durable-message-text,
+.durable-history-entry pre {
+  max-height: 20rem;
+  overflow: auto;
+}
+.durable-history-entry .durable-entry-message + .durable-entry-message {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+main .durable-history-entry > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.durable-event-details {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  border: 1px solid var(--durable-line);
+  border-radius: 6px;
+  background: var(--durable-paper);
+}
+.durable-event-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--durable-line);
+}
+.durable-event-details > p {
+  padding-inline: 14px;
+}
+.durable-history-dialog {
+  box-sizing: border-box;
+  width: calc(100vw - 24px);
+  max-width: 760px;
+  max-height: calc(100dvh - 24px);
+  padding: 16px;
+}
+.durable-history-pages {
+  margin-top: 20px;
+}
+@media (max-width: 1099px) {
+  .durable-history-workspace[data-details="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 650px) {
+  .durable-record-toolbar {
+    gap: 6px;
+    margin-block: 4px;
+  }
+  .durable-view-navigation {
+    gap: 4px;
+  }
+  main .durable-view-navigation a {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .durable-record-toolbar .durable-context-bar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 8px;
+  }
+  .durable-record-toolbar .durable-inspected-compact {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@media (max-width: 600px) {
+  .durable-history-entry {
+    padding: 10px;
+  }
+  .durable-history-filters {
+    flex-direction: column;
+  }
+  .durable-history-filters label {
+    flex-basis: auto;
+  }
+  .durable-history-dialog {
+    padding: 12px;
+  }
+}
+
 .runtime-config label {
   display: grid;
   gap: 0.5rem;

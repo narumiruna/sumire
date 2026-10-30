@@ -133,6 +133,200 @@ export const entryContent: NonNullable<DurableEntryItem["content"]> = {
     },
   ],
 }
+const historyText = (
+  role: "system" | "user" | "assistant" | "toolResult",
+  text: string,
+): NonNullable<DurableEntryItem["content"]> => ({
+  truncated: false,
+  messages: [{ role, content: [{ type: "text", text }] }],
+})
+export const historyInput = `History question\n${untrusted}`
+export const historyOutput = `Synthetic tool output ${untrusted}`
+const inheritedEntry: DurableEntryItem = {
+  type: "entry",
+  id: 160,
+  conversationId: 6,
+  kind: "pi.assistant",
+  role: "assistant",
+  timestamp: Date.UTC(2027, 0, 1),
+  content: historyText("assistant", "Inherited answer retained in this branch."),
+}
+// Each map key is the inspected conversation; inherited items retain their original origin.
+// Native pages are newest-first, even when their message timestamps disagree.
+export const historyItems = new Map<number, DurableEntryItem[]>([
+  [
+    7,
+    [
+      {
+        type: "entry",
+        id: 176,
+        conversationId: 7,
+        kind: "fixture.internal",
+        content: { messages: [], truncated: false },
+      },
+      {
+        type: "entry",
+        id: 175,
+        conversationId: 7,
+        kind: "pi.assistant",
+        role: "assistant",
+        byTaskId: 8,
+        timestamp: Date.UTC(2026, 9, 19, 10),
+        content: historyText("assistant", "Saved final answer."),
+      },
+      {
+        type: "entry",
+        id: 174,
+        conversationId: 7,
+        kind: "pi.user",
+        role: "user",
+        timestamp: Date.UTC(2026, 9, 19, 12),
+        content: historyText("user", "Follow-up history question."),
+      },
+      {
+        type: "entry",
+        id: 173,
+        conversationId: 7,
+        kind: "pi.tool-result",
+        role: "toolResult",
+        byTaskId: 8,
+        toolName: "fixture_tool",
+        toolCallId: "history-call",
+        isError: false,
+        content: {
+          truncated: false,
+          messages: [
+            {
+              role: "toolResult",
+              toolName: "fixture_tool",
+              toolCallId: "history-call",
+              isError: false,
+              content: [{ type: "text", text: historyOutput }],
+            },
+          ],
+        },
+      },
+      {
+        type: "entry",
+        id: 172,
+        conversationId: 7,
+        kind: "pi.context",
+        role: "user",
+        content: historyText("user", "Passive context: imported message, not addressed input."),
+      },
+      {
+        type: "entry",
+        id: 171,
+        conversationId: 7,
+        kind: "pi.assistant",
+        role: "assistant",
+        byTaskId: 8,
+        timestamp: Date.UTC(2026, 9, 19, 9),
+        content: {
+          truncated: false,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "Checking synthetic records." },
+                { type: "thinking", thinking: `Private history reasoning ${untrusted}` },
+                {
+                  type: "toolCall",
+                  id: "history-call",
+                  name: "fixture_tool",
+                  arguments: JSON.stringify({ input: untrusted }),
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        type: "entry",
+        id: 170,
+        conversationId: 7,
+        kind: "pi.user",
+        role: "user",
+        timestamp: Date.UTC(2026, 9, 19, 11),
+        content: {
+          truncated: false,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: historyInput },
+                { type: "image", mimeType: "image/png" },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        type: "entry",
+        id: 169,
+        conversationId: 7,
+        kind: "pi.context",
+        role: "system",
+        content: historyText("system", "System boundary context."),
+      },
+      inheritedEntry,
+    ],
+  ],
+  [
+    9,
+    [
+      {
+        type: "entry",
+        id: 196,
+        conversationId: 9,
+        kind: "pi.assistant",
+        role: "assistant",
+        content: historyText("assistant", "Historical branch answer."),
+      },
+      {
+        type: "entry",
+        id: 195,
+        conversationId: 9,
+        kind: "pi.user",
+        role: "user",
+        content: historyText("user", "Historical branch question."),
+      },
+      inheritedEntry,
+    ],
+  ],
+])
+export const historyOlderItems = new Map<number, DurableEntryItem[]>([
+  [
+    7,
+    [
+      {
+        type: "entry",
+        id: 159,
+        conversationId: 7,
+        kind: "pi.assistant",
+        role: "assistant",
+        content: historyText("assistant", "Older saved answer."),
+      },
+      {
+        type: "entry",
+        id: 158,
+        conversationId: 7,
+        kind: "pi.user",
+        role: "user",
+        content: historyText("user", "Older saved question."),
+      },
+      {
+        type: "entry",
+        id: 157,
+        conversationId: 6,
+        kind: "pi.assistant",
+        role: "assistant",
+        content: historyText("assistant", "Older page starts inside an inherited turn."),
+      },
+    ],
+  ],
+])
+
 export function response(
   view: DurableInspectionView,
   items: DurableInspectionItem[],
@@ -141,7 +335,10 @@ export function response(
   return { version: 1, state: "loaded", readAt, view, items, truncated: false, ...extra }
 }
 
-export async function durableFixture(page: Page, href = "/?section=Durable&chat=42") {
+export async function durableFixture(
+  page: Page,
+  href = "/?section=Durable&chat=42&view=conversations",
+) {
   const state = {
     expired: false,
     failed: false,
@@ -155,11 +352,19 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
     taskTruncated: false,
     selectedConversation: conversations[0] as DurableConversationItem | null | undefined,
     failures: new Map<DurableInspectionView, number>(),
+    notLoadedViews: new Set<DurableInspectionView>(),
     conversationItems: conversations,
     taskItems: tasks,
     documentItems: documents,
     entryItems: entries,
     entryContent: entryContent as DurableEntryItem["content"],
+    historyItems: new Map(historyItems),
+    historyOlderItems: new Map(historyOlderItems),
+    historyDetails: new Map<string, DurableEntryItem>(
+      [...historyItems, ...historyOlderItems].flatMap(([conversationId, items]) =>
+        items.map((item) => [`${conversationId}:${item.id}`, item] as const),
+      ),
+    ),
     chats: [
       { id: 42, name: "Loaded chat", type: "private" },
       { id: 43, name: "Idle chat", type: "private" },
@@ -180,13 +385,15 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
       state.requests.push(url)
       state.methods.push(request.method())
       const objectId = url.searchParams.get("objectId")
-      const gate = state.gates.get(`${url.pathname}:${objectId ?? "list"}`)
+      const view = url.searchParams.get("view") as DurableInspectionView
+      const gate =
+        state.gates.get(`${url.pathname}:${view}:${objectId ?? "list"}`) ??
+        state.gates.get(`${url.pathname}:${objectId ?? "list"}`)
       if (gate) await gate
       if (state.failed) {
         await route.fulfill({ status: 500, json: { error: "Read failed" } })
         return
       }
-      const view = url.searchParams.get("view") as DurableInspectionView
       const failure = state.failures.get(view)
       if (failure) {
         await route.fulfill({
@@ -195,7 +402,7 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         })
         return
       }
-      if (url.pathname.includes("/44/")) {
+      if (url.pathname.includes("/44/") || state.notLoadedViews.has(view)) {
         await route.fulfill({
           json: {
             version: 1,
@@ -209,11 +416,13 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
         return
       }
       const cursor = url.searchParams.get("cursor")
+      const conversationId = Number(url.searchParams.get("conversationId"))
       let items = {
         conversations: state.conversationItems,
         tasks: state.taskItems,
         documents: state.documentItems,
         entries: state.entryItems,
+        history: (cursor ? state.historyOlderItems : state.historyItems).get(conversationId) ?? [],
       }[view]
       if (view === "conversations") {
         if (url.pathname.includes("/43/")) items = [{ type: "conversation", id: 17, active: false }]
@@ -225,7 +434,7 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
             ? { ...item, active: item.id === state.selectedConversation?.id }
             : item,
         )
-      } else if (cursor) items = []
+      } else if (cursor && view !== "history") items = []
       if (view === "tasks" || view === "entries")
         items = items.filter(
           (item) =>
@@ -248,9 +457,12 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
       if (objectId) {
         items = items.filter((item) => item.id === Number(objectId))
         if (view === "entries") {
-          items = items.map((item) =>
-            item.type === "entry" ? { ...item, content: state.entryContent } : item,
-          )
+          const historyDetail = state.historyDetails.get(`${conversationId}:${objectId}`)
+          items = historyDetail
+            ? [historyDetail]
+            : items.map((item) =>
+                item.type === "entry" ? { ...item, content: state.entryContent } : item,
+              )
         }
         if (view === "documents") {
           const item = items[0]
@@ -344,6 +556,9 @@ export async function durableFixture(page: Page, href = "/?section=Durable&chat=
             : {}),
           ...(view === "conversations" && !objectId && !url.searchParams.has("cursor")
             ? { nextCursor: "opaque+/=token", truncated: true }
+            : {}),
+          ...(view === "history" && !cursor && state.historyOlderItems.has(conversationId)
+            ? { nextCursor: "history+/=older", truncated: true }
             : {}),
         }),
       })

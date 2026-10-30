@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
+import type { AssistantMessage } from "@earendil-works/pi-ai"
 import { createModels } from "@earendil-works/pi-ai/models"
 import {
   createRegistry,
@@ -15,7 +16,10 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
-import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
+import type {
+  DurableInspectionLoadedResponse,
+  DurableInspectionQuery,
+} from "@narumitw/sumire-contracts"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   createDurableInspector,
@@ -272,42 +276,45 @@ async function snapshot(storage: Storage) {
 }
 
 describe("entry content inspection", () => {
-  it("keeps oversized explicit content reads bounded without issuing an unusable cursor", async () => {
-    const f = await fixture()
-    const stored = await f.storage.entry(f.root.id, f.first.id, context)
-    assert(stored)
-    f.reads.entry.mockResolvedValueOnce({
-      ...stored,
-      entry: {
-        ...stored.entry,
-        kind: "\u0000".repeat(16 * 1024),
-        model: [
-          {
-            role: "toolResult",
-            toolName: "\u0000".repeat(10000),
-            toolCallId: "call-1",
-            isError: false,
-            timestamp: 1,
-            content: [
-              { type: "text", text: "\u0000".repeat(16000) },
-              { type: "text", text: "a".repeat(16000) },
-              { type: "text", text: "b".repeat(16000) },
-            ],
-          },
-        ],
-      },
-    })
-    const detail = await f.inspect(
-      query({ view: "entries", conversationId: f.root.id, objectId: f.first.id }),
-      signal(),
-    )
-    expect(detail).toMatchObject({
-      truncated: true,
-      items: [{ content: { messages: [], truncated: true } }],
-    })
-    expect(detail.nextCursor).toBeUndefined()
-    expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(256 * 1024)
-  })
+  it.each(["entries", "history"])(
+    "keeps oversized %s explicit content reads bounded without an unusable cursor",
+    async (view) => {
+      const f = await fixture()
+      const stored = await f.storage.entry(f.root.id, f.first.id, context)
+      assert(stored)
+      f.reads.entry.mockResolvedValueOnce({
+        ...stored,
+        entry: {
+          ...stored.entry,
+          kind: "\u0000".repeat(16 * 1024),
+          model: [
+            {
+              role: "toolResult",
+              toolName: "\u0000".repeat(10000),
+              toolCallId: "call-1",
+              isError: false,
+              timestamp: 1,
+              content: [
+                { type: "text", text: "\u0000".repeat(16000) },
+                { type: "text", text: "a".repeat(16000) },
+                { type: "text", text: "b".repeat(16000) },
+              ],
+            },
+          ],
+        },
+      })
+      const detail = await f.inspect(
+        query({ view, conversationId: f.root.id, objectId: f.first.id }),
+        signal(),
+      )
+      expect(detail).toMatchObject({
+        truncated: true,
+        items: [{ content: { messages: [], truncated: true } }],
+      })
+      expect(detail.nextCursor).toBeUndefined()
+      expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(256 * 1024)
+    },
+  )
 
   it("returns bounded tool output only on targeted reads without exposing stored data or details", async () => {
     const f = await fixture()
@@ -361,6 +368,530 @@ describe("entry content inspection", () => {
       ),
     ).toMatchObject({ items: [] })
   })
+})
+
+describe("saved conversation history", () => {
+  it("projects every saved content role with one native page, no details or execution", async () => {
+    const f = await fixture()
+    const assistant: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "Check the file.",
+          thinkingSignature: "PRIVATE_THINKING_SIGNATURE",
+        },
+        { type: "text", text: "Reading the file.", textSignature: "PRIVATE_TEXT_SIGNATURE" },
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "read",
+          arguments: { path: "README.md" },
+          thoughtSignature: "PRIVATE_TOOL_SIGNATURE",
+          namespace: "PRIVATE_NAMESPACE",
+          argumentsError: "PRIVATE_ARGUMENTS_ERROR",
+        },
+      ],
+      api: "openai-completions",
+      provider: "PRIVATE_PROVIDER",
+      model: "PRIVATE_MODEL",
+      responseId: "PRIVATE_RESPONSE_ID",
+      usage: {
+        input: 1,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 3,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: 3,
+    }
+    const entry = await f.root.commit(
+      (tx) =>
+        tx.appendEntry(f.root.id, {
+          kind: "fixture.messages",
+          data: { credential: "PRIVATE_ENTRY_DATA" },
+          model: [
+            {
+              role: "system",
+              content: "Saved instructions.",
+              sections: { internal: "PRIVATE_SYSTEM_SECTIONS" },
+              timestamp: 4,
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: '<script>alert("untrusted")</script>' },
+                { type: "image", mimeType: "image/png", data: "PRIVATE_USER_IMAGE_BYTES" },
+              ],
+              timestamp: 2,
+            },
+            assistant,
+            {
+              role: "toolResult",
+              toolName: "read",
+              toolCallId: "call-1",
+              isError: true,
+              content: [
+                { type: "text", text: "File not found." },
+                { type: "image", mimeType: "image/png", data: "PRIVATE_TOOL_IMAGE_BYTES" },
+              ],
+              details: { credential: "PRIVATE_DETAILS" },
+              timestamp: 1,
+            },
+          ],
+        }),
+      context,
+    )
+    const before = await snapshot(f.storage)
+    const commits = vi.spyOn(f.storage, "commit")
+    const mint = vi.spyOn(f.storage, "mintId")
+    const effects = f.effects.mock.calls.length
+    const result = await f.inspect(
+      query({ view: "history", conversationId: f.root.id, limit: 2 }),
+      signal(),
+    )
+    expect(result).toMatchObject({
+      view: "history",
+      truncated: false,
+      items: [
+        {
+          id: entry.id,
+          conversationId: f.root.id,
+          role: "system",
+          timestamp: 4,
+          content: {
+            truncated: false,
+            messages: [
+              {
+                role: "system",
+                content: [{ type: "text", text: "Saved instructions." }],
+              },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: '<script>alert("untrusted")</script>' },
+                  { type: "image", mimeType: "image/png" },
+                ],
+              },
+              {
+                role: "assistant",
+                content: [
+                  { type: "thinking", thinking: "Check the file." },
+                  { type: "text", text: "Reading the file." },
+                  {
+                    type: "toolCall",
+                    id: "call-1",
+                    name: "read",
+                    arguments: '{"path":"README.md"}',
+                  },
+                ],
+              },
+              {
+                role: "toolResult",
+                toolName: "read",
+                toolCallId: "call-1",
+                isError: true,
+                content: [
+                  { type: "text", text: "File not found." },
+                  { type: "image", mimeType: "image/png" },
+                ],
+              },
+            ],
+          },
+        },
+        { id: f.later.id, content: { messages: [], truncated: false } },
+      ],
+    })
+    expect(result.nextCursor).toBeDefined()
+    expect(result).not.toHaveProperty("selectedConversation")
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_")
+    expect(JSON.stringify(result)).not.toContain('"usage"')
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(256 * 1024)
+    expect(f.reads.scanEntries).toHaveBeenCalledExactlyOnceWith(
+      { conversationId: f.root.id },
+      2,
+      undefined,
+      expect.anything(),
+    )
+    expect(f.reads.conversation).toHaveBeenCalledOnce()
+    for (const [name, read] of Object.entries(f.reads))
+      if (name !== "scanEntries" && name !== "conversation") expect(read).not.toHaveBeenCalled()
+    expect(f.active).not.toHaveBeenCalled()
+    expect(commits).not.toHaveBeenCalled()
+    expect(mint).not.toHaveBeenCalled()
+    expect(f.effects).toHaveBeenCalledTimes(effects)
+    expect(f.env).not.toHaveBeenCalled()
+    expect(f.reports).not.toHaveBeenCalled()
+    expect(await snapshot(f.storage)).toBe(before)
+    const metadata = await f.inspect(
+      query({ view: "entries", conversationId: f.root.id, limit: 2 }),
+      signal(),
+    )
+    expect(metadata.items.map(({ id }) => id)).toEqual([entry.id, f.later.id])
+    expect(metadata.items.every((item) => !("content" in item))).toBe(true)
+    expect(JSON.stringify(metadata)).not.toContain("Saved instructions.")
+  })
+
+  it("preserves newest-first native ancestry across pages and isolates branches and deep links", async () => {
+    const f = await fixture()
+    const { childAt, childExcluded } = await f.fork.commit(async (tx) => {
+      const childAt = await tx.appendEntry(f.fork.id, {
+        kind: "pi.user",
+        model: [{ role: "user", content: "Child turn", timestamp: 100 }],
+      })
+      const childExcluded = await tx.appendEntry(f.fork.id, {
+        kind: "fixture.excluded",
+        model: [{ role: "user", content: "PRIVATE_CHILD_AFTER_FORK", timestamp: 1 }],
+      })
+      return { childAt, childExcluded }
+    }, context)
+    const grandchild = await f.fork.fork(childAt.id, { ownership: { kind: "ownerless" } }, context)
+    const rootExcluded = await f.root.commit(
+      (tx) =>
+        tx.appendEntry(f.root.id, {
+          kind: "fixture.excluded",
+          model: [{ role: "user", content: "PRIVATE_ROOT_AFTER_FORK", timestamp: 1 }],
+        }),
+      context,
+    )
+    const sibling = await f.root.fork(f.first.id, { ownership: { kind: "ownerless" } }, context)
+    const siblingEntry = await sibling.commit(
+      (tx) =>
+        tx.appendEntry(sibling.id, {
+          kind: "fixture.excluded",
+          model: [{ role: "user", content: "PRIVATE_SIBLING", timestamp: 1 }],
+        }),
+      context,
+    )
+    const { head, tail } = await grandchild.commit(async (tx) => {
+      const head = await tx.appendEntry(grandchild.id, {
+        kind: "fixture.head",
+        head: "self",
+        edits: [
+          {
+            target: f.first.id,
+            action: "replace",
+            messages: [{ role: "user", content: "PRIVATE_CONTEXT_EDIT", timestamp: 1 }],
+          },
+        ],
+      })
+      const tail = await tx.appendEntry(grandchild.id, {
+        kind: "fixture.tail",
+        model: [{ role: "user", content: "Grandchild turn", timestamp: 0 }],
+      })
+      return { head, tail }
+    }, context)
+    const native = await f.storage.scanEntries(
+      { conversationId: grandchild.id },
+      100,
+      undefined,
+      context,
+    )
+    expect(native.items.map(({ id }) => id)).toEqual([tail.id, head.id, childAt.id, f.first.id])
+    const first = await f.inspect(
+      query({ view: "history", conversationId: grandchild.id, limit: 2 }),
+      signal(),
+    )
+    expect(first.items.map(({ id }) => id)).toEqual([tail.id, head.id])
+    assert(first.nextCursor)
+    for (const change of [
+      { view: "entries", conversationId: grandchild.id, limit: 2 },
+      { view: "history", conversationId: f.root.id, limit: 2 },
+      { view: "history", conversationId: grandchild.id, limit: 1 },
+    ])
+      await expect(
+        f.inspect(query({ ...change, cursor: first.nextCursor }), signal()),
+      ).rejects.toMatchObject({ status: 400 })
+    const second = await f.inspect(
+      query({ view: "history", conversationId: grandchild.id, limit: 2, cursor: first.nextCursor }),
+      signal(),
+    )
+    expect(second.items.map(({ id }) => id)).toEqual([childAt.id, f.first.id])
+    expect(second.nextCursor).toBeUndefined()
+    const items = [...first.items, ...second.items]
+    expect(items.map((item) => "conversationId" in item && item.conversationId)).toEqual([
+      grandchild.id,
+      grandchild.id,
+      f.fork.id,
+      f.root.id,
+    ])
+    expect(JSON.stringify(items)).not.toContain("PRIVATE_")
+    // History is saved entry.model, not the current head range or an edited provider context.
+    expect(items.at(-1)).toMatchObject({
+      content: { messages: [{ role: "user", content: [{ type: "text", text: secret }] }] },
+    })
+    expect(f.reads.scanEntries).toHaveBeenCalledTimes(2)
+    expect(f.reads.entry).not.toHaveBeenCalled()
+    for (const id of [f.first.id, childAt.id, head.id, tail.id]) {
+      const filter = { conversationId: grandchild.id, objectId: id }
+      const history = await f.inspect(query({ view: "history", ...filter }), signal())
+      const detail = await f.inspect(query({ view: "entries", ...filter }), signal())
+      expect(history.items).toEqual(detail.items)
+      expect(history.truncated).toBe(detail.truncated)
+      expect(history.nextCursor).toBeUndefined()
+    }
+    for (const id of [f.later.id, childExcluded.id, rootExcluded.id, siblingEntry.id, 99999])
+      expect(
+        await f.inspect(
+          query({ view: "history", conversationId: grandchild.id, objectId: id }),
+          signal(),
+        ),
+      ).toMatchObject({ items: [] })
+    expect(
+      await f.inspect(
+        query({ view: "history", conversationId: f.root.id, objectId: tail.id }),
+        signal(),
+      ),
+    ).toMatchObject({ items: [] })
+    expect(f.reads.scanEntries).toHaveBeenCalledTimes(2)
+    expect(
+      await f.inspect(query({ view: "history", conversationId: f.other.id }), signal()),
+    ).toMatchObject({ items: [], truncated: false })
+    expect(
+      await f.inspect(query({ view: "history", conversationId: 99999 }), signal()),
+    ).toMatchObject({ items: [], truncated: false })
+    expect(f.reads.scanEntries).toHaveBeenCalledTimes(3)
+  })
+
+  it("continues overflowing native pages without omissions or duplicates after new appends", async () => {
+    const f = await fixture()
+    await f.root.commit(async (tx) => {
+      for (let index = 0; index < 9; index++)
+        await tx.appendEntry(f.root.id, {
+          kind: `fixture.large-${index}`,
+          data: { credential: "PRIVATE_DATA" },
+          model: [
+            {
+              role: "user",
+              timestamp: 9 - index,
+              content: Array.from({ length: 6 }, (_, block) => ({
+                type: "text" as const,
+                text: `entry-${index}-block-${block}:`.padEnd(
+                  index === 8 && block === 0 ? 17 * 1024 : 16 * 1024,
+                  "x",
+                ),
+              })),
+            },
+          ],
+        })
+    }, context)
+    const expected = await f.storage.scanEntries(
+      { conversationId: f.root.id },
+      100,
+      undefined,
+      context,
+    )
+    const nativeFirst = await f.storage.scanEntries(
+      { conversationId: f.root.id },
+      5,
+      undefined,
+      context,
+    )
+    const pages: DurableInspectionLoadedResponse[] = []
+    let cursor: string | undefined
+    do {
+      const count = f.reads.scanEntries.mock.calls.length
+      const page = await f.inspect(
+        query({
+          view: "history",
+          conversationId: f.root.id,
+          limit: 5,
+          ...(cursor ? { cursor } : {}),
+        }),
+        signal(),
+      )
+      pages.push(page)
+      expect(pages.length).toBeLessThan(20)
+      expect(f.reads.scanEntries).toHaveBeenCalledTimes(count + 1)
+      expect(page.items.length).toBeGreaterThan(0)
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(256 * 1024)
+      expect(JSON.stringify(page)).not.toContain("PRIVATE_")
+      if (pages.length === 1) {
+        expect(page.items).toHaveLength(2)
+        expect(page.items[0]).toMatchObject({ content: { truncated: true } })
+        await f.root.commit(
+          (tx) =>
+            tx.appendEntry(f.root.id, {
+              kind: "fixture.newer",
+              model: [{ role: "user", content: "NEW_AFTER_FIRST_PAGE", timestamp: 0 }],
+            }),
+          context,
+        )
+      }
+      cursor = page.nextCursor
+    } while (cursor)
+    const items = pages.flatMap((page) => page.items)
+    expect(items.map(({ id }) => id)).toEqual(expected.items.map(({ id }) => id))
+    expect(new Set(items.map(({ id }) => id)).size).toBe(items.length)
+    expect(f.reads.entry).not.toHaveBeenCalled()
+    expect(pages.slice(0, 3).map((page) => page.truncated)).toEqual([true, true, false])
+    // The third response skips the previously truncated row; it reports only its own content.
+    expect(pages[2]?.items).toHaveLength(1)
+    const calls = f.reads.scanEntries.mock.calls
+    expect(calls.slice(0, 3).map((call) => call[2])).toEqual([undefined, undefined, undefined])
+    expect(calls[3]?.[2]).toEqual(nativeFirst.next)
+    for (const call of calls.slice(1))
+      expect(call[0]).toEqual({ conversationId: f.root.id, maxEntryId: expected.items[0]?.id })
+  })
+
+  it("returns an oversized first row with a content omission marker and a usable continuation", async () => {
+    const f = await fixture()
+    const { older, oversized } = await f.root.commit(async (tx) => {
+      const older = await tx.appendEntry(f.root.id, {
+        kind: "fixture.remaining",
+        model: [
+          {
+            role: "user",
+            timestamp: 1,
+            content: Array.from({ length: 7 }, () => ({
+              type: "text" as const,
+              text: "x".repeat(16 * 1024),
+            })),
+          },
+        ],
+      })
+      const oversized = await tx.appendEntry(f.root.id, {
+        kind: "\u0000".repeat(16 * 1024),
+        model: [
+          {
+            role: "toolResult",
+            toolName: "\u0000".repeat(10000),
+            toolCallId: "call-1",
+            isError: false,
+            timestamp: 1,
+            content: [
+              { type: "text", text: "\u0000".repeat(16000) },
+              { type: "text", text: "a".repeat(16000) },
+              { type: "text", text: "b".repeat(16000) },
+            ],
+          },
+        ],
+      })
+      return { older, oversized }
+    }, context)
+    const pages: DurableInspectionLoadedResponse[] = []
+    let cursor: string | undefined
+    do {
+      const page = await f.inspect(
+        query({
+          view: "history",
+          conversationId: f.root.id,
+          limit: 2,
+          ...(cursor ? { cursor } : {}),
+        }),
+        signal(),
+      )
+      pages.push(page)
+      expect(pages.length).toBeLessThan(5)
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(256 * 1024)
+      cursor = page.nextCursor
+    } while (cursor)
+    expect(pages[0]).toMatchObject({
+      truncated: true,
+      items: [{ id: oversized.id, content: { messages: [], truncated: true } }],
+    })
+    expect(pages[0]?.items).toHaveLength(1)
+    expect(pages[0]?.nextCursor).toBeDefined()
+    expect(pages[1]).toMatchObject({
+      truncated: false,
+      items: [{ id: older.id, content: { truncated: false } }],
+    })
+    expect(pages.flatMap((page) => page.items.map(({ id }) => id))).toEqual([
+      oversized.id,
+      older.id,
+      f.later.id,
+      f.first.id,
+    ])
+    expect(f.reads.scanEntries).toHaveBeenCalledTimes(pages.length)
+  })
+
+  it("marks field prefixes on history content without treating a normal native cursor as truncation", async () => {
+    const f = await fixture()
+    const text = "漢🙂".repeat(10000)
+    const entry = await f.root.commit(
+      (tx) =>
+        tx.appendEntry(f.root.id, {
+          kind: "pi.user",
+          model: [{ role: "user", content: text, timestamp: 1 }],
+        }),
+      context,
+    )
+    const page = await f.inspect(
+      query({ view: "history", conversationId: f.root.id, limit: 1 }),
+      signal(),
+    )
+    expect(page).toMatchObject({
+      truncated: true,
+      items: [{ id: entry.id, content: { truncated: true } }],
+    })
+    const item = page.items[0]
+    assert(item?.type === "entry")
+    const block = item.content?.messages[0]?.content[0]
+    assert(block?.type === "text")
+    expect(Buffer.byteLength(block.text)).toBeLessThanOrEqual(16 * 1024)
+    expect(block.text.length).toBeGreaterThan(0)
+    expect(text.startsWith(block.text)).toBe(true)
+    expect(block.text).not.toContain("�")
+    assert(page.nextCursor)
+    const next = await f.inspect(
+      query({ view: "history", conversationId: f.root.id, limit: 1, cursor: page.nextCursor }),
+      signal(),
+    )
+    expect(next).toMatchObject({
+      truncated: false,
+      items: [{ id: f.later.id, content: { messages: [], truncated: false } }],
+    })
+    expect(next.nextCursor).toBeDefined()
+  })
+
+  it.each(["list", "objectId"])(
+    "checks history %s cancellation around native reads and holds admission until settlement",
+    async (mode) => {
+      const f = await fixture()
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const method = mode === "list" ? "scanEntries" : "entry"
+      f.reads[method].mockImplementationOnce(async (...args: unknown[]) => {
+        await gate
+        return Reflect.apply(f.storage[method], f.storage, args)
+      })
+      const request = query({
+        view: "history",
+        conversationId: f.root.id,
+        ...(mode === "objectId" ? { objectId: f.first.id } : {}),
+      })
+      const abort = new AbortController()
+      let settled = false
+      const pending = f.inspect(request, abort.signal).finally(() => {
+        settled = true
+      })
+      const rejection = expect(pending).rejects.toMatchObject({
+        status: 409,
+        message: "Durable inspection cancelled",
+      })
+      try {
+        await vi.waitFor(() => expect(f.reads[method]).toHaveBeenCalledOnce())
+        abort.abort(new Error(secret))
+        await Promise.resolve()
+        expect(settled).toBe(false)
+        await expect(f.inspect(request, signal())).rejects.toMatchObject({ status: 429 })
+      } finally {
+        release()
+        await rejection
+      }
+      expect(await f.inspect(request, signal())).toMatchObject({ state: "loaded" })
+      for (const read of Object.values(f.reads)) read.mockClear()
+      await expect(f.inspect(request, abort.signal)).rejects.toMatchObject({ status: 409 })
+      for (const read of Object.values(f.reads)) expect(read).not.toHaveBeenCalled()
+      await expect(f.inspect({ view: "history", limit: 25 }, signal())).rejects.toMatchObject({
+        status: 400,
+      })
+    },
+  )
 })
 
 describe("persisted conversation selection", () => {
@@ -419,6 +950,7 @@ describe("persisted conversation selection", () => {
     for (const request of [
       query({ view: "tasks", conversationId: f.root.id }),
       query({ view: "entries", conversationId: f.root.id }),
+      query({ view: "history", conversationId: f.root.id }),
       query({ view: "documents", scope: "session" }),
     ])
       expect(await f.inspect(request, signal())).not.toHaveProperty("selectedConversation")
@@ -606,6 +1138,14 @@ describe("durable inspection query", () => {
   it("uses bounded defaults and rejects unknown, duplicate, and foreign-scope filters", () => {
     expect(query()).toEqual({ view: "conversations", limit: 25 })
     expect(query({ view: "documents", conversationId: 1 }).scope).toBe("conversation")
+    expect(query({ view: "history", conversationId: 1 })).toEqual({
+      view: "history",
+      conversationId: 1,
+      limit: 25,
+    })
+    expect(query({ view: "history", conversationId: 1, objectId: 2 })).toMatchObject({
+      objectId: 2,
+    })
     for (const input of [
       "view=unknown",
       "limit=101",
@@ -618,6 +1158,14 @@ describe("durable inspection query", () => {
       "view=documents&scope=task&conversationId=1",
       "view=documents&scope=session&conversationId=1",
       "view=entries&conversationId=1&taskId=2",
+      "view=history",
+      "view=history&conversationId=0",
+      "view=history&conversationId=1&taskId=2",
+      "view=history&conversationId=1&scope=session",
+      "view=history&conversationId=1&scope=conversation",
+      "view=history&conversationId=1&scope=task&taskId=2",
+      "view=history&conversationId=1&objectId=2&cursor=x",
+      "view=history&conversationId=1&conversationId=2",
       "scope=session",
       "secret=value",
       "view=conversations&view=tasks",
