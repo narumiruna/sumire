@@ -55,7 +55,9 @@ const id = z
   .pipe(z.number().int().positive().safe())
 const querySchema = z
   .object({
-    view: z.enum(["conversations", "tasks", "documents", "entries"]).default("conversations"),
+    view: z
+      .enum(["conversations", "tasks", "documents", "entries", "history"])
+      .default("conversations"),
     conversationId: id.optional(),
     taskId: id.optional(),
     scope: z.enum(["session", "conversation", "task"]).optional(),
@@ -276,7 +278,7 @@ function conversationMetadata(
 }
 
 function entryMetadata(value: EntryRecord): DurableEntryItem {
-  // Scans return metadata only. Model-facing content requires an explicit object read.
+  // Content is added separately for history and explicit entry reads only.
   const message = value.model?.[0]
   const role = message?.role
   return {
@@ -338,8 +340,11 @@ export function createDurableInspector(
         .update(JSON.stringify([chatId, filters]))
         .digest("hex")
       const sign = (body: string) => createHmac("sha256", key).update(body).digest("base64url")
+      let entryMaxId: EntryId | undefined
       const encode = (native: Cursor | undefined, skip = 0): string => {
-        const body = Buffer.from(JSON.stringify({ binding, native, skip })).toString("base64url")
+        const body = Buffer.from(JSON.stringify({ binding, native, skip, entryMaxId })).toString(
+          "base64url",
+        )
         const result = `${body}.${sign(body)}`
         if (result.length > maxCursorBytes)
           throw new AdminError(413, "Inspection cursor exceeds limit")
@@ -363,11 +368,16 @@ export function createDurableInspector(
           !Number.isInteger(data.skip) ||
           Number(data.skip) < 0 ||
           Number(data.skip) >= query.limit ||
-          (data.native !== undefined && !record(data.native))
+          (data.native !== undefined && !record(data.native)) ||
+          (data.entryMaxId !== undefined &&
+            (!Number.isSafeInteger(data.entryMaxId) ||
+              Number(data.entryMaxId) <= 0 ||
+              (query.view !== "entries" && query.view !== "history")))
         )
           throw new AdminError(400, "Invalid inspection cursor")
         native = data.native as Cursor | undefined
         skip = Number(data.skip)
+        entryMaxId = data.entryMaxId as EntryId | undefined
       }
       const response: DurableInspectionLoadedResponse = {
         version: 1,
@@ -461,7 +471,7 @@ export function createDurableInspector(
                 ],
           ),
         }
-      } else if (query.view === "entries") {
+      } else if (query.view === "entries" || query.view === "history") {
         if (query.objectId !== undefined) {
           const value = await read(() =>
             storage.entry(conversationId, query.objectId as EntryId, context),
@@ -469,15 +479,28 @@ export function createDurableInspector(
           if (value) {
             const content = entryContent(value.entry.model)
             page = { items: [{ ...entryMetadata(value.entry), content }] }
-            response.truncated = content.truncated
           } else {
             page = { items: [] }
           }
         } else {
           const values = await read(() =>
-            storage.scanEntries({ conversationId }, query.limit, native, context),
+            storage.scanEntries(
+              { conversationId, ...(entryMaxId === undefined ? {} : { maxEntryId: entryMaxId }) },
+              query.limit,
+              native,
+              context,
+            ),
           )
-          page = { items: values.items.map(entryMetadata), next: values.next }
+          // Keep native newest-first order and inclusive ancestor caps. Pin the page before
+          // overflow replay+skip so a newer append cannot shift its offsets.
+          entryMaxId ??= values.items[0]?.id
+          page = {
+            items: values.items.map((value) => ({
+              ...entryMetadata(value),
+              ...(query.view === "history" ? { content: entryContent(value.model) } : {}),
+            })),
+            next: values.next,
+          }
         }
       } else {
         const approvedKinds =
@@ -575,6 +598,7 @@ export function createDurableInspector(
             return response
           }
         }
+        if (item.type === "entry" && item.content?.truncated) response.truncated = true
       }
       if (page.next) response.nextCursor = encode(page.next)
       return response

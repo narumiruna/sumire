@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import {
   conversations,
+  durableComparisonHref,
   durableFixture,
   historicalConversation,
   navigateSection,
@@ -38,6 +39,18 @@ const expectRecord = async (page: Page, title: string, identifier: string) => {
 }
 
 for (const width of [1440, 390, 320]) {
+  test(`comparison capture targets the same stored branch at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await durableFixture(page, durableComparisonHref)
+    await expectRecord(page, "Conversation", "conversation #7")
+    await expect(page).toHaveURL(/view=conversations&objectId=7/)
+    await expect(
+      page.getByRole("region", { name: "Conversation history", exact: true }),
+    ).toHaveCount(0)
+    expect(state.requests.some((url) => url.searchParams.get("view") === "history")).toBe(false)
+    expect(state.methods.every((method) => method === "GET")).toBe(true)
+  })
+
   test(`record browser and secondary disclosures keep their defaults at ${width}px`, async ({
     page,
   }) => {
@@ -120,6 +133,9 @@ for (const width of [1440, 390, 320]) {
       .click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
+    await click(
+      inspector.getByRole("link", { includeHidden: true, name: "Branch view", exact: true }),
+    )
     await expectRecord(page, "Conversation", "conversation #17")
     await openDisclosure(inspector.locator(".durable-history-context"))
     await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
@@ -135,7 +151,8 @@ for (const width of [1440, 390, 320]) {
     await expect(inspector).toContainText("Inspection will not open its database")
     expect(state.methods.every((method) => method === "GET")).toBe(true)
     await page.waitForTimeout(150)
-    expect(state.requests).toHaveLength(4)
+    // Opening Branch view from the new History default requires one additional conversation read.
+    expect(state.requests).toHaveLength(5)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }
@@ -348,7 +365,7 @@ for (const selected of ["persisted", "null", "undefined"] as const) {
       const state = await durableFixture(page, "/?section=Durable")
       if (selected !== "persisted")
         state.selectedConversation = selected === "null" ? null : undefined
-      await page.goto("/?section=Durable&chat=42")
+      await page.goto("/?section=Durable&chat=42&view=conversations")
       const inspector = inspectorFor(page)
       await click(
         inspector.getByRole("button", { includeHidden: true, name: "Next objects", exact: true }),
@@ -476,7 +493,7 @@ for (const view of ["Tasks", "Documents", "Entries"]) {
       historicalConversation,
       { type: "conversation", id: 10, active: false },
     ]
-    await page.goto("/?section=Durable&chat=42")
+    await page.goto("/?section=Durable&chat=42&view=conversations")
     const inspector = inspectorFor(page)
     await expectRecord(page, "Conversation", "conversation #7")
     const reads = state.requests.length
@@ -1009,6 +1026,13 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
       .click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
+    await click(
+      inspectorFor(page).getByRole("link", {
+        includeHidden: true,
+        name: "Branch view",
+        exact: true,
+      }),
+    )
     await expectRecord(page, "Conversation", "conversation #17")
   } finally {
     release()
@@ -1028,6 +1052,9 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Chat actions", exact: true }).click()
   await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
+  await click(
+    inspectorFor(page).getByRole("link", { includeHidden: true, name: "Branch view", exact: true }),
+  )
   await expectRecord(page, "Conversation", "conversation #7")
   await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
     "unsaved change",
@@ -1081,7 +1108,7 @@ test("a chat change in history cancels the old chat read and clears object conte
       .poll(() => state.requests.some((url) => url.searchParams.get("objectId") === "101"))
       .toBe(true)
     await page.evaluate(() => {
-      window.history.pushState(null, "", "?section=Durable&chat=43")
+      window.history.pushState(null, "", "?section=Durable&chat=43&view=conversations")
       window.dispatchEvent(new PopStateEvent("popstate"))
     })
     await expectRecord(page, "Conversation", "conversation #17")
@@ -1129,7 +1156,10 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
 test("off-page persisted selection is separate from the inspection target and uses bounded historical evidence", async ({
   page,
 }) => {
-  const state = await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
+  const state = await durableFixture(
+    page,
+    "/?section=Durable&chat=42&view=conversations&conversationId=7",
+  )
   const inspector = inspectorFor(page)
   await expectRecord(page, "Conversation", "conversation #7")
   expect(state.requests).toHaveLength(2)
@@ -1390,7 +1420,10 @@ for (const width of [1440, 390, 320])
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 })
-    const state = await durableFixture(page, "/?section=Durable&chat=42&conversationId=7")
+    const state = await durableFixture(
+      page,
+      "/?section=Durable&chat=42&view=conversations&conversationId=7",
+    )
     const inspector = inspectorFor(page)
     await expectRecord(page, "Conversation", "conversation #7")
     const owner = detailsFor(page).getByRole("link", {

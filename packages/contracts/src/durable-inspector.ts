@@ -1,4 +1,4 @@
-export type DurableInspectionView = "conversations" | "tasks" | "documents" | "entries"
+export type DurableInspectionView = "conversations" | "tasks" | "documents" | "entries" | "history"
 export type DurableDocumentScope = "session" | "conversation" | "task"
 
 export type DurableInspectionQuery = {
@@ -105,7 +105,7 @@ export type DurableEntryItem = {
   toolName?: string
   toolCallId?: string
   isError?: boolean
-  /** Bounded model-facing content, included only for an objectId read. */
+  /** Bounded saved model-facing content, included for history and entry objectId reads. */
   content?: { messages: DurableEntryMessage[]; truncated: boolean }
 }
 
@@ -124,6 +124,7 @@ export type DurableInspectionLoadedResponse = {
   /** Persisted selection on conversations reads; null means no selection or missing record. */
   selectedConversation?: DurableConversationItem | null
   nextCursor?: string
+  /** Returned content is incomplete or the response byte limit omitted rows. */
   truncated: boolean
 }
 
