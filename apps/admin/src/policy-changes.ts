@@ -122,7 +122,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           label: `${label}: approve ${id}`,
           targets: [
             {
-              page: "Access",
+              page: "Chats",
               selector: key === "privateUsers" ? "#access-users-list" : "#access-groups-list",
             },
           ],
@@ -133,7 +133,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           label: `${label}: revoke ${id}`,
           targets: [
             {
-              page: "Access",
+              page: "Chats",
               selector: key === "privateUsers" ? "#access-users-list" : "#access-groups-list",
             },
           ],

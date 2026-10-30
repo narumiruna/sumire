@@ -266,8 +266,8 @@ test("a connection save completed after navigation does not focus its hidden sec
   const saving = page.waitForRequest("**/api/mcp/fixture")
   await page.getByRole("button", { name: "Save connection", exact: true }).click()
   await saving
-  await navigate(page, "Access")
-  const heading = page.getByRole("heading", { name: "Chat access", exact: true })
+  await navigate(page, "Chats")
+  const heading = page.getByRole("heading", { name: "Chats", exact: true })
   await expect(heading).toBeFocused()
   respond()
   await expect(page.getByRole("main")).toHaveAttribute("aria-busy", "false")

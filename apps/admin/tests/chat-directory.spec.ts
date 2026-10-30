@@ -452,7 +452,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await fixture(page, "/?section=Chats")
   const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("-9003")
-  const row = rows(page).getByRole("button")
+  const row = rows(page).locator(".directory-chat")
   await expect(row.locator("strong")).toHaveText("Unnamed group")
   await expect(row.locator(".directory-chat-meta code")).toHaveText("-9003")
   await row.click()
@@ -463,9 +463,9 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
-  await expect(rows(page).getByRole("button")).toHaveCount(1)
+  await expect(rows(page).locator(".directory-chat")).toHaveCount(1)
   await expect(rows(page)).toContainText("-9001")
-  await rows(page).getByRole("button").click()
+  await rows(page).locator(".directory-chat").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
   await page
     .getByRole("tabpanel", { name: "Access", exact: true })
@@ -555,7 +555,7 @@ for (const trigger of ["directory", "lookup", "logout"] as const) {
       page.getByRole("button", { name: "Sign in with passkey", exact: true }),
     ).toBeVisible()
     await expect(page.getByText("Beyond first page", { exact: true })).toHaveCount(0)
-    await expect(page.locator(".chat-list button")).toHaveCount(0)
+    await expect(page.locator(".chat-list .directory-chat")).toHaveCount(0)
     if (trigger !== "logout")
       await expect(page.getByRole("alert")).toContainText(
         "Administrator session expired. Sign in again.",

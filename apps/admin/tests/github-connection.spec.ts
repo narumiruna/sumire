@@ -803,6 +803,9 @@ test("Client ID saved with failed application retries only the root application 
   expect(
     state.calls.filter((call) => call.path === "/api/runtime-config/GITHUB_OAUTH_CLIENT_ID"),
   ).toHaveLength(1)
+  expect(
+    state.calls.filter((call) => call.path === "/api/github/connection" && call.method === "GET"),
+  ).toHaveLength(2)
   expect(state.starts()).toBe(0)
 })
 

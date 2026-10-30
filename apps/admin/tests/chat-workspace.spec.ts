@@ -94,7 +94,7 @@ async function fixture(page: Page) {
 async function select(page: Page, index: number) {
   const back = page.getByRole("button", { name: "Back to chat directory" })
   if (await back.isVisible()) await back.click()
-  await page.locator(".chat-list button").nth(index).click()
+  await page.locator(".chat-list .directory-chat").nth(index).click()
   await expect(page.locator(".chat-header code")).toHaveText(String(chats[index]?.id))
 }
 test("keeps a directory below a tall API error usable after document scrolling", async ({
@@ -118,7 +118,7 @@ test("keeps a directory below a tall API error usable after document scrolling",
   await expect.poll(() => list.evaluate((el) => el.clientHeight)).toBeGreaterThan(80)
   requests.length = 0
   for (const index of [0, 50, 99]) {
-    const row = page.locator(".chat-list button").nth(index)
+    const row = page.locator(".chat-list .directory-chat").nth(index)
     await row.scrollIntoViewIfNeeded()
     await expect(row).toBeInViewport()
     await row.click()
@@ -126,7 +126,7 @@ test("keeps a directory below a tall API error usable after document scrolling",
     await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
     await expect(row).toBeFocused()
   }
-  const lastBox = await page.locator(".chat-list button").last().boundingBox()
+  const lastBox = await page.locator(".chat-list .directory-chat").last().boundingBox()
   const footerBox = await page.locator(".directory-footer").boundingBox()
   if (!lastBox || !footerBox) throw new Error("Missing directory geometry")
   expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(footerBox.y)
@@ -158,7 +158,7 @@ for (const width of [1440, 851, 850, 390]) {
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
       await expect(page.getByLabel("Search stored chats", { exact: true })).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(expected)
-      await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(0)
+      await expect(page.locator('.chat-list .directory-chat[aria-current="true"]')).toHaveCount(0)
       await expect(id).toHaveValue("-9999")
       await expect(page.locator(".pending-bar")).toHaveCount(0)
     }
@@ -181,7 +181,7 @@ for (const width of [1440, 851, 850, 390]) {
       await button.click()
       await expect(page.locator(".chat-header code")).toHaveText("-1050")
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(page.locator(".chat-list button").nth(50)).toBeFocused()
+      await expect(page.locator(".chat-list .directory-chat").nth(50)).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(expected)
       await expect(page.locator(".pending-bar")).toHaveCount(0)
       expect(requests).toEqual([])
@@ -238,7 +238,7 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   const footer = page.locator(".directory-footer")
   await footer.locator("summary").click()
   await expect(footer.getByLabel("Chat ID (can configure before first message)")).toBeVisible()
-  const row = page.locator(".chat-list button").last()
+  const row = page.locator(".chat-list .directory-chat").last()
   await row.scrollIntoViewIfNeeded()
   const rowBox = await row.boundingBox()
   const footerBox = await footer.boundingBox()
@@ -257,7 +257,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
     const requests = await fixture(page)
-    const rows = page.locator(".chat-list button")
+    const rows = page.locator(".chat-list .directory-chat")
     const list = page.locator(".directory-list-region")
     const footer = page.locator(".directory-footer")
     await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeDisabled()

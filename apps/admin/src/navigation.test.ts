@@ -6,6 +6,7 @@ import {
   type Page,
   pageLabel,
   pages,
+  pendingEditors,
   readNavigation,
   SideNavigation,
 } from "./navigation.js"
@@ -13,7 +14,6 @@ import {
 const taskLabels = {
   Chats: "Chats",
   Durable: "Conversation records",
-  Access: "Chat access",
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
@@ -72,7 +72,6 @@ describe("admin navigation", () => {
     const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)]
     const orderedPages: Page[] = [
       "Chats",
-      "Access",
       "Durable",
       "Model Providers",
       "Tool permissions",
@@ -121,7 +120,7 @@ describe("admin navigation", () => {
     })
     expect(
       readNavigation(new URL("https://example.com/?section=Access&chat=9007199254740992")),
-    ).toEqual({ page: "Access", chat: "" })
+    ).toEqual({ page: "Chats", chat: "" })
     expect(readNavigation(new URL("https://example.com/?chat=42x"))).toEqual({
       page: "Chats",
       chat: "",
@@ -134,6 +133,20 @@ describe("admin navigation", () => {
       expect(readNavigation(url)).toEqual({ page: "Chats", chat: "" })
       expect(navigationHref("Chats", chat, url)).toBe("/?section=Chats")
     }
+  })
+  it("merges legacy Access links into Chats while preserving the selected chat", () => {
+    const url = new URL("https://example.com/admin?section=Access&chat=-100&existing=1")
+    expect(readNavigation(url)).toEqual({ page: "Chats", chat: "-100" })
+    expect(navigationHref("Chats", "-100", url)).toBe("/admin?section=Chats&chat=-100&existing=1")
+    const html = renderNavigation("Chats")
+    expect(html).not.toContain("section=Access")
+    expect(html).not.toContain("<span>Chat access</span>")
+  })
+  it("resumes manual approval in Chats and retains access-management anchors", () => {
+    expect(pendingEditors.access.target).toEqual({ page: "Chats", selector: "#access-id-input" })
+    const source = new URL("https://example.com/admin?section=Chats&chat=42#chat-access-management")
+    expect(navigationHref("Chats", "42", new URL(source))).toContain("#chat-access-management")
+    expect(navigationHref("Defaults", "42", new URL(source))).not.toContain("#")
   })
   it("maps legacy Tools / MCP links to tool permissions", () => {
     expect(readNavigation(new URL("https://example.com/?section=Tools+%2F+MCP&chat=42"))).toEqual({

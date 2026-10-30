@@ -160,9 +160,12 @@ for (const scenario of scenarios) {
     const state = data()
     scenario.prepare(state)
     const { methods } = await fixture(page, state)
-    const row = page.locator(".chat-list button").first()
-    await expect(row.locator(".directory-status-label")).toContainText(scenario.label)
-    await expect(row.locator(".directory-status-label")).toHaveAttribute("title", scenario.reason)
+    const row = page.locator(".chat-list .directory-chat").first()
+    await expect(row.locator("..").locator(".directory-status-label")).toContainText(scenario.label)
+    await expect(row.locator("..").locator(".directory-status-label")).toHaveAttribute(
+      "title",
+      scenario.reason,
+    )
     await expect(row.locator("button, a")).toHaveCount(0)
     await row.click()
     const savedStatus =
@@ -220,7 +223,7 @@ test("keeps saved approval separate from draft repair through review and cancell
   const state = data()
   state.snapshot.policy.privateUsers = []
   const { methods } = await fixture(page, state)
-  const row = page.locator(".chat-list button").first()
+  const row = page.locator(".chat-list .directory-chat").first()
   await row.click()
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
@@ -228,7 +231,7 @@ test("keeps saved approval separate from draft repair through review and cancell
   await expect(page.locator(".chat-draft-status")).toContainText("Configured locally")
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(row).toBeFocused()
-  await expect(row).toContainText("Access not approved")
+  await expect(row.locator("..")).toContainText("Access not approved")
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("Private-message access: approve 42")
@@ -245,7 +248,7 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   const state = data()
   state.snapshot.policy.privateUsers = []
   await fixture(page, state)
-  await page.locator(".chat-list button").first().click()
+  await page.locator(".chat-list .directory-chat").first().click()
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
@@ -255,10 +258,14 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   )
   await page.getByLabel("Access status", { exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
-  const row = page.locator(".chat-list button")
+  const row = page.locator(".chat-list .directory-chat")
   await expect(row).toHaveCount(1)
-  await expect(row.locator(".directory-status-label")).toContainText("Access not approved")
-  await expect(row.locator(".directory-draft")).toHaveText("Draft access: Approved · Enabled")
+  await expect(row.locator("..").locator(".directory-status-label")).toContainText(
+    "Access not approved",
+  )
+  await expect(row.locator("..").locator(".directory-draft")).toHaveText(
+    "Draft access: Approved · Enabled",
+  )
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
 })
@@ -279,12 +286,12 @@ for (const width of [1440, 390]) {
     await page.locator(".directory-options summary").click()
     await page.getByLabel("Chat type", { exact: true }).click()
     await page.getByRole("option", { name: "Private", exact: true }).click()
-    await page.locator(".chat-list button").nth(1).click()
+    await page.locator(".chat-list .directory-chat").nth(1).click()
     await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
     await page.getByRole("button", { name: "Grant access", exact: true }).click()
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
     await back.click()
-    await page.locator(".chat-list button").first().click()
+    await page.locator(".chat-list .directory-chat").first().click()
     await status(page)
       .getByRole("button", { name: "Configure authentication", exact: true })
       .click()
@@ -321,9 +328,9 @@ for (const count of [0, 17, 99, 100, 101]) {
       await expect(page.getByText("Page 2", { exact: true })).toBeVisible()
       await expect(previous).toBeEnabled()
       await expect(next).toBeDisabled()
-      await expect(page.locator(".chat-list button")).toHaveCount(count - 100)
+      await expect(page.locator(".chat-list .directory-chat")).toHaveCount(count - 100)
       await previous.click()
-      await expect(page.locator(".chat-list button")).toHaveCount(100)
+      await expect(page.locator(".chat-list .directory-chat")).toHaveCount(100)
     }
     await expect(page.getByRole("button", { name: "Refresh chats", exact: true })).toBeVisible()
     expect(methods.every((method) => method === "GET")).toBe(true)
@@ -356,7 +363,7 @@ test("does not hide pagination on loading or failure and keeps a later-page rout
   ).toBeVisible()
   await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeEnabled()
   await page.getByRole("button", { name: "Previous chats", exact: true }).click()
-  await expect(page.locator(".chat-list button")).toHaveCount(100)
+  await expect(page.locator(".chat-list .directory-chat")).toHaveCount(100)
 })
 
 for (const [width, height, zoom] of [
@@ -391,7 +398,7 @@ for (const [width, height, zoom] of [
       }
       const list = bounds(".directory-list-region")
       return {
-        fullRows: [...document.querySelectorAll(".chat-list button")].filter((el) => {
+        fullRows: [...document.querySelectorAll(".chat-list .directory-chat")].filter((el) => {
           const r = el.getBoundingClientRect()
           return r.top >= list.top && r.bottom <= Math.min(list.bottom, innerHeight)
         }).length,
@@ -400,7 +407,7 @@ for (const [width, height, zoom] of [
         headerHeight: bounds(".directory-header").height,
         footerHeight: bounds(".directory-footer").height,
         listHeight: list.height,
-        rowHeight: bounds(".chat-list button").height,
+        rowHeight: bounds(".chat-list .directory-chat").height,
       }
     })
     await testInfo.attach("geometry", {
@@ -416,13 +423,13 @@ for (const [width, height, zoom] of [
     await expect(page.getByLabel("Chat type", { exact: true })).toBeVisible()
     await expect(page.getByText(/Type and access filters cover this page only/)).toBeVisible()
     await disclosure.press("Enter")
-    const row = page.locator(".chat-list button").first()
+    const row = page.locator(".chat-list .directory-chat").first()
     await row.focus()
     expect(await row.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
     expect((await contrast(row.locator("strong"))).text).toBeGreaterThanOrEqual(4.5)
-    expect((await contrast(row.locator(".directory-status-label"))).text).toBeGreaterThanOrEqual(
-      4.5,
-    )
+    expect(
+      (await contrast(row.locator("..").locator(".directory-status-label"))).text,
+    ).toBeGreaterThanOrEqual(4.5)
     await row.click()
     await expect(page.getByRole("heading", { name: "Fixture chat 1", exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Chat actions", exact: true }).focus()
@@ -448,7 +455,7 @@ test("account menu returns keyboard focus and copy feedback reports success and 
   await expect(page.getByRole("menuitem", { name: "Sign out", exact: true })).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(account).toBeFocused()
-  await page.locator(".chat-list button").first().click()
+  await page.locator(".chat-list .directory-chat").first().click()
   const actions = page.getByRole("button", { name: "Chat actions", exact: true })
   const copy = page.getByRole("menuitem", { name: "Copy chat ID", exact: true })
   await page.evaluate(() =>

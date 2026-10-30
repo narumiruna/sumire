@@ -91,6 +91,20 @@ describe("typed policy review destinations", () => {
       expect(JSON.stringify(entries)).not.toContain("sensitive-")
     },
   )
+  it("opens the complete access lists in Chats for approval and revocation reviews", () => {
+    const saved = initialPolicy()
+    saved.privateUsers = [42]
+    saved.groups = [-100]
+    const draft = { ...saved, privateUsers: [43], groups: [-200] }
+    const entries = policyChangeEntries(saved, draft)
+    expect(entries).toHaveLength(4)
+    expect(entries.map((entry) => entry.targets)).toEqual([
+      [{ page: "Chats", selector: "#access-users-list" }],
+      [{ page: "Chats", selector: "#access-users-list" }],
+      [{ page: "Chats", selector: "#access-groups-list" }],
+      [{ page: "Chats", selector: "#access-groups-list" }],
+    ])
+  })
   it("routes mixed policy scopes to their own editors without protected configuration", () => {
     const saved = initialPolicy()
     const draft = structuredClone(saved)
@@ -101,7 +115,7 @@ describe("typed policy review destinations", () => {
     draft.providers = [provider]
     const entries = policyChangeEntries(saved, draft)
     expect(new Set(entries.flatMap((entry) => entry.targets.map((target) => target.page)))).toEqual(
-      new Set(["Access", "Tool permissions", "Skills", "Defaults", "Model Providers"]),
+      new Set(["Chats", "Tool permissions", "Skills", "Defaults", "Model Providers"]),
     )
     expect(JSON.stringify(entries)).not.toContain(provider.baseUrl)
     expect(JSON.stringify(entries)).not.toContain("sensitive-")

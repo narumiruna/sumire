@@ -147,6 +147,8 @@ export function GitHubConnection({
       await request("github/connection", undefined, undefined, "GET", signal),
     )
     if (!valid(version, signal)) return
+    // This read already covers the revision reported to the parent.
+    knownRevision.current = Math.max(knownRevision.current, next.revision)
     setConnection({ ...next, flow: undefined })
     setUnavailable(false)
     report(next)

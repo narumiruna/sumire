@@ -124,6 +124,7 @@ export function ChatSelector({
   filters,
   visibleChats = directory.chats,
   badge,
+  actions,
   footer,
   title = "Find a chat",
   summary,
@@ -135,6 +136,7 @@ export function ChatSelector({
   filters?: ReactNode
   visibleChats?: Chat[]
   badge?(chat: Chat): ReactNode
+  actions?(chat: Chat): ReactNode
   footer?: ReactNode
   title?: string | null
   summary?: ReactNode
@@ -205,43 +207,60 @@ export function ChatSelector({
       </div>
       <div className="directory-list-region">
         {!directory.loading && !directory.error && (
-          <ul className="chat-list" aria-label="Chats on this page">
-            {visibleChats.map((value) => (
-              <li key={value.id}>
-                <Button asChild variant="ghost" className="directory-chat">
-                  <button
-                    type="button"
-                    aria-current={chat === String(value.id) ? "true" : undefined}
-                    aria-label={`${chatName(value)} · ${value.id}`}
-                    aria-describedby={badge ? `directory-state-${value.id}` : undefined}
-                    onClick={() => onSelect(String(value.id))}
-                  >
-                    <Flex asChild className="directory-chat-identity" align="start" gap="2">
-                      <span>
-                        {value.type === "private" ? (
-                          <PersonIcon aria-hidden="true" />
-                        ) : value.type === "channel" ? (
-                          <SpeakerLoudIcon aria-hidden="true" />
-                        ) : (
-                          <ChatBubbleIcon aria-hidden="true" />
-                        )}
-                        <strong title={chatName(value)}>{chatName(value)}</strong>
-                      </span>
-                    </Flex>
-                    <Text as="span" size="1" color="gray" className="directory-chat-meta">
-                      <span>{value.type || "Type not known"}</span>
-                      <Code variant="ghost">{value.id}</Code>
-                    </Text>
-                    {badge && (
-                      <span id={`directory-state-${value.id}`} className="directory-chat-state">
-                        {badge(value)}
-                      </span>
-                    )}
-                  </button>
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <>
+            {actions && visibleChats.length > 0 && (
+              <div className="directory-columns" aria-hidden="true">
+                <span>Chat / ID</span>
+                <span>Access / status</span>
+                <span />
+              </div>
+            )}
+            <ul className="chat-list" aria-label="Chats on this page">
+              {visibleChats.map((value) => (
+                <li key={value.id} className={actions ? "directory-row" : undefined}>
+                  <Button asChild variant="ghost" className="directory-chat">
+                    <button
+                      type="button"
+                      aria-current={chat === String(value.id) ? "true" : undefined}
+                      aria-label={`${chatName(value)} · ${value.id}`}
+                      aria-describedby={badge ? `directory-state-${value.id}` : undefined}
+                      onClick={() => onSelect(String(value.id))}
+                    >
+                      <Flex asChild className="directory-chat-identity" align="start" gap="2">
+                        <span>
+                          {value.type === "private" ? (
+                            <PersonIcon aria-hidden="true" />
+                          ) : value.type === "channel" ? (
+                            <SpeakerLoudIcon aria-hidden="true" />
+                          ) : (
+                            <ChatBubbleIcon aria-hidden="true" />
+                          )}
+                          <strong title={chatName(value)}>{chatName(value)}</strong>
+                        </span>
+                      </Flex>
+                      <Text as="span" size="1" color="gray" className="directory-chat-meta">
+                        <span>{value.type || "Type not known"}</span>
+                        <Code variant="ghost">{value.id}</Code>
+                      </Text>
+                      {badge && !actions && (
+                        <span id={`directory-state-${value.id}`} className="directory-chat-state">
+                          {badge(value)}
+                        </span>
+                      )}
+                    </button>
+                  </Button>
+                  {actions && (
+                    <>
+                      <div id={`directory-state-${value.id}`} className="directory-row-state">
+                        {badge?.(value)}
+                      </div>
+                      <div className="directory-row-actions">{actions(value)}</div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
       <footer className="directory-footer">

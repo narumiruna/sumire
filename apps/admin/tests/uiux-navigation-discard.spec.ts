@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { navigate, openDisclosure } from "./admin-fixture.js"
+import { navigate, openChatAccess, openDisclosure } from "./admin-fixture.js"
 import { remediationFixture } from "./remediation-fixture.js"
 
 async function activate(control: Locator, method: "pointer" | "keyboard") {
@@ -31,7 +31,10 @@ for (const width of [1440, 390, 320]) {
     }) => {
       await page.setViewportSize({ width, height: 900 })
       const state = await remediationFixture(page)
-      await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+      await page
+        .getByRole("list", { name: "Chats on this page" })
+        .locator(".directory-chat")
+        .click()
       await navigate(page, "Access")
       await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
       await page.getByLabel("Telegram ID to approve", { exact: true }).fill("8001")
@@ -85,7 +88,7 @@ for (const width of [1440, 390, 320]) {
       await expect(
         page
           .getByRole("list", { name: "Chats on this page", includeHidden: true })
-          .getByRole("button", { includeHidden: true }),
+          .locator(".directory-chat"),
       ).toHaveAttribute("aria-current", "true")
       expect(state.writes).toEqual([])
     })
@@ -244,10 +247,11 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
     .getByRole("button", { name: "Discard MCP draft", exact: true })
     .evaluate((element) => (element as HTMLButtonElement).click())
   await page
-    .getByRole("link", { name: "Chat access", exact: true })
+    .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
+  await openChatAccess(page)
   const access = page.getByLabel("Telegram ID to approve", { exact: true })
   await access.fill("8001")
   await expect(access).toBeFocused()
@@ -260,11 +264,11 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
     .evaluate((element) => (element as HTMLButtonElement).click())
   await expect(page.getByLabel("MCP server name", { exact: true })).toBeVisible()
   await page
-    .getByRole("link", { name: "Chat access", exact: true })
+    .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
-  await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeFocused()
   await expect(page.getByLabel("MCP server name", { exact: true })).not.toBeFocused()
   expect(state.writes).toEqual([])
 
@@ -372,14 +376,14 @@ test("later navigation and history do not revive a cancelled explicit editor req
     await resume.evaluate((element) => (element as HTMLButtonElement).click())
     await expect(page.getByRole("heading", { name: "Tool permissions", exact: true })).toBeVisible()
     if (method === "sections") {
-      for (const name of ["Chat access", "Tool permissions"]) {
+      for (const name of ["Chats", "Tool permissions"]) {
         await page
           .getByRole("link", { name, exact: true })
           .evaluate((element) => (element as HTMLAnchorElement).click())
       }
     } else {
       await page.evaluate(() => {
-        for (const section of ["Access", "Tool permissions"]) {
+        for (const section of ["Chats", "Tool permissions"]) {
           const url = new URL(location.href)
           url.searchParams.set("section", section)
           history.pushState(null, "", url)

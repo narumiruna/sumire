@@ -143,12 +143,12 @@ for (const width of [1440, 390, 320]) {
       await expect(search).toBeFocused()
       await page.evaluate(() => {
         const target = document.querySelector<HTMLAnchorElement>(
-          '.sidebar a[href*="section=Access"]',
+          '.sidebar a[href*="section=Chats"]',
         )
-        if (!target) throw new Error("Missing Chat access link")
+        if (!target) throw new Error("Missing Chats link")
         target.click()
       })
-      await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeVisible()
+      await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
       await expect(search).toHaveCount(0)
       await expect(trigger).toBeHidden()
       await expect
