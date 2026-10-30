@@ -837,9 +837,6 @@ html {
 }
 .directory-list-region {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  scrollbar-gutter: stable;
   padding: 4px;
 }
 .directory-footer {
@@ -862,6 +859,8 @@ html {
 .durable-chat-selector .directory-list-region {
   max-height: 280px;
   overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 .durable-chat-selector .directory-header {
   padding: 12px 0;
@@ -1021,24 +1020,7 @@ html {
   }
 }
 .chat-directory {
-  position: sticky;
-  top: 16px;
-  max-height: calc(
-    100dvh -
-    max(var(--directory-start, 0px), 16px) -
-    var(--changes-bar-height, 0px) -
-    24px
-  );
-  min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-.chat-directory[data-natural-scroll="true"] {
-  position: static;
-  max-height: none;
-}
-.chat-directory[data-natural-scroll="true"] .directory-list-region {
-  overflow: visible;
 }
 .chat-workspace[data-directory-visible="false"] > .chat-directory,
 .chat-workspace[data-directory-visible="true"] > .chat-detail {
@@ -1173,15 +1155,7 @@ html {
   }
 }
 @media (max-width: 850px) {
-  .chat-directory {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    padding-right: 0;
-    border-right: 0;
-  }
-  .directory-list-region {
-    overflow: visible;
+  .durable-chat-selector .directory-list-region {
     overscroll-behavior-y: auto;
   }
   .chat-header {
@@ -1216,15 +1190,6 @@ html {
   }
   .chat-detail [role="tablist"] {
     margin-top: 8px;
-  }
-}
-@media (min-width: 851px) and (max-height: 700px) {
-  .chat-directory {
-    position: static;
-    max-height: none;
-  }
-  .directory-list-region {
-    overflow: visible;
   }
 }
 @media (max-width: 650px) {
@@ -2376,9 +2341,6 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   .settings-grid,
   .mcp-chooser .mcp-choice-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .chat-directory {
-    padding-right: 0;
   }
   .admin-page--mcp > .page-header {
     flex-direction: column;

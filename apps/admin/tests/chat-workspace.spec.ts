@@ -135,11 +135,12 @@ test("keeps a directory below a tall API error usable after document scrolling",
   await page.unroute("**/api/settings")
   await page.getByRole("button", { name: "Reload", exact: true }).click()
   await expect(page.getByRole("alert")).toHaveCount(0)
-  await expect(page.locator(".chat-directory")).toHaveCSS("position", "sticky")
-  await expect.poll(() => list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+  await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
+  await expect(list).toHaveCSS("overflow-y", "visible")
+  expect(await list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true)
 })
 
-for (const width of [390, 850]) {
+for (const width of [1440, 851, 850, 390]) {
   test(`restores directory scroll for an unobserved chat at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const requests = await fixture(page)
@@ -250,7 +251,7 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   await expect(footer.getByRole("button", { name: "Previous chats", exact: true })).toBeInViewport()
 })
 
-for (const width of [1440, 390, 320]) {
+for (const width of [1440, 851, 850, 390, 320]) {
   test(`chat layout and readiness at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const errors: string[] = []
@@ -267,40 +268,27 @@ for (const width of [1440, 390, 320]) {
         .locator("strong")
         .evaluate((el) => getComputedStyle(el).webkitLineClamp),
     ).toBe("2")
-    if (width > 850) {
-      const geometry = await page
-        .locator(".chat-directory")
-        .evaluate((el) => ({ bottom: el.getBoundingClientRect().bottom, height: innerHeight }))
-      expect(geometry.bottom).toBeLessThanOrEqual(geometry.height)
-      expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
-      // Every row can be fully revealed above the footer, including the final row.
-      for (const row of await rows.all()) {
-        await row.scrollIntoViewIfNeeded()
-        const box = await row.boundingBox()
-        const bounds = await list.boundingBox()
-        const end = await footer.boundingBox()
-        if (!box || !bounds || !end) throw new Error("Missing directory geometry")
-        expect(box.y).toBeGreaterThanOrEqual(bounds.y)
-        expect(box.y + box.height).toBeLessThanOrEqual(Math.min(bounds.y + bounds.height, end.y))
-      }
-      const before = await list.evaluate((el) => el.scrollTop)
-      await rows.last().click()
-      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(rows.last()).toBeFocused()
-      expect(await list.evaluate((el) => el.scrollTop)).toBe(before)
-      await rows.nth(98).click()
-      await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(rows.nth(98)).toBeFocused()
-      expect(await list.evaluate((el) => el.scrollTop)).toBe(before)
-    }
-    if (width <= 850) {
-      await rows.nth(50).scrollIntoViewIfNeeded()
+    await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
+    await expect(page.locator(".chat-directory")).toHaveCSS("max-height", "none")
+    await expect(list).toHaveCSS("overflow-y", "visible")
+    expect(await list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true)
+    await expect(rows.last()).not.toBeInViewport()
+    for (const index of [0, 50, 98, 99]) {
+      const row = rows.nth(index)
+      await row.scrollIntoViewIfNeeded()
+      await expect(row).toBeInViewport({ ratio: 1 })
+      const box = await row.boundingBox()
+      const end = await footer.boundingBox()
+      if (!box || !end) throw new Error("Missing directory geometry")
+      expect(box.y + box.height).toBeLessThanOrEqual(end.y)
       const before = await page.evaluate(() => window.scrollY)
-      await rows.nth(50).click()
+      expect(await list.evaluate((el) => el.scrollTop)).toBe(0)
+      await row.click()
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(rows.nth(50)).toBeFocused()
+      await expect(row).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(before)
     }
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
     requests.length = 0
     for (const index of [0, 1, 2, 3, 4]) {
       await select(page, index)
