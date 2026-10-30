@@ -18,7 +18,6 @@ import { BrandIcon } from "./brand-icon.js"
 export const pages = [
   "Chats",
   "Durable",
-  "Access",
   "Defaults",
   "Tool permissions",
   "Skills",
@@ -35,7 +34,7 @@ export type EditorTarget = { page: Page; selector: string; chat?: string }
 export const pendingEditors = {
   access: {
     label: "Chat access — Telegram ID to approve",
-    target: { page: "Access", selector: "#access-id-input" },
+    target: { page: "Chats", selector: "#access-id-input" },
   },
   githubMentionAuthor: {
     label: "GitHub mentions — GitHub username to add",
@@ -64,6 +63,7 @@ export type PendingEditor = keyof typeof pendingEditors
 export function focusEditor(selector: string) {
   const target = document.querySelector<HTMLElement>(selector)
   if (!target) return
+  if (target instanceof HTMLDetailsElement) target.open = true
   for (let parent = target.parentElement; parent; parent = parent.parentElement) {
     if (parent instanceof HTMLDetailsElement) parent.open = true
   }
@@ -74,7 +74,6 @@ export function focusEditor(selector: string) {
 const pageIcons = {
   Chats: ChatBubbleIcon,
   Durable: LayersIcon,
-  Access: LockClosedIcon,
   Defaults: MixerHorizontalIcon,
   "Tool permissions": TokensIcon,
   Skills: ReaderIcon,
@@ -87,7 +86,6 @@ const pageIcons = {
 const pageLabels = {
   Chats: "Chats",
   Durable: "Conversation records",
-  Access: "Chat access",
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
@@ -99,7 +97,7 @@ const pageLabels = {
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
 const navigationGroups = [
-  { id: "chat-management", label: "Chats", pages: ["Chats", "Access", "Durable"] },
+  { id: "chat-management", label: "Chats", pages: ["Chats", "Durable"] },
   { id: "models", label: "Models", pages: ["Model Providers"] },
   {
     id: "tools-and-skills",
@@ -121,11 +119,13 @@ const technicalDescriptions: Partial<Record<Page, string>> = {
 export function readNavigation(url: URL) {
   const raw = url.searchParams.get("section")
   const section =
-    raw === "Model providers"
-      ? "Model Providers"
-      : raw === "GitHub notifications"
-        ? "GitHub mentions"
-        : raw
+    raw === "Access"
+      ? "Chats"
+      : raw === "Model providers"
+        ? "Model Providers"
+        : raw === "GitHub notifications"
+          ? "GitHub mentions"
+          : raw
   const chat = url.searchParams.get("chat") ?? ""
   return {
     page:
@@ -139,6 +139,7 @@ export function readNavigation(url: URL) {
 const sectionAnchors: Record<string, Page> = {
   "#model-availability": "Model Providers",
   "#default-tool-permissions": "Tool permissions",
+  "#chat-access-management": "Chats",
 }
 
 export function navigationHref(page: Page, chat: string, url = new URL(window.location.href)) {
@@ -163,7 +164,12 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
     const navigation = readNavigation(url)
     return {
       ...navigation,
-      target: sectionAnchors[url.hash] === navigation.page ? url.hash.slice(1) : undefined,
+      target:
+        url.searchParams.get("section") === "Access"
+          ? "access-id-input"
+          : sectionAnchors[url.hash] === navigation.page
+            ? url.hash.slice(1)
+            : undefined,
     }
   })
   const targetFrame = useRef<number | undefined>(undefined)
@@ -181,7 +187,11 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
       currentHref.current = window.location.href
       if (targetFrame.current !== undefined) cancelAnimationFrame(targetFrame.current)
       targetFrame.current = undefined
-      setState({ ...readNavigation(new URL(window.location.href)), target: undefined })
+      const url = new URL(window.location.href)
+      setState({
+        ...readNavigation(url),
+        target: url.searchParams.get("section") === "Access" ? "access-id-input" : undefined,
+      })
     }
     window.addEventListener("popstate", restore)
     return () => window.removeEventListener("popstate", restore)

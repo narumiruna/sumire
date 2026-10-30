@@ -81,7 +81,6 @@ const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 const pageDescriptions = {
   Chats: "Review chat access and effective settings.",
   Durable: undefined,
-  Access: "Approve private chats, groups, and channels.",
   Defaults:
     "Defaults for chats without corresponding overrides. Explicit chat overrides stay unchanged.",
   "Tool permissions": "Manage global, default, and chat permissions.",
@@ -662,9 +661,54 @@ function App() {
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
+            <details className="chat-access-management" id="chat-access-management" tabIndex={-1}>
+              <summary>Manage chat access</summary>
+              <Heading size="3">Chat access</Heading>
+              {accessTarget && (
+                <Panel>
+                  <Heading size="3">Access for chat {accessTarget}</Heading>
+                  <Prose>
+                    Review its access entry below. If approval is missing, add this ID to the
+                    appropriate list.
+                  </Prose>
+                  <Button
+                    variant="soft"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open")
+                      openChat(accessTarget)
+                    }}
+                  >
+                    Back to chat details
+                  </Button>
+                  <Button variant="ghost" onClick={() => setAccessTarget("")}>
+                    Show all access entries
+                  </Button>
+                </Panel>
+              )}
+              <ChatAccess
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                target={accessTarget}
+                chats={knownChats}
+                onChange={update}
+                onPending={(value) => markPending("access", value)}
+                onReview={() => setPolicyReviewOpen(true)}
+              />
+              <details className="access-intro">
+                <summary>Imported IDs and review history</summary>
+                <Prose>
+                  Import history never grants access or reverses a revocation. No imported ID is
+                  approved automatically.
+                </Prose>
+                <Button variant="soft" onClick={() => setPage("Audit")}>
+                  Open import history in Audit
+                </Button>
+              </details>
+            </details>
             <ChatWorkspace
               directory={directory}
               chat={chat}
+              busy={busy}
               detailsRequest={detailsRequest}
               editorRequest={editorRequest?.page === "Chats" ? editorRequest : undefined}
               onSelect={setChat}
@@ -677,7 +721,7 @@ function App() {
               onAudit={() => setPage("Audit")}
               onAccess={() => {
                 setAccessTarget(chat)
-                setPage("Access")
+                openEditor({ page: "Chats", selector: "#access-id-input" })
               }}
               onApplication={() => document.getElementById("save-status")?.focus()}
               onProviders={openProvider}
@@ -747,46 +791,6 @@ function App() {
               />
             </SectionErrorBoundary>
           )}
-          <EditorSection
-            active={page === "Access"}
-            aria-label="Access settings"
-            className="admin-page--access"
-          >
-            {accessTarget && (
-              <Panel>
-                <Heading size="3">Access for chat {accessTarget}</Heading>
-                <Prose>
-                  Review its access entry below. If approval is missing, add this ID to the
-                  appropriate list.
-                </Prose>
-                <Button variant="soft" onClick={() => openChat(accessTarget)}>
-                  Back to chat details
-                </Button>
-                <Button variant="ghost" onClick={() => setAccessTarget("")}>
-                  Show all access entries
-                </Button>
-              </Panel>
-            )}
-            <ChatAccess
-              policy={policy}
-              saved={savedPolicy ?? policy}
-              target={accessTarget}
-              chats={knownChats}
-              onChange={update}
-              onPending={(value) => markPending("access", value)}
-              onReview={() => setPolicyReviewOpen(true)}
-            />
-            <details className="access-intro">
-              <summary>Imported IDs and review history</summary>
-              <Prose>
-                Import history never grants access or reverses a revocation. No imported ID is
-                approved automatically.
-              </Prose>
-              <Button variant="soft" onClick={() => setPage("Audit")}>
-                Open import history in Audit
-              </Button>
-            </details>
-          </EditorSection>
           <EditorSection
             active={page === "Defaults"}
             aria-label="Shared defaults"

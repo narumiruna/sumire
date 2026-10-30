@@ -79,7 +79,7 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: 900 })
     const { writes } = await fixture(page)
-    const rows = page.locator(".chat-list button")
+    const rows = page.locator(".chat-list .directory-chat")
     await expect(rows).toHaveCount(3)
     await choose(page, "Chat type", "Group / supergroup")
     await expect(rows).toHaveCount(1)
@@ -201,7 +201,7 @@ for (const name of [
   "MCP type replacement",
 ]) {
   test(`${name} closes on Escape and when its section becomes inactive`, async ({ page }) => {
-    await fixture(page, "Access")
+    await fixture(page, "Defaults")
     const mcp = name.startsWith("MCP") || name === "Connection type"
     const section = mcp ? "MCP connections" : "Chats"
     await page.getByRole("link", { name: sectionLabel(section), exact: true }).click()
@@ -222,7 +222,7 @@ for (const name of [
     await expect(trigger).toBeFocused()
     await trigger.click()
     await page.goBack()
-    await expect(page.getByRole("heading", { name: "Chat access", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     await page.goForward()
     await expect(trigger).toBeVisible()

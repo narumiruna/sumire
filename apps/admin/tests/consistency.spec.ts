@@ -233,7 +233,11 @@ for (const time of ["invalid", "absent"] as const) {
       page.getByRole("region", { name: "Save status and pending changes" }),
     ).toBeVisible()
     await navigate(page, "Chats")
-    await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .locator(".directory-chat")
+      .first()
+      .click()
     await page.getByRole("tab", { name: "History", exact: true }).click()
     const history = page.getByRole("tabpanel", { name: "History", exact: true })
     await expect(history.getByRole("list", { name: "Configuration activity" })).toContainText(
@@ -246,7 +250,11 @@ for (const time of ["invalid", "absent"] as const) {
 
   test(`Chat history contains an ${time} time independently of global Audit`, async ({ page }) => {
     await fixture(page, [malformed], [{ ...goodRecord, target: "settings" }])
-    await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .locator(".directory-chat")
+      .first()
+      .click()
     await page.getByRole("tab", { name: "History", exact: true }).click()
     const history = page.getByRole("tabpanel", { name: "History", exact: true })
     await expect(history.getByRole("alert")).toContainText("Chat history could not be displayed.")

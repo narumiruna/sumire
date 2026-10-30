@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from "node:crypto"
 import { expect, type Page, test } from "@playwright/test"
+import { openChatAccess } from "./admin-fixture.js"
 
 const token = "a".repeat(64)
 const policy = {
@@ -201,7 +202,7 @@ test("removes environment import controls and shows retained read-only history o
     }),
   )
   await page.goto("/")
-  await page.getByRole("link", { name: "Chat access", exact: true }).click()
+  await openChatAccess(page)
   await expect(page.getByRole("button", { name: "Confirm environment review" })).toHaveCount(0)
   await expect(page.getByRole("heading", { name: "Review environment access" })).toHaveCount(0)
   await page.getByRole("link", { name: "Audit", exact: true }).click()
@@ -243,7 +244,7 @@ test("shows known chat names beside access IDs and keeps unnamed IDs usable", as
     })
   })
   await page.goto("/")
-  await page.getByRole("link", { name: "Chat access", exact: true }).click()
+  await openChatAccess(page)
   const users = page.getByRole("group", { name: "Private-message access", exact: true })
   await expect(users.getByRole("row").filter({ hasText: "Alice" })).toContainText("42")
   await expect(users.getByRole("row").filter({ hasText: "43" })).toHaveText(

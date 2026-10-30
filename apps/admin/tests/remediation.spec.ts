@@ -74,7 +74,7 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
     const state = await fixture(page)
-    await page.locator(".chat-list button").first().click()
+    await page.locator(".chat-list .directory-chat").first().click()
     await page.getByRole("button", { name: "Change model", exact: true }).click()
     const model = page.getByRole("combobox", { name: "Chat model override", exact: true })
     await expect(model).toBeFocused()

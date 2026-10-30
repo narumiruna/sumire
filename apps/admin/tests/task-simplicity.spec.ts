@@ -126,7 +126,7 @@ for (const width of [390, 1440]) {
 
     test("configured chat starts with model and tool actions", async ({ page }) => {
       const state = await fixture(page)
-      await page.locator(".chat-list button").first().click()
+      await page.locator(".chat-list .directory-chat").first().click()
       await inViewport(page.getByRole("button", { name: "Change model", exact: true }))
       await inViewport(page.getByRole("button", { name: "View tool permissions", exact: true }))
       await page.screenshot({ path: test.info().outputPath("chat-first-viewport.png") })

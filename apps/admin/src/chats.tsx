@@ -39,6 +39,69 @@ function chatType(chat: Chat) {
   return ["private", "group", "channel"].includes(chat.type) ? chat.type : "unknown"
 }
 
+function ChatRowActions({
+  chat,
+  policy,
+  savedPolicy,
+  busy,
+  onSelect,
+  onChange,
+}: {
+  chat: Chat
+  policy: Policy
+  savedPolicy: Policy
+  busy: boolean
+  onSelect(chat: string): void
+  onChange(policy: Policy): void
+}) {
+  const active = useContext(SectionActive)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!active || busy) setOpen(false)
+  }, [active, busy])
+  const key = chat.id > 0 ? "privateUsers" : "groups"
+  const approved = policy[key].includes(chat.id)
+  const savedApproval = savedPolicy[key].includes(chat.id)
+  return (
+    <DropdownMenu.Root open={open && active && !busy} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger>
+        <Button
+          variant="ghost"
+          className="directory-row-menu"
+          disabled={busy}
+          aria-label={`Actions for ${chatName(chat)} · ${chat.id}`}
+        >
+          <DotsHorizontalIcon aria-hidden="true" />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        align="end"
+        onCloseAutoFocus={(event) => {
+          if (!active || busy) event.preventDefault()
+        }}
+      >
+        <DropdownMenu.Item disabled={busy || !active} onSelect={() => onSelect(String(chat.id))}>
+          Open chat details
+        </DropdownMenu.Item>
+        <DropdownMenu.Separator />
+        <DropdownMenu.Item
+          color={approved && savedApproval ? "red" : undefined}
+          disabled={busy || !active}
+          onSelect={() => onChange(withChatAccess(policy, chat.id, !approved))}
+        >
+          {approved
+            ? savedApproval
+              ? "Revoke access"
+              : "Undo pending grant"
+            : savedApproval
+              ? "Undo pending revocation"
+              : "Grant access"}
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  )
+}
+
 function ChatFact({
   label,
   children,
@@ -80,6 +143,7 @@ function ChatFact({
 export function ChatWorkspace({
   directory,
   chat,
+  busy,
   detailsRequest,
   editorRequest,
   onSelect,
@@ -99,6 +163,7 @@ export function ChatWorkspace({
 }: {
   directory: ChatDirectory
   chat: string
+  busy: boolean
   detailsRequest: number
   editorRequest?: EditorTarget
   onSelect(value: string): void
@@ -163,7 +228,7 @@ export function ChatWorkspace({
   }
   const [repairRequest, setRepairRequest] = useState<{ target: ChatRepair | "tools" }>()
   useEffect(() => {
-    if (editorRequest && chat) {
+    if (editorRequest?.chat && chat) {
       setTab("configuration")
       setShowDirectory(false)
     }
@@ -264,6 +329,23 @@ export function ChatWorkspace({
             searchRef={searchRef}
             title="Chat directory"
             visibleChats={filtered}
+            actions={(value) => (
+              <ChatRowActions
+                chat={value}
+                policy={policy}
+                savedPolicy={savedPolicy}
+                busy={busy}
+                onSelect={openChat}
+                onChange={(next) => {
+                  onPolicyChange(next)
+                  if (
+                    access !== "all" &&
+                    effectivePolicy(next, value.id).enabled !== (access === "allowed")
+                  )
+                    requestAnimationFrame(() => searchRef.current?.focus())
+                }}
+              />
+            )}
             summary={
               authentication.size > 0 && (
                 <section
@@ -345,6 +427,11 @@ export function ChatWorkspace({
               const status = chatState(c.id, savedPolicy, inventory, application)
               return (
                 <span className="directory-status" data-blocked={Boolean(status.primary)}>
+                  <Text as="span" size="1" weight="medium" className="directory-approval">
+                    {savedPolicy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
+                      ? "Approved"
+                      : "Not approved"}
+                  </Text>
                   <Badge
                     className="directory-status-label"
                     color={status.primary ? "orange" : "gray"}
@@ -707,7 +794,7 @@ export function ChatWorkspace({
                             </Button>
                           )}
                           <Button variant="ghost" onClick={onAccess}>
-                            Open Chat access
+                            Manage chat access
                           </Button>
                         </Flex>
                         <Text as="p" size="2" color="gray" mt="3">

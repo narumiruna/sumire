@@ -115,7 +115,8 @@ for (const width of [1440, 390, 320]) {
     await back.click()
     await page
       .getByRole("list", { name: "Chats on this page" })
-      .getByRole("button", { name: /Idle chat/ })
+      .locator(".directory-chat")
+      .filter({ hasText: "Idle chat" })
       .click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
@@ -125,7 +126,8 @@ for (const width of [1440, 390, 320]) {
     await back.click()
     await page
       .getByRole("list", { name: "Chats on this page" })
-      .getByRole("button", { name: /Unloaded chat/ })
+      .locator(".directory-chat")
+      .filter({ hasText: "Unloaded chat" })
       .click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
@@ -1002,7 +1004,8 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
     await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
     await page
       .getByRole("list", { name: "Chats on this page" })
-      .getByRole("button", { name: /Idle chat/ })
+      .locator(".directory-chat")
+      .filter({ hasText: "Idle chat" })
       .click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 import {
   closeConnectionEditor,
+  openChatAccess,
   openConnectionEditor,
   openDirectoryFilters,
   openDisclosure,
@@ -127,6 +128,7 @@ async function fixture(page: Page) {
   }
 }
 async function navigate(page: Page, name: string) {
+  if (name === "Access") return openChatAccess(page)
   const link = page.getByRole("link", { name: sectionLabel(name), exact: true })
   const menu = page.getByRole("button", { name: /Sections ·/ })
   if (!(await link.isVisible()) && (await menu.isVisible())) await menu.click()

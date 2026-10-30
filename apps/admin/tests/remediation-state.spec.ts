@@ -100,7 +100,7 @@ for (const width of [1440, 390]) {
     }, testInfo) => {
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
       const state = await fixture(page)
-      await page.locator(".chat-list button").first().click()
+      await page.locator(".chat-list .directory-chat").first().click()
       await navigate(page, "Skills")
       await page.getByRole("textbox", { name: "Search skills", exact: true }).fill("url")
       await page
@@ -170,7 +170,7 @@ for (const width of [1440, 390]) {
   test(`F1 policy review opens the changed chat disclosure at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
     const state = await fixture(page)
-    await page.locator(".chat-list button").first().click()
+    await page.locator(".chat-list .directory-chat").first().click()
     await page.getByRole("button", { name: "Change model", exact: true }).click()
     const tools = page.locator("#chat-tools-options")
     await tools.click()
@@ -200,7 +200,7 @@ for (const width of [1440, 390]) {
       .getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true })
       .uncheck()
     await navigate(page, "Chats")
-    await page.locator(".chat-list button").first().click()
+    await page.locator(".chat-list .directory-chat").first().click()
     await page.getByRole("button", { name: "Change model", exact: true }).click()
     const field = page.getByRole("combobox", { name: "Chat model override", exact: true })
     await expect(field).toBeFocused()

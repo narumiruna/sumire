@@ -129,7 +129,7 @@ for (const [width, height] of [
         await page.evaluate(() => window.scrollTo(0, 0))
       }
       if (section === "Chats") {
-        const row = page.locator(".chat-list button").first()
+        const row = page.locator(".chat-list .directory-row").first()
         expect(
           await row
             .locator("strong")

@@ -86,7 +86,6 @@ export async function adminFixture(
 export const sections = [
   "Chats",
   "Durable",
-  "Access",
   "Defaults",
   "Tool permissions",
   "Skills",
@@ -98,7 +97,7 @@ export const sections = [
 ]
 export function sectionLabel(name: string): string {
   const labels: Record<string, string> = {
-    Access: "Chat access",
+    Access: "Chats",
     Defaults: "Shared defaults",
     Durable: "Conversation records",
     "MCP connections": "MCP Servers",
@@ -153,7 +152,15 @@ export async function openDirectoryFilters(page: Page) {
   if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
 }
 
+export async function openChatAccess(page: Page) {
+  await navigate(page, "Chats")
+  if (!(await page.locator("#chat-access-management > summary").isVisible()))
+    await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+  await openDisclosure(page, "Manage chat access")
+}
+
 export async function navigate(page: Page, name: string) {
+  if (name === "Access") return openChatAccess(page)
   await expect(
     page.getByRole("complementary", { name: "Administration navigation", exact: true }),
   ).toBeVisible()

@@ -3,6 +3,7 @@ import { effectivePolicy, inherited } from "@narumitw/sumire-policy"
 import { expect, type Page, type Route, test } from "@playwright/test"
 import {
   closeConnectionEditor,
+  openChatAccess,
   openChatConfiguration,
   openConnectionEditor,
   openDirectoryFilters,
@@ -68,6 +69,7 @@ const inventory = {
   mcp: [],
 }
 async function navigate(page: Page, name: string) {
+  if (name === "Access") return openChatAccess(page)
   await expect(
     page.getByRole("complementary", { name: "Administration navigation", exact: true }),
   ).toBeVisible()
@@ -157,7 +159,10 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toHaveCount(0)
-    const row = page.getByRole("list", { name: "Chats on this page" }).getByRole("button").last()
+    const row = page
+      .getByRole("list", { name: "Chats on this page" })
+      .locator(".directory-chat")
+      .last()
     const metadata = row.locator(".directory-chat-meta")
     await expect(metadata.getByText("supergroup", { exact: true })).toBeVisible()
     const id = metadata.locator("code")
@@ -725,7 +730,11 @@ test("edits private access and saves with a confirmation", async ({ page }) => {
 })
 test("shows inherited chat settings and supported thinking levels", async ({ page }) => {
   await setup(page)
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+  await page
+    .getByRole("list", { name: "Chats on this page" })
+    .locator(".directory-chat")
+    .first()
+    .click()
   await openChatConfiguration(page)
   await expect(page.getByRole("checkbox", { name: "Inherit default" }).first()).toBeChecked()
   await page.getByRole("combobox", { name: "Thinking level", exact: true }).click()
@@ -757,7 +766,11 @@ for (const state of ["inherited", "empty", "globally unavailable", "disabled pro
       }),
     )
     await page.reload()
-    await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .locator(".directory-chat")
+      .first()
+      .click()
     await openChatConfiguration(page)
     const effective = effectivePolicy(selectedPolicy, 42)
     const models = page.getByRole("group", { name: "Allowed models", exact: true })
@@ -1459,7 +1472,11 @@ test("keeps policy, MCP, and authentication save scopes separate", async ({ page
 
 test("distinguishes inherited, empty, and customized chat authorization", async ({ page }) => {
   await setup(page)
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").first().click()
+  await page
+    .getByRole("list", { name: "Chats on this page" })
+    .locator(".directory-chat")
+    .first()
+    .click()
   await openChatConfiguration(page)
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true }).first()
   await expect(tools.getByText("From shared defaults", { exact: true })).toBeVisible()
@@ -1964,7 +1981,7 @@ for (const method of ["PUT", "DELETE"] as const) {
   })
 }
 
-for (const destination of ["Access", "Chats"]) {
+for (const destination of ["Defaults", "Chats"]) {
   test(`closes provider search on navigation to ${destination} and focuses the visible heading`, async ({
     page,
   }) => {
@@ -2050,7 +2067,7 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
   await expect(
     detail.getByRole("heading", { name: "Access for this chat", exact: true }),
   ).toBeFocused()
-  await detail.getByRole("button", { name: "Open Chat access", exact: true }).click()
+  await detail.getByRole("button", { name: "Manage chat access", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Access for chat -100" })).toBeVisible()
   await expect(page.getByLabel("Search group and channel access")).toHaveValue("-100")
 })
@@ -2175,7 +2192,8 @@ test("handles chat loading, errors, retry, and empty results independently of se
   })
   await page.reload()
   await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
-  await expect(page.getByRole("link", { name: "Chat access", exact: true })).toBeEnabled()
+  await openChatAccess(page)
+  await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toBeEnabled()
   finish()
   await expect(page.getByRole("alert")).toContainText("Could not read chat metadata. Retry chats.")
   await page.route("**/api/chats?*", (route) => route.fulfill({ json: [] }))
@@ -2261,15 +2279,15 @@ test("filters the loaded directory by type and effective policy access without t
   )
   await page.reload()
   const directory = page.getByRole("list", { name: "Chats on this page" })
-  await expect(directory.getByRole("button")).toHaveCount(4)
+  await expect(directory.locator(".directory-chat")).toHaveCount(4)
   await expect(page.getByRole("button", { name: "Known chat", exact: true })).toHaveCount(0)
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
   await page.getByRole("option", { name: "Group / supergroup", exact: true }).click()
-  await expect(directory.getByRole("button")).toHaveCount(1)
+  await expect(directory.locator(".directory-chat")).toHaveCount(1)
   await expect(directory).toContainText("Team")
   await expect(directory).toContainText("Disabled")
-  await directory.getByRole("button").click()
+  await directory.locator(".directory-chat").click()
   await page.locator(".setup-details > summary").click()
   await expect(page.locator(".setup-details")).toContainText("Approved")
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
@@ -2281,7 +2299,7 @@ test("filters the loaded directory by type and effective policy access without t
   await page.getByRole("button", { name: "Clear search and filters" }).click()
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
   await page.getByRole("option", { name: "Channel", exact: true }).click()
-  await directory.getByRole("button").click()
+  await directory.locator(".directory-chat").click()
   await expect(page.getByRole("region", { name: "Chat details" })).toContainText("News")
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
@@ -2296,7 +2314,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
   await setup(page)
   const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("Fixture")
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+  await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
   await page
     .getByRole("tabpanel", { name: "Access", exact: true })
@@ -2316,7 +2334,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(search).toHaveValue("Fixture")
   await expect(
-    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+    page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat"),
   ).toHaveAttribute("aria-current", "true")
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
@@ -2434,7 +2452,7 @@ test("applies chat policy changes without saving model-provider or MCP drafts", 
   await navigate(page, "MCP connections")
   await page.getByLabel("MCP server name", { exact: true }).fill("connection-draft")
   await navigate(page, "Chats")
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+  await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
   await page
     .getByRole("tabpanel", { name: "Access", exact: true })
@@ -2542,7 +2560,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
   await setup(page)
   const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("Fixture")
-  const row = page.getByRole("list", { name: "Chats on this page" }).getByRole("button")
+  const row = page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat")
   await row.focus()
   await page.keyboard.press("Enter")
   await expect(page.getByRole("heading", { name: "Fixture chat", exact: true })).toBeFocused()
@@ -2573,7 +2591,7 @@ test("closes a chat model dropdown when browser navigation hides its owning sect
   page,
 }) => {
   await setup(page)
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+  await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await openChatConfiguration(page)
   await navigate(page, "Defaults")
   await page.goBack()
@@ -2637,7 +2655,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
 }) => {
   await setup(page)
   await expect(
-    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+    page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat"),
   ).toHaveCount(1)
   let reads = 0
   await page.route("**/api/chats?*", (route) => {
@@ -2653,7 +2671,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
     )
   })
   await page.reload()
-  await page.getByRole("list", { name: "Chats on this page" }).getByRole("button").click()
+  await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await expect(page.getByRole("heading", { name: "Original name", exact: true })).toBeVisible()
   await navigate(page, "Model Providers")
   await chooseModel(page)
@@ -2680,7 +2698,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
 test("Reload does not let an older chat response replace fresh metadata", async ({ page }) => {
   await setup(page)
   await expect(
-    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+    page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat"),
   ).toHaveCount(1)
   let finish!: () => void
   const oldRequest = new Promise<void>((resolve) => {
@@ -2783,7 +2801,7 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
 }) => {
   await setup(page)
   await expect(
-    page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
+    page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat"),
   ).toHaveCount(1)
   let signIns = 0
   await page.route("**/api/settings", (route) =>
