@@ -133,7 +133,7 @@ for (const width of [390, 1440]) {
       await expect(
         page
           .getByRole("region", { name: "Chat details", exact: true })
-          .getByText("Model response not checked.", { exact: true }),
+          .getByText("Configured locally. Model response not checked.", { exact: true }),
       ).toBeVisible()
       expect(state.writes).toEqual([])
     })

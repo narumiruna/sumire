@@ -165,16 +165,27 @@ for (const scenario of scenarios) {
     await expect(row.locator(".directory-status-label")).toHaveAttribute("title", scenario.reason)
     await expect(row.locator("button, a")).toHaveCount(0)
     await row.click()
+    const savedStatus =
+      scenario.name === "locally configured"
+        ? page.getByRole("tabpanel", { name: "Overview", exact: true })
+        : status(page)
     if (scenario.name === "locally configured") {
-      await expect(status(page).getByRole("heading")).toHaveCount(0)
-      await expect(status(page).locator(".chat-ready-summary")).toContainText(scenario.label)
+      await expect(savedStatus.getByRole("heading")).toHaveCount(0)
+      await expect(savedStatus.locator(".chat-ready-summary")).toContainText(scenario.label)
       await expect(page.locator(".setup-details")).not.toHaveAttribute("open", "")
       await page.locator(".setup-details > summary").click()
       await expect(page.locator(".setup-details")).toContainText(
         "Not checked — no remote model request",
       )
     } else await expect(status(page).getByRole("heading")).toHaveText(scenario.label)
-    await expect(status(page).getByText(scenario.reason, { exact: true })).toBeVisible()
+    await expect(
+      savedStatus.getByText(
+        scenario.name === "locally configured"
+          ? `${scenario.label}. ${scenario.reason}`
+          : scenario.reason,
+        { exact: true },
+      ),
+    ).toBeVisible()
     if (scenario.action) {
       await status(page).getByRole("button", { name: scenario.action, exact: true }).click()
       if (scenario.name === "unapproved")
@@ -209,12 +220,16 @@ test("keeps saved approval separate from draft repair through review and cancell
   const state = data()
   state.snapshot.policy.privateUsers = []
   const { methods } = await fixture(page, state)
-  await page.locator(".chat-list button").first().click()
+  const row = page.locator(".chat-list button").first()
+  await row.click()
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
   await expect(page.locator(".chat-draft-status")).toContainText("Configured locally")
-  await expect(page.locator(".chat-list button").first()).toContainText("Access not approved")
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+  await expect(row).toBeFocused()
+  await expect(row).toContainText("Access not approved")
+  await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("Private-message access: approve 42")
   await expect(page.getByRole("alertdialog")).toContainText("Active work will be cancelled.")
@@ -233,6 +248,7 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await page.locator(".chat-list button").first().click()
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await page.locator(".directory-options summary").click()
   await expect(page.locator(".directory-help")).toContainText(
     "The access filter uses the policy draft.",
@@ -243,6 +259,7 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await expect(row).toHaveCount(1)
   await expect(row.locator(".directory-status-label")).toContainText("Access not approved")
   await expect(row.locator(".directory-draft")).toHaveText("Draft access: Approved · Enabled")
+  await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
 })
 
@@ -266,7 +283,7 @@ for (const width of [1440, 390]) {
     await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
     await page.getByRole("button", { name: "Grant access", exact: true }).click()
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
-    if (width <= 850) await back.click()
+    await back.click()
     await page.locator(".chat-list button").first().click()
     await status(page)
       .getByRole("button", { name: "Configure authentication", exact: true })
@@ -282,7 +299,7 @@ for (const width of [1440, 390]) {
       "aria-selected",
       "true",
     )
-    if (width <= 850) await back.click()
+    await back.click()
     await expect(search).toHaveValue("Fixture chat")
     await expect(page.getByLabel("Chat type", { exact: true })).toContainText("Private")
     await expect(page.locator("#save-status")).toContainText("1 unsaved change")
@@ -407,14 +424,13 @@ for (const [width, height, zoom] of [
       4.5,
     )
     await row.click()
-    await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(1)
     await expect(page.getByRole("heading", { name: "Fixture chat 1", exact: true })).toBeVisible()
-    await page
-      .getByRole("button", { name: width <= 850 ? "Chat actions" : "Copy chat ID", exact: true })
-      .focus()
+    await page.getByRole("button", { name: "Chat actions", exact: true }).focus()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
-    if (width <= 850) await back.click()
+    await back.click()
+    await expect(page.locator('.chat-list [aria-current="true"]')).toHaveCount(1)
+    await expect(row).toBeFocused()
     await disclosure.click()
     expect(
       (await contrast(page.getByLabel("Chat type", { exact: true }))).border,
@@ -433,13 +449,15 @@ test("account menu returns keyboard focus and copy feedback reports success and 
   await page.keyboard.press("Escape")
   await expect(account).toBeFocused()
   await page.locator(".chat-list button").first().click()
-  const copy = page.getByRole("button", { name: "Copy chat ID", exact: true })
+  const actions = page.getByRole("button", { name: "Chat actions", exact: true })
+  const copy = page.getByRole("menuitem", { name: "Copy chat ID", exact: true })
   await page.evaluate(() =>
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: async () => {} },
     }),
   )
+  await actions.click()
   await copy.click()
   await expect(page.getByText("Chat ID copied.", { exact: true })).toBeVisible()
   await page.evaluate(() =>
@@ -452,6 +470,7 @@ test("account menu returns keyboard focus and copy feedback reports success and 
       },
     }),
   )
+  await actions.click()
   await copy.click()
   await expect(
     page.getByText("Could not copy. Select the ID to copy it manually.", { exact: true }),

@@ -176,7 +176,8 @@ test("searches complete IDs, retains duplicate names with separate IDs, and shar
   )
   await page.reload()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Persisted rename")
-  await page.getByRole("link", { name: "View conversation records", exact: true }).click()
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
   await expect(
     inspector(page).getByRole("heading", { name: "Persisted rename", exact: true }),
   ).toBeVisible()
@@ -452,6 +453,8 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await expect(row.locator(".directory-chat-meta code")).toHaveText("-9003")
   await row.click()
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Unnamed group")
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+  await expect(row).toBeFocused()
   await search.fill("Same name")
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
@@ -464,6 +467,8 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
     .getByRole("tabpanel", { name: "Access", exact: true })
     .getByRole("button", { name: "Revoke access", exact: true })
     .click()
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+  await expect(search).toBeFocused()
   await expect(
     page.getByText("No chats match the filters on this page.", { exact: true }),
   ).toBeVisible()
@@ -475,18 +480,24 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
 test("manual ID input stays a local draft until an explicit chat choice", async ({ page }) => {
   const state = await fixture(page, "/?section=Chats&chat=-9001")
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Same name")
+  const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
+  await back.click()
   await page.locator(".configure-id summary").click()
   const input = page.getByLabel("Chat ID (can configure before first message)", { exact: true })
   const previousReads = state.directoryReads.length
   await input.fill("-9002")
   await expect(page).toHaveURL(/chat=-9001/)
+  await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await expect(page.locator(".chat-header code")).toHaveText("-9001")
   expect(state.directoryReads.length).toBe(previousReads)
+  await back.click()
+  await expect(input).toHaveValue("-9002")
   await page.getByRole("button", { name: "Open chat details", exact: true }).click()
   await expect(page).toHaveURL(/chat=-9002/)
   await expect(page.locator(".chat-header code")).toHaveText("-9002")
   await page.goBack()
   await expect(page.locator(".chat-header code")).toHaveText("-9001")
+  await back.click()
   await expect(input).toHaveValue("-9001")
   expect(state.methods.every((method) => method === "GET")).toBe(true)
 })

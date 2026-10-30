@@ -110,38 +110,25 @@ for (const width of [1440, 390, 320]) {
     await expect(
       inspector.getByText(/Truncated · the server read limit/).filter({ visible: true }),
     ).toBeVisible()
-    await click(
-      page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
-    )
-    const back = page.getByRole("button", {
-      includeHidden: true,
-      name: "Back to chat directory",
-      exact: true,
-    })
-    if (await back.isVisible()) await back.click()
-    await click(
-      page
-        .getByRole("list", { includeHidden: true, name: "Chats on this page" })
-        .getByRole("button", { includeHidden: true, name: /Idle chat/ }),
-    )
-    if (width <= 850) {
-      await page.getByRole("button", { name: "Chat actions", exact: true }).click()
-      await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
-    } else await page.getByRole("link", { name: "View conversation records", exact: true }).click()
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
+    const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
+    await back.click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .getByRole("button", { name: /Idle chat/ })
+      .click()
+    await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+    await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
     await expectRecord(page, "Conversation", "conversation #17")
-    await click(
-      page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
-    )
-    if (await back.isVisible()) await back.click()
-    await click(
-      page
-        .getByRole("list", { includeHidden: true, name: "Chats on this page" })
-        .getByRole("button", { includeHidden: true, name: /Unloaded chat/ }),
-    )
-    if (width <= 850) {
-      await page.getByRole("button", { name: "Chat actions", exact: true }).click()
-      await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
-    } else await page.getByRole("link", { name: "View conversation records", exact: true }).click()
+    await openDisclosure(inspector.locator(".durable-history-context"))
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
+    await back.click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .getByRole("button", { name: /Unloaded chat/ })
+      .click()
+    await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+    await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
     await expect(inspector.getByRole("heading", { name: "Not loaded", exact: true })).toBeVisible()
     await expect(inspector).toContainText("Inspection will not open its database")
     expect(state.methods.every((method) => method === "GET")).toBe(true)
@@ -1009,22 +996,16 @@ test("cancels delayed reads on object switch, chat switch, and unmount without s
     await expect
       .poll(() => state.requests.filter((url) => url.searchParams.get("objectId") === "101").length)
       .toBe(2)
-    await click(
-      page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
-    )
+    await openDisclosure(inspectorFor(page).locator(".durable-history-context"))
+    await page.getByRole("button", { name: "Open chat settings", exact: true }).click()
     await expect.poll(() => aborted.length).toBe(2)
-    await click(
-      page
-        .getByRole("list", { includeHidden: true, name: "Chats on this page" })
-        .getByRole("button", { includeHidden: true, name: /Idle chat/ }),
-    )
-    await click(
-      page.getByRole("link", {
-        includeHidden: true,
-        name: "View conversation records",
-        exact: true,
-      }),
-    )
+    await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
+    await page
+      .getByRole("list", { name: "Chats on this page" })
+      .getByRole("button", { name: /Idle chat/ })
+      .click()
+    await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+    await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
     await expectRecord(page, "Conversation", "conversation #17")
   } finally {
     release()
@@ -1042,9 +1023,8 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await click(page.getByRole("tab", { name: "Access", exact: true }))
   await click(page.getByRole("button", { includeHidden: true, name: "Revoke access", exact: true }))
   await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
-  await click(
-    page.getByRole("link", { includeHidden: true, name: "View conversation records", exact: true }),
-  )
+  await page.getByRole("button", { name: "Chat actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
   await expectRecord(page, "Conversation", "conversation #7")
   await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
     "unsaved change",

@@ -228,6 +228,7 @@ test("keeps the selected tab coherent when switching chats and supports tab keys
   })
   await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await page.getByRole("button").filter({ hasText: "Other chat" }).first().click()
   await expect(page.getByRole("tab", { name: "Access", exact: true })).toHaveAttribute(
     "aria-selected",
@@ -2271,6 +2272,7 @@ test("filters the loaded directory by type and effective policy access without t
   await directory.getByRole("button").click()
   await page.locator(".setup-details > summary").click()
   await expect(page.locator(".setup-details")).toContainText("Approved")
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(
@@ -2281,8 +2283,10 @@ test("filters the loaded directory by type and effective policy access without t
   await page.getByRole("option", { name: "Channel", exact: true }).click()
   await directory.getByRole("button").click()
   await expect(page.getByRole("region", { name: "Chat details" })).toContainText("News")
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
   await page.getByRole("option", { name: "All types", exact: true }).click()
+  await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath("desktop.png"), fullPage: true })
 })
 
@@ -2309,11 +2313,13 @@ test("keeps directory context and policy drafts through sidebar navigation and b
     "aria-current",
     "page",
   )
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(search).toHaveValue("Fixture")
-  await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await expect(
     page.getByRole("list", { name: "Chats on this page" }).getByRole("button"),
   ).toHaveAttribute("aria-current", "true")
+  await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
+  await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
   await page.goForward()
   await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
     "aria-current",
@@ -2658,6 +2664,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
   await page.getByRole("button", { name: "Reload", exact: true }).click()
   await navigate(page, "Chats")
   await expect(page.getByRole("heading", { name: "Updated name", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("New chat")
   await expect(page.getByRole("button", { name: "Next chats", exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toHaveCount(0)
