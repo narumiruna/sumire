@@ -424,7 +424,7 @@ function App() {
       <main aria-busy={busy}>
         <PageHeader
           title={pageLabel(page)}
-          breadcrumb="Administration"
+          breadcrumb={page === "Durable" ? "Administration" : undefined}
           description={pageDescriptions[page]}
           actions={
             <>

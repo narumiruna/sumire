@@ -287,6 +287,12 @@ main {
   line-height: 1.2;
   letter-spacing: -0.8px;
 }
+:where(.admin-shell:not(.admin-shell-durable)) #current-section-heading {
+  font-size: 28px;
+}
+:where(.admin-shell:not(.admin-shell-durable) > main) > .workspace-header {
+  padding-bottom: 8px;
+}
 .page-header__description {
   max-width: 68ch;
   margin: 0;
@@ -314,6 +320,14 @@ main {
   right: 0;
   min-height: 40px;
   align-items: center;
+}
+@media (min-width: 651px) {
+  .admin-shell:not(.admin-shell-durable) > main {
+    margin-top: 8px;
+  }
+  :where(.admin-shell:not(.admin-shell-durable) > main > .workspace-header) .page-header__actions {
+    position: static;
+  }
 }
 .page-header__actions {
   order: 1;

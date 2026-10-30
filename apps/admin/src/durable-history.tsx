@@ -135,6 +135,28 @@ export function DurableHistory({
     unavailable?: boolean
   }>()
   const opener = useRef<HTMLAnchorElement | null>(null)
+  const previousButton = useRef<HTMLButtonElement>(null)
+  const nextButton = useRef<HTMLButtonElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const navigationFocus = useRef<
+    | {
+        id: number
+        control: "previous" | "next" | "close"
+      }
+    | undefined
+  >(undefined)
+  useEffect(() => {
+    const trackFocus = (event: FocusEvent) => {
+      const pending = navigationFocus.current
+      if (!pending) return
+      if (event.target === previousButton.current) pending.control = "previous"
+      else if (event.target === nextButton.current) pending.control = "next"
+      else if (event.target === closeButton.current) pending.control = "close"
+      else if (event.target !== document.body) navigationFocus.current = undefined
+    }
+    document.addEventListener("focusin", trackFocus)
+    return () => document.removeEventListener("focusin", trackFocus)
+  }, [])
   const ownerState = data?.state === "not-loaded" ? "not-loaded" : detailOwnerState
   const ownerUnavailable = ownerState !== undefined
   useEffect(() => {
@@ -213,25 +235,49 @@ export function DurableHistory({
   const selectedVisible = groups.some((group) =>
     group.entries.some((entry) => entry.id === selectedId),
   )
-  const selectAdjacent = (offset: number) => {
+  useEffect(() => {
+    const pending = navigationFocus.current
+    if (!pending) return
+    if (!wide || !open || selectedId !== pending.id) {
+      navigationFocus.current = undefined
+      return
+    }
+    if (activeDetail || error || denied || ownerUnavailable) navigationFocus.current = undefined
+    if (document.activeElement !== document.body) return
+    const buttons =
+      pending.control === "previous"
+        ? [previousButton.current, nextButton.current, closeButton.current]
+        : pending.control === "next"
+          ? [nextButton.current, previousButton.current, closeButton.current]
+          : [closeButton.current, previousButton.current, nextButton.current]
+    buttons.find((button) => button && !button.disabled)?.focus({ preventScroll: true })
+  }, [activeDetail, selectedId, error, denied, ownerUnavailable, wide, open])
+  const selectAdjacent = (offset: number, button: HTMLButtonElement) => {
     const entry = displayedEntries[selectedIndex + offset]
-    if (selectedIndex >= 0 && entry) onSelect(entry.id)
+    if (selectedIndex < 0 || !entry) return
+    navigationFocus.current =
+      wide && document.activeElement === button
+        ? { id: entry.id, control: offset < 0 ? "previous" : "next" }
+        : undefined
+    onSelect(entry.id)
   }
   const detailNavigation = (
     <nav aria-label="Entry navigation" className="durable-entry-navigation durable-event-header">
       <Button
         variant="outline"
         size="1"
+        ref={previousButton}
         disabled={selectedIndex <= 0}
-        onClick={() => selectAdjacent(-1)}
+        onClick={(event) => selectAdjacent(-1, event.currentTarget)}
       >
         <ChevronLeftIcon aria-hidden /> Previous
       </Button>
       <Button
         variant="outline"
         size="1"
+        ref={nextButton}
         disabled={selectedIndex < 0 || selectedIndex >= displayedEntries.length - 1}
-        onClick={() => selectAdjacent(1)}
+        onClick={(event) => selectAdjacent(1, event.currentTarget)}
       >
         Next <ChevronRightIcon aria-hidden />
       </Button>
@@ -239,6 +285,7 @@ export function DurableHistory({
         variant="ghost"
         size="1"
         aria-label="Close event details"
+        ref={closeButton}
         onClick={() => setOpen(false)}
       >
         <Cross2Icon aria-hidden />

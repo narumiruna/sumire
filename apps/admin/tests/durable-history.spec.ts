@@ -350,6 +350,144 @@ test("entry navigation follows filtered loaded order with bounds and no history 
   expect(historyReads()).toHaveLength(1)
 })
 
+for (const direction of [
+  { name: "Next", start: 170, target: 171, following: 172 },
+  { name: "Previous", start: 173, target: 172, following: 171 },
+])
+  test(`desktop ${direction.name} keeps keyboard focus after delayed entry reads`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const state = await durableFixture(
+      page,
+      `/?section=Durable&chat=42&view=history&conversationId=7&objectId=${direction.start}`,
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+    const button = eventDetails(page).getByRole("button", { name: direction.name, exact: true })
+    let release = () => {}
+    state.gates.set(
+      `/api/chats/42/durable:entries:${direction.target}`,
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const reads = state.requests.length
+    try {
+      await button.focus()
+      await page.keyboard.press("Enter")
+      await expect.poll(() => state.requests.length).toBe(reads + 1)
+      await expect(eventDetails(page)).toContainText("Loading entry…")
+      await expect(button).toBeFocused()
+      release()
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+        `entry #${direction.target}`,
+      )
+      await expect(button).toBeFocused()
+      await page.keyboard.press("Enter")
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+        `entry #${direction.following}`,
+      )
+      await expect(button).toBeFocused()
+      expect(state.requests).toHaveLength(reads + 2)
+      expect(
+        state.requests.filter((url) => url.searchParams.get("view") === "history"),
+      ).toHaveLength(1)
+    } finally {
+      release()
+    }
+  })
+
+for (const blur of [false, true])
+  test(`a completed entry read does not restore navigation after focus moves away (blur=${blur})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const state = await durableFixture(
+      page,
+      "/?section=Durable&chat=42&view=history&conversationId=7&objectId=170",
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText("entry #170")
+    let release = () => {}
+    state.gates.set(
+      "/api/chats/42/durable:entries:171",
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const reads = state.requests.length
+    try {
+      await eventDetails(page).getByRole("button", { name: "Next", exact: true }).focus()
+      await page.keyboard.press("Enter")
+      await expect.poll(() => state.requests.length).toBe(reads + 1)
+      const search = history(page).getByRole("searchbox", {
+        name: "Search loaded page",
+        exact: true,
+      })
+      await search.focus()
+      if (blur) await search.evaluate((element) => (element as HTMLElement).blur())
+      release()
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText("entry #171")
+      if (blur)
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
+      else await expect(search).toBeFocused()
+      expect(state.requests).toHaveLength(reads + 1)
+    } finally {
+      release()
+    }
+  })
+
+for (const direction of [
+  { name: "Next", start: 175, target: 176, fallback: "Previous" },
+  { name: "Previous", start: 169, target: 160, fallback: "Next" },
+])
+  test(`desktop ${direction.name} keeps focus on an enabled control at a page boundary`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await durableFixture(
+      page,
+      `/?section=Durable&chat=42&view=history&conversationId=7&objectId=${direction.start}`,
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+    await eventDetails(page).getByRole("button", { name: direction.name, exact: true }).focus()
+    await page.keyboard.press("Enter")
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.target}`,
+    )
+    await expect(
+      eventDetails(page).getByRole("button", { name: direction.name, exact: true }),
+    ).toBeDisabled()
+    await expect(
+      eventDetails(page).getByRole("button", { name: direction.fallback, exact: true }),
+    ).toBeFocused()
+    await page.keyboard.press("Enter")
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+  })
+
+test("narrow entry navigation keeps keyboard focus and dialog close restores its opener", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await durableFixture(page, "/?section=Durable&chat=42&view=history&conversationId=7")
+  const opener = inspectEntry(page, 170)
+  await opener.click()
+  const dialog = page.getByRole("dialog", { name: "Event details", exact: true })
+  await expect(dialog.locator(".durable-detail-record-id")).toHaveText("entry #170")
+  const next = dialog.getByRole("button", { name: "Next", exact: true })
+  await next.focus()
+  await page.keyboard.press("Enter")
+  await expect(dialog.locator(".durable-detail-record-id")).toHaveText("entry #171")
+  await expect(next).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(opener).toBeFocused()
+})
+
 test("older and newer controls use native cursors and preserve partial-turn boundary context", async ({
   page,
 }) => {

@@ -5,7 +5,7 @@ Validated on 2026-10-30 against the supplied 1448 × 1086 conversation-records i
 ## Result
 
 - Use a light green sidebar with visible icons, grouped sections, and an administrator footer.
-- Use a white workspace, breadcrumbs, a sans-serif page heading, chat identity, and a three-cell context strip.
+- Use a white workspace, a sans-serif page heading, chat identity, and a three-cell context strip. Show breadcrumbs on Conversation records. Keep the other page headers compact.
 - Show History and Branch view below the context strip.
 - Show compact History previews on the left and selected entry details on the right on desktop screens.
 - Keep the existing entry-details dialog on narrow screens.
@@ -35,24 +35,15 @@ All required checks passed from the repository root:
 
 Lint exits successfully with five existing CSS specificity warnings and one informational finding in an unchanged test. The admin unit suite passes 389 tests.
 
-The following browser suite passes all 153 tests with synthetic API fixtures:
+After the review fixes, the full browser suite passes all 639 tests with synthetic API fixtures:
 
 ```sh
-npm run test:browser --workspace @narumitw/sumire-admin -- \
-  tests/reference-ui.spec.ts \
-  tests/durable-history.spec.ts \
-  tests/durable-inspector.spec.ts \
-  tests/durable-content.spec.ts \
-  tests/durable-workspace-visual.spec.ts \
-  tests/brand-icon.spec.ts \
-  tests/single-workspace.spec.ts \
-  tests/chat-directory.spec.ts \
-  --workers=4
+npm run test:browser --workspace @narumitw/sumire-admin -- --workers=8
 ```
 
 The validation run used a temporary Playwright configuration on port 18468 because port 17466 was already in use. The existing server process was not stopped.
 
-Coverage includes native ordering, loaded-page filters, navigation boundaries, inherited entries, missing records, safe literal content, permission failures, session changes, stale reads, raw collections, keyboard focus, chat switching, and retained settings drafts. Layout checks cover 320, 390, 768, 1440, and 1448 pixels, fallback fonts, text contrast, 44-pixel controls, and page overflow.
+Coverage includes native ordering, loaded-page filters, navigation boundaries, inherited entries, missing records, safe literal content, permission failures, session changes, stale reads, raw collections, keyboard focus, chat switching, and retained settings drafts. Seven new tests cover keyboard focus during delayed entry reads, enabled boundary controls, focus moved away from navigation, and the narrow-screen dialog. The unchanged density and workflow height tests also pass. See `docs/admin-reference-ui-review-ledger.md` for each review outcome. Layout checks cover 320, 390, 768, 1440, and 1448 pixels, fallback fonts, text contrast, 44-pixel controls, and page overflow.
 
 ## Visual Evidence
 
