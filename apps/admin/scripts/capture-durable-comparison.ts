@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { type Browser, chromium } from "@playwright/test"
-import { durableFixture } from "../tests/durable-fixture.ts"
+import { durableComparisonHref, durableFixture } from "../tests/durable-fixture.ts"
 
 // Compare tracked base sources and working sources against the same synthetic API fixture.
 // Run from the repository root after building workspace dependencies.
@@ -71,7 +71,8 @@ try {
           viewport: { width, height: 900 },
         })
         try {
-          await durableFixture(page, "/?section=Durable&chat=42")
+          // Compare the same stored branch; the default page can differ between revisions.
+          await durableFixture(page, durableComparisonHref)
           const selected = page.getByRole("region", { name: "Selected item details", exact: true })
           await selected.waitFor()
           // Current layouts show this ID in the mobile navigator instead of repeating it here.

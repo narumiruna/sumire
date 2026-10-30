@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import {
   conversations,
+  durableComparisonHref,
   durableFixture,
   historicalConversation,
   navigateSection,
@@ -38,6 +39,18 @@ const expectRecord = async (page: Page, title: string, identifier: string) => {
 }
 
 for (const width of [1440, 390, 320]) {
+  test(`comparison capture targets the same stored branch at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await durableFixture(page, durableComparisonHref)
+    await expectRecord(page, "Conversation", "conversation #7")
+    await expect(page).toHaveURL(/view=conversations&objectId=7/)
+    await expect(
+      page.getByRole("region", { name: "Conversation history", exact: true }),
+    ).toHaveCount(0)
+    expect(state.requests.some((url) => url.searchParams.get("view") === "history")).toBe(false)
+    expect(state.methods.every((method) => method === "GET")).toBe(true)
+  })
+
   test(`record browser and secondary disclosures keep their defaults at ${width}px`, async ({
     page,
   }) => {

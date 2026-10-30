@@ -8,6 +8,7 @@ import type {
 import type { Page } from "@playwright/test"
 import { sectionLabel } from "./admin-fixture.ts"
 
+export const durableComparisonHref = "/?section=Durable&chat=42&view=conversations&objectId=7"
 export const readAt = "2026-10-19T12:00:00.000Z"
 export const untrusted =
   '<img src="https://untrusted.invalid/pixel" onerror="window.inspectorInjected=true">'
