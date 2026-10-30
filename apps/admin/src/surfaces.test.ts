@@ -1,9 +1,30 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-import { Panel, Prose } from "./surfaces.js"
+import { PageHeader, Panel, Prose } from "./surfaces.js"
 
 describe("shared presentation primitives", () => {
+  it("adds administration breadcrumbs without changing the page heading or action slot", () => {
+    const html = renderToStaticMarkup(
+      createElement(PageHeader, {
+        title: "Conversation records",
+        breadcrumb: "Administration",
+        actions: createElement("button", { type: "button" }, "Account"),
+      }),
+    )
+    expect(html).toContain('class="page-breadcrumb"')
+    expect(html).toContain(">Administration</span>")
+    expect(html).toContain(">Conversation records</span>")
+    expect(html).toContain('id="current-section-heading"')
+    expect(html).toContain('<button type="button">Account</button>')
+  })
+
+  it("keeps session screens free of administration breadcrumbs", () => {
+    const html = renderToStaticMarkup(createElement(PageHeader, { title: "Sign in" }))
+    expect(html).not.toContain("page-breadcrumb")
+    expect(html).toContain(">Sign in</h1>")
+  })
+
   it("keeps named section attributes and caller classes on the panel surface", () => {
     const html = renderToStaticMarkup(
       createElement(Panel, { "aria-label": "Chat details", className: "chat-detail", mt: "3" }),

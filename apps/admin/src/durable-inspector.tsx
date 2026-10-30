@@ -9,11 +9,16 @@ import type {
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
 import {
+  ChatBubbleIcon,
   ChevronDownIcon,
   CopyIcon,
+  FileTextIcon,
   LayersIcon,
+  MagnifyingGlassIcon,
   MixerHorizontalIcon,
+  PersonIcon,
   ReloadIcon,
+  SpeakerLoudIcon,
 } from "@radix-ui/react-icons"
 import { Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
@@ -639,7 +644,7 @@ export function DurableInspector({
       )}
     </dl>
   )
-  const row = (item: DurableInspectionItem) => {
+  const row = (item: DurableInspectionItem, navigation?: ReactNode) => {
     const Icon = recordIcon(item)
     return (
       <section
@@ -661,11 +666,12 @@ export function DurableInspector({
             >
               {recordTitle(item)}
             </Heading>
-          </div>
-          <div className="durable-record-meta">
             <span className="durable-record-id durable-detail-record-id">
               {item.type} #{item.id}
             </span>
+          </div>
+          {navigation}
+          <div className="durable-record-meta">
             {item.type === "entry" && <span>{formatDurableTime(item.timestamp)}</span>}
             {item.type === "task" && <span>{formatDurableTime(item.startedAt)}</span>}
             {item.type !== "conversation" && "conversationId" in item && (
@@ -872,26 +878,40 @@ export function DurableInspector({
     <>
       <header className="durable-summary-header" data-selected={validChat}>
         {validChat && (
-          <div>
-            <Heading as="h2" size="5">
-              {!validChat
-                ? "Choose a chat"
-                : metadataLoading
-                  ? "Loading chat name…"
-                  : metadataError
-                    ? "Chat name unavailable"
-                    : metadata
-                      ? chatName(metadata)
-                      : "Chat name unknown"}
-            </Heading>
-            {validChat && (
-              <Flex gap="2" align="center" wrap="wrap">
-                <Text size="2">
-                  <code>{chat}</code>
-                  {metadata ? ` · ${metadata.type}` : ""}
-                </Text>
-              </Flex>
-            )}
+          <div className="durable-chat-identity">
+            <span className="durable-chat-avatar" aria-hidden>
+              {metadata?.type === "private" ? (
+                <PersonIcon />
+              ) : metadata?.type === "channel" ? (
+                <SpeakerLoudIcon />
+              ) : (
+                <ChatBubbleIcon />
+              )}
+            </span>
+            <div>
+              <div className="durable-chat-name">
+                <Heading as="h2" size="5">
+                  {!validChat
+                    ? "Choose a chat"
+                    : metadataLoading
+                      ? "Loading chat name…"
+                      : metadataError
+                        ? "Chat name unavailable"
+                        : metadata
+                          ? chatName(metadata)
+                          : "Chat name unknown"}
+                </Heading>
+                {metadata?.type && <span className="durable-chat-type">{metadata.type}</span>}
+              </div>
+              {validChat && (
+                <Flex gap="2" align="center" wrap="wrap">
+                  <Text size="2">
+                    <code>{chat}</code>
+                    {metadata ? ` · ${metadata.type}` : ""}
+                  </Text>
+                </Flex>
+              )}
+            </div>
           </div>
         )}
         {chatSelector}
@@ -903,7 +923,7 @@ export function DurableInspector({
           hidden={!validChat}
         >
           <Button
-            variant="soft"
+            variant="solid"
             aria-label="Refresh records"
             disabled={!validChat || (!current && !selection)}
             onClick={() => {
@@ -1198,32 +1218,56 @@ export function DurableInspector({
           </nav>
         )}
         <div className="durable-context-bar" hidden={!validChat}>
-          <span className="durable-inspected-compact">
-            <span className="durable-context-key">Inspecting</span>
-            <strong>
-              {sessionDocuments
-                ? "Session documents"
-                : inspectedConversation
-                  ? `Conversation ${inspectedConversation}`
-                  : "Conversations"}
-            </strong>
-          </span>
+          <section className="durable-context-cell" aria-label="Inspected conversation ID">
+            <span className="durable-context-icon" aria-hidden>
+              <FileTextIcon />
+            </span>
+            <div>
+              <span className="durable-context-key">Conversation ID</span>
+              <strong>
+                {sessionDocuments ? "Session scope" : (inspectedConversation ?? "Not selected")}
+              </strong>
+            </div>
+          </section>
           <section aria-label="Persisted selection" className="durable-persisted-compact">
-            <span className="durable-context-key">Saved conversation</span>
-            <strong>
-              {!selection
-                ? "Loading…"
-                : selection.error
-                  ? "Unavailable"
-                  : selected
-                    ? link(`Conversation ${selected.id}`, {
-                        view: "conversations",
-                        objectId: selected.id,
-                      })
-                    : selection.data?.state === "not-loaded"
-                      ? "No loaded session"
-                      : "Not recorded"}
-            </strong>
+            <span className="durable-context-icon" aria-hidden>
+              <ChatBubbleIcon />
+            </span>
+            <div>
+              <span className="durable-context-key">Saved conversation</span>
+              <strong>
+                {!selection
+                  ? "Loading…"
+                  : selection.error
+                    ? "Unavailable"
+                    : selected
+                      ? link(`Conversation ${selected.id}`, {
+                          view: "conversations",
+                          objectId: selected.id,
+                        })
+                      : selection.data?.state === "not-loaded"
+                        ? "No loaded session"
+                        : "Not recorded"}
+              </strong>
+            </div>
+          </section>
+          <section
+            className="durable-context-cell durable-inspected-compact"
+            aria-label="Current inspection target"
+          >
+            <span className="durable-context-icon" aria-hidden>
+              <MagnifyingGlassIcon />
+            </span>
+            <div>
+              <span className="durable-context-key">Inspection context</span>
+              <span>
+                {sessionDocuments
+                  ? "Inspecting session documents"
+                  : inspectedConversation
+                    ? `Inspecting Conversation ${inspectedConversation}`
+                    : "Choose a conversation"}
+              </span>
+            </div>
           </section>
         </div>
       </div>

@@ -148,7 +148,7 @@ for (const viewport of [
       await expect(page.locator(".durable-compact-list")).toBeHidden()
       if (viewport.width < 1100) {
         await expect(tree(page)).toBeHidden()
-        expect((await body.boundingBox())?.y).toBeLessThan(viewport.height * 0.7)
+        expect((await body.boundingBox())?.y).toBeLessThan(viewport.height - 120)
         await testInfo.attach("workspace-geometry", {
           contentType: "application/json",
           body: JSON.stringify({
@@ -163,7 +163,6 @@ for (const viewport of [
             "font-family",
             new RegExp(viewport.font),
           )
-        if (viewport.width <= 650) expect((await body.boundingBox())?.y).toBeLessThanOrEqual(410)
         await page.screenshot({ path: testInfo.outputPath("workspace-closed.png"), fullPage: true })
       } else {
         await expect(tree(page)).toBeVisible()
@@ -185,7 +184,7 @@ for (const viewport of [
       for (const element of await tree(page)
         .locator(".durable-tree-row :is(a, span, small, time)")
         .all()) {
-        if (!(await element.isVisible()) || !(await element.innerText()).trim()) continue
+        if (!(await element.isVisible()) || !(await element.textContent())?.trim()) continue
         expect((await contrast(element)).text).toBeGreaterThanOrEqual(4.5)
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

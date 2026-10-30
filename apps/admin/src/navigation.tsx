@@ -2,11 +2,13 @@ import {
   ActivityLogIcon,
   ChatBubbleIcon,
   ComponentInstanceIcon,
+  CubeIcon,
+  FileTextIcon,
   GitHubLogoIcon,
   HamburgerMenuIcon,
-  LayersIcon,
   LockClosedIcon,
   MixerHorizontalIcon,
+  PersonIcon,
   ReaderIcon,
   TokensIcon,
 } from "@radix-ui/react-icons"
@@ -73,12 +75,12 @@ export function focusEditor(selector: string) {
 }
 const pageIcons = {
   Chats: ChatBubbleIcon,
-  Durable: LayersIcon,
+  Durable: FileTextIcon,
   Defaults: MixerHorizontalIcon,
   "Tool permissions": TokensIcon,
   Skills: ReaderIcon,
   "MCP connections": ComponentInstanceIcon,
-  "Model Providers": ReaderIcon,
+  "Model Providers": CubeIcon,
   "Secrets & variables": LockClosedIcon,
   "GitHub mentions": GitHubLogoIcon,
   Audit: ActivityLogIcon,
@@ -97,7 +99,8 @@ const pageLabels = {
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
 const navigationGroups = [
-  { id: "chat-management", label: "Chats", pages: ["Chats", "Durable"] },
+  { id: "chat-management", label: "Chats", pages: ["Chats"] },
+  { id: "conversation", label: "Conversation", pages: ["Durable"] },
   { id: "models", label: "Models", pages: ["Model Providers"] },
   {
     id: "tools-and-skills",
@@ -106,10 +109,10 @@ const navigationGroups = [
   },
   {
     id: "system-settings",
-    label: "Defaults",
+    label: "Configuration",
     pages: ["Defaults", "Secrets & variables", "GitHub mentions"],
   },
-  { id: "activity", label: "Activity", pages: ["Audit"] },
+  { id: "activity", label: "Monitoring", pages: ["Audit"] },
 ] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
 const technicalDescriptions: Partial<Record<Page, string>> = {
   Durable: "Durable Inspector: stored conversations and execution records.",
@@ -355,6 +358,7 @@ export function SideNavigation({
       </nav>
       <Flex direction="column" gap="3" className="sidebar-account">
         <Separator size="4" />
+        <PersonIcon aria-hidden className="sidebar-account-icon" />
         <Text size="1" color="gray">
           Administrator
         </Text>

@@ -1,3 +1,4 @@
+import { ChevronRightIcon } from "@radix-ui/react-icons"
 import { Badge, Box, type BoxProps, Flex, Heading, Text, type TextProps } from "@radix-ui/themes"
 import { type ComponentProps, type ReactNode, useId } from "react"
 
@@ -34,10 +35,12 @@ export function PageHeader({
   title,
   description,
   actions,
+  breadcrumb,
 }: {
   title: string
   description?: string
   actions?: ReactNode
+  breadcrumb?: string
 }) {
   return (
     <header className="workspace-header page-header">
@@ -47,6 +50,13 @@ export function PageHeader({
         </Flex>
       )}
       <Flex direction="column" gap="1" className="page-header__copy">
+        {breadcrumb && (
+          <p className="page-breadcrumb">
+            <span>{breadcrumb}</span>
+            <ChevronRightIcon aria-hidden />
+            <span>{title}</span>
+          </p>
+        )}
         <Heading as="h1" size="6" id="current-section-heading" tabIndex={-1}>
           {title}
         </Heading>

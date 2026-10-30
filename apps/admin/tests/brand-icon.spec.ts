@@ -10,8 +10,8 @@ for (const width of [1440, 390]) {
     await expect(icon).toBeVisible()
     await expect(icon).toHaveAttribute("alt", "")
     await expect(icon).toHaveAttribute("aria-hidden", "true")
-    await expect(icon).toHaveCSS("width", "28px")
-    await expect(icon).toHaveCSS("height", "28px")
+    await expect(icon).toHaveCSS("width", width > 650 ? "42px" : "28px")
+    await expect(icon).toHaveCSS("height", width > 650 ? "42px" : "28px")
     await expect(page.getByRole("heading", { name: "Sumire", exact: true })).toBeVisible()
     await expect
       .poll(() =>

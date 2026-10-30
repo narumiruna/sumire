@@ -7,18 +7,20 @@ const inspector = (page: Page) =>
   page.getByRole("region", { name: "Durable Inspector", exact: true })
 const history = (page: Page) =>
   inspector(page).getByRole("region", { name: "Conversation history", exact: true })
+const entries = (page: Page) =>
+  history(page).getByRole("region", { name: "Conversation entries", exact: true })
 const views = (page: Page) =>
   inspector(page).getByRole("navigation", { name: "Conversation record views", exact: true })
 const eventDetails = (page: Page) =>
   page.getByRole("complementary", { name: "Event details", exact: true })
 const entry = (page: Page, id: number) =>
-  history(page)
+  entries(page)
     .getByRole("article")
     .filter({
       has: page.getByRole("link", { name: `Inspect entry ${id}`, exact: true }),
     })
 const inspectEntry = (page: Page, id: number) =>
-  history(page).getByRole("link", { name: `Inspect entry ${id}`, exact: true })
+  entries(page).getByRole("link", { name: `Inspect entry ${id}`, exact: true })
 const expectIds = async (scope: Locator, ids: number[]) => {
   await expect(scope.locator("article > header .durable-record-id")).toHaveText(
     ids.map((id) => `#${id}`),
@@ -74,7 +76,16 @@ test("missing view opens bounded History, reverses native order, and groups only
     inspector(page).getByRole("region", { name: "Persisted selection", exact: true }),
   ).toContainText("Conversation 7")
   await expect(history(page)).toContainText("9 matching / 9 loaded records")
-  await expect(eventDetails(page)).toHaveCount(0)
+  await expect(eventDetails(page)).toBeVisible()
+  await expect(eventDetails(page)).toContainText(
+    "Select a conversation entry to read its saved content.",
+  )
+  await expect(
+    eventDetails(page).getByRole("region", { name: "Entry content", exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    eventDetails(page).getByRole("navigation", { name: "Entry navigation", exact: true }),
+  ).toHaveCount(0)
   expect(state.requests.map((url) => url.searchParams.get("view"))).toEqual([
     "conversations",
     "tasks",
@@ -116,47 +127,71 @@ test("an invalid view also resolves only the off-page persisted conversation", a
   expect(state.requests.some((url) => url.searchParams.get("conversationId") === "7")).toBe(false)
 })
 
-test("saved text stays literal and thinking, tool arguments, and tool output start collapsed", async ({
+test("compact previews stay literal and full details retain thinking, tool arguments, and tool output", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   const remote: string[] = []
   page.on("request", (request) => {
     if (request.url().includes("untrusted.invalid")) remote.push(request.url())
   })
   const state = await durableFixture(page, "/?section=Durable&chat=42")
-  await expect(entry(page, 170).locator(".durable-message-text")).toHaveText(historyInput)
-  await expect(entry(page, 170)).toContainText(
+  await expect(entry(page, 170).locator(".durable-history-preview")).toHaveText(
+    `${historyInput}\nImage omitted · image/png. Image bytes are not sent.`,
+  )
+  await expect(entry(page, 171).locator(".durable-history-preview")).toHaveText(
+    "Checking synthetic records.\nfixture_tool · Arguments",
+  )
+  await expect(entry(page, 173).locator(".durable-history-preview")).toHaveText(historyOutput)
+  await expect(
+    entries(page).locator("details, .durable-arguments, .durable-tool-output"),
+  ).toHaveCount(0)
+  await expect(entries(page)).not.toContainText("Private history reasoning")
+  await expect(
+    entries(page).getByRole("region", { name: "Entry content", exact: true }),
+  ).toHaveCount(0)
+  let reads = state.requests.length
+  await inspectEntry(page, 170).click()
+  await expect(eventDetails(page).locator(".durable-message-text")).toHaveText(historyInput)
+  await expect(eventDetails(page)).toContainText(
     "Image omitted · image/png. Image bytes are not sent.",
   )
-  const assistant = entry(page, 171)
+  expect(state.requests).toHaveLength(reads + 1)
+  reads = state.requests.length
+  await inspectEntry(page, 171).click()
+  const assistant = eventDetails(page)
+  await expect(assistant.getByText("Checking synthetic records.", { exact: true })).toBeVisible()
   const thinking = assistant.locator("details").filter({
     has: page.locator("summary").getByText("Thinking", { exact: true }),
   })
-  const argumentsDisclosure = assistant.locator('details[aria-label="Tool call"]')
-  const output = entry(page, 173)
-    .locator("details")
-    .filter({
-      has: page.locator("summary").getByText("Tool output", { exact: true }),
-    })
-  for (const disclosure of [thinking, argumentsDisclosure, output])
-    await expect(disclosure).not.toHaveAttribute("open", "")
+  await expect(thinking).not.toHaveAttribute("open", "")
   await expect(
     assistant.getByText(`Private history reasoning ${untrusted}`, { exact: true }),
   ).toBeHidden()
-  await expect(assistant.locator(".durable-arguments")).toBeHidden()
-  await expect(entry(page, 173).locator(".durable-tool-output")).toBeHidden()
-  const reads = state.requests.length
+  await expect(assistant.locator(".durable-arguments")).toHaveText(
+    JSON.stringify({ input: untrusted }),
+  )
+  await expect(assistant.locator(".durable-arguments")).toBeVisible()
+  expect(state.requests).toHaveLength(reads + 1)
+  reads = state.requests.length
   await thinking.locator("summary").focus()
   await thinking.locator("summary").press("Enter")
   await expect(
     assistant.getByText(`Private history reasoning ${untrusted}`, { exact: true }),
   ).toBeVisible()
-  await argumentsDisclosure.locator(":scope > summary").click()
-  await expect(assistant.locator(".durable-arguments")).toHaveText(
-    JSON.stringify({ input: untrusted }),
-  )
-  await output.locator("summary").click()
-  await expect(entry(page, 173).locator(".durable-tool-output")).toHaveText(historyOutput)
+  expect(state.requests).toHaveLength(reads)
+  await inspectEntry(page, 173).click()
+  await expect(eventDetails(page).locator(".durable-tool-output")).toHaveText(historyOutput)
+  await expect(eventDetails(page).locator(".durable-tool-output")).toBeVisible()
+  expect(state.requests).toHaveLength(reads + 1)
+  reads = state.requests.length
+  await expect(
+    eventDetails(page)
+      .locator("details")
+      .filter({
+        has: page.locator("summary").getByText("Tool output", { exact: true }),
+      }),
+  ).toHaveCount(0)
   expect(state.requests).toHaveLength(reads)
   expect(remote).toEqual([])
   await expect(inspector(page).locator("img, iframe, script")).toHaveCount(0)
@@ -197,6 +232,260 @@ test("search and record type filters inspect only the loaded page without server
   await expectIds(history(page), [159])
   await expect(search).toHaveValue("Older saved answer")
   await expect(history(page)).toContainText("1 matching / 3 loaded records")
+})
+
+test("entry order reverses native loaded order, including filtered groups, without reads", async ({
+  page,
+}) => {
+  const state = await durableFixture(page, "/?section=Durable&chat=42")
+  await expectIds(entries(page), latestIds)
+  const order = entries(page).getByRole("combobox", { name: "Entry order", exact: true })
+  const filter = history(page).getByRole("combobox", { name: "Record type", exact: true })
+  const reads = state.requests.length
+  await expect(order).toHaveValue("oldest")
+  await order.selectOption("newest")
+  // Entry 160 is dated 2027, and 171 predates 170: timestamps must not determine order.
+  await expectIds(entries(page), latestIds.toReversed())
+  await expectIds(
+    entries(page).getByRole("region", { name: "User turn 170", exact: true }),
+    [173, 172, 171, 170],
+  )
+  await expectIds(
+    entries(page).getByRole("region", { name: "User turn 174", exact: true }),
+    [176, 175, 174],
+  )
+  await expectIds(
+    entries(page).getByRole("region", { name: "Earlier context on this page", exact: true }),
+    [169, 160],
+  )
+  await filter.selectOption("assistant")
+  await expectIds(entries(page), [175, 171, 160])
+  await order.selectOption("oldest")
+  await expectIds(entries(page), [160, 171, 175])
+  await filter.selectOption("all")
+  await expectIds(entries(page), latestIds)
+  expect(state.requests).toHaveLength(reads)
+})
+
+test("entry navigation follows filtered loaded order with bounds and no history page reads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await durableFixture(
+    page,
+    "/?section=Durable&chat=42&view=history&conversationId=7&objectId=159",
+  )
+  await expectIds(entries(page), latestIds)
+  await expect(eventDetails(page)).toContainText("Selected entry is outside the loaded page.")
+  const navigation = eventDetails(page)
+    .locator(".durable-detail-header")
+    .getByRole("navigation", { name: "Entry navigation", exact: true })
+  const previous = navigation.getByRole("button", { name: "Previous", exact: true })
+  const next = navigation.getByRole("button", { name: "Next", exact: true })
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeDisabled()
+  const historyReads = () =>
+    state.requests.filter((url) => url.searchParams.get("view") === "history")
+  expect(historyReads()).toHaveLength(1)
+  const select = async (target: Locator, id: number) => {
+    const reads = state.requests.length
+    await target.click()
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(`entry #${id}`)
+    expect(state.requests).toHaveLength(reads + 1)
+    const request = state.requests.at(-1)
+    expect(request?.searchParams.get("view")).toBe("entries")
+    expect(request?.searchParams.get("conversationId")).toBe("7")
+    expect(request?.searchParams.get("objectId")).toBe(String(id))
+    expect(request?.searchParams.get("limit")).toBe("25")
+    expect(request?.searchParams.has("cursor")).toBe(false)
+    expect(historyReads()).toHaveLength(1)
+  }
+  await select(inspectEntry(page, 160), 160)
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeEnabled()
+  await select(next, 169)
+  await expect(previous).toBeEnabled()
+  await expect(next).toBeEnabled()
+  await select(previous, 160)
+  await expect(previous).toBeDisabled()
+  await select(inspectEntry(page, 176), 176)
+  await expect(previous).toBeEnabled()
+  await expect(next).toBeDisabled()
+  await select(previous, 175)
+  const order = entries(page).getByRole("combobox", { name: "Entry order", exact: true })
+  const filter = history(page).getByRole("combobox", { name: "Record type", exact: true })
+  let reads = state.requests.length
+  await order.selectOption("newest")
+  await expectIds(entries(page), latestIds.toReversed())
+  expect(state.requests).toHaveLength(reads)
+  await select(previous, 176)
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeEnabled()
+  await select(next, 175)
+  reads = state.requests.length
+  await filter.selectOption("tools")
+  await expectIds(entries(page), [173, 171])
+  await expect(eventDetails(page)).toContainText(
+    "Selected entry does not match the loaded-page filters.",
+  )
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeDisabled()
+  expect(state.requests).toHaveLength(reads)
+  await select(inspectEntry(page, 171), 171)
+  await expect(previous).toBeEnabled()
+  await expect(next).toBeDisabled()
+  await select(previous, 173)
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeEnabled()
+  await select(next, 171)
+  reads = state.requests.length
+  await history(page)
+    .getByRole("searchbox", { name: "Search loaded page", exact: true })
+    .fill("SYNTHETIC TOOL OUTPUT")
+  await expectIds(entries(page), [173])
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeDisabled()
+  await expect(history(page)).toContainText("Page 1 · latest records")
+  expect(state.requests).toHaveLength(reads)
+  expect(historyReads()).toHaveLength(1)
+})
+
+for (const direction of [
+  { name: "Next", start: 170, target: 171, following: 172 },
+  { name: "Previous", start: 173, target: 172, following: 171 },
+])
+  test(`desktop ${direction.name} keeps keyboard focus after delayed entry reads`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const state = await durableFixture(
+      page,
+      `/?section=Durable&chat=42&view=history&conversationId=7&objectId=${direction.start}`,
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+    const button = eventDetails(page).getByRole("button", { name: direction.name, exact: true })
+    let release = () => {}
+    state.gates.set(
+      `/api/chats/42/durable:entries:${direction.target}`,
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const reads = state.requests.length
+    try {
+      await button.focus()
+      await page.keyboard.press("Enter")
+      await expect.poll(() => state.requests.length).toBe(reads + 1)
+      await expect(eventDetails(page)).toContainText("Loading entry…")
+      await expect(button).toBeFocused()
+      release()
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+        `entry #${direction.target}`,
+      )
+      await expect(button).toBeFocused()
+      await page.keyboard.press("Enter")
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+        `entry #${direction.following}`,
+      )
+      await expect(button).toBeFocused()
+      expect(state.requests).toHaveLength(reads + 2)
+      expect(
+        state.requests.filter((url) => url.searchParams.get("view") === "history"),
+      ).toHaveLength(1)
+    } finally {
+      release()
+    }
+  })
+
+for (const blur of [false, true])
+  test(`a completed entry read does not restore navigation after focus moves away (blur=${blur})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const state = await durableFixture(
+      page,
+      "/?section=Durable&chat=42&view=history&conversationId=7&objectId=170",
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText("entry #170")
+    let release = () => {}
+    state.gates.set(
+      "/api/chats/42/durable:entries:171",
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const reads = state.requests.length
+    try {
+      await eventDetails(page).getByRole("button", { name: "Next", exact: true }).focus()
+      await page.keyboard.press("Enter")
+      await expect.poll(() => state.requests.length).toBe(reads + 1)
+      const search = history(page).getByRole("searchbox", {
+        name: "Search loaded page",
+        exact: true,
+      })
+      await search.focus()
+      if (blur) await search.evaluate((element) => (element as HTMLElement).blur())
+      release()
+      await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText("entry #171")
+      if (blur)
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
+      else await expect(search).toBeFocused()
+      expect(state.requests).toHaveLength(reads + 1)
+    } finally {
+      release()
+    }
+  })
+
+for (const direction of [
+  { name: "Next", start: 175, target: 176, fallback: "Previous" },
+  { name: "Previous", start: 169, target: 160, fallback: "Next" },
+])
+  test(`desktop ${direction.name} keeps focus on an enabled control at a page boundary`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await durableFixture(
+      page,
+      `/?section=Durable&chat=42&view=history&conversationId=7&objectId=${direction.start}`,
+    )
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+    await eventDetails(page).getByRole("button", { name: direction.name, exact: true }).focus()
+    await page.keyboard.press("Enter")
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.target}`,
+    )
+    await expect(
+      eventDetails(page).getByRole("button", { name: direction.name, exact: true }),
+    ).toBeDisabled()
+    await expect(
+      eventDetails(page).getByRole("button", { name: direction.fallback, exact: true }),
+    ).toBeFocused()
+    await page.keyboard.press("Enter")
+    await expect(eventDetails(page).locator(".durable-detail-record-id")).toHaveText(
+      `entry #${direction.start}`,
+    )
+  })
+
+test("narrow entry navigation keeps keyboard focus and dialog close restores its opener", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await durableFixture(page, "/?section=Durable&chat=42&view=history&conversationId=7")
+  const opener = inspectEntry(page, 170)
+  await opener.click()
+  const dialog = page.getByRole("dialog", { name: "Event details", exact: true })
+  await expect(dialog.locator(".durable-detail-record-id")).toHaveText("entry #170")
+  const next = dialog.getByRole("button", { name: "Next", exact: true })
+  await next.focus()
+  await page.keyboard.press("Enter")
+  await expect(dialog.locator(".durable-detail-record-id")).toHaveText("entry #171")
+  await expect(next).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(opener).toBeFocused()
 })
 
 test("older and newer controls use native cursors and preserve partial-turn boundary context", async ({
@@ -576,6 +865,12 @@ test("missing objects, absent content, and truncated saved content remain explic
   )
   await expectIds(history(page), latestIds)
   await expect(eventDetails(page)).toContainText("Entry unavailable in this conversation.")
+  const navigation = eventDetails(page).getByRole("navigation", {
+    name: "Entry navigation",
+    exact: true,
+  })
+  await expect(navigation.getByRole("button", { name: "Previous", exact: true })).toBeDisabled()
+  await expect(navigation.getByRole("button", { name: "Next", exact: true })).toBeDisabled()
   const original = state.historyDetails.get("7:175")
   if (!original) throw new Error("Missing fixture history detail")
   const metadataOnly: DurableEntryItem = { ...original, content: undefined }

@@ -1,12 +1,17 @@
 import type { DurableEntryItem, DurableInspectionResponse } from "@narumitw/sumire-contracts"
-import { Cross2Icon } from "@radix-ui/react-icons"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  Cross2Icon,
+  MagnifyingGlassIcon,
+} from "@radix-ui/react-icons"
 import { Button, Dialog, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { ApiError } from "./api.js"
-import { EntryContent } from "./durable-entry-content.js"
 import {
   formatDurableTime,
   formatReadTime,
+  recordIcon,
   recordTitle,
   recordTone,
 } from "./durable-presentation.js"
@@ -65,6 +70,26 @@ export function matchesHistory(entry: DurableEntryItem, filter: HistoryFilter, q
   return fields.join("\n").toLowerCase().includes(needle)
 }
 
+export function entryPreview(entry: DurableEntryItem): string {
+  const text = entry.content?.messages
+    .flatMap((message) =>
+      message.content.flatMap((block) => {
+        if (block.type === "text") return [block.text]
+        if (block.type === "toolCall") return [`${block.name} · Arguments`]
+        if (block.type === "image")
+          return [`Image omitted · ${block.mimeType}. Image bytes are not sent.`]
+        return []
+      }),
+    )
+    .join("\n")
+  if (text) return text.slice(0, 320)
+  if (!entry.role) return `Stored event: ${entry.kind}. Internal payloads are not exposed.`
+  if (entry.content?.truncated) return "Content truncated · inspection limits were reached."
+  return entry.content
+    ? "No message content recorded."
+    : "Message content was not included in this response."
+}
+
 type Props = {
   conversationId: number
   data?: DurableInspectionResponse
@@ -77,7 +102,7 @@ type Props = {
   onPrevious(): void
   onNext(): void
   readEntry(id: number, signal: AbortSignal): Promise<DurableInspectionResponse>
-  renderDetail(entry: DurableEntryItem): ReactNode
+  renderDetail(entry: DurableEntryItem, navigation?: ReactNode): ReactNode
   onSessionExpired(): void
 }
 
@@ -97,6 +122,7 @@ export function DurableHistory({
   onSessionExpired,
 }: Props) {
   const [query, setQuery] = useState("")
+  const [newestFirst, setNewestFirst] = useState(false)
   const [filter, setFilter] = useState<HistoryFilter>("all")
   const [open, setOpen] = useState(selectedId !== undefined)
   const [denied, setDenied] = useState(false)
@@ -109,6 +135,28 @@ export function DurableHistory({
     unavailable?: boolean
   }>()
   const opener = useRef<HTMLAnchorElement | null>(null)
+  const previousButton = useRef<HTMLButtonElement>(null)
+  const nextButton = useRef<HTMLButtonElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const navigationFocus = useRef<
+    | {
+        id: number
+        control: "previous" | "next" | "close"
+      }
+    | undefined
+  >(undefined)
+  useEffect(() => {
+    const trackFocus = (event: FocusEvent) => {
+      const pending = navigationFocus.current
+      if (!pending) return
+      if (event.target === previousButton.current) pending.control = "previous"
+      else if (event.target === nextButton.current) pending.control = "next"
+      else if (event.target === closeButton.current) pending.control = "close"
+      else if (event.target !== document.body) navigationFocus.current = undefined
+    }
+    document.addEventListener("focusin", trackFocus)
+    return () => document.removeEventListener("focusin", trackFocus)
+  }, [])
   const ownerState = data?.state === "not-loaded" ? "not-loaded" : detailOwnerState
   const ownerUnavailable = ownerState !== undefined
   useEffect(() => {
@@ -173,6 +221,11 @@ export function DurableHistory({
         .filter((group) => group.entries.length > 0),
     [entries, filter, query],
   )
+  const displayedGroups = newestFirst
+    ? groups.toReversed().map((group) => ({ ...group, entries: group.entries.toReversed() }))
+    : groups
+  const displayedEntries = displayedGroups.flatMap((group) => group.entries)
+  const selectedIndex = displayedEntries.findIndex((entry) => entry.id === selectedId)
   const count = groups.reduce((sum, group) => sum + group.entries.length, 0)
   const activeDetail =
     data?.state === "loaded" && !error && !denied && !ownerUnavailable && detail?.id === selectedId
@@ -182,26 +235,66 @@ export function DurableHistory({
   const selectedVisible = groups.some((group) =>
     group.entries.some((entry) => entry.id === selectedId),
   )
+  useEffect(() => {
+    const pending = navigationFocus.current
+    if (!pending) return
+    if (!wide || !open || selectedId !== pending.id) {
+      navigationFocus.current = undefined
+      return
+    }
+    if (activeDetail || error || denied || ownerUnavailable) navigationFocus.current = undefined
+    if (document.activeElement !== document.body) return
+    const buttons =
+      pending.control === "previous"
+        ? [previousButton.current, nextButton.current, closeButton.current]
+        : pending.control === "next"
+          ? [nextButton.current, previousButton.current, closeButton.current]
+          : [closeButton.current, previousButton.current, nextButton.current]
+    buttons.find((button) => button && !button.disabled)?.focus({ preventScroll: true })
+  }, [activeDetail, selectedId, error, denied, ownerUnavailable, wide, open])
+  const selectAdjacent = (offset: number, button: HTMLButtonElement) => {
+    const entry = displayedEntries[selectedIndex + offset]
+    if (selectedIndex < 0 || !entry) return
+    navigationFocus.current =
+      wide && document.activeElement === button
+        ? { id: entry.id, control: offset < 0 ? "previous" : "next" }
+        : undefined
+    onSelect(entry.id)
+  }
+  const detailNavigation = (
+    <nav aria-label="Entry navigation" className="durable-entry-navigation durable-event-header">
+      <Button
+        variant="outline"
+        size="1"
+        ref={previousButton}
+        disabled={selectedIndex <= 0}
+        onClick={(event) => selectAdjacent(-1, event.currentTarget)}
+      >
+        <ChevronLeftIcon aria-hidden /> Previous
+      </Button>
+      <Button
+        variant="outline"
+        size="1"
+        ref={nextButton}
+        disabled={selectedIndex < 0 || selectedIndex >= displayedEntries.length - 1}
+        onClick={(event) => selectAdjacent(1, event.currentTarget)}
+      >
+        Next <ChevronRightIcon aria-hidden />
+      </Button>
+      <Button
+        variant="ghost"
+        size="1"
+        aria-label="Close event details"
+        ref={closeButton}
+        onClick={() => setOpen(false)}
+      >
+        <Cross2Icon aria-hidden />
+      </Button>
+    </nav>
+  )
   const detailContent = (
     <>
-      <Flex justify="between" align="center" gap="2" className="durable-event-header">
-        {wide && (
-          <div>
-            <Heading as="h3" size="3">
-              Event details
-            </Heading>
-            <Text size="1">Inspected conversation {conversationId}</Text>
-          </div>
-        )}
-        <Button
-          variant="soft"
-          size="1"
-          aria-label="Close event details"
-          onClick={() => setOpen(false)}
-        >
-          <Cross2Icon aria-hidden /> Close
-        </Button>
-      </Flex>
+      {(!wide || !activeDetail?.entry) && detailNavigation}
       {denied ? (
         <Text as="p" role="alert">
           Permission denied. Refresh records to retry.
@@ -241,7 +334,7 @@ export function DurableHistory({
               Selected entry does not match the loaded-page filters.
             </Text>
           )}
-          {renderDetail(activeDetail.entry)}
+          {renderDetail(activeDetail.entry, wide ? detailNavigation : undefined)}
           {activeDetail.readAt && (
             <Text as="p" size="1" className="durable-read-time">
               Entry read time: {formatReadTime(activeDetail.readAt)}
@@ -253,193 +346,229 @@ export function DurableHistory({
   )
 
   return (
-    <div className="durable-history-workspace" data-details={open && wide}>
-      <section aria-label="Conversation history" className="durable-conversation-history">
-        <header className="durable-history-heading">
-          <Heading as="h3" size="4">
-            History · conversation {conversationId}
-          </Heading>
-          <Text as="p" size="2">
-            Saved model-facing messages, not a Telegram archive or captured request. Entries read
-            from oldest to newest within this page.
-          </Text>
-        </header>
-        <div className="durable-history-filters">
-          <label htmlFor="durable-history-search">
-            Search loaded page
-            <TextField.Root
-              id="durable-history-search"
-              type="search"
-              maxLength={512}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <label htmlFor="durable-history-role">
-            Record type
-            <select
-              id="durable-history-role"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value as HistoryFilter)}
-            >
-              <option value="all">All records</option>
-              <option value="user">User</option>
-              <option value="assistant">Assistant</option>
-              <option value="tools">Tools</option>
-              <option value="other">System & internal</option>
-            </select>
-          </label>
-        </div>
-        <Text as="p" size="1" role="status">
-          {count} matching / {entries.length} loaded records · filters search this page only.
+    <section
+      aria-label="Conversation history"
+      className="durable-history-workspace"
+      data-details={open && wide}
+    >
+      <div className="durable-history-filters">
+        <label htmlFor="durable-history-search">
+          <span className="durable-search-label">Search loaded page</span>
+          <TextField.Root
+            id="durable-history-search"
+            type="search"
+            placeholder="Search messages in this conversation…"
+            maxLength={512}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          >
+            <TextField.Slot>
+              <MagnifyingGlassIcon aria-hidden />
+            </TextField.Slot>
+          </TextField.Root>
+        </label>
+        <label htmlFor="durable-history-role">
+          Record type
+          <select
+            id="durable-history-role"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as HistoryFilter)}
+          >
+            <option value="all">All records</option>
+            <option value="user">User</option>
+            <option value="assistant">Assistant</option>
+            <option value="tools">Tools</option>
+            <option value="other">System & internal</option>
+          </select>
+        </label>
+        <Text as="p" size="1" role="status" className="durable-match-count">
+          {count} matching / {entries.length} loaded records
         </Text>
-        {selectedId !== undefined && !open && (
-          <Button variant="soft" onClick={() => setOpen(true)}>
-            Open event details
-          </Button>
-        )}
-        {error || denied ? (
-          <Text as="p" role="alert">
-            {denied ? "Permission denied. Refresh records to retry." : error}
-          </Text>
-        ) : !data ? (
-          <Text as="p" role="status">
-            Loading history…
-          </Text>
-        ) : ownerUnavailable ? (
-          <Text as="p">
-            {ownerState === "not-loaded"
-              ? "Not loaded. Inspection will not open a database or start a session."
-              : "Session or inspection changed. Refresh records to retry."}
-          </Text>
-        ) : !entries.length ? (
-          <Text as="p">No saved entries on this page.</Text>
-        ) : !count ? (
-          <Text as="p">
-            No matches on the loaded page. Change the filters or open another page.
-          </Text>
-        ) : (
-          <div className="durable-turns">
-            {groups.map((group) => (
-              <section
-                key={group.id}
-                aria-label={
-                  group.userTurn ? `User turn ${group.id}` : "Earlier context on this page"
-                }
-                className="durable-turn"
-              >
-                <Heading as="h4" size="2">
-                  {group.userTurn
-                    ? `User turn · entry ${group.id}`
-                    : "Earlier context on this page"}
-                </Heading>
-                {!group.userTurn && (
-                  <Text as="p" size="1">
-                    The preceding user turn is not on this page, or these records precede a user
-                    turn.
-                  </Text>
-                )}
-                {group.entries.map((entry) => (
-                  <article
-                    key={entry.id}
-                    className={`durable-history-entry durable-role-${recordTone(entry)}`}
-                    data-selected={entry.id === selectedId}
-                  >
-                    <header className="durable-history-entry-heading">
-                      <strong>{recordTitle(entry)}</strong>
-                      <span className="durable-record-id">#{entry.id}</span>
-                      {entry.timestamp !== undefined && (
-                        <time>{formatDurableTime(entry.timestamp)}</time>
-                      )}
-                    </header>
-                    {entry.conversationId !== conversationId && (
-                      <Text as="p" size="1">
-                        Inherited from conversation {entry.conversationId}
-                      </Text>
-                    )}
-                    {entry.content ? (
-                      <EntryContent
-                        content={entry.content}
-                        toolName={entry.toolName}
-                        collapseTools
-                      />
-                    ) : (
-                      <Text as="p">Message content was not included in this response.</Text>
-                    )}
-                    {!entry.role && (
-                      <Text as="p" size="1">
-                        Stored event: {entry.kind}. Internal payloads are not exposed.
-                      </Text>
-                    )}
-                    <a
-                      href={entryHref(entry.id)}
-                      aria-current={entry.id === selectedId ? "true" : undefined}
-                      onClick={(event) => {
-                        if (
-                          event.button !== 0 ||
-                          event.metaKey ||
-                          event.ctrlKey ||
-                          event.shiftKey ||
-                          event.altKey
-                        )
-                          return
-                        event.preventDefault()
-                        opener.current = event.currentTarget
-                        setOpen(true)
-                        onSelect(entry.id)
-                      }}
-                    >
-                      Inspect entry {entry.id}
-                    </a>
-                  </article>
-                ))}
-              </section>
-            ))}
+      </div>
+      <div className="durable-history-layout">
+        <section aria-label="Conversation entries" className="durable-conversation-history">
+          {selectedId !== undefined && !open && (
+            <Button variant="soft" onClick={() => setOpen(true)}>
+              Open event details
+            </Button>
+          )}
+          <div className="durable-entry-list-header">
+            <Heading as="h3" size="3">
+              Conversation entries ({entries.length})
+            </Heading>
+            <select
+              aria-label="Entry order"
+              value={newestFirst ? "newest" : "oldest"}
+              onChange={(event) => setNewestFirst(event.target.value === "newest")}
+            >
+              <option value="oldest">Oldest first</option>
+              <option value="newest">Newest first</option>
+            </select>
           </div>
+          {error || denied ? (
+            <Text as="p" role="alert">
+              {denied ? "Permission denied. Refresh records to retry." : error}
+            </Text>
+          ) : !data ? (
+            <Text as="p" role="status">
+              Loading history…
+            </Text>
+          ) : ownerUnavailable ? (
+            <Text as="p">
+              {ownerState === "not-loaded"
+                ? "Not loaded. Inspection will not open a database or start a session."
+                : "Session or inspection changed. Refresh records to retry."}
+            </Text>
+          ) : !entries.length ? (
+            <Text as="p">No saved entries on this page.</Text>
+          ) : !count ? (
+            <Text as="p">
+              No matches on the loaded page. Change the filters or open another page.
+            </Text>
+          ) : (
+            <div className="durable-turns">
+              {displayedGroups.map((group) => (
+                <section
+                  key={group.id}
+                  aria-label={
+                    group.userTurn ? `User turn ${group.id}` : "Earlier context on this page"
+                  }
+                  className="durable-turn"
+                >
+                  <Heading as="h4" size="2">
+                    {group.userTurn
+                      ? `User turn · entry ${group.id}`
+                      : "Earlier context on this page"}
+                  </Heading>
+                  {!group.userTurn && (
+                    <Text as="p" size="1">
+                      The preceding user turn is not on this page, or these records precede a user
+                      turn.
+                    </Text>
+                  )}
+                  {group.entries.map((entry) => {
+                    const Icon = recordIcon(entry)
+                    return (
+                      <article
+                        key={entry.id}
+                        className={`durable-history-entry durable-role-${recordTone(entry)}`}
+                        data-selected={entry.id === selectedId}
+                      >
+                        <header>
+                          <a
+                            href={entryHref(entry.id)}
+                            aria-label={`Inspect entry ${entry.id}`}
+                            aria-current={entry.id === selectedId ? "true" : undefined}
+                            onClick={(event) => {
+                              if (
+                                event.button !== 0 ||
+                                event.metaKey ||
+                                event.ctrlKey ||
+                                event.shiftKey ||
+                                event.altKey
+                              )
+                                return
+                              event.preventDefault()
+                              opener.current = event.currentTarget
+                              setOpen(true)
+                              onSelect(entry.id)
+                            }}
+                          >
+                            <span className="durable-role-icon">
+                              <Icon aria-hidden />
+                            </span>
+                            <span className="durable-history-row-body">
+                              <span className="durable-history-entry-heading">
+                                <strong>{recordTitle(entry)}</strong>
+                                <span className="durable-record-id">#{entry.id}</span>
+                                {entry.timestamp !== undefined && (
+                                  <time>{formatDurableTime(entry.timestamp)}</time>
+                                )}
+                              </span>
+                              <span className="durable-history-preview">{entryPreview(entry)}</span>
+                              {entry.content?.truncated && (
+                                <span className="durable-preview-note">
+                                  Content truncated · inspection limits were reached.
+                                </span>
+                              )}
+                              {entry.conversationId !== conversationId && (
+                                <span className="durable-preview-note">
+                                  Inherited from conversation {entry.conversationId}
+                                </span>
+                              )}
+                            </span>
+                          </a>
+                        </header>
+                      </article>
+                    )
+                  })}
+                </section>
+              ))}
+            </div>
+          )}
+          <header className="durable-history-heading">
+            <Heading as="h3" size="4">
+              History · conversation {conversationId}
+            </Heading>
+            <Text as="p" size="2">
+              Saved model-facing messages, not a Telegram archive or captured request. Entries read
+              in {newestFirst ? "newest-first" : "oldest-first"} order within this page. Filters
+              search this page only.
+            </Text>
+          </header>
+          {data?.truncated && (
+            <Text as="p" role="status">
+              History truncated · content or page limits were reached. Use Event details or Older
+              records for available saved data.
+            </Text>
+          )}
+          <Flex gap="3" wrap="wrap" align="center" className="durable-history-pages">
+            <Button
+              variant="soft"
+              disabled={page === 1 || !data || Boolean(error) || denied || ownerUnavailable}
+              onClick={onPrevious}
+            >
+              Newer records
+            </Button>
+            <Button
+              variant="soft"
+              disabled={
+                data?.state !== "loaded" ||
+                !data.nextCursor ||
+                Boolean(error) ||
+                denied ||
+                ownerUnavailable
+              }
+              onClick={onNext}
+            >
+              Older records
+            </Button>
+            <Text size="2">
+              Page {page}
+              {page === 1 ? " · latest records" : " · older records"}
+            </Text>
+          </Flex>
+          {data && (
+            <Text as="p" size="1" className="durable-read-time">
+              History read time: {formatReadTime(data.readAt)}
+            </Text>
+          )}
+        </section>
+        {wide && (
+          <aside aria-label="Event details" className="durable-event-details">
+            {open && selectedId !== undefined ? (
+              detailContent
+            ) : (
+              <div className="durable-event-placeholder">
+                <Heading as="h3" size="3">
+                  Entry details
+                </Heading>
+                <Text as="p">Select a conversation entry to read its saved content.</Text>
+              </div>
+            )}
+          </aside>
         )}
-        {data?.truncated && (
-          <Text as="p" role="status">
-            History truncated · content or page limits were reached. Use Event details or Older
-            records for available saved data.
-          </Text>
-        )}
-        <Flex gap="3" wrap="wrap" align="center" className="durable-history-pages">
-          <Button
-            variant="soft"
-            disabled={page === 1 || !data || Boolean(error) || denied || ownerUnavailable}
-            onClick={onPrevious}
-          >
-            Newer records
-          </Button>
-          <Button
-            variant="soft"
-            disabled={
-              data?.state !== "loaded" ||
-              !data.nextCursor ||
-              Boolean(error) ||
-              denied ||
-              ownerUnavailable
-            }
-            onClick={onNext}
-          >
-            Older records
-          </Button>
-          <Text size="2">
-            Page {page}
-            {page === 1 ? " · latest records" : " · older records"}
-          </Text>
-        </Flex>
-        {data && (
-          <Text as="p" size="1" className="durable-read-time">
-            History read time: {formatReadTime(data.readAt)}
-          </Text>
-        )}
-      </section>
-      {wide && open && selectedId !== undefined && (
-        <aside aria-label="Event details" className="durable-event-details">
-          {detailContent}
-        </aside>
-      )}
+      </div>
       {!wide && (
         <Dialog.Root open={open && selectedId !== undefined} onOpenChange={setOpen}>
           <Dialog.Content
@@ -460,6 +589,6 @@ export function DurableHistory({
           </Dialog.Content>
         </Dialog.Root>
       )}
-    </div>
+    </section>
   )
 }

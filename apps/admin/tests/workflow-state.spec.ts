@@ -171,6 +171,11 @@ test("record refresh reads only records, retains drafts, retries failures, and c
     page.getByRole("button", { name: "Review and save changes", exact: true }),
   ).toBeVisible()
   await expect(page.getByRole("button", { name: "Refresh records", exact: true })).toBeEnabled()
+  await expect(
+    page
+      .getByRole("region", { name: "Conversation entries", exact: true })
+      .getByRole("link", { name: "Inspect entry 170", exact: true }),
+  ).toBeVisible()
   state.expired = true
   await page.getByRole("button", { name: "Refresh records", exact: true }).click()
   await expect(
