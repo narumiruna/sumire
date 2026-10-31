@@ -1,5 +1,22 @@
 # @narumitw/sumire-admin
 
+## 0.11.0
+
+### Minor Changes
+
+- fec4129: Restyle administration to match the conversation-records reference with a light green sidebar, breadcrumbs, chat identity, and a three-part context strip. Present the existing bounded History results as a compact entry list with text previews, loaded-page filtering, ordering, and previous/next entry navigation. Retain upstream pagination, branch inspection, raw collections, read-only access, and mobile detail dialogs. Keep keyboard focus on desktop entry controls during detail reads, and preserve the compact chat and settings headers.
+- e9235ee: Add a read-only Conversation History with saved message content, user-turn groups, loaded-page filters, and responsive Event details. Retain branch inspection and existing object links. Add bounded, ancestry-scoped history API reads and stable entry continuation tokens without changing durable state or starting model work.
+
+### Patch Changes
+
+- 6cf870a: Remove the chat directory's nested scrollbar and height limit. Use page scrolling at every viewport size and preserve the scroll position when returning from chat details.
+- 428ee7d: Simplify chat administration with one directory or detail pane at every screen width, a shared chat actions menu, and compact overview rows. Preserve drafts, navigation, warnings, and directory focus and scroll; keep all four chat tabs visible on narrow screens.
+- 461a8f3: Merge chat access management into Chats and show a compact, responsive directory with right-aligned three-dot menus. Stage per-chat access grants, revocations, and undo actions without changing chat settings or saving automatically. Preserve manual approval, complete access lists, legacy links, and editor drafts.
+  
+  Avoid a redundant GitHub status refresh after saving the public Client ID so the application retry button does not become disabled again during a click.
+- Updated dependencies [e9235ee]
+  - @narumitw/sumire-contracts@0.9.0
+
 ## 0.10.0
 
 ### Minor Changes

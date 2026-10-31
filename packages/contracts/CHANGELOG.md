@@ -1,5 +1,11 @@
 # @narumitw/sumire-contracts
 
+## 0.9.0
+
+### Minor Changes
+
+- e9235ee: Add a read-only Conversation History with saved message content, user-turn groups, loaded-page filters, and responsive Event details. Retain branch inspection and existing object links. Add bounded, ancestry-scoped history API reads and stable entry continuation tokens without changing durable state or starting model work.
+
 ## 0.8.0
 
 ### Minor Changes
