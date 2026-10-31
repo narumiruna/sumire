@@ -2,7 +2,7 @@
 
 ## Outcome
 
-**Do not release the Bun migration.** Application compatibility task 2 still fails: the pinned impers/Koffi request path crashes the official Bun executable on Debian Bookworm. Docker access is restored. Follow-up probes qualify an inherited environment-file guard and pass four Bookworm worker-shutdown cases, but the original host shutdown risk remains. No runtime implementation was migrated.
+**Do not release the Bun migration.** Application compatibility task 2 still fails: the pinned impers/Koffi request path crashes Bun on Debian Bookworm, and later codemode cancellation cases leave workers running on that target. Docker access is restored. Native transport replacement is approved and under investigation; the separate codemode process-isolation proposal needs a scope decision. No runtime implementation was migrated.
 
 No application source, dependency manifest, lockfile, runtime entrypoint, workflow, Docker configuration, or environment-variable name was changed. Node.js remains the supported repository runtime. This report records partial qualification, not completion of the [migration plan](../2026-10-30_bun-migration-plan.md).
 
@@ -74,9 +74,9 @@ These are disposable probes against the pinned baseline dependencies. They are n
 | Dependency updates | Local registry fixtures verify Bun recursive/latest/exact dry runs without writes and disposable updates followed by frozen install. The repository's automatic security updates are disabled; preserve its current weekly version-update flow with Bun. Do not claim Bun security-update support. |
 | Pi environment/storage | Pinned Node-API adapters execute under Bun. Transactions, SQL functions, iteration, backup progress/deadlines, legacy imports, encrypted settings, and restart/crash recovery pass synthetic probes. |
 | Cross-runtime state | Copied Node-created admin, runtime settings, durable, GitHub, and transaction state opens under Bun. Previous Node reads Bun-written copies with matching schema/encryption. DELETE hot-journal and WAL crash fixtures recover committed state under both runtimes; uncommitted writes do not survive. No live state is used. |
-| Pi tools/image/codemode | Real file tools, Photon processing, local-fixture Harness work, native codemode, replay, and bounded CPU-loop abort/timeout probes pass. Four Bookworm native-operation shutdown cases also pass; the same executable still exceeds the original host shutdown bound. See the platform limits below. |
+| Pi tools/image/codemode | Real file tools, Photon processing, local-fixture Harness work, replay, and CPU-loop cancellation pass. **Blocked:** later cancellation of non-polling native operations leaves workers running on both hosts, including single-CPU Bookworm. Earlier passing cases do not define a safe support boundary. |
 | Authorization at spawn | Six real production-factory cases pass: direct bash and codemode each allow authorized execution and reject policy revocation or credential replacement at environment materialization immediately before spawn. This does not solve automatic `.env` loading. |
-| AnyDoc `0.2.4` | Real CSV/DOCX/PPTX/XLSX/PDF conversion passes, both directly and through the application child. Eval arguments, stdin, Markdown truncation, malformed PDF, pre-abort, in-flight abort, and timeout pass. Actual descendant termination and every streaming failure bound are not established by these probes. |
+| AnyDoc `0.2.4` | A disposable Linux source adaptation passes 79 focused tests on host and non-root Bookworm, 23 converter/capacity tests, and 11 direct conversion/failure probes. Actual grandchildren stop on abort, timeout, output/error paths, and leader exit; byte/diagnostic bounds and settlement after close pass. The original source leaves a grandchild running. The adaptation is not integrated; other platforms remain unqualified. |
 | PDF parsing | Actual application `readPdfContent()` with `pdf-parse 2.4.5` reads the local PDF fixture under Bun. |
 | Koffi/libcurl | **Blocked:** the same local public impers request passes Node 26.11.1 and aborts Bun 1.4.4 with exit 134 at `uv_poll_init_socket`, on both the original host and non-root Bookworm containers. |
 | Telemetry | The actual application logger and pinned SDK export to a local collector. Manual spans, redaction, forceFlush, shutdown, and repeated shutdown pass. No Logfire service is contacted. |
@@ -90,6 +90,7 @@ These are disposable probes against the pinned baseline dependencies. They are n
 - An earlier adapted full run and a focused GitHub-auth API run intermittently time out in server shutdown after a streamed-size-limit test. The final adapted full run passes, but this integration risk remains open; one successful repeat does not establish stability.
 - Root/workspace orchestration must make dependency order and lifecycle work explicit. Do not rely on npm pre/post-hook semantics in Bun.
 - A supported shell adapter is now qualified in disposable copies: set the internal constant `BUN_OPTIONS: "--no-env-file"` in the restricted environment, without forwarding or appending host Bun flags. Repeated probes cover 28 CLI/descendant cases, 6 root/worker/fork observations, 30 real Harness bash/codemode cases, and 32 existing tests. Six Bookworm container controls also pass. This prevents automatic loading, not deliberate `--env-file`, file reads, or removing the option; it is not filesystem isolation. No project adapter was applied.
+- AnyDoc children need explicit `--no-env-file` and owned POSIX process groups. A qualified disposable adaptation kills the group on timeout, abort, output/error failure, and leader exit, and still settles only after stdio close. Real descendant tests verify absent PIDs/groups and no delayed mutation. This is Linux lifecycle cleanup, not containment of arbitrary executable code or deliberate group escape. Windows retains its previous direct-child behavior and is not qualified for descendants. Integrate the Bun-only adaptation with the runtime migration, not the current Node entrypoint.
 - Root entrypoints must disable automatic loading and select only the root `.env` explicitly. A restricted `child_process.fork()` from that host also needs clean `execArgv`, or it reloads the explicitly selected file despite a clean environment. The inspected application has no direct fork use. Bunfig settings do not protect a changed cwd. `BUN_CONFIG_NO_ENVFILE=1` does not work; do not use it as a security control.
 
 ### Native polling blocker
@@ -142,15 +143,31 @@ panic(main thread): unsupported uv function: uv_poll_init_socket
 
 [Upstream Bun issue #18546](https://github.com/oven-sh/bun/issues/18546) remains unresolved. The [pinned Bun 1.4.4 source](https://github.com/oven-sh/bun/blob/bun-v1.4.4/src/jsc/bindings/uv-posix-stubs.c#L1103-L1127) unconditionally rejects POSIX poll initialization, start, and stop. The inspected main source also retains these stubs. Four fresh public API probes abort: shared `get`, a dedicated HTTP/1.1 streaming Session with AbortSignal, public `impers.fetch`, and independent `koffi.node.poll` without impers/libcurl. The Bookworm request test rules out the host's glibc version as a sufficient fix.
 
-`SessionOptions` exposes no supported alternate poller. Pool/protocol settings and its fallback timer do not replace native polling. A synchronous Curl call would block the application's in-process validating proxy and timer/signal delivery; a buffered replacement would not preserve streaming limits. Any replacement must retain impersonation, cookies, address/redirect defenses, byte limits, cancellation, and pool ownership. No replacement, private-field patch, or dependency-output change was implemented.
+`SessionOptions` exposes no supported alternate poller. Pool/protocol settings and its fallback timer do not replace native polling. A synchronous Curl call would block the application's in-process validating proxy and timer/signal delivery; a buffered replacement would not preserve streaming limits. Any replacement must retain impersonation, cookies, address/redirect defenses, byte limits, cancellation, and pool ownership. The user approved native transport replacement/dependency changes on 2026-10-31. No repository replacement, private-field patch, or dependency-output change was implemented.
 
-### Codemode termination: host risk and target checks
+Follow-up research found no compatible maintained replacement among the examined releases. `impers 0.1.3` retains the failing driver and also changes native profiles and the pinned library release; it is not a compatible polling fix. A disposable primitive using the retained Koffi `3.3.1` and libcurl `2.2.2` passes live streaming, event-loop progress, and clean exit with `curl_multi_perform` plus asynchronous `curl_multi_poll`. A complete driver must serialize handle mutations, cancellation, and cleanup around native polling and preserve callback safety. This primitive is not transport acceptance. Portable archive delivery, public types, security, and lifecycle remain required.
+
+### Codemode termination: confirmed target blocker
 
 On the original host, the QuickJS expression `('a'.repeat(32 * 1024 * 1024)).indexOf('a'.repeat(32768) + 'b')` returns timeout and sandbox close near 151 ms, but its worker remains alive after 652 ms. The host exceeds the 3-second external bound. Previous Node.js `26.11.1` reports actual worker exit near 155 ms and exits 0.
 
-On Bookworm, the original case and three larger/different string-operation cases all exit 0 within the same 3-second host bound. Actual worker exits occur at 247–403 ms in the final runs; none is OOM-killed. Both the installed and image Bun binaries have SHA-256 `10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235`. Running each matching binary again on the original host still exceeds the deadline (external timeout exit 124). The difference is environment-dependent; its cause is not established.
+On Bookworm, the original case and three larger/different string-operation cases all exit 0 within the same 3-second host bound. Actual worker exits occur at 247–403 ms in the final runs; none is OOM-killed. Both the installed and image Bun binaries have SHA-256 `10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235`. Running each matching binary again on the original host still exceeds the deadline (external timeout exit 124). The earlier difference is environment-dependent. Follow-up controls now also reproduce the failure on Bookworm.
 
-Do not present the initial host failure as a failed Bookworm test. The target cases pass, but they do not establish a general cross-platform shutdown guarantee or clear the observed host risk. Preserve actual worker-exit checks and Pi Harness ownership; a returned timeout alone is insufficient.
+The follow-up contains 105 bounded controls. Each decisive case ran three times:
+
+| Control | Result |
+| --- | --- |
+| Exact original, Bookworm with one-CPU quota | Actual workers exit at 291–313 ms. |
+| Exact original, same image without CPU quota | No worker exits before the external 3-second bound. |
+| Ready-instrumented 1,000 ms deadline, Bookworm with or without quota | Results settle near 1,003–1,005 ms; workers do not exit before the bound. |
+| Deterministic native `start()`, abort 1,000 ms after readiness, Bookworm with or without quota | Native fingerprints and abort results arrive; workers do not exit before the bound. |
+| Separate Bun helper, SIGKILL and actual process-exit wait | All 15 host/Bookworm controls pass; the helper PID is absent after exit. |
+
+Readiness is observed before the risky computation and cancellation. All owned containers were inspected and removed; none was OOM-killed. CPU restriction and Bookworm do not provide a safe settings-only solution. The exact CPU/JIT cause is not established.
+
+The pinned Pi codemode README states that result and `close()` settlement do not guarantee worker termination. Bun's tagged worker implementation requests termination at the next safepoint; it exposes no documented hard-stop guarantee for these workers. Preserve Sumire's actual worker-death wait and Harness ownership. Do not remove that wait, reduce memory/string capability, or lower deadlines to reproduce a favorable timing window.
+
+A candidate adapter would keep the native `CodemodeSandbox.start()` engine in a per-execution Bun helper. The parent Harness would retain tools, authorization, journal, replay, fingerprints, deadlines, and scheduling. The parent must bound structured IPC, stop the helper, await actual process death, retain admission capacity until death, and prevent orphans after parent failure. The qualified kill primitive is not an implemented adapter or integrated acceptance. This codemode-host change is separate from the approved native network transport change and needs a scope decision.
 
 ### Dependency automation limitation
 
@@ -169,7 +186,7 @@ Docker Engine **29.7.2** on Docker Desktop **4.90.0** now reaches its daemon on 
 | Qualification image build and identity | 0 | Non-root Bookworm, official pinned Bun, no Node fallback. |
 | Real impers/Koffi local request | 134 | Unsupported `uv_poll_init_socket`; not an OOM or timeout. |
 | Separate Node 26.11.1 Bookworm control | 0 | Same dependencies, native library, request, non-root user, and loopback-only network. This is a previous-runtime comparison, not a Bun fallback. |
-| Four native codemode shutdown cases | 0 | Actual worker exits and host exit within the 3-second bound; host/platform risk remains as described above. |
+| Four initial native codemode shutdown cases | 0 | Actual exits pass for these cases only. Later repeated controls fail on the same Bookworm image, including with its original CPU quota. |
 | AnyDoc native/application child conversions | 0 | Five formats, real child stdin/eval, truncation, malformed PDF, abort, and timeout. |
 | Application PDFParse | 0 | Real local PDF conversion. |
 | Application telemetry | 0 | Local export, redaction, forceFlush, and repeated shutdown. |
@@ -217,7 +234,7 @@ The native request is expected to abort with exit 134, not pass. The complete lo
 
 ## Remaining gates and release restrictions
 
-Tasks 1 and 3 are complete with their evidence and limits recorded. Task 2 remains blocked by native compatibility and the observed host lifecycle risk. Dependency/entrypoint/test/container/automation/guidance migration tasks and all integrated completion checks remain open. The empty changeset covers this evidence-only PR; it does not replace implementation version bumps.
+Tasks 1 and 3 are complete with their evidence and limits recorded. Task 2 remains blocked by native compatibility and confirmed target worker-lifecycle failures. Dependency/entrypoint/test/container/automation/guidance migration tasks and all integrated completion checks remain open. The empty changeset covers this evidence-only PR; it does not replace implementation version bumps.
 
 Production images, full non-root runtime checks, Compose health/restart, media/browser tools, direct packaged binaries/MCP, full browser/comparison flows, production-only Bun installs, install-script trust, and the final no-Node execution audit are **unverified**. Docker access is no longer the blocker; those checks depend on the preceding migration gates.
 
@@ -227,10 +244,10 @@ No package manager/runtime configuration is partially migrated. Leave the origin
 
 | Responsible role | Required action | Restriction until verified |
 | --- | --- | --- |
-| Implementation owner and upstream runtime/native maintainers | Establish a supported Bun-only native polling path; resolve the host lifecycle risk or define a verified support boundary; repeat task 2. Any replacement binding/transport needs a separately reviewed scope and compatibility decision. | Do not retain Node fallback, remove capabilities, or weaken security/lifecycle acceptance. |
+| Implementation owner and upstream runtime/native maintainers | Qualify the approved Bun-only native transport replacement. Obtain a scope decision for a codemode process-isolation adapter or establish an upstream hard-stop fix, then repeat task 2. | Do not retain Node fallback, remove capabilities, or weaken security/lifecycle acceptance. |
 | Implementation owner | Complete explicit environment-file isolation for every managed Bun launcher and direct executable, then pass the existing security contracts and actual child probes. | A sanitized parent environment alone is not sufficient. |
 | Release/deployment operators | After all agent gates pass, retain an immutable previous image and consistent backups, then perform the separately authorized release/canary checks described in the plan. | No live acceptance, public publisher, provenance, or authentication result is established here. |
 
 No production state changed, so no production rollback is required. Keep the current Node source/image and lockfile together. Any future rollout must preserve database schemas, encryption material, mounts, ownership, and a single state owner; stop the service before consistent backups. Never remove volumes as a rollback method.
 
-Detailed disposable evidence is retained locally under `/tmp/sumire-bun-validation.tgbTZ3/`: the original baseline/application/tooling/native reports; `container/results.md`, `env-followup/results.md`, and `native-followup/results.md`; command logs, container state, package inventories/archives, and untouched Node-created synthetic fixtures. Those temporary paths are not a portable artifact or a substitute for the unresolved gates; the outcomes and critical reproducer are retained in this document.
+Detailed disposable evidence is retained locally under `/tmp/sumire-bun-validation.tgbTZ3/`: the original baseline/application/tooling/native reports; `container/results.md`, `env-followup/results.md`, `native-followup/results.md`, `lifecycle-followup/results.md`, `anydoc-followup/results.md`, and `transport-research/results.md`; command logs, container state, package inventories/archives, and untouched Node-created synthetic fixtures. Those temporary paths are not a portable artifact or a substitute for the unresolved gates; the outcomes and critical reproducer are retained in this document.
