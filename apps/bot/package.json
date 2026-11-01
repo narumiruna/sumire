@@ -45,7 +45,7 @@
     "@narumitw/sumire-progress": "0.3.2",
     "@narumitw/sumire-runtime-config": "0.2.0",
     "@narumitw/sumire-url-reader": "0.26.0",
-    "@pydantic/logfire-node": "0.18.30",
+    "@pydantic/logfire-node": "0.19.2",
     "@simplewebauthn/server": "14.0.3",
     "grammy": "1.46.0",
     "playwright": "1.64.1",
