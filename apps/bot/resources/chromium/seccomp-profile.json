@@ -40,6 +40,12 @@
       "excludes": {}
     },
     {
+      "comment": "Return ENOSYS so runtimes fall back to the existing clone policy",
+      "names": ["clone3"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 38
+    },
+    {
       "names": [
         "accept",
         "accept4",

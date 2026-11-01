@@ -9,6 +9,7 @@ vi.mock("node:child_process", () => ({ spawn: vi.fn() }))
 
 afterEach(() => {
   vi.resetAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -63,13 +64,34 @@ describe("shared AnyDoc child", () => {
     },
   )
 
+  it.each([undefined, "1.4.4"])(
+    "disables automatic .env loading only for Bun children (version: %s)",
+    async (bun) => {
+      vi.stubGlobal("process", { ...process, versions: { ...process.versions, bun } })
+      const child = fakeChild()
+      vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)
+      const result = runAnyDocChild(Buffer.from("a,b"), "data.csv", 100, 1000)
+      const call = vi.mocked(spawn).mock.calls[0]
+      expect(call?.[0]).toBe(process.execPath)
+      const args = call?.[1] as readonly string[]
+      expect(args.slice(0, args.indexOf("--eval") + 1)).toEqual([
+        ...(bun ? ["--no-env-file"] : []),
+        "--input-type=module",
+        "--eval",
+      ])
+      child.stdout.emit("data", Buffer.from(JSON.stringify({ ok: true, markdown: "table" })))
+      child.emit("close", 0, null)
+      await expect(result).resolves.toMatchObject({ ok: true, markdown: "table" })
+    },
+  )
+
   it("resolves the adapter relative to its package and explicitly disables hosted OCR", async () => {
     const child = fakeChild()
     vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)
     const controller = new AbortController()
     const result = runAnyDocChild(Buffer.from("a,b"), "data.csv", 100, 1000, controller.signal)
     const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[]
-    expect(args[2]).toContain('ocr: "reject"')
+    expect(args[args.indexOf("--eval") + 1]).toContain('ocr: "reject"')
     expect(args.at(-1)).toBe(import.meta.resolve("@firecrawl/anydoc"))
     expect(args.at(-1)).toMatch(/^file:/u)
     child.stdout.emit(

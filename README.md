@@ -62,7 +62,7 @@ See the [TypeScript app README](apps/bot/README.md) for local development, confi
 
 ## Node workspaces
 
-Use Node.js 26 or newer for local commands. CI, release workflows, and Docker images use Node.js 26.
+Use Node.js 26 or newer for local commands. CI, release workflows, and Docker builds use Node.js 26. The Docker bot and healthcheck run on Bun 1.4.4; Node.js remains installed for codemode VM isolation and external CLIs; npm remains available for those CLIs.
 
 The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/bot`.
 
