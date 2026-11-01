@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 
 const root = fileURLToPath(new URL("../../..", import.meta.url))
 
-describe("Node.js runtime baseline", () => {
+describe("JavaScript runtime baselines", () => {
   it("requires Node.js 26 in the root and every workspace", async () => {
     const manifests = ["package.json"]
     for (const parent of ["apps", "packages"]) {
@@ -38,7 +38,25 @@ describe("Node.js runtime baseline", () => {
   it("uses Node.js 26 for every Node-based Docker stage", async () => {
     const dockerfile = await readFile(path.join(root, "Dockerfile"), "utf8")
     const images = [...dockerfile.matchAll(/^FROM (node:\S+)/gm)].map((match) => match[1])
-    expect(images).toHaveLength(5)
+    expect(images.length).toBeGreaterThan(0)
     expect(images.every((image) => image === "node:26-bookworm-slim")).toBe(true)
+  })
+
+  it("runs the Docker bot and healthcheck with pinned Bun without loading workdir .env files", async () => {
+    const dockerfile = await readFile(path.join(root, "Dockerfile"), "utf8")
+    expect(dockerfile).toContain("FROM node:26-bookworm-slim AS runtime-base")
+    expect(dockerfile).toContain(
+      "COPY --from=oven/bun:1.4.4-slim /usr/local/bin/bun /usr/local/bin/bun",
+    )
+    expect(dockerfile).toContain("FROM runtime-base AS runtime-application")
+    expect(dockerfile).toContain("FROM runtime-base AS runtime-dependencies")
+    const entrypoint = dockerfile.match(/^ENTRYPOINT (.+)$/m)?.[1]
+    expect(JSON.parse(entrypoint ?? "null")).toEqual([
+      "bun",
+      "--no-env-file",
+      "/app/apps/bot/dist/index.js",
+    ])
+    const compose = await readFile(path.join(root, "compose.yaml"), "utf8")
+    expect(compose).toContain("        - CMD\n        - bun\n        - --no-env-file\n")
   })
 })

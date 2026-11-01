@@ -8,7 +8,7 @@ describe("container application packaging", () => {
   it("checks a complete production application and copies that artifact into the final image", async () => {
     const dockerfile = await readFile(dockerfileUrl, "utf8")
     const application = dockerfile
-      .split("FROM node:26-bookworm-slim AS runtime-application\n")[1]
+      .split("FROM runtime-base AS runtime-application\n")[1]
       ?.split("\nFROM ")[0]
     expect(application).toBeDefined()
     for (const directory of ["node_modules", "apps/bot", "packages"])
@@ -16,7 +16,13 @@ describe("container application packaging", () => {
         `COPY --from=production-dependencies /build/${directory} /app/${directory}`,
       )
     expect(application).toContain(
-      "RUN --network=none node --input-type=module -e \"await import('/app/apps/bot/dist/startup.js')\"",
+      "RUN --network=none bun --no-env-file --input-type=module -e \"await import('/app/apps/bot/dist/startup.js')\"",
+    )
+    expect(application).toContain(
+      "COPY apps/bot/scripts/check-runtime.mjs /app/apps/bot/scripts/check-runtime.mjs",
+    )
+    expect(application).toContain(
+      "RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs",
     )
     const runtime = dockerfile.split("FROM runtime-dependencies AS runtime\n")[1]
     expect(runtime).toContain("COPY --from=runtime-application --chown=app:app /app /app")
@@ -26,7 +32,7 @@ describe("container application packaging", () => {
   it("installs GitHub CLI in the runtime and checks tools offline as the bot user", async () => {
     const dockerfile = await readFile(dockerfileUrl, "utf8")
     const dependencies = dockerfile
-      .split("FROM node:26-bookworm-slim AS runtime-dependencies\n")[1]
+      .split("FROM runtime-base AS runtime-dependencies\n")[1]
       ?.split("\nFROM ")[0]
     expect(dependencies).toMatch(/apt-get install[^\n]*\bgh\b/)
 
@@ -46,7 +52,7 @@ describe("container application packaging", () => {
 
     const runtimeUser = dockerfile.split("\nUSER app\n")[1]
     expect(runtimeUser).toContain(
-      "RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs",
+      "RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-url-failures.mjs",
     )
     const check = await readFile(
       new URL("../scripts/check-url-failures.mjs", import.meta.url),
@@ -55,6 +61,14 @@ describe("container application packaging", () => {
     expect(check).toContain('await runCommand("pip", ["show", "yt-dlp-ejs"])')
     expect(check).toContain(
       'await runCommand("deno", ["eval", "--no-config", "console.log(1 + 1)"])',
+    )
+  })
+
+  it("checks Bun SQLite and native document conversion offline as the bot user", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const runtimeUser = dockerfile.split("\nUSER app\n")[1]
+    expect(runtimeUser).toContain(
+      "RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs",
     )
   })
 

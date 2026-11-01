@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1
 
+# Run the bot with Bun; retain Node.js and npm for Node-based external CLIs.
+FROM node:26-bookworm-slim AS runtime-base
+
+COPY --from=oven/bun:1.4.4-slim /usr/local/bin/bun /usr/local/bin/bun
+
 # Match the libcurl release pinned by impers 0.1.2; verify each platform's archive.
 FROM node:26-bookworm-slim AS curl-impersonate
 
@@ -122,7 +127,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
 
 # Assemble the same application tree for CI import checks and the final image.
-FROM node:26-bookworm-slim AS runtime-application
+FROM runtime-base AS runtime-application
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -143,8 +148,10 @@ COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
 
-# Import without credentials or network access; do not start the bot.
-RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+# Check production imports and core runtime behavior in CI without credentials or network access.
+COPY apps/bot/scripts/check-runtime.mjs /app/apps/bot/scripts/check-runtime.mjs
+RUN --network=none bun --no-env-file --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
 
 FROM node:26-bookworm-slim AS audio-dependencies
 
@@ -170,7 +177,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # Use the npm-ci installation, including its locked browser revisions and headless shell.
 RUN node node_modules/playwright/cli.js install chromium
 
-FROM node:26-bookworm-slim AS runtime-dependencies
+FROM runtime-base AS runtime-dependencies
 
 ARG TARGETARCH
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -214,24 +221,27 @@ COPY --chown=app:app skills/ /app/skills/
 COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/
 
 # Check startup again in the complete runtime image.
-RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+RUN --network=none bun --no-env-file --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 ENV HOME=/workdir
 USER app
 
+# Verify Bun, SQLite persistence/backup, and native document conversion as the runtime user.
+RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
+
 # Import image generation offline as the runtime user; do not resolve auth or consume quota.
-RUN --network=none node --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"
+RUN --network=none bun --no-env-file --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"
 
 # Verify both locked browser binaries and a real offline headless launch as the runtime user.
-RUN --network=none node /app/apps/bot/scripts/check-browser.mjs
+RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-browser.mjs
 
 # Check Chrome fingerprint compatibility offline, using the runtime user's library.
-RUN --network=none node /app/apps/bot/scripts/check-curl-impersonate.mjs
+RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-curl-impersonate.mjs
 
 # Verify URL diagnostics and installed media tools without external requests or model downloads.
-RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs
+RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-url-failures.mjs
 
 # Fail the build if Git, GitHub CLI, or SSH tools are unavailable to the bot user.
 RUN --network=none git --version && gh --version && ssh -V && command -v ssh-keygen
 
-ENTRYPOINT ["node", "/app/apps/bot/dist/index.js"]
+ENTRYPOINT ["bun", "--no-env-file", "/app/apps/bot/dist/index.js"]

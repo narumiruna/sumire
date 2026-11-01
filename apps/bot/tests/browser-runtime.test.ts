@@ -226,7 +226,9 @@ it("uses the same npm-ci Playwright CLI for Docker browser and OS dependency ins
     "from=dependencies,source=/build/node_modules,target=/build/node_modules",
   )
   expect(dockerfile).toContain("node /build/node_modules/playwright/cli.js install-deps chromium")
-  expect(dockerfile).toContain("RUN --network=none node /app/apps/bot/scripts/check-browser.mjs")
+  expect(dockerfile).toContain(
+    "RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-browser.mjs",
+  )
 })
 
 it("does not patch browser arguments or resolve revisions in the MCP smoke", () => {
