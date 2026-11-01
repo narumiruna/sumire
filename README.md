@@ -54,7 +54,7 @@ Administrators manage service credentials and non-confidential values on **Secre
 docker compose --progress plain build sumire
 ```
 
-Docker BuildKit caches npm, pip, and apt downloads. Each workspace compiles in its own stage, so bot-only source changes reuse shared package builds, Chromium, and the audio stack. Tests and documentation are excluded from compilation inputs; skills and instructions are copied separately without recompiling TypeScript. Torch has a separate layer from Whisper and yt-dlp.
+Docker BuildKit caches npm, pip, and apt downloads. Each workspace compiles in its own stage, so bot-only source changes reuse shared package builds, Chromium, and the audio stack. Tests and documentation are excluded from compilation inputs; skills and instructions are copied separately without recompiling TypeScript. Torch has a separate layer from Whisper and yt-dlp. A shared artifact collects the complete package `dist` trees once for bot compilation and runtime packaging. Production manifests and dependencies remain separate from that artifact.
 
 Keep the same Docker builder to reuse local cache; avoid `--no-cache` or pruning build cache unless a clean build is intended. Container publishing exports all intermediate layers to GitHub Actions cache (`mode=max`) for reuse on later runs. GitHub Actions cache does not preserve cache-mount contents, so changed dependency inputs may still require downloads on a fresh runner.
 

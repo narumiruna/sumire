@@ -184,12 +184,12 @@ describe("bot Polymarket integration", () => {
     )
     expect(dockerfile).toContain("FROM dependencies AS polymarket-build")
     expect(dockerfile).toContain("COPY packages/pi-polymarket/src/ packages/pi-polymarket/src/")
+    expect(dockerfile).toContain("FROM scratch AS compiled-workspaces")
     expect(dockerfile).toContain(
-      "COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist",
+      "COPY --from=polymarket-build /build/packages/pi-polymarket/dist /packages/pi-polymarket/dist",
     )
-    expect(dockerfile).toContain(
-      "COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist",
-    )
+    expect(dockerfile).toContain("COPY --from=compiled-workspaces /packages /build/packages")
+    expect(dockerfile).toContain("COPY --from=compiled-workspaces /packages /app/packages")
     expect(dockerfile).toContain(
       "COPY --from=production-dependencies /build/packages /app/packages",
     )

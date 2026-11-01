@@ -5,6 +5,63 @@ const dockerfileUrl = new URL("../../../Dockerfile", import.meta.url)
 const ciUrl = new URL("../../../.github/workflows/ci.yml", import.meta.url)
 
 describe("container application packaging", () => {
+  it("shares one complete compiled workspace artifact between compilation and runtime", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const compiled = dockerfile
+      .split("FROM scratch AS compiled-workspaces\n")[1]
+      ?.split("\nFROM ")[0]
+    const workspaces = [
+      ["runtime-config", "runtime-config-build"],
+      ["policy", "policy-build"],
+      ["contracts", "contracts-build"],
+      ["progress", "progress-build"],
+      ["imagegen", "imagegen-build"],
+      ["github-notifications", "github-notifications-build"],
+      ["pi-polymarket", "polymarket-build"],
+      ["url-reader", "url-reader-build"],
+      ["pi-url-reader", "pi-url-reader-build"],
+    ] as const
+    expect(compiled).toBeDefined()
+    expect(compiled?.match(/^COPY /gm)).toHaveLength(workspaces.length)
+    for (const [workspace, producer] of workspaces) {
+      expect(dockerfile).toContain(`FROM dependencies AS ${producer}`)
+      expect(compiled).toContain(
+        `COPY --from=${producer} /build/packages/${workspace}/dist /packages/${workspace}/dist`,
+      )
+    }
+    expect(compiled).not.toContain("node_modules")
+    expect(compiled).not.toContain("/src/")
+    for (const [stage, destination] of [
+      ["build", "/build/packages"],
+      ["runtime-application", "/app/packages"],
+    ]) {
+      const consumer = dockerfile.split(` AS ${stage}\n`)[1]?.split("\nFROM ")[0]
+      expect(consumer).toContain(`COPY --from=compiled-workspaces /packages ${destination}`)
+      expect(consumer).not.toMatch(/^COPY --from=\S+ \/build\/packages\//m)
+    }
+    const admin = dockerfile.split("FROM dependencies AS admin-build\n")[1]?.split("\nFROM ")[0]
+    expect(admin).not.toContain("compiled-workspaces")
+    for (const workspace of ["policy", "contracts"])
+      expect(admin).toContain(
+        `COPY --from=${workspace}-build /build/packages/${workspace}/dist /build/packages/${workspace}/dist`,
+      )
+  })
+
+  it("creates only mutable runtime paths before copying the application tree", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const runtime = dockerfile.split("FROM runtime-dependencies AS runtime\n")[1]
+    const setup = runtime?.split("\nCOPY --from=browser-download")[0]
+    expect(setup).toContain(
+      "mkdir -p /workdir /app/.telegramagent /app/.events /app/.cache/whisper",
+    )
+    expect(setup).toContain("chown -R app:app /app /workdir")
+    for (const copied of ["/app/apps/", "/app/packages/", "/app/instructions", "/app/skills"])
+      expect(setup).not.toContain(copied)
+    expect(runtime).toContain("COPY --from=runtime-application --chown=app:app /app /app")
+    expect(runtime).toContain("COPY --chown=app:app instructions/ /app/instructions/")
+    expect(runtime).toContain("COPY --chown=app:app skills/ /app/skills/")
+  })
+
   it("checks a complete production application and copies that artifact into the final image", async () => {
     const dockerfile = await readFile(dockerfileUrl, "utf8")
     const application = dockerfile
