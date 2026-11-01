@@ -150,8 +150,12 @@ COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
 
 # Check production imports and core runtime behavior in CI without credentials or network access.
 COPY apps/bot/scripts/check-runtime.mjs /app/apps/bot/scripts/check-runtime.mjs
+COPY apps/bot/scripts/check-codemode.mjs /app/apps/bot/scripts/check-codemode.mjs
+COPY packages/pi-url-reader/scripts/check-runtime.mjs /app/packages/pi-url-reader/scripts/check-runtime.mjs
 RUN --network=none bun --no-env-file --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
+RUN --network=none timeout --signal=KILL 15s bun --no-env-file /app/apps/bot/scripts/check-codemode.mjs
+RUN --network=none bun --no-env-file /app/packages/pi-url-reader/scripts/check-runtime.mjs
 
 FROM node:26-bookworm-slim AS audio-dependencies
 
@@ -228,6 +232,9 @@ USER app
 
 # Verify Bun, SQLite persistence/backup, and native document conversion as the runtime user.
 RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
+# Bound the check too, so a VM termination regression fails instead of hanging the build.
+RUN --network=none timeout --signal=KILL 15s bun --no-env-file /app/apps/bot/scripts/check-codemode.mjs
+RUN --network=none bun --no-env-file /app/packages/pi-url-reader/scripts/check-runtime.mjs
 
 # Import image generation offline as the runtime user; do not resolve auth or consume quota.
 RUN --network=none bun --no-env-file --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"

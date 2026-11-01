@@ -152,14 +152,14 @@ text(results); store('marker', 'persisted');`,
     text: "persisted",
   })
   const timeout = await call("codemode", {
-    code: '// @options: {"timeout_ms": 60000}\nwhile (true) {}',
+    code: '// @options: {"timeout_ms": 60000}\n"a".repeat(200000).indexOf("a".repeat(100000) + "b")',
   })
   assert.equal(timeout.isError, true)
   assert.ok(JSON.stringify(timeout.content).includes("1000ms host deadline"))
   assert.equal((await call("codemode", { code: "return 'recovered'" })).isError, false)
   assert.deepEqual(errors, [])
   console.log(
-    "PASS: production Pi worker/WASM, native tools, direct progress, persistence, host deadline and recovery; no external model or Telegram requests.",
+    "PASS: production Pi worker/WASM, native tools, direct progress, persistence, non-interruptible host deadline and recovery; no external model or Telegram requests.",
   )
 } finally {
   if (session) {

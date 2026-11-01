@@ -72,6 +72,25 @@ describe("container application packaging", () => {
     )
   })
 
+  it("checks built-in URL pinning and actual codemode termination in CI and as the bot user", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    const application = dockerfile
+      .split("FROM runtime-base AS runtime-application\n")[1]
+      ?.split("\nFROM ")[0]
+    const runtimeUser = dockerfile.split("\nUSER app\n")[1]
+    for (const stage of [application, runtimeUser]) {
+      expect(stage).toContain(
+        "RUN --network=none timeout --signal=KILL 15s bun --no-env-file /app/apps/bot/scripts/check-codemode.mjs",
+      )
+      expect(stage).toContain(
+        "RUN --network=none bun --no-env-file /app/packages/pi-url-reader/scripts/check-runtime.mjs",
+      )
+    }
+    expect(application).toContain(
+      "COPY packages/pi-url-reader/scripts/check-runtime.mjs /app/packages/pi-url-reader/scripts/check-runtime.mjs",
+    )
+  })
+
   it("builds the same application target in CI when Docker inputs change", async () => {
     const workflow = await readFile(ciUrl, "utf8")
     for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])
