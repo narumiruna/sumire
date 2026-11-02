@@ -1,6 +1,8 @@
 import { createUrlTool } from "@narumitw/sumire-pi-url-reader"
+import { UrlContentClient } from "@narumitw/sumire-url-reader"
+import type { Session } from "impers"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { loadArticleSourceUrls } from "../src/blog-post/source.js"
+import { ArticleSourceUrlError, loadArticleSourceUrls } from "../src/blog-post/source.js"
 import { loadSettings } from "../src/config/settings.js"
 import { createBotUrlLoader } from "../src/url-loader.js"
 import { createPiFixture, toolResultText } from "./helpers/pi-fixture.js"
@@ -29,9 +31,99 @@ beforeEach(() => {
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.cleanup()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
 })
 
 describe("shared bot URL loading", () => {
+  it("loads generic curl-cffi content through both article preloading and the URL tool", async () => {
+    let body: Buffer = Buffer.from("<article><p>Shared generic article fixture.</p></article>")
+    const get = vi.fn(
+      async (_url: string, options: { contentCallback?: (chunk: Buffer) => void }) => {
+        options.contentCallback?.(body)
+        return {
+          status: 200,
+          headers: new Headers({ "content-type": "text/html" }),
+          get text() {
+            return body.toString()
+          },
+          setContent(value: Buffer) {
+            body = value
+          },
+          close: async () => undefined,
+        }
+      },
+    )
+    const close = vi.fn(async () => undefined)
+    vi.spyOn(UrlContentClient.prototype, "impersSession").mockResolvedValue({
+      get,
+      close,
+    } as unknown as Session)
+    const target = "https://example.com/generic-article"
+    const loader = createBotUrlLoader(loadSettings({ BOT_ADMIN_ID: "7" }))
+    const result = await createUrlTool(loader).execute(
+      "generic-call",
+      { url: target },
+      undefined,
+      undefined,
+      undefined as never,
+    )
+    expect(result.isError).not.toBe(true)
+    expect(result.details).toMatchObject({
+      loaderId: "curl-cffi",
+      text: "Shared generic article fixture.",
+      truncated: false,
+    })
+    await expect(
+      loadArticleSourceUrls(target, loader, { maxChars: 12_000, timeoutMs: 5_000 }),
+    ).resolves.toEqual([{ url: target, text: "Shared generic article fixture.", truncated: false }])
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it("retains safe transport diagnostics in both generic entry points", async () => {
+    vi.spyOn(UrlContentClient.prototype, "impersSession").mockRejectedValue(
+      Object.assign(new Error("transport failed"), { code: "ECONNRESET" }),
+    )
+    vi.spyOn(UrlContentClient.prototype, "browser").mockRejectedValue(
+      new Error("browser disabled in fixture"),
+    )
+    vi.spyOn(UrlContentClient.prototype, "fetch").mockRejectedValue(
+      new Error("HTTP disabled in fixture"),
+    )
+    const target = "https://example.com/failed-article"
+    const loader = createBotUrlLoader(loadSettings({ BOT_ADMIN_ID: "7" }))
+    const result = await createUrlTool(loader).execute(
+      "generic-failure",
+      { url: target },
+      undefined,
+      undefined,
+      undefined as never,
+    )
+    expect(result.isError).toBe(true)
+    expect(result.details).toMatchObject({
+      attempts: [
+        expect.objectContaining({
+          loaderId: "curl-cffi",
+          diagnostic: { code: "transport_failure", phase: "loading" },
+        }),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      ],
+    })
+    const error = await loadArticleSourceUrls(target, loader, {
+      maxChars: 12_000,
+      timeoutMs: 5_000,
+    }).catch((error) => error)
+    expect(error).toBeInstanceOf(ArticleSourceUrlError)
+    expect(error.failure.attempts[0]).toMatchObject({
+      loaderId: "curl-cffi",
+      diagnostic: { code: "transport_failure", phase: "loading" },
+    })
+    expect(JSON.stringify(result)).not.toContain(target)
+    expect(JSON.stringify(error.failure)).not.toContain(target)
+  })
+
   it.each([
     url,
     "https://www.youtube.com/watch?v=TDkH3EbWTYc",
