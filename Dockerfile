@@ -237,8 +237,8 @@ RUN --network=none bun --no-env-file --input-type=module -e "const m = await imp
 # Verify both locked browser binaries and a real offline headless launch as the runtime user.
 RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-browser.mjs
 
-# Check Chrome fingerprint compatibility offline, using the runtime user's library.
-RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-curl-impersonate.mjs
+# Check fingerprints and real async curl I/O offline, as the runtime user.
+RUN --network=none timeout --signal=KILL 20s bun --no-env-file /app/apps/bot/scripts/check-curl-impersonate.mjs
 
 # Verify URL diagnostics and installed media tools without external requests or model downloads.
 RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-url-failures.mjs

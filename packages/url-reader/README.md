@@ -54,7 +54,7 @@ The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict networ
 
 ## Reusable client
 
-A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.
+A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser. Under Bun, a supervised Node.js host owns the session; the client reuses that host and closes it with the other resources.
 
 ```ts
 import { UrlContentClient } from "@narumitw/sumire-url-reader";
@@ -132,6 +132,12 @@ This package was previously `@narumitw/sumire-url-content` in `packages/url-cont
 ### `impers`
 
 The `curl-cffi` loader uses `impers` with `impersonate: "chrome"`. On first use, `impers` may download its pinned `libcurl-impersonate` build. Set `LIBCURL_PATH` to use an existing library. Standard libcurl works without browser fingerprint impersonation.
+
+Bun does not support the native `uv_poll_init_socket` call used by asynchronous `impers` requests. When the caller runs under Bun, URL-reader executes these requests in a real Node.js 26 or newer process found on `PATH`. Node.js callers keep the existing in-process session. This applies to generic pages, news transport and PDF fallback, including standalone loaders. The host retains session cookies and connection reuse; it does not emulate the complete `Session` API.
+
+The parent still validates each target and redirect, removes sensitive headers on cross-origin redirects, and supplies the public proxy that pins connection addresses. The host cannot follow redirects or bypass that proxy through `NO_PROXY`. Requests have separate IDs and cancellation signals. Startup and I/O count toward the attempt budget. Cancellation waits for native request cleanup; an unresponsive host is killed after one second. A host failure settles affected requests after process exit and permits normal automatic fallback. Explicit loader chains remain exact. A reusable client creates a new host on its next request after a host failure.
+
+The Bun transport bounds each protocol frame to 64 KiB and native response headers to 16 KiB. It enforces each request's body limit while streaming and again when receiving chunks; generic HTML uses 10 MiB and PDF uses 25 MiB. No single host request permits more than 25 MiB. It returns a real buffered `impers.Response`, including binary content, multi-value headers and transport metadata. Only required runtime/library environment fields reach the child; bot credentials and `NODE_OPTIONS` do not. Native stderr is drained but not retained or exported. These process boundaries prevent native failures from stopping the parent; they are not an OS security sandbox.
 
 ### Playwright
 
