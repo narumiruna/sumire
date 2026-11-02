@@ -794,16 +794,18 @@ it.each([
     expect(fixture.imageFetch).toHaveBeenCalledTimes(1)
   },
 )
-it("packages the image client in every Docker stage and CI path filter", async () => {
+it("packages the image client through the shared Docker artifact and CI path filter", async () => {
   const docker = await readFile(new URL("../../../Dockerfile", import.meta.url), "utf8")
   expect(docker).toContain("COPY packages/imagegen/package.json packages/imagegen/package.json")
   expect(docker).toContain("FROM dependencies AS imagegen-build")
   expect(docker).toContain(
-    "COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist",
+    "COPY --from=imagegen-build /build/packages/imagegen/dist /packages/imagegen/dist",
   )
   expect(docker).toContain("COPY --from=production-dependencies /build/packages /app/packages")
   expect(docker).toContain("COPY --from=runtime-application --chown=app:app /app /app")
-  expect(docker).toContain("/build/packages/imagegen/dist /app/packages/imagegen/dist")
+  expect(docker).toContain("FROM scratch AS compiled-workspaces")
+  expect(docker).toContain("COPY --from=compiled-workspaces /packages /build/packages")
+  expect(docker).toContain("COPY --from=compiled-workspaces /packages /app/packages")
   expect(docker).toContain("import('/app/packages/imagegen/dist/index.js')")
   const ci = await readFile(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8")
   expect(ci.match(/packages\/imagegen\/\*\*/g)).toHaveLength(2)

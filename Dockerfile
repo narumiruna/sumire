@@ -95,19 +95,22 @@ COPY packages/pi-url-reader/src/ packages/pi-url-reader/src/
 # Dependencies are already compiled; skip the prebuild hook that recompiles them.
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-pi-url-reader
 
+# Keep one complete set of compiled packages for the bot compiler and runtime image.
+FROM scratch AS compiled-workspaces
+
+COPY --from=runtime-config-build /build/packages/runtime-config/dist /packages/runtime-config/dist
+COPY --from=policy-build /build/packages/policy/dist /packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /packages/contracts/dist
+COPY --from=progress-build /build/packages/progress/dist /packages/progress/dist
+COPY --from=imagegen-build /build/packages/imagegen/dist /packages/imagegen/dist
+COPY --from=github-notifications-build /build/packages/github-notifications/dist /packages/github-notifications/dist
+COPY --from=polymarket-build /build/packages/pi-polymarket/dist /packages/pi-polymarket/dist
+COPY --from=url-reader-build /build/packages/url-reader/dist /packages/url-reader/dist
+COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /packages/pi-url-reader/dist
+
 FROM dependencies AS build
 
-COPY --from=runtime-config-build /build/packages/runtime-config/dist /build/packages/runtime-config/dist
-
-COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
-COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
-
-COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
-COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist
-COPY --from=github-notifications-build /build/packages/github-notifications/dist /build/packages/github-notifications/dist
-COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
-COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
-COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
+COPY --from=compiled-workspaces /packages /build/packages
 COPY apps/bot/tsconfig*.json apps/bot/
 COPY apps/bot/src/ apps/bot/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire
@@ -136,15 +139,7 @@ COPY --from=production-dependencies /build/node_modules /app/node_modules
 # These directories contain only manifests and workspace-local production dependencies.
 COPY --from=production-dependencies /build/apps/bot /app/apps/bot
 COPY --from=production-dependencies /build/packages /app/packages
-COPY --from=runtime-config-build /build/packages/runtime-config/dist /app/packages/runtime-config/dist
-COPY --from=policy-build /build/packages/policy/dist /app/packages/policy/dist
-COPY --from=contracts-build /build/packages/contracts/dist /app/packages/contracts/dist
-COPY --from=progress-build /build/packages/progress/dist /app/packages/progress/dist
-COPY --from=imagegen-build /build/packages/imagegen/dist /app/packages/imagegen/dist
-COPY --from=url-reader-build /build/packages/url-reader/dist /app/packages/url-reader/dist
-COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
-COPY --from=github-notifications-build /build/packages/github-notifications/dist /app/packages/github-notifications/dist
-COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
+COPY --from=compiled-workspaces /packages /app/packages
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
 
@@ -209,7 +204,7 @@ WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /workdir /app/apps/bot /app/packages/login /app/packages/progress /app/packages/url-reader /app/packages/pi-url-reader /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
+    && mkdir -p /workdir /app/.telegramagent /app/.events /app/.cache/whisper \
     && chown -R app:app /app /workdir
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
