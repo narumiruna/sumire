@@ -1,27 +1,34 @@
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai"
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent"
 import type {
+  CommitPublication,
   CompactionResult,
   ConversationId,
   ConversationView,
+  DocumentId,
   EntryId,
   EntryRecord,
   LiveState,
+  NestedToolExecutionResult,
   NestedToolSlot,
+  Seq,
   TaskId,
   ToolSlot,
 } from "@earendil-works/pi-durable"
+import { NestedCallDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it, vi } from "vitest"
-import { forwardDurableView } from "../src/agent/durable/events.js"
+import { forwardDurableView, recordNestedResults } from "../src/agent/durable/events.js"
 
 function setup() {
   const emit = vi.fn<(event: AgentSessionEvent) => void>()
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  const nestedResults = new Map<TaskId, NestedToolExecutionResult>()
   return {
     emit,
     logger,
+    nestedResults,
     forward: (previous: ConversationView, current: ConversationView) =>
-      forwardDurableView(previous, current, emit, logger, "session"),
+      forwardDurableView(previous, current, emit, logger, "session", nestedResults),
   }
 }
 
@@ -207,6 +214,92 @@ describe("durable view translation", () => {
       expect(emit).toHaveBeenCalledExactlyOnceWith({ ...nestedEnd, isError })
     },
   )
+
+  it.each([false, true])("keeps the committed nested payload when isError=%s", (isError) => {
+    const { emit, forward, nestedResults } = setup()
+    const result: NestedToolExecutionResult = {
+      taskId: nested().taskId,
+      structuredOutput: [{ type: "text", text: "nested output" }],
+      details: { value: "nested details" },
+      diagnostics: [],
+      durationMs: 7,
+      isError,
+    }
+    nestedResults.set(result.taskId, result)
+    const before = view({ run, nestedTools: [nested()] })
+    const done = view({
+      run,
+      nestedTools: [nested({ status: "done", summary: { isError } })],
+    })
+    forward(before, done)
+    forward(done, done)
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ ...nestedEnd, result, isError })
+    expect(nestedResults.size).toBe(0)
+  })
+
+  it("keeps committed results after parent retirement and ignores other conversations", () => {
+    const { emit, forward, nestedResults } = setup()
+    const result = {
+      taskId: nested().taskId,
+      structuredOutput: "nested output",
+      details: { value: "retained details" },
+      diagnostics: [],
+      isError: false,
+    } satisfies NestedToolExecutionResult
+    const record = {
+      id: 40 as DocumentId,
+      kind: NestedCallDoc.definition.kind,
+      key: "child",
+      scope: { kind: "task" as const, taskId: nested().parentTaskId },
+      createdAt: 1 as Seq,
+    }
+    const publication: CommitPublication = {
+      seq: 2 as Seq,
+      changes: [
+        {
+          type: "document",
+          kind: "change",
+          record,
+          conversationId: 1 as ConversationId,
+          version: 1,
+          value: { taskId: result.taskId, result },
+          ops: [],
+        },
+      ],
+    }
+    recordNestedResults(publication, 2 as ConversationId, nestedResults)
+    expect(nestedResults.size).toBe(0)
+    recordNestedResults(publication, 1 as ConversationId, nestedResults)
+    recordNestedResults(
+      {
+        seq: 3 as Seq,
+        changes: [
+          { type: "document", kind: "retire", record, conversationId: 1 as ConversationId },
+        ],
+      },
+      1 as ConversationId,
+      nestedResults,
+    )
+    forward(
+      view({ run, nestedTools: [nested()] }),
+      view({ run, nestedTools: [nested({ status: "done", summary: { isError: false } })] }),
+    )
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ ...nestedEnd, result, isError: false })
+    expect(nestedResults.size).toBe(0)
+  })
+
+  it("releases captured results when a restored done slot leaves the view", () => {
+    const { emit, forward, nestedResults } = setup()
+    nestedResults.set(nested().taskId, {
+      taskId: nested().taskId,
+      structuredOutput: "old result",
+      diagnostics: [],
+      isError: false,
+    })
+    forward(view({ run, nestedTools: [nested({ status: "done" })] }), view())
+    expect(emit).not.toHaveBeenCalled()
+    expect(nestedResults.size).toBe(0)
+  })
 
   it("reports a nested fault without a summary as an error", () => {
     const { emit, forward } = setup()

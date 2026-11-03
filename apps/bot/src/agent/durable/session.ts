@@ -17,14 +17,17 @@ import type {
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
 import type {
+  CommitObservation,
   Conversation,
   ConversationId,
   ConversationView,
   EntryRecord,
   Harness,
   LiveState,
+  NestedToolExecutionResult,
   Observation,
   Registry,
+  TaskId,
 } from "@earendil-works/pi-durable"
 
 import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
@@ -33,7 +36,7 @@ import { AdminError } from "../../admin/store.js"
 import type { Logger } from "../../logging.js"
 import type { SessionHandle } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
-import { forwardDurableView } from "./events.js"
+import { forwardDurableView, recordNestedResults } from "./events.js"
 import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
@@ -46,6 +49,8 @@ export class DurableSession implements SessionHandle {
   readonly #outbox: DurableOutbox
   #conversation: Conversation
   #observation?: Observation<ConversationView>
+  #commits?: CommitObservation
+  readonly #nestedResults = new Map<TaskId, NestedToolExecutionResult>()
   #live?: LiveState
   #updates: Promise<void> = Promise.resolve()
   #closing?: Promise<void>
@@ -358,8 +363,7 @@ export class DurableSession implements SessionHandle {
     await this.harness.commit(async (tx) => {
       ;(await tx.doc(BotSessionDoc)).activeConversation = fork.id
     }, context)
-    this.#observation?.detach()
-    await this.#updates
+    await this.detach()
     this.#conversation = fork
     await this.attach()
   }
@@ -381,8 +385,7 @@ export class DurableSession implements SessionHandle {
   dispose(): Promise<void> {
     this.#closing ??= (async () => {
       try {
-        this.#observation?.detach()
-        await this.#updates
+        await this.detach()
       } finally {
         try {
           await this.harness.close(context)
@@ -479,7 +482,20 @@ export class DurableSession implements SessionHandle {
     return entry?.conversationId === target.conversationId ? entry : undefined
   }
 
+  private async detach(): Promise<void> {
+    this.#observation?.detach()
+    await this.#updates
+    this.#commits?.detach()
+    this.#nestedResults.clear()
+  }
+
   private async attach(): Promise<void> {
+    const conversationId = this.#conversation.id
+    this.#commits = this.harness.observeCommits({
+      advance: (publication) =>
+        recordNestedResults(publication, conversationId, this.#nestedResults),
+      end: () => {},
+    })
     let previous: ConversationView | undefined
     const pending: ConversationView[] = []
     const receive = (value: ConversationView): void => {
@@ -496,7 +512,14 @@ export class DurableSession implements SessionHandle {
       this.#updates = this.#updates
         .then(async () => {
           if (prior.entries.at(-1)?.id !== value.entries.at(-1)?.id) await this.refresh()
-          forwardDurableView(prior, value, this.emit, this.logger, this.sessionId)
+          forwardDurableView(
+            prior,
+            value,
+            this.emit,
+            this.logger,
+            this.sessionId,
+            this.#nestedResults,
+          )
         })
         .catch((error) => this.logger.warn("Durable conversation update failed", error))
     }

@@ -3,7 +3,7 @@ import { once } from "node:events"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import { type ConversationId, UserEntry } from "@earendil-works/pi-durable"
+import { type ConversationId, Harness, UserEntry } from "@earendil-works/pi-durable"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { BotSessionDoc, OutboxDoc } from "../src/agent/durable/state.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
@@ -101,6 +101,43 @@ describe("durable bot runtime", () => {
     fixture.enqueueAnswer("Next answer")
     await reopened.prompt("continue")
     expect(JSON.stringify(fixture.requests[1]?.messages)).toContain("look at this")
+  })
+
+  it("detaches commit observations on branch restore and shutdown", async () => {
+    const openHarness = Harness.open.bind(Harness)
+    const detaches: (() => void)[] = []
+    const restores: (() => void)[] = []
+    const open = vi.spyOn(Harness, "open").mockImplementation(async (...args) => {
+      const harness = await openHarness(...args)
+      const observeCommits = harness.observeCommits.bind(harness)
+      const observe = vi.spyOn(harness, "observeCommits").mockImplementation((observer) => {
+        const observation = observeCommits(observer)
+        const detach = vi.fn(() => observation.detach())
+        detaches.push(detach)
+        return { detach }
+      })
+      restores.push(() => observe.mockRestore())
+      return harness
+    })
+    try {
+      const fixture = await setup()
+      const session = await fixture.createSession()
+      expect(detaches).toHaveLength(1)
+      await session.appendPassiveContext("Branch checkpoint")
+      await session.waitForIdle()
+      const checkpoint = session.getCheckpoint()
+      if (!checkpoint) throw new Error("Missing branch checkpoint")
+      await session.restoreBranch(checkpoint)
+      expect(detaches).toHaveLength(2)
+      expect(detaches[0]).toHaveBeenCalledOnce()
+      expect(detaches[1]).not.toHaveBeenCalled()
+      await session.dispose()
+      await session.dispose()
+      expect(detaches[1]).toHaveBeenCalledOnce()
+    } finally {
+      for (const restore of restores) restore()
+      open.mockRestore()
+    }
   })
 
   it("keeps active context beyond the view window and drops it after reset", async () => {
