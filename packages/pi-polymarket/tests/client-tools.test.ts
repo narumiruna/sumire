@@ -63,7 +63,7 @@ describe("client-backed tools", () => {
       [...new Set(polymarketApi.filter((item) => !item.secure).map((item) => item.method))].sort(),
     ).toEqual(Object.keys(client).sort())
     await client.closeSubscriptions()
-    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(123)
+    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(122)
   })
 
   it("registers the public-only extension and shutdown cleanup", () => {
@@ -107,6 +107,81 @@ describe("client-backed tools", () => {
       method: "fetchBalances",
     })
     expect(handles.length).toBe(1)
+  })
+
+  it("does not expose the removed accounting snapshot action for either client", async () => {
+    const downloadAccountingSnapshot = vi.fn()
+    const { value, call } = setup({ downloadAccountingSnapshot }, { downloadAccountingSnapshot })
+    expect(await value("polymarket_api", { method: "downloadAccountingSnapshot" })).toEqual([])
+    for (const client of ["public", "secure"]) {
+      await expect(
+        call("polymarket_account_query", {
+          action: "downloadAccountingSnapshot",
+          client,
+          args: [{}],
+        }),
+      ).rejects.toThrow("unavailable")
+    }
+    expect(downloadAccountingSnapshot).not.toHaveBeenCalled()
+  })
+
+  it("discovers open Perps instrument categories from SDK 0.16.0", async () => {
+    const { value } = setup()
+    const methods = await value("polymarket_api", { method: "fetchPerpsInstruments" })
+    expect(methods[0].args[0].schema.anyOf[0].properties.category.anyOf).toEqual(
+      expect.arrayContaining([{ type: "string" }, { const: "pre_ipo", type: "string" }]),
+    )
+  })
+
+  it.each([
+    ["convert", "wallet"],
+    ["horizontalSplit", "wallet"],
+    ["horizontalMerge", "wallet"],
+    ["sendOrderHeartbeat", "orders"],
+  ])("requires confirmation for %s before SDK dispatch", async (action, group) => {
+    const method = vi.fn(async () => ({ ok: true }))
+    const { runtime, call, value } = setup({}, { [action]: method })
+    const name = `polymarket_${group}_execute`
+    const args = action === "sendOrderHeartbeat" ? [] : [{}]
+    expect(polymarketApi.find((spec) => spec.method === action)).toMatchObject({
+      group,
+      secure: true,
+      readOnly: false,
+    })
+    expect(runtime.tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    })
+    await expect(call(name, { action, client: "secure", args })).rejects.toThrow("confirm=true")
+    expect(method).not.toHaveBeenCalled()
+    expect(await value(name, { action, client: "secure", args, confirm: true })).toEqual({
+      ok: true,
+    })
+    expect(method).toHaveBeenCalledExactlyOnceWith(...args)
+  })
+
+  it.each([
+    ["prepareConvert", "wallet"],
+    ["prepareHorizontalSplit", "wallet"],
+    ["prepareHorizontalMerge", "wallet"],
+    ["planCollateralReturn", "wallet"],
+    ["waitForOrderFillSettlement", "orders"],
+  ])("keeps %s read-only", async (action, group) => {
+    const method = vi.fn(async () => ({ ok: true }))
+    const { runtime, value } = setup({}, { [action]: method })
+    const name = `polymarket_${group}_query`
+    expect(polymarketApi.find((spec) => spec.method === action)).toMatchObject({
+      group,
+      secure: true,
+      readOnly: true,
+    })
+    expect(runtime.tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    })
+    const args = action === "planCollateralReturn" ? [] : [{}]
+    expect(await value(name, { action, client: "secure", args })).toEqual({ ok: true })
+    expect(method).toHaveBeenCalledExactlyOnceWith(...args)
   })
 
   it("dispatches positional arguments and preserves method receiver", async () => {

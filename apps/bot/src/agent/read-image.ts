@@ -1,6 +1,6 @@
-import { Type } from "@earendil-works/pi-ai"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { Api } from "grammy"
+import { Type } from "typebox"
 
 import type { AdminStore } from "../admin/store.js"
 import type { Settings } from "../config/settings.js"

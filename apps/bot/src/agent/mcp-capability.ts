@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto"
 import path from "node:path"
-import { type TSchema, Type } from "@earendil-works/pi-ai"
 import {
   McpClient,
   McpConnectionClosedError,
@@ -9,6 +8,7 @@ import {
   StreamableHttpTransport,
   type Tool,
 } from "@earendil-works/pi-mcp"
+import { type TSchema, Type } from "typebox"
 import type { Logger } from "../logging.js"
 import type { NativeTool } from "./durable/tools.js"
 import { type McpConfig, type McpServer, toolExposure } from "./mcp-config.js"

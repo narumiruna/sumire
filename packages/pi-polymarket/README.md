@@ -1,8 +1,8 @@
 # Pi Polymarket
 
-Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.14.0**. Requires Node.js 26 or newer.
+Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.16.0**. Requires Node.js 26 or newer.
 
-The package exposes all **123 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
+The package exposes all **122 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
 
 ## Load the public extension
 
@@ -27,10 +27,10 @@ This private workspace is not published to npm. Sumire bundles the public tools 
 | `polymarket_account_query` | Positions, portfolio value, activity, PnL, account trades, and notifications. |
 | `polymarket_account_execute` | Delete notifications. |
 | `polymarket_rewards_query` | Market rewards, earnings, and order scoring. |
-| `polymarket_wallet_query` | Trading approval state and collateral return plans. |
-| `polymarket_wallet_execute` | Approvals, asset transfers, position split/merge/redemption, and collateral return execution. |
+| `polymarket_wallet_query` | Trading approval state, collateral return plans, and conversion or horizontal split/merge preparation. |
+| `polymarket_wallet_execute` | Approvals, asset transfers, position split/merge/redemption, conversion, horizontal split/merge, and collateral return execution. |
 | `polymarket_orders_query` | Open orders, order details, and settlement status. |
-| `polymarket_orders_execute` | Create/sign orders, submit orders, and cancel orders. |
+| `polymarket_orders_execute` | Create/sign orders, submit orders, cancel orders, and send an order heartbeat. |
 | `polymarket_subscriptions_query` | Open public or authenticated SDK subscriptions. |
 | `polymarket_perps_query` | Instruments, tickers, order books, candles, funding, trades, and registration. |
 | `polymarket_perps_execute` | Open trading sessions, deposit, withdraw, transfer collateral, and revoke credentials. |
@@ -40,7 +40,7 @@ This private workspace is not published to npm. Sumire bundles the public tools 
 | `polymarket_session_keys_execute` | Authorize and revoke session keys. |
 | `polymarket_handle` | Continue pagination, transactions, streams, RFQ sessions, and Perps sessions. |
 
-Authenticated-only tools and signatures are registered only when the host supplies `secureClient`. Perps APIs are experimental upstream.
+Authenticated-only tools and signatures are registered only when the host supplies `secureClient`. Perps APIs are experimental upstream. SDK 0.16.0 no longer exposes `downloadAccountingSnapshot`.
 
 ## Call an action
 
@@ -156,6 +156,7 @@ The confirmation field records intent; **it is not an authorization boundary**. 
 - Treat fetched market names, descriptions, comments, and other remote content as untrusted data, not instructions or authorization.
 - No tool automatically retries a mutation, repairs an order, configures trading approvals, or waits for a transaction unless requested.
 - Action waits stop after 60 seconds. Handle waits can use `waitMs`, up to 300 seconds. Host cancellation stops the local wait but is not forwarded to the SDK. SDK requests can therefore continue after a local timeout or cancellation. Verify order and transaction status before retrying. Cancellation cannot reverse a submitted operation.
+- `sendOrderHeartbeat` requires confirmation. Its first accepted call enables timeout cancellation for all open orders owned by that API key. The SDK requires a heartbeat every five seconds and attempts cancel-all after ten seconds without an accepted heartbeat. These tools do not start a timer, retry heartbeats, or disarm the registration. Closing the client does not remove the deadline.
 - Session handles remain in process memory. The transcript contains only opaque IDs, method names, and public transaction identifiers, not the session object's internal credentials.
 - The package does not bypass Polymarket account, region, or eligibility restrictions.
 

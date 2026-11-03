@@ -1,5 +1,6 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai"
+import { StringEnum } from "@earendil-works/pi-ai"
 import { defineTool } from "@earendil-works/pi-coding-agent"
+import { Type } from "typebox"
 import {
   assertUrlLoaderName,
   type LoadedUrl,
@@ -26,10 +27,12 @@ export function createUrlTool(loader: PublicUrlLoader, options: UrlToolOptions =
     ...(selectableLoaders.length > 0
       ? {
           loader: Type.Optional(
-            StringEnum(selectableLoaders, {
-              description:
-                "Optional exact loader override. Omit it for automatic selection; explicit loaders do not fall back.",
-            }),
+            Type.Unsafe<string>(
+              StringEnum(selectableLoaders, {
+                description:
+                  "Optional exact loader override. Omit it for automatic selection; explicit loaders do not fall back.",
+              }),
+            ),
           ),
         }
       : {}),

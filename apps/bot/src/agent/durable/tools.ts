@@ -1,5 +1,4 @@
 import type { JsonValue } from "@earendil-works/chord"
-import { type TSchema, Type } from "@earendil-works/pi-ai"
 import type {
   ExtensionAPI,
   ExtensionFactory,
@@ -17,6 +16,7 @@ import {
   createReadTool,
   createWriteTool,
 } from "@earendil-works/pi-durable/tools"
+import { type TSchema, Type } from "typebox"
 
 export type NativeTool = ToolDefinition<TSchema>
 

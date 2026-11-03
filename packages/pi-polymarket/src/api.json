@@ -213,7 +213,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -263,7 +263,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -412,7 +412,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -462,7 +462,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -623,7 +623,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -673,7 +673,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -1033,7 +1033,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1083,7 +1083,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -1232,7 +1232,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1282,7 +1282,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -1431,7 +1431,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1481,7 +1481,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -1630,7 +1630,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1680,7 +1680,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -2464,7 +2464,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2514,7 +2514,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -2663,7 +2663,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2713,7 +2713,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -3026,7 +3026,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3076,7 +3076,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -3225,7 +3225,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3275,7 +3275,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -8218,7 +8218,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8268,7 +8268,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -8417,7 +8417,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8467,7 +8467,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -8653,7 +8653,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8703,7 +8703,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -10876,7 +10876,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2224": {
+                    "__@toPrimitive@2225": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -10926,7 +10926,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2224"
+                    "__@toPrimitive@2225"
                   ],
                   "additionalProperties": true
                 }
@@ -11075,7 +11075,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2224": {
+                    "__@toPrimitive@2225": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -11125,7 +11125,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2224"
+                    "__@toPrimitive@2225"
                   ],
                   "additionalProperties": true
                 }
@@ -11944,112 +11944,6 @@
                   "additionalProperties": true
                 }
               ]
-            }
-          },
-          "required": ["user"],
-          "additionalProperties": true
-        }
-      },
-      {
-        "name": "options",
-        "optional": true,
-        "type": "RequestOptions | undefined",
-        "schema": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "signal": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "aborted": {
-                          "type": "boolean"
-                        },
-                        "onabort": {
-                          "anyOf": [
-                            {
-                              "type": "null"
-                            },
-                            {
-                              "description": "(this: AbortSignal, ev: Event) => any"
-                            }
-                          ]
-                        },
-                        "reason": {
-                          "description": "any"
-                        },
-                        "throwIfAborted": {
-                          "description": "() => void"
-                        },
-                        "addEventListener": {
-                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
-                        },
-                        "removeEventListener": {
-                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
-                        },
-                        "dispatchEvent": {
-                          "description": "(event: Event) => boolean"
-                        }
-                      },
-                      "required": [
-                        "aborted",
-                        "onabort",
-                        "reason",
-                        "throwIfAborted",
-                        "addEventListener",
-                        "removeEventListener",
-                        "dispatchEvent"
-                      ],
-                      "additionalProperties": true
-                    }
-                  ]
-                },
-                "timeout": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "const": false,
-                      "type": "boolean"
-                    }
-                  ]
-                },
-                "retries": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    }
-                  ]
-                }
-              },
-              "required": [],
-              "additionalProperties": true
-            }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "group": "account",
-    "method": "downloadAccountingSnapshot",
-    "secure": false,
-    "readOnly": true,
-    "signature": "(request: DownloadAccountingSnapshotRequest, options?: RequestOptions): Promise<Blob>",
-    "description": "Downloads an accounting snapshot archive for a wallet.",
-    "args": [
-      {
-        "name": "request",
-        "optional": false,
-        "type": "{ user: string; }",
-        "schema": {
-          "type": "object",
-          "properties": {
-            "user": {
-              "type": "string"
             }
           },
           "required": ["user"],
@@ -13226,7 +13120,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13276,7 +13170,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -13425,7 +13319,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2224": {
+                        "__@toPrimitive@2225": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13475,7 +13369,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2224"
+                        "__@toPrimitive@2225"
                       ],
                       "additionalProperties": true
                     }
@@ -14175,120 +14069,6 @@
                     }
                   ]
                 },
-                "user": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
-                }
-              },
-              "required": [],
-              "additionalProperties": true
-            }
-          ]
-        }
-      },
-      {
-        "name": "options",
-        "optional": true,
-        "type": "RequestOptions | undefined",
-        "schema": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "signal": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "aborted": {
-                          "type": "boolean"
-                        },
-                        "onabort": {
-                          "anyOf": [
-                            {
-                              "type": "null"
-                            },
-                            {
-                              "description": "(this: AbortSignal, ev: Event) => any"
-                            }
-                          ]
-                        },
-                        "reason": {
-                          "description": "any"
-                        },
-                        "throwIfAborted": {
-                          "description": "() => void"
-                        },
-                        "addEventListener": {
-                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
-                        },
-                        "removeEventListener": {
-                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
-                        },
-                        "dispatchEvent": {
-                          "description": "(event: Event) => boolean"
-                        }
-                      },
-                      "required": [
-                        "aborted",
-                        "onabort",
-                        "reason",
-                        "throwIfAborted",
-                        "addEventListener",
-                        "removeEventListener",
-                        "dispatchEvent"
-                      ],
-                      "additionalProperties": true
-                    }
-                  ]
-                },
-                "timeout": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "const": false,
-                      "type": "boolean"
-                    }
-                  ]
-                },
-                "retries": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    }
-                  ]
-                }
-              },
-              "required": [],
-              "additionalProperties": true
-            }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "group": "account",
-    "method": "downloadAccountingSnapshot",
-    "secure": true,
-    "readOnly": true,
-    "signature": "(request?: SecureDownloadAccountingSnapshotRequest, options?: RequestOptions): Promise<Blob>",
-    "description": "Downloads an accounting snapshot archive for a wallet.\n\nDefaults to the authenticated account's wallet when `user` is omitted.",
-    "args": [
-      {
-        "name": "request",
-        "optional": true,
-        "type": "{ user?: string | undefined; } | undefined",
-        "schema": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
                 "user": {
                   "anyOf": [
                     {
@@ -20247,7 +20027,7 @@
     "secure": false,
     "readOnly": true,
     "signature": "(request?: FetchPerpsInstrumentsRequest, options?: RequestOptions): Promise<PerpsInstrument[]>",
-    "description": "Fetches Perps instruments.",
+    "description": "Fetches Perps instruments.\nCategory strings are preserved, including values introduced after this SDK release.",
     "args": [
       {
         "name": "request",
@@ -20268,6 +20048,9 @@
                 "category": {
                   "anyOf": [
                     {
+                      "type": "string"
+                    },
+                    {
                       "const": "equity",
                       "type": "string"
                     },
@@ -20281,6 +20064,10 @@
                     },
                     {
                       "const": "crypto",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pre_ipo",
                       "type": "string"
                     }
                   ]
@@ -21615,7 +21402,7 @@
     "secure": true,
     "readOnly": true,
     "signature": "(request?: FetchPerpsInstrumentsRequest, options?: RequestOptions): Promise<PerpsInstrument[]>",
-    "description": "Fetches Perps instruments.",
+    "description": "Fetches Perps instruments.\nCategory strings are preserved, including values introduced after this SDK release.",
     "args": [
       {
         "name": "request",
@@ -21636,6 +21423,9 @@
                 "category": {
                   "anyOf": [
                     {
+                      "type": "string"
+                    },
+                    {
                       "const": "equity",
                       "type": "string"
                     },
@@ -21649,6 +21439,10 @@
                     },
                     {
                       "const": "crypto",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pre_ipo",
                       "type": "string"
                     }
                   ]

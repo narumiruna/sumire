@@ -1,6 +1,6 @@
-import { Type } from "@earendil-works/pi-ai"
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+import { Type } from "typebox"
 
 import type { Settings } from "./config/settings.js"
 import { type Logger, withLogSpan } from "./logging.js"

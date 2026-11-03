@@ -1,6 +1,6 @@
 import { StringEnum } from "@earendil-works/pi-ai"
 import type { ContextEvent, SessionEntry } from "@earendil-works/pi-coding-agent"
-import { type TUnsafe, Type } from "typebox"
+import { Type } from "typebox"
 
 export const PROGRESS_TOOL_NAME = "update_progress"
 export const PROGRESS_DETAILS_VERSION = 2
@@ -16,9 +16,11 @@ const resubmitGuidance = "Fix the input and resubmit the complete steps array."
 
 export type ProgressStatus = (typeof progressStatuses)[number]
 
-const progressStatusSchema: TUnsafe<ProgressStatus> = StringEnum(progressStatuses, {
-  description: "The step's current status",
-})
+const progressStatusSchema = Type.Unsafe<ProgressStatus>(
+  StringEnum(progressStatuses, {
+    description: "The step's current status",
+  }),
+)
 
 export interface ProgressStep {
   text: string

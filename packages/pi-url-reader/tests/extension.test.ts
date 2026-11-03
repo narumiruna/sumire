@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
+import { type JsonObject, validateToolArguments } from "@earendil-works/pi-ai"
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -52,6 +53,32 @@ describe("URL tool Pi package", () => {
     await expect(
       tool.execute("scheme", { url: "http://8.8.8.8/" }, undefined, undefined, undefined as never),
     ).resolves.toMatchObject({ isError: true, details: { code: "unsafe_url" } })
+  })
+
+  it("validates optional loader choices through Pi", () => {
+    const tool = createUrlTool({ load: vi.fn() }, { selectableLoaders: ["httpx"] })
+    const cases: JsonObject[] = [
+      { url: "https://example.com/" },
+      { url: "https://example.com/", loader: "httpx" },
+    ]
+    for (const args of cases) {
+      expect(
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "loader",
+          name: tool.name,
+          arguments: args,
+        }),
+      ).toEqual(args)
+    }
+    expect(() =>
+      validateToolArguments(tool, {
+        type: "toolCall",
+        id: "invalid",
+        name: tool.name,
+        arguments: { url: "https://example.com/", loader: "firecrawl" },
+      }),
+    ).toThrow()
   })
 
   it("forwards approved loader selections and cancellation in an options object", async () => {
