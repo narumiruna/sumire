@@ -3,18 +3,19 @@ import { once } from "node:events"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import type { ConversationId } from "@earendil-works/pi-durable"
+import { type ConversationId, Harness, UserEntry } from "@earendil-works/pi-durable"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { BotSessionDoc, OutboxDoc } from "../src/agent/durable/state.js"
 import { TelegramReplyIndex } from "../src/agent/reply-index.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { approvedStore } from "./helpers/admin-store.js"
+import { currentConversation } from "./helpers/durable-session.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 const fixtures: Awaited<ReturnType<typeof createPiFixture>>[] = []
-const setup = async () => {
-  const fixture = await createPiFixture()
+const setup = async (overrides: Parameters<typeof createPiFixture>[0] = {}) => {
+  const fixture = await createPiFixture(overrides)
   fixtures.push(fixture)
   return fixture
 }
@@ -100,6 +101,77 @@ describe("durable bot runtime", () => {
     fixture.enqueueAnswer("Next answer")
     await reopened.prompt("continue")
     expect(JSON.stringify(fixture.requests[1]?.messages)).toContain("look at this")
+  })
+
+  it("detaches commit observations on branch restore and shutdown", async () => {
+    const openHarness = Harness.open.bind(Harness)
+    const detaches: (() => void)[] = []
+    const restores: (() => void)[] = []
+    const open = vi.spyOn(Harness, "open").mockImplementation(async (...args) => {
+      const harness = await openHarness(...args)
+      const observeCommits = harness.observeCommits.bind(harness)
+      const observe = vi.spyOn(harness, "observeCommits").mockImplementation((observer) => {
+        const observation = observeCommits(observer)
+        const detach = vi.fn(() => observation.detach())
+        detaches.push(detach)
+        return { detach }
+      })
+      restores.push(() => observe.mockRestore())
+      return harness
+    })
+    try {
+      const fixture = await setup()
+      const session = await fixture.createSession()
+      expect(detaches).toHaveLength(1)
+      await session.appendPassiveContext("Branch checkpoint")
+      await session.waitForIdle()
+      const checkpoint = session.getCheckpoint()
+      if (!checkpoint) throw new Error("Missing branch checkpoint")
+      await session.restoreBranch(checkpoint)
+      expect(detaches).toHaveLength(2)
+      expect(detaches[0]).toHaveBeenCalledOnce()
+      expect(detaches[1]).not.toHaveBeenCalled()
+      await session.dispose()
+      await session.dispose()
+      expect(detaches[1]).toHaveBeenCalledOnce()
+    } finally {
+      for (const restore of restores) restore()
+      open.mockRestore()
+    }
+  })
+
+  it("keeps active context beyond the view window and drops it after reset", async () => {
+    const fixture = await setup()
+    const session = await fixture.createSession()
+    const conversation = await currentConversation(session)
+    const completions: unknown[] = []
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_end") completions.push(event.message)
+    })
+    await conversation.commit(async (tx) => {
+      for (let index = 0; index < 120; index++) {
+        await tx.appendEntry(UserEntry, conversation.id, {
+          model: [
+            {
+              role: "user",
+              content: [{ type: "text", text: `History ${index}` }],
+              timestamp: index,
+            },
+          ],
+        })
+      }
+    }, context)
+    await vi.waitFor(() => expect(session.messages).toHaveLength(120))
+    expect(session.messages[0]).toMatchObject({ content: [{ type: "text", text: "History 0" }] })
+    expect(completions).toEqual(session.messages)
+    unsubscribe()
+
+    await conversation.reset(undefined, context)
+    await vi.waitFor(() => expect(session.messages).toEqual([]))
+    fixture.enqueueAnswer("After reset")
+    await session.prompt("Continue with new context")
+    expect(JSON.stringify(fixture.requests[0]?.messages)).not.toContain("History 0")
+    expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1)
   })
 
   it("delivers structured progress from the durable tool to the host", async () => {
@@ -195,54 +267,65 @@ describe("durable bot runtime", () => {
     }
   })
 
-  it("recovers committed input and delivery after the process is killed", async () => {
-    const fixture = await setup()
-    const release = fixture.pauseNextRequest()
-    fixture.enqueueAnswer("Recovered after SIGKILL")
-    const child = spawn(
-      process.execPath,
-      [
-        "--import",
-        "tsx",
-        new URL("./fixtures/durable-crash.mjs", import.meta.url).pathname,
-        fixture.root,
-        fixture.endpoint,
-      ],
-      { stdio: "pipe" },
-    )
-    let stderr = ""
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString()
-    })
-    const exited = once(child, "exit")
-    try {
-      await vi.waitFor(
-        () => {
-          expect(child.exitCode, stderr).toBeNull()
-          expect(fixture.requests).toHaveLength(1)
-        },
-        // Process imports compete with the expanded real-transport suite on CI workers.
-        // This bounds startup only; the committed-input/recovery assertions below are unchanged.
-        { timeout: 10_000 },
+  it.each([1, 2])(
+    "settles killed input within a %i-attempt budget",
+    async (maxAttempts) => {
+      const fixture = await setup({
+        botAgentMaxAttempts: maxAttempts,
+        botAgentRetryBaseDelaySeconds: 0,
+      })
+      const release = fixture.pauseNextRequest()
+      // Pi 1.5 charges a request interrupted by a crash against the retry budget.
+      if (maxAttempts > 1) fixture.enqueueAnswer("Recovered after SIGKILL")
+      const child = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          new URL("./fixtures/durable-crash.mjs", import.meta.url).pathname,
+          fixture.root,
+          fixture.endpoint,
+        ],
+        { stdio: "pipe" },
       )
-      child.kill("SIGKILL")
-      await exited
-      await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
-      release()
-      const reopened = await fixture.createSession()
-      const deliver = vi.fn(async () => {})
-      await reopened.recoverPending(deliver)
-      expect(deliver).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "Recovered after SIGKILL" }),
-        { sourceMessageId: 71, statusMessageId: 72, mode: "default" },
-      )
-      expect(reopened.messages.filter((message) => message.role === "user")).toHaveLength(1)
-    } finally {
-      release()
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
-      await exited
-    }
-  }, 30_000)
+      let stderr = ""
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString()
+      })
+      const exited = once(child, "exit")
+      try {
+        await vi.waitFor(
+          () => {
+            expect(child.exitCode, stderr).toBeNull()
+            expect(fixture.requests).toHaveLength(1)
+          },
+          // Process imports compete with the expanded real-transport suite on CI workers.
+          // This bounds startup only; the committed-input/recovery assertions below are unchanged.
+          { timeout: 10_000 },
+        )
+        child.kill("SIGKILL")
+        await exited
+        await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
+        release()
+        const reopened = await fixture.createSession()
+        const deliver = vi.fn(async () => {})
+        await reopened.recoverPending(deliver)
+        expect(deliver).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: maxAttempts > 1 ? "Recovered after SIGKILL" : "AI 服務暫時無法使用，請稍後再試。",
+          }),
+          { sourceMessageId: 71, statusMessageId: 72, mode: "default" },
+        )
+        expect(fixture.requests).toHaveLength(maxAttempts)
+        expect(reopened.messages.filter((message) => message.role === "user")).toHaveLength(1)
+      } finally {
+        release()
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
+        await exited
+      }
+    },
+    30_000,
+  )
 
   it("withdraws an unsubmitted delivery intent when cancelled during recovery", async () => {
     const fixture = await setup()

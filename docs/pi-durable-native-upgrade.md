@@ -2,7 +2,7 @@
 
 ## Ownership and contracts
 
-Pi Durable 1.3.0 owns model turns, direct and nested tool tasks, script journals, retries, compaction, and transcript storage. Sumire owns Telegram routing, delivery intents, live authorization, MCP transport, and capability limits.
+Pi Durable 1.5.0 owns model turns, direct and nested tool tasks, script journals, retries, compaction, and transcript storage. Sumire owns Telegram routing, delivery intents, live authorization, MCP transport, and capability limits.
 
 - Coding tools use `@earendil-works/pi-durable/tools` and a Harness execution environment.
   - Bash receives an explicit shell environment with inheritance disabled. Administrator and provider credentials are excluded.
@@ -16,6 +16,13 @@ Pi Durable 1.3.0 owns model turns, direct and nested tool tasks, script journals
 - Only model-facing output and UI details enter the transcript. Program-only structured results remain on native nested task channels. A caller does not count a child's reported usage again.
 
 The host adapters do not schedule nested calls or implement a second model loop.
+
+## Pi 1.5 compatibility
+
+- Pi 1.5 upgrades `pi.live` documents to version 2 and renames compaction `reason` to `trigger`. It also updates the built-in generation and tool task versions. The previous runtime cannot read the upgraded documents. Take a consistent backup before starting the new runtime.
+- Sumire observes consecutive conversation views and queues listener notifications off the commit line. This preserves short tool transitions without using the removed event stream API.
+- Conversation views contain a bounded history window. Sumire reads the active transcript through `Conversation.context()` so view trimming does not remove session history and a reset does not retain old model context.
+- A model request interrupted by a process crash consumes an attempt from the configured retry budget. With no attempts left, the Harness ends the run without an answer. A graceful close preserves pending work for restart instead.
 
 ## Stored-state upgrade
 
@@ -57,7 +64,7 @@ Do not delete conversations to make an upgrade pass. Do not treat tool discovery
 ## Rollback and limits
 
 - Before the upgraded process admits new work, stop it, restore the consistent pre-upgrade backup, and start the matching old image.
-- Do not run the old image directly on the migrated state. Its legacy store does not include later native writes.
+- Do not run the old image directly on the migrated state. It cannot read upgraded `pi.live` documents, and its legacy store does not include later native writes.
 - After external effects or deliveries, do not blindly restore an older snapshot. Reconcile effects and outbox acknowledgements first. Use a forward fix when restoring would repeat work or restore revoked access.
 - Neither native replay nor the Telegram outbox guarantees exactly-once external delivery. An external effect may finish before its receipt is committed. Inspect that effect before an explicit retry.
 - Source-level fixture tests are not production image or operator acceptance. Record image rehearsal, deployment approval, controlled restart, and release acceptance separately in the active integration plan.

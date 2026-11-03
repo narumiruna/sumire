@@ -1,11 +1,12 @@
-import type { JsonValue } from "@earendil-works/pi-ai"
+import { type JsonValue, validateToolArguments } from "@earendil-works/pi-ai"
 import type {
   ContextEvent,
   ExtensionAPI,
   ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent"
-import { describe, expect, it } from "vitest"
+import type { Static } from "typebox"
+import { describe, expect, expectTypeOf, it } from "vitest"
 
 import progressExtension from "../src/progress-extension.js"
 import {
@@ -38,6 +39,34 @@ interface RegisteredTool {
 }
 
 describe("progress state", () => {
+  it("keeps the status enum typed and validates it through Pi", () => {
+    expectTypeOf<Static<typeof ProgressParameters>>().toEqualTypeOf<{ steps: ProgressStep[] }>()
+    const tool = {
+      name: PROGRESS_TOOL_NAME,
+      description: "Update progress",
+      parameters: ProgressParameters,
+    }
+    for (const status of ["pending", "in_progress", "completed", "blocked"]) {
+      const args = { steps: [{ text: "check", status }] }
+      expect(
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "progress",
+          name: tool.name,
+          arguments: args,
+        }),
+      ).toEqual(args)
+    }
+    expect(() =>
+      validateToolArguments(tool, {
+        type: "toolCall",
+        id: "invalid",
+        name: tool.name,
+        arguments: { steps: [{ text: "check", status: "paused" }] },
+      }),
+    ).toThrow()
+  })
+
   it("accepts canonical progress and rejects invalid invariants", () => {
     expect(
       validateProgressArguments({
