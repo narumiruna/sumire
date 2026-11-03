@@ -47,17 +47,18 @@
     "provenance": true
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-url-reader",
-    "prebuild": "npm run build:dependencies",
+    "build": "bun run build:compile",
+    "build:compile": "tsc -p tsconfig.build.json",
+    "build:dependencies": "bun run --filter @narumitw/sumire-url-reader build",
+    "prebuild": "sh -c 'bun run build:dependencies'",
     "check": "biome check .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
-    "prepack": "npm run build",
-    "pretypecheck": "npm run build:dependencies",
+    "prepack": "sh -c 'bun run build'",
+    "pretypecheck": "sh -c 'bun run build:dependencies'",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm run build",
+    "pretest": "sh -c 'bun run build'",
     "test": "vitest run"
   },
   "dependencies": {

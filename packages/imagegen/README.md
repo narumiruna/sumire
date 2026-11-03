@@ -49,9 +49,9 @@ The bot owns the `generate_image` tool, auth/policy checks, private artifact fil
 Run from the repository root:
 
 ```bash
-npm test --workspace @narumitw/sumire-imagegen
-npm run typecheck --workspace @narumitw/sumire-imagegen
-npm run build --workspace @narumitw/sumire-imagegen
+bun run --filter @narumitw/sumire-imagegen test
+bun run --filter @narumitw/sumire-imagegen typecheck
+bun run --filter @narumitw/sumire-imagegen build
 ```
 
 Tests use synthetic OAuth tokens and image responses. Live account generation remains unverified until a separately authorized request succeeds. Do not publish this private package, create release tags, or use publication as a smoke test.

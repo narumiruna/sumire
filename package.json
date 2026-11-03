@@ -3,6 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.4",
+  "trustedDependencies": [],
   "engines": {
     "node": ">=26"
   },
@@ -18,19 +20,20 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "bun run --workspaces --if-present --sequential build",
     "changeset": "changeset",
-    "check": "npm run check --workspaces --if-present",
-    "format": "npm run format --workspaces --if-present",
-    "format:check": "npm run format:check --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
+    "check": "biome check package.json scripts && bun run --workspaces --if-present --sequential check",
+    "format": "biome format --write package.json scripts && bun run --workspaces --if-present --sequential format",
+    "format:check": "biome format package.json scripts && bun run --workspaces --if-present --sequential format:check",
+    "install:dependencies": "bun --no-env-file scripts/install-dependencies.mjs",
+    "lint": "biome lint scripts && bun run --workspaces --if-present --sequential lint",
     "prepare": "if command -v husky >/dev/null 2>&1; then husky; fi",
     "precommit": "sh scripts/pre-commit.sh",
     "release": "changeset publish",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
-    "update": "npx npm-check-updates -u -w --root"
+    "test": "node --test scripts/*.test.mjs && bun run --workspaces --if-present --sequential test",
+    "typecheck": "bun run --workspaces --if-present --sequential typecheck",
+    "version-packages": "changeset version && bun run install:dependencies --lockfile-only",
+    "update": "bunx npm-check-updates -u -w --root"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

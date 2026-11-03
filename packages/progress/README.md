@@ -26,7 +26,7 @@ pi install npm:@narumitw/sumire-progress
 Build and load a repository checkout:
 
 ```bash
-npm run build --workspace @narumitw/sumire-progress
+bun run --filter @narumitw/sumire-progress build
 pi -e ./packages/progress
 ```
 

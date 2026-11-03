@@ -9,8 +9,8 @@ The package exposes all **123 action methods** of the published default client. 
 From the repository root:
 
 ```bash
-npm ci
-npm run build --workspace @narumitw/sumire-pi-polymarket
+bun run install:dependencies
+bun run --filter @narumitw/sumire-pi-polymarket build
 pi -e ./packages/pi-polymarket
 ```
 
@@ -162,10 +162,10 @@ The confirmation field records intent; **it is not an authorization boundary**. 
 ## Development
 
 ```bash
-npm run generate --workspace @narumitw/sumire-pi-polymarket
-npm test --workspace @narumitw/sumire-pi-polymarket
-npm run typecheck --workspace @narumitw/sumire-pi-polymarket
-npm run build --workspace @narumitw/sumire-pi-polymarket
+bun run --filter @narumitw/sumire-pi-polymarket generate
+bun run --filter @narumitw/sumire-pi-polymarket test
+bun run --filter @narumitw/sumire-pi-polymarket typecheck
+bun run --filter @narumitw/sumire-pi-polymarket build
 ```
 
 `generate` reads the pinned installed SDK declarations and updates `src/api.json` and `src/handles-api.json`. It checks coverage against both default action types. Tests check that these generated files match the installed SDK. Regenerate them when changing the SDK version. The generator uses the compiler API exported by `ts-morph`. TypeScript 7 does not provide this API. Type checking and builds use the TypeScript 7 CLI.

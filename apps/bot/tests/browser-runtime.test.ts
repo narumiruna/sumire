@@ -220,17 +220,25 @@ it("keeps desktop config unchanged and explicitly selects the Docker launcher in
   expect(config.servers[1]?.headers).toEqual({ Authorization: "Bearer test-only-key" })
 })
 
-it("uses the same npm-ci Playwright CLI for Docker browser and OS dependency installation", () => {
+it("uses the same frozen Playwright CLI for Docker browser and OS dependency installation", () => {
   const dockerfile = readFileSync(new URL("../../../Dockerfile", import.meta.url), "utf8")
   const bot = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
   const content = JSON.parse(
     readFileSync(new URL("../../../packages/url-reader/package.json", import.meta.url), "utf8"),
   )
-  const lock = JSON.parse(
-    readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8"),
+  const locked = spawnSync(
+    "bun",
+    [
+      "--no-env-file",
+      "--eval",
+      'import lock from "./bun.lock" with { type: "jsonc" }; console.log(JSON.stringify(lock.packages.playwright))',
+    ],
+    { cwd: new URL("../../../", import.meta.url), encoding: "utf8", timeout: 5_000 },
   )
+  expect(locked.error).toBeUndefined()
+  expect(locked.status, locked.stderr).toBe(0)
   expect(bot.dependencies.playwright).toBe(content.dependencies.playwright)
-  expect(lock.packages["node_modules/playwright"].version).toBe(bot.dependencies.playwright)
+  expect(JSON.parse(locked.stdout)[0]).toBe(`playwright@${bot.dependencies.playwright}`)
   expect(dockerfile).not.toContain("PLAYWRIGHT_VERSION")
   expect(dockerfile).toContain("FROM dependencies AS browser-download")
   expect(dockerfile).toContain("node node_modules/playwright/cli.js install chromium")

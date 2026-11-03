@@ -49,7 +49,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
-    "prepack": "npm run build",
+    "prepack": "sh -c 'bun run build'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

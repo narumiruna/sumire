@@ -29,16 +29,16 @@ Failed or cancelled scripts do not commit store writes. Completed tool side effe
 
 ## Local verification
 
-Run from the repository root with Node.js 26 or newer. Use disposable storage; do not point tests at runtime volumes.
+Run from the repository root with Bun 1.4.4 and Node.js 26 or newer. Use disposable storage; do not point tests at runtime volumes.
 
-1. Install serially with `npm ci`. Do not install dependencies while tests run.
+1. Install serially with `bun run install:dependencies`. Do not install dependencies while tests run.
 2. Run the focused contracts and recovery tests:
 
    ```bash
-   npm test --workspace @narumitw/sumire -- tests/durable-tools.test.ts tests/durable-migration.test.ts tests/native-codemode-runtime.test.ts tests/codemode.test.ts tests/codemode-session.test.ts tests/admin-turns.test.ts tests/mcp-session.test.ts tests/durable-delivery.test.ts tests/durable-runtime.test.ts
+   bun run --filter @narumitw/sumire test tests/durable-tools.test.ts tests/durable-migration.test.ts tests/native-codemode-runtime.test.ts tests/codemode.test.ts tests/codemode-session.test.ts tests/admin-turns.test.ts tests/mcp-session.test.ts tests/durable-delivery.test.ts tests/durable-runtime.test.ts
    ```
 
-3. Run `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` from the root.
+3. Run `bun run format:check`, `bun run lint`, `bun run typecheck`, `bun run test`, and `bun run build` from the root.
 
 The migration tests create representative pre-upgrade SQLite fixtures, close them before backup, upgrade disposable copies, restore the backup, and verify the old state. Process tests send SIGKILL and SIGTERM at a nested-tool boundary after a completed call has been journaled. They check effect counts, script continuation, the persisted deadline, and pending Telegram delivery. These tests do not send real Telegram messages or publish to external services.
 

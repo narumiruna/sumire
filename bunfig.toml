@@ -1,0 +1,8 @@
+# Load only environment files named explicitly by a command.
+env = false
+
+[install]
+# Native setup is version-checked by scripts/install-dependencies.mjs.
+ignoreScripts = true
+# Preserve Node.js tools and the comparison script's shared node_modules tree.
+linker = "hoisted"

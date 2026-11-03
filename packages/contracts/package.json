@@ -18,15 +18,16 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "bun run build:compile",
+    "build:compile": "tsc -p tsconfig.build.json",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prebuild": "npm run build --workspace @narumitw/sumire-policy",
-    "pretypecheck": "npm run build --workspace @narumitw/sumire-policy",
-    "pretest": "npm run build --workspace @narumitw/sumire-policy"
+    "prebuild": "sh -c 'bun run --filter @narumitw/sumire-policy build'",
+    "pretypecheck": "sh -c 'bun run --filter @narumitw/sumire-policy build'",
+    "pretest": "sh -c 'bun run --filter @narumitw/sumire-policy build'"
   },
   "dependencies": {
     "@narumitw/sumire-policy": "0.5.0"

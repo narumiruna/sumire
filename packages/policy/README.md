@@ -15,6 +15,6 @@ This package depends only on Zod. It does not access storage, credentials, HTTP,
 Run checks from the repository root:
 
 ```sh
-npm run test --workspace @narumitw/sumire-policy
-npm run build --workspace @narumitw/sumire-policy
+bun run --filter @narumitw/sumire-policy test
+bun run --filter @narumitw/sumire-policy build
 ```

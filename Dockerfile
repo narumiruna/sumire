@@ -17,11 +17,11 @@ RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=
 RUN --mount=type=bind,source=scripts/install-curl-impersonate.sh,target=/tmp/install-curl-impersonate.sh \
     sh /tmp/install-curl-impersonate.sh
 
-FROM node:26-bookworm-slim AS dependencies
+FROM runtime-base AS dependency-manifests
 
 WORKDIR /build
 
-COPY package.json package-lock.json ./
+COPY package.json bun.lock bunfig.toml ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/admin/package.json apps/admin/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
@@ -34,58 +34,62 @@ COPY packages/github-notifications/package.json packages/github-notifications/pa
 COPY packages/url-reader/package.json packages/url-reader/package.json
 COPY packages/pi-url-reader/package.json packages/pi-url-reader/package.json
 COPY packages/pi-polymarket/package.json packages/pi-polymarket/package.json
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace @narumitw/sumire --workspace @narumitw/sumire-admin --include-workspace-root=false --no-audit --no-fund
+COPY scripts/install-dependencies.mjs scripts/install-dependencies.mjs
+
+FROM dependency-manifests AS dependencies
+
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun run install:dependencies --filter @narumitw/sumire --filter @narumitw/sumire-admin
 
 # Compile only source/configuration, keeping tests, docs, and skills out of build cache keys.
 FROM dependencies AS runtime-config-build
 
 COPY packages/runtime-config/tsconfig*.json packages/runtime-config/
 COPY packages/runtime-config/src/ packages/runtime-config/src/
-RUN npm run build --workspace @narumitw/sumire-runtime-config
+RUN bun run --filter @narumitw/sumire-runtime-config build
 
 FROM dependencies AS policy-build
 
 COPY packages/policy/tsconfig*.json packages/policy/
 COPY packages/policy/src/ packages/policy/src/
-RUN npm run build --workspace @narumitw/sumire-policy
+RUN bun run --filter @narumitw/sumire-policy build
 
 FROM dependencies AS contracts-build
 
 COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY packages/contracts/tsconfig*.json packages/contracts/
 COPY packages/contracts/src/ packages/contracts/src/
-RUN npm --ignore-scripts run build --workspace @narumitw/sumire-contracts
+RUN bun run --filter @narumitw/sumire-contracts build:compile
 
 FROM dependencies AS progress-build
 
 COPY packages/progress/tsconfig*.json packages/progress/
 COPY packages/progress/src/ packages/progress/src/
-RUN npm run build --workspace @narumitw/sumire-progress
+RUN bun run --filter @narumitw/sumire-progress build
 
 FROM dependencies AS imagegen-build
 
 COPY packages/imagegen/tsconfig*.json packages/imagegen/
 COPY packages/imagegen/src/ packages/imagegen/src/
-RUN npm run build --workspace @narumitw/sumire-imagegen
+RUN bun run --filter @narumitw/sumire-imagegen build
 
 FROM dependencies AS github-notifications-build
 
 COPY packages/github-notifications/tsconfig*.json packages/github-notifications/
 COPY packages/github-notifications/src/ packages/github-notifications/src/
-RUN npm run build --workspace @narumitw/sumire-github-notifications
+RUN bun run --filter @narumitw/sumire-github-notifications build
 
 FROM dependencies AS polymarket-build
 
 COPY packages/pi-polymarket/tsconfig*.json packages/pi-polymarket/
 COPY packages/pi-polymarket/src/ packages/pi-polymarket/src/
-RUN npm run build --workspace @narumitw/sumire-pi-polymarket
+RUN bun run --filter @narumitw/sumire-pi-polymarket build
 
 FROM dependencies AS url-reader-build
 
 COPY packages/url-reader/tsconfig*.json packages/url-reader/
 COPY packages/url-reader/src/ packages/url-reader/src/
-RUN npm run build --workspace @narumitw/sumire-url-reader
+RUN bun run --filter @narumitw/sumire-url-reader build
 
 FROM dependencies AS pi-url-reader-build
 
@@ -93,7 +97,7 @@ COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url
 COPY packages/pi-url-reader/tsconfig*.json packages/pi-url-reader/
 COPY packages/pi-url-reader/src/ packages/pi-url-reader/src/
 # Dependencies are already compiled; skip the prebuild hook that recompiles them.
-RUN npm --ignore-scripts run build --workspace @narumitw/sumire-pi-url-reader
+RUN bun run --filter @narumitw/sumire-pi-url-reader build:compile
 
 # Keep one complete set of compiled packages for the bot compiler and runtime image.
 FROM scratch AS compiled-workspaces
@@ -113,7 +117,7 @@ FROM dependencies AS build
 COPY --from=compiled-workspaces /packages /build/packages
 COPY apps/bot/tsconfig*.json apps/bot/
 COPY apps/bot/src/ apps/bot/src/
-RUN npm --ignore-scripts run build --workspace @narumitw/sumire
+RUN bun run --filter @narumitw/sumire build:compile
 
 FROM dependencies AS admin-build
 
@@ -122,12 +126,12 @@ COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contr
 
 COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html apps/admin/
 COPY apps/admin/src/ apps/admin/src/
-RUN npm --ignore-scripts run build --workspace @narumitw/sumire-admin
+RUN bun run --filter @narumitw/sumire-admin build:compile
 
-FROM dependencies AS production-dependencies
+FROM dependency-manifests AS production-dependencies
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun run install:dependencies --production --filter @narumitw/sumire
 
 # Assemble the same application tree for CI import checks and the final image.
 FROM runtime-base AS runtime-application
@@ -173,7 +177,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM dependencies AS browser-download
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-# Use the npm-ci installation, including its locked browser revisions and headless shell.
+# Use the frozen Bun installation, including its locked browser revisions and headless shell.
 RUN node node_modules/playwright/cli.js install chromium
 
 FROM runtime-base AS runtime-dependencies

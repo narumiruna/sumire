@@ -7,8 +7,8 @@ A Pi package for UI-neutral OAuth login. Pi's `ModelRuntime.login` owns provider
 Build and install from the repository root:
 
 ```bash
-npm ci
-npm run build --workspace @narumitw/sumire-login
+bun run install:dependencies
+bun run --filter @narumitw/sumire-login build
 pi install ./packages/login
 ```
 

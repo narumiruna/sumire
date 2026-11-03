@@ -44,7 +44,7 @@ Available now:
 
 ## Requirements
 
-- Node.js 26 or newer
+- Bun 1.4.4 and Node.js 26 or newer on `PATH`
 - Linux x86_64 with glibc for the production AnyDoc native adapter
 - Telegram bot token
 - Provider credentials configured through `/admin` and the Web UI, or credentials already available to Pi
@@ -57,18 +57,18 @@ From the repository root:
 
 ```bash
 cp .env.example .env
-npm ci
-npx playwright install chromium
-npm run build --workspace @narumitw/sumire
-npm start --workspace @narumitw/sumire
+bun run install:dependencies
+node node_modules/playwright/cli.js install chromium
+bun run --filter @narumitw/sumire build
+bun run --filter @narumitw/sumire start
 ```
 
-The scripts run from the repository root and load its `.env`; workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Pi tools use the process working directory: the repository root for npm scripts and `/workdir` in Docker. Pi's default system prompt is preserved. The bot renders `instructions/APPEND_SYSTEM.md` and appends it as an addendum; it does not replace Pi's default instructions. This file must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. The Durable integration reuses the prompt builder shipped with the pinned Pi Coding Agent package without creating an AgentSession. Skills are discovered from `./skills` and the bundled URL-reader package. The administration WebUI manages global, shared-default, and per-chat skill selections. Only selected loaded skills appear in each chat’s model prompt; skills do not grant tool access. Restart the bot after changing skill files.
+The dev/start scripts run Bun from the repository root with `--no-env-file --env-file=.env`; only that explicit `.env` file is loaded, and existing environment values take priority. Workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Pi tools use the process working directory: the repository root for bot dev/start scripts and `/workdir` in Docker. Pi's default system prompt is preserved. The bot renders `instructions/APPEND_SYSTEM.md` and appends it as an addendum; it does not replace Pi's default instructions. This file must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. The Durable integration reuses the prompt builder shipped with the pinned Pi Coding Agent package without creating an AgentSession. Skills are discovered from `./skills` and the bundled URL-reader package. The administration WebUI manages global, shared-default, and per-chat skill selections. Only selected loaded skills appear in each chat’s model prompt; skills do not grant tool access. Restart the bot after changing skill files.
 
 For development:
 
 ```bash
-npm run dev --workspace @narumitw/sumire -- --verbose
+bun run --filter @narumitw/sumire dev --verbose
 ```
 
 To use the `otter-manage-expenses` skill, set `OTTER_TOKEN` through the ignored `.env` or another deployment secret mechanism.
@@ -104,19 +104,20 @@ Yahoo candle fields use the latest candle position; missing fields are omitted r
 
 ## Quality gates
 
+Run from the repository root:
+
 ```bash
-cd apps/bot
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run build
+bun run --filter @narumitw/sumire format:check
+bun run --filter @narumitw/sumire lint
+bun run --filter @narumitw/sumire typecheck
+bun run --filter @narumitw/sumire test
+bun run --filter @narumitw/sumire build
 ```
 
 Apply Biome formatting and safe fixes with:
 
 ```bash
-npm run check:write
+bun run --filter @narumitw/sumire check:write
 ```
 
 ## Session storage
@@ -220,7 +221,7 @@ Codemode receives a bounded MCP result with `content`, optional `structuredConte
 
 Desktop startup uses `mcp.json` and `npx -y chrome-devtools-mcp@latest`, which requires an installed desktop Chrome. Compose selects `mcp.docker.json`: `node /app/apps/bot/scripts/chrome-devtools.mjs`. The launcher resolves full Chromium through Playwright's `chromium.executablePath()`, checks executable access, then starts `npx -y chrome-devtools-mcp@latest` with `--headless`, `--isolated`, the resolved path, and disabled page-ID routing, usage statistics and performance CrUX. Missing or non-executable Chromium fails before starting MCP. There is no revision directory scan or fallback to an older browser. `PLAYWRIGHT_BROWSERS_PATH` is explicitly supplied in the server's `env` because stdio does not inherit arbitrary bot environment variables.
 
-The Docker download and OS-dependency stages both use the Playwright CLI installed by `npm ci`, so `package-lock.json` determines the browser revisions. Both full Chromium (MCP) and headless shell (URL loaders) are installed. An offline image-build check uses Bun to verify a real headless launch as the non-root runtime user. URL-content keeps its existing `chromium.launch({ headless: true })` behavior; URL-tool delegates to it. Successful automatic URL fallback is not proof that Playwright worked.
+The Docker download and OS-dependency stages both use the locked Playwright CLI installed through `bun run install:dependencies`, so `bun.lock` determines the browser revisions. Both full Chromium (MCP) and headless shell (URL loaders) are installed. An offline image-build check uses Bun to verify a real headless launch as the non-root runtime user. URL-content keeps its existing `chromium.launch({ headless: true })` behavior; URL-tool delegates to it. Successful automatic URL fallback is not proof that Playwright worked.
 
 From the repository root, with the normal ignored `.env` configured:
 
@@ -317,7 +318,7 @@ When an allowlisted user or group asks about channel images, Pi can call `read_i
 
 Only posts received while enabled are indexed; Telegram does not offer a general API for fetching historic channel messages, and pending updates expire after at most 24 hours. Metadata (including truncated captions and Telegram file IDs, **not image bytes**) persists under `.telegramagent/sessions/channel-images/` with file permissions limited to the bot user, at most 100 posts and 256 KB per channel. Old entries are evicted by message order when either bound is reached, so fewer than 100 may remain. A missing, expired, or oversized file returns a tool error rather than an invented image. A fixed 8,000,000-byte limit bounds both declared and streamed image bytes; downloads time out after 60 seconds and tool cancellation aborts the fetch. The image and caption are untrusted input; Pi's coding tools still run with the bot process's filesystem and environment privileges. Tool use incurs model and download costs only on user turns; it does not run for every post. Do not treat the channel as a tool sandbox.
 
-To revoke channel image access, remove its channel ID from group/channel access in the WebUI and apply the policy. Existing indexed metadata is retained in the state volume but cannot be read through `read_image` after removing that channel ID. Do not delete the state volume to roll back; restore the previous image/version if needed. Validate with `npm test --workspace @narumitw/sumire` and, after deployment, post a **new** image to an allowlisted test channel, ask the bot in a permitted private/group chat to read it, and verify a non-image post and an unauthorized channel cause no tool use or download. This PR relies on automated tests instead of a live test channel; real Telegram channel delivery, permissions, and retention remain unverified deployment risks.
+To revoke channel image access, remove its channel ID from group/channel access in the WebUI and apply the policy. Existing indexed metadata is retained in the state volume but cannot be read through `read_image` after removing that channel ID. Do not delete the state volume to roll back; restore the previous image/version if needed. Validate with `bun run --filter @narumitw/sumire test` and, after deployment, post a **new** image to an allowlisted test channel, ask the bot in a permitted private/group chat to read it, and verify a non-image post and an unauthorized channel cause no tool use or download. This PR relies on automated tests instead of a live test channel; real Telegram channel delivery, permissions, and retention remain unverified deployment risks.
 
 ## Document input
 
@@ -380,13 +381,13 @@ docker compose logs -f sumire
 docker compose down
 ```
 
-The bot, Compose healthcheck, and offline runtime checks use Bun 1.4.4. The image retains Node.js 26 for codemode VM isolation and Node-based external CLIs, including Chrome DevTools MCP; npm remains available for those CLIs. Dependency installation and TypeScript compilation still use npm and `package-lock.json`; local development commands are unchanged. The bot entrypoint, healthcheck, runtime checks, and document-conversion children disable Bun's automatic `.env` loading. Compose supplies the root `.env` through `env_file`; a `/workdir/.env` file does not override bot configuration. Offline checks cover SQLite save, backup, and reopen, native document conversion in a child process, core URL DNS validation, built-in URL connection pinning and dispatcher cleanup, actual codemode VM termination, Chromium launch, curl fingerprints, and real asynchronous curl I/O against an offline loopback fixture.
+The bot, Compose healthcheck, and offline runtime checks use Bun 1.4.4. The image retains Node.js 26 for codemode VM isolation and Node-based external CLIs, including Chrome DevTools MCP; npm remains available for those CLIs. Dependency installation and TypeScript compilation use Bun 1.4.4 and the root `bun.lock`; installation uses the guarded wrapper described in the [root README](../../README.md#workspaces). The bot entrypoint, healthcheck, runtime checks, and document-conversion children disable Bun's automatic `.env` loading. Compose supplies the root `.env` through `env_file`; a `/workdir/.env` file does not override bot configuration. Offline checks cover SQLite save, backup, and reopen, native document conversion in a child process, core URL DNS validation, built-in URL connection pinning and dispatcher cleanup, actual codemode VM termination, Chromium launch, curl fingerprints, and real asynchronous curl I/O against an offline loopback fixture.
 
 Under Bun, the URL reader also uses a supervised Node.js 26 host for asynchronous `impers` requests. This avoids Bun's unsupported `uv_poll_init_socket` native call without changing the bot runtime or skipping `curl-cffi`. The shared URL reader applies this to `/f`, `read_url_content`, news transport and PDF fallback. Each reusable URL client owns its host; standalone loads close their own host. Target validation, the pinned public proxy, redirect checks, loader order, byte limits and deadlines remain in effect. Requests have separate cancellation signals; a non-cooperative host is killed after one second, and affected requests receive structured failures rather than crashing the bot. Node.js callers keep the existing in-process transport. No new environment setting is required; the image already contains the Node.js executable and pinned libcurl library. The host receives an allowlist of runtime/library fields, not bot credentials or `NODE_OPTIONS`, and native stderr is not exported.
 
 Under Bun, each codemode execution runs Pi's official QuickJS worker in a separate Node.js process. Pi's supported `CodemodeSandboxBase` still owns the VM protocol, timeouts, output, and call delivery; the bot retains tool execution, policy checks, and the durable journal. Success, failure, timeout, abort, and close stop the VM process and wait for its exit. A parent-process disconnect also exits the Node host. This prevents non-interruptible WASM built-ins from blocking cancellation or shutdown. The child receives only `PATH`, not bot credentials or Node startup options. A real Node.js executable must be available on `PATH`; a Bun replacement fails closed. Native Node.js development keeps its existing worker-thread path. VM fingerprints and deterministic replay data are unchanged. Compose's [seccomp profile](resources/chromium/README.md) continues to deny `clone3` with `ENOSYS`, so modern glibc can fall back to the existing `clone` policy for threads; no syscall permission is added.
 
-Run repository Vitest checks with the documented Node.js 26 `npm test` workflow. A direct Bun 1.4.4 Vitest run has test-instrumentation differences: clearing `process.exitCode`, updating built-in module exports with `syncBuiltinESMExports`, and HTTP keep-alive cleanup under fake timers do not match Node.js behavior. The image runs separate offline Bun checks with production dependencies and real timers.
+Run repository Vitest checks with `bun run test`, which keeps Vitest on Node.js 26 through its shebang. Do not use `bun test` or force `--bun`. A direct Bun 1.4.4 Vitest run has test-instrumentation differences: clearing `process.exitCode`, updating built-in module exports with `syncBuiltinESMExports`, and HTTP keep-alive cleanup under fake timers do not match Node.js behavior. The image runs separate offline Bun checks with production dependencies and real timers.
 
 Before deploying the Bun runtime, stop the bot and take a consistent backup of the admin database, per-chat databases, and pending media. Retain the previous image. After deployment, verify Telegram delivery, provider responses, Chrome DevTools MCP, and cancellation/shutdown. These live checks require deployment credentials; offline build checks do not verify them. If rollback is needed, stop the bot and restore the previous image with the matching state backup. Never delete state volumes.
 

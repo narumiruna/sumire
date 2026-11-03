@@ -4,7 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "npm"
+  # Bun supports version updates, but not automatic security updates.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"

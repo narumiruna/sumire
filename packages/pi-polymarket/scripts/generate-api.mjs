@@ -167,6 +167,6 @@ for (const [file, records] of [
   const target = new URL(`../src/${file}.json`, import.meta.url)
   if (process.argv.includes("--check")) {
     if (JSON.stringify(JSON.parse(readFileSync(target, "utf8"))) !== JSON.stringify(records))
-      throw new Error("SDK catalog is stale. Run npm run generate in this workspace.")
+      throw new Error("SDK catalog is stale. Run bun run generate in this workspace.")
   } else writeFileSync(target, `${JSON.stringify(records, null, 2)}\n`)
 }

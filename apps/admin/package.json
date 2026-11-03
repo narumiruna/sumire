@@ -8,19 +8,20 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 17466 --strictPort",
-    "build": "tsc --noEmit && vite build",
+    "build": "bun run build:compile",
+    "build:compile": "tsc --noEmit && vite build",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts",
-    "predev": "npm run build:dependencies",
-    "prebuild": "npm run build:dependencies",
-    "pretest": "npm run build:dependencies",
-    "pretypecheck": "npm run build:dependencies",
-    "pretest:browser": "npm run build:dependencies"
+    "build:dependencies": "bun run --filter @narumitw/sumire-policy build && bun run --filter @narumitw/sumire-contracts build:compile",
+    "predev": "sh -c 'bun run build:dependencies'",
+    "prebuild": "sh -c 'bun run build:dependencies'",
+    "pretest": "sh -c 'bun run build:dependencies'",
+    "pretypecheck": "sh -c 'bun run build:dependencies'",
+    "pretest:browser": "sh -c 'bun run build:dependencies'"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

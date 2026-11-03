@@ -7,8 +7,8 @@ Pi integration for [`@narumitw/sumire-url-reader`](../url-reader/README.md). It 
 Run from the repository root:
 
 ```bash
-npm ci
-npm run build --workspace @narumitw/sumire-pi-url-reader
+bun run install:dependencies
+bun run --filter @narumitw/sumire-pi-url-reader build
 pi -e ./packages/pi-url-reader
 ```
 
@@ -133,10 +133,10 @@ All options are optional. The default export uses the loading defaults above and
 ## Checks
 
 ```bash
-npm run format:check --workspace @narumitw/sumire-pi-url-reader
-npm run lint --workspace @narumitw/sumire-pi-url-reader
-npm run typecheck --workspace @narumitw/sumire-pi-url-reader
-npm test --workspace @narumitw/sumire-pi-url-reader
+bun run --filter @narumitw/sumire-pi-url-reader format:check
+bun run --filter @narumitw/sumire-pi-url-reader lint
+bun run --filter @narumitw/sumire-pi-url-reader typecheck
+bun run --filter @narumitw/sumire-pi-url-reader test
 ```
 
 After building, run `bun --no-env-file packages/pi-url-reader/scripts/check-runtime.mjs` from the repository root to verify the real built-in client offline. The check uses a loopback fixture, verifies the installed connector's pinned lookup before redirecting its test socket to that fixture, and checks redirects, extraction, HTTP failure, and dispatcher cleanup. Docker runs the same check under Bun in both its CI application target and the final non-root image.

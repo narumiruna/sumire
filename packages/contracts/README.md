@@ -7,6 +7,6 @@ Policy types belong to `@narumitw/sumire-policy`. This package imports them only
 Run checks from the repository root:
 
 ```sh
-npm run test --workspace @narumitw/sumire-contracts
-npm run build --workspace @narumitw/sumire-contracts
+bun run --filter @narumitw/sumire-contracts test
+bun run --filter @narumitw/sumire-contracts build
 ```

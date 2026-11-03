@@ -54,47 +54,63 @@ Administrators manage service credentials and non-confidential values on **Secre
 docker compose --progress plain build sumire
 ```
 
-Docker BuildKit caches npm, pip, and apt downloads. Each workspace compiles in its own stage, so bot-only source changes reuse shared package builds, Chromium, and the audio stack. Tests and documentation are excluded from compilation inputs; skills and instructions are copied separately without recompiling TypeScript. Torch has a separate layer from Whisper and yt-dlp. A shared artifact collects the complete package `dist` trees once for bot compilation and runtime packaging. Production manifests and dependencies remain separate from that artifact.
+Docker BuildKit caches Bun, pip, and apt downloads. Each workspace compiles in its own stage, so bot-only source changes reuse shared package builds, Chromium, and the audio stack. Tests and documentation are excluded from compilation inputs; skills and instructions are copied separately without recompiling TypeScript. Torch has a separate layer from Whisper and yt-dlp. A shared artifact collects the complete package `dist` trees once for bot compilation and runtime packaging. Production manifests and dependencies remain separate from that artifact.
 
 Keep the same Docker builder to reuse local cache; avoid `--no-cache` or pruning build cache unless a clean build is intended. Container publishing exports all intermediate layers to GitHub Actions cache (`mode=max`) for reuse on later runs. GitHub Actions cache does not preserve cache-mount contents, so changed dependency inputs may still require downloads on a fresh runner.
 
 See the [TypeScript app README](apps/bot/README.md) for local development, configuration, and behavior. Before upgrading existing durable conversations, read the [native Pi Durable upgrade and recovery procedure](docs/pi-durable-native-upgrade.md).
 
-## Node workspaces
+## Workspaces
 
-Use Node.js 26 or newer for local commands. CI, release workflows, and Docker builds use Node.js 26. The Docker bot and healthcheck run on Bun 1.4.4; Node.js remains installed for codemode VM isolation and external CLIs; npm remains available for those CLIs.
+Use Bun 1.4.4 and a real Node.js 26 or newer executable on `PATH`. CI, release workflows, and Docker installation and build stages use the same Bun version. Node.js remains required for the `impers` host, codemode isolation, Vitest, Vite, Playwright, and external CLIs. npm remains available for external CLIs and the Changesets registry backend.
 
-The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/bot`.
+The root `package.json` manages `apps/*` and `packages/*` workspaces. The root text `bun.lock` is the only dependency lockfile; commit it with dependency changes. GitHub CI, container publishing, and deployment target `apps/bot`.
 
-The root `biome.json` defines formatting and lint rules for all TypeScript workspaces. `npm ci` installs the root tools and configures Husky. The pre-commit hook runs the repository-local Biome on staged files, applies safe fixes, and updates those staged files.
-
-```bash
-npm ci
-npm run build
-npm run format
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-```
-
-Run `npm run precommit` to check staged files manually.
-
-Run one workspace with `--workspace`, for example:
+Run setup and checks from the repository root:
 
 ```bash
-npm test --workspace @narumitw/sumire-url-reader
+bun run install:dependencies
+bun run build
+bun run format
+bun run format:check
+bun run lint
+bun run typecheck
+bun run test
 ```
+
+`bun run install:dependencies` is the supported install command and uses a frozen lockfile by default. Before installation, its Bun wrapper requires Bun 1.4.4 and external Node.js 26 or newer. It installs with dependency scripts disabled, then validates all installed Node.js engine requirements and approved script names and versions before manually running only the fixed `esbuild@0.28.2` and `koffi@3.3.1` scripts. Development setup explicitly runs Husky prepare.
+
+The root `allowScripts` policy remains authoritative. `bunfig.toml` disables automatic environment loading (`env = false`), sets `[install] ignoreScripts = true`, and selects `linker = "hoisted"`; `trustedDependencies` is empty. Bun trust names cannot restrict package versions, and Bun does not enforce `engine-strict`. Do not use bare `bun install` or `--trust` for setup: the configuration blocks dependency scripts, but a bare install omits the wrapper's validation and native setup.
+
+For an intentional lockfile refresh after manifest changes, use `bun run install:dependencies --lockfile-only`. This mode is not frozen and skips native setup. Run the normal wrapper afterward before building or testing. Production dependency setup uses `bun run install:dependencies --production --filter @narumitw/sumire`.
+
+The root `biome.json` defines formatting and lint rules for all TypeScript workspaces and `scripts/`. Root tests run Node.js script regression tests before workspace Vitest suites. Use `bun run test`, not `bun test` or `--bun`: Node.js shebangs keep Vitest, Vite, and Playwright on Node.js. Workspace build hooks still build required dependencies.
+
+Run `bun run precommit` to run the repository pre-commit checks manually.
+
+Run a focused script with an exact workspace name, for example:
+
+```bash
+bun run --filter @narumitw/sumire-url-reader test
+```
+
+Consumer npm installation examples, npm registry references, and external MCP `npx` commands remain intentional; they do not install this repository's workspaces.
+
+### Dependency updates
+
+Dependabot runs weekly Bun version updates for `bun.lock`. Bun does not support automatic Dependabot security updates; this is not feature parity with the npm ecosystem. Repository automatic security updates and vulnerability alerts were already disabled; this migration does not change those settings.
+
+See the [supported package managers](https://github.com/github/docs/blob/7fa55a0ac28d01b5cb6f9cbebff06fbee1e2408f/data/reusables/dependabot/supported-package-managers.md) and [Bun updater source](https://github.com/dependabot/dependabot-core/tree/7ff94db9a3890e6689ad7613d33493c12a7b9cd1/bun). The upstream updater uses Bun 1.4.2 and supports text lockfile format 2; repository frozen-install checks with Bun 1.4.4 must pass before merging an update.
 
 ## Package releases
 
 Add a Changesets file to every pull request:
 
 ```bash
-npm run changeset
+bun run changeset
 ```
 
-Use `npm run changeset -- --empty` when no package version should change. On each push to `main`, [`.github/workflows/publish.yml`](.github/workflows/publish.yml) uses Changesets to create or update a release pull request. Merging that pull request publishes the pending package versions to npm with provenance. Configure the `NPM_TOKEN` repository secret with publish access to the `@narumitw` scope, and allow GitHub Actions to create pull requests in the repository Actions settings.
+Use `bun run changeset --empty` when no package version should change. `bun run version-packages` applies Changesets versions and refreshes `bun.lock` through the wrapper's lockfile-only mode. `bun run release` retains `changeset publish`; Changesets 3.0.3 recognizes Bun but still uses npm internally for registry info, pack, and publish. On each push to `main`, [`.github/workflows/publish.yml`](.github/workflows/publish.yml) uses Changesets to create or update a release pull request. Merging that pull request publishes the pending package versions to npm with provenance. Configure the `NPM_TOKEN` repository secret with publish access to the `@narumitw` scope, and allow GitHub Actions to create pull requests in the repository Actions settings.
 
 ### Deployment
 

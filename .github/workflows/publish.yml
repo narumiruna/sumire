@@ -28,15 +28,23 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 26
-          cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Cache Bun downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-${{ hashFiles('bun.lock') }}
       - name: Install dependencies
-        run: npm ci
+        run: bun run install:dependencies
       - name: Create release pull request or publish
         uses: changesets/action@v2
         with:
-          version-script: npm run version-packages
-          publish-script: npm run release
+          version-script: bun run version-packages
+          publish-script: bun run release
           pr-title: "chore(release): version packages"
           commit-message: "chore(release): version packages"
           github-token: ${{ secrets.PAT_TOKEN }}

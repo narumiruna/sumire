@@ -22,10 +22,10 @@ npm install @narumitw/sumire-url-reader
 From this repository root:
 
 ```bash
-npm install
-npm run build --workspace @narumitw/sumire-url-reader
-npm test --workspace @narumitw/sumire-url-reader
-npm exec --workspace @narumitw/sumire-url-reader -- sumire-url-reader --list
+bun run install:dependencies
+bun run --filter @narumitw/sumire-url-reader build
+bun run --filter @narumitw/sumire-url-reader test
+node packages/url-reader/dist/cli.js --list
 ```
 
 ## Library API
@@ -189,7 +189,7 @@ The `anydoc` worker loader uses [`@firecrawl/anydoc`](https://github.com/firecra
 
 Existing source-specific plans, including Google Docs, GitHub, and PDF, retain precedence. PDF URLs can also be converted explicitly with `sumire-url-reader --loader anydoc https://example.com/report.pdf`. Extensionless download endpoints and local Office-file paths are not matched.
 
-Keep npm optional dependencies enabled so the AnyDoc native binding for your platform is installed. Conversion does not require `FIRECRAWL_API_KEY` and always uses `ocr: "reject"`: scanned PDFs requiring OCR fail with `needsOcr`, and documents are never sent to hosted OCR. Format detection uses the bytes first, then the filename for formats such as CSV.
+Keep optional dependencies enabled so the AnyDoc native binding for your platform is installed. Conversion does not require `FIRECRAWL_API_KEY` and always uses `ocr: "reject"`: scanned PDFs requiring OCR fail with `needsOcr`, and documents are never sent to hosted OCR. Format detection uses the bytes first, then the filename for formats such as CSV.
 
 Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-reader/anydoc` and is also used for Telegram attachments. Under Bun, it disables automatic `.env` loading in the child so conversion uses the parent environment, not settings from the working directory.
 
@@ -237,9 +237,9 @@ All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and cont
 ## Development
 
 ```bash
-npm run format:check --workspace @narumitw/sumire-url-reader
-npm run lint --workspace @narumitw/sumire-url-reader
-npm run typecheck --workspace @narumitw/sumire-url-reader
-npm test --workspace @narumitw/sumire-url-reader
-npm run build --workspace @narumitw/sumire-url-reader
+bun run --filter @narumitw/sumire-url-reader format:check
+bun run --filter @narumitw/sumire-url-reader lint
+bun run --filter @narumitw/sumire-url-reader typecheck
+bun run --filter @narumitw/sumire-url-reader test
+bun run --filter @narumitw/sumire-url-reader build
 ```

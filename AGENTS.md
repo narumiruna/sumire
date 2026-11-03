@@ -7,9 +7,9 @@
 
 ## Commands
 
-- [UNREVIEWED] Work from the repository root with Node.js 26 or newer unless a documented command requires another directory.
-- Run `npm ci` to install workspace dependencies and configure Husky.
-- Apply formatting with `npm run format`; run a focused script with `npm run <script> --workspace <package-name>` when only one workspace is affected.
+- [UNREVIEWED] Work from the repository root with Bun 1.4.4 and Node.js 26 or newer on `PATH` unless a documented command requires another directory.
+- Run `bun run install:dependencies` for frozen workspace installation, engine and script-policy validation, approved native setup, and development Husky prepare; do not replace it with bare `bun install` or `--trust`.
+- Apply formatting with `bun run format`; run a focused script with `bun run --filter <exact-package-name> <script>` when only one workspace is affected.
 - Run the bot through `docker compose ...` from the repository root so the build can access all workspaces and shared runtime resources.
 
 ## Environment variables
@@ -37,12 +37,13 @@
 ## Testing
 
 - Add or update tests in the affected workspace for behavior changes and use workspace-scoped checks while iterating.
-- Before completing TypeScript changes, run `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` from the repository root; report any check that could not run.
+- Before completing TypeScript changes, run `bun run format:check`, `bun run lint`, `bun run typecheck`, `bun run test`, and `bun run build` from the repository root; report any check that could not run.
+- Keep Vitest, Vite, and Playwright on their Node.js shebang runtime; do not use `bun test` or force `--bun`.
 
 ## Repository structure
 
 - `apps/bot/` contains the Telegram service; `packages/progress/`, `packages/url-reader/`, and `packages/pi-url-reader/` contain the shared Pi and URL-loading packages.
-- The root `package.json` and `package-lock.json` own all npm workspaces; do not move them into an app or package.
+- The root `package.json` and `bun.lock` own all workspaces; do not add another dependency lockfile or move them into an app or package.
 - Keep bot-owned runtime resources at the root (`instructions/`, `skills/`, `.env`, `.events/`, `.telegramagent/`); bundle package-specific Pi skills under the owning package's `skills/` directory.
 
 ## Git and commits

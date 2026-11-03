@@ -38,7 +38,7 @@
     "format:check": "biome format .",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm run generate:check",
+    "pretest": "sh -c 'bun run generate:check'",
     "test": "vitest run"
   },
   "dependencies": {

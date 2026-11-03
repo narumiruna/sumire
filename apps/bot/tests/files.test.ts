@@ -141,7 +141,8 @@ describe("bounded Telegram file downloads", () => {
     const telegramFetch = vi.fn<
       NonNullable<NonNullable<ConstructorParameters<typeof Api>[1]>["fetch"]>
     >(
-      async (_input, init) =>
+      // node-fetch 2 has no bundled declarations; this mock only needs the signal.
+      async (_input: unknown, init?: Pick<RequestInit, "signal">) =>
         new Promise<never>((_resolve, reject) => {
           init?.signal?.addEventListener("abort", () => reject(new Error("getFile aborted")))
         }),
