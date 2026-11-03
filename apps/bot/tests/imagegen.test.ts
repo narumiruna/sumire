@@ -1,3 +1,4 @@
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { readdir, readFile, stat, writeFile } from "node:fs/promises"
@@ -476,7 +477,7 @@ it("preserves media delivery components across partial failure and startup recov
   let failing = true
   bot.api.config.use(async (_previous, method, payload) => {
     sent.push({ method, data: payload })
-    if (method === "sendMessage" && failing) throw new Error("offline text failure")
+    if (method === "sendRichMessage" && failing) throw new Error("offline text failure")
     return {
       ok: true,
       result: {
@@ -521,7 +522,7 @@ it("preserves media delivery components across partial failure and startup recov
       () => true,
     ),
   ).rejects.toThrow("offline text failure")
-  expect(sent.map((x) => x.method)).toEqual(["sendPhoto", "sendMessage"])
+  expect(sent.map((x) => x.method)).toEqual(["sendPhoto", "sendRichMessage"])
   failing = false
   await recoverTelegramResponses(bot, registry, delivery, [123])
   // recover() starts delivery in the background. Wait on its observable acknowledgement, not a sleep.
@@ -529,7 +530,7 @@ it("preserves media delivery components across partial failure and startup recov
     expect(await owner?.hasPendingResponses()).toBe(false)
   })
   expect(sent.filter((x) => x.method === "sendPhoto")).toHaveLength(1)
-  expect(sent.filter((x) => x.method === "sendMessage")).toHaveLength(2)
+  expect(sent.filter((x) => x.method === "sendRichMessage")).toHaveLength(2)
   expect(fixture.imageFetch).toHaveBeenCalledTimes(1)
 })
 it("keeps pending media through compaction and does not copy it to a sibling reply", async () => {
@@ -757,7 +758,7 @@ it.each([
                 message_id: 20 + sent.length,
                 date: 0,
                 chat: { id: 7, type: "private" },
-                text: "text" in payload ? payload.text : undefined,
+                text: "text" in payload ? telegramPayloadText(payload) : undefined,
               },
       } as never
     })
@@ -784,7 +785,7 @@ it.each([
       1_000_000,
       fixture.logger,
     )
-    for (const name of [method, "sendMessage"]) {
+    for (const name of [method, "sendRichMessage"]) {
       const position = sent.findIndex((item) => item.method === name)
       expect(await index.resolve(7, 21 + position)).toEqual({
         sessionId: owner?.sessionId,

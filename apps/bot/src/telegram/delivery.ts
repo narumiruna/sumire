@@ -2,7 +2,8 @@ import type { Context } from "grammy"
 
 import type { Logger } from "../logging.js"
 import { MorselPublishError, type MorselPublisher, publishMorselWithTrace } from "../morsel.js"
-import { sanitizeTelegramText, telegramHtmlChunks, telegramVisibleText } from "./rendering.js"
+import { messageText } from "./messages.js"
+import { sanitizeTelegramText } from "./rendering.js"
 
 export const maxTelegramMessageChars = 1_000
 const maxPublicationFailureReasonChars = 200
@@ -53,19 +54,19 @@ export function createTelegramDelivery(
     prepared: Awaited<ReturnType<typeof prepare>>,
     isCurrent: () => boolean,
     authorize?: () => Promise<boolean>,
-  ): Promise<EditResult> {
+  ): Promise<{ result: EditResult; displayText?: string }> {
     // Provider checks can await I/O; check current ownership synchronously before sending.
-    if (authorize && !(await authorize())) return "stale"
-    if (!isCurrent()) return "stale"
-    await context.api.editMessageText(
-      chatId,
-      messageId,
-      telegramHtmlChunks(prepared.text)[0] ?? " ",
-      { parse_mode: "HTML" },
-    )
-    if (authorize && !(await authorize())) return "stale"
-    if (!isCurrent()) return "stale"
-    return prepared.delivered ? "delivered" : "unavailable"
+    if (authorize && !(await authorize())) return { result: "stale" }
+    if (!isCurrent()) return { result: "stale" }
+    const message = await context.api.editMessageText(chatId, messageId, {
+      markdown: prepared.text || " ",
+    })
+    if (authorize && !(await authorize())) return { result: "stale" }
+    if (!isCurrent()) return { result: "stale" }
+    return {
+      result: prepared.delivered ? "delivered" : "unavailable",
+      displayText: message === true ? prepared.text : messageText(message),
+    }
   }
 
   async function sendPreparedAndClearPrevious(
@@ -73,7 +74,7 @@ export function createTelegramDelivery(
     chatId: number,
     messageId: number,
     prepared: Awaited<ReturnType<typeof prepare>>,
-    options: Parameters<Context["reply"]>[1],
+    options: Parameters<Context["replyWithRichMessage"]>[1],
     isCurrent: () => boolean,
     authorize?: () => Promise<boolean>,
   ) {
@@ -85,9 +86,7 @@ export function createTelegramDelivery(
     // The original may still be visible, or may have been deleted already.
     let previousMessageUpdated = false
     try {
-      await context.api.editMessageText(chatId, messageId, "已改以新訊息回覆。", {
-        parse_mode: "HTML",
-      })
+      await context.api.editMessageText(chatId, messageId, { markdown: "已改以新訊息回覆。" })
       previousMessageUpdated = true
     } catch (cleanupError) {
       logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
@@ -102,21 +101,23 @@ export function createTelegramDelivery(
   }
 
   return {
-    // Only direct replies have a predictable payload without publishing to Morsel.
+    // Compare sanitized Markdown source, not a second client-side rendering of native blocks.
     directPayload(text: string): string | undefined {
       const sanitized = sanitizeTelegramText(text)
-      return Array.from(sanitized).length <= limit
-        ? (telegramHtmlChunks(sanitized)[0] ?? " ")
-        : undefined
+      return Array.from(sanitized).length <= limit ? sanitized || " " : undefined
     },
-    async reply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
+    async reply(
+      context: Context,
+      text: string,
+      options?: Parameters<Context["replyWithRichMessage"]>[1],
+    ) {
       const prepared = await prepare(text)
       return richReply(context, prepared.text, options)
     },
     async guardedReply(
       context: Context,
       text: string,
-      options: Parameters<Context["reply"]>[1] | undefined,
+      options: Parameters<Context["replyWithRichMessage"]>[1] | undefined,
       isCurrent: () => boolean,
       mode: DeliveryMode = "default",
       authorize?: () => Promise<boolean>,
@@ -145,15 +146,15 @@ export function createTelegramDelivery(
       if (!isCurrent()) return "stale"
       const prepared = await prepare(text, mode)
       const result = await editPrepared(context, chatId, messageId, prepared, isCurrent)
-      if (result !== "stale") onDelivered?.(telegramVisibleText(prepared.text))
-      return result
+      if (result.result !== "stale") onDelivered?.(result.displayText ?? prepared.text)
+      return result.result
     },
     async editOrReply(
       context: Context,
       chatId: number,
       messageId: number,
       text: string,
-      options: Parameters<Context["reply"]>[1],
+      options: Parameters<Context["replyWithRichMessage"]>[1],
       isCurrent: () => boolean,
       mode: DeliveryMode = "default",
       authorize?: () => Promise<boolean>,
@@ -162,7 +163,8 @@ export function createTelegramDelivery(
       const prepared = await prepare(text, mode)
       try {
         return {
-          result: await editPrepared(context, chatId, messageId, prepared, isCurrent, authorize),
+          result: (await editPrepared(context, chatId, messageId, prepared, isCurrent, authorize))
+            .result,
           message: undefined,
         }
       } catch (error) {
@@ -183,7 +185,7 @@ export function createTelegramDelivery(
       chatId: number,
       messageId: number,
       text: string,
-      options: Parameters<Context["reply"]>[1],
+      options: Parameters<Context["replyWithRichMessage"]>[1],
       isCurrent: () => boolean,
       mode: DeliveryMode = "default",
     ) {
@@ -194,8 +196,12 @@ export function createTelegramDelivery(
   }
 }
 
-function richReply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
-  return context.reply(telegramHtmlChunks(text)[0] ?? " ", { ...options, parse_mode: "HTML" })
+function richReply(
+  context: Context,
+  text: string,
+  options?: Parameters<Context["replyWithRichMessage"]>[1],
+) {
+  return context.replyWithRichMessage({ markdown: text || " " }, options)
 }
 
 export function morselPublicationFailure(error: unknown, mode: DeliveryMode): string {

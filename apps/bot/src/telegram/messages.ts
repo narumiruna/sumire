@@ -1,3 +1,7 @@
+import type { RichBlock } from "grammy/types"
+
+import { richMessageHasMention, richMessageText } from "./rich-message.js"
+
 export interface TelegramActor {
   id?: number
   username?: string
@@ -11,6 +15,7 @@ export interface TelegramMessageLike {
   message_id: number
   date?: number
   text?: string
+  rich_message?: { blocks: RichBlock[] }
   caption?: string
   caption_entities?: Array<{ type: string; offset: number; length: number }>
   from?: TelegramActor
@@ -29,7 +34,9 @@ export interface TelegramMessageLike {
 export const defaultImagePrompt = "請閱讀這張圖片，描述重點並回答使用者可能想知道的內容。"
 
 export function messageText(message: TelegramMessageLike): string {
-  return message.text || message.caption || ""
+  return message.rich_message
+    ? richMessageText(message.rich_message.blocks)
+    : message.text || message.caption || ""
 }
 
 export function isBotAddressed(
@@ -38,7 +45,9 @@ export function isBotAddressed(
   botUsername: string,
 ): boolean {
   const repliedToBot = message.reply_to_message?.from?.id === botId
-  const mention = new RegExp(`@${escapeRegExp(botUsername)}\\b`, "iu").test(messageText(message))
+  const mention = message.rich_message
+    ? richMessageHasMention(message.rich_message.blocks, botId, botUsername)
+    : new RegExp(`@${escapeRegExp(botUsername)}\\b`, "iu").test(messageText(message))
   return repliedToBot || mention
 }
 
@@ -237,6 +246,7 @@ function actorName(actor: TelegramActor | undefined): string {
 }
 
 function messageContentType(message: TelegramMessageLike): string {
+  if (message.rich_message) return "rich_message"
   if (message.text) return "text"
   for (const type of [
     "photo",
@@ -254,6 +264,7 @@ function messageContentType(message: TelegramMessageLike): string {
 }
 
 function messageContent(message: TelegramMessageLike, type: string): string {
+  if (message.rich_message) return messageText(message)
   if (message.text) return message.text
   if (message.caption)
     return type === "caption"

@@ -1,3 +1,4 @@
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { UserFromGetMe } from "grammy/types"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -111,7 +112,7 @@ describe("Telegram durable recovery delivery", () => {
       )
       const texts: unknown[] = []
       telegram.bot.api.config.use(async (_previous, _method, payload) => {
-        texts.push((payload as { text?: string }).text)
+        texts.push(telegramPayloadText(payload))
         if (failDelivery && texts.length > 1)
           return { ok: false, error_code: 500, description: "Offline delivery failure" } as never
         return {
@@ -205,10 +206,10 @@ describe("Telegram durable recovery delivery", () => {
         expect(calls[2]?.payload).toMatchObject({ chat_id: 7, message_id: 11 })
         if (mode === "publish") {
           expect(publish).toHaveBeenCalledWith("Recovered answer")
-          expect(calls[2]?.payload.text).toContain("https://morsel.test/s/")
+          expect(telegramPayloadText(calls[2]?.payload)).toContain("https://morsel.test/s/")
         } else {
           expect(publish).not.toHaveBeenCalled()
-          expect(calls[2]?.payload.text).toBe("Recovered answer")
+          expect(telegramPayloadText(calls[2]?.payload)).toBe("Recovered answer")
         }
         expect(recordDelivery).toHaveBeenCalledWith(7, checkpoint, [11])
       } finally {
