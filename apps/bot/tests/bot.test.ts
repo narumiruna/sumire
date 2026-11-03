@@ -332,10 +332,10 @@ describe("Telegram bot update routing", () => {
     expect(calls[0]?.payload.text).not.toContain("/ask")
     expect(calls[0]?.payload.text).toContain("@mention")
     expect(calls[0]?.payload.text).toContain(
-      "Sumire 專案原始碼與說明：https://github.com/narumiruna/sumire",
+      'Sumire 專案原始碼與說明：<a href="https://github.com/narumiruna/sumire">https://github.com/narumiruna/sumire</a>',
     )
-    expect(calls[0]?.payload.text).toContain("/f <內容>")
-    expect(calls[0]?.payload.text).toContain("/t <代碼>")
+    expect(calls[0]?.payload.text).toContain("/f &lt;內容&gt;")
+    expect(calls[0]?.payload.text).toContain("/t &lt;代碼&gt;")
     expect(calls[0]?.payload.text).toContain("read、bash、edit、write")
     expect(sessions.submit).not.toHaveBeenCalled()
   })
@@ -1359,7 +1359,7 @@ describe("Telegram bot update routing", () => {
 
       expect(sessions.submit).toHaveBeenCalledOnce()
       expect(publish).not.toHaveBeenCalled()
-      expect(calls.at(-1)?.payload.text).toContain("請使用 /f <內容>")
+      expect(calls.at(-1)?.payload.text).toContain("請使用 /f &lt;內容&gt;")
     } finally {
       finishStatus?.()
       finishFirst?.()
@@ -1456,7 +1456,7 @@ describe("Telegram bot update routing", () => {
 
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("請使用 /f <內容>")
+    expect(calls[0]?.payload.text).toContain("請使用 /f &lt;內容&gt;")
   })
 
   it("rejects /f before invoking Pi when Morsel is unavailable", async () => {
@@ -1502,7 +1502,7 @@ describe("Telegram bot update routing", () => {
 
     expect(sessions.submit).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("請使用 /f <內容>")
+    expect(calls[0]?.payload.text).toContain("請使用 /f &lt;內容&gt;")
     expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 22 })
   })
 
@@ -1520,7 +1520,7 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(commandMessage(2, "/t"))
 
     expect(marketDataQuery).not.toHaveBeenCalled()
-    expect(calls[0]?.payload.text).toContain("/t <代碼>")
+    expect(calls[0]?.payload.text).toContain("/t &lt;代碼&gt;")
   })
 
   it("answers /t directly without invoking Pi", async () => {
@@ -1956,11 +1956,18 @@ describe("Telegram bot update routing", () => {
     },
   )
 
-  it("shows activity alongside structured progress and retains the clean snapshot", async () => {
+  it.each([
+    ["分析需求", "分析需求"],
+    [
+      "參考 [文件](https://example.test/path) 與 `*literal*`",
+      '參考 <a href="https://example.test/path">文件</a> 與 <code>*literal*</code>',
+    ],
+  ])("preserves inline progress during activity and completion: %s", async (text, html) => {
+    const publish = vi.fn(async () => "https://morsel.example/s/progress")
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
-        options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
+        options.onProgress?.([{ text, status: "in_progress" }])
         await new Promise<void>((resolve) => setImmediate(resolve))
         options.onActivity?.("tool", "read")
         await new Promise<void>((resolve) => setImmediate(resolve))
@@ -1971,19 +1978,25 @@ describe("Telegram bot update routing", () => {
       loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { control: approvedStore([7, -100]), botInfo },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
     await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
 
+    const snapshot = `進度 0/1\n\n🔄 ${html}`
     expect(calls.map((call) => call.payload.text)).toEqual([
       "處理中…",
-      "進度 0/1\n\n🔄 分析需求",
-      "進度 0/1\n\n🔄 分析需求\n\n正在執行工具…\n工具：read",
-      "進度 0/1\n\n🔄 分析需求",
+      snapshot,
+      `${snapshot}\n\n正在執行工具…\n工具：read`,
+      snapshot,
       "完成",
     ])
+    expect(publish).not.toHaveBeenCalled()
   })
 
   it("retains visible progress when the final answer matches the initial pending text", async () => {
@@ -2098,11 +2111,17 @@ describe("Telegram bot update routing", () => {
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
   })
 
-  it("renders a progress-free answer as Telegram HTML", async () => {
+  it.each([
+    ["# 標題\n**粗體** `<tag>`", "<b>標題</b>\n<b>粗體</b> <code>&lt;tag&gt;</code>"],
+    [
+      "[文件](https://example.test/path) *斜體* ~~刪除~~\n> 引用",
+      '<a href="https://example.test/path">文件</a> <i>斜體</i> <s>刪除</s>\n<blockquote>引用</blockquote>',
+    ],
+  ])("renders a progress-free answer as native Telegram HTML: %s", async (text, html) => {
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
-        return { kind: "completed" as const, text: "# 標題\n**粗體** `<tag>`" }
+        return { kind: "completed" as const, text }
       }),
     })
     const telegram = createTelegramAgentBot(
@@ -2116,8 +2135,9 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(privateMessage(2, "格式化回答"))
 
     expect(calls[0]?.payload.text).toBe("處理中…")
-    expect(calls[1]?.payload.text).toBe("<b>標題</b>\n<b>粗體</b> <code>&lt;tag&gt;</code>")
+    expect(calls[1]?.payload.text).toBe(html)
     expect(calls[0]?.payload.parse_mode).toBe("HTML")
+    expect(calls[1]?.payload.parse_mode).toBe("HTML")
   })
 
   it("does not publish an initial empty progress snapshot", async () => {
@@ -4399,7 +4419,11 @@ describe("Telegram bot update routing", () => {
         if (prompt === adminPrompt("第一個問題")) {
           options.onProgress?.([{ text: "**分析**", status: "in_progress" }])
           await new Promise<void>((resolve) => setImmediate(resolve))
-          return { kind: "completed" as const, text: "**答案** <tag>", checkpoint }
+          return {
+            kind: "completed" as const,
+            text: "**答案** [文件](https://example.test/path) *重點* <tag>",
+            checkpoint,
+          }
         }
         return { kind: "completed" as const, text: "下一題" }
       }),
@@ -4433,7 +4457,7 @@ describe("Telegram bot update routing", () => {
           date: 1_700_000_001,
           chat: reply.message.chat,
           from: botInfo,
-          text: "答案 <tag>",
+          text: "答案 文件 重點 <tag>",
           reply_to_message: undefined,
         }
       }
@@ -4448,7 +4472,7 @@ describe("Telegram bot update routing", () => {
       const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[1] ?? []
       expect(prompt).toBe(adminPrompt("接著呢？"))
       expect(options?.replyToBotMessageId).toBe(101)
-      expect(options?.unresolvedReplyPrompt).toContain("Content: 答案 <tag>")
+      expect(options?.unresolvedReplyPrompt).toContain("Content: 答案 文件 重點 <tag>")
     } finally {
       finishEdit?.()
       finishImage?.(new Response("bytes"))

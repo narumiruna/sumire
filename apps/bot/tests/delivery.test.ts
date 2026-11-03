@@ -33,7 +33,7 @@ describe("mandatory Morsel delivery", () => {
       const text = character.repeat(1000)
       await delivery.reply(context, text)
       expect(publisher.publish).not.toHaveBeenCalled()
-      expect(reply).toHaveBeenCalledWith(text, undefined)
+      expect(reply).toHaveBeenCalledWith(text, { parse_mode: "HTML" })
     },
   )
 
@@ -44,7 +44,9 @@ describe("mandatory Morsel delivery", () => {
       const text = character.repeat(1001)
       await delivery.reply(context, text)
       expect(publisher.publish).toHaveBeenCalledExactlyOnceWith(text)
-      expect(reply).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(shareUrl), undefined)
+      expect(reply).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(shareUrl), {
+        parse_mode: "HTML",
+      })
       expect(reply.mock.calls[0]?.[0]).not.toContain(text)
     },
   )
@@ -53,7 +55,7 @@ describe("mandatory Morsel delivery", () => {
     const { delivery, context, publisher, reply } = setup()
     await delivery.reply(context, `${"字".repeat(999)}\r\n\u0000`)
     expect(publisher.publish).not.toHaveBeenCalled()
-    expect(reply).toHaveBeenCalledWith(`${"字".repeat(999)}\n`, undefined)
+    expect(reply).toHaveBeenCalledWith(`${"字".repeat(999)}\n`, { parse_mode: "HTML" })
     await delivery.reply(context, `${"字".repeat(1000)}\r\n\u0000`)
     expect(publisher.publish).toHaveBeenCalledExactlyOnceWith(`${"字".repeat(1000)}\n`)
   })
@@ -147,7 +149,9 @@ describe("mandatory Morsel delivery", () => {
       delivery.guardedReply(context, "short article", undefined, () => true, "publish"),
     ).resolves.toMatchObject({ result: "delivered" })
     expect(publisher.publish).toHaveBeenCalledExactlyOnceWith("short article")
-    expect(reply).toHaveBeenCalledExactlyOnceWith(shareUrl, undefined)
+    expect(reply).toHaveBeenCalledExactlyOnceWith(`<a href="${shareUrl}">${shareUrl}</a>`, {
+      parse_mode: "HTML",
+    })
   })
 
   it("withholds generated articles when required publication is unavailable", async () => {
@@ -158,7 +162,7 @@ describe("mandatory Morsel delivery", () => {
     expect(publisher.publish).not.toHaveBeenCalled()
     expect(reply).toHaveBeenCalledExactlyOnceWith(
       "文章無法發布至 Morsel（原因：MORSEL_API_KEY is not configured），請稍後再試。",
-      undefined,
+      { parse_mode: "HTML" },
     )
     expect(reply.mock.calls[0]?.[0]).not.toContain("private article")
   })
@@ -255,5 +259,73 @@ describe("mandatory Morsel delivery", () => {
     ).resolves.toBe("stale")
     expect(publisher.publish).toHaveBeenCalledOnce()
     expect(editMessageText).not.toHaveBeenCalled()
+  })
+})
+
+describe("rich reply delivery", () => {
+  const source = "**重點** [文件](https://example.test/path)\n> 引用"
+  const html =
+    '<b>重點</b> <a href="https://example.test/path">文件</a>\n<blockquote>引用</blockquote>'
+
+  it("defaults ordinary replies to HTML and preserves reply parameters and keyboards", async () => {
+    const { delivery, context, reply } = setup()
+    const options = {
+      reply_parameters: { message_id: 42, allow_sending_without_reply: true },
+      reply_markup: { inline_keyboard: [[{ text: "停止", callback_data: "stop" }]] },
+    }
+    await delivery.reply(context, source, options)
+    expect(reply).toHaveBeenCalledExactlyOnceWith(html, { ...options, parse_mode: "HTML" })
+  })
+
+  it("formats guarded replies even when callers omit parse_mode", async () => {
+    const { delivery, context, reply } = setup()
+    await expect(
+      delivery.guardedReply(context, source, undefined, () => true),
+    ).resolves.toMatchObject({
+      result: "delivered",
+    })
+    expect(reply).toHaveBeenCalledExactlyOnceWith(html, { parse_mode: "HTML" })
+  })
+
+  it("uses identical HTML for edits and fallback sends, without double escaping", async () => {
+    const { delivery, context, reply, editMessageText } = setup()
+    editMessageText.mockRejectedValueOnce(new Error("message to edit not found"))
+    await delivery.editOrReply(context, 7, 100, source, undefined, () => true)
+    expect(editMessageText).toHaveBeenNthCalledWith(1, 7, 100, html, { parse_mode: "HTML" })
+    expect(reply).toHaveBeenCalledExactlyOnceWith(html, { parse_mode: "HTML" })
+  })
+
+  it("formats a separate final reply even without caller-supplied HTML options", async () => {
+    const { delivery, context, reply } = setup()
+    await delivery.replyAndClearPrevious(context, 7, 100, source, undefined, () => true)
+    expect(reply).toHaveBeenCalledExactlyOnceWith(html, { parse_mode: "HTML" })
+  })
+
+  it("uses the same renderer for direct payload and delivered visible text", async () => {
+    const { delivery, context, editMessageText } = setup()
+    const onDelivered = vi.fn()
+    expect(delivery.directPayload(source)).toBe(html)
+    await delivery.edit(context, 7, 100, source, () => true, "default", onDelivered)
+    expect(editMessageText).toHaveBeenCalledExactlyOnceWith(7, 100, html, { parse_mode: "HTML" })
+    expect(onDelivered).toHaveBeenCalledExactlyOnceWith("重點 文件\n引用")
+  })
+
+  it("counts source Markdown before formatting and publishes the unmodified full text", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    const text = `[短標籤](https://example.test/${"x".repeat(1000)})`
+    await delivery.reply(context, text)
+    expect(publisher.publish).toHaveBeenCalledExactlyOnceWith(text)
+    expect(reply.mock.calls[0]?.[0]).toContain(shareUrl)
+    expect(reply.mock.calls[0]?.[0]).not.toContain("短標籤")
+    expect(reply.mock.calls[0]?.[1]?.parse_mode).toBe("HTML")
+  })
+
+  it("escapes raw HTML in short replies and publication failure notices", async () => {
+    const { delivery, context, publisher, reply } = setup()
+    await delivery.reply(context, '<a href="https://example.test">raw</a>')
+    expect(reply.mock.calls[0]?.[0]).toBe('&lt;a href="https://example.test"&gt;raw&lt;/a&gt;')
+    publisher.publish.mockRejectedValue(new Error("<script>failure</script>"))
+    await delivery.reply(context, "字".repeat(1001))
+    expect(reply.mock.calls[1]?.[0]).toContain("&lt;script&gt;failure&lt;/script&gt;")
   })
 })
