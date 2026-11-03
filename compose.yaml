@@ -14,8 +14,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - bun
-        - --no-env-file
+        - node
         - --input-type=module
         - -e
         - "const adminId=process.env.BOT_ADMIN_ID?.trim();const configuredOrigin=process.env.ADMIN_ORIGIN?.trim();if(!adminId)process.exit(1);const origin=configuredOrigin||'http://localhost:17465';const {request}=await import('node:http');const req=request('http://127.0.0.1:17465/healthz',{headers:{host:new URL(origin).host},signal:AbortSignal.timeout(3000)},res=>{res.resume();process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end()"

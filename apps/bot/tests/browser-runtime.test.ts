@@ -142,33 +142,21 @@ it("verifies full Chromium with its sandbox explicitly enabled when requested", 
   expect(close).toHaveBeenCalledOnce()
 })
 
-it("limits Playwright policy changes to faccessat2 and a denied clone3 fallback", () => {
+it("limits the pinned Playwright policy change to faccessat2 for runtime compatibility", () => {
   const root = new URL("../../../", import.meta.url)
   const profile = JSON.parse(
     readFileSync(new URL("apps/bot/resources/chromium/seccomp-profile.json", root), "utf8"),
   )
-  const clone3 = profile.syscalls.filter((rule: { names: string[] }) =>
-    rule.names.includes("clone3"),
-  )
-  expect(clone3).toEqual([
-    {
-      comment: "Return ENOSYS so runtimes fall back to the existing clone policy",
-      names: ["clone3"],
-      action: "SCMP_ACT_ERRNO",
-      errnoRet: 38,
-    },
-  ])
-  expect(profile.syscalls[2]).toMatchObject({
+  expect(profile.syscalls[1]).toMatchObject({
     action: "SCMP_ACT_ALLOW",
     args: [],
     includes: {},
     excludes: {},
   })
-  expect(profile.syscalls[2].names.filter((name: string) => name === "faccessat2")).toEqual([
+  expect(profile.syscalls[1].names.filter((name: string) => name === "faccessat2")).toEqual([
     "faccessat2",
   ])
   const upstream = structuredClone(profile)
-  upstream.syscalls.splice(1, 1)
   upstream.syscalls[1].names = upstream.syscalls[1].names.filter(
     (name: string) => name !== "faccessat2",
   )
@@ -238,9 +226,7 @@ it("uses the same npm-ci Playwright CLI for Docker browser and OS dependency ins
     "from=dependencies,source=/build/node_modules,target=/build/node_modules",
   )
   expect(dockerfile).toContain("node /build/node_modules/playwright/cli.js install-deps chromium")
-  expect(dockerfile).toContain(
-    "RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-browser.mjs",
-  )
+  expect(dockerfile).toContain("RUN --network=none node /app/apps/bot/scripts/check-browser.mjs")
 })
 
 it("does not patch browser arguments or resolve revisions in the MCP smoke", () => {

@@ -11,8 +11,7 @@ import {
   type LoadResult as UrlContentLoadResult,
 } from "@narumitw/sumire-url-reader"
 import ipaddr from "ipaddr.js"
-// Use the installed client, not Bun's incomplete built-in "undici" module.
-import { Agent, type Dispatcher, fetch as undiciFetch } from "undici/index.js"
+import { Agent, type Dispatcher, fetch as undiciFetch } from "undici"
 
 import { PublicUrlError, type SafeFailureDiagnostic, sanitizeUrlAttempts } from "./url-failure.js"
 

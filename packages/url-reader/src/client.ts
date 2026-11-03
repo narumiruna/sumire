@@ -5,7 +5,6 @@ import {
   type FirecrawlCredentialOptions,
   resolveFirecrawlApiKey,
 } from "./core/firecrawl-credentials.js"
-import { NodeImpersTransport } from "./core/impers-transport.js"
 import {
   assertPublicUrl,
   type FetchImplementation,
@@ -111,7 +110,6 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   private readonly firecrawlApiKey?: string | null
   private active = false
   private impersPromise?: Promise<ImpersSession>
-  private processTransport?: NodeImpersTransport
   private proxyPromise?: Promise<PublicProxy>
   private browserPromise?: Promise<Browser>
 
@@ -173,13 +171,6 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
       )
     }
     return this.impersPromise
-  }
-
-  async impersTransport(): Promise<NodeImpersTransport> {
-    this.checkActive()
-    if (!this.processTransport || this.processTransport.unusable)
-      this.processTransport = new NodeImpersTransport()
-    return this.processTransport
   }
 
   async impersProxy(): Promise<string> {
@@ -287,19 +278,15 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
 
   async close(): Promise<void> {
     if (!this.active) return
-    this.active = false
-    const transport = this.processTransport
-    const resources = [this.browserPromise, this.impersPromise, this.proxyPromise] as const
-    this.processTransport = undefined
+    const [browser, impers, proxy] = await Promise.all([
+      this.browserPromise?.catch(() => undefined),
+      this.impersPromise?.catch(() => undefined),
+      this.proxyPromise?.catch(() => undefined),
+    ])
     this.browserPromise = undefined
     this.impersPromise = undefined
     this.proxyPromise = undefined
-    await transport?.close()
-    const [browser, impers, proxy] = await Promise.all([
-      resources[0]?.catch(() => undefined),
-      resources[1]?.catch(() => undefined),
-      resources[2]?.catch(() => undefined),
-    ])
+    this.active = false
     const errors: unknown[] = []
     if (browser) {
       try {

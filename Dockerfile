@@ -1,10 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# Run the bot with Bun; retain Node.js and npm for Node-based external CLIs.
-FROM node:26-bookworm-slim AS runtime-base
-
-COPY --from=oven/bun:1.4.4-slim /usr/local/bin/bun /usr/local/bin/bun
-
 # Match the libcurl release pinned by impers 0.1.2; verify each platform's archive.
 FROM node:26-bookworm-slim AS curl-impersonate
 
@@ -95,22 +90,19 @@ COPY packages/pi-url-reader/src/ packages/pi-url-reader/src/
 # Dependencies are already compiled; skip the prebuild hook that recompiles them.
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-pi-url-reader
 
-# Keep one complete set of compiled packages for the bot compiler and runtime image.
-FROM scratch AS compiled-workspaces
-
-COPY --from=runtime-config-build /build/packages/runtime-config/dist /packages/runtime-config/dist
-COPY --from=policy-build /build/packages/policy/dist /packages/policy/dist
-COPY --from=contracts-build /build/packages/contracts/dist /packages/contracts/dist
-COPY --from=progress-build /build/packages/progress/dist /packages/progress/dist
-COPY --from=imagegen-build /build/packages/imagegen/dist /packages/imagegen/dist
-COPY --from=github-notifications-build /build/packages/github-notifications/dist /packages/github-notifications/dist
-COPY --from=polymarket-build /build/packages/pi-polymarket/dist /packages/pi-polymarket/dist
-COPY --from=url-reader-build /build/packages/url-reader/dist /packages/url-reader/dist
-COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /packages/pi-url-reader/dist
-
 FROM dependencies AS build
 
-COPY --from=compiled-workspaces /packages /build/packages
+COPY --from=runtime-config-build /build/packages/runtime-config/dist /build/packages/runtime-config/dist
+
+COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
+
+COPY --from=progress-build /build/packages/progress/dist /build/packages/progress/dist
+COPY --from=imagegen-build /build/packages/imagegen/dist /build/packages/imagegen/dist
+COPY --from=github-notifications-build /build/packages/github-notifications/dist /build/packages/github-notifications/dist
+COPY --from=polymarket-build /build/packages/pi-polymarket/dist /build/packages/pi-polymarket/dist
+COPY --from=url-reader-build /build/packages/url-reader/dist /build/packages/url-reader/dist
+COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /build/packages/pi-url-reader/dist
 COPY apps/bot/tsconfig*.json apps/bot/
 COPY apps/bot/src/ apps/bot/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire
@@ -130,7 +122,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm prune --omit=dev --workspace @narumitw/sumire --include-workspace-root=false --no-audit --no-fund
 
 # Assemble the same application tree for CI import checks and the final image.
-FROM runtime-base AS runtime-application
+FROM node:26-bookworm-slim AS runtime-application
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -139,18 +131,20 @@ COPY --from=production-dependencies /build/node_modules /app/node_modules
 # These directories contain only manifests and workspace-local production dependencies.
 COPY --from=production-dependencies /build/apps/bot /app/apps/bot
 COPY --from=production-dependencies /build/packages /app/packages
-COPY --from=compiled-workspaces /packages /app/packages
+COPY --from=runtime-config-build /build/packages/runtime-config/dist /app/packages/runtime-config/dist
+COPY --from=policy-build /build/packages/policy/dist /app/packages/policy/dist
+COPY --from=contracts-build /build/packages/contracts/dist /app/packages/contracts/dist
+COPY --from=progress-build /build/packages/progress/dist /app/packages/progress/dist
+COPY --from=imagegen-build /build/packages/imagegen/dist /app/packages/imagegen/dist
+COPY --from=url-reader-build /build/packages/url-reader/dist /app/packages/url-reader/dist
+COPY --from=pi-url-reader-build /build/packages/pi-url-reader/dist /app/packages/pi-url-reader/dist
+COPY --from=github-notifications-build /build/packages/github-notifications/dist /app/packages/github-notifications/dist
+COPY --from=polymarket-build /build/packages/pi-polymarket/dist /app/packages/pi-polymarket/dist
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
 COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
 
-# Check production imports and core runtime behavior in CI without credentials or network access.
-COPY apps/bot/scripts/check-runtime.mjs /app/apps/bot/scripts/check-runtime.mjs
-COPY apps/bot/scripts/check-codemode.mjs /app/apps/bot/scripts/check-codemode.mjs
-COPY packages/pi-url-reader/scripts/check-runtime.mjs /app/packages/pi-url-reader/scripts/check-runtime.mjs
-RUN --network=none bun --no-env-file --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
-RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
-RUN --network=none timeout --signal=KILL 15s bun --no-env-file /app/apps/bot/scripts/check-codemode.mjs
-RUN --network=none bun --no-env-file /app/packages/pi-url-reader/scripts/check-runtime.mjs
+# Import without credentials or network access; do not start the bot.
+RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 FROM node:26-bookworm-slim AS audio-dependencies
 
@@ -176,7 +170,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # Use the npm-ci installation, including its locked browser revisions and headless shell.
 RUN node node_modules/playwright/cli.js install chromium
 
-FROM runtime-base AS runtime-dependencies
+FROM node:26-bookworm-slim AS runtime-dependencies
 
 ARG TARGETARCH
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -204,7 +198,7 @@ WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /workdir /app/.telegramagent /app/.events /app/.cache/whisper \
+    && mkdir -p /workdir /app/apps/bot /app/packages/login /app/packages/progress /app/packages/url-reader /app/packages/pi-url-reader /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
     && chown -R app:app /app /workdir
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
@@ -220,30 +214,24 @@ COPY --chown=app:app skills/ /app/skills/
 COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/
 
 # Check startup again in the complete runtime image.
-RUN --network=none bun --no-env-file --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
+RUN node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
 ENV HOME=/workdir
 USER app
 
-# Verify Bun, SQLite persistence/backup, and native document conversion as the runtime user.
-RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-runtime.mjs
-# Bound the check too, so a VM termination regression fails instead of hanging the build.
-RUN --network=none timeout --signal=KILL 15s bun --no-env-file /app/apps/bot/scripts/check-codemode.mjs
-RUN --network=none bun --no-env-file /app/packages/pi-url-reader/scripts/check-runtime.mjs
-
 # Import image generation offline as the runtime user; do not resolve auth or consume quota.
-RUN --network=none bun --no-env-file --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"
+RUN --network=none node --input-type=module -e "const m = await import('/app/packages/imagegen/dist/index.js'); if (typeof m.generateImage !== 'function') process.exit(1)"
 
 # Verify both locked browser binaries and a real offline headless launch as the runtime user.
-RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-browser.mjs
+RUN --network=none node /app/apps/bot/scripts/check-browser.mjs
 
-# Check fingerprints and real async curl I/O offline, as the runtime user.
-RUN --network=none timeout --signal=KILL 20s bun --no-env-file /app/apps/bot/scripts/check-curl-impersonate.mjs
+# Check Chrome fingerprint compatibility offline, using the runtime user's library.
+RUN --network=none node /app/apps/bot/scripts/check-curl-impersonate.mjs
 
 # Verify URL diagnostics and installed media tools without external requests or model downloads.
-RUN --network=none bun --no-env-file /app/apps/bot/scripts/check-url-failures.mjs
+RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs
 
 # Fail the build if Git, GitHub CLI, or SSH tools are unavailable to the bot user.
 RUN --network=none git --version && gh --version && ssh -V && command -v ssh-keygen
 
-ENTRYPOINT ["bun", "--no-env-file", "/app/apps/bot/dist/index.js"]
+ENTRYPOINT ["node", "/app/apps/bot/dist/index.js"]

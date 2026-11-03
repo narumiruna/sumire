@@ -21,7 +21,6 @@ import {
   createCodemodeExtension,
   createCodemodeTool,
 } from "@earendil-works/pi-durable/codemode"
-import { RuntimeCodemodeSandbox } from "./codemode-runtime.js"
 import { LegacyCodemodeCallTask } from "./migration.js"
 
 const policyMemo = "sumire.codemode-policy.v1"
@@ -81,7 +80,7 @@ type ScriptPolicy = {
 export type ToolNamespace = CodemodeNamespace & { aliases?: readonly string[] }
 
 /** Only adapt host policy. Pi owns the VM journal and all nested task scheduling. */
-class HostDeadlineSandbox extends RuntimeCodemodeSandbox {
+class HostDeadlineSandbox extends CodemodeSandbox {
   readonly exits: Promise<void>[]
   succeeded = false
   constructor(private readonly policy: ScriptPolicy) {

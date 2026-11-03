@@ -54,7 +54,7 @@ The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict networ
 
 ## Reusable client
 
-A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser. Under Bun, a supervised Node.js host owns the session; the client reuses that host and closes it with the other resources.
+A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.
 
 ```ts
 import { UrlContentClient } from "@narumitw/sumire-url-reader";
@@ -133,12 +133,6 @@ This package was previously `@narumitw/sumire-url-content` in `packages/url-cont
 
 The `curl-cffi` loader uses `impers` with `impersonate: "chrome"`. On first use, `impers` may download its pinned `libcurl-impersonate` build. Set `LIBCURL_PATH` to use an existing library. Standard libcurl works without browser fingerprint impersonation.
 
-Bun does not support the native `uv_poll_init_socket` call used by asynchronous `impers` requests. When the caller runs under Bun, URL-reader executes these requests in a real Node.js 26 or newer process found on `PATH`. Node.js callers keep the existing in-process session. This applies to generic pages, news transport and PDF fallback, including standalone loaders. The host retains session cookies and connection reuse; it does not emulate the complete `Session` API.
-
-The parent still validates each target and redirect, removes sensitive headers on cross-origin redirects, and supplies the public proxy that pins connection addresses. The host cannot follow redirects or bypass that proxy through `NO_PROXY`. Requests have separate IDs and cancellation signals. Startup and I/O count toward the attempt budget. Cancellation waits for native request cleanup; an unresponsive host is killed after one second. A host failure settles affected requests after process exit and permits normal automatic fallback. Explicit loader chains remain exact. A reusable client creates a new host on its next request after a host failure.
-
-The Bun transport bounds each protocol frame to 64 KiB and native response headers to 16 KiB. It enforces each request's body limit while streaming and again when receiving chunks; generic HTML uses 10 MiB and PDF uses 25 MiB. No single host request permits more than 25 MiB. It returns a real buffered `impers.Response`, including binary content, multi-value headers and transport metadata. Only required runtime/library environment fields reach the child; bot credentials and `NODE_OPTIONS` do not. Native stderr is drained but not retained or exported. These process boundaries prevent native failures from stopping the parent; they are not an OS security sandbox.
-
 ### Playwright
 
 Install Chromium for the browser and social loaders:
@@ -191,7 +185,7 @@ Existing source-specific plans, including Google Docs, GitHub, and PDF, retain p
 
 Keep npm optional dependencies enabled so the AnyDoc native binding for your platform is installed. Conversion does not require `FIRECRAWL_API_KEY` and always uses `ocr: "reject"`: scanned PDFs requiring OCR fail with `needsOcr`, and documents are never sent to hosted OCR. Format detection uses the bytes first, then the filename for formats such as CSV.
 
-Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-reader/anydoc` and is also used for Telegram attachments. Under Bun, it disables automatic `.env` loading in the child so conversion uses the parent environment, not settings from the working directory.
+Downloads and redirects use public-address validation. The loader rejects HTML/login pages, HTTP errors, and empty documents; it caps downloads at 20,000,000 bytes, download plus conversion at 30 seconds, and Markdown at 1,000,000 characters plus an explicit truncation marker. Within a reusable `UrlContentClient`, worker admission covers the download and conversion together. Cancellation or timeout kills the isolated child; conversion capacity is retained until the child closes. The shared child runner is exported from `@narumitw/sumire-url-reader/anydoc` and is also used for Telegram attachments.
 
 ### PDF
 

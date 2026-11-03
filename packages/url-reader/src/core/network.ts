@@ -3,8 +3,7 @@ import { lookup } from "node:dns/promises"
 import { isIP, type LookupFunction } from "node:net"
 
 import ipaddr from "ipaddr.js"
-// Use the installed client: Bun's built-in undici shim ignores custom dispatchers.
-import { Agent, type RequestInit as UndiciRequestInit, fetch as undiciFetch } from "undici/index.js"
+import { Agent, type RequestInit as UndiciRequestInit, fetch as undiciFetch } from "undici"
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const MAX_REDIRECTS = 5

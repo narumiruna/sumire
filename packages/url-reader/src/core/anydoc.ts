@@ -76,8 +76,6 @@ export async function runAnyDocChild(
     const child = spawn(
       process.execPath,
       [
-        // Match Node.js: do not load a workdir .env file in the isolated Bun child.
-        ...(process.versions.bun ? ["--no-env-file"] : []),
         "--input-type=module",
         "--eval",
         childProgram,
