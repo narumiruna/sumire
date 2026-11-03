@@ -1,5 +1,12 @@
 # @narumitw/sumire
 
+## 0.19.2
+
+### Patch Changes
+
+- 9556051: Preserve Markdown links and literal code in progress messages during tool activity, and retain trailing punctuation when rejecting automatic links.
+- 8f9f21d: Render short Telegram replies consistently as native rich text, including Markdown links, emphasis, blockquotes, lists, and language-tagged code blocks. Escape raw HTML and unsafe link destinations, preserve visible reply-checkpoint text, and retain the existing 1,000-character Morsel delivery policy.
+
 ## 0.19.1
 
 ### Patch Changes
