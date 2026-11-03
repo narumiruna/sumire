@@ -1956,11 +1956,18 @@ describe("Telegram bot update routing", () => {
     },
   )
 
-  it("shows activity alongside structured progress and retains the clean snapshot", async () => {
+  it.each([
+    ["分析需求", "分析需求"],
+    [
+      "參考 [文件](https://example.test/path) 與 `*literal*`",
+      '參考 <a href="https://example.test/path">文件</a> 與 <code>*literal*</code>',
+    ],
+  ])("preserves inline progress during activity and completion: %s", async (text, html) => {
+    const publish = vi.fn(async () => "https://morsel.example/s/progress")
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
-        options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
+        options.onProgress?.([{ text, status: "in_progress" }])
         await new Promise<void>((resolve) => setImmediate(resolve))
         options.onActivity?.("tool", "read")
         await new Promise<void>((resolve) => setImmediate(resolve))
@@ -1971,19 +1978,25 @@ describe("Telegram bot update routing", () => {
       loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
       logger,
-      { control: approvedStore([7, -100]), botInfo },
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        morselPublisher: { isConfigured: true, publish },
+      },
     )
     const calls = installApiMock(telegram.bot)
 
     await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
 
+    const snapshot = `進度 0/1\n\n🔄 ${html}`
     expect(calls.map((call) => call.payload.text)).toEqual([
       "處理中…",
-      "進度 0/1\n\n🔄 分析需求",
-      "進度 0/1\n\n🔄 分析需求\n\n正在執行工具…\n工具：read",
-      "進度 0/1\n\n🔄 分析需求",
+      snapshot,
+      `${snapshot}\n\n正在執行工具…\n工具：read`,
+      snapshot,
       "完成",
     ])
+    expect(publish).not.toHaveBeenCalled()
   })
 
   it("retains visible progress when the final answer matches the initial pending text", async () => {

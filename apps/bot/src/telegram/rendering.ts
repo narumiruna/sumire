@@ -168,9 +168,9 @@ function renderLink(token: Tokens.Link | Tokens.Image, context: RenderContext): 
   try {
     url = new URL(href)
     if (!["http:", "https:", "mailto:"].includes(url.protocol) || url.username || url.password)
-      return content
+      return bare ? literal(token.text) : content
   } catch {
-    return content
+    return bare ? literal(token.text) : content
   }
   const linked = context.link ? content : wrap(`a href="${escapeAttribute(url.href)}"`, content)
   return bare ? [...linked, ...literal(token.text.slice(href.length))] : linked
