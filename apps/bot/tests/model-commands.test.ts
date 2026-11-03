@@ -1,3 +1,4 @@
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from "grammy/types"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
@@ -107,9 +108,9 @@ describe("Retired Telegram settings controls", () => {
     const { bot, calls } = setup()
     await bot.handleUpdate(command("/help"))
     for (const removed of ["/model", "/provider", "/login", "/thinking"]) {
-      expect(calls[0]?.payload.text).not.toContain(removed)
+      expect(telegramPayloadText(calls[0]?.payload)).not.toContain(removed)
     }
-    expect(calls[0]?.payload.text).toContain("/reset")
+    expect(telegramPayloadText(calls[0]?.payload)).toContain("/reset")
   })
 
   it("registers only supported commands before polling", async () => {

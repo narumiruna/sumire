@@ -53,7 +53,6 @@ export async function deliverGeneratedResponse(
   if (!sessions.readResponseImage || !sessions.recordResponseComponent)
     throw new Error("Image delivery is unavailable")
   const options = {
-    parse_mode: "HTML" as const,
     reply_parameters: { message_id: saved.sourceMessageId, allow_sending_without_reply: true },
   }
   const ids = [...(answer.textMessageIds ?? [])]

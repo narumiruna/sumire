@@ -39,7 +39,7 @@ Available now:
 - public HTTP(S)-only URL loading as a Pi tool, with automatic source-aware extraction and bounded output
 - Morsel rich-rendering tool and mandatory routing for messages over 1000 characters
 - live multi-step progress as the first Telegram reply
-- Telegram HTML rendering with a 1000-character inline message limit
+- Native Telegram Rich Message delivery with a 1000-character inline message limit
 - secret-redacted logs
 
 ## Requirements
@@ -253,9 +253,9 @@ The reusable Pi login client and `/provider-login` extension remain in `packages
 
 ## Telegram message length and Morsel
 
-Short replies and edits render Markdown as native Telegram HTML: headings/bold, italic, strikethrough, named and reference links, lists, blockquotes, and inline/fenced code (with safe language hints). Raw HTML is escaped, unsupported link schemes remain non-clickable text, and nested quotes are flattened. Tables retain their source in a monospace block; images become links, not downloads. Telegram does not render LaTeX or Mermaid diagrams. Reply-checkpoint comparisons use the same rendered visible text. The source-length and Morsel rules below are unchanged.
+Short replies and edits use Telegram’s native Rich Message API with sanitized Markdown, including native tables, lists, quotes and code blocks. Telegram performs the rendering; Sumire does not convert Markdown to legacy HTML or split long answers. Incoming rich blocks are projected into readable context (including link targets), and structured mentions address the bot. Reply-status comparisons use the same projection of Telegram’s returned and replied blocks.
 
-Except for the bounded, non-public authentication messages described above, every outgoing text message and edit uses the same delivery policy, including AI answers, commands such as `/t`, and progress updates. Messages over **1000 characters** must be published to Morsel in full; Telegram receives only a short notice and the share URL. Exactly 1000 characters can be sent directly. Length is counted as Unicode code points after control-character cleanup and newline normalization, before HTML escaping; whitespace and Markdown syntax count toward the limit.
+Except for bounded private authentication and lifecycle notices, every outgoing text message and edit uses the same delivery policy, including AI answers, commands such as `/t`, and progress updates. Messages over **1000 characters** must be published to Morsel in full; Telegram receives only a short notice and the share URL. Exactly 1000 characters can be sent directly. Length is counted as Unicode code points after control-character cleanup and newline normalization, before native Markdown rendering; whitespace and Markdown syntax count toward the limit.
 
 Store `MORSEL_API_KEY` on **Secrets & variables** and apply it to enable publication. If the key is missing, publishing fails, or the returned link cannot fit, Telegram receives only a short failure notice with the sanitized, bounded failure reason. The original long message is never sent inline, split into chunks, or recorded as successfully delivered. The policy applies regardless of the optional rich-tool mode, and legacy thresholds cannot raise the 1000-character cap. Successful Morsel links retain reply-tree checkpoint mapping; `/reset` invalidates pending delivery so stale links do not replace the cancelled status. A full progress snapshot above 1,000 characters is available only through its Morsel link, not inline or in chunks; if publication fails, Telegram shows the failure notice rather than a partial step list.
 

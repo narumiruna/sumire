@@ -5,6 +5,7 @@ import {
   documentReferences,
   imageReferences,
   isBotAddressed,
+  messageText,
   passiveGroupContext,
   promptWithReplyContext,
   repliedBotMessageId,
@@ -12,6 +13,27 @@ import {
 } from "../src/telegram/messages.js"
 
 describe("Telegram message normalization", () => {
+  it("reads native rich replies and passive context with their link targets", () => {
+    const rich_message = {
+      blocks: [
+        {
+          type: "paragraph" as const,
+          text: { type: "url" as const, text: "文件", url: "https://example.test" },
+        },
+      ],
+    }
+    expect(messageText({ message_id: 1, rich_message })).toBe("文件 (https://example.test)")
+    expect(
+      passiveGroupContext({ message_id: 1, rich_message, from: { username: "alice" } }),
+    ).toContain("文件 (https://example.test)")
+    expect(
+      promptWithReplyContext(
+        { message_id: 2, reply_to_message: { message_id: 1, rich_message } },
+        "看法？",
+      ),
+    ).toContain("Type: rich_message\nMessage ID: 1\nContent: 文件 (https://example.test)")
+  })
+
   it("detects and strips case-insensitive mentions", () => {
     const message = { message_id: 1, text: "@FakeBot 請回答" }
     expect(isBotAddressed(message, 42, "fakebot")).toBe(true)

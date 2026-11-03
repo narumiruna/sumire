@@ -369,10 +369,7 @@ export function createTelegramAgentBot(
       await delivery.reply(
         context,
         result || `查不到 ${query} 的市場資料，請確認代碼或稍後再試。`,
-        {
-          ...replyOptions(context),
-          parse_mode: "HTML",
-        },
+        replyOptions(context),
       )
     } catch (error) {
       if (error instanceof MarketDataInputError) {
@@ -840,7 +837,6 @@ export function createTelegramAgentBot(
     if (chatId === undefined) return
     const sourceMessageId = context.message?.message_id
     const replyOptions = {
-      parse_mode: "HTML" as const,
       ...(sourceMessageId
         ? {
             reply_parameters: {
@@ -914,10 +910,11 @@ export function createTelegramAgentBot(
         status = progressReply.message
         lastDeliveredStatusText = progressReply.result === "delivered" ? text : undefined
         if (isProgress && progressReply.message) {
-          preparedProgress = { text, visibleText: progressReply.message.text ?? text }
+          preparedProgress = { text, visibleText: messageText(progressReply.message) || text }
         }
         if (progressReply.result === "delivered" && isProgress) {
-          statusDisplayText = progressReply.message?.text ?? text
+          statusDisplayText =
+            (progressReply.message ? messageText(progressReply.message) : "") || text
           lastDeliveredProgress = { text, visibleText: statusDisplayText }
         }
         visiblePayload =

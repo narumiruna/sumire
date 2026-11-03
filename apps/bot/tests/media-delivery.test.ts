@@ -111,7 +111,7 @@ it.each(["image/png", "image/webp"])(
     )
     expect(f.methods.map((x) => x.method)).toEqual([
       mimeType === "image/png" ? "sendPhoto" : "sendDocument",
-      "sendMessage",
+      "sendRichMessage",
     ])
     const payload = f.methods[0]?.payload
     const file = (payload?.photo ?? payload?.document) as InputFile
@@ -239,7 +239,7 @@ it("checks asynchronous authorization after Morsel publication before sending te
 it("awaits authorization after text delivery before recording text or acknowledging partial delivery", async () => {
   const f = setup()
   vi.spyOn(delivery, "guardedReply").mockImplementation(async () => {
-    const message = await f.ctx.reply("done")
+    const message = await f.ctx.replyWithRichMessage({ markdown: "done" })
     f.sessions.assertResponseMediaAccess.mockRejectedValue(new Error("auth revoked"))
     return { result: "delivered", message }
   })
@@ -254,7 +254,7 @@ it("awaits authorization after text delivery before recording text or acknowledg
       () => true,
     ),
   ).toBe("stale")
-  expect(f.methods.map(({ method }) => method)).toEqual(["sendMessage"])
+  expect(f.methods.map(({ method }) => method)).toEqual(["sendRichMessage"])
   expect(f.sessions.recordResponseComponent).not.toHaveBeenCalled()
   expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
 })
@@ -351,7 +351,7 @@ it("uploads images directly even when required long-text publication is unavaila
     () => true,
   )
   expect(result).toBe("unavailable")
-  expect(f.methods.map((item) => item.method)).toEqual(["sendPhoto", "sendMessage"])
+  expect(f.methods.map((item) => item.method)).toEqual(["sendPhoto", "sendRichMessage"])
   expect(f.sessions.recordResponseComponent).toHaveBeenCalledWith(123, checkpoint, image.id, 21)
   expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
 })
@@ -401,7 +401,7 @@ it.each([false, true])(
     }
     expect(result).toBe(cancelled ? "stale" : "delivered")
     expect(f.methods.map((item) => item.method)).toEqual(
-      cancelled ? ["sendPhoto"] : ["sendPhoto", "sendMessage"],
+      cancelled ? ["sendPhoto"] : ["sendPhoto", "sendRichMessage"],
     )
     if (cancelled) expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
     else expect(f.sessions.recordDelivery).toHaveBeenCalledWith(123, checkpoint, [21, 22])
