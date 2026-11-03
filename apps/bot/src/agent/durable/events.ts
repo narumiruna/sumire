@@ -113,9 +113,10 @@ export function forwardDurableView(
       const result =
         "parentTaskId" in slot
           ? nestedResults.get(slot.taskId)
-          : current.entries
-              .find((entry) => entry.id === slot.entry)
-              ?.model?.find((message) => message.role === "toolResult")
+          : (
+              current.entries.find((entry) => entry.id === slot.entry) ??
+              (slot.entry === undefined ? undefined : appended.get(slot.entry))
+            )?.model?.find((message) => message.role === "toolResult")
       emit({
         type: "tool_execution_end",
         ...identity,

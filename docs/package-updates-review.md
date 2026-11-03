@@ -7,7 +7,7 @@
 - Reviewed head: `7399c4bdcb442c1b703bc1bafecfb705cce275c1`.
 - Goal: update dependencies without downgrades and retain the existing bot behavior.
 - Read the description, commit, complete 8,294-line patch, all 43 changed files, checks, submitted review, inline comment, and conversation comments. REST endpoints each had one page. Review threads and their comments each had no next page.
-- The first Pi review summary and submitted review refer to R1 below. The later Pi review refers to R3. These summaries are not separate findings. The Codex status comment contained no code finding or requested change when fetched.
+- The first Pi review summary and submitted review refer to R1 below. Later Pi reviews refer to R3 and R4. These summaries are not separate findings. The Codex status comment contained no code finding or requested change when fetched.
 - The original head passed `typescript`, `container`, and `review`. The container job builds `runtime-application`; it does not test the final image's native Chrome profiles.
 
 ## Review ledger
@@ -48,10 +48,22 @@
 - Fix: capture appended entries from stored commit publications. Merge the captured entries with each view and emit only the range between its previous and current entry IDs. Sort entries by ID and release them after processing.
 - Proof: the 120-entry runtime assertion failed with 50 completion events before the fix. It now receives all 120 messages in order. Unit tests cover reversed publication order, view trimming, conversation isolation, a queued future entry, repeated views, and attachment history.
 
+### R4: Keep direct results outside the bounded view
+
+- Feedback: https://github.com/narumiruna/sumire/pull/235#discussion_r4457785001.
+- Reviewed head: `6d06e5250e4fb9049975f1ba9bea82fee8d05af8`. This item arrived after R3 was published.
+- Severity: P2. A successful direct call can report an error and lose its result data.
+- Scope: the observation migration reads direct results only from the bounded view, unlike the previous committed-entry event path.
+- Supporting evidence: R3 retains a pruned result entry for `message_end`, but the direct completion lookup still ignores that captured entry. The same revision can therefore emit the result message and then emit a tool completion with no result.
+- Initial outcome: Actionable and not yet addressed.
+- Final outcome: Already addressed by the direct-result review fix.
+- Fix: when a direct result is absent from the view, read its entry from the captured entries for that revision.
+- Proof: success and error tests fail before the fix and pass after it. The event retains the result payload, details, and error flag. Existing missing-result fault tests still pass.
+
 ## Validation of the review fixes
 
 - All root checks pass: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-- Root tests after R3: 3,170 tests across 189 files. Lint retains 5 existing CSS warnings and 1 informational finding.
+- Root tests after R4: 3,172 tests across 189 files. Lint retains 5 existing CSS warnings and 1 informational finding.
 - `sh -n scripts/install-curl-impersonate.sh` and `git diff --check` pass.
 - Both Linux archives were downloaded and hashed. Their hashes match the GitHub release metadata:
   - x86_64: `7716be1ec87f13ecc776c211003bd1122c345287829b1f18a494a5467c90ab1e`.

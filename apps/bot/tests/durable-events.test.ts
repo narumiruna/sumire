@@ -209,6 +209,27 @@ describe("durable view translation", () => {
     ])
   })
 
+  it.each([false, true])("keeps a pruned direct result with isError=%s", (isError) => {
+    const { emit, forward, messageEntries } = setup()
+    const result: Message = { ...toolResult, isError }
+    const resultEntry = entry(2, [result])
+    const newest = entry(3, [{ role: "user", content: "newer entry", timestamp: 3 }])
+    recordMessageEntries(
+      {
+        seq: 1 as Seq,
+        changes: [resultEntry, newest].map((value) => ({ type: "entry" as const, value })),
+      },
+      1 as ConversationId,
+      messageEntries,
+    )
+    forward(
+      view({ run, tools: [tool()] }, [entry(1, [assistant()])]),
+      view({ run, tools: [tool({ status: "done", entry: resultEntry.id })] }, [newest], 2),
+    )
+    expect(emit).toHaveBeenCalledWith({ ...toolEnd, result, isError })
+    expect(messageEntries.size).toBe(0)
+  })
+
   it("ends a skipped pending call without emitting a tool start", () => {
     const { emit, forward } = setup()
     const result: Message = { ...toolResult, isError: true }
