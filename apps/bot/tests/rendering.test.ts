@@ -176,6 +176,15 @@ describe("automatic link boundaries", () => {
     },
   )
 
+  it.each([
+    "https://user:pass@example.test/path。",
+    "http://user@example.test/path！",
+    "https://example.test:99999/path。",
+  ])("preserves complete text when rejecting an automatic link: %s", (source) => {
+    expect(telegramHtmlChunks(source)).toEqual([source])
+    expect(telegramVisibleText(source)).toBe(source)
+  })
+
   it("trims surrounding punctuation without removing balanced URL delimiters", () => {
     expect(trimUrl("https://example.test/a_(b))。")).toBe("https://example.test/a_(b)")
   })

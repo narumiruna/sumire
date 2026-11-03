@@ -877,9 +877,10 @@ export function createTelegramAgentBot(
     const progressStatus = createProgressStatusEditor(
       async (text, isProgress) => {
         if (!isProgress && progressSnapshot) {
-          // Activity edits must not publish the snapshot again, even after publication fails.
+          // Keep inline Markdown source. Reuse Morsel notices, even after publication fails.
           const snapshot =
-            preparedProgress?.text === progressSnapshot
+            preparedProgress?.text === progressSnapshot &&
+            delivery.directPayload(progressSnapshot) === undefined
               ? preparedProgress.visibleText
               : progressSnapshot
           const combined = `${snapshot}\n\n${text}`
