@@ -1,5 +1,21 @@
 # @narumitw/sumire
 
+## 0.19.1
+
+### Patch Changes
+
+- 0c227d3: Restore the repository to commit 35a2b199b517640c87adbbfd5c12f5c187b454d5. Restore the Node.js container runtime, Docker build layout, URL readers, tests, documentation, and dependency versions from that snapshot. Replace the reverted changesets with this rollback changeset.
+- Updated dependencies [0c227d3]
+  - @narumitw/sumire-contracts@0.9.1
+  - @narumitw/sumire-github-notifications@0.2.1
+  - @narumitw/sumire-imagegen@0.2.1
+  - @narumitw/sumire-pi-polymarket@0.2.3
+  - @narumitw/sumire-pi-url-reader@0.7.1
+  - @narumitw/sumire-policy@0.5.1
+  - @narumitw/sumire-progress@0.3.3
+  - @narumitw/sumire-runtime-config@0.2.1
+  - @narumitw/sumire-url-reader@0.26.1
+
 ## 0.19.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @narumitw/sumire-admin
 
+## 0.11.1
+
+### Patch Changes
+
+- 0c227d3: Restore the repository to commit 35a2b199b517640c87adbbfd5c12f5c187b454d5. Restore the Node.js container runtime, Docker build layout, URL readers, tests, documentation, and dependency versions from that snapshot. Replace the reverted changesets with this rollback changeset.
+- Updated dependencies [0c227d3]
+  - @narumitw/sumire-contracts@0.9.1
+  - @narumitw/sumire-policy@0.5.1
+
 ## 0.11.0
 
 ### Minor Changes
