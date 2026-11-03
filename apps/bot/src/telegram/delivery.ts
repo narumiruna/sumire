@@ -79,7 +79,7 @@ export function createTelegramDelivery(
   ) {
     if (authorize && !(await authorize())) return { result: "stale" as const }
     if (!isCurrent()) return { result: "stale" as const }
-    const message = await context.reply(telegramHtmlChunks(prepared.text)[0] ?? " ", options)
+    const message = await richReply(context, prepared.text, options)
     if (authorize && !(await authorize())) return { message, result: "stale" as const }
     if (!isCurrent()) return { message, result: "stale" as const }
     // The original may still be visible, or may have been deleted already.
@@ -111,12 +111,7 @@ export function createTelegramDelivery(
     },
     async reply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
       const prepared = await prepare(text)
-      return context.reply(
-        options?.parse_mode === "HTML"
-          ? (telegramHtmlChunks(prepared.text)[0] ?? " ")
-          : prepared.text,
-        options,
-      )
+      return richReply(context, prepared.text, options)
     },
     async guardedReply(
       context: Context,
@@ -130,12 +125,7 @@ export function createTelegramDelivery(
       const prepared = await prepare(text, mode)
       if (authorize && !(await authorize())) return { result: "stale" as const }
       if (!isCurrent()) return { result: "stale" as const }
-      const message = await context.reply(
-        options?.parse_mode === "HTML"
-          ? (telegramHtmlChunks(prepared.text)[0] ?? " ")
-          : prepared.text,
-        options,
-      )
+      const message = await richReply(context, prepared.text, options)
       if (authorize && !(await authorize())) return { message, result: "stale" as const }
       if (!isCurrent()) return { message, result: "stale" as const }
       return {
@@ -202,6 +192,10 @@ export function createTelegramDelivery(
       return sendPreparedAndClearPrevious(context, chatId, messageId, prepared, options, isCurrent)
     },
   }
+}
+
+function richReply(context: Context, text: string, options?: Parameters<Context["reply"]>[1]) {
+  return context.reply(telegramHtmlChunks(text)[0] ?? " ", { ...options, parse_mode: "HTML" })
 }
 
 export function morselPublicationFailure(error: unknown, mode: DeliveryMode): string {
