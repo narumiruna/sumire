@@ -32,8 +32,9 @@ Validation date: 2026-11-03. Host: macOS arm64, Node.js 26.10.0, standalone Bun 
 | Changesets version | Actual manifests and pending changesets passed in a disposable checkout with networking denied; all 12 workspace changelogs updated, registry resolutions unchanged, no npm lockfile generated |
 | Frozen recheck after versioning | Passed; lockfile hash unchanged |
 | Workflow syntax | `actionlint` passed for CI and publish workflows |
+| CI registry configuration | Authenticated loopback registry passed with runner-style `NPM_CONFIG_USERCONFIG` and a fixture `NODE_AUTH_TOKEN` |
 
-The first integration run found and corrected an obsolete npm-lock assertion and a mock type that depended on npm's hoisting layout. The existing Biome schema 2.6.3 versus CLI 2.6.4 notice is informational; this migration does not change formatting policy.
+The first integration run found and corrected an obsolete npm-lock assertion and a mock type that depended on npm's hoisting layout. A later concurrent stress run failed one existing MCP process test; a serial full root rerun passed without test or timeout changes. The existing Biome schema 2.6.3 versus CLI 2.6.4 notice is informational; this migration does not change formatting policy.
 
 ## Container and Browser Evidence
 
@@ -41,10 +42,12 @@ The first integration run found and corrected an obsolete npm-lock assertion and
   - Existing non-root, network-disabled checks passed: SQLite save/backup/reopen, native document conversion, DNS and connection pinning, codemode timeout/abort/close and recovery, Chromium launch, actual asynchronous curl I/O, URL failures and media tools.
   - An additional read-only check as uid 999 validated all 33 application symlinks and all nine runtime workspace exports under `/app`.
   - Biome, Changesets, Husky, Vitest, Vite, Playwright Test and admin Radix dependencies are absent from the production tree.
-- Local Linux amd64 emulation reached the codemode smoke but failed its VM-started assertion. The check and its timeout were not weakened. Native amd64 CI evidence remains pending.
-- Full Linux administration browser suite and Durable comparison: pending.
+- Local Linux amd64 emulation reached the codemode smoke but failed its VM-started assertion. The check and its timeout were not weakened. The [native amd64 container CI](https://github.com/narumiruna/sumire/actions/runs/41576431185/job/125720894088) passed, including that smoke.
+- Full Linux administration browser suite: rerun pending after correcting a popup-navigation wait. Durable comparison passed and produced all six before/after captures.
   - An initial macOS run was incomplete and had three browser failures; it is not acceptance evidence.
-  - The first Linux source-transfer attempt included macOS AppleDouble files and failed discovery. The corrected transfer excludes metadata; it does not change repository tests.
+  - The first Linux source-transfer attempt included macOS AppleDouble files and failed discovery. The corrected transfer excludes metadata.
+  - The complete two-worker Linux run had 638 passes and one failure: a popup still reported `about:blank` before navigation committed. The test now waits for its expected URL, with the original assertions and timeout unchanged.
+  - A concurrent four-worker stress run had 55 passes and five fixture/setup failures before popup verification. Isolated validation remains required; these failures are not reported as passes.
 
 ## Release and Dependency Automation
 

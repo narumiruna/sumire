@@ -452,7 +452,8 @@ for (const activation of ["Control+Enter", "Shift+Enter", "Control+click"]) {
     if (activation === "Control+click") await records.click({ modifiers: ["Control"] })
     else await records.press(activation)
     const popup = await popupWait
-    await popup.waitForLoadState()
+    // A new tab can report about:blank before its first navigation commits.
+    await popup.waitForURL(url)
     expect(popup.url()).toBe(url)
     await expect(popup.getByRole("heading", { name: "Fixture records" })).toBeVisible()
     await expect(page.locator("#current-section-heading")).toHaveText("Chats")

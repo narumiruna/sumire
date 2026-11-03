@@ -69,7 +69,8 @@
 - 已確認 649 個套件 identity、integrity 與 requirements 未改變；78 種 Node.js engine ranges 與 npm semver 比對一致。
 - Linux arm64 final runtime 與 uid 999 的 production closure 檢查通過；33 個 symlinks、九個 runtime workspace exports 均位於 `/app`。
 - Changesets 在停用網路的 disposable checkout 通過 version 與 frozen recheck；registry resolutions 未改變，未執行 publish 或建立 tags。
-- Linux browser suite 執行中。Linux amd64 本機 emulation 未通過 codemode VM-started assertion，保留原檢查與 timeout，等待 native CI 證據。
+- Native Linux amd64 container CI 已通過；本機 emulation 的 VM-started 斷言失敗不再阻擋平台驗證，未放寬檢查或 timeout。
+- Linux browser suite 首次完整執行 638 passed、1 failed：popup 仍為 about:blank 時就讀取 URL。已改為等待目標 URL，保留原斷言與 timeout。高併發 focused run 另出現 fixture setup failures，root test 也出現既有 MCP process case 失敗；重新開啟驗收，依序重跑並保留證據。
 - Dependabot Bun 不支援自動 security-update PRs；現有 repository 的 security updates 與 vulnerability alerts 已停用，已記錄差異且未修改設定。
 
 ## Rollback / Recovery
