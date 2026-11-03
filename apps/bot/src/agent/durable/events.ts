@@ -4,6 +4,8 @@ import {
   type CommitPublication,
   type ConversationId,
   type ConversationView,
+  type EntryId,
+  type EntryRecord,
   type LiveState,
   NestedCallDoc,
   type NestedCallState,
@@ -34,6 +36,19 @@ export function recordNestedResults(
   }
 }
 
+/** Keep appended entries that can leave the bounded view before listeners receive it. */
+export function recordMessageEntries(
+  publication: CommitPublication,
+  conversationId: ConversationId,
+  entries: Map<EntryId, EntryRecord>,
+): void {
+  for (const change of publication.changes) {
+    if (change.type === "entry" && change.value.conversationId === conversationId) {
+      entries.set(change.value.id, change.value)
+    }
+  }
+}
+
 /** Translate consecutive observed views. The attachment snapshot is the baseline, not an event. */
 export function forwardDurableView(
   previous: ConversationView,
@@ -42,6 +57,7 @@ export function forwardDurableView(
   logger: Logger,
   sessionId: string,
   nestedResults: Map<TaskId, NestedToolExecutionResult>,
+  committedEntries: Map<EntryId, EntryRecord>,
 ): void {
   const before: LiveState = previous.docs["pi.live"] ?? {}
   const live: LiveState = current.docs["pi.live"] ?? {}
@@ -49,11 +65,20 @@ export function forwardDurableView(
   if (!before.run && live.run) emit({ type: "agent_start" })
   if (live.run && taskChanged) emit({ type: "turn_start" })
 
-  // IDs ascend even when the bounded window drops the previous newest entry.
+  // Recover this revision's entries from the commit, including those outside its window.
   const newest = previous.entries.at(-1)?.id ?? previous.before ?? 0
-  for (const entry of current.entries) {
+  const through = current.entries.at(-1)?.id ?? current.before ?? 0
+  const appended = new Map(
+    current.entries.filter((entry) => entry.id > newest).map((entry) => [entry.id, entry]),
+  )
+  for (const [id, entry] of committedEntries) {
+    if (id > through) continue // A later commit can arrive before this notification runs.
+    committedEntries.delete(id)
+    if (id > newest) appended.set(id, entry)
+  }
+  for (const entry of [...appended.values()].sort((a, b) => a.id - b.id)) {
     const message = entry.model?.[0]
-    if (entry.id > newest && message) emit({ type: "message_end", message })
+    if (message) emit({ type: "message_end", message })
   }
 
   const assistant = current.entries

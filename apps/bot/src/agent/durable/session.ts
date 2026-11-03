@@ -21,6 +21,7 @@ import type {
   Conversation,
   ConversationId,
   ConversationView,
+  EntryId,
   EntryRecord,
   Harness,
   LiveState,
@@ -36,7 +37,7 @@ import { AdminError } from "../../admin/store.js"
 import type { Logger } from "../../logging.js"
 import type { SessionHandle } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
-import { forwardDurableView, recordNestedResults } from "./events.js"
+import { forwardDurableView, recordMessageEntries, recordNestedResults } from "./events.js"
 import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
@@ -51,6 +52,7 @@ export class DurableSession implements SessionHandle {
   #observation?: Observation<ConversationView>
   #commits?: CommitObservation
   readonly #nestedResults = new Map<TaskId, NestedToolExecutionResult>()
+  readonly #messageEntries = new Map<EntryId, EntryRecord>()
   #live?: LiveState
   #updates: Promise<void> = Promise.resolve()
   #closing?: Promise<void>
@@ -487,13 +489,16 @@ export class DurableSession implements SessionHandle {
     await this.#updates
     this.#commits?.detach()
     this.#nestedResults.clear()
+    this.#messageEntries.clear()
   }
 
   private async attach(): Promise<void> {
     const conversationId = this.#conversation.id
     this.#commits = this.harness.observeCommits({
-      advance: (publication) =>
-        recordNestedResults(publication, conversationId, this.#nestedResults),
+      advance: (publication) => {
+        recordNestedResults(publication, conversationId, this.#nestedResults)
+        recordMessageEntries(publication, conversationId, this.#messageEntries)
+      },
       end: () => {},
     })
     let previous: ConversationView | undefined
@@ -519,6 +524,7 @@ export class DurableSession implements SessionHandle {
             this.logger,
             this.sessionId,
             this.#nestedResults,
+            this.#messageEntries,
           )
         })
         .catch((error) => this.logger.warn("Durable conversation update failed", error))

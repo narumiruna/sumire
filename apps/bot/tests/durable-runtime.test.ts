@@ -144,6 +144,10 @@ describe("durable bot runtime", () => {
     const fixture = await setup()
     const session = await fixture.createSession()
     const conversation = await currentConversation(session)
+    const completions: unknown[] = []
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_end") completions.push(event.message)
+    })
     await conversation.commit(async (tx) => {
       for (let index = 0; index < 120; index++) {
         await tx.appendEntry(UserEntry, conversation.id, {
@@ -159,6 +163,8 @@ describe("durable bot runtime", () => {
     }, context)
     await vi.waitFor(() => expect(session.messages).toHaveLength(120))
     expect(session.messages[0]).toMatchObject({ content: [{ type: "text", text: "History 0" }] })
+    expect(completions).toEqual(session.messages)
+    unsubscribe()
 
     await conversation.reset(undefined, context)
     await vi.waitFor(() => expect(session.messages).toEqual([]))

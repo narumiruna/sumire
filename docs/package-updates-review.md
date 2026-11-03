@@ -7,7 +7,7 @@
 - Reviewed head: `7399c4bdcb442c1b703bc1bafecfb705cce275c1`.
 - Goal: update dependencies without downgrades and retain the existing bot behavior.
 - Read the description, commit, complete 8,294-line patch, all 43 changed files, checks, submitted review, inline comment, and conversation comments. REST endpoints each had one page. Review threads and their comments each had no next page.
-- The Pi review summary and submitted review refer to R1 below. They are not separate findings. The Codex status comment contained no code finding or requested change when fetched.
+- The first Pi review summary and submitted review refer to R1 below. The later Pi review refers to R3. These summaries are not separate findings. The Codex status comment contained no code finding or requested change when fetched.
 - The original head passed `typescript`, `container`, and `review`. The container job builds `runtime-application`; it does not test the final image's native Chrome profiles.
 
 ## Review ledger
@@ -36,10 +36,22 @@
 - Fix: pin v2.3.2 and update both Linux archive SHA-256 values. Keep the HTTPS rules, retry bounds, checksum gate, extraction patterns, and runtime library path unchanged. Update the image comment and setup documentation.
 - Proof: actual archive hashes match the public release metadata. Five new offline tests check the dependency version, both architecture downloads, and rejection before extraction when a checksum fails. The real installer and all 24 Chrome profiles pass on both Linux architectures with networking disabled.
 
+### R3: Keep completion events outside the bounded view
+
+- Feedback: https://github.com/narumiruna/sumire/pull/235#discussion_r4457671452.
+- Reviewed head: `2f22c5f47252e6c897c4f0fe9475e08893363892`. This item arrived in the final refresh after R1 and R2 were published.
+- Severity: P2. A supported bulk append can lose message completion events.
+- Scope: this pull request replaces the old commit-based entry notifications with a loop over a bounded conversation view.
+- Supporting evidence: the 120-entry runtime test stores the full transcript, but only the last 50 entries remain in its observation window. `forwardDurableView` uses only that window for `message_end`. Pi 1.4 read every appended entry from the commit publication.
+- Initial outcome: Actionable and not yet addressed.
+- Final outcome: Already addressed by the bulk-entry review fix.
+- Fix: capture appended entries from stored commit publications. Merge the captured entries with each view and emit only the range between its previous and current entry IDs. Sort entries by ID and release them after processing.
+- Proof: the 120-entry runtime assertion failed with 50 completion events before the fix. It now receives all 120 messages in order. Unit tests cover reversed publication order, view trimming, conversation isolation, a queued future entry, repeated views, and attachment history.
+
 ## Validation of the review fixes
 
 - All root checks pass: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-- Root tests: 3,168 tests across 189 files. Lint retains 5 existing CSS warnings and 1 informational finding.
+- Root tests after R3: 3,170 tests across 189 files. Lint retains 5 existing CSS warnings and 1 informational finding.
 - `sh -n scripts/install-curl-impersonate.sh` and `git diff --check` pass.
 - Both Linux archives were downloaded and hashed. Their hashes match the GitHub release metadata:
   - x86_64: `7716be1ec87f13ecc776c211003bd1122c345287829b1f18a494a5467c90ab1e`.

@@ -17,18 +17,24 @@ import type {
 } from "@earendil-works/pi-durable"
 import { NestedCallDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it, vi } from "vitest"
-import { forwardDurableView, recordNestedResults } from "../src/agent/durable/events.js"
+import {
+  forwardDurableView,
+  recordMessageEntries,
+  recordNestedResults,
+} from "../src/agent/durable/events.js"
 
 function setup() {
   const emit = vi.fn<(event: AgentSessionEvent) => void>()
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const nestedResults = new Map<TaskId, NestedToolExecutionResult>()
+  const messageEntries = new Map<EntryId, EntryRecord>()
   return {
     emit,
     logger,
     nestedResults,
+    messageEntries,
     forward: (previous: ConversationView, current: ConversationView) =>
-      forwardDurableView(previous, current, emit, logger, "session", nestedResults),
+      forwardDurableView(previous, current, emit, logger, "session", nestedResults, messageEntries),
   }
 }
 
@@ -113,6 +119,52 @@ const nestedEnd = {
 }
 
 describe("durable view translation", () => {
+  it("recovers bulk entries in order without emitting a future commit early", () => {
+    const { emit, forward, messageEntries } = setup()
+    const previous = entry(1, [{ role: "user", content: "old", timestamp: 0 }])
+    const appended = Array.from({ length: 120 }, (_, index) =>
+      entry(index + 2, [{ role: "user", content: `message ${index}`, timestamp: index }]),
+    )
+    const future = entry(122, [{ role: "user", content: "future", timestamp: 122 }])
+    const foreign = { ...future, id: 999 as EntryId, conversationId: 2 as ConversationId }
+    recordMessageEntries(
+      {
+        seq: 1 as Seq,
+        changes: [...appended, future, foreign]
+          .reverse()
+          .map((value) => ({ type: "entry" as const, value })),
+      },
+      1 as ConversationId,
+      messageEntries,
+    )
+    expect(messageEntries.size).toBe(121)
+    const current = view({}, appended.slice(-50), 71)
+    forward(view({}, [previous]), current)
+    expect(emit.mock.calls.map(([event]) => event)).toEqual(
+      appended.map((record) => ({ type: "message_end", message: record.model?.[0] })),
+    )
+    expect([...messageEntries.keys()]).toEqual([future.id])
+    const next = view({}, [...appended.slice(-49), future], 72)
+    forward(current, next)
+    forward(next, next)
+    expect(emit).toHaveBeenCalledTimes(121)
+    expect(emit).toHaveBeenLastCalledWith({ type: "message_end", message: future.model?.[0] })
+    expect(messageEntries.size).toBe(0)
+  })
+
+  it("discards captured attachment history without replaying its messages", () => {
+    const { emit, forward, messageEntries } = setup()
+    const baseline = entry(1, [{ role: "user", content: "existing", timestamp: 0 }])
+    recordMessageEntries(
+      { seq: 1 as Seq, changes: [{ type: "entry", value: baseline }] },
+      1 as ConversationId,
+      messageEntries,
+    )
+    forward(view({}, [baseline]), view({ run }, [baseline]))
+    expect(emit.mock.calls.map(([event]) => event.type)).toEqual(["agent_start", "turn_start"])
+    expect(messageEntries.size).toBe(0)
+  })
+
   it("starts an agent on a run and starts turns only when the generation task changes", () => {
     const { emit, forward } = setup()
     const first = view({ run })
