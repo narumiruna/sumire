@@ -1,6 +1,5 @@
 import { LoaderContentError, LoaderTimeoutError, TargetHttpError } from "../core/errors.js"
 import { remainingMilliseconds } from "../core/execution.js"
-import { NodeImpersTransport } from "../core/impers-transport.js"
 import type { Loader } from "../core/loader.js"
 import { assertPublicUrl, readResponseText, safeFetch } from "../core/network.js"
 import { type PublicProxy, startPublicProxy } from "../core/public-proxy.js"
@@ -189,7 +188,6 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
     remaining === undefined ? Number.POSITIVE_INFINITY : remaining / 1_000,
   )
   let owned: ImpersSession | undefined
-  let ownedTransport: NodeImpersTransport | undefined
   let ownedProxy: PublicProxy | undefined
   try {
     let proxy: string
@@ -199,11 +197,7 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
       proxy = ownedProxy.url
     }
     let session = options.session
-    let transport: NodeImpersTransport | undefined
-    if (!session && process.versions.bun) {
-      transport = await options.resources?.impersTransport?.()
-      if (!transport) transport = ownedTransport = new NodeImpersTransport()
-    } else if (!session) {
+    if (!session) {
       if (options.resources) session = await options.resources.impersSession()
       else {
         const { Session } = await import("impers")
@@ -229,68 +223,30 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
           : (options.signal ?? limitController?.signal)
       let response: Awaited<ReturnType<ImpersSession["get"]>>
       try {
-        if (transport) {
-          const reply = await transport.get(
-            {
-              url: currentUrl.toString(),
-              proxy,
-              impersonate: options.impersonate ?? "chrome",
-              timeoutSeconds: timeout,
-              headers: requestHeaders,
-              maxBytes: maxBytes ?? MAX_HTML_BYTES,
-            },
-            requestSignal,
-          )
-          // Return the real impers Response class, not a partial Session/Response proxy.
-          const { Response, Headers } = await import("impers")
-          response = new Response({
-            content: reply.content,
-            headers: new Headers(reply.headers),
-            requestUrl: currentUrl.toString(),
-            url: reply.url,
-            statusCode: reply.status,
-            statusText: reply.statusText,
-            elapsed: reply.elapsed,
-          })
-          Object.assign(response, {
-            primaryIp: reply.primaryIp,
-            primaryPort: reply.primaryPort,
-            localIp: reply.localIp,
-            localPort: reply.localPort,
-            redirectCount: reply.redirectCount,
-            redirectUrl: reply.redirectUrl,
-            httpVersion: reply.httpVersion,
-          })
-          if (maxBytes !== undefined) chunks.push(reply.content)
-        } else {
-          if (!session) throw new Error("Impers session is unavailable")
-          response = await session.get(currentUrl.toString(), {
-            impersonate: options.impersonate ?? "chrome",
-            timeout,
-            headers: requestHeaders,
-            allowRedirects: false,
-            proxy,
-            curlOptions: { [CURLOPT_NOPROXY]: "" },
-            signal: requestSignal,
-            stream: maxBytes !== undefined,
-            ...(maxBytes === undefined
-              ? {}
-              : {
-                  acceptEncoding: "identity",
-                  contentCallback: (chunk: Buffer) => {
-                    total += chunk.byteLength
-                    if (total > maxBytes) {
-                      exceededLimit = true
-                      limitController?.abort(
-                        new Error(`Response exceeds the ${maxBytes} byte limit`),
-                      )
-                      return
-                    }
-                    chunks.push(Buffer.from(chunk))
-                  },
-                }),
-          })
-        }
+        response = await session.get(currentUrl.toString(), {
+          impersonate: options.impersonate ?? "chrome",
+          timeout,
+          headers: requestHeaders,
+          allowRedirects: false,
+          proxy,
+          curlOptions: { [CURLOPT_NOPROXY]: "" },
+          signal: requestSignal,
+          stream: maxBytes !== undefined,
+          ...(maxBytes === undefined
+            ? {}
+            : {
+                acceptEncoding: "identity",
+                contentCallback: (chunk: Buffer) => {
+                  total += chunk.byteLength
+                  if (total > maxBytes) {
+                    exceededLimit = true
+                    limitController?.abort(new Error(`Response exceeds the ${maxBytes} byte limit`))
+                    return
+                  }
+                  chunks.push(Buffer.from(chunk))
+                },
+              }),
+        })
       } catch (error) {
         if (exceededLimit) {
           throw new LoaderContentError(
@@ -350,7 +306,6 @@ export async function fetchImpersResponse(url: string, options: ImpersFetchOptio
       error,
     )
   } finally {
-    await ownedTransport?.close()
     await owned?.close()
     await ownedProxy?.close()
   }

@@ -100,7 +100,7 @@ Safe results exclude exception messages, stderr, stack traces, URLs, local paths
 - `firecrawlFallback: true` opts into a final generic Firecrawl attempt (at most 30 seconds, skipped without a key or with less than one second remaining). It is off by default, sends the target URL to an external service, and may incur charges. Existing explicit Firecrawl and source-specific selection remain unchanged. Remote Firecrawl intermediate redirects cannot be inspected locally; reported final URLs are checked.
 - Passes `allowedSchemes` to source-aware loading as well as initial validation. An HTTPS-only policy rejects public HTTP redirects before local fetch, browser, or curl transports issue the downgraded request. Firecrawl's reported final targets use the same policy; its remote intermediate redirects cannot be inspected locally.
 - Rejects URL credentials and local, private, link-local, metadata, or non-routable targets.
-- Built-in requests use the installed Undici client on both Node.js and Bun, pin validated DNS addresses, revalidate redirects, cap response bytes and redirect count, and close each dispatcher.
+- Built-in requests pin validated DNS addresses, revalidate redirects, and cap response bytes and redirect count.
 - Source-aware extraction retains the URL reader package's public-target and network safety checks.
 - No network requests or background resources start during extension registration.
 
@@ -138,8 +138,6 @@ npm run lint --workspace @narumitw/sumire-pi-url-reader
 npm run typecheck --workspace @narumitw/sumire-pi-url-reader
 npm test --workspace @narumitw/sumire-pi-url-reader
 ```
-
-After building, run `bun --no-env-file packages/pi-url-reader/scripts/check-runtime.mjs` from the repository root to verify the real built-in client offline. The check uses a loopback fixture, verifies the installed connector's pinned lookup before redirecting its test socket to that fixture, and checks redirects, extraction, HTTP failure, and dispatcher cleanup. Docker runs the same check under Bun in both its CI application target and the final non-root image.
 
 Tests cover the compiled Pi manifest and bundled skill, registration, host allowlists, explicit and automatic routing, cancellation identity, explicit Pi error results, typed public-target failures, DNS pinning, output limits, success compatibility, safe diagnostics, malformed fields, secret redaction, URL-specific interrupted attempts, and bounded cyclic or deep aggregates.
 
