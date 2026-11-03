@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import path from "node:path"
 
-import type { AttachedReplicatedState } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import {
@@ -17,15 +16,19 @@ import type {
   AgentSessionEventListener,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
-import {
-  type AgentEventStream,
-  type Conversation,
-  type ConversationId,
-  type ConversationView,
-  type EntryRecord,
-  type Harness,
-  type Registry,
-  watchEvents,
+import type {
+  CommitObservation,
+  Conversation,
+  ConversationId,
+  ConversationView,
+  EntryId,
+  EntryRecord,
+  Harness,
+  LiveState,
+  NestedToolExecutionResult,
+  Observation,
+  Registry,
+  TaskId,
 } from "@earendil-works/pi-durable"
 
 import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
@@ -34,7 +37,7 @@ import { AdminError } from "../../admin/store.js"
 import type { Logger } from "../../logging.js"
 import type { SessionHandle } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
-import { forwardDurableEvent } from "./events.js"
+import { forwardDurableView, recordMessageEntries, recordNestedResults } from "./events.js"
 import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
@@ -46,8 +49,12 @@ export class DurableSession implements SessionHandle {
   readonly #listeners = new Set<AgentSessionEventListener>()
   readonly #outbox: DurableOutbox
   #conversation: Conversation
-  #view?: AttachedReplicatedState<ConversationView>
-  #events?: AgentEventStream
+  #observation?: Observation<ConversationView>
+  #commits?: CommitObservation
+  readonly #nestedResults = new Map<TaskId, NestedToolExecutionResult>()
+  readonly #messageEntries = new Map<EntryId, EntryRecord>()
+  #live?: LiveState
+  #updates: Promise<void> = Promise.resolve()
   #closing?: Promise<void>
   #prompting = 0
   #epoch = 0
@@ -208,7 +215,7 @@ export class DurableSession implements SessionHandle {
   }
 
   get isStreaming(): boolean {
-    return this.#prompting > 0 || Boolean(this.#view?.value?.docs["pi.live"]?.run)
+    return this.#prompting > 0 || this.#live?.run !== undefined
   }
 
   get isIdle(): boolean {
@@ -358,8 +365,7 @@ export class DurableSession implements SessionHandle {
     await this.harness.commit(async (tx) => {
       ;(await tx.doc(BotSessionDoc)).activeConversation = fork.id
     }, context)
-    await this.#events?.stop()
-    this.#view?.dispose()
+    await this.detach()
     this.#conversation = fork
     await this.attach()
   }
@@ -381,8 +387,7 @@ export class DurableSession implements SessionHandle {
   dispose(): Promise<void> {
     this.#closing ??= (async () => {
       try {
-        await this.#events?.stop()
-        this.#view?.dispose()
+        await this.detach()
       } finally {
         try {
           await this.harness.close(context)
@@ -479,15 +484,64 @@ export class DurableSession implements SessionHandle {
     return entry?.conversationId === target.conversationId ? entry : undefined
   }
 
+  private async detach(): Promise<void> {
+    this.#observation?.detach()
+    await this.#updates
+    this.#commits?.detach()
+    this.#nestedResults.clear()
+    this.#messageEntries.clear()
+  }
+
   private async attach(): Promise<void> {
-    this.#view = await this.#conversation.viewState(context)
-    this.#view.subscribe((value) => {
-      this.#lastEntries = value.entries
+    const conversationId = this.#conversation.id
+    this.#commits = this.harness.observeCommits({
+      advance: (publication) => {
+        recordNestedResults(publication, conversationId, this.#nestedResults)
+        recordMessageEntries(publication, conversationId, this.#messageEntries)
+      },
+      end: () => {},
     })
-    this.#events = await watchEvents(this.harness, this.#conversation.id, context)
-    this.#events.start(async (events) => {
-      for (const event of events) forwardDurableEvent(event, this.emit, this.logger, this.sessionId)
-    })
+    let previous: ConversationView | undefined
+    const pending: ConversationView[] = []
+    const receive = (value: ConversationView): void => {
+      this.#live = value.docs["pi.live"] as LiveState | undefined
+      if (!previous) {
+        // An observation can advance before its attachment promise resolves.
+        pending.push(value)
+        return
+      }
+      const prior = previous
+      previous = value
+      // Observers only record changes on the commit line. Notify listeners off that line,
+      // in order, so even a tool that starts and ends between microtasks stays visible.
+      this.#updates = this.#updates
+        .then(async () => {
+          if (prior.entries.at(-1)?.id !== value.entries.at(-1)?.id) await this.refresh()
+          forwardDurableView(
+            prior,
+            value,
+            this.emit,
+            this.logger,
+            this.sessionId,
+            this.#nestedResults,
+            this.#messageEntries,
+          )
+        })
+        .catch((error) => this.logger.warn("Durable conversation update failed", error))
+    }
+    this.#observation = await this.harness.observeConversation(
+      this.#conversation.id,
+      {
+        advance: (call) => {
+          if (call.kind === "value") receive(call.value)
+        },
+        end: () => {},
+      },
+      context,
+    )
+    previous = this.#observation.value
+    this.#live = (pending.at(-1) ?? previous).docs["pi.live"] as LiveState | undefined
+    for (const value of pending) receive(value)
     await this.refresh()
   }
 

@@ -10,7 +10,7 @@
     "@google/genai": false,
     "esbuild@0.28.2": true,
     "fsevents": false,
-    "koffi@3.3.1": true,
+    "koffi@3.3.6": true,
     "protobufjs": false
   },
   "workspaces": [
@@ -33,7 +33,7 @@
     "update": "npx npm-check-updates -u -w --root"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.4",
     "@changesets/cli": "3.0.3",
     "husky": "9.1.7"
   }

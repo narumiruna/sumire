@@ -3,7 +3,6 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import type { JsonValue } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import { Type } from "@earendil-works/pi-ai"
 import { createModels } from "@earendil-works/pi-ai/models"
 import {
   fauxAssistantMessage,
@@ -23,6 +22,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { CodemodeStoreDoc as NativeStore } from "@earendil-works/pi-durable/codemode"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
+import { Type } from "typebox"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   CodemodeMigrationDoc,
@@ -103,15 +103,21 @@ describe("codemode store migration", () => {
     const second = await point(source, { value: 2 })
     const before = await history(source)
     const commits: string[][] = []
-    const stop = harness.subscribeCommits((publication) => {
-      commits.push(
-        publication.changes.flatMap((change) =>
-          change.type === "document" ? [change.record.kind] : [],
-        ),
-      )
+    const observation = harness.observeCommits({
+      advance: (publication) => {
+        commits.push(
+          publication.changes.flatMap((change) =>
+            change.type === "document" ? [change.record.kind] : [],
+          ),
+        )
+      },
+      end: () => {},
     })
-    await migrateCodemodeStores(harness, context)
-    stop()
+    try {
+      await migrateCodemodeStores(harness, context)
+    } finally {
+      observation.detach()
+    }
     expect(commits).toContainEqual([
       NativeStore.definition.kind,
       CodemodeMigrationDoc.definition.kind,
@@ -125,11 +131,18 @@ describe("codemode store migration", () => {
 
     const cutover = await point(source, { value: 3 }, true)
     const creationCommits: string[][] = []
-    const stopForks = harness.subscribeCommits((publication) => {
-      creationCommits.push(publication.changes.map((change) => change.type))
+    const forkObservation = harness.observeCommits({
+      advance: (publication) => {
+        creationCommits.push(publication.changes.map((change) => change.type))
+      },
+      end: () => {},
     })
-    const oldFirst = await forkCodemodeConversation(harness, source, first.id, context)
-    stopForks()
+    let oldFirst: Conversation
+    try {
+      oldFirst = await forkCodemodeConversation(harness, source, first.id, context)
+    } finally {
+      forkObservation.detach()
+    }
     expect(creationCommits).toHaveLength(1)
     expect(creationCommits[0]).toContain("conversation")
     expect(creationCommits[0]).toContain("document")
@@ -206,9 +219,12 @@ describe("codemode store migration", () => {
     await close(first)
     const reopened = await open()
     const commits = vi.fn()
-    const stop = reopened.subscribeCommits(commits)
-    await migrateCodemodeStores(reopened, context)
-    stop()
+    const observation = reopened.observeCommits({ advance: commits, end: () => {} })
+    try {
+      await migrateCodemodeStores(reopened, context)
+    } finally {
+      observation.detach()
+    }
     expect(commits).not.toHaveBeenCalled()
     expect(await nativeValues(reopened, await reopened.root(context))).toEqual({ chat: "first" })
     const other = await open(path.join(directory, "other-chat.sqlite"))

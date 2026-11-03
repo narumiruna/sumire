@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { expect, it } from "vitest"
+import { buildPiSystemPrompt } from "../src/agent/pi-system-prompt.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 it("preserves Pi's default prompt and appends the bot template in model requests", async () => {
@@ -15,7 +16,8 @@ it("preserves Pi's default prompt and appends the bot template in model requests
     // The renamed file is an addendum, not a replacement prompt discovered from SYSTEM.md.
     await writeFile(path.join(fixture.root, "instructions/SYSTEM.md"), "REPLACEMENT_SENTINEL")
     const session = await fixture.createSession()
-    const preamble = "You are an expert coding assistant operating inside pi"
+    const [preamble] = buildPiSystemPrompt({ cwd: fixture.settings.botWorkdir }).split("\n")
+    if (!preamble) throw new Error("Pi default preamble is missing")
     expect(session.systemPrompt.startsWith(preamble)).toBe(true)
     expect(session.systemPrompt).toContain("<rules>")
     expect(session.systemPrompt).toContain("<docs>")

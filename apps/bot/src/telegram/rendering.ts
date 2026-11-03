@@ -134,7 +134,8 @@ function renderTokens(tokens: readonly Token[], context: RenderContext = {}): Fr
         // Telegram has no table entity. Preserve the complete source in monospace.
         return [{ html: `<pre>${escapeHtml(token.raw)}</pre>`, text: token.raw, verbatim: true }]
       case "text":
-        return token.tokens ? trailingNewlines(children(), token.raw) : literal(token.text)
+        // marked decodes numeric entities in leaf text; preserve their source spelling.
+        return token.tokens ? trailingNewlines(children(), token.raw) : literal(token.raw)
       case "escape":
         return literal(token.text)
       default:

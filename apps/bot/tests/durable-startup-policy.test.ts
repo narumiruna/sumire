@@ -3,7 +3,7 @@ import { access } from "node:fs/promises"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import { type JsonObject, Type } from "@earendil-works/pi-ai"
+import type { JsonObject } from "@earendil-works/pi-ai"
 import {
   AssistantEntry,
   type Conversation,
@@ -12,6 +12,7 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable"
 import { createUrlTool } from "@narumitw/sumire-pi-url-reader"
+import { Type } from "typebox"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { chatModelRuntime } from "../src/admin/providers.js"
 import { DurableSession } from "../src/agent/durable/session.js"

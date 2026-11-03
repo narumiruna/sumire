@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
-import { type Model, Type } from "@earendil-works/pi-ai"
+import type { Model } from "@earendil-works/pi-ai"
 import { createModels } from "@earendil-works/pi-ai/models"
 import { CodemodeSandbox } from "@earendil-works/pi-codemode"
 import {
@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode"
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
+import { Type } from "typebox"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   adaptTool,
@@ -261,9 +262,12 @@ describe("capability adapter", () => {
   )
 
   it("uses harness argument preparation and validation exactly once per call", async () => {
-    const prepareArguments = vi.fn((args: unknown) => ({
-      value: Number((args as { value: unknown }).value),
-    }))
+    const prepareArguments = vi.fn((args: unknown) => {
+      const { value } = args as { value: unknown }
+      const number = Number(value)
+      // Prepared arguments must remain JSON; let the schema reject invalid strings.
+      return { value: Number.isFinite(number) ? number : value }
+    })
     const tool = capability({ prepareArguments })
     const execute = vi.spyOn(tool, "execute")
     const fixture = await setup([adaptTool(tool)])
@@ -273,7 +277,9 @@ describe("capability adapter", () => {
     expect(execute).toHaveBeenCalledTimes(2)
     expect((await fixture.run(tool.name, { value: "invalid" })).message.isError).toBe(true)
     expect((await fixture.nested(tool.name, { value: "invalid" })).isError).toBe(true)
+    expect(prepareArguments).toHaveBeenCalledTimes(4)
     expect(execute).toHaveBeenCalledTimes(2)
+    expect(fixture.reports).toEqual([])
   })
 
   it.each(["missing", "invalid", "undeclared"] as const)(

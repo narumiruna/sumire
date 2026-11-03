@@ -129,6 +129,24 @@ text(results.map(result => result.status === 'fulfilled' ? { status: result.stat
     expect(
       ends.filter((event) => event.type === "tool_execution_end" && event.isError),
     ).toHaveLength(5)
+    expect(ends).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolName: "bash",
+          isError: false,
+          result: expect.objectContaining({
+            structuredOutput: expect.objectContaining({ output: "first", exitCode: 0 }),
+          }),
+        }),
+        expect.objectContaining({
+          toolName: "read_url_content",
+          isError: true,
+          result: expect.objectContaining({
+            details: expect.objectContaining({ code: "unsafe_url" }),
+          }),
+        }),
+      ]),
+    )
     expect(result.details).toMatchObject({ calls: expect.any(Array) })
     expect(await readFile(path.join(fixture.root, "note.txt"), "utf8")).toBe("after")
     expect(fixture.requests).toHaveLength(2) // unsafe URLs never reach this server

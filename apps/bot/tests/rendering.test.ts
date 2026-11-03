@@ -142,6 +142,32 @@ describe("native Telegram rich text", () => {
     )
   })
 
+  it.each([
+    ["&lt;script&gt; &amp; &quot;", "&amp;lt;script&amp;gt; &amp;amp; &amp;quot;"],
+    ["&#60;script&#62; &#34;", "&amp;#60;script&amp;#62; &amp;#34;"],
+    ["&#x3c;script&#X3E; &#x22;", "&amp;#x3c;script&amp;#X3E; &amp;#x22;"],
+    ["&#38; & bare &amp; &#128512;", "&amp;#38; &amp; bare &amp;amp; &amp;#128512;"],
+  ])("preserves entity spellings as escaped literal text: %s", (source, html) => {
+    expect(telegramVisibleText(source)).toBe(source)
+    expect(telegramHtmlChunks(source)).toEqual([html])
+  })
+
+  it("preserves literal entities inside nested formatting and link labels", () => {
+    const source =
+      "- **&lt;b&gt; *&#60;script&#62;* [&#x3C;img src=x onerror=alert(1)&#x3E;](https://example.test)**"
+    expect(telegramVisibleText(source)).toBe(
+      "• &lt;b&gt; &#60;script&#62; &#x3C;img src=x onerror=alert(1)&#x3E;",
+    )
+    expect(telegramHtmlChunks(source)).toEqual([
+      '• <b>&amp;lt;b&amp;gt; <i>&amp;#60;script&amp;#62;</i> <a href="https://example.test/">&amp;#x3C;img src=x onerror=alert(1)&amp;#x3E;</a></b>',
+    ])
+  })
+
+  it("still removes Markdown escape backslashes next to literal entities", () => {
+    expect(telegramVisibleText("\\* &#60; \\&lt;")).toBe("* &#60; &lt;")
+    expect(telegramHtmlChunks("\\* &#60; \\&lt;")).toEqual(["* &amp;#60; &amp;lt;"])
+  })
+
   it("retains punctuation outside automatic links", () => {
     expect(telegramHtmlChunks("https://example.test/path。\nhttps://example.test/path！")).toEqual([
       '<a href="https://example.test/path">https://example.test/path</a>。\n<a href="https://example.test/path">https://example.test/path</a>！',

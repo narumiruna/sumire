@@ -206,7 +206,7 @@ describe("durable inspection owner lifecycle", () => {
       discovery: await readFile(trace, "utf8"),
     }
     const commits = vi.fn()
-    const unsubscribeCommits = session.harness.subscribeCommits(commits)
+    const observation = session.harness.observeCommits({ advance: commits, end: () => {} })
     const auth = vi.spyOn(f.fixture.modelRuntime, "checkAuth")
     try {
       const result = await f.registry.inspectDurable(123, conversations, signal())
@@ -252,7 +252,7 @@ describe("durable inspection owner lifecycle", () => {
       expect(abort).not.toHaveBeenCalled()
       expect(f.create).toHaveBeenCalledOnce()
     } finally {
-      unsubscribeCommits()
+      observation.detach()
       unsubscribe()
     }
   })

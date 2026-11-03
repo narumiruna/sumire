@@ -189,7 +189,7 @@ describe("authenticated durable inspection HTTP", () => {
     const sessionState = await session.harness.snapshot(BotSessionDoc, context)
     const before = await session.harness.inspect(context)
     const commits = vi.fn()
-    const stop = session.harness.subscribeCommits(commits)
+    const observation = session.harness.observeCommits({ advance: commits, end: () => {} })
     try {
       for (const query of [
         "",
@@ -238,7 +238,7 @@ describe("authenticated durable inspection HTTP", () => {
       expect(f.fixture.requests).toHaveLength(0)
       expect((await session.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
     } finally {
-      stop()
+      observation.detach()
     }
   })
 
@@ -270,7 +270,7 @@ describe("authenticated durable inspection HTTP", () => {
     )
     const before = await session.harness.inspect(context)
     const commits = vi.fn()
-    const unsubscribe = session.harness.subscribeCommits(commits)
+    const observation = session.harness.observeCommits({ advance: commits, end: () => {} })
     try {
       const history = await f.get(`${route}?view=history&conversationId=${conversation.id}&limit=1`)
       expect(history.status).toBe(200)
@@ -321,7 +321,7 @@ describe("authenticated durable inspection HTTP", () => {
       expect(f.fixture.requests).toEqual([])
       expect(f.create).toHaveBeenCalledOnce()
     } finally {
-      unsubscribe()
+      observation.detach()
     }
   })
 
@@ -338,7 +338,7 @@ describe("authenticated durable inspection HTTP", () => {
     }, context)
     const before = await session.harness.inspect(context)
     const commits = vi.fn()
-    const unsubscribe = session.harness.subscribeCommits(commits)
+    const observation = session.harness.observeCommits({ advance: commits, end: () => {} })
     try {
       const page = await f.get(`${route}?limit=1`)
       expect(page.status).toBe(200)
@@ -361,7 +361,7 @@ describe("authenticated durable inspection HTTP", () => {
       expect(f.create).toHaveBeenCalledOnce()
       expect(f.fixture.requests).toEqual([])
     } finally {
-      unsubscribe()
+      observation.detach()
     }
     await session.harness.commit(async (tx) => {
       ;(await tx.doc(BotSessionDoc)).activeConversation = 99999

@@ -1,6 +1,6 @@
-import { Type } from "@earendil-works/pi-ai"
 import { defineTool } from "@earendil-works/pi-coding-agent"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+import { Type } from "typebox"
 
 /** Variables are data. This capability never resolves or enumerates secrets. */
 export function createVariableTool(runtime?: RuntimeConfigReader) {

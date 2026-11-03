@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Match the libcurl release pinned by impers 0.1.2; verify each platform's archive.
+# Match the libcurl release pinned by impers 0.1.3; verify each platform's archive.
 FROM node:26-bookworm-slim AS curl-impersonate
 
 ARG TARGETARCH

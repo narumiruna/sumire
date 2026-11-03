@@ -1,8 +1,8 @@
-import { Type } from "@earendil-works/pi-ai"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { defineTool, LiveDoc } from "@earendil-works/pi-durable"
 import type { ToolAvailability } from "@narumitw/sumire-contracts"
 import { generateImage, ImagegenError, isCanonicalCodexRoot } from "@narumitw/sumire-imagegen"
+import { Type } from "typebox"
 import type { GeneratedMediaFiles } from "./durable/media.js"
 import { OutboxDoc } from "./durable/state.js"
 
