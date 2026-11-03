@@ -8,7 +8,7 @@
 ## Commands
 
 - [UNREVIEWED] Work from the repository root with Bun 1.4.4 and Node.js 26 or newer on `PATH` unless a documented command requires another directory.
-- Run `bun run install:dependencies` for frozen workspace installation, engine and script-policy validation, approved native setup, and development Husky prepare; do not replace it with bare `bun install` or `--trust`.
+- Run `bun run install:dependencies` for frozen workspace installation, engine and locked-identity script-policy validation, approved native setup, and development Husky prepare; do not replace it with bare `bun install` or `--trust`.
 - Apply formatting with `bun run format`; run a focused script with `bun run --filter <exact-package-name> <script>` when only one workspace is affected.
 - Run the bot through `docker compose ...` from the repository root so the build can access all workspaces and shared runtime resources.
 

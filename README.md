@@ -78,7 +78,7 @@ bun run typecheck
 bun run test
 ```
 
-`bun run install:dependencies` is the supported install command and uses a frozen lockfile by default. Before installation, its Bun wrapper requires Bun 1.4.4 and external Node.js 26 or newer. It installs with dependency scripts disabled, then validates all installed Node.js engine requirements and approved script names and versions before manually running only the fixed `esbuild@0.28.2` and `koffi@3.3.1` scripts. Development setup explicitly runs Husky prepare.
+`bun run install:dependencies` is the supported install command and uses a frozen lockfile by default. Before installation, its Bun wrapper requires Bun 1.4.4 and external Node.js 26 or newer. It installs with dependency scripts disabled, then validates installed Node.js engines and native package identities against frozen `bun.lock` entries before running only the fixed `esbuild@0.28.2` and `koffi@3.3.1` scripts. Extracted `package.json` values alone cannot authorize scripts; nested copies and aliases must match their locked identities. Development setup also validates local Husky's locked identity before prepare.
 
 The root `allowScripts` policy remains authoritative. `bunfig.toml` disables automatic environment loading (`env = false`), sets `[install] ignoreScripts = true`, and selects `linker = "hoisted"`; `trustedDependencies` is empty. Bun trust names cannot restrict package versions, and Bun does not enforce `engine-strict`. Do not use bare `bun install` or `--trust` for setup: the configuration blocks dependency scripts, but a bare install omits the wrapper's validation and native setup.
 

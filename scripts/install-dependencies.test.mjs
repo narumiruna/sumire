@@ -164,7 +164,9 @@ async function fixture(t, overrides = {}) {
     }
     const archivePath = `/${name}/-/${name.split("/").at(-1)}-${version}.tgz`
     const body = tarball({
-      "package.json": JSON.stringify(data),
+      "package.json": JSON.stringify({ ...data, ...options.archiveMetadata }),
+      // Forged metadata must not make two registry identities share archive integrity.
+      "fixture-identity.txt": `${name}@${version}\n`,
       "forbidden.cjs": marker("forbidden"),
       "install.js": marker("native-esbuild", options.exitCode, options.extra),
       "cnoke.cjs": marker("native-koffi", options.exitCode),
@@ -424,6 +426,156 @@ test("wrong direct and nested approved versions abort before any installer", asy
       assert.deepEqual(f.markers(), [])
     })
   }
+})
+
+test("forged direct and nested archive versions cannot authorize native installers", async (t) => {
+  for (const name of ["esbuild", "koffi"]) {
+    for (const placement of ["direct", "nested", "alias", "nested-alias"]) {
+      await t.test(`${name} ${placement}`, async (t) => {
+        const f = await fixture(t)
+        const approved = f.pkg.dependencies[name]
+        const wrong = name === "esbuild" ? "0.28.3" : "3.3.2"
+        const nested = placement.startsWith("nested")
+        const logical = placement.endsWith("alias") ? "@fixture/native-alias" : name
+        const requirement = logical === name ? wrong : `npm:${name}@${wrong}`
+        f.add(name, wrong, {}, { archiveMetadata: { version: approved } })
+        if (nested) {
+          if (logical !== name) f.pkg.dependencies[logical] = `npm:${name}@${approved}`
+          f.add("@fixture/carrier", "1.0.0", { dependencies: { [logical]: requirement } })
+          f.pkg.dependencies["@fixture/carrier"] = "1.0.0"
+        } else {
+          f.pkg.dependencies[logical] = requirement
+        }
+        f.save()
+        await f.lock()
+        const locator = nested ? `@fixture/carrier/${logical}` : logical
+        assert.ok(
+          readFileSync(join(f.root, "bun.lock"), "utf8").includes(
+            `"${locator}": ["${name}@${wrong}"`,
+          ),
+          "the frozen identity must retain the unapproved registry version",
+        )
+        failure(await f.run(), /Locked installer identity mismatch/)
+        const directory = nested
+          ? join(f.root, "node_modules/@fixture/carrier/node_modules", logical)
+          : join(f.root, "node_modules", logical)
+        assert.equal(JSON.parse(readFileSync(join(directory, "package.json"))).version, approved)
+        assert.deepEqual(f.markers(), [], "no native command or prepare may run")
+      })
+    }
+  }
+})
+
+test("name impostors and alias metadata mismatches fail before all approved commands", async (t) => {
+  for (const alias of [false, true]) {
+    for (const nativeName of [false, true]) {
+      await t.test(`alias=${alias} nativeName=${nativeName}`, async (t) => {
+        const f = await fixture(t)
+        const name = nativeName ? "esbuild" : "@fixture/impostor"
+        const version = nativeName ? "0.28.2" : "1.0.0"
+        const archiveMetadata = nativeName
+          ? { name: "@fixture/impostor" }
+          : { name: "esbuild", version: "0.28.2" }
+        f.add(name, version, {}, { archiveMetadata })
+        if (alias) {
+          f.pkg.dependencies["@fixture/alias"] = `npm:${name}@${version}`
+          // Avoid Bun sharing a registry identity between two installed locators.
+          if (nativeName) delete f.pkg.dependencies.esbuild
+        } else {
+          f.pkg.dependencies[name] = version
+        }
+        f.save()
+        await f.lock()
+        failure(await f.run(), /Locked installer identity mismatch/)
+        const locator = alias ? "@fixture/alias" : name
+        const actual = JSON.parse(
+          readFileSync(join(f.root, "node_modules", locator, "package.json")),
+        )
+        assert.equal(actual.name, archiveMetadata.name)
+        assert.deepEqual(f.markers(), [], "even legitimate native commands must not start")
+      })
+    }
+  }
+})
+
+test("Husky prepare rejects forged archive identities before native setup", async (t) => {
+  for (const alias of [false, true]) {
+    await t.test(alias ? "name impostor" : "forged version", async (t) => {
+      const f = await fixture(t)
+      const name = alias ? "@fixture/husky-impostor" : "husky"
+      const version = alias ? "1.0.0" : "9.1.8"
+      f.add(
+        name,
+        version,
+        { bin: { husky: "bin.js" } },
+        {
+          archiveMetadata: { name: "husky", version: "9.1.7" },
+        },
+      )
+      f.pkg.devDependencies.husky = alias ? `npm:${name}@${version}` : version
+      f.save()
+      await f.lock()
+      failure(await f.run(), /Locked Husky identity mismatch/)
+      assert.deepEqual(f.markers(), [], "all native commands must wait for prepare validation")
+    })
+  }
+})
+
+test("valid locked aliases retain native authorization", async (t) => {
+  const f = await fixture(t)
+  delete f.pkg.dependencies.esbuild
+  f.pkg.dependencies["@fixture/esbuild-alias"] = "npm:esbuild@0.28.2"
+  f.save()
+  await f.lock()
+  success(await f.run())
+  assert.deepEqual(
+    f.markers().map((m) => [m.name, m.hook]),
+    [
+      ["esbuild", "native-esbuild"],
+      ["koffi", "native-koffi"],
+      ["husky", "prepare"],
+    ],
+  )
+})
+
+test("approved nested native closure works in package and workspace-local trees", async (t) => {
+  for (const workspace of [false, true]) {
+    await t.test(workspace ? "workspace" : "scoped package", async (t) => {
+      const f = await fixture(t, workspace ? { workspaces: ["packages/*"] } : {})
+      f.add("@fixture/other", "1.0.0")
+      f.pkg.dependencies.esbuild = "npm:@fixture/other@1.0.0"
+      const carrier = {
+        name: "@fixture/carrier",
+        version: "1.0.0",
+        dependencies: { esbuild: "0.28.2", koffi: "3.3.1" },
+      }
+      if (workspace) {
+        f.json("packages/carrier/package.json", carrier)
+      } else {
+        f.add(carrier.name, carrier.version, { dependencies: carrier.dependencies })
+        f.pkg.dependencies[carrier.name] = carrier.version
+      }
+      f.save()
+      await f.lock()
+      success(await f.run())
+      const native = f.markers().filter((m) => m.hook.startsWith("native-"))
+      assert.deepEqual(native.map((m) => m.name).sort(), ["esbuild", "koffi"])
+      const parent = workspace ? "packages/carrier" : "node_modules/@fixture/carrier"
+      assert.equal(
+        native.find((m) => m.name === "esbuild").cwd,
+        join(f.root, parent, "node_modules/esbuild"),
+      )
+    })
+  }
+})
+
+test("unlocked workspace-local native packages cannot borrow a hoisted identity", async (t) => {
+  const f = await fixture(t, { workspaces: ["packages/*"] })
+  f.json("packages/a/package.json", { name: "@fixture/a", version: "1.0.0" })
+  await f.lock()
+  f.json("packages/a/node_modules/esbuild/package.json", { name: "esbuild", version: "0.28.2" })
+  failure(await f.run(), /Locked installer identity mismatch/)
+  assert.deepEqual(f.markers(), [])
 })
 
 test("all dependency engines are checked, including denied scoped transitive packages", async (t) => {

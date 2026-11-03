@@ -87,20 +87,24 @@ function inside(root, path) {
 // skip an unknown store or external link: it could hide an unvalidated installer.
 export function installedPackages(root, workspaceDirectories = []) {
   const packages = []
-  const seen = new Set([root])
-  function visitPackage(path) {
+  const seen = new Map([[root, null]])
+  function visitPackage(path, locator) {
     const directory = realpathSync(path)
     if (!inside(root, directory) || !statSync(directory).isDirectory()) {
       throw new Error(`Unsupported package layout: ${path}`)
     }
-    if (seen.has(directory)) return
-    seen.add(directory)
+    if (seen.has(directory)) {
+      seen.get(directory)?.locators.add(locator)
+      return
+    }
     const pkg = manifest(directory)
     if (typeof pkg.name !== "string" || typeof pkg.version !== "string") {
       throw new Error(`Invalid installed package: ${directory}`)
     }
-    packages.push({ directory, manifest: pkg })
-    visitModules(join(directory, "node_modules"))
+    const entry = { directory, manifest: pkg, locators: new Set([locator]) }
+    seen.set(directory, entry)
+    packages.push(entry)
+    visitModules(join(directory, "node_modules"), locator)
   }
   function validateCache(path) {
     if (lstatSync(path).isSymbolicLink() || !statSync(path).isDirectory()) {
@@ -121,7 +125,7 @@ export function installedPackages(root, workspaceDirectories = []) {
       if (statSync(entry).isDirectory()) validateCache(entry)
     }
   }
-  function visitModules(path) {
+  function visitModules(path, parent = "") {
     if (!exists(path)) return
     if (lstatSync(path).isSymbolicLink()) {
       throw new Error(`Unsupported node_modules link: ${path}`)
@@ -137,21 +141,25 @@ export function installedPackages(root, workspaceDirectories = []) {
       if (name.startsWith(".")) {
         throw new Error(`Unsupported package store: ${join(path, name)}`)
       }
+      // Bun's hoisted lock locators omit node_modules and retain scope segments.
+      const locator = parent ? `${parent}/${name}` : name
       if (name.startsWith("@")) {
         const scope = join(path, name)
         if (lstatSync(scope).isSymbolicLink()) {
           throw new Error(`Unsupported scope link: ${scope}`)
         }
         for (const member of readdirSync(scope).sort()) {
-          visitPackage(join(scope, member))
+          visitPackage(join(scope, member), `${locator}/${member}`)
         }
       } else {
-        visitPackage(join(path, name))
+        visitPackage(join(path, name), locator)
       }
     }
   }
   visitModules(join(root, "node_modules"))
-  for (const directory of workspaceDirectories) visitPackage(directory)
+  for (const directory of workspaceDirectories) {
+    visitPackage(directory, manifest(directory).name)
+  }
   return packages
 }
 
@@ -318,17 +326,36 @@ export async function main(args = process.argv.slice(2)) {
   await run(process.execPath, installArguments(options), { cwd: root, env })
   if (options.lockfileOnly) return
 
+  const { default: lock } = await import(pathToFileURL(join(root, "bun.lock")).href, {
+    with: { type: "jsonc" },
+  })
   const packages = installedPackages(root, workspaces(root, pkg))
+  const lockedIdentities = (entry) =>
+    [...entry.locators].map((locator) => {
+      const tuple = Object.hasOwn(lock.packages, locator) && lock.packages[locator]
+      return Array.isArray(tuple) ? tuple[0] : undefined
+    })
   const commands = []
-  // Validate the complete physical graph, including denied and unlisted packages,
-  // before constructing or executing any approved native installer.
+  // Queue commands without running them: the complete physical graph, including
+  // denied and unlisted packages, must pass validation before any setup executes.
   for (const entry of packages) {
     validateEngines(entry.manifest, entry.directory, runtime)
     const { name, version } = entry.manifest
     const installer = installers.get(name)
-    if (!installer) continue
-    if (version !== installer.version) {
+    const identity = `${name}@${version}`
+    const identities = lockedIdentities(entry)
+    // Also check locked native packages whose archive forged a non-native name.
+    const lockedNative = identities.some(
+      (id) => typeof id === "string" && installers.has(id.slice(0, id.lastIndexOf("@"))),
+    )
+    if (!installer && !lockedNative) continue
+    if (installer && version !== installer.version) {
       throw new Error(`Unapproved installer version: ${name}@${version} in ${entry.directory}`)
+    }
+    if (!installer || identities.some((id) => id !== identity)) {
+      throw new Error(
+        `Locked installer identity mismatch: ${identity} at ${[...entry.locators].join(", ")} in ${entry.directory}`,
+      )
     }
     if (pkg.allowScripts[`${name}@${version}`] === true && pkg.allowScripts[name] !== false) {
       const [file, ...args] = installer.args
@@ -342,10 +369,12 @@ export async function main(args = process.argv.slice(2)) {
       // Filtered Docker installs omit root tools; the original prepare is optional.
     } else {
       const directory = realpathSync(husky)
-      if (
-        !packages.some((entry) => entry.directory === directory && entry.manifest.name === "husky")
-      ) {
-        throw new Error("Root Husky installation is required for prepare")
+      const entry = packages.find(
+        (entry) => entry.directory === directory && entry.manifest.name === "husky",
+      )
+      if (!entry) throw new Error("Root Husky installation is required for prepare")
+      if (lockedIdentities(entry).some((id) => id !== `husky@${entry.manifest.version}`)) {
+        throw new Error("Locked Husky identity mismatch")
       }
       commands.push({ cwd: root, args: [sourceFile(directory, "bin.js")] })
     }
