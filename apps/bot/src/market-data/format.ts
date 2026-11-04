@@ -126,7 +126,9 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
     "| 標的 | 現價 | 漲跌 |",
     "| --- | ---: | ---: |",
     ...rendered.map((quote) => quote.row),
-    ...(details ? ["", details] : []),
+    ...(details
+      ? ["", "<details><summary>查看完整名稱與詳細報價</summary>", "", details, "", "</details>"]
+      : []),
     "",
     sourceFooter({ currency: first.prices.currency, source: first.source }),
   ].join("\n")
