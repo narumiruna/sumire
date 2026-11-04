@@ -110,11 +110,12 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
     if (values.volume !== undefined) trades.push(`成交量 ${formatNumber(values.volume)}`)
     if (values.bid !== undefined) trades.push(`買價 ${price(values.bid)}`)
     if (values.ask !== undefined) trades.push(`賣價 ${price(values.ask)}`)
+    // A single newline is a Markdown soft break; keep these as distinct paragraphs.
     const details = [
       ...(hasName || quotes.length > 1 ? [`**${escapeMarkdownText(label)}**`] : []),
       ...(range.length ? [range.join(" · ")] : []),
       ...(trades.length ? [trades.join(" · ")] : []),
-    ].join("\n")
+    ].join("\n\n")
     return { row: `| ${cells.join(" | ")} |`, details }
   })
   const details = rendered

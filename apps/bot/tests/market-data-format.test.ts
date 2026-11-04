@@ -29,12 +29,42 @@ describe("market quote tables", () => {
         "| **0050** | **97.78** | **-2.81%** |",
         "",
         "**0050 元大台灣50**",
+        "",
         "開盤 101.55 · 最高 101.65 · 最低 97.70",
+        "",
         "成交量 239,424",
         "",
         "TWD｜TWSE",
       ].join("\n"),
     )
+  })
+
+  it("uses explicit paragraph boundaries for every quote detail component", () => {
+    const result = formatMarketResults([
+      { ...quote, symbol: "VOO", name: "Vanguard S&P 500 ETF" },
+      { ...quote, symbol: "TSM", name: "Taiwan Semiconductor Manufacturing Company Limited" },
+    ])
+    expect(result.split("\n\n").slice(1)).toEqual([
+      "**VOO Vanguard S&P 500 ETF**",
+      "開盤 101.55 · 最高 101.65 · 最低 97.70",
+      "成交量 239,424",
+      "**TSM Taiwan Semiconductor Manufacturing Company Limited**",
+      "開盤 101.55 · 最高 101.65 · 最低 97.70",
+      "成交量 239,424",
+      "TWD｜TWSE",
+    ])
+  })
+
+  it("omits absent detail paragraphs without collapsing remaining boundaries", () => {
+    const result = formatMarketResults([{ ...quote, prices: { last: 0, volume: 0 } }])
+    expect(result.split("\n\n").slice(1)).toEqual([
+      "**0050 元大台灣50**",
+      "成交量 0",
+      "未提供｜TWSE",
+    ])
+    expect(result).toContain("| **0050** | **0.00** | — |")
+    expect(result).not.toContain("開盤")
+    expect(result).not.toContain("\n\n\n")
   })
 
   it("combines same-unit same-source quotes under one header and footer", () => {
@@ -146,9 +176,9 @@ describe("market quote tables", () => {
       "| **TSM** | **404.80** | **+1.55%** |",
     ])
     expect(table.every((line) => line.split("|").length === 5)).toBe(true)
-    expect(result).toContain("**VOO Vanguard S&P 500 ETF**\n開盤 691.88 · 最高 695.90")
+    expect(result).toContain("**VOO Vanguard S&P 500 ETF**\n\n開盤 691.88 · 最高 695.90")
     expect(result).toContain(
-      "**TSM Taiwan Semiconductor Manufacturing Company Limited**\n開盤 404.99 · 最高 408.37",
+      "**TSM Taiwan Semiconductor Manufacturing Company Limited**\n\n開盤 404.99 · 最高 408.37",
     )
     expect(result).not.toMatch(/🔺|🔻|⏸️/u)
   })
@@ -200,8 +230,8 @@ describe("market quote tables", () => {
         prices: { last: 3000, open: 2900, currency: "USDT" },
       },
     ])
-    expect(result).toContain("**BTC/USDT**\n開盤 64,500.00")
-    expect(result).toContain("**ETH/USDT**\n開盤 2,900.00")
+    expect(result).toContain("**BTC/USDT**\n\n開盤 64,500.00")
+    expect(result).toContain("**ETH/USDT**\n\n開盤 2,900.00")
     expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
   })
 
