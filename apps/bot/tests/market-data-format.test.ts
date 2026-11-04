@@ -28,11 +28,15 @@ describe("market quote tables", () => {
         "| --- | ---: | ---: |",
         "| **0050** | **97.78** | **-2.81%** |",
         "",
+        "<details><summary>查看完整名稱與詳細報價</summary>",
+        "",
         "**0050 元大台灣50**",
         "",
         "開盤 101.55 · 最高 101.65 · 最低 97.70",
         "",
         "成交量 239,424",
+        "",
+        "</details>",
         "",
         "TWD｜TWSE",
       ].join("\n"),
@@ -45,12 +49,14 @@ describe("market quote tables", () => {
       { ...quote, symbol: "TSM", name: "Taiwan Semiconductor Manufacturing Company Limited" },
     ])
     expect(result.split("\n\n").slice(1)).toEqual([
+      "<details><summary>查看完整名稱與詳細報價</summary>",
       "**VOO Vanguard S&P 500 ETF**",
       "開盤 101.55 · 最高 101.65 · 最低 97.70",
       "成交量 239,424",
       "**TSM Taiwan Semiconductor Manufacturing Company Limited**",
       "開盤 101.55 · 最高 101.65 · 最低 97.70",
       "成交量 239,424",
+      "</details>",
       "TWD｜TWSE",
     ])
   })
@@ -58,13 +64,44 @@ describe("market quote tables", () => {
   it("omits absent detail paragraphs without collapsing remaining boundaries", () => {
     const result = formatMarketResults([{ ...quote, prices: { last: 0, volume: 0 } }])
     expect(result.split("\n\n").slice(1)).toEqual([
+      "<details><summary>查看完整名稱與詳細報價</summary>",
       "**0050 元大台灣50**",
       "成交量 0",
+      "</details>",
       "未提供｜TWSE",
     ])
     expect(result).toContain("| **0050** | **0.00** | — |")
     expect(result).not.toContain("開盤")
     expect(result).not.toContain("\n\n\n")
+  })
+
+  it("leaves summary and source visible while details are closed by default", () => {
+    const result = formatMarketResults([quote, { ...quote, symbol: "2330", name: "台積電" }])
+    const [visible, hidden] = result.split("<details><summary>查看完整名稱與詳細報價</summary>")
+    expect(visible).toContain("| **0050** | **97.78** | **-2.81%** |")
+    expect(visible).toContain("| **2330** | **97.78** | **-2.81%** |")
+    expect(visible).not.toContain("開盤")
+    const [body, footer] = (hidden ?? "").split("</details>")
+    expect(body).toContain("**0050 元大台灣50**")
+    expect(body).toContain("**2330 台積電**")
+    expect(body).toContain("成交量 239,424")
+    expect(footer?.trim()).toBe("TWD｜TWSE")
+    expect(result.match(/<details>/gu)).toHaveLength(1)
+    expect(result).not.toContain("<details open")
+    expect(
+      formatMarketResults([{ ...quote, name: quote.symbol, prices: { last: 1 } }]),
+    ).not.toContain("<details>")
+  })
+
+  it("escapes upstream HTML so quote names cannot close or open disclosure blocks", () => {
+    const result = formatMarketResults([
+      { ...quote, name: "X </details><details open><summary>injected</summary>" },
+    ])
+    expect(result.match(/<details>/gu)).toHaveLength(1)
+    expect(result.match(/<\/details>/gu)).toHaveLength(1)
+    expect(result).not.toContain("<details open>")
+    expect(result).not.toContain("<summary>injected</summary>")
+    expect(result).toContain("\\</details\\>\\<details open\\>")
   })
 
   it("combines same-unit same-source quotes under one header and footer", () => {
@@ -83,6 +120,8 @@ describe("market quote tables", () => {
       { ...quote, prices: { ...quote.prices, currency: "USD" } },
     ])
     expect(result.match(/\| 標的 \|/gu)).toHaveLength(3)
+    expect(result.match(/<details>/gu)).toHaveLength(3)
+    expect(result.match(/<\/details>/gu)).toHaveLength(3)
     expect(result).toContain("TWD｜TWSE")
     expect(result).toContain("TWD｜Yahoo Finance")
     expect(result).toContain("USD｜TWSE")

@@ -66,6 +66,28 @@ describe("native Rich Message projection", () => {
       ]),
     ).toBe("A\tB\n1\t2\nData\nMore\n[x] done\n2. next\nAlice")
   })
+  it("retains hidden quote details in reply context whether collapsed or expanded", () => {
+    const details: RichBlock = {
+      type: "details",
+      summary: "查看完整名稱與詳細報價",
+      blocks: [
+        { type: "paragraph", text: { type: "bold", text: "0050 元大台灣50" } },
+        { type: "paragraph", text: "開盤 101.55 · 最高 101.65 · 最低 97.70" },
+        { type: "paragraph", text: "成交量 239,424" },
+      ],
+    }
+    const blocks: RichBlock[] = [
+      { type: "table", cells: [[cell("0050"), cell("97.78"), cell("-2.81%")]] },
+      details,
+      { type: "paragraph", text: "TWD｜TWSE" },
+    ]
+    const expected =
+      "0050\t97.78\t-2.81%\n查看完整名稱與詳細報價\n0050 元大台灣50\n開盤 101.55 · 最高 101.65 · 最低 97.70\n成交量 239,424\nTWD｜TWSE"
+    expect(richMessageText(blocks)).toBe(expected)
+    details.is_open = true
+    expect(richMessageText(blocks)).toBe(expected)
+  })
+
   it("retains captions and credits without treating received media as downloaded content", () => {
     expect(
       richMessageText([

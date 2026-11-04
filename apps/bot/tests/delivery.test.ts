@@ -1,6 +1,7 @@
 import type { Context } from "grammy"
 import { describe, expect, it, vi } from "vitest"
 
+import { formatMarketResults } from "../src/market-data/format.js"
 import { createTelegramDelivery } from "../src/telegram/delivery.js"
 
 const shareUrl = "https://morsel.example/s/share"
@@ -34,6 +35,50 @@ function setup(configured = true, threshold = 1000) {
 }
 
 describe("mandatory Morsel delivery", () => {
+  it("counts hidden quote content and disclosure markup at the 1000-character boundary", async () => {
+    const render = (name: string) =>
+      formatMarketResults([
+        {
+          symbol: "TEST",
+          name,
+          source: "Yahoo Finance",
+          prices: { last: 1, open: 2, currency: "USD" },
+        },
+      ])
+    const padding = 1000 - Array.from(render("字")).length + 1
+    const atLimit = render("字".repeat(padding))
+    const overLimit = render("字".repeat(padding + 1))
+    expect(Array.from(atLimit)).toHaveLength(1000)
+    expect(Array.from(overLimit)).toHaveLength(1001)
+    expect(atLimit).toContain("<details><summary>")
+    const { delivery, context, publisher, reply } = setup()
+    await delivery.reply(context, atLimit)
+    expect(publisher.publish).not.toHaveBeenCalled()
+    expect(reply).toHaveBeenLastCalledWith({ markdown: atLimit }, undefined)
+    await delivery.reply(context, overLimit)
+    expect(publisher.publish).toHaveBeenCalledExactlyOnceWith(overLimit)
+    expect(reply.mock.calls.at(-1)?.[0].markdown).toContain(shareUrl)
+    expect(reply.mock.calls.at(-1)?.[0].markdown).not.toContain("<details>")
+    expect(reply.mock.calls.at(-1)?.[0].markdown).not.toContain("字".repeat(padding))
+  })
+
+  it("withholds overlong hidden quote content when publication is unavailable", async () => {
+    const text = formatMarketResults([
+      {
+        symbol: "TEST",
+        name: "字".repeat(1000),
+        source: "Yahoo Finance",
+        prices: { last: 1 },
+      },
+    ])
+    const { delivery, context, publisher, reply } = setup(false)
+    await delivery.reply(context, text)
+    expect(publisher.publish).not.toHaveBeenCalled()
+    expect(reply.mock.calls[0]?.[0].markdown).toContain("未傳送長文")
+    expect(reply.mock.calls[0]?.[0].markdown).not.toContain("<details>")
+    expect(reply.mock.calls[0]?.[0].markdown).not.toContain("字".repeat(1000))
+  })
+
   it.each(["字", "a", "🌸"])(
     "counts %s as Unicode code points and sends exactly 1000 characters directly",
     async (character) => {
