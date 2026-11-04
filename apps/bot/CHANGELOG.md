@@ -1,5 +1,15 @@
 # @narumitw/sumire
 
+## 0.19.5
+
+### Patch Changes
+
+- f8cbc5e: Place /t stock and cryptocurrency quote details in native Telegram disclosure blocks, collapsed by default, while keeping the three-column summary and source footer visible. Preserve full quote content, paragraph boundaries, reply-context projection, and the existing source-length and Morsel delivery policy including hidden text.
+- ee644d9: Separate /t quote detail headings, open/high/low values, and volume/bid/ask values into explicit Markdown paragraphs so Telegram clients do not merge soft line breaks into dense text. Preserve the three-column summary, all quote values, compact source footer, and existing delivery policy.
+- 324e22d: Render full /t quote details as tables inside the existing default-collapsed disclosures, preserving quote values, precision, and optional bid/ask columns. Move the single source/currency label to the front of each quote and currency group while keeping the three-column summary visible and all hidden content subject to the existing delivery limits.
+- 2021f64: Use a mobile-oriented three-column /t quote summary with symbol, current price, and signed percentage change. Move full names and available open/high/low, volume, and bid/ask values below the table without dropping quote details or precision. Remove direction emoji from the narrow summary while preserving source/unit grouping and existing delivery limits. Show each source once in a compact currency/source footer, avoiding repeated source names in detail headings and currency table titles or rows.
+- 8456721: Keep /t market-data replies in native Telegram rich messages instead of publishing them to Morsel. Batch oversized results at complete source/instrument boundaries with bounded message and row budgets, preserving tables and collapsed details. Keep the general 1,000-character Morsel policy unchanged for AI replies, progress, and other commands.
+
 ## 0.19.4
 
 ### Patch Changes
