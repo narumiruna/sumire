@@ -575,7 +575,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   const state = await fixture(page)
   const measurements: Record<string, Awaited<ReturnType<typeof contrast>>> = {}
   measurements.normal = await contrast(page.locator("#current-section-heading"))
-  measurements.muted = await contrast(page.locator(".chat-directory .directory-options summary"))
+  measurements.muted = await contrast(page.locator(".directory-options summary"))
   await navigate(page, "Defaults")
   measurements.disabled = await contrast(
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),

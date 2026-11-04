@@ -21,7 +21,6 @@ const taskLabels = {
   "Model Providers": "Model providers",
   "Secrets & variables": "Secrets &amp; variables",
   "GitHub mentions": "GitHub mentions",
-  "Service status": "Service status",
   Audit: "Audit",
 } satisfies Record<Page, string>
 
@@ -82,7 +81,6 @@ describe("admin navigation", () => {
       "Defaults",
       "Secrets & variables",
       "GitHub mentions",
-      "Service status",
       "Audit",
     ]
     expect(links).toHaveLength(pages.length)
@@ -150,18 +148,6 @@ describe("admin navigation", () => {
     const source = new URL("https://example.com/admin?section=Chats&chat=42#chat-access-management")
     expect(navigationHref("Chats", "42", new URL(source))).toContain("#chat-access-management")
     expect(navigationHref("Defaults", "42", new URL(source))).not.toContain("#")
-  })
-  it("resumes unfinished status destination IDs without granting chat access", () => {
-    expect(pendingEditors.statusDestination).toEqual({
-      label: "Service status — Telegram chat ID to add",
-      target: { page: "Service status", selector: "#status-notification-chat-id" },
-    })
-    expect(
-      readNavigation(new URL("https://example.com/?section=Service+status&chat=-100")),
-    ).toEqual({
-      page: "Service status",
-      chat: "-100",
-    })
   })
   it("maps legacy Tools / MCP links to tool permissions", () => {
     expect(readNavigation(new URL("https://example.com/?section=Tools+%2F+MCP&chat=42"))).toEqual({

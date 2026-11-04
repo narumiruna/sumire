@@ -1,9 +1,6 @@
 import type { Chat } from "@narumitw/sumire-contracts"
-import { createElement } from "react"
-import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vitest"
-import { type ChatDirectory, ChatSelector, chatName, directoryPath } from "./chat-directory.js"
-import { Check } from "./policy-editors.js"
+import { describe, expect, it } from "vitest"
+import { chatName, directoryPath } from "./chat-directory.js"
 
 describe("stored chat display names", () => {
   it("trims observed names without interpreting untrusted markup", () => {
@@ -29,48 +26,6 @@ describe("stored chat display names", () => {
     expect(chatName({ id: 42, type: "private", name: "43" })).toBe("43")
     for (const id of [-100, -200])
       expect(chatName({ id, type: "group", name: "Same name" })).toBe("Same name")
-  })
-})
-
-describe("directory selection semantics", () => {
-  it("supports notification checkboxes and unique status descriptions in mounted directories", () => {
-    const chat: Chat = { id: 42, type: "private", name: "<unsafe>" }
-    const directory: ChatDirectory = {
-      chats: [chat],
-      knownChats: [chat],
-      loading: false,
-      error: "",
-      query: "",
-      offset: 0,
-      setQuery: vi.fn(),
-      setOffset: vi.fn(),
-      refresh: vi.fn(),
-      selected: { loading: false, error: "", chat: undefined },
-    }
-    const selector = () =>
-      createElement(ChatSelector, {
-        directory,
-        chat: "",
-        onSelect: vi.fn(),
-        stateLabel: "Notification selection",
-        badge: () => "Selected destination",
-        actions: () =>
-          createElement(Check, {
-            label: "Select destination 42",
-            checked: true,
-            onChange: vi.fn(),
-          }),
-      })
-    const html = renderToStaticMarkup(createElement("div", null, selector(), selector()))
-    expect(html).toContain("Notification selection")
-    expect(html).not.toContain("Access / status")
-    expect(html).toContain('role="checkbox"')
-    expect(html).toContain('aria-checked="true"')
-    expect(html).toContain("&lt;unsafe&gt;")
-    const descriptions = [...html.matchAll(/aria-describedby="([^"]+)"/g)].map((match) => match[1])
-    expect(descriptions).toHaveLength(2)
-    expect(new Set(descriptions).size).toBe(2)
-    for (const id of descriptions) expect(html).toContain(`id="${id}"`)
   })
 })
 

@@ -4,7 +4,6 @@ import {
   effectivePolicy,
   inherited,
   initialPolicy,
-  initialStatusNotifications,
   POLICY_MAX_NAMES,
   policySchema,
   selectionSchema,
@@ -111,61 +110,6 @@ describe("shared policy", () => {
         githubNotifications: { allowedUsernames: ["OctoCat", "A-1", "9", "a".repeat(39)] },
       }).githubNotifications.allowedUsernames,
     ).toEqual(["octocat", "a-1", "9", "a".repeat(39)])
-  })
-
-  it("defaults old policies to disabled, independent service-status subscriptions", () => {
-    const policy = initialPolicy()
-    const { statusNotifications: _settings, ...legacy } = policy
-    expect(policySchema.parse(legacy).statusNotifications).toEqual(initialStatusNotifications())
-    expect(policy.statusNotifications).toMatchObject({
-      enabled: false,
-      chatIds: [],
-      providers: ["github", "openai", "claude", "cloudflare"],
-      pollIntervalSeconds: 60,
-      minimumImpact: "minor",
-      notifyUpdates: true,
-      notifyResolved: true,
-      includeMaintenance: false,
-    })
-    policy.statusNotifications.providers.pop()
-    policy.statusNotifications.chatIds.push(42)
-    expect(initialPolicy().statusNotifications.providers).toHaveLength(4)
-    expect(initialPolicy().statusNotifications.chatIds).toEqual([])
-    expect(policySchema.parse(legacy).statusNotifications.chatIds).toEqual([])
-  })
-
-  it("validates service-status subscriptions without granting model or tool access", () => {
-    const policy = initialPolicy()
-    for (const settings of [
-      null,
-      {},
-      { ...policy.statusNotifications, enabled: "true" },
-      { ...policy.statusNotifications, providers: ["other"] },
-      { ...policy.statusNotifications, providers: ["github", "github"] },
-      { ...policy.statusNotifications, chatIds: [0] },
-      { ...policy.statusNotifications, chatIds: [42, 42] },
-      { ...policy.statusNotifications, chatIds: ["42"] },
-      { ...policy.statusNotifications, chatIds: [1.5] },
-      { ...policy.statusNotifications, chatIds: [Number.MAX_SAFE_INTEGER + 1] },
-      { ...policy.statusNotifications, chatIds: Array.from({ length: 1001 }, (_, i) => i + 1) },
-      { ...policy.statusNotifications, pollIntervalSeconds: 59 },
-      { ...policy.statusNotifications, pollIntervalSeconds: 3601 },
-      { ...policy.statusNotifications, pollIntervalSeconds: 60.5 },
-      { ...policy.statusNotifications, minimumImpact: "maintenance" },
-      { ...policy.statusNotifications, includeMaintenance: 1 },
-      { ...policy.statusNotifications, extra: true },
-    ])
-      expect(policySchema.safeParse({ ...policy, statusNotifications: settings }).success).toBe(
-        false,
-      )
-    policy.statusNotifications.enabled = true
-    policy.statusNotifications.chatIds = [42, -100, -1001234567890]
-    expect(policySchema.parse(policy)).toEqual(policy)
-    expect(() => validateReferences(policy)).not.toThrow()
-    for (const id of policy.statusNotifications.chatIds) {
-      expect(effectivePolicy(policy, id).enabled).toBe(false)
-      expect(effectivePolicy(policy, id).tools).toEqual([])
-    }
   })
 
   it("intersects skills with global availability and distinguishes inheritance from empty", () => {

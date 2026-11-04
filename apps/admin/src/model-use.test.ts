@@ -1,4 +1,4 @@
-import { inherited, initialStatusNotifications } from "@narumitw/sumire-policy"
+import { inherited } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import type { Policy } from "./api.js"
 import { stageModelUse } from "./model-use.js"
@@ -6,7 +6,6 @@ import { stageModelUse } from "./model-use.js"
 function policy(): Policy {
   return {
     githubNotifications: { allowedUsernames: [] },
-    statusNotifications: initialStatusNotifications(),
     tools: ["read"],
     servers: [],
     skills: [],

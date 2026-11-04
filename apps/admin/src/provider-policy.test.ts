@@ -1,9 +1,4 @@
-import {
-  effectivePolicy,
-  inherited,
-  initialStatusNotifications,
-  validateReferences,
-} from "@narumitw/sumire-policy"
+import { effectivePolicy, inherited, validateReferences } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
 import type { Policy } from "./api.js"
 import {
@@ -15,7 +10,6 @@ import {
 
 const policy: Policy = {
   githubNotifications: { allowedUsernames: [] },
-  statusNotifications: initialStatusNotifications(),
   skills: [],
   tools: ["bash"],
   servers: ["fixture"],

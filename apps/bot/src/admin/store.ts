@@ -157,17 +157,10 @@ export class AdminStore {
         .run(JSON.stringify(policy), revision)
       if (!changed.changes) throw new AdminError(409, "Settings changed; reload before saving")
       this.audit(actor, operation, revision + 1, "saved", target)
-      for (const id of new Set([
-        ...Object.keys(policy.chats).map(Number),
-        ...policy.statusNotifications.chatIds,
-      ])) {
+      for (const key of Object.keys(policy.chats)) {
+        const id = Number(key)
         if (!this.db.prepare("SELECT id FROM chats WHERE id=?").get(id))
-          this.observe(
-            id,
-            id > 0 ? "private" : Object.hasOwn(policy.chats, String(id)) ? "group" : "",
-            String(id),
-            "inferred",
-          )
+          this.observe(id, id > 0 ? "private" : "group", key, "inferred")
       }
       persist?.()
       this.db.exec("COMMIT")
