@@ -739,7 +739,9 @@ test("no chat, unloaded chat, and an empty saved page are distinct and read-only
   page,
 }) => {
   const state = await durableFixture(page, "/?section=Durable")
-  await expect(inspector(page)).toContainText("This view does not start work.")
+  await expect(inspector(page)).toContainText(
+    "Viewing records does not load a session or start work.",
+  )
   expect(state.requests).toHaveLength(0)
   await page.goto("/?section=Durable&chat=44")
   await expect(

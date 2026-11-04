@@ -46,6 +46,21 @@ export interface ToolAvailability {
   reason: string
 }
 
+/** Fixed diagnostics only. Never include transport addresses or upstream error text. */
+export type McpObservationFailure = "transport" | "listing" | "timeout" | "cancelled"
+
+/** Memory-only discovery of the saved configuration, not permission or health. Times are Unix milliseconds. */
+export type McpObservation =
+  | { state: "untested" }
+  | { state: "checking"; revision: number; startedAt: number }
+  | { state: "succeeded"; revision: number; completedAt: number }
+  | {
+      state: "failed"
+      revision: number
+      completedAt: number
+      reason: McpObservationFailure
+    }
+
 export interface Inventory {
   tools: string[]
   toolAvailability?: Record<string, ToolAvailability>
@@ -62,6 +77,9 @@ export interface Inventory {
   mcp: {
     name: string
     connection: string
+    /** Missing observations are unknown. Only current success establishes a tool count. */
+    observation?: McpObservation
+    /** Published tool names after exposure and safety limits, not every remote tool. */
     tools: string[]
     fields?: string[]
     enabled?: boolean

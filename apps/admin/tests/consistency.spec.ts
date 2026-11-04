@@ -57,7 +57,8 @@ for (const width of [1440, 390, 320]) {
     if (width <= 390) {
       const box = await workspace.boundingBox()
       expect(box).not.toBeNull()
-      expect(box?.y).toBeLessThanOrEqual(250)
+      // Readable type and the accessible sidebar account action share the top area.
+      expect(box?.y).toBeLessThanOrEqual(300)
     }
     for (const section of sections) {
       await navigate(page, section)

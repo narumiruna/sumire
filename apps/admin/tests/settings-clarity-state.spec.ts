@@ -32,7 +32,7 @@ for (const scenario of [
     await expect(setup).not.toContainText("Ready")
     if (scenario === "no default") {
       await navigate(page, "Chats")
-      await page.getByRole("button", { name: "Duplicate name · 43", exact: true }).click()
+      await page.getByRole("link", { name: "Duplicate name · 43", exact: true }).click()
       await expect(
         page.getByRole("region", { name: "Chat setup status", exact: true }),
       ).toContainText("Model authentication is not configured.")
@@ -64,8 +64,11 @@ test("an unsaved default cannot repair saved setup and missing references stay v
   expect(state.policy().defaults.model).toBe("missing/model")
   await navigate(page, "Model Providers")
   await expect(
-    page.getByText("Shared bot default in current settings", { exact: true }).locator(".."),
-  ).toContainText("missing/model")
+    page.getByRole("button", { name: "Manage provider missing", exact: true }),
+  ).toBeVisible()
+  await page.getByRole("button", { name: "Manage provider missing", exact: true }).click()
+  await expect(page.getByText(/^Shared model:/)).toContainText("missing/model")
+  await expect(page.getByText(/^Shared model:/)).not.toContainText("fixture/other")
   expect(state.writes).toEqual([])
 })
 
@@ -76,13 +79,14 @@ test("authentication repair targets a chat override and pending provider replace
   state.policy().models = state.policy().models.filter((ref) => ref !== "fixture/other")
   await page.reload()
   await navigate(page, "Model Providers")
+  await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
   await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
   const repair = async () => {
     await navigate(page, "Chats")
     const back = page.getByRole("button", { name: "Back to chat directory", exact: true })
     if (await back.isVisible()) await back.click()
-    await page.getByRole("button", { name: "Duplicate name · 43", exact: true }).click()
+    await page.getByRole("link", { name: "Duplicate name · 43", exact: true }).click()
     await page
       .getByRole("region", { name: "Chat setup status", exact: true })
       .getByRole("button", { name: "Configure authentication", exact: true })
@@ -94,7 +98,8 @@ test("authentication repair targets a chat override and pending provider replace
   await expect(page.locator("#save-status")).toContainText("Provider: Unsaved selection")
   page.once("dialog", (dialog) => dialog.accept())
   await repair()
-  await expect(page.getByRole("button", { name: /^Provider: / })).toContainText("Second")
+  await expect(page.getByRole("heading", { name: "Second", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^Model: / })).not.toContainText("Other")
   await expect(page.locator("#provider-authentication")).toBeFocused()
   expect(state.writes).toEqual([])
 })
@@ -157,7 +162,7 @@ test("filters compose with search and do not overwrite expansion, capabilities, 
   await expect(duplicate.last()).not.toBeChecked()
   await expect(
     page.getByRole("region", { name: "Permission editing scope", exact: true }),
-  ).toContainText("2 default changes")
+  ).toContainText("2 changed shared-default tool/server names")
   expect(state.writes).toEqual([])
 })
 
@@ -200,7 +205,7 @@ test("a filtered global conflict cannot bypass save validation or erase retained
   await page.getByRole("option", { name: "Not in inventory", exact: true }).click()
   await expect(
     page.getByRole("region", { name: "Permission editing scope", exact: true }),
-  ).toContainText("1 global change")
+  ).toContainText("1 changed global tool/server name")
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText(
     "limits shared defaults and all chat selections",

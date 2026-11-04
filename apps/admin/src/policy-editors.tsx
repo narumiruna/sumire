@@ -6,6 +6,7 @@ import { DefaultModel } from "./default-model.js"
 import { focusEditor } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
+import { permissionResult } from "./tool-permissions.js"
 
 export function Check({
   id: providedId,
@@ -74,6 +75,7 @@ export function List({
   effective,
   scope,
   sharedDefault,
+  onRepair,
 }: {
   label: string
   options: string[]
@@ -83,6 +85,7 @@ export function List({
   effective?: string[]
   scope: "global" | "defaults" | "chat"
   sharedDefault?: string[] | null
+  onRepair?(): void
 }) {
   const displayed = [...new Set([...options, ...(value ?? [])])]
   const blocked = (value ?? (scope === "chat" ? sharedDefault : null) ?? []).filter(
@@ -108,6 +111,17 @@ export function List({
             : value === null
               ? "Uses shared defaults. Global availability still limits this chat."
               : "Applies only to this chat. Shared defaults do not change. Global availability still limits this selection."}
+      </Prose>
+      <Prose size="2">
+        Configured:{" "}
+        {value === null
+          ? scope === "chat"
+            ? "Inherit this category from shared defaults"
+            : "None selected"
+          : value.length
+            ? `Allow ${value.join(", ")}; deny other names in this category`
+            : "Deny all names in this category"}
+        .
       </Prose>
       {inheritable && (
         <Check
@@ -148,9 +162,17 @@ export function List({
         </Prose>
       )}
       {blocked.length > 0 && (
-        <Prose size="2" color="orange">
-          Selected but blocked by Global availability: {blocked.join(", ")}.
-        </Prose>
+        <div className="policy-selection-conflict">
+          <Prose size="2" color="orange">
+            Selected but blocked by Global availability: {blocked.join(", ")}. Retained selections
+            must be cleared or globally approved before saving.
+          </Prose>
+          {onRepair && (
+            <Button variant="ghost" onClick={onRepair}>
+              Review global availability
+            </Button>
+          )}
+        </div>
       )}
       {scope !== "global" && (
         <Flex direction="column" align="start" gap="2" className="policy-list__status">
@@ -167,12 +189,23 @@ export function List({
     </Panel>
   )
 }
+export function withProviderModelSelection(value: string[], selected: string[], provider?: string) {
+  if (!provider) return selected
+  const chosen = new Set(selected.filter((ref) => ref.startsWith(`${provider}/`)))
+  return [
+    ...value.filter((ref) => !ref.startsWith(`${provider}/`) || chosen.has(ref)),
+    ...[...chosen].filter((ref) => !value.includes(ref)),
+  ]
+}
+
 export function ModelAvailability({
   value,
   onChange,
+  provider,
 }: {
   value: string[]
   onChange(value: string[]): void
+  provider?: string
 }) {
   // Keep removed rows until this saved revision changes, so an unchecked model can be restored.
   const [approved] = useState(value)
@@ -180,9 +213,11 @@ export function ModelAvailability({
     <List
       label="Globally available models"
       scope="global"
-      options={[...new Set([...approved, ...value])]}
-      value={value}
-      onChange={(v) => onChange(v ?? [])}
+      options={[...new Set([...approved, ...value])].filter(
+        (ref) => !provider || ref.startsWith(`${provider}/`),
+      )}
+      value={value.filter((ref) => !provider || ref.startsWith(`${provider}/`))}
+      onChange={(v) => onChange(withProviderModelSelection(value, v ?? [], provider))}
     />
   )
 }
@@ -331,6 +366,60 @@ export function Choices({
           </Button>
         </Callout.Root>
       )}
+      {!defaults && (
+        <>
+          <Callout.Root color="amber" aria-label="Chat authorization rules">
+            <Callout.Text>
+              Shell and file tools are not sandboxed. They can access process-readable credentials.
+              Each Inherit control resets a whole category. An empty custom list denies the
+              category. Effective lists show each category after global limits; MCP tools also
+              require their server gate. Skills do not grant tool permission.
+            </Callout.Text>
+          </Callout.Root>
+          <section aria-label="Chat tool permission results">
+            <Text as="p" size="2" weight="medium">
+              Configured tool selection:{" "}
+              {value.tools === null ? "Inherit from shared defaults" : "This chat override"}. Global
+              policy is the ceiling.
+            </Text>
+            <ul>
+              {[...new Set(value.tools ?? policy.defaults.tools ?? [])].map((name) => {
+                const result = permissionResult("tools", name, policy, inventory, {
+                  selection: value,
+                  effective,
+                })
+                const availability = inventory.toolAvailability?.[name]
+                return (
+                  <li key={name}>
+                    <strong>{name}</strong> · Configured: Allow · {result.source} · Effective
+                    permission: {result.status}
+                    {result.blocking && (
+                      <>
+                        <Text as="p" size="2">
+                          Blocking source: {result.blocking}
+                        </Text>
+                        <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+                          Review blocking permission for {name}
+                        </Button>
+                      </>
+                    )}
+                    {availability?.available === false && (
+                      <Text as="p" size="2">
+                        Capability unavailable: {availability.reason}
+                      </Text>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            {!(value.tools ?? policy.defaults.tools ?? []).length && (
+              <Text as="p" size="2">
+                No tool names selected for this chat.
+              </Text>
+            )}
+          </section>
+        </>
+      )}
       <Grid gap="4" className="grid settings-grid policy-choice-lists">
         {(defaults
           ? (["models"] as const)
@@ -357,6 +446,15 @@ export function Choices({
                 effective={effective[key]}
                 scope={defaults ? "defaults" : "chat"}
                 sharedDefault={policy.defaults[key]}
+                onRepair={() =>
+                  navigate(
+                    key === "skills"
+                      ? "Skills"
+                      : key === "models"
+                        ? "Model Providers"
+                        : "Tool permissions",
+                  )
+                }
               />
             </details>
           )

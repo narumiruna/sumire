@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto"
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { navigate, openDisclosure } from "./admin-fixture.js"
+import { navigate, openDisclosure, openProviderDetail } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 import { policyRecoveryFixture } from "./policy-recovery-fixture.js"
 import { remediationFixture } from "./remediation-fixture.js"
@@ -94,14 +94,14 @@ for (const method of ["pointer", "keyboard"]) {
     const audit = page
       .getByRole("navigation", { name: "Administration sections" })
       .getByRole("link", {
-        name: "Audit",
+        name: "Audit log",
         exact: true,
       })
     if (method === "keyboard") {
       await audit.focus()
       await audit.press("Enter")
     } else await audit.click()
-    const heading = page.getByRole("heading", { name: "Audit", exact: true })
+    const heading = page.getByRole("heading", { name: "Audit log", exact: true })
     await expect(heading).toBeFocused()
     await expect(heading).toBeInViewport({ ratio: 1 })
     expect(await page.evaluate(() => window.scrollY)).toBe(0)
@@ -144,7 +144,7 @@ for (const width of [1440, 390]) {
           .getByRole("navigation", { name: "Administration sections" })
           .getByRole("link", { name: "Chats", exact: true }),
       )
-      await check("Reload", page.getByRole("button", { name: "Reload", exact: true }))
+      await check("Reload", page.getByRole("button", { name: "Refresh settings", exact: true }))
       await check("Account", page.getByRole("button", { name: "Account", exact: true }))
     }
     await navigate(page, "MCP connections")
@@ -163,7 +163,11 @@ for (const width of [1440, 390]) {
     await navigate(page, "Access")
     await check("approved badge", page.getByText("Approved", { exact: true }).first(), false)
     await navigate(page, "Model providers")
-    await check("provider selector", page.getByRole("button", { name: /^Provider(?::|$)/ }))
+    await check(
+      "provider management",
+      page.getByRole("button", { name: "Manage provider fixture", exact: true }),
+    )
+    await openProviderDetail(page)
     await check("model selector", page.getByRole("button", { name: /^Model(?::|$)/ }))
     await check(
       "ghost action",
@@ -193,6 +197,23 @@ for (const label of ["Provider", "Model"]) {
     })
     await page.reload()
     await navigate(page, "Model providers")
+    if (label === "Provider") {
+      await expect(
+        page.getByRole("button", { name: "Manage provider fixture", exact: true }),
+      ).toHaveText("Manage")
+      await page.getByRole("button", { name: "Add provider", exact: true }).click()
+      const search = page.getByRole("textbox", { name: "Search providers", exact: true })
+      await search.fill("Second")
+      await search.press("Tab")
+      const setup = page.getByRole("button", { name: "Set up provider second", exact: true })
+      await expect(setup).toBeFocused()
+      await setup.press("Enter")
+      await expect(page.locator("#provider-detail-heading")).toHaveText("Second")
+      await expect(page.locator("#provider-detail-heading")).toBeFocused()
+      expect(state.writes).toEqual([])
+      return
+    }
+    await openProviderDetail(page)
     const trigger = page.getByRole("button", { name: new RegExp(`^${label}(?::|$)`) })
     await expect(trigger).toHaveAccessibleName(
       `${label}: ${label === "Provider" ? "Fixture" : "Test"}`,
@@ -227,10 +248,15 @@ for (const ref of [null, "missing/unavailable", "fixture/unavailable"]) {
     }
     await page.reload()
     await navigate(page, "Model providers")
-    const provider = page.getByRole("button", { name: /^Provider: / })
-    await expect(provider).toHaveAccessibleName(
-      `Provider: ${ref?.startsWith("fixture/") ? "Fixture" : ref ? "missing" : "Choose provider"}`,
-    )
+    if (ref) {
+      await page
+        .getByRole("button", { name: `Manage provider ${ref.split("/")[0]}`, exact: true })
+        .click()
+      await expect(page.locator("#provider-detail-heading")).toHaveText(
+        ref.startsWith("fixture/") ? "Fixture" : "missing",
+      )
+    } else
+      await expect(page.getByRole("button", { name: "Add provider", exact: true })).toBeVisible()
     if (ref === "fixture/unavailable") {
       await expect(page.getByRole("button", { name: /^Model: / })).toHaveAccessibleName(
         "Model: unavailable",
@@ -238,9 +264,11 @@ for (const ref of [null, "missing/unavailable", "fixture/unavailable"]) {
     } else {
       // Without an available provider, there is no model selector until a provider is chosen.
       await expect(page.getByRole("button", { name: /^Model: / })).toHaveCount(0)
-      await provider.click()
-      await page.getByRole("combobox", { name: "Search provider", exact: true }).fill("Fixture")
-      await page.keyboard.press("Enter")
+      const back = page.getByRole("button", { name: "Back to providers", exact: true })
+      if (await back.isVisible()) await back.click()
+      await page.getByRole("button", { name: "Add provider", exact: true }).click()
+      await page.getByRole("textbox", { name: "Search providers", exact: true }).fill("Fixture")
+      await page.getByRole("button", { name: "Set up provider fixture", exact: true }).click()
       await expect(page.getByRole("button", { name: /^Model: / })).toHaveAccessibleName(
         "Model: Choose model",
       )
@@ -275,7 +303,7 @@ test("a connection save completed after navigation does not focus its hidden sec
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeHidden()
   expect(state.writes.map((write) => write.path)).toEqual(["/api/mcp/fixture"])
   await navigate(page, "MCP connections")
-  await expect(page.getByRole("heading", { name: "MCP Servers", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeFocused()
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeVisible()
 })
 
@@ -327,6 +355,7 @@ test("credential-save errors stay inside the authentication dialog", async ({ pa
     route.fulfill({ status: 500, json: { error: "Credential save failed" } }),
   )
   await navigate(page, "Model providers")
+  await openProviderDetail(page)
   await openDisclosure(page, "Authentication")
   await page.getByRole("button", { name: "Configure authentication", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Connect Fixture", exact: true })
@@ -370,7 +399,7 @@ for (const width of [1440, 390, 320]) {
     })
     await submitRecoveryDraft(page)
     await expect(page.getByRole("alert")).toContainText("Fixture revision advanced")
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeDisabled()
     const dialog = await openRecovery(page)
     await expect(dialog).toContainText("Shared defaults: Thinking level")
     expect(fixture.writes).toHaveLength(1)
@@ -396,7 +425,7 @@ for (const resource of ["/api/inventory", "/api/audit"]) {
     ).toHaveCount(0)
     expect(fixture.writes).toHaveLength(1)
     fixture.state.failedReads.clear()
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
     expect(fixture.writes).toHaveLength(1)
     expect(fixture.snapshot().policy.defaults.thinking).toBe("high")
@@ -667,7 +696,9 @@ for (const discard of [false, true]) {
       await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
       await expect(page.locator("#save-status")).toContainText("Save attempt needs review")
       await expect(page.locator('#save-status [data-saved="false"]')).toBeVisible()
-      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+      await expect(
+        page.getByRole("button", { name: "Refresh settings", exact: true }),
+      ).toBeDisabled()
     } else {
       await page.getByRole("combobox", { name: "Shared default thinking", exact: true }).click()
       await page.getByRole("option", { name: "off", exact: true }).click()

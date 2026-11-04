@@ -3,8 +3,8 @@ import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vitest"
-import type { Policy } from "./api.js"
-import { Choices, ModelAvailability } from "./policy-editors.js"
+import type { Inventory, Policy } from "./api.js"
+import { Choices, ModelAvailability, withProviderModelSelection } from "./policy-editors.js"
 
 function fixture() {
   const policy = initialPolicy()
@@ -23,7 +23,11 @@ function fixture() {
   return { ...policy, chats: { "42": { ...inherited, enabled: true } } }
 }
 
-function renderChoices(policy: Policy, defaults = false) {
+function renderChoices(
+  policy: Policy,
+  defaults = false,
+  inventory: Inventory = { tools: [], providers: [], mcp: [] },
+) {
   const onChange = vi.fn()
   const html = renderToStaticMarkup(
     createElement(
@@ -33,7 +37,7 @@ function renderChoices(policy: Policy, defaults = false) {
         policy,
         value: defaults ? policy.defaults : (policy.chats["42"] ?? inherited),
         effective: effectivePolicy(policy, defaults ? 0 : 42),
-        inventory: { tools: [], providers: [], mcp: [] },
+        inventory,
         defaults,
         navigate: vi.fn(),
         onChange,
@@ -93,6 +97,35 @@ describe("policy field scope and source labels", () => {
       expect(list).toContain(`Reset ${label.toLowerCase()} to default`)
     }
     expect(policy).toEqual(before)
+  })
+
+  it("shows category inheritance and the MCP blocking source without inventing per-tool inheritance", () => {
+    const policy = fixture()
+    policy.tools = ["mcp_read"]
+    policy.defaults.tools = ["mcp_read"]
+    policy.defaults.servers = []
+    const inventory: Inventory = {
+      tools: [],
+      providers: [],
+      mcp: [
+        { name: "search", tools: ["mcp_read"], connection: "not tested", env: {}, headers: {} },
+      ],
+    }
+    const before = structuredClone(policy)
+    const html = renderChoices(policy, false, inventory)
+    expect(html).toContain("Configured tool selection: Inherit from shared defaults")
+    expect(html).toContain("Effective permission: Server gate blocked")
+    expect(html).toContain("Blocking source: MCP server permission: search")
+    expect(html).toContain("Review blocking permission for mcp_read")
+    expect(html).toContain("Each Inherit control resets a whole category")
+    expect(html).toContain("process-readable credentials")
+    expect(html).not.toContain('aria-label="Inherit mcp_read"')
+    expect(policy).toEqual(before)
+    policy.chats["42"].tools = []
+    const denied = renderChoices(policy, false, inventory)
+    expect(denied).toContain("Configured: Deny all names in this category")
+    expect(denied).toContain("No tool names selected for this chat")
+    expect(denied).not.toContain("Review blocking permission for mcp_read")
   })
 
   it("labels model and thinking sources separately, including an explicit off override", () => {
@@ -172,6 +205,27 @@ describe("policy field scope and source labels", () => {
     expect(models).not.toContain('aria-label="Inherit default"')
   })
 
+  it("scopes provider model availability without changing other provider selections", () => {
+    const models = ["other/a", "fixture/test", "other/b", "fixture/second"]
+    const before = [...models]
+    const html = renderToStaticMarkup(
+      createElement(ModelAvailability, { value: models, provider: "fixture", onChange: vi.fn() }),
+    )
+    expect(html).toContain('aria-label="fixture/test"')
+    expect(html).not.toContain('aria-label="other/a"')
+    expect(withProviderModelSelection(models, ["fixture/test", "fixture/new"], "fixture")).toEqual([
+      "other/a",
+      "fixture/test",
+      "other/b",
+      "fixture/new",
+    ])
+    expect(withProviderModelSelection(models, [], "fixture")).toEqual(["other/a", "other/b"])
+    expect(
+      withProviderModelSelection(models, ["other/injected", "fixture/new"], "fixture"),
+    ).toEqual(["other/a", "other/b", "fixture/new"])
+    expect(withProviderModelSelection(models, [], undefined)).toEqual([])
+    expect(models).toEqual(before)
+  })
   it("labels the global availability limit without claiming that it grants chat access", () => {
     const html = renderToStaticMarkup(
       createElement(ModelAvailability, { value: [], onChange: vi.fn() }),

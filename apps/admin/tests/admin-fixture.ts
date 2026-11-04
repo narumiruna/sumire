@@ -99,11 +99,25 @@ export function sectionLabel(name: string): string {
   const labels: Record<string, string> = {
     Access: "Chats",
     Defaults: "Shared defaults",
-    Durable: "Conversation records",
-    "MCP connections": "MCP Servers",
-    "Model Providers": "Model providers",
+    Durable: "Conversation logs",
+    "MCP connections": "MCP servers",
+    "Model Providers": "Providers & models",
+    "Model providers": "Providers & models",
+    Audit: "Audit log",
   }
   return labels[name] ?? name
+}
+
+export async function openProviderDetail(page: Page, provider = "fixture") {
+  const model = page.getByRole("button", { name: /^Model: / })
+  if (await model.isVisible()) return
+  const manage = page.getByRole("button", { name: `Manage provider ${provider}`, exact: true })
+  if (await manage.isVisible()) await manage.click()
+  else {
+    const add = page.getByRole("button", { name: "Add provider", exact: true })
+    if (await add.isVisible()) await add.click()
+    await page.getByRole("button", { name: `Set up provider ${provider}`, exact: true }).click()
+  }
 }
 
 export async function openDisclosure(page: Page, label: string) {

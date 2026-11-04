@@ -15,7 +15,7 @@ for (const width of [1440, 390]) {
     await page.route("**/api/inventory", (route) =>
       route.fulfill({ json: { ...inventory, tools, builtInTools: tools } }),
     )
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
     await navigate(page, "Tool permissions")
     await expect(page.getByText(long, { exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -27,6 +27,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByText("fixture_tool_148", { exact: true })).toHaveCount(0)
     await page.getByRole("button", { name: "Clear tool filters", exact: true }).click()
     await navigate(page, "Model providers")
+    await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
     await page.getByRole("button", { name: /^Model: / }).click()
     await page.getByRole("option", { name: /Other/ }).click()
     await navigate(page, "Tool permissions")
@@ -54,21 +55,23 @@ for (const width of [1440, 390]) {
       await gate
       return route.fulfill({ json: { tools: [], builtInTools: [], providers: [], mcp: [] } })
     })
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeDisabled()
     await page.screenshot({ path: testInfo.outputPath("loading.png"), fullPage: true })
     release()
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
-    await expect(page.getByText(/The selected provider fixture is no longer/)).toBeVisible()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
+    await expect(
+      page.getByText(/The selected provider fixture is not in the loaded catalog/),
+    ).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath("empty.png"), fullPage: true })
     await page.route("**/api/inventory", (route) =>
       route.fulfill({ status: 503, json: { error: "Inventory unavailable" } }),
     )
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
     await expect(page.getByRole("alert")).toContainText("Inventory unavailable")
     await page.screenshot({ path: testInfo.outputPath("error.png"), fullPage: true })
     await page.unroute("**/api/inventory")
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
   })
 }
@@ -93,7 +96,7 @@ test("mobile chat actions support keyboard focus return and record navigation", 
   )
   await page
     .getByRole("list", { name: "Chats on this page", exact: true })
-    .getByRole("button")
+    .getByRole("link")
     .first()
     .click()
   const trigger = page.getByRole("button", { name: "Chat actions", exact: true })
@@ -114,7 +117,7 @@ test("mobile chat actions support keyboard focus return and record navigation", 
   await expect(trigger).toBeFocused()
   await trigger.click()
   await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
-  await expect(page.locator("#current-section-heading")).toHaveText("Conversation records")
+  await expect(page.locator("#current-section-heading")).toHaveText("Conversation logs")
 })
 
 test("browser Back closes the mobile chat menu instead of leaving hidden-section actions open", async ({
@@ -124,7 +127,7 @@ test("browser Back closes the mobile chat menu instead of leaving hidden-section
   await adminFixture(page)
   await page
     .getByRole("list", { name: "Chats on this page", exact: true })
-    .getByRole("button")
+    .getByRole("link")
     .first()
     .click()
   await navigate(page, "Defaults")
@@ -144,7 +147,7 @@ test("record refresh reads only records, retains drafts, retries failures, and c
 }) => {
   const state = await durableFixture(page)
   await expect(page.getByRole("button", { name: "Refresh records", exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Reload", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toHaveCount(0)
   await navigate(page, "Tool permissions")
   await page.getByText("Approve an exact tool name", { exact: true }).click()
   await page.getByLabel("Additional approved tool name", { exact: true }).fill("fixture_tool")

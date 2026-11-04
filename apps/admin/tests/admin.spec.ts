@@ -68,7 +68,7 @@ const inventory = {
   ],
   mcp: [],
 }
-async function navigate(page: Page, name: string) {
+async function navigate(page: Page, name: string, provider = "fixture") {
   if (name === "Access") return openChatAccess(page)
   await expect(
     page.getByRole("complementary", { name: "Administration navigation", exact: true }),
@@ -82,7 +82,13 @@ async function navigate(page: Page, name: string) {
   await link.click()
   if (name === "Tool permissions") await openGlobalLimits(page)
   if (name === "Model Providers") {
-    await openDisclosure(page, "Saved model settings")
+    const manage = page.getByRole("button", { name: `Manage provider ${provider}`, exact: true })
+    if (await manage.isVisible()) await manage.click()
+    else if (await page.getByRole("button", { name: "Add provider", exact: true }).isVisible()) {
+      await page.getByRole("button", { name: "Add provider", exact: true }).click()
+      await page.getByRole("button", { name: `Set up provider ${provider}`, exact: true }).click()
+    }
+    await expect(page.getByRole("heading", { name: "Connection", exact: true })).toBeVisible()
     if (await page.locator(".provider-authentication").count())
       await openDisclosure(page, "Authentication")
   }
@@ -185,7 +191,7 @@ for (const width of [1440, 390]) {
       expect((await page.locator(".chat-directory").boundingBox())?.width).toBeGreaterThanOrEqual(
         290,
       )
-    await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+    await page.locator(".directory-chat").filter({ hasText: "Fixture chat" }).first().click()
     const status = page.getByRole("region", { name: "Chat setup status" })
     await expect(status).toContainText("Setup required")
     await page.locator(".setup-details > summary").click()
@@ -231,10 +237,10 @@ test("keeps the selected tab coherent when switching chats and supports tab keys
   page.on("request", (request) => {
     if (request.method() !== "GET") writes.push(request.url())
   })
-  await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+  await page.locator(".directory-chat").filter({ hasText: "Fixture chat" }).first().click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await page.getByRole("button").filter({ hasText: "Other chat" }).first().click()
+  await page.locator(".directory-chat").filter({ hasText: "Other chat" }).first().click()
   await expect(page.getByRole("tab", { name: "Access", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -266,11 +272,7 @@ test("provider workflow separates local authentication from model saving", async
     if (request.method() !== "GET") writes.push(request.url())
   })
   await navigate(page, "Model Providers")
-  await expect(
-    page
-      .getByRole("region", { name: "Provider", exact: true })
-      .getByText("Authentication required", { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByText("Missing credential", { exact: true })).toBeVisible()
   await expect(
     page.getByRole("button", { name: "Configure authentication", exact: true }),
   ).toBeVisible()
@@ -293,7 +295,7 @@ test("provider workflow separates local authentication from model saving", async
 
 test("chat tab clicks and contextual links select exactly one matching panel", async ({ page }) => {
   await setup(page)
-  await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+  await page.locator(".directory-chat").filter({ hasText: "Fixture chat" }).first().click()
   for (const name of ["Model & Tools", "Access", "History", "Overview"]) {
     await page.getByRole("tab", { name, exact: true }).click()
     await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute(
@@ -390,9 +392,24 @@ test("stages inheritance for all chat overrides without changing access or enabl
 })
 
 async function chooseProvider(page: Page) {
-  await page.getByRole("button", { name: /^Provider: / }).click()
-  await page.getByRole("combobox", { name: "Search provider" }).fill("fixt")
-  await page.getByRole("combobox", { name: "Search provider" }).press("Enter")
+  await page.getByRole("button", { name: "Back to providers", exact: true }).click()
+  await page.getByRole("button", { name: "Add provider", exact: true }).click()
+  const search = page.getByRole("textbox", { name: "Search providers", exact: true })
+  await search.fill("fixt")
+  await search.press("Tab")
+  const setup = page.getByRole("button", { name: "Set up provider fixture", exact: true })
+  await expect(setup).toBeFocused()
+  await setup.press("Enter")
+}
+async function openCustomEndpoint(page: Page, existing = false) {
+  if (!existing) {
+    await page.getByRole("button", { name: "Back to providers", exact: true }).click()
+    await page.getByRole("button", { name: "Add provider", exact: true }).click()
+    await page.getByRole("button", { name: "Add custom endpoint", exact: true }).click()
+  }
+  await openDisclosure(page, "Custom endpoint")
+  if (existing)
+    await page.getByRole("button", { name: "Edit configuration custom", exact: true }).click()
 }
 async function chooseModel(page: Page, query = "Other") {
   await page.getByRole("button", { name: /^Model: / }).click()
@@ -439,10 +456,8 @@ for (const existing of [false, true]) {
     })
     await navigate(page, "Access")
     await page.getByRole("button", { name: "Revoke access for ID 42" }).click()
-    await navigate(page, "Model Providers")
-    await page.getByText("Custom endpoint", { exact: true }).click()
-    if (existing)
-      await page.getByRole("button", { name: "Edit configuration custom", exact: true }).click()
+    await navigate(page, "Model Providers", existing ? "custom" : "fixture")
+    await openCustomEndpoint(page, existing)
     await page.getByLabel("Provider ID", { exact: true }).fill("abandoned")
     await page.getByLabel("Model ID (required for custom endpoint)").fill("abandoned-model")
     await page.getByRole("button", { name: "Add / update model", exact: true }).click()
@@ -466,7 +481,7 @@ for (const existing of [false, true]) {
     expect(mutations).toEqual([])
     page.once("dialog", (dialog) => dialog.accept())
     await page.getByRole("button", { name: "Discard settings changes", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
     expect(
       await page.evaluate(() => {
         const event = new Event("beforeunload", { cancelable: true })
@@ -819,18 +834,18 @@ test("loads the saved bot provider, model, thinking level, and default state", a
     if (r.method() === "PUT") mutations++
   })
   await navigate(page, "Model Providers")
-  await expect(page.getByRole("button", { name: /^Provider: / })).toHaveText(/Fixture/)
+  await expect(page.getByRole("heading", { name: "Fixture", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Test/)
   await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
   await expect(
-    page.locator(".provider-current-summary").getByText("low", { exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole("button", { name: /Save default model|Save model availability/ }),
+    page.getByRole("button", { name: "Save model availability", exact: true }),
   ).toBeDisabled()
+  await expect(page.getByText("Shared model: fixture/test.", { exact: false })).toBeVisible()
+  await page.getByRole("button", { name: "Edit shared default", exact: true }).click()
+  await expect(
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("low")
   expect(mutations).toBe(0)
 })
 
@@ -852,11 +867,9 @@ test("updates untouched provider fields when saved settings are reloaded", async
       model: "fixture/other",
     },
   }
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Other model/)
-  await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
 })
 
 test("keeps a local preview on refresh and restores saved values on request", async ({ page }) => {
@@ -873,17 +886,16 @@ test("keeps a local preview on refresh and restores saved values on request", as
       },
     }),
   )
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Other model/)
   await page.getByRole("button", { name: "Use saved selection", exact: true }).click()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Test/)
   await expect(page.getByRole("combobox", { name: "Thinking level" })).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Edit shared default", exact: true }).click()
   await expect(
-    page.locator(".provider-current-summary").getByText("low", { exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
-  ).toBeVisible()
+    page.getByRole("combobox", { name: "Shared default thinking", exact: true }),
+  ).toContainText("low")
 })
 
 test("loads an existing chat model without creating a shared bot default", async ({ page }) => {
@@ -910,18 +922,17 @@ test("loads an existing chat model without creating a shared bot default", async
     if (r.method() === "PUT") mutations++
   })
   await navigate(page, "Model Providers")
-  await expect(page.getByRole("button", { name: /^Provider: / })).toHaveText(/Fixture/)
+  await expect(page.getByRole("heading", { name: "Fixture", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Other model/)
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
   await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
+    page.getByText("Shared model: No reference to this provider.", { exact: false }),
   ).toBeVisible()
-  await expect(page.getByText("Existing chat model:", { exact: false })).toContainText(
-    "fixture/other",
-  )
-  await page.getByText("Chat-specific models (1)", { exact: true }).click()
-  await expect(page.locator(".provider-advanced").getByRole("listitem")).toContainText(
-    "Chat 42: fixture/other",
-  )
+  await expect(
+    page
+      .getByRole("list", { name: "Explicit chat policy references", exact: true })
+      .getByRole("listitem"),
+  ).toContainText("Chat 42: model fixture/other")
   expect(mutations).toBe(0)
 })
 
@@ -946,10 +957,16 @@ test("shows different chat models without choosing one as the shared default", a
   )
   await page.reload()
   await navigate(page, "Model Providers")
-  await expect(page.getByRole("button", { name: /^Provider: / })).toHaveText(/Fixture/)
+  await expect(page.getByRole("heading", { name: "Fixture", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Choose model/)
-  await page.getByText("Chat-specific models (2)", { exact: true }).click()
-  await expect(page.locator(".provider-advanced").getByRole("listitem")).toHaveCount(2)
+  await expect(
+    page.getByText("Shared model: No reference to this provider.", { exact: false }),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole("list", { name: "Explicit chat policy references", exact: true })
+      .getByRole("listitem"),
+  ).toHaveCount(2)
   await expect(
     page.getByRole("button", { name: /Save default model|Save model availability/ }),
   ).toHaveCount(0)
@@ -968,8 +985,8 @@ test("retains an unavailable saved provider instead of choosing a configured rep
     route.fulfill({ json: { revision: 1, applied: 1, status: "applied", policy: next } }),
   )
   await page.reload()
-  await navigate(page, "Model Providers")
-  await expect(page.getByRole("button", { name: /^Provider: / })).toHaveText(/missing/)
+  await navigate(page, "Model Providers", "missing")
+  await expect(page.getByRole("heading", { name: "missing", exact: true })).toBeVisible()
   await expect(page.getByText("The selected provider missing", { exact: false })).toBeVisible()
   await expect(
     page.getByRole("button", { name: /Save default model|Save model availability/ }),
@@ -1298,7 +1315,7 @@ test("secret input is masked and credential removal needs confirmation", async (
 test("configures multiple custom models without exposing an existing key", async ({ page }) => {
   await setup(page)
   await navigate(page, "Model Providers")
-  await page.getByText("Custom endpoint", { exact: true }).click()
+  await openCustomEndpoint(page)
   await page.getByLabel("Provider ID", { exact: true }).fill("custom")
   await page.getByLabel("API base URL", { exact: true }).fill("https://models.example.test/v1")
   await page.getByLabel("Model ID (required for custom endpoint)").fill("one")
@@ -1534,7 +1551,7 @@ test("retains unfinished editors across sections and guards reload and sign-out"
   await setup(page)
   await navigate(page, "Access")
   await page.getByLabel("Telegram ID to approve").fill("43")
-  await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeDisabled()
   await navigate(page, "Defaults")
   await navigate(page, "Access")
   await expect(page.getByLabel("Telegram ID to approve")).toHaveValue("43")
@@ -1633,7 +1650,7 @@ test("edits MCP fields without exposing secrets and preserves omitted replacemen
   )
   await page.reload()
   await navigate(page, "MCP connections")
-  await expect(page.getByText("Connection test:", { exact: false })).toContainText("not tested")
+  await expect(page.getByText("Connection test:", { exact: false })).toContainText("Unknown")
   await closeConnectionEditor(page)
   await page.getByRole("button", { name: "Edit fields for existing", exact: true }).click()
   await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
@@ -1724,7 +1741,7 @@ test("clears unstaged secrets when an unnamed MCP draft is discarded", async ({ 
   await page.getByRole("button", { name: "Discard MCP draft", exact: true }).click()
   await expect(page.getByLabel("Secret field name")).toHaveValue("")
   await expect(page.getByLabel("New secret value")).toHaveValue("")
-  await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
 })
 
 for (const control of ["Reasoning supported", "Image input supported", "API"] as const) {
@@ -1759,11 +1776,10 @@ for (const control of ["Reasoning supported", "Image input supported", "API"] as
         : route.fallback(),
     )
     await page.reload()
-    await navigate(page, "Model Providers")
-    await page.getByText("Custom endpoint", { exact: true }).click()
-    await page.getByRole("button", { name: "Edit configuration custom", exact: true }).click()
+    await navigate(page, "Model Providers", "custom")
+    await openCustomEndpoint(page, true)
     await page.getByRole("button", { name: "Edit model one", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
     if (control === "API") {
       await page.getByText("Advanced protocol", { exact: true }).click()
       await page.getByRole("combobox", { name: "API", exact: true }).click()
@@ -1772,7 +1788,7 @@ for (const control of ["Reasoning supported", "Image input supported", "API"] as
       await page.getByText("Advanced model metadata", { exact: true }).click()
       await page.getByRole("checkbox", { name: control, exact: true }).check()
     }
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeDisabled()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeDisabled()
     expect(
       await page.evaluate(() => {
         const event = new Event("beforeunload", { cancelable: true })
@@ -1859,7 +1875,9 @@ for (const scenario of [
       await expect(page.getByLabel("MCP server name")).toHaveValue("")
       await expect(page.getByLabel("Server configuration JSON")).toHaveValue("{}")
       await expect(page.getByText("Pending secret fields:", { exact: false })).toHaveCount(0)
-      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+      await expect(
+        page.getByRole("button", { name: "Refresh settings", exact: true }),
+      ).toBeEnabled()
     } else {
       await expect(page.getByText("MCP: Unsaved configuration", { exact: true })).toBeVisible()
       await expect(page.getByLabel("MCP server name")).toHaveValue(scenario.draft)
@@ -1867,7 +1885,9 @@ for (const scenario of [
       await expect(page.getByText("Pending secret fields:", { exact: false })).toContainText(
         "TOKEN",
       )
-      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+      await expect(
+        page.getByRole("button", { name: "Refresh settings", exact: true }),
+      ).toBeEnabled()
     }
     expect(
       await page.evaluate(() => {
@@ -1948,8 +1968,8 @@ for (const method of ["PUT", "DELETE"] as const) {
       await page.getByRole("button", { name: "Delete server and apply", exact: true }).click()
     }
     await expect(page.getByRole("alert")).toContainText("Application failed after saving")
-    await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
-    await page.getByRole("button", { name: "Reload", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
+    await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
     await expect(
       page.getByText("Saved, but application failed. Retry application.", { exact: true }),
     ).toBeVisible()
@@ -1982,44 +2002,44 @@ for (const method of ["PUT", "DELETE"] as const) {
 }
 
 for (const destination of ["Defaults", "Chats"]) {
-  test(`closes provider search on navigation to ${destination} and focuses the visible heading`, async ({
+  test(`closes model search on navigation to ${destination} and focuses the visible heading`, async ({
     page,
   }) => {
     await setup(page)
     await navigate(page, "Model Providers")
-    await page.getByRole("button", { name: /^Provider: / }).click()
-    await expect(page.getByRole("dialog", { name: "Choose provider" })).toBeVisible()
+    await page.getByRole("button", { name: /^Model: / }).click()
+    await expect(page.getByRole("dialog", { name: "Choose model" })).toBeVisible()
     const navigation = page.getByRole("link", { name: sectionLabel(destination), exact: true })
     await navigation.click()
-    await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
+    await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
     const heading = page.getByRole("heading", { name: sectionLabel(destination), exact: true })
     await expect(heading).toBeFocused()
     await expect(heading).toBeInViewport({ ratio: 1 })
     await navigate(page, "Model Providers")
-    await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
+    await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
   })
 }
 
-test("dismisses retained provider selectors with Escape and outside click", async ({ page }) => {
+test("dismisses retained model selectors with Escape and outside click", async ({ page }) => {
   await setup(page)
   await navigate(page, "Model Providers")
-  const trigger = page.getByRole("button", { name: /^Provider: / })
+  const trigger = page.getByRole("button", { name: /^Model: / })
   await trigger.click()
   await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
+  await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await trigger.click()
-  await page.getByRole("heading", { name: "Sumire", exact: true }).click()
-  await expect(page.getByRole("dialog", { name: "Choose provider" })).toHaveCount(0)
+  await page.getByRole("heading", { name: "Providers & models", exact: true }).click()
+  await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
 })
 
-test("closes provider search on navigation without clearing its model draft", async ({ page }) => {
+test("closes model search on navigation without clearing its model draft", async ({ page }) => {
   await setup(page)
   await navigate(page, "Model Providers")
   await chooseModel(page)
-  await page.getByRole("button", { name: "Provider: Fixture", exact: true }).click()
+  await page.getByRole("button", { name: /^Model: / }).click()
   await navigate(page, "Chats")
-  await expect(page.getByRole("dialog", { name: "Choose provider", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("dialog", { name: "Choose model", exact: true })).toHaveCount(0)
   await navigate(page, "Model Providers")
   await expect(page.getByRole("button", { name: /^Model: / })).toContainText("Other")
 })
@@ -2047,7 +2067,7 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
   await search.fill("missing")
   await expect(page.getByText("No stored chats match this search.", { exact: true })).toBeVisible()
   await search.fill("-100")
-  const row = page.getByRole("button").filter({ hasText: "Unnamed supergroup" })
+  const row = page.locator(".directory-chat").filter({ hasText: "Unnamed supergroup" })
   await row.focus()
   await page.keyboard.press("Enter")
   const detail = page.getByRole("region", { name: "Chat details" })
@@ -2108,7 +2128,7 @@ test("separates saved chat status from draft effects without remote checks or im
     }),
   )
   await page.reload()
-  await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+  await page.locator(".directory-chat").filter({ hasText: "Fixture chat" }).first().click()
   const detail = page.getByRole("region", { name: "Chat details" })
   await expect(detail.getByRole("region", { name: "Chat setup status" })).toContainText("Disabled")
   await detail.getByText("Readiness details", { exact: true }).click()
@@ -2149,7 +2169,7 @@ test("paginates chats without reloading settings or dropping cross-section draft
   await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
   await navigate(page, "Chats")
   await page.getByRole("button", { name: "Next chats", exact: true }).click()
-  await expect(page.getByRole("button").filter({ hasText: "Next page chat" })).toBeVisible()
+  await expect(page.locator(".directory-chat").filter({ hasText: "Next page chat" })).toBeVisible()
   await expect(page.getByText("1 unsaved change", { exact: true })).toBeVisible()
   await navigate(page, "Access")
   await expect(page.getByText("Pending revocation", { exact: true })).toBeVisible()
@@ -2225,7 +2245,7 @@ for (const missingProvider of [false, true]) {
       }),
     )
     await page.reload()
-    await page.getByRole("button").filter({ hasText: "Fixture chat" }).first().click()
+    await page.locator(".directory-chat").filter({ hasText: "Fixture chat" }).first().click()
     const detail = page.getByRole("region", { name: "Chat details" })
     await expect(detail).toContainText(
       missingProvider
@@ -2337,7 +2357,11 @@ test("keeps directory context and policy drafts through sidebar navigation and b
     page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat"),
   ).toHaveAttribute("aria-current", "true")
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
-  await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("tabpanel", { name: "Access", exact: true })
+      .getByText("Pending access revocation", { exact: true }),
+  ).toBeVisible()
   await page.goForward()
   await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
     "aria-current",
@@ -2499,8 +2523,11 @@ test("explains selected tools that global policy excludes without granting their
   await expect(page.getByRole("tab", { name: "Model & Tools", exact: true })).toBeFocused()
   await page.getByText("Inspect individual tool permissions", { exact: true }).click()
   await expect(
-    page.getByRole("listitem").filter({ hasText: "read_url_content · In loaded inventory" }),
-  ).toContainText("Excluded by global policy · Selected · Tool permission denied")
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "read_url_content" })
+      .filter({ hasText: "Tool permission denied" }),
+  ).toContainText("Shared defaults · Configured: Allow · Tool permission denied")
   await expect(
     page.getByRole("button", { name: "Review and save changes", exact: true }),
   ).toHaveCount(0)
@@ -2679,7 +2706,7 @@ test("Reload refreshes current chat names and new chats while retaining provider
   await page.getByLabel("MCP server name", { exact: true }).fill("retained-draft")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await page.getByLabel("Server configuration JSON").fill('{"enabled":false}')
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await navigate(page, "Chats")
   await expect(page.getByRole("heading", { name: "Updated name", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
@@ -2722,11 +2749,11 @@ test("Reload does not let an older chat response replace fresh metadata", async 
   })
   await page.reload()
   await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
   const aborted = page.waitForEvent("requestfailed", (request) =>
     request.url().includes("/api/chats?"),
   )
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("Fresh name")
   await aborted
   finish()

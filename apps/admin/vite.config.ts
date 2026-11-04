@@ -9,6 +9,7 @@ export default defineConfig({
           groups: [
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: "radix", test: /node_modules[\\/]@radix-ui[\\/]/ },
+            { name: "policy", test: /[\\/]packages[\\/]policy[\\/]|node_modules[\\/]zod[\\/]/ },
           ],
         },
       },

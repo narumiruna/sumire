@@ -357,7 +357,7 @@ export function DurableHistory({
           <TextField.Root
             id="durable-history-search"
             type="search"
-            placeholder="Search messages in this conversation…"
+            placeholder="Search this loaded page…"
             maxLength={512}
             value={query}
             onChange={(event) => setQuery(event.target.value)}

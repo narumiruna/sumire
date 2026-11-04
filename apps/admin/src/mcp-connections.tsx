@@ -48,6 +48,28 @@ type Props = {
   load(): Promise<void>
 }
 
+export function mcpObservationView(server: Inventory["mcp"][number], revision: number) {
+  const observed = server.observation
+  const observation =
+    observed && observed.state !== "untested" && observed.revision !== revision
+      ? { state: "untested" as const }
+      : observed
+  const label = observation
+    ? { untested: "Not tested", checking: "Checking", succeeded: "Succeeded", failed: "Failed" }[
+        observation.state
+      ]
+    : "Unknown"
+  return {
+    observation,
+    label,
+    succeeded: observation?.state === "succeeded",
+    count:
+      observation?.state === "succeeded"
+        ? countText(server.tools.length, "published tool name")
+        : "Published tool names: Unknown",
+  }
+}
+
 export function McpConnections({
   inventory,
   policy,
@@ -66,6 +88,8 @@ export function McpConnections({
 }: Props) {
   const active = useContext(SectionActive)
   const [deleting, setDeleting] = useState<string>()
+  const [checking, setChecking] = useState<{ name: string; startedAt: number }>()
+  const [unknown, setUnknown] = useState<Map<string, Inventory>>(() => new Map())
   useEffect(() => {
     if (!active) setDeleting(undefined)
   }, [active])
@@ -167,174 +191,249 @@ export function McpConnections({
           )}
           <div className="mcp-choice-grid">
             <div className="mcp-saved-list">
-              {inventory.mcp.map((m) => (
-                <Panel
-                  key={m.name}
-                  className="mcp-connection-summary"
-                  aria-label={`${m.name} connection`}
-                >
-                  <Flex justify="between" align="start" gap="2" wrap="wrap">
-                    <Heading as="h3" size="3">
-                      {m.name}
-                    </Heading>
-                    {mcpName === m.name && (
-                      <Badge color="blue" variant="outline">
-                        Editing
-                      </Badge>
-                    )}
-                  </Flex>
-                  <Flex gap="2" wrap="wrap" className="mcp-summary-state">
-                    <StatusLabel>{m.enabled === false ? "Disabled" : "Enabled"}</StatusLabel>
-                    <StatusLabel>Connection test: {m.connection}</StatusLabel>
-                    <Text size="2">{countText(m.tools.length, "discovered tool")}</Text>
-                  </Flex>
-                  <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
-                    <Button
-                      variant="solid"
-                      disabled={
-                        busy ||
-                        dirty ||
-                        localPending ||
-                        snapshot.status !== "applied" ||
-                        snapshot.revision !== snapshot.applied
+              {inventory.mcp.map((m) => {
+                const view = mcpObservationView(
+                  checking?.name === m.name
+                    ? {
+                        ...m,
+                        observation: {
+                          state: "checking",
+                          revision: snapshot.revision,
+                          startedAt: checking.startedAt,
+                        },
                       }
-                      onClick={() =>
-                        void run(async () => {
-                          await request(`mcp/${encodeURIComponent(m.name)}/discover`, csrf)
-                          await load()
-                        })
-                      }
-                    >
-                      Test and discover {m.name}
-                    </Button>
-                    <Button variant="soft" disabled={busy} onClick={() => startEditor(m.name)}>
-                      <Pencil2Icon aria-hidden="true" />
-                      Edit fields for {m.name}
-                    </Button>
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger>
+                    : unknown.get(m.name) === inventory
+                      ? { ...m, observation: undefined }
+                      : m,
+                  snapshot.revision,
+                )
+                return (
+                  <Panel
+                    key={m.name}
+                    className="mcp-connection-summary"
+                    aria-label={`${m.name} connection`}
+                  >
+                    <div className="mcp-connection-row">
+                      <Flex justify="between" align="start" gap="2" wrap="wrap">
+                        <Heading as="h3" size="3">
+                          {m.name}
+                        </Heading>
+                        {mcpName === m.name && (
+                          <Badge color="blue" variant="outline">
+                            Editing
+                          </Badge>
+                        )}
+                      </Flex>
+                      <Flex gap="2" wrap="wrap" className="mcp-summary-state">
+                        <StatusLabel>{m.enabled === false ? "Disabled" : "Enabled"}</StatusLabel>
+                        <StatusLabel>Connection test: {view.label}</StatusLabel>
+                        <Text size="2">{view.count}</Text>
+                      </Flex>
+                      <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
                         <Button
-                          id={`connection-actions-${encodeURIComponent(m.name)}`}
-                          variant="ghost"
-                          aria-label={`Actions for ${m.name}`}
-                          disabled={busy}
-                        >
-                          <DotsHorizontalIcon aria-hidden />
-                        </Button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Content align="end">
-                        <DropdownMenu.Item
-                          color="red"
-                          disabled={busy || dirty || localPending}
-                          onSelect={() => setDeleting(m.name)}
-                        >
-                          <TrashIcon aria-hidden /> Delete {m.name}
-                        </DropdownMenu.Item>
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Root>
-                    <AlertDialog.Root
-                      open={active && deleting === m.name}
-                      onOpenChange={(open) => {
-                        if (!open) setDeleting(undefined)
-                      }}
-                    >
-                      <AlertDialog.Content
-                        onCloseAutoFocus={(event) => {
-                          event.preventDefault()
-                          document
-                            .getElementById(`connection-actions-${encodeURIComponent(m.name)}`)
-                            ?.focus()
-                        }}
-                      >
-                        <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
-                        <AlertDialog.Description>
-                          This deletes its configuration and inline credentials. Referenced runtime
-                          values remain in Secrets & variables. Remove it from global, default, and
-                          chat selections first. Application cancels active work and retains
-                          transcripts.
-                        </AlertDialog.Description>
-                        <Flex gap="3" justify="end" mt="4">
-                          <AlertDialog.Cancel>
-                            <Button variant="soft">Cancel</Button>
-                          </AlertDialog.Cancel>
-                          <AlertDialog.Action>
-                            <Button
-                              color="red"
-                              onClick={() =>
-                                void run(async () => {
-                                  await request(
-                                    `mcp/${encodeURIComponent(m.name)}`,
-                                    csrf,
-                                    { revision: snapshot.revision },
-                                    "DELETE",
-                                  )
-                                  if (mcpName === m.name) {
-                                    setEditing(false)
-                                    setEditorOpen(false)
-                                    setMcpEditorVersion((version) => version + 1)
-                                    setMcpName("")
-                                    setMcpConfig("{}")
-                                    setMcpSecrets({ env: {}, headers: {} })
-                                    setMcpDirty(false)
-                                  }
-                                  await load()
-                                })
+                          variant="solid"
+                          aria-label={`Test and discover ${m.name}`}
+                          disabled={
+                            busy ||
+                            m.enabled === false ||
+                            view.observation?.state === "checking" ||
+                            dirty ||
+                            localPending ||
+                            snapshot.status !== "applied" ||
+                            snapshot.revision !== snapshot.applied
+                          }
+                          onClick={() =>
+                            void run(async () => {
+                              setChecking({ name: m.name, startedAt: Date.now() })
+                              try {
+                                await request(`mcp/${encodeURIComponent(m.name)}/discover`, csrf)
+                                await load()
+                              } catch (error) {
+                                setUnknown((previous) => new Map(previous).set(m.name, inventory))
+                                throw error
+                              } finally {
+                                setChecking(undefined)
                               }
+                            })
+                          }
+                        >
+                          Test & discover
+                        </Button>
+                        <Button
+                          variant="soft"
+                          aria-label={`Edit fields for ${m.name}`}
+                          disabled={busy}
+                          onClick={() => startEditor(m.name)}
+                        >
+                          <Pencil2Icon aria-hidden="true" />
+                          Edit
+                        </Button>
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger>
+                            <Button
+                              id={`connection-actions-${encodeURIComponent(m.name)}`}
+                              variant="ghost"
+                              aria-label={`Actions for ${m.name}`}
+                              disabled={busy}
                             >
-                              Delete server and apply
+                              <DotsHorizontalIcon aria-hidden />
                             </Button>
-                          </AlertDialog.Action>
-                        </Flex>
-                      </AlertDialog.Content>
-                    </AlertDialog.Root>
-                  </Flex>
-                  <Disclosure title="Connection and permission details">
-                    <DataList.Root size="1" className="mcp-summary-facts data-list">
-                      <DataList.Item className="data-row">
-                        <DataList.Label minWidth="80px">Exposure</DataList.Label>
-                        <DataList.Value>
-                          <Code>{m.exposure ?? "codemode"}</Code>
-                        </DataList.Value>
-                      </DataList.Item>
-                      <DataList.Item className="data-row">
-                        <DataList.Label minWidth="80px">Execution</DataList.Label>
-                        <DataList.Value>
-                          <Flex direction="column" align="start" gap="2">
-                            <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
-                              {policy.servers.includes(m.name)
-                                ? "Globally available"
-                                : "Not globally available"}
-                            </Badge>
-                            <Text size="1" color="gray">
-                              {countText(
-                                m.tools.filter((name) => policy.tools.includes(name)).length,
-                                "globally approved tool name",
-                              )}{" "}
-                              · {dirty ? "Policy draft" : "Saved policy"}
-                            </Text>
-                          </Flex>
-                        </DataList.Value>
-                      </DataList.Item>
-                    </DataList.Root>
-                  </Disclosure>
-                  <details className="mcp-disclosure">
-                    <summary>Discovered tool names</summary>
-                    <Flex direction="column" align="start" gap="2" mt="3">
-                      {m.tools.length ? (
-                        m.tools.map((name) => <Code key={name}>{name}</Code>)
-                      ) : (
-                        <Text size="2" color="gray">
-                          No tools discovered.
-                        </Text>
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end">
+                            <DropdownMenu.Item
+                              color="red"
+                              aria-label={`Delete ${m.name}`}
+                              disabled={busy || dirty || localPending}
+                              onSelect={() => setDeleting(m.name)}
+                            >
+                              <TrashIcon aria-hidden /> Delete
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                        <AlertDialog.Root
+                          open={active && deleting === m.name}
+                          onOpenChange={(open) => {
+                            if (!open) setDeleting(undefined)
+                          }}
+                        >
+                          <AlertDialog.Content
+                            onCloseAutoFocus={(event) => {
+                              event.preventDefault()
+                              document
+                                .getElementById(`connection-actions-${encodeURIComponent(m.name)}`)
+                                ?.focus()
+                            }}
+                          >
+                            <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
+                            <AlertDialog.Description>
+                              This deletes its configuration and inline credentials. Referenced
+                              runtime values remain in Secrets & variables. Remove it from global,
+                              default, and chat selections first. Application cancels active work
+                              and retains transcripts.
+                            </AlertDialog.Description>
+                            <Flex gap="3" justify="end" mt="4">
+                              <AlertDialog.Cancel>
+                                <Button variant="soft">Cancel</Button>
+                              </AlertDialog.Cancel>
+                              <AlertDialog.Action>
+                                <Button
+                                  color="red"
+                                  onClick={() =>
+                                    void run(async () => {
+                                      await request(
+                                        `mcp/${encodeURIComponent(m.name)}`,
+                                        csrf,
+                                        { revision: snapshot.revision },
+                                        "DELETE",
+                                      )
+                                      if (mcpName === m.name) {
+                                        setEditing(false)
+                                        setEditorOpen(false)
+                                        setMcpEditorVersion((version) => version + 1)
+                                        setMcpName("")
+                                        setMcpConfig("{}")
+                                        setMcpSecrets({ env: {}, headers: {} })
+                                        setMcpDirty(false)
+                                      }
+                                      await load()
+                                    })
+                                  }
+                                >
+                                  Delete server and apply
+                                </Button>
+                              </AlertDialog.Action>
+                            </Flex>
+                          </AlertDialog.Content>
+                        </AlertDialog.Root>
+                      </Flex>
+                    </div>
+                    <Disclosure title="Connection and permission details">
+                      {view.observation && view.observation.state !== "untested" && (
+                        <Prose size="2">
+                          {view.observation.state === "checking" ? "Started" : "Completed"}{" "}
+                          <time
+                            dateTime={new Date(
+                              view.observation.state === "checking"
+                                ? view.observation.startedAt
+                                : view.observation.completedAt,
+                            ).toISOString()}
+                          >
+                            {new Date(
+                              view.observation.state === "checking"
+                                ? view.observation.startedAt
+                                : view.observation.completedAt,
+                            ).toLocaleString()}
+                          </time>{" "}
+                          · Configuration revision {view.observation.revision}
+                          {view.observation.state === "failed" && ` · ${view.observation.reason}`}
+                        </Prose>
                       )}
-                    </Flex>
-                  </details>
-                  <Prose size="2">
-                    Secret fields:{" "}
-                    {[...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") || "none"}
-                  </Prose>
-                </Panel>
-              ))}
+                      <DataList.Root size="1" className="mcp-summary-facts data-list">
+                        <DataList.Item className="data-row">
+                          <DataList.Label minWidth="80px">Exposure</DataList.Label>
+                          <DataList.Value>
+                            <Code>{m.exposure ?? "codemode"}</Code>
+                          </DataList.Value>
+                        </DataList.Item>
+                        <DataList.Item className="data-row">
+                          <DataList.Label minWidth="80px">Execution</DataList.Label>
+                          <DataList.Value>
+                            <Flex direction="column" align="start" gap="2">
+                              <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
+                                {policy.servers.includes(m.name)
+                                  ? "Globally available"
+                                  : "Not globally available"}
+                              </Badge>
+                              <Text size="1" color="gray">
+                                {view.succeeded
+                                  ? countText(
+                                      m.tools.filter((name) => policy.tools.includes(name)).length,
+                                      "globally approved published tool name",
+                                    )
+                                  : "Globally approved published tool names: Unknown"}{" "}
+                                · {dirty ? "Policy draft" : "Saved policy"}
+                              </Text>
+                              <Text size="2">
+                                Shared default server gate:{" "}
+                                {policy.defaults.servers === null
+                                  ? "inherits global selection"
+                                  : policy.defaults.servers.includes(m.name)
+                                    ? "selected"
+                                    : "not selected"}
+                                . Execution also requires the tool selection and effective chat
+                                permissions.
+                              </Text>
+                            </Flex>
+                          </DataList.Value>
+                        </DataList.Item>
+                      </DataList.Root>
+                      <details className="mcp-disclosure">
+                        <summary>Published tool names</summary>
+                        <Flex direction="column" align="start" gap="2" mt="3">
+                          {view.succeeded && m.tools.length ? (
+                            m.tools.map((name) => <Code key={name}>{name}</Code>)
+                          ) : (
+                            <Text size="2" color="gray">
+                              {view.succeeded
+                                ? "No published tool names."
+                                : "Published tool names are unknown. Run Test & discover."}
+                            </Text>
+                          )}
+                        </Flex>
+                      </details>
+                      <Prose size="2">
+                        This result lists published tool names after exposure and safety limits, not
+                        every remote tool. Saving or testing a connection does not grant execution
+                        permission.
+                      </Prose>
+                      <Prose size="2">
+                        Secret fields:{" "}
+                        {[...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") || "none"}
+                      </Prose>
+                    </Disclosure>
+                  </Panel>
+                )
+              })}
             </div>
           </div>
         </Panel>
@@ -584,8 +683,9 @@ export function McpConnections({
           </Callout.Icon>
           <Callout.Text>
             Connection configuration and enabled state do not grant execution permission. First
-            discovery adds new tools to global and default permissions, but does not open server
-            gates. Connection tests run only when requested.
+            discovery registers published tool names for selection, but does not add global, shared
+            default, or chat permissions or open server gates. Connection tests run only when
+            requested.
           </Callout.Text>
         </Callout.Root>
       </details>

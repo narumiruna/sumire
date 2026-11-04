@@ -26,7 +26,7 @@ test("settings application and scoped model setup are separate", async ({ page }
   const setup = page.getByRole("region", { name: "Shared default model setup", exact: true })
   await expect(setup).toContainText("Authentication required")
   await setup.getByRole("button", { name: "Configure provider", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "Model providers", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Providers & models", exact: true })).toBeVisible()
   await expect(page.locator("#provider-auth-action")).toBeVisible()
   expect(state.writes).toEqual([])
 })
@@ -44,7 +44,7 @@ test("status filters retain hidden tool edits", async ({ page }) => {
   await expect(page.locator(".permission-row:visible")).toContainText("stored_missing")
   await expect(
     page.getByRole("region", { name: "Permission editing scope", exact: true }),
-  ).toContainText("1 default change")
+  ).toContainText("1 changed shared-default tool/server name")
   await filter.click()
   await page.getByRole("option", { name: "All", exact: true }).click()
   await expect(

@@ -1,8 +1,11 @@
 import { effectivePolicy, inherited, validateReferences } from "@narumitw/sumire-policy"
 import { describe, expect, it } from "vitest"
-import type { Policy } from "./api.js"
+import type { Inventory, Policy } from "./api.js"
 import {
+  configuredProviders,
   loginUrl,
+  modelRemovalImpact,
+  providerReferences,
   savedProviderSelection,
   withModelAvailability,
   withProviderModel,
@@ -216,6 +219,166 @@ describe("model availability policy", () => {
     const result = withModelAvailability(before, [])
     expect(result.defaults).toEqual({ ...before.defaults, models: ["missing/model"] })
     expect(() => validateReferences(result)).toThrow("missing/model")
+  })
+})
+
+describe("complete model removal impact", () => {
+  it("uses exactly the submitted transform and includes disabled/off-page and inherited entries", () => {
+    const before: Policy = {
+      ...policy,
+      models: ["old/model", "new/model"],
+      defaults: { ...policy.defaults, models: ["old/model", "new/model"], model: "new/model" },
+      chats: {
+        "999999": {
+          ...inherited,
+          enabled: false,
+          models: ["old/model", "new/model"],
+          model: "old/model",
+          thinking: "high",
+        },
+        "43": { ...inherited, enabled: true },
+        "44": { ...inherited, enabled: true, models: [] },
+      },
+    }
+    const original = structuredClone(before)
+    const impact = modelRemovalImpact(before, ["new/model"])
+    expect(impact.after).toEqual(withModelAvailability(before, ["new/model"]))
+    expect(impact.removed).toEqual(["old/model"])
+    expect(impact.shared).toMatchObject({
+      before: { models: ["old/model", "new/model"], model: "new/model", thinking: "off" },
+      after: { models: ["new/model"], model: "new/model", thinking: "off" },
+    })
+    expect(impact.chats.map((entry) => entry.id)).toEqual(["43", "999999"])
+    expect(impact.chats[0]).toMatchObject({
+      before: { models: null, model: null, thinking: null },
+      after: { models: null, model: null, thinking: null },
+      effectiveAfter: { models: ["new/model"], model: "new/model", thinking: "off" },
+    })
+    expect(impact.chats[1]).toMatchObject({
+      enabled: false,
+      before: { models: ["old/model", "new/model"], model: "old/model", thinking: "high" },
+      after: { models: ["new/model"], model: null, thinking: null },
+      effectiveBefore: { model: "old/model", thinking: "high" },
+      effectiveAfter: { model: "new/model", thinking: "off" },
+    })
+    expect(before).toEqual(original)
+  })
+
+  it("reports an absent effective model, shared reset, null and empty lists without inventing restoration", () => {
+    const before: Policy = {
+      ...policy,
+      chats: {
+        "42": { ...inherited, enabled: false, models: [], thinking: "low" },
+        "43": { ...inherited, enabled: true },
+      },
+    }
+    const impact = modelRemovalImpact(before, [])
+    expect(impact.sharedChanged).toBe(true)
+    expect(impact.shared.after).toEqual({ models: [], model: null, thinking: null })
+    expect(impact.shared.effectiveAfter).toEqual({ models: [], model: null, thinking: "off" })
+    expect(impact.chats.find((entry) => entry.id === "42")).toBeUndefined()
+    expect(impact.after.chats["42"]).toEqual(before.chats["42"])
+    expect(effectivePolicy(impact.after, 42)).toMatchObject({ model: null, thinking: "low" })
+    expect(impact.chats.find((entry) => entry.id === "43")).toMatchObject({
+      after: { models: null, model: null, thinking: null },
+      effectiveAfter: { model: null, thinking: "off" },
+    })
+    const restored = withModelAvailability(impact.after, before.models)
+    const restoredImpact = modelRemovalImpact(before, restored)
+    expect(restoredImpact.removed).toEqual([])
+    expect(restoredImpact.sharedChanged).toBe(true)
+    expect(restoredImpact.shared.after.model).toBeNull()
+    expect(restoredImpact.shared.after.models).toEqual([])
+    expect(restoredImpact.after).toEqual(restored)
+  })
+
+  it("compares the actual cumulative staged policy and does not substitute a fresh transform", () => {
+    const before = { ...policy, models: ["old/model", "other/model"] }
+    const after = withModelAvailability(withModelAvailability(before, ["other/model"]), [])
+    expect(modelRemovalImpact(before, after).after).toBe(after)
+    expect(modelRemovalImpact(before, after).removed).toEqual(["old/model", "other/model"])
+    expect(modelRemovalImpact(before, before).chats).toEqual([])
+    expect(modelRemovalImpact(before, before).sharedChanged).toBe(false)
+  })
+})
+
+describe("provider list and references", () => {
+  const inventory: Inventory = {
+    tools: [],
+    mcp: [],
+    providers: [
+      {
+        id: "configured",
+        name: "Configured",
+        configured: true,
+        apiKey: true,
+        oauth: false,
+        models: [],
+      },
+      {
+        id: "catalog",
+        name: "Catalog only",
+        configured: false,
+        apiKey: true,
+        oauth: false,
+        models: [],
+      },
+      { id: "old", name: "Old", configured: false, apiKey: true, oauth: false, models: [] },
+    ],
+  }
+  it("lists configured and all policy reference sources, not the unconfigured catalog", () => {
+    const before: Policy = {
+      ...policy,
+      providers: [{ id: "endpoint", enabled: false, models: [] }],
+      defaults: { ...policy.defaults, models: ["allowed/model"], model: "default/model" },
+      chats: {
+        "42": { ...inherited, enabled: false, models: ["offpage/list"], model: "offpage/chosen" },
+      },
+    }
+    const result = configuredProviders(before, inventory)
+    expect(result.map((entry) => entry.id)).toEqual([
+      "allowed",
+      "configured",
+      "default",
+      "endpoint",
+      "offpage",
+      "old",
+    ])
+    expect(result.find((entry) => entry.id === "offpage")).toMatchObject({
+      name: "offpage",
+      configured: null,
+    })
+    expect(result.find((entry) => entry.id === "old")?.configured).toBe(false)
+    expect(
+      configuredProviders(
+        { ...before, models: [], providers: [], defaults: inherited, chats: {} },
+        { providers: [], tools: [], mcp: [] },
+      ),
+    ).toEqual([])
+  })
+  it("counts explicit policy entries including disabled references only once; no inheriting population", () => {
+    const before: Policy = {
+      ...policy,
+      chats: {
+        ...policy.chats,
+        "43": {
+          ...inherited,
+          enabled: false,
+          models: ["old/model", "old/other"],
+          model: "old/model",
+        },
+        "44": { ...inherited, enabled: true },
+        "45": { ...inherited, enabled: true, model: "oldish/model" },
+      },
+    }
+    expect(providerReferences(before, "old")).toMatchObject({
+      available: ["old/model"],
+      sharedModel: "old/model",
+      sharedAllowed: ["old/model"],
+      chats: [{ id: "42" }, { id: "43", enabled: false }],
+    })
+    expect(providerReferences(before, "catalog").chats).toEqual([])
+    expect(before.chats["44"]?.model).toBeNull()
   })
 })
 

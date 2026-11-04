@@ -4,13 +4,7 @@ import {
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
-import {
-  ExclamationTriangleIcon,
-  ExitIcon,
-  PersonIcon,
-  ReloadIcon,
-  SwitchIcon,
-} from "@radix-ui/react-icons"
+import { ExclamationTriangleIcon, ExitIcon, PersonIcon, ReloadIcon } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
   AlertDialog,
@@ -47,6 +41,7 @@ import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { GithubNotifications } from "./github-notifications.js"
 import { McpConnections } from "./mcp-connections.js"
+import { ModelRemovalImpact } from "./model-removal-impact.js"
 import {
   type EditorTarget,
   focusEditor,
@@ -115,17 +110,23 @@ function App() {
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const runtimeGuard = useRef<(() => boolean) | undefined>(undefined)
   const [runtimePending, setRuntimePending] = useState(false)
+  const [connectionRequest, setConnectionRequest] = useState(0)
   const {
     page,
     setPage: navigatePage,
     chat,
     setChat: navigateChat,
   } = useNavigation(Boolean(session && snapshot), () => runtimeGuard.current?.() ?? true)
+  useEffect(() => {
+    if (page !== "Secrets & variables") setConnectionRequest(0)
+  }, [page])
   const [detailsRequest, setDetailsRequest] = useState(0)
   const [editorRequest, setEditorRequest] = useState<EditorTarget>()
   const setPage = (page: Page, anchor?: string) => {
     setEditorRequest(undefined)
-    navigatePage(page, anchor)
+    const accepted = navigatePage(page, anchor)
+    if (accepted && page !== "Secrets & variables") setConnectionRequest(0)
+    return accepted
   }
   const setChat = (chat: string) => {
     setEditorRequest(undefined)
@@ -234,6 +235,7 @@ function App() {
     setProviderPending(false)
     setEditorPending({})
     setRuntimePending(false)
+    setConnectionRequest(0)
     setDirty(false)
     setSnapshot(undefined)
     setSavedPolicy(undefined)
@@ -420,60 +422,64 @@ function App() {
   const selected = policy.chats[chat]
   return (
     <div className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}`}>
-      <SideNavigation page={page} chat={chat} actor={session.actor} onNavigate={setPage} />
+      <SideNavigation
+        page={page}
+        chat={chat}
+        actor={session.actor}
+        onNavigate={setPage}
+        account={
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <Button variant="ghost" aria-label="Account" disabled={busy}>
+                <PersonIcon aria-hidden />
+                <span className="workspace-action-label">Account</span>
+                <DropdownMenu.TriggerIcon />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" aria-label="Account" className="account-menu">
+              <DropdownMenu.Label className="account-menu-actor">
+                Administrator: {session.actor}
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item
+                disabled={busy}
+                onSelect={() =>
+                  void run(async () => {
+                    if (!confirmDiscard()) return
+                    clearAccess()
+                    await request("logout", session.csrf)
+                    expireSession()
+                  })
+                }
+              >
+                <ExitIcon aria-hidden />
+                Sign out
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        }
+      />
       <main aria-busy={busy}>
         <PageHeader
           title={pageLabel(page)}
-          breadcrumb={page === "Durable" ? "Administration" : undefined}
           description={pageDescriptions[page]}
           actions={
-            <>
-              {page !== "Durable" && (
-                <Button
-                  variant="ghost"
-                  aria-label="Reload"
-                  disabled={
-                    busy || dirty || localPending || runtimePending || Boolean(failedPolicySave)
-                  }
-                  onClick={() => {
-                    refreshChats()
-                    void run(load)
-                  }}
-                >
-                  <ReloadIcon />
-                  <span className="workspace-action-label">Reload</span>
-                </Button>
-              )}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  <Button variant="ghost" aria-label="Account" disabled={busy}>
-                    <PersonIcon aria-hidden />
-                    <span className="workspace-action-label">Account</span>
-                    <DropdownMenu.TriggerIcon />
-                  </Button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" aria-label="Account" className="account-menu">
-                  <DropdownMenu.Label className="account-menu-actor">
-                    Administrator: {session.actor}
-                  </DropdownMenu.Label>
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item
-                    disabled={busy}
-                    onSelect={() =>
-                      void run(async () => {
-                        if (!confirmDiscard()) return
-                        clearAccess()
-                        await request("logout", session.csrf)
-                        expireSession()
-                      })
-                    }
-                  >
-                    <ExitIcon aria-hidden />
-                    Sign out
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </>
+            page !== "Durable" && (
+              <Button
+                variant="ghost"
+                aria-label="Refresh settings"
+                disabled={
+                  busy || dirty || localPending || runtimePending || Boolean(failedPolicySave)
+                }
+                onClick={() => {
+                  refreshChats()
+                  void run(load)
+                }}
+              >
+                <ReloadIcon />
+                <span className="workspace-action-label">Refresh settings</span>
+              </Button>
+            )
           }
         />
         {(error || refreshError) && (
@@ -521,6 +527,8 @@ function App() {
             onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
             changeCount={policyChangeCount(savedPolicy ?? policy, policy)}
+            removalReview={<ModelRemovalImpact before={savedPolicy ?? policy} after={policy} />}
+            runtimePending={runtimePending}
             modelReview={
               savedPolicy &&
               (savedPolicy.defaults.model !== policy.defaults.model ||
@@ -766,22 +774,7 @@ function App() {
                 key={chat}
                 chat={chat}
                 chatSelector={
-                  <section className="durable-chat-selector" aria-label="Find a chat">
-                    <details open={!chat}>
-                      <summary aria-label="Find or switch chat">
-                        <SwitchIcon aria-hidden />
-                        <span className="durable-action-label">
-                          {chat ? "Switch chat" : "Choose a chat"}
-                        </span>
-                      </summary>
-                      <ChatSelector
-                        title={null}
-                        directory={directory}
-                        chat={chat}
-                        onSelect={setChat}
-                      />
-                    </details>
-                  </section>
+                  <ChatSelector title={null} directory={directory} chat={chat} onSelect={setChat} />
                 }
                 metadata={directory.selected.chat}
                 metadataLoading={directory.selected.loading}
@@ -885,21 +878,18 @@ function App() {
             aria-label="Tool permissions"
             className="admin-page--permissions"
           >
-            <Callout.Root color="orange">
-              <Callout.Text>
-                Shell and file tools are not sandboxed. They can access process-readable
-                credentials.
-              </Callout.Text>
-            </Callout.Root>
             <ToolPermissions
               key={session.actor}
               actor={session.actor}
+              selectedChat={chat}
               dirty={dirty}
               policy={policy}
               saved={savedPolicy ?? policy}
               inventory={inventory}
               onChange={update}
-              onChat={openChat}
+              onChat={(id) =>
+                openEditor({ page: "Chats", chat: id, selector: "#chat-tools-options" })
+              }
               defaultContext={
                 page === "Tool permissions" && window.location.hash === "#default-tool-permissions"
               }
@@ -946,7 +936,7 @@ function App() {
                 </Panel>
               </details>
               <Button variant="soft" onClick={() => setPage("MCP connections")}>
-                Manage MCP Servers
+                Manage MCP servers
               </Button>
             </div>
           </EditorSection>
@@ -988,117 +978,151 @@ function App() {
               error={error}
               onPending={setProviderPending}
               authRequest={authRequest}
+              editorTarget={
+                editorRequest?.page === "Model Providers" ? editorRequest.selector : undefined
+              }
               savedPolicy={savedPolicy ?? policy}
               onDefaults={() =>
                 openEditor({ page: "Defaults", selector: "#default-model-selection" })
               }
               chat={chat}
               onChat={() => openEditor({ page: "Chats", chat, selector: "#model-selection" })}
-              onModelUse={(next) => {
-                update(next)
-                setPolicyReviewOpen(true)
+              onSelectProvider={() => {
+                if (!editorPending.endpoint) return true
+                if (!window.confirm("Discard unfinished custom endpoint edits?")) return false
+                setEditingProvider(undefined)
+                setEndpointEditorVersion((version) => version + 1)
+                markPending("endpoint", false)
+                return true
               }}
-            />
-            <SettingsSection
-              title="Manage model availability"
-              id="model-availability"
-              tabIndex={-1}
-              description="Removing a model also removes it from shared and chat allowed-model lists. Matching shared model and thinking defaults are cleared. Matching chat model and thinking overrides reset to shared defaults. Review and save to apply."
-            >
-              <ModelAvailability
-                key={snapshot.revision}
-                value={policy.models}
-                onChange={(models) => update(withModelAvailability(policy, models))}
-              />
-              <Prose size="2">
-                Selecting a model again restores availability only. Discard settings changes to undo
-                removal. Selecting a provider never grants its full catalog.
-              </Prose>
-            </SettingsSection>
-            <details className="provider-advanced">
-              <summary>Custom endpoint</summary>
-              <Prose size="2">
-                Use this only for a compatible endpoint that is not in the provider catalog. Save
-                its configuration above before authentication. Costs are unknown, not verified
-                zero-cost.
-              </Prose>
-              {policy.providers.map((p) => (
-                <Panel key={p.id}>
-                  <Check
-                    label={`${p.id} enabled`}
-                    checked={p.enabled}
-                    onChange={(v) =>
+              onCustomEndpoint={() => {
+                if (
+                  editorPending.endpoint &&
+                  !window.confirm("Discard unfinished custom endpoint edits?")
+                )
+                  return false
+                setEditingProvider(undefined)
+                setEndpointEditorVersion((version) => version + 1)
+                markPending("endpoint", false)
+                setEditorRequest({ page: "Model Providers", selector: "#endpoint-provider-id" })
+                return true
+              }}
+              connection={(providerId) => (
+                <details className="provider-advanced">
+                  <summary>Custom endpoint</summary>
+                  <Prose size="2">
+                    Use this only for a compatible endpoint that is not in the provider catalog.
+                    Save its configuration above before authentication. Costs are unknown, not
+                    verified zero-cost.
+                  </Prose>
+                  {policy.providers
+                    .filter((p) => !providerId || p.id === providerId)
+                    .map((p) => (
+                      <Panel key={p.id}>
+                        <Check
+                          label={`${p.id} enabled`}
+                          checked={p.enabled}
+                          onChange={(v) =>
+                            update({
+                              ...policy,
+                              providers: policy.providers.map((row) =>
+                                row.id === p.id ? { ...row, enabled: v } : row,
+                              ),
+                            })
+                          }
+                        />
+                        <Flex gap="2" wrap="wrap">
+                          <Button
+                            variant="soft"
+                            onClick={() => {
+                              if (
+                                !editorPending.endpoint ||
+                                window.confirm("Discard unfinished custom endpoint edits?")
+                              ) {
+                                setEditingProvider(p)
+                                markPending("endpoint", false)
+                              }
+                            }}
+                          >
+                            Edit configuration {p.id}
+                          </Button>
+                          <Button
+                            variant="soft"
+                            color="red"
+                            onClick={() =>
+                              update({
+                                ...policy,
+                                providers: policy.providers.filter((row) => row.id !== p.id),
+                              })
+                            }
+                          >
+                            Remove configuration
+                          </Button>
+                        </Flex>
+                      </Panel>
+                    ))}
+                  <ProviderEditor
+                    key={`${JSON.stringify(editingProvider) ?? "new"}:${endpointEditorVersion}`}
+                    initial={editingProvider}
+                    onDiscard={() => {
+                      setEndpointEditorVersion((version) => version + 1)
+                      markPending("endpoint", false)
+                    }}
+                    onPending={(v) => markPending("endpoint", v)}
+                    onAdd={(p) => {
                       update({
                         ...policy,
-                        providers: policy.providers.map((row) =>
-                          row.id === p.id ? { ...row, enabled: v } : row,
-                        ),
+                        providers: [...policy.providers.filter((row) => row.id !== p.id), p],
                       })
-                    }
+                      setEditingProvider(undefined)
+                      markPending("endpoint", false)
+                    }}
                   />
-                  <Flex gap="2" wrap="wrap">
-                    <Button
-                      variant="soft"
-                      onClick={() => {
-                        if (
-                          !editorPending.endpoint ||
-                          window.confirm("Discard unfinished custom endpoint edits?")
-                        ) {
-                          setEditingProvider(p)
-                          markPending("endpoint", false)
-                        }
-                      }}
-                    >
-                      Edit configuration {p.id}
-                    </Button>
-                    <Button
-                      variant="soft"
-                      color="red"
-                      onClick={() =>
-                        update({
-                          ...policy,
-                          providers: policy.providers.filter((row) => row.id !== p.id),
-                        })
-                      }
-                    >
-                      Remove configuration
-                    </Button>
-                  </Flex>
-                </Panel>
-              ))}
-              <ProviderEditor
-                key={`${JSON.stringify(editingProvider) ?? "new"}:${endpointEditorVersion}`}
-                initial={editingProvider}
-                onDiscard={() => {
-                  setEndpointEditorVersion((version) => version + 1)
-                  markPending("endpoint", false)
-                }}
-                onPending={(v) => markPending("endpoint", v)}
-                onAdd={(p) => {
-                  update({
-                    ...policy,
-                    providers: [...policy.providers.filter((row) => row.id !== p.id), p],
-                  })
-                  setEditingProvider(undefined)
-                  markPending("endpoint", false)
-                }}
-              />
-            </details>
+                </details>
+              )}
+              availability={(providerId) => (
+                <SettingsSection
+                  title="Manage model availability"
+                  id="model-availability"
+                  tabIndex={-1}
+                  description="Removing a model also removes it from shared and chat allowed-model lists. Matching shared model and thinking defaults are cleared. Matching chat model and thinking overrides reset to shared defaults. Review and save to apply."
+                >
+                  <ModelAvailability
+                    key={snapshot.revision}
+                    value={policy.models}
+                    provider={providerId || undefined}
+                    onChange={(models) => update(withModelAvailability(policy, models))}
+                  />
+                  <Prose size="2">
+                    Selecting a model again restores availability only. Discard settings changes to
+                    undo removal. Selecting a provider never grants its full catalog.
+                  </Prose>
+                  <ModelRemovalImpact before={savedPolicy ?? policy} after={policy} />
+                </SettingsSection>
+              )}
+            />
           </EditorSection>
           <EditorSection active={page === "GitHub mentions"} aria-label="GitHub mentions">
             <GithubNotifications
+              active={page === "GitHub mentions"}
               policy={policy}
               saved={savedPolicy ?? policy}
               disabled={busy || runtimePending}
               onChange={update}
               onPending={(value) => markPending("githubMentionAuthor", value)}
               onNavigate={setPage}
+              onOpenConnection={() => {
+                if (setPage("Secrets & variables")) setConnectionRequest((request) => request + 1)
+              }}
+              application={snapshot}
+              onSessionExpired={expireInspectorSession}
             />
           </EditorSection>
           {page === "Secrets & variables" && (
             <EditorSection active aria-label="Secrets & variables">
               <RuntimeConfig
                 key={sessionGeneration}
+                connectionRequest={connectionRequest}
                 csrf={session.csrf}
                 revision={snapshot.revision}
                 application={snapshot}

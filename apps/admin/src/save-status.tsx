@@ -1,5 +1,5 @@
 import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
-import { useEffect, useRef } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 import type { Snapshot } from "./api.js"
 import { type EditorTarget, type Page, pageLabel } from "./navigation.js"
 import type { PolicyChange } from "./policy-changes.js"
@@ -11,6 +11,8 @@ type Props = {
   entries: PolicyChange[]
   changeCount: number
   modelReview?: { before: string | null; after: string | null; added: string[] }
+  removalReview?: ReactNode
+  runtimePending?: boolean
   unfinished: { label: string; target: EditorTarget }[]
   openEditor(target: EditorTarget): void
   reviewOpen: boolean
@@ -32,6 +34,8 @@ export function SaveStatus({
   entries,
   changeCount,
   modelReview,
+  removalReview,
+  runtimePending = false,
   unfinished,
   openEditor,
   reviewOpen,
@@ -48,7 +52,17 @@ export function SaveStatus({
   recover,
 }: Props) {
   const ref = useRef<HTMLElement>(null)
-  const pending = dirty || localPending || mcpDirty || providerPending || Boolean(recover)
+  const pending =
+    dirty || localPending || mcpDirty || providerPending || runtimePending || Boolean(recover)
+  const scopes = [
+    ...new Set(
+      entries.flatMap((entry) =>
+        entry.targets.map((target) =>
+          target.chat ? `Chat ${target.chat}` : pageLabel(target.page),
+        ),
+      ),
+    ),
+  ]
   const navigating = useRef(false)
   useEffect(() => {
     const bar = ref.current
@@ -99,7 +113,14 @@ export function SaveStatus({
   }, [pending])
   const applied = snapshot.status === "applied" && snapshot.revision === snapshot.applied
   const compact =
-    applied && !dirty && !busy && !localPending && !mcpDirty && !providerPending && !recover
+    applied &&
+    !dirty &&
+    !busy &&
+    !localPending &&
+    !mcpDirty &&
+    !providerPending &&
+    !runtimePending &&
+    !recover
   const reviewEditor = (target: EditorTarget) => {
     navigating.current = true
     setReviewOpen(false)
@@ -116,6 +137,7 @@ export function SaveStatus({
         data-compact={compact}
       >
         <div className="application-status" id="application-status" tabIndex={-1}>
+          {!compact && <span className="status-scope">Saved configuration</span>}
           <Badge
             role="status"
             color={applied && !recover ? "gray" : "orange"}
@@ -162,7 +184,13 @@ export function SaveStatus({
               </Badge>
               {dirty && <span>Settings draft</span>}
             </div>
-            {(mcpDirty || providerPending || unfinished.length > 0) && (
+            {dirty && (
+              <Prose size="2" className="policy-save-scopes">
+                Policy transaction: {scopes.join(" · ") || "Settings"}. All staged policy edits are
+                saved together; other editor drafts have separate save actions.
+              </Prose>
+            )}
+            {(mcpDirty || providerPending || runtimePending || unfinished.length > 0) && (
               <div className="save-scopes">
                 {mcpDirty && (
                   <Button
@@ -180,6 +208,16 @@ export function SaveStatus({
                     onClick={() => navigate("Model Providers")}
                   >
                     Provider: Unsaved selection or authentication
+                  </Button>
+                )}
+                {runtimePending && (
+                  <Button
+                    variant="surface"
+                    onClick={() =>
+                      openEditor({ page: "Secrets & variables", selector: "#runtime-add" })
+                    }
+                  >
+                    Runtime values: Separate editor draft or operation
                   </Button>
                 )}
                 {unfinished.map((editor) => (
@@ -244,6 +282,7 @@ export function SaveStatus({
             ))}
           </section>
         )}
+        {removalReview}
         <ul aria-label="Settings changes to save" className="settings-review-list">
           {entries.map((entry) => (
             <li key={entry.label}>

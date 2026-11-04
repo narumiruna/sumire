@@ -124,7 +124,7 @@ for (const viewport of [
     await page.reload()
     await page
       .getByRole("list", { name: "Chats on this page", exact: true })
-      .getByRole("button")
+      .locator(".directory-chat")
       .first()
       .click()
     for (const section of [

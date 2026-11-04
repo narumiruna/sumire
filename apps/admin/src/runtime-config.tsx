@@ -28,6 +28,7 @@ type Props = {
   blocked: boolean
   revision: number
   application?: GitHubApplicationState
+  connectionRequest?: number
   onPending(value: boolean): void
   guard: React.MutableRefObject<(() => boolean) | undefined>
   onCommitted(value: GitHubApplicationState): void
@@ -40,6 +41,7 @@ export function RuntimeConfig({
   blocked,
   revision,
   application,
+  connectionRequest = 0,
   onPending,
   guard,
   onCommitted,
@@ -53,6 +55,13 @@ export function RuntimeConfig({
   const [deleting, setDeleting] = useState<RuntimeConfigEntry>()
   const [busy, setBusy] = useState(false)
   const [githubPending, setGithubPending] = useState(false)
+  const [connectionOpen, setConnectionOpen] = useState(connectionRequest > 0)
+  const lastConnectionRequest = useRef(connectionRequest)
+  useEffect(() => {
+    if (lastConnectionRequest.current === connectionRequest) return
+    lastConnectionRequest.current = connectionRequest
+    setConnectionOpen(true)
+  }, [connectionRequest])
   const githubGuard = useRef<(() => boolean) | undefined>(undefined)
   const [error, setError] = useState("")
   const [recovery, setRecovery] = useState(false)
@@ -170,6 +179,8 @@ export function RuntimeConfig({
   const stale = Boolean(data && data.revision !== revision)
   const unavailable = kind === "secret" && data?.secretStatus !== "ready"
   const disabled = busy || blocked || recovery || stale || githubPending
+  const entries = data?.entries.filter((entry) => entry.kind === kind)
+  const visible = entries?.filter((entry) => entry.name.includes(search.trim().toUpperCase()))
   const start = (entry?: RuntimeConfigEntry) => {
     focusTarget.current = entry ? "runtime-value" : "runtime-name"
     setError("")
@@ -202,36 +213,6 @@ export function RuntimeConfig({
               ? "Saved secrets are write-only. Only names, configured state, and update times are shown. Enter a new value only to create or replace a secret."
               : "Variables are not confidential. Authorized chats with read_variable can read all variables in this installation. Returned values can remain in conversation history. Do not store credentials here."}
           </Prose>
-          {kind === "secret" && (
-            <GitHubConnection
-              csrf={csrf}
-              revision={revision}
-              application={application}
-              blocked={blocked || busy || recovery || Boolean(draft)}
-              onPending={setGithubPending}
-              guard={githubGuard}
-              onCommitted={onCommitted}
-              onSessionExpired={onSessionExpired}
-              refresh={async () => {
-                await Promise.all([load(), refresh()])
-              }}
-            />
-          )}
-          {kind === "secret" && (
-            <Prose>
-              For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access
-              Token. Once saved and applied, the token is available to the next bash execution
-              without restart. All chats with bash access can use and read the token; give bash only
-              to trusted chats. Configured state does not prove that GitHub accepts the token.
-            </Prose>
-          )}
-          <Prose>
-            GitHub mentions use the secret <code>GH_TOKEN</code> to determine the bot account. Allow
-            mention authors by GitHub username on the GitHub mentions page, not in Variables. Sumire
-            replies on GitHub only to mentions from allowed authors; an empty allowlist disables
-            automatic replies. Telegram chat access and tool permissions are not required. The token
-            must allow access to mentions and replies in the relevant repositories.
-          </Prose>
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">
               <Callout.Text>
@@ -255,6 +236,15 @@ export function RuntimeConfig({
             </Callout.Root>
           )}
           {notice && <Text role="status">{notice}</Text>}
+          <label htmlFor="runtime-search">
+            Search names
+            <TextField.Root
+              id="runtime-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
           <Flex gap="3" wrap="wrap">
             <Button
               id="runtime-add"
@@ -360,6 +350,12 @@ export function RuntimeConfig({
                     />
                   )}
                 </label>
+                <Prose size="2">
+                  Save writes this value and applies the change. Application can cancel active work.
+                  {draft.existing &&
+                    kind === "secret" &&
+                    " The previous value is not loaded. Keep unchanged submits nothing."}
+                </Prose>
                 <Flex gap="3" wrap="wrap" mt="3">
                   <Button
                     type="submit"
@@ -377,33 +373,43 @@ export function RuntimeConfig({
                       if (!recovery) setError("")
                     }}
                   >
-                    Cancel
+                    {draft.existing ? "Keep unchanged" : "Cancel"}
                   </Button>
                 </Flex>
               </Panel>
             </form>
           )}
-          <label htmlFor="runtime-search">
-            Search names
-            <TextField.Root
-              id="runtime-search"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
           {data ? (
-            data.entries
-              .filter((entry) => entry.kind === kind && entry.name.includes(search.toUpperCase()))
-              .map((entry) => (
-                <Panel key={entry.name} aria-label={`${entry.name} ${kind}`}>
+            <>
+              <div className="runtime-values-columns" aria-hidden="true">
+                <strong>Name</strong>
+                <strong>Configured state</strong>
+                <strong>Updated</strong>
+                <strong>Actions</strong>
+              </div>
+              {!visible?.length && (
+                <Text role="status">
+                  {entries?.length
+                    ? "No matching names."
+                    : `No ${kind === "secret" ? "secrets" : "variables"} configured.`}
+                </Text>
+              )}
+              {visible?.map((entry) => (
+                <Panel
+                  key={entry.name}
+                  aria-label={`${entry.name} ${kind}`}
+                  className="runtime-values-row"
+                >
                   <Heading as="h2" size="3" className="runtime-entry-name">
                     {entry.name}
                   </Heading>
                   {entry.kind === "secret" ? (
-                    <Badge>Configured · ••••••••</Badge>
+                    <Badge>Configured · write-only</Badge>
                   ) : (
-                    <pre className="runtime-variable-value">{entry.value}</pre>
+                    <div>
+                      <Badge>Configured</Badge>
+                      <pre className="runtime-variable-value">{entry.value}</pre>
+                    </div>
                   )}
                   <Text as="p" size="2">
                     Updated: {new Date(entry.updatedAt).toLocaleString()}
@@ -426,9 +432,61 @@ export function RuntimeConfig({
                     </Button>
                   </Flex>
                 </Panel>
-              ))
+              ))}
+            </>
           ) : (
-            <Text role="status">Loading runtime metadata…</Text>
+            <Text role="status">
+              {busy
+                ? "Loading runtime metadata…"
+                : "Runtime metadata not available. Reload safe metadata to try again."}
+            </Text>
+          )}
+          {kind === "secret" && (
+            <section aria-label="GitHub credential options" className="settings-stack">
+              <Flex gap="3" wrap="wrap">
+                <Button
+                  id="github-connection-entry"
+                  variant="soft"
+                  disabled={busy || blocked || recovery || Boolean(draft)}
+                  onClick={() => {
+                    if (connectionOpen) {
+                      if (githubGuard.current && !githubGuard.current()) return
+                      setConnectionOpen(false)
+                      document.getElementById("github-connection-entry")?.focus()
+                    } else setConnectionOpen(true)
+                  }}
+                >
+                  {connectionOpen ? "Close GitHub connection" : "Manage GitHub connection"}
+                </Button>
+              </Flex>
+              <Prose size="2">
+                For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access
+                Token. Once saved and applied, the token is available to the next bash execution
+                without restart. All chats with bash access can use and read the token; give bash
+                only to trusted chats. Configured state does not prove that GitHub accepts the
+                token.
+              </Prose>
+              <Prose size="2">
+                GitHub mentions use GH_TOKEN to identify the bot account. Manage allowed authors on
+                GitHub mentions, not in Variables. An empty saved allowlist disables automatic
+                replies.
+              </Prose>
+              {connectionOpen && (
+                <GitHubConnection
+                  csrf={csrf}
+                  revision={revision}
+                  application={application}
+                  blocked={blocked || busy || recovery || Boolean(draft)}
+                  onPending={setGithubPending}
+                  guard={githubGuard}
+                  onCommitted={onCommitted}
+                  onSessionExpired={onSessionExpired}
+                  refresh={async () => {
+                    await Promise.all([load(), refresh()])
+                  }}
+                />
+              )}
+            </section>
           )}
           <AlertDialog.Root
             open={Boolean(deleting)}
@@ -447,9 +505,9 @@ export function RuntimeConfig({
                 Delete this {deleting?.kind} and apply the change? Remove saved MCP references
                 first.{" "}
                 {deleting?.name === "GH_TOKEN" && "This removes GH_TOKEN and GITHUB_OAUTH_STATE. "}
-                Deletion does not erase backups or conversation history and does not revoke an
-                upstream key. To change a secret into a public variable, delete it first and
-                explicitly create a variable.
+                Application can cancel active work. Deletion does not erase backups or conversation
+                history and does not revoke an upstream key. To change a secret into a public
+                variable, delete it first and explicitly create a variable.
               </AlertDialog.Description>
               <Flex gap="3" mt="4">
                 <AlertDialog.Cancel>

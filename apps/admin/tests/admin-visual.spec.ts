@@ -46,7 +46,7 @@ for (const viewport of [
     })
     await page
       .getByRole("list", { name: "Chats on this page", exact: true })
-      .getByRole("button")
+      .locator(".directory-chat")
       .first()
       .click()
     await expect(page.locator(".chat-header")).toContainText("Fixture chat")
@@ -75,6 +75,8 @@ for (const viewport of [
       // The added CSS-zoom case checks page reflow. Radix popup positioning under CSS zoom
       // also fails on the base revision; retain the existing popup checks at every native width.
       if (section === "Model providers" && viewport.zoom === 1) {
+        await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
+        await expect(page.getByRole("heading", { name: "Connection", exact: true })).toBeVisible()
         await page.getByRole("button", { name: /^Model: / }).click()
         const popup = page.getByRole("dialog", { name: "Choose model", exact: true })
         await expect(popup).toBeVisible()

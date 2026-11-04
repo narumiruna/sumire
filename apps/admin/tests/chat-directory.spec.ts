@@ -85,7 +85,7 @@ async function fixture(page: Page, href = "/?section=Durable") {
   return state
 }
 
-const selector = (page: Page) => page.locator(".durable-chat-selector")
+const selector = (page: Page) => page.locator(".durable-directory-pane")
 const inspector = (page: Page) =>
   page.getByRole("region", { name: "Durable Inspector", exact: true })
 const rows = (page: Page) =>
@@ -111,12 +111,20 @@ for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
     const state = await fixture(page)
     await expect(selector(page).locator(":scope > details")).toHaveAttribute("open", "")
-    await expect(inspector(page).getByText("Choose a chat", { exact: true })).toBeVisible()
+    await expect(
+      inspector(page).getByRole("heading", { name: "Choose a chat", exact: true }),
+    ).toBeVisible()
     await expect(rows(page).getByRole("button")).toHaveCount(100)
-    const list = selector(page).locator(".directory-list-region")
-    await expect(list).toHaveCSS("max-height", "280px")
-    await expect(list).toHaveCSS("overflow-y", "auto")
-    expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+    if (width >= 1100) {
+      await expect(selector(page)).toHaveCSS("overflow-y", "auto")
+      const bounds = await selector(page).evaluate((element) => ({
+        height: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        available: innerHeight,
+      }))
+      expect(bounds.height).toBeLessThan(bounds.available)
+      expect(bounds.scrollHeight).toBeGreaterThan(bounds.height)
+    }
     expect(state.durableReads).toEqual([])
     const search = selector(page).getByLabel("Search stored chats", { exact: true })
     await search.fill("Beyond first page")
@@ -232,7 +240,7 @@ test("direct links load exact metadata independently of the visible page and sur
     true,
   )
   expect(state.directoryReads.some((url) => url.searchParams.get("offset") === "0")).toBe(true)
-  await expect(selector(page).locator(":scope > details")).not.toHaveAttribute("open", "")
+  await expect(selector(page).locator(":scope > details")).toHaveAttribute("open", "")
   await page.reload()
   await expect(
     inspector(page).getByRole("heading", { name: "Beyond first page", exact: true }),
@@ -452,7 +460,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   await fixture(page, "/?section=Chats")
   const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("-9003")
-  const row = rows(page).locator(".directory-chat")
+  const row = rows(page).getByRole("link", { name: "Unnamed group · -9003", exact: true })
   await expect(row.locator("strong")).toHaveText("Unnamed group")
   await expect(row.locator(".directory-chat-meta code")).toHaveText("-9003")
   await row.click()
@@ -514,7 +522,9 @@ for (const trigger of ["directory", "lookup", "logout"] as const) {
     await selector(page)
       .getByLabel("Search stored chats", { exact: true })
       .fill("Beyond first page")
-    await rows(page).getByRole("button").click()
+    await rows(page)
+      .getByRole("button", { name: /Beyond first page/ })
+      .click()
     await expect(
       inspector(page).getByRole("heading", { name: "Beyond first page", exact: true }),
     ).toBeVisible()

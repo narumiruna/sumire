@@ -1,5 +1,5 @@
 import path from "node:path"
-import type { Inventory } from "@narumitw/sumire-contracts"
+import type { Inventory, McpObservation } from "@narumitw/sumire-contracts"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
 import { z } from "zod"
 import { createMcpTransport, McpCapability } from "../agent/mcp-capability.js"
@@ -28,7 +28,10 @@ const entrySchema = z
 type Entry = z.infer<typeof entrySchema>
 
 export class McpAdmin {
-  readonly discovered = new Map<string, { status: string; tools: string[] }>()
+  readonly discovered = new Map<
+    string,
+    { status: string; tools: string[]; observation?: McpObservation; epoch?: number }
+  >()
   readonly probes = new Set<McpCapability>()
   constructor(
     readonly store: AdminStore,
@@ -141,22 +144,37 @@ export class McpAdmin {
     return parseMcpConfig({ mcpServers: raw }, { warn: () => {} }, environment)
   }
   inventory(): Inventory["mcp"] {
-    return Object.entries(this.raw()).map(([name, entry]) => ({
-      name,
-      fields: Object.keys(entry),
-      enabled: entry.enabled,
-      exposure: entry.exposure,
-      toolExposure: entry.toolExposure,
-      connection: this.discovered.get(name)?.status ?? "not tested",
-      tools: this.discovered.get(name)?.tools ?? [],
-      // URLs/commands/args can contain secrets from legacy configuration. Do not echo them.
-      url: entry.url ? "configured" : undefined,
-      command: entry.command ? "configured" : undefined,
-      args: entry.args?.map(() => "configured"),
-      cwd: entry.cwd ? "configured" : undefined,
-      env: Object.fromEntries(Object.keys(entry.env ?? {}).map((k) => [k, null])),
-      headers: Object.fromEntries(Object.keys(entry.headers ?? {}).map((k) => [k, null])),
-    }))
+    const snapshot = this.store.snapshot()
+    return Object.entries(this.raw()).map(([name, entry]) => {
+      const cached = this.discovered.get(name)
+      const observation = cached?.observation
+      const current =
+        observation &&
+        observation.state !== "untested" &&
+        observation.revision === snapshot.revision &&
+        cached.epoch === snapshot.epoch &&
+        snapshot.status === "applied" &&
+        snapshot.applied === snapshot.revision
+          ? cached
+          : undefined
+      return {
+        name,
+        fields: Object.keys(entry),
+        enabled: entry.enabled,
+        exposure: entry.exposure,
+        toolExposure: entry.toolExposure,
+        connection: current?.status ?? "not tested",
+        observation: current?.observation ?? { state: "untested" },
+        tools: current?.tools ?? [],
+        // URLs/commands/args can contain secrets from legacy configuration. Do not echo them.
+        url: entry.url ? "configured" : undefined,
+        command: entry.command ? "configured" : undefined,
+        args: entry.args?.map(() => "configured"),
+        cwd: entry.cwd ? "configured" : undefined,
+        env: Object.fromEntries(Object.keys(entry.env ?? {}).map((k) => [k, null])),
+        headers: Object.fromEntries(Object.keys(entry.headers ?? {}).map((k) => [k, null])),
+      }
+    })
   }
   async discover(name: string) {
     if (this.probes.size) throw new AdminError(409, "An MCP connection test is already running")
@@ -175,7 +193,9 @@ export class McpAdmin {
       (server, cwd, home) => {
         const current = this.store.snapshot()
         if (
+          this.discovered.get(name) !== checking ||
           current.epoch !== snapshot.epoch ||
+          current.revision !== snapshot.revision ||
           current.status !== "applied" ||
           current.applied !== current.revision
         )
@@ -184,22 +204,71 @@ export class McpAdmin {
       },
     )
     this.probes.add(capability)
+    const checking = {
+      status: "checking",
+      tools: [],
+      epoch: snapshot.epoch,
+      observation: {
+        state: "checking",
+        revision: snapshot.revision,
+        startedAt: Date.now(),
+      } satisfies McpObservation,
+    }
+    this.discovered.set(name, checking)
+    const signal = AbortSignal.timeout(15_000)
     try {
-      await capability.ready(AbortSignal.timeout(15_000))
-      const tools = capability.tools.map((tool) => tool.name)
-      this.store.registerTools(tools, false)
-      const state = {
-        status: tools.length ? "connected" : "no visible tools or unavailable",
-        tools,
+      let observation: McpObservation
+      try {
+        await capability.ready(signal)
+        const outcome = capability.discoveryOutcome(name)
+        observation =
+          outcome?.state === "succeeded"
+            ? { state: "succeeded", revision: snapshot.revision, completedAt: Date.now() }
+            : {
+                state: "failed",
+                revision: snapshot.revision,
+                completedAt: Date.now(),
+                reason: outcome?.state === "failed" ? outcome.reason : "timeout",
+              }
+      } catch {
+        observation = {
+          state: "failed",
+          revision: snapshot.revision,
+          completedAt: Date.now(),
+          reason: signal.aborted ? "timeout" : "cancelled",
+        }
       }
-      this.discovered.set(name, state)
+      const current = this.store.snapshot()
+      if (
+        this.discovered.get(name) !== checking ||
+        current.epoch !== snapshot.epoch ||
+        current.revision !== snapshot.revision ||
+        current.status !== "applied" ||
+        current.applied !== current.revision
+      ) {
+        if (this.discovered.get(name) === checking) this.discovered.delete(name)
+        throw new AdminError(409, "MCP connection settings changed; test again after applying")
+      }
+      const tools =
+        observation.state === "succeeded" ? capability.tools.map((tool) => tool.name) : []
+      if (observation.state === "succeeded") this.store.registerTools(tools, false)
+      const state = {
+        status: observation.state === "succeeded" ? "connected" : "unavailable",
+        tools,
+        observation,
+      }
+      this.discovered.set(name, { ...state, epoch: snapshot.epoch })
       return state
     } finally {
-      await capability.close()
-      this.probes.delete(capability)
+      try {
+        await capability.close()
+      } finally {
+        this.probes.delete(capability)
+      }
     }
   }
   async close() {
+    this.discovered.clear()
     await Promise.all([...this.probes].map((probe) => probe.close()))
   }
   remove(name: string, revision: number, actor: string) {

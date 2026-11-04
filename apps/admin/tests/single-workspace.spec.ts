@@ -130,7 +130,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       const requests = await fixture(page)
       await expectPane(page, true)
       await expectNoOverflow(page)
-      const row = page.getByRole("button", { name: "Fixture chat · 42", exact: true })
+      const row = page.getByRole("link", { name: "Fixture chat · 42", exact: true })
       await expectActionSize(row)
       await row.click()
       await expectPane(page, false)
@@ -149,7 +149,8 @@ for (const width of [1440, 851, 850, 390, 320]) {
       if (width === 390) {
         const firstFact = await bounds(facts.locator(".rt-DataListItem").first())
         expect(firstFact.y).toBeGreaterThanOrEqual(0)
-        expect(firstFact.y).toBeLessThanOrEqual(400)
+        expect(firstFact.y + firstFact.height).toBeLessThanOrEqual(844)
+        await expect(facts.locator(".rt-DataListItem").first()).toBeInViewport({ ratio: 1 })
       }
       for (const [label, value] of [
         ["Access", "Approved and enabled"],
@@ -174,9 +175,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       const actions = details.getByRole("button", { name: "Chat actions", exact: true })
       await expect(actions).toHaveCount(1)
       await expectActionSize(actions)
-      await expect(details.getByRole("button", { name: "Copy chat ID", exact: true })).toHaveCount(
-        0,
-      )
+      await expectActionSize(details.getByRole("button", { name: "Copy chat ID", exact: true }))
       await expect(
         details.getByRole("button", { name: "View conversation records", exact: true }),
       ).toHaveCount(0)
@@ -215,7 +214,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       await access.click()
       await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
       await expect(directory.getByRole("list").locator(".directory-chat")).toHaveCount(1)
-      const selected = directory.getByRole("button", { name: "Fixture chat · 42", exact: true })
+      const selected = directory.getByRole("link", { name: "Fixture chat · 42", exact: true })
       await selected.click()
       await expectPane(page, false)
       const details = page.locator(".chat-detail")
@@ -276,12 +275,15 @@ test("desktop keyboard navigation moves between the directory, details, and chat
   await search.press("Tab")
   await expect(directory.locator(".directory-options > summary")).toBeFocused()
   await page.keyboard.press("Tab")
-  const selected = directory.getByRole("button", { name: "Fixture chat · 42", exact: true })
+  const selected = directory.getByRole("link", { name: "Fixture chat · 42", exact: true })
   await expect(selected).toBeFocused()
   await page.keyboard.press("Enter")
   await expectPane(page, false)
   const details = page.locator(".chat-detail")
   await expect(details.getByRole("heading", { name: "Fixture chat", exact: true })).toBeFocused()
+  await page.keyboard.press("Tab")
+  const headerCopy = details.getByRole("button", { name: "Copy chat ID", exact: true })
+  await expect(headerCopy).toBeFocused()
   await page.keyboard.press("Tab")
   const actions = details.getByRole("button", { name: "Chat actions", exact: true })
   await expect(actions).toBeFocused()
@@ -298,6 +300,8 @@ test("desktop keyboard navigation moves between the directory, details, and chat
   await page.keyboard.press("Escape")
   await expect(actions).toBeFocused()
   await page.keyboard.press("Shift+Tab")
+  await expect(headerCopy).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
   await expect(
     details.getByRole("button", { name: "Back to chat directory", exact: true }),
   ).toBeFocused()
@@ -306,6 +310,12 @@ test("desktop keyboard navigation moves between the directory, details, and chat
   await expect(selected).toBeFocused()
   await expect(search).toHaveValue("Fixture chat")
   await expect(selected).toHaveAttribute("aria-current", "true")
+  await page.keyboard.press("Tab")
+  await expect(
+    directory.getByRole("button", { name: "Copy chat ID 42", exact: true }),
+  ).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(directory.getByRole("button", { name: "Manage access", exact: true })).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(
     directory.getByRole("button", { name: "Actions for Fixture chat · 42", exact: true }),
@@ -347,7 +357,7 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: 900 })
     const requests = await fixture(page)
-    await page.getByRole("button", { name: "Fixture chat · 42", exact: true }).click()
+    await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     await expect(page.getByRole("menu")).toBeVisible()
     await page.goBack()
@@ -374,7 +384,7 @@ for (const width of [1440, 390]) {
     await expect(management.locator(".access-approve-form")).toBeHidden()
     await expect(management.locator(".access-lists")).toBeHidden()
     await expect(page.locator("#chat-access-management + .chat-workspace")).toHaveCount(1)
-    await page.getByRole("button", { name: "Fixture chat · 42", exact: true }).click()
+    await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
     await details.getByRole("button", { name: "Manage access", exact: true }).click()
     const chatUrl = page.url()
     const access = details.getByRole("tab", { name: "Access", exact: true })
@@ -405,7 +415,7 @@ test("retained access target returns to that chat after history clears the curre
 }) => {
   const requests = await fixture(page)
   const management = page.locator("details#chat-access-management")
-  await page.getByRole("button", { name: "Fixture chat · 42", exact: true }).click()
+  await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
   await page.getByRole("button", { name: "Manage access", exact: true }).click()
   await page.getByRole("button", { name: "Manage chat access", exact: true }).click()
   await expect(management.locator("#access-id-input")).toBeFocused()
@@ -434,7 +444,7 @@ test("retained access target returns to that chat after history clears the curre
 for (const activation of ["Control+Enter", "Shift+Enter", "Control+click"]) {
   test(`record menu link preserves native ${activation} activation`, async ({ page }) => {
     await fixture(page)
-    await page.getByRole("button", { name: "Fixture chat · 42", exact: true }).click()
+    await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
     await page.getByRole("button", { name: "Chat actions", exact: true }).click()
     const records = page.getByRole("menuitem", { name: "View conversation records", exact: true })
     const href = await records.getAttribute("href")
@@ -465,7 +475,7 @@ test("all four tabs remain visible at 320px and support Home, End, and wrapping 
 }) => {
   await page.setViewportSize({ width: 320, height: 844 })
   const requests = await fixture(page)
-  await page.getByRole("button", { name: "Fixture chat · 42", exact: true }).click()
+  await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
   await expectPane(page, false)
   await expectAllTabs(page)
   await page.getByRole("tab", { name: "Overview", exact: true }).focus()

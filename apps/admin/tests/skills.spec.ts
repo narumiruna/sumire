@@ -74,12 +74,13 @@ for (const width of [1440, 390]) {
       name: "Default chat selection for skill expenses",
       exact: true,
     })
+    const loaded = page.getByRole("region", { name: "Skill load-public-url", exact: true })
     await expect(
-      page
-        .getByRole("region", { name: "Skill load-public-url", exact: true })
-        .getByText("Load a public page with URL tools.", { exact: true })
-        .first(),
+      loaded.getByText("Load a public page with URL tools.", { exact: true }).first(),
     ).toBeVisible()
+    await expect(loaded.getByText("Selected by default", { exact: true })).toBeVisible()
+    const expenses = page.getByRole("region", { name: "Skill expenses", exact: true })
+    await expect(expenses.getByText("Not selected", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("checkbox", {
         name: "Default chat selection for skill new-skill",
@@ -89,14 +90,13 @@ for (const width of [1440, 390]) {
     await defaults.focus()
     await page.keyboard.press("Space")
     await expect(defaults).toBeChecked()
+    await expect(expenses.getByText("Selected by default", { exact: true })).toBeVisible()
     await page.getByRole("textbox", { name: "Search skills" }).fill("expenses")
     await expect(
       page.getByRole("region", { name: "Skill load-public-url", exact: true }),
     ).toHaveCount(0)
     await navigate(page, "Defaults")
-    await expect(page.getByRole("list", { name: "Default skill summary" })).toContainText(
-      "expenses",
-    )
+    await expect(page.getByText("3 skills selected", { exact: true })).toBeVisible()
     await page.getByRole("link", { name: "Manage default skills", exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Search skills" })).toHaveValue("expenses")
     await expect(defaults).toBeChecked()
@@ -109,6 +109,27 @@ for (const width of [1440, 390]) {
     expect(state.saved().chats["43"]?.skills).toEqual(["missing"])
   })
 }
+
+test("installation instructions explain host maintenance without changing policy or skill files", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  const saved = structuredClone(state.saved())
+  const instructions = page.getByRole("button", { name: "Installation instructions", exact: true })
+  await instructions.click()
+  const dialog = page.getByRole("dialog", { name: "Installation instructions", exact: true })
+  await expect(dialog).toContainText("Skill files require trusted host maintenance")
+  await expect(dialog).toContainText("This page manages policy selections only")
+  await expect(dialog).toContainText(
+    "Install, update, or remove skill files on the host, then restart the bot to refresh this inventory.",
+  )
+  await expect(dialog.getByRole("button")).toHaveCount(1)
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(instructions).toBeFocused()
+  expect(state.writes).toEqual([])
+  expect(state.saved()).toEqual(saved)
+})
 
 test("chat skills distinguish inheritance, explicit empty, and reset", async ({ page }) => {
   const state = await setup(page)

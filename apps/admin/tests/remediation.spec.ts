@@ -135,7 +135,7 @@ test("F4 connection editing starts explicitly and retains a closed draft", async
   expect(state.writes).toEqual([])
 })
 
-test("F5 settings start with usable controls on mobile", async ({ page }) => {
+test("F5 mobile settings expose scope and keep focused actions fully visible", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const state = await fixture(page)
   await navigate(page, "Tool permissions")
@@ -144,32 +144,53 @@ test("F5 settings start with usable controls on mobile", async ({ page }) => {
     page.getByRole("checkbox", { name: "Globally allow tool read_url_content", exact: true }),
   ).toBeHidden()
   await visibleInViewport(
-    page.getByRole("checkbox", {
-      name: "Default chat permission for tool read_url_content",
-      exact: true,
-    }),
+    page.getByRole("region", { name: "Permission editing scope", exact: true }),
   )
+  const permission = page.getByRole("checkbox", {
+    name: "Default chat permission for tool read_url_content",
+    exact: true,
+  })
+  await permission.focus()
+  await expect(permission).toBeFocused()
+  await visibleInViewport(permission)
   await visibleInViewport(page.locator(".permission-row").first())
   await navigate(page, "Access")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(page.getByRole("button", { name: "Review approval", exact: true }))
+  await visibleInViewport(page.locator("#current-section-heading"))
+  await page.getByLabel("Telegram ID to approve", { exact: true }).fill("8001")
+  const approval = page.getByRole("button", { name: "Review approval", exact: true })
+  await approval.focus()
+  await expect(approval).toBeFocused()
+  await visibleInViewport(approval)
+  await page.getByRole("button", { name: "Clear ID input", exact: true }).click()
   await navigate(page, "Skills")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(
-    page.getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true }),
-  )
+  await visibleInViewport(page.locator("#current-section-heading"))
+  const skill = page.getByRole("checkbox", {
+    name: "Default chat selection for skill url-guide",
+    exact: true,
+  })
+  await skill.focus()
+  await expect(skill).toBeFocused()
+  await visibleInViewport(skill)
   await navigate(page, "Defaults")
   await page.evaluate(() => window.scrollTo(0, 0))
-  await visibleInViewport(page.getByRole("combobox", { name: "Shared default model", exact: true }))
+  await visibleInViewport(page.locator("#current-section-heading"))
+  const model = page.getByRole("combobox", { name: "Shared default model", exact: true })
+  await model.focus()
+  await expect(model).toBeFocused()
+  await visibleInViewport(model)
   await expect(
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),
   ).toBeHidden()
   await navigate(page, "MCP connections")
   await page.evaluate(() => window.scrollTo(0, 0))
   await visibleInViewport(page.getByRole("button", { name: "Add connection", exact: true }))
-  await visibleInViewport(
-    page.getByRole("button", { name: "Edit fields for fixture", exact: true }),
-  )
+  const edit = page.getByRole("button", { name: "Edit fields for fixture", exact: true })
+  await edit.focus()
+  await expect(edit).toBeFocused()
+  await visibleInViewport(edit)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(state.writes).toEqual([])
 })
 

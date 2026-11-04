@@ -4,10 +4,12 @@ import {
   McpClient,
   McpConnectionClosedError,
   McpHttpError,
+  McpTimeoutError,
   type McpTransport,
   StreamableHttpTransport,
   type Tool,
 } from "@earendil-works/pi-mcp"
+import type { McpObservationFailure } from "@narumitw/sumire-contracts"
 import { type TSchema, Type } from "typebox"
 import type { Logger } from "../logging.js"
 import type { NativeTool } from "./durable/tools.js"
@@ -21,6 +23,9 @@ import { ManagedStdioTransport } from "./mcp-stdio.js"
 
 const STARTUP_MS = 10_000
 const MAX_CONSECUTIVE_REFRESHES = 8
+const isTimeout = (error: unknown) =>
+  error instanceof McpTimeoutError ||
+  (error instanceof DOMException && error.name === "TimeoutError")
 const SYSTEM_ENV = [
   "PATH",
   "HOME",
@@ -91,8 +96,13 @@ function mcpNamespace(server: string, redact: (text: string) => string): string 
   return `mcp__${safe}`
 }
 
+export type McpDiscoveryOutcome =
+  | { state: "untested" | "checking" | "succeeded" }
+  | { state: "failed"; reason: McpObservationFailure }
+
 type Connection = {
   config: McpServer
+  outcome: McpDiscoveryOutcome
   client?: McpClient
   opening?: Promise<void>
   tools: NativeTool[]
@@ -119,12 +129,23 @@ export class McpCapability {
     private readonly authorize: (server: string, tool: string) => boolean = () => true,
     private readonly discovered: (names: string[]) => void = () => {},
   ) {
-    this.#connections = config.servers.map((config) => ({ config, tools: [], listed: [] }))
+    this.#connections = config.servers.map((config) => ({
+      config,
+      outcome: { state: "untested" },
+      tools: [],
+      listed: [],
+    }))
     this.#homes = new McpProcessHomes(directory)
   }
 
   get tools(): NativeTool[] {
     return this.#connections.flatMap((connection) => connection.tools)
+  }
+
+  /** Typed discovery state; empty or withheld publication is not a connection failure. */
+  discoveryOutcome(server: string): McpDiscoveryOutcome | undefined {
+    const outcome = this.#connections.find((c) => c.config.name === server)?.outcome
+    return outcome ? { ...outcome } : undefined
   }
 
   /** Called before discovery; reconnect only connections, never resend a tool invocation. */
@@ -179,6 +200,8 @@ export class McpCapability {
   private async connect(connection: Connection): Promise<void> {
     let client: McpClient | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
+    connection.outcome = { state: "checking" }
     try {
       connection.home ??= await this.#homes.create()
       if (this.#closed) return
@@ -192,6 +215,8 @@ export class McpCapability {
       current.onClose(() => {
         if (connection.client !== current) return
         connection.listed = []
+        if (!this.#closed && connection.outcome.state !== "failed")
+          connection.outcome = { state: "failed", reason: "transport" }
         this.publish()
       })
       current.onError(() => {
@@ -202,14 +227,22 @@ export class McpCapability {
         void this.refresh(connection, current)
       })
       timer = setTimeout(
-        () => void current.close().catch(() => {}),
+        () => {
+          timedOut = true
+          connection.outcome = { state: "failed", reason: "timeout" }
+          void current.close().catch(() => {})
+        },
         Math.min(60_000, connection.config.timeoutMs),
       )
       await current.connect(this.transportFactory(connection.config, this.cwd, connection.home))
       clearTimeout(timer)
       timer = undefined
       await this.refresh(connection, current)
-    } catch {
+    } catch (error) {
+      connection.outcome = {
+        state: "failed",
+        reason: timedOut || isTimeout(error) ? "timeout" : "transport",
+      }
       connection.listed = []
       this.publish()
       this.logger.warn("MCP server unavailable; other capabilities remain available")
@@ -230,6 +263,7 @@ export class McpCapability {
       do {
         if (++passes > MAX_CONSECUTIVE_REFRESHES) {
           connection.dirty = false
+          connection.outcome = { state: "failed", reason: "listing" }
           this.logger.warn(
             "MCP continuous tool changes exceeded the refresh limit; connection closed",
           )
@@ -239,10 +273,12 @@ export class McpCapability {
         connection.dirty = false
         const current = connection.client
         if (current?.connectionState !== "connected") break
+        connection.outcome = { state: "checking" }
+        const deadline = AbortSignal.timeout(STARTUP_MS)
         try {
           const listed = await listBoundedMcpTools(current, {
             timeoutMs: STARTUP_MS,
-            signal: AbortSignal.timeout(STARTUP_MS),
+            signal: deadline,
           })
           if (this.#closed) break
           if (connection.client !== current) {
@@ -251,9 +287,14 @@ export class McpCapability {
           }
           if (current.connectionState !== "connected") break
           connection.listed = listed
+          connection.outcome = { state: "succeeded" }
           this.publish()
-        } catch {
+        } catch (error) {
           if (connection.client === current) {
+            connection.outcome = {
+              state: "failed",
+              reason: deadline.aborted || isTimeout(error) ? "timeout" : "listing",
+            }
             connection.listed = []
             this.publish()
             await current.close().catch(() => {})

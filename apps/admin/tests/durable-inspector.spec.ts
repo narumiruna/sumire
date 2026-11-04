@@ -1049,7 +1049,11 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await durableFixture(page, "/?section=Chats&chat=42")
   await click(page.getByRole("tab", { name: "Access", exact: true }))
   await click(page.getByRole("button", { includeHidden: true, name: "Revoke access", exact: true }))
-  await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("tabpanel", { name: "Access", exact: true })
+      .getByText("Pending access revocation", { exact: true }),
+  ).toBeVisible()
   await page.getByRole("button", { name: "Chat actions", exact: true }).click()
   await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
   await click(
@@ -1062,7 +1066,11 @@ test("policy drafts and the discard confirmation survive Inspector navigation", 
   await click(
     page.getByRole("button", { includeHidden: true, name: "Open chat settings", exact: true }),
   )
-  await expect(page.getByText("Pending access revocation", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole("tabpanel", { name: "Access", exact: true })
+      .getByText("Pending access revocation", { exact: true }),
+  ).toBeVisible()
   await expect(page.locator(".chat-header code")).toHaveText("42")
   await navigateSection(page, "Durable")
   await page.getByRole("button", { name: "Account", exact: true }).click()
@@ -1129,7 +1137,7 @@ test("no selected chat performs no inspection read; missing detail is unavailabl
 }) => {
   const state = await durableFixture(page, "/?section=Durable")
   await expect(
-    page.getByText("Read stored messages and tool results. This view does not start work.", {
+    page.getByText("No chat is selected. Viewing records does not load a session or start work.", {
       exact: true,
     }),
   ).toBeVisible()

@@ -128,6 +128,7 @@ export function ChatSelector({
   footer,
   title = "Find a chat",
   summary,
+  columns,
 }: {
   directory: ChatDirectory
   chat: string
@@ -140,8 +141,15 @@ export function ChatSelector({
   footer?: ReactNode
   title?: string | null
   summary?: ReactNode
+  columns?: {
+    model(chat: Chat): ReactNode
+    issues(chat: Chat): ReactNode
+    copyId(chat: Chat): ReactNode
+    href(chat: Chat): string
+  }
 }) {
   const searchId = useId()
+  const ChatControl = columns ? "a" : "button"
   return (
     <>
       <div className="directory-header">
@@ -209,51 +217,90 @@ export function ChatSelector({
         {!directory.loading && !directory.error && (
           <>
             {actions && visibleChats.length > 0 && (
-              <div className="directory-columns" aria-hidden="true">
-                <span>Chat / ID</span>
-                <span>Access / status</span>
-                <span />
+              <div
+                className="directory-columns"
+                data-management={Boolean(columns)}
+                aria-hidden="true"
+              >
+                <span>{columns ? "Chat" : "Chat / ID"}</span>
+                <span>{columns ? "Access" : "Access / status"}</span>
+                {columns && <span>Effective model</span>}
+                {columns && <span>Configuration issues</span>}
+                <span>{columns ? "Actions" : ""}</span>
               </div>
             )}
             <ul className="chat-list" aria-label="Chats on this page">
               {visibleChats.map((value) => (
-                <li key={value.id} className={actions ? "directory-row" : undefined}>
-                  <Button asChild variant="ghost" className="directory-chat">
-                    <button
-                      type="button"
-                      aria-current={chat === String(value.id) ? "true" : undefined}
-                      aria-label={`${chatName(value)} · ${value.id}`}
-                      aria-describedby={badge ? `directory-state-${value.id}` : undefined}
-                      onClick={() => onSelect(String(value.id))}
-                    >
-                      <Flex asChild className="directory-chat-identity" align="start" gap="2">
-                        <span>
-                          {value.type === "private" ? (
-                            <PersonIcon aria-hidden="true" />
-                          ) : value.type === "channel" ? (
-                            <SpeakerLoudIcon aria-hidden="true" />
-                          ) : (
-                            <ChatBubbleIcon aria-hidden="true" />
-                          )}
-                          <strong title={chatName(value)}>{chatName(value)}</strong>
-                        </span>
-                      </Flex>
-                      <Text as="span" size="1" color="gray" className="directory-chat-meta">
-                        <span>{value.type || "Type not known"}</span>
-                        <Code variant="ghost">{value.id}</Code>
-                      </Text>
-                      {badge && !actions && (
-                        <span id={`directory-state-${value.id}`} className="directory-chat-state">
-                          {badge(value)}
-                        </span>
-                      )}
-                    </button>
-                  </Button>
+                <li
+                  key={value.id}
+                  className={actions ? "directory-row" : undefined}
+                  data-management={Boolean(columns)}
+                >
+                  <div
+                    className={columns ? "directory-identity-cell" : undefined}
+                    style={columns ? undefined : { display: "contents" }}
+                  >
+                    <Button asChild variant="ghost" className="directory-chat">
+                      <ChatControl
+                        type={columns ? undefined : "button"}
+                        href={columns?.href(value)}
+                        aria-current={chat === String(value.id) ? "true" : undefined}
+                        aria-label={`${chatName(value)} · ${value.id}`}
+                        aria-describedby={badge ? `directory-state-${value.id}` : undefined}
+                        onClick={(event) => {
+                          if (
+                            columns &&
+                            (event.button !== 0 ||
+                              event.metaKey ||
+                              event.ctrlKey ||
+                              event.shiftKey ||
+                              event.altKey)
+                          )
+                            return
+                          event.preventDefault()
+                          onSelect(String(value.id))
+                        }}
+                      >
+                        <Flex asChild className="directory-chat-identity" align="start" gap="2">
+                          <span>
+                            {value.type === "private" ? (
+                              <PersonIcon aria-hidden="true" />
+                            ) : value.type === "channel" ? (
+                              <SpeakerLoudIcon aria-hidden="true" />
+                            ) : (
+                              <ChatBubbleIcon aria-hidden="true" />
+                            )}
+                            <strong title={chatName(value)}>{chatName(value)}</strong>
+                          </span>
+                        </Flex>
+                        <Text as="span" size="1" color="gray" className="directory-chat-meta">
+                          <span>{value.type || "Type not known"}</span>
+                          <Code variant="ghost">{value.id}</Code>
+                        </Text>
+                        {badge && !actions && (
+                          <span id={`directory-state-${value.id}`} className="directory-chat-state">
+                            {badge(value)}
+                          </span>
+                        )}
+                      </ChatControl>
+                    </Button>
+                    {columns?.copyId(value)}
+                  </div>
                   {actions && (
                     <>
                       <div id={`directory-state-${value.id}`} className="directory-row-state">
                         {badge?.(value)}
                       </div>
+                      {columns && (
+                        <section className="directory-model" aria-label="Effective model">
+                          {columns.model(value)}
+                        </section>
+                      )}
+                      {columns && (
+                        <section className="directory-issues" aria-label="Configuration issues">
+                          {columns.issues(value)}
+                        </section>
+                      )}
                       <div className="directory-row-actions">{actions(value)}</div>
                     </>
                   )}

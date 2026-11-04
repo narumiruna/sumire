@@ -14,7 +14,7 @@ import {
 } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
-import { Fragment, useEffect, useRef, useState } from "react"
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
 import { BrandIcon } from "./brand-icon.js"
 
 export const pages = [
@@ -47,15 +47,15 @@ export const pendingEditors = {
     target: { page: "Tool permissions", selector: "#tool-input" },
   },
   endpoint: {
-    label: "Model providers — Custom endpoint",
+    label: "Providers & models — Custom endpoint",
     target: { page: "Model Providers", selector: "#endpoint-provider-id" },
   },
   mcpReference: {
-    label: "MCP Servers — Stored reference input",
+    label: "MCP servers — Stored reference input",
     target: { page: "MCP connections", selector: "#mcp-reference-editor" },
   },
   secret: {
-    label: "MCP Servers — Secret replacement",
+    label: "MCP servers — Secret replacement",
     target: { page: "MCP connections", selector: "#secret-name" },
   },
 } satisfies Record<string, { label: string; target: EditorTarget }>
@@ -87,33 +87,29 @@ const pageIcons = {
 } satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
   Chats: "Chats",
-  Durable: "Conversation records",
+  Durable: "Conversation logs",
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
-  "MCP connections": "MCP Servers",
-  "Model Providers": "Model providers",
+  "MCP connections": "MCP servers",
+  "Model Providers": "Providers & models",
   "Secrets & variables": "Secrets & variables",
   "GitHub mentions": "GitHub mentions",
-  Audit: "Audit",
+  Audit: "Audit log",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
-const navigationGroups = [
-  { id: "chat-management", label: "Chats", pages: ["Chats"] },
-  { id: "conversation", label: "Conversation", pages: ["Durable"] },
-  { id: "models", label: "Models", pages: ["Model Providers"] },
-  {
-    id: "tools-and-skills",
-    label: "Tools & skills",
-    pages: ["Tool permissions", "Skills", "MCP connections"],
-  },
-  {
-    id: "system-settings",
-    label: "Configuration",
-    pages: ["Defaults", "Secrets & variables", "GitHub mentions"],
-  },
-  { id: "activity", label: "Monitoring", pages: ["Audit"] },
-] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]
+const navigationOrder: readonly Page[] = [
+  "Chats",
+  "Durable",
+  "Defaults",
+  "Model Providers",
+  "Tool permissions",
+  "Skills",
+  "MCP connections",
+  "Secrets & variables",
+  "GitHub mentions",
+  "Audit",
+]
 const technicalDescriptions: Partial<Record<Page, string>> = {
   Durable: "Durable Inspector: stored conversations and execution records.",
   "MCP connections": "Model Context Protocol (MCP) connections.",
@@ -142,6 +138,7 @@ export function readNavigation(url: URL) {
 const sectionAnchors: Record<string, Page> = {
   "#model-availability": "Model Providers",
   "#default-tool-permissions": "Tool permissions",
+  "#default-skills": "Skills",
   "#chat-access-management": "Chats",
 }
 
@@ -224,7 +221,7 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
     page: state.page,
     chat: state.chat,
     setPage: (page: Page, anchor?: string) => {
-      if (page !== state.page && !guard.current()) return
+      if (page !== state.page && !guard.current()) return false
       cancelTargetFocus()
       const url = new URL(window.location.href)
       if (anchor) url.hash = anchor
@@ -234,6 +231,7 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
         window.history.pushState(null, "", href)
       currentHref.current = window.location.href
       setState((current) => ({ ...current, page, target: anchor || undefined }))
+      return true
     },
     setChat: (chat: string) => {
       if (chat !== state.chat && !guard.current()) return
@@ -252,10 +250,12 @@ export function SideNavigation({
   chat,
   actor,
   onNavigate,
+  account,
 }: {
   page: Page
   chat: string
   actor: string
+  account?: ReactNode
   onNavigate(page: Page): void
 }) {
   const [open, setOpen] = useState(false)
@@ -289,72 +289,52 @@ export function SideNavigation({
         <span className="section-trigger-label">Sections · {pageLabel(page)}</span>
       </Button>
       <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
-        {navigationGroups.map((group) => (
-          <section
-            key={group.id}
-            className="navigation-group"
-            aria-labelledby={`navigation-${group.id}`}
-          >
-            <Heading
-              as="h2"
-              id={`navigation-${group.id}`}
-              aria-label={`${group.label} navigation`}
-              className="navigation-group-title"
-              size="1"
-              weight="medium"
-              color="gray"
-            >
-              {group.label}
-            </Heading>
-            {group.pages.map((item) => {
-              const Icon = pageIcons[item]
-              const description = technicalDescriptions[item]
-              const descriptionId = `navigation-description-${item.replaceAll(" ", "-")}`
-              return (
-                <Fragment key={item}>
-                  <a
-                    href={navigationHref(item, chat)}
-                    aria-current={page === item ? "page" : undefined}
-                    aria-describedby={description ? descriptionId : undefined}
-                    onClick={(event) => {
-                      if (
-                        event.button !== 0 ||
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      )
-                        return
-                      event.preventDefault()
-                      if (navigationFrame.current !== undefined)
-                        cancelAnimationFrame(navigationFrame.current)
-                      onNavigate(item)
-                      setOpen(false)
-                      if (trigger.current?.checkVisibility()) trigger.current.focus()
-                      else {
-                        const link = event.currentTarget
-                        navigationFrame.current = requestAnimationFrame(() => {
-                          navigationFrame.current = undefined
-                          if (!link.isConnected || link.getAttribute("aria-current") !== "page")
-                            return
-                          const heading = document.getElementById("current-section-heading")
-                          heading?.focus({ preventScroll: true })
-                          window.scrollTo({ top: 0, behavior: "instant" })
-                        })
-                      }
-                    }}
-                  >
-                    <Icon aria-hidden />
-                    <span>{pageLabel(item)}</span>
-                  </a>
-                  {description && (
-                    <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>
-                  )}
-                </Fragment>
-              )
-            })}
-          </section>
-        ))}
+        {navigationOrder.map((item) => {
+          const Icon = pageIcons[item]
+          const description = technicalDescriptions[item]
+          const descriptionId = `navigation-description-${item.replaceAll(" ", "-")}`
+          return (
+            <Fragment key={item}>
+              <a
+                href={navigationHref(item, chat)}
+                aria-current={page === item ? "page" : undefined}
+                aria-describedby={description ? descriptionId : undefined}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return
+                  event.preventDefault()
+                  if (navigationFrame.current !== undefined)
+                    cancelAnimationFrame(navigationFrame.current)
+                  onNavigate(item)
+                  setOpen(false)
+                  if (trigger.current?.checkVisibility()) trigger.current.focus()
+                  else {
+                    const link = event.currentTarget
+                    navigationFrame.current = requestAnimationFrame(() => {
+                      navigationFrame.current = undefined
+                      if (!link.isConnected || link.getAttribute("aria-current") !== "page") return
+                      const heading = document.getElementById("current-section-heading")
+                      heading?.focus({ preventScroll: true })
+                      window.scrollTo({ top: 0, behavior: "instant" })
+                    })
+                  }
+                }}
+              >
+                <Icon aria-hidden />
+                <span>{pageLabel(item)}</span>
+              </a>
+              {description && (
+                <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>
+              )}
+            </Fragment>
+          )
+        })}
       </nav>
       <Flex direction="column" gap="3" className="sidebar-account">
         <Separator size="4" />
@@ -365,6 +345,7 @@ export function SideNavigation({
         <Text size="2" weight="medium">
           {actor}
         </Text>
+        {account}
       </Flex>
     </aside>
   )
