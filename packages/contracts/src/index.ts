@@ -31,6 +31,18 @@ export type {
   RuntimeConfigResponse,
 } from "./runtime-config.js"
 
+export type {
+  ServiceStatusCatalog,
+  ServiceStatusComponent,
+  ServiceStatusDeliveryRecord,
+  ServiceStatusDeliveryResponse,
+  ServiceStatusDiagnostic,
+  ServiceStatusProviderId,
+  ServiceStatusSourceResult,
+  ServiceStatusTestRequest,
+  ServiceStatusTestResult,
+} from "./service-status.js"
+
 export type Snapshot = {
   revision: number
   applied: number

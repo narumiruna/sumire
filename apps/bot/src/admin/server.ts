@@ -19,6 +19,7 @@ import type { GitHubAuth } from "./github-auth.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
 import type { RuntimeConfigAdmin } from "./runtime-config.js"
+import { handleServiceStatus, type ServiceStatusAdmin } from "./service-status.js"
 import { AdminError, type AdminStore, digest, sessionMaxAgeMs } from "./store.js"
 
 interface AdminServices {
@@ -27,6 +28,7 @@ interface AdminServices {
   mcp: McpAdmin
   runtime?: RuntimeConfigAdmin
   github?: GitHubAuth
+  serviceStatus?: ServiceStatusAdmin
   apply(): Promise<void>
   tools(): string[]
   toolAvailability?(): Promise<Inventory["toolAvailability"]>
@@ -271,6 +273,21 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           revision: store.snapshot().revision,
         })
       }
+      return
+    }
+    if (url.pathname.startsWith("/api/service-status/")) {
+      const result = await handleServiceStatus(services.serviceStatus, {
+        req,
+        res,
+        url,
+        method,
+        actor: session.actor,
+        deadline: store.sessionDeadline(owner) ?? 0,
+        shutdown: inspectionShutdown.signal,
+        authorize: assertCurrentSession,
+        body,
+      })
+      reply(res, 200, result)
       return
     }
     if (url.pathname.startsWith("/api/github/")) {

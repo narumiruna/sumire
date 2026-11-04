@@ -252,8 +252,8 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await page.locator(".directory-options summary").click()
-  await expect(page.locator(".directory-help")).toContainText(
+  await page.locator(".chat-directory .directory-options summary").click()
+  await expect(page.locator(".chat-directory .directory-help")).toContainText(
     "The access filter uses the policy draft.",
   )
   await page.getByLabel("Access status", { exact: true }).click()
@@ -281,9 +281,9 @@ for (const width of [1440, 390]) {
       provider.configured = false
     })
     const { methods } = await fixture(page, state)
-    const search = page.getByLabel("Search stored chats", { exact: true })
+    const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
     await search.fill("Fixture chat")
-    await page.locator(".directory-options summary").click()
+    await page.locator(".chat-directory .directory-options summary").click()
     await page.getByLabel("Chat type", { exact: true }).click()
     await page.getByRole("option", { name: "Private", exact: true }).click()
     await page.locator(".chat-list .directory-chat").nth(1).click()
@@ -417,7 +417,7 @@ for (const [width, height, zoom] of [
     console.log("GEOMETRY", width, zoom, geometry)
     if (width === 1440) expect(geometry.fullRows).toBeGreaterThanOrEqual(6)
     expect(geometry.saveHeight / zoom).toBeLessThan(93)
-    const disclosure = page.locator(".directory-options summary")
+    const disclosure = page.locator(".chat-directory .directory-options summary")
     await disclosure.focus()
     await disclosure.press("Enter")
     await expect(page.getByLabel("Chat type", { exact: true })).toBeVisible()

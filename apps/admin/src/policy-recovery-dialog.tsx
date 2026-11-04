@@ -80,8 +80,10 @@ export function PolicyRecoveryDialog({
         <Prose size="2">
           Unedited settings keep their latest saved values. Lists, provider configuration, and each
           chat record are replaced as a whole when you choose a draft value. They are not combined.
-          In selections, null means inheritance or no shared selection; [] means an explicit empty
-          list.
+          In Pi selections, null means inheritance or no shared selection; [] means an explicit
+          empty list. Service status notifications are one atomic field, including all destinations,
+          components, quiet hours, and overrides. Status component null means all components; []
+          means none. Missing chat override fields inherit; quiet hours null means off.
         </Prose>
         <ul className="policy-recovery-changes" aria-label="Recovered settings changes">
           {recovered.changes.map((change) => (

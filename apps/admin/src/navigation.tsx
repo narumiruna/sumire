@@ -1,5 +1,6 @@
 import {
   ActivityLogIcon,
+  BellIcon,
   ChatBubbleIcon,
   ComponentInstanceIcon,
   CubeIcon,
@@ -27,6 +28,7 @@ export const pages = [
   "Model Providers",
   "Secrets & variables",
   "GitHub mentions",
+  "Service status",
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
@@ -37,6 +39,14 @@ export const pendingEditors = {
   access: {
     label: "Chat access — Telegram ID to approve",
     target: { page: "Chats", selector: "#access-id-input" },
+  },
+  statusDestination: {
+    label: "Service status — Telegram chat ID to add",
+    target: { page: "Service status", selector: "#status-notification-chat-id" },
+  },
+  statusQuietHours: {
+    label: "Service status — quiet hours input",
+    target: { page: "Service status", selector: "#status-quiet-hours-editor" },
   },
   githubMentionAuthor: {
     label: "GitHub mentions — GitHub username to add",
@@ -83,6 +93,7 @@ const pageIcons = {
   "Model Providers": CubeIcon,
   "Secrets & variables": LockClosedIcon,
   "GitHub mentions": GitHubLogoIcon,
+  "Service status": BellIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
 const pageLabels = {
@@ -95,6 +106,7 @@ const pageLabels = {
   "Model Providers": "Model providers",
   "Secrets & variables": "Secrets & variables",
   "GitHub mentions": "GitHub mentions",
+  "Service status": "Service status",
   Audit: "Audit",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
@@ -110,7 +122,7 @@ const navigationGroups = [
   {
     id: "system-settings",
     label: "Configuration",
-    pages: ["Defaults", "Secrets & variables", "GitHub mentions"],
+    pages: ["Defaults", "Secrets & variables", "GitHub mentions", "Service status"],
   },
   { id: "activity", label: "Monitoring", pages: ["Audit"] },
 ] as const satisfies readonly { id: string; label: string; pages: readonly Page[] }[]

@@ -10,6 +10,7 @@ type Props = {
   snapshot: Snapshot
   entries: PolicyChange[]
   changeCount: number
+  validationError?: string
   modelReview?: { before: string | null; after: string | null; added: string[] }
   unfinished: { label: string; target: EditorTarget }[]
   openEditor(target: EditorTarget): void
@@ -31,6 +32,7 @@ export function SaveStatus({
   snapshot,
   entries,
   changeCount,
+  validationError,
   modelReview,
   unfinished,
   openEditor,
@@ -201,13 +203,20 @@ export function SaveStatus({
                 Load latest and review draft
               </Button>
             )}
+            {validationError && (
+              <Prose role="alert" color="red">
+                {validationError}
+              </Prose>
+            )}
             {dirty && (
               <div className="save-actions">
                 <Button variant="outline" disabled={busy} onClick={discard}>
                   Discard settings changes
                 </Button>
                 <AlertDialog.Trigger>
-                  <Button disabled={busy || localPending || Boolean(recover)}>
+                  <Button
+                    disabled={busy || localPending || Boolean(recover) || Boolean(validationError)}
+                  >
                     Review and save changes
                   </Button>
                 </AlertDialog.Trigger>
@@ -227,9 +236,10 @@ export function SaveStatus({
         <AlertDialog.Title>Save settings changes?</AlertDialog.Title>
         <AlertDialog.Description>
           Save the changes below across Chats (including Chat access), Shared defaults, tools,
-          skills, GitHub mention authors, and custom endpoints. Connection drafts, provider model
-          additions, and authentication have separate save actions. Active work will be cancelled.
-          Revoked permissions cannot undo completed external actions.
+          skills, GitHub mention authors, service status notifications, and custom endpoints.
+          Connection drafts, provider model additions, and authentication have separate save
+          actions. Active work will be cancelled. Revoked permissions cannot undo completed external
+          actions.
         </AlertDialog.Description>
         {modelReview && (
           <section aria-label="Shared model change">
@@ -277,6 +287,11 @@ export function SaveStatus({
             </Button>
           </Prose>
         ))}
+        {validationError && (
+          <Prose role="alert" color="red">
+            {validationError}
+          </Prose>
+        )}
         <Flex gap="3" mt="4" justify="end" wrap="wrap">
           <AlertDialog.Cancel>
             <Button variant="soft">Cancel</Button>
@@ -295,7 +310,12 @@ export function SaveStatus({
             </Button>
           )}
           <AlertDialog.Action>
-            <Button disabled={busy || localPending || !dirty || Boolean(recover)} onClick={apply}>
+            <Button
+              disabled={
+                busy || localPending || !dirty || Boolean(recover) || Boolean(validationError)
+              }
+              onClick={apply}
+            >
               Save changes
             </Button>
           </AlertDialog.Action>

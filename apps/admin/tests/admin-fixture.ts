@@ -1,7 +1,9 @@
+import { initialStatusNotifications } from "@narumitw/sumire-policy"
 import { expect, type Page } from "@playwright/test"
 
 export const basePolicy = {
   githubNotifications: { allowedUsernames: [] },
+  statusNotifications: initialStatusNotifications(),
   tools: ["read_url_content"],
   servers: [],
   models: ["fixture/test"],
@@ -68,6 +70,22 @@ export async function adminFixture(
         secretStatus: "ready",
         entries: [],
       },
+      "/api/service-status/components": {
+        provider: url.searchParams.get("provider"),
+        components: [],
+        fetchedAt: null,
+        stale: true,
+        error: "source_unavailable",
+      },
+      "/api/service-status/deliveries": {
+        items: [],
+        sources: [],
+        offset: 0,
+        limit: 100,
+        total: 0,
+        serverTime: 1_800_000_000_000,
+        nextPollAt: null,
+      },
       "/api/imports": [],
       "/api/audit": url.pathname === "/api/audit" && auditReads++ > 0 ? globalAudit : audit,
       "/api/chats": [
@@ -93,6 +111,7 @@ export const sections = [
   "Model providers",
   "Secrets & variables",
   "GitHub mentions",
+  "Service status",
   "Audit",
 ]
 export function sectionLabel(name: string): string {

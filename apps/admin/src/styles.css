@@ -3797,36 +3797,122 @@ main .durable-history-heading h3 {
 .runtime-entry-name {
   overflow-wrap: anywhere;
 }
-.github-author-form {
+.github-author-form,
+.status-destination-form {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 12px;
 }
-.github-author-form .form-field {
+.github-author-form .form-field,
+.status-destination-form .form-field {
   flex: 1 1 240px;
   max-width: 360px;
 }
-.github-author-form > p {
+.github-author-form > p,
+.status-destination-form > p {
   flex-basis: 100%;
   margin: 0;
 }
-.github-author-list {
+.github-author-list,
+.status-destination-list {
   display: grid;
   gap: 12px;
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
 }
-.github-author-list li {
+.github-author-list li,
+.status-destination-list li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
-.github-author-list code {
+.github-author-list code,
+.status-destination-list > li > span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.service-status .panel,
+.service-status .form-field,
+.service-status .rt-SelectTrigger {
+  min-width: 0;
+  max-width: 100%;
+}
+.status-components,
+.status-timing,
+.status-test-panel {
+  display: grid;
+  gap: 12px;
+}
+.status-component-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.status-component-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.status-component-list > li > span,
+.service-status code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.status-component-matches {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+.status-quiet-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+.status-quiet-fields > p,
+.status-quiet-fields > .rt-Flex {
+  grid-column: 1 / -1;
+}
+.status-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  margin-block: 16px;
+}
+.status-result-values {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  font-size: var(--font-size-2);
+}
+.status-result-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-result-values dt {
+  color: var(--ink-muted);
+}
+.status-manual-destination {
+  margin-block: 16px;
+}
+.status-destination-form {
+  margin-top: 12px;
+}
+.service-status .directory-row-actions .check {
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
 }
 .runtime-variable-value {
   white-space: pre-wrap;

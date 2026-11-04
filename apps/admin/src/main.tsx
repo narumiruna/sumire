@@ -22,7 +22,7 @@ import {
   Text,
   Theme,
 } from "@radix-ui/themes"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
@@ -38,6 +38,7 @@ import {
   request,
   type Selection,
   type Snapshot,
+  settingsRequestError,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
 import { BrandIcon } from "./brand-icon.js"
@@ -45,7 +46,6 @@ import { ChatAccess } from "./chat-access.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
-import { GithubNotifications } from "./github-notifications.js"
 import { McpConnections } from "./mcp-connections.js"
 import {
   type EditorTarget,
@@ -60,7 +60,6 @@ import {
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
-import { PolicyRecoveryDialog } from "./policy-recovery-dialog.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
@@ -78,6 +77,19 @@ const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
+const PolicyRecoveryDialog = lazy(() =>
+  import("./policy-recovery-dialog.js").then(({ PolicyRecoveryDialog }) => ({
+    default: PolicyRecoveryDialog,
+  })),
+)
+const ServiceStatus = lazy(() =>
+  import("./service-status.js").then(({ ServiceStatus }) => ({ default: ServiceStatus })),
+)
+const GithubNotifications = lazy(() =>
+  import("./github-notifications.js").then(({ GithubNotifications }) => ({
+    default: GithubNotifications,
+  })),
+)
 const pageDescriptions = {
   Chats: "Review chat access and effective settings.",
   Durable: undefined,
@@ -89,6 +101,7 @@ const pageDescriptions = {
   "Model Providers": "Manage models and provider authentication.",
   "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
   "GitHub mentions": "Allow GitHub mention authors to trigger replies on GitHub.",
+  "Service status": "Send service status notifications to selected Telegram destinations.",
   Audit: "Review configuration activity and imports.",
 }
 function App() {
@@ -521,6 +534,7 @@ function App() {
             onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
             changeCount={policyChangeCount(savedPolicy ?? policy, policy)}
+            validationError={settingsRequestError(snapshot.revision, policy)}
             modelReview={
               savedPolicy &&
               (savedPolicy.defaults.model !== policy.defaults.model ||
@@ -567,6 +581,8 @@ function App() {
               void run(async () => {
                 if (failedPolicySave)
                   throw new Error("Load latest and review draft before another save.")
+                const requestError = settingsRequestError(snapshot.revision, policy)
+                if (requestError) throw new Error(requestError)
                 const submitted = policySchema.parse(policy)
                 validateReferences(submitted)
                 const version = sessionVersion.current
@@ -634,31 +650,33 @@ function App() {
           />
         )}
         {recoveryReview && (
-          <PolicyRecoveryDialog
-            {...recoveryReview}
-            onReturnFocus={() => {
-              if (document.querySelector('[role="alertdialog"]')) return
-              const target =
-                document.getElementById("policy-recovery-trigger") ??
-                document.getElementById("save-status")
-              if (target?.checkVisibility()) target.focus()
-            }}
-            onCancel={() => {
-              setRecoveryReview(undefined)
-              setError(recoveryReview.failure)
-            }}
-            onConfirm={(recovered) => {
-              const latest = recoveryReview.latest
-              const hasChanges = policyChanges(latest.policy, recovered).length > 0
-              setSavedPolicy(latest.policy)
-              setSnapshot({ ...latest, policy: recovered })
-              setDirty(hasChanges)
-              setFailedPolicySave(undefined)
-              setRecoveryReview(undefined)
-              setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
-              if (hasChanges) setPolicyReviewOpen(true)
-            }}
-          />
+          <Suspense fallback={<Text role="status">Loading draft recovery…</Text>}>
+            <PolicyRecoveryDialog
+              {...recoveryReview}
+              onReturnFocus={() => {
+                if (document.querySelector('[role="alertdialog"]')) return
+                const target =
+                  document.getElementById("policy-recovery-trigger") ??
+                  document.getElementById("save-status")
+                if (target?.checkVisibility()) target.focus()
+              }}
+              onCancel={() => {
+                setRecoveryReview(undefined)
+                setError(recoveryReview.failure)
+              }}
+              onConfirm={(recovered) => {
+                const latest = recoveryReview.latest
+                const hasChanges = policyChanges(latest.policy, recovered).length > 0
+                setSavedPolicy(latest.policy)
+                setSnapshot({ ...latest, policy: recovered })
+                setDirty(hasChanges)
+                setFailedPolicySave(undefined)
+                setRecoveryReview(undefined)
+                setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
+                if (hasChanges) setPolicyReviewOpen(true)
+              }}
+            />
+          </Suspense>
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
@@ -1086,14 +1104,47 @@ function App() {
             </details>
           </EditorSection>
           <EditorSection active={page === "GitHub mentions"} aria-label="GitHub mentions">
-            <GithubNotifications
-              policy={policy}
-              saved={savedPolicy ?? policy}
-              disabled={busy || runtimePending}
-              onChange={update}
-              onPending={(value) => markPending("githubMentionAuthor", value)}
-              onNavigate={setPage}
-            />
+            <Suspense
+              fallback={
+                <Text as="p" role="status">
+                  Loading GitHub mention settings…
+                </Text>
+              }
+            >
+              <GithubNotifications
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                disabled={busy || runtimePending}
+                onChange={update}
+                onPending={(value) => markPending("githubMentionAuthor", value)}
+                onNavigate={setPage}
+              />
+            </Suspense>
+          </EditorSection>
+          <EditorSection active={page === "Service status"} aria-label="Service status">
+            <Suspense
+              fallback={
+                <Text as="p" role="status">
+                  Loading service status settings…
+                </Text>
+              }
+            >
+              <ServiceStatus
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                disabled={busy || runtimePending}
+                onChange={update}
+                csrf={session.csrf}
+                application={snapshot}
+                onPending={(value, scope) =>
+                  markPending(
+                    scope === "quietHours" ? "statusQuietHours" : "statusDestination",
+                    value,
+                  )
+                }
+                onSessionExpired={expireInspectorSession}
+              />
+            </Suspense>
           </EditorSection>
           {page === "Secrets & variables" && (
             <EditorSection active aria-label="Secrets & variables">

@@ -32,6 +32,7 @@ const lists = {
   groups: "Group and channel access",
   providers: "Provider configuration and order",
   githubNotifications: "GitHub mention authors",
+  statusNotifications: "Service status notifications",
 } as const
 const defaults = {
   tools: "Authorized tools",

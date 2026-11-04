@@ -37,6 +37,23 @@ it("merges each observed field independently and keeps bootstrap metadata insert
   expect(store.db.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 5 })
 })
 
+it("remembers notification-only IDs without granting chat access or replacing channel metadata", async () => {
+  const store = await fixture()
+  store.observe(-200, "channel", "Status channel")
+  const before = store.snapshot()
+  const policy = before.policy
+  policy.statusNotifications.chatIds = [42, -100, -200]
+  const saved = store.save(policy, before.revision, "42")
+  store.applied(saved.revision, true)
+  expect(store.listChats(0)).toEqual([
+    { id: -200, type: "channel", name: "Status channel" },
+    { id: -100, type: "", name: "" },
+    { id: 42, type: "private", name: "" },
+  ])
+  for (const id of policy.statusNotifications.chatIds) expect(store.allows(id)).toBe(false)
+  expect(store.snapshot().policy.statusNotifications.chatIds).toEqual([42, -100, -200])
+})
+
 it("reads legacy blank and ID-only rows without a rewrite and accepts later observed metadata", async () => {
   const store = await fixture()
   store.db.prepare("INSERT INTO chats VALUES (?,?,?)").run(-100, "group", "-100")
