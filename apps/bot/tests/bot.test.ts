@@ -12,7 +12,11 @@ import type { ChatSessionRegistry, SubmissionActivity } from "../src/agent/sessi
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
-import { queryMarketData } from "../src/market-data/query.js"
+import {
+  MarketDataInputError,
+  queryMarketData,
+  queryMarketDataMessages,
+} from "../src/market-data/query.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { renderProgressStatus } from "../src/telegram/progress.js"
@@ -1691,7 +1695,7 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(commandMessage(4, "/t UNKNOWN"))
 
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("查不到 UNKNOWN")
+    expect(telegramPayloadText(calls[0]?.payload)).toContain("查不到市場資料")
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
@@ -3671,8 +3675,53 @@ describe("Telegram bot update routing", () => {
     },
   )
 
-  it("publishes long market-data replies once instead of chunking them into Telegram", async () => {
-    const text = "股".repeat(5_000)
+  it.each([true, false])(
+    "sends long /t replies natively with Morsel configured: %s",
+    async (configured) => {
+      const text = "股".repeat(5000)
+      const sessions = createSessions()
+      const publish = vi.fn(async () => {
+        throw new Error("must not publish /t")
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        {
+          control: approvedStore([7, -100]),
+          botInfo,
+          marketDataQuery: async () => text,
+          morselPublisher: { isConfigured: configured, publish },
+        },
+      )
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(commandMessage(81, "/t AAPL"))
+      expect(publish).not.toHaveBeenCalled()
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.method).toBe("sendRichMessage")
+      expect(telegramPayloadText(calls[0]?.payload)).toBe(text)
+      expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 81 })
+      expect(sessions.submit).not.toHaveBeenCalled()
+    },
+  )
+
+  it("batches an abnormal provider response into complete native messages without Morsel", async () => {
+    const symbols = Array.from({ length: 60 }, (_, index) => String(1000 + index))
+    const names = symbols.map((symbol) => `${symbol}${"長名🌸".repeat(80)}`)
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({
+        msgArray: symbols.map((symbol, index) => ({
+          c: symbol,
+          n: names[index],
+          z: "10",
+          o: "9",
+          h: "11",
+          l: "8",
+          v: "123",
+          y: "9",
+        })),
+      }),
+    )
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/share")
     const telegram = createTelegramAgentBot(
@@ -3681,20 +3730,84 @@ describe("Telegram bot update routing", () => {
       logger,
       {
         control: approvedStore([7, -100]),
-
         botInfo,
-        marketDataQuery: async () => text,
+        marketDataQuery: (input) => queryMarketDataMessages(input, { fetchImplementation }),
+        morselPublisher: { isConfigured: true, publish },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    await telegram.bot.handleUpdate(commandMessage(81, `/t ${symbols.slice(0, 10).join(" ")}`))
+    expect(calls.length).toBeGreaterThan(1)
+    const messages = calls.map((call) => telegramPayloadText(call.payload) ?? "")
+    for (const call of calls) {
+      expect(call.method).toBe("sendRichMessage")
+      expect(call.payload.reply_parameters).toEqual({ message_id: 81 })
+      const text = telegramPayloadText(call.payload) ?? ""
+      expect(Array.from(text).length).toBeLessThanOrEqual(16000)
+      expect(text).toContain("**TWSE｜TWD**")
+      expect(text).toContain("<details><summary>")
+      expect(text).toContain("</details>")
+    }
+    for (const name of names) expect(messages.join("\n")).toContain(name)
+    expect(fetchImplementation).toHaveBeenCalledOnce()
+    expect(publish).not.toHaveBeenCalled()
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("rejects an oversized injected /t part before sending any quote or publishing", async () => {
+    const publish = vi.fn(async () => "https://morsel.example/s/share")
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+      createSessions(),
+      logger,
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        marketDataQuery: async () => ["must not send this partial quote", "股".repeat(16001)],
         morselPublisher: { isConfigured: true, publish },
       },
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(commandMessage(81, "/t AAPL"))
-    expect(publish).toHaveBeenCalledExactlyOnceWith(text)
     expect(calls).toHaveLength(1)
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("https://morsel.example/s/share")
-    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 81 })
-    expect(sessions.submit).not.toHaveBeenCalled()
+    expect(telegramPayloadText(calls[0]?.payload)).toContain("報價內容過長")
+    expect(telegramPayloadText(calls[0]?.payload)).not.toContain("must not send")
+    expect(publish).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["/t", "請使用", undefined],
+    ["/t UNKNOWN", "查不到市場資料", undefined],
+    ["/t INVALID", "一次最多查詢", new MarketDataInputError("一次最多查詢 10 個代碼。")],
+    ["/t FAILED", "市場資料服務暫時無法使用", new Error("network failed")],
+  ] as const)(
+    "never publishes /t help, empty results, or errors: %s",
+    async (command, expected, error) => {
+      const publish = vi.fn(async () => "https://morsel.example/s/share")
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        {
+          control: approvedStore([7, -100]),
+          botInfo,
+          marketDataQuery: async () => {
+            if (error) throw error
+            return ""
+          },
+          morselPublisher: { isConfigured: true, publish },
+        },
+      )
+      const calls = installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(commandMessage(81, command))
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.method).toBe("sendRichMessage")
+      expect(telegramPayloadText(calls[0]?.payload)).toContain(expected)
+      expect(publish).not.toHaveBeenCalled()
+      expect(sessions.submit).not.toHaveBeenCalled()
+    },
+  )
 
   it("applies the same Morsel policy to long progress replies", async () => {
     const sessions = createSessions({

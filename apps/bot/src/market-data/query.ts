@@ -1,5 +1,5 @@
 import { type ExchangeRateFetcher, queryExchangeRates } from "./exchange-rates.js"
-import { formatMarketResults, type MarketQuote } from "./format.js"
+import { formatMarketMessages, formatMarketResults, type MarketQuote } from "./format.js"
 import { queryFrankfurterRates } from "./frankfurter.js"
 import type { MarketFetch } from "./http.js"
 import { normalizeMaxMarket, queryMaxExchange } from "./max-exchange.js"
@@ -52,6 +52,20 @@ export async function queryMarketData(
   input: string,
   dependencies: MarketDataDependencies = {},
 ): Promise<string> {
+  return formatMarketResults(await collectMarketData(input, dependencies))
+}
+
+export async function queryMarketDataMessages(
+  input: string,
+  dependencies: MarketDataDependencies = {},
+): Promise<string[]> {
+  return formatMarketMessages(await collectMarketData(input, dependencies))
+}
+
+async function collectMarketData(
+  input: string,
+  dependencies: MarketDataDependencies,
+): Promise<Array<MarketQuote | string>> {
   const terms = parseMarketTerms(input)
   const groups = {
     currency: [] as string[],
@@ -114,7 +128,7 @@ export async function queryMarketData(
   }
   const failure = settled.find((result) => result.status === "rejected")
   if (results.length === 0 && failure) throw failure.reason
-  return formatMarketResults(results)
+  return results
 }
 
 export function parseMarketTerms(input: string): string[] {
