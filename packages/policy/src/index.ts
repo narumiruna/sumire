@@ -59,6 +59,46 @@ export const providerSchema = z
     (p) => !p.baseUrl || Boolean(p.api && p.models.length),
     "Custom endpoints need an API and models",
   )
+export const statusProviderIds = ["github", "openai", "claude", "cloudflare"] as const
+export const statusNotificationsSchema = z
+  .object({
+    enabled: z.boolean(),
+    providers: z
+      .array(z.enum(statusProviderIds))
+      .max(statusProviderIds.length)
+      .refine((ids) => new Set(ids).size === ids.length),
+    chatIds: z
+      .array(
+        z
+          .number()
+          .int()
+          .safe()
+          .refine((id) => id !== 0),
+      )
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length),
+    pollIntervalSeconds: z.number().int().min(60).max(3600),
+    minimumImpact: z.enum(["none", "minor", "major", "critical"]),
+    notifyUpdates: z.boolean(),
+    notifyResolved: z.boolean(),
+    includeMaintenance: z.boolean(),
+  })
+  .strict()
+export type StatusNotifications = z.infer<typeof statusNotificationsSchema>
+
+export function initialStatusNotifications(): StatusNotifications {
+  return {
+    enabled: false,
+    providers: [...statusProviderIds],
+    chatIds: [],
+    pollIntervalSeconds: 60,
+    minimumImpact: "minor",
+    notifyUpdates: true,
+    notifyResolved: true,
+    includeMaintenance: false,
+  }
+}
+
 export const policySchema = z
   .object({
     tools: names,
@@ -75,6 +115,7 @@ export const policySchema = z
       })
       .strict()
       .default(() => ({ allowedUsernames: [] })),
+    statusNotifications: statusNotificationsSchema.default(initialStatusNotifications),
     privateUsers: z.array(z.number().int().positive().safe()).max(1000),
     groups: z.array(z.number().int().negative().safe()).max(1000),
     chats: z
@@ -115,6 +156,7 @@ export function initialPolicy(): Policy {
     models: [],
     defaults: { ...inherited, tools: [], skills: [], servers: [], models: [], thinking: "off" },
     githubNotifications: { allowedUsernames: [] },
+    statusNotifications: initialStatusNotifications(),
     privateUsers: [],
     groups: [],
     chats: {},

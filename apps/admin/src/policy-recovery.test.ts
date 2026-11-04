@@ -8,6 +8,43 @@ function policies() {
 }
 
 describe("policy recovery", () => {
+  it("recovers status settings atomically without mixing destinations or filters", () => {
+    const { base, draft, latest } = policies()
+    draft.statusNotifications.enabled = true
+    draft.statusNotifications.chatIds = [42]
+    latest.statusNotifications.chatIds = [-100]
+    latest.statusNotifications.minimumImpact = "critical"
+    const result = recoverPolicy(base, draft, latest)
+    expect(result.unresolved).toBe(1)
+    expect(result.changes).toEqual([
+      {
+        id: "statusNotifications",
+        label: "Service status notifications",
+        state: "conflict",
+        saved: latest.statusNotifications,
+        draft: draft.statusNotifications,
+      },
+    ])
+    expect(result.policy.statusNotifications).toEqual(latest.statusNotifications)
+    const recovered = recoverPolicy(base, draft, latest, { statusNotifications: "draft" })
+    expect(recovered.unresolved).toBe(0)
+    expect(recovered.policy.statusNotifications).toEqual(draft.statusNotifications)
+    expect(recovered.policy.privateUsers).toEqual([])
+    expect(recovered.policy.groups).toEqual([])
+    expect(recovered.policy.tools).toEqual([])
+  })
+  it("reapplies non-overlapping status edits while keeping unrelated latest policy values", () => {
+    const { base, draft, latest } = policies()
+    draft.statusNotifications.includeMaintenance = true
+    latest.privateUsers = [42]
+    const result = recoverPolicy(base, draft, latest)
+    expect(result.unresolved).toBe(0)
+    expect(result.policy.statusNotifications).toEqual(draft.statusNotifications)
+    expect(result.policy.privateUsers).toEqual([42])
+    expect(result.changes.map((change) => change.id)).toEqual(["statusNotifications"])
+    latest.statusNotifications = structuredClone(draft.statusNotifications)
+    expect(recoverPolicy(base, draft, latest).changes[0]?.state).toBe("saved")
+  })
   it("recovers mention author edits without unioning concurrent grants or revocations", () => {
     const { base, draft, latest } = policies()
     base.githubNotifications.allowedUsernames = ["octocat"]

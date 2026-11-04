@@ -22,7 +22,7 @@ import {
   Text,
   Theme,
 } from "@radix-ui/themes"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
@@ -45,7 +45,6 @@ import { ChatAccess } from "./chat-access.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
-import { GithubNotifications } from "./github-notifications.js"
 import { McpConnections } from "./mcp-connections.js"
 import {
   type EditorTarget,
@@ -78,6 +77,14 @@ const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
+const ServiceStatus = lazy(() =>
+  import("./service-status.js").then(({ ServiceStatus }) => ({ default: ServiceStatus })),
+)
+const GithubNotifications = lazy(() =>
+  import("./github-notifications.js").then(({ GithubNotifications }) => ({
+    default: GithubNotifications,
+  })),
+)
 const pageDescriptions = {
   Chats: "Review chat access and effective settings.",
   Durable: undefined,
@@ -89,6 +96,7 @@ const pageDescriptions = {
   "Model Providers": "Manage models and provider authentication.",
   "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
   "GitHub mentions": "Allow GitHub mention authors to trigger replies on GitHub.",
+  "Service status": "Send service status notifications to selected Telegram destinations.",
   Audit: "Review configuration activity and imports.",
 }
 function App() {
@@ -1086,14 +1094,40 @@ function App() {
             </details>
           </EditorSection>
           <EditorSection active={page === "GitHub mentions"} aria-label="GitHub mentions">
-            <GithubNotifications
-              policy={policy}
-              saved={savedPolicy ?? policy}
-              disabled={busy || runtimePending}
-              onChange={update}
-              onPending={(value) => markPending("githubMentionAuthor", value)}
-              onNavigate={setPage}
-            />
+            <Suspense
+              fallback={
+                <Text as="p" role="status">
+                  Loading GitHub mention settings…
+                </Text>
+              }
+            >
+              <GithubNotifications
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                disabled={busy || runtimePending}
+                onChange={update}
+                onPending={(value) => markPending("githubMentionAuthor", value)}
+                onNavigate={setPage}
+              />
+            </Suspense>
+          </EditorSection>
+          <EditorSection active={page === "Service status"} aria-label="Service status">
+            <Suspense
+              fallback={
+                <Text as="p" role="status">
+                  Loading service status settings…
+                </Text>
+              }
+            >
+              <ServiceStatus
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                disabled={busy || runtimePending}
+                onChange={update}
+                onPending={(value) => markPending("statusDestination", value)}
+                onSessionExpired={expireInspectorSession}
+              />
+            </Suspense>
           </EditorSection>
           {page === "Secrets & variables" && (
             <EditorSection active aria-label="Secrets & variables">

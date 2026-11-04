@@ -151,7 +151,7 @@ test("row actions preserve disabled overrides and save only explicit approval ch
 
 test("revoking the last filtered row restores focus to directory search", async ({ page }) => {
   const state = await fixture(page)
-  const search = page.getByLabel("Search stored chats", { exact: true })
+  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
   await search.fill("Alice")
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()

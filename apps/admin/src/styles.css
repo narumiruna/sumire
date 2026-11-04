@@ -3797,36 +3797,54 @@ main .durable-history-heading h3 {
 .runtime-entry-name {
   overflow-wrap: anywhere;
 }
-.github-author-form {
+.github-author-form,
+.status-destination-form {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 12px;
 }
-.github-author-form .form-field {
+.github-author-form .form-field,
+.status-destination-form .form-field {
   flex: 1 1 240px;
   max-width: 360px;
 }
-.github-author-form > p {
+.github-author-form > p,
+.status-destination-form > p {
   flex-basis: 100%;
   margin: 0;
 }
-.github-author-list {
+.github-author-list,
+.status-destination-list {
   display: grid;
   gap: 12px;
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
 }
-.github-author-list li {
+.github-author-list li,
+.status-destination-list li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
-.github-author-list code {
+.github-author-list code,
+.status-destination-list > li > span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.status-manual-destination {
+  margin-block: 16px;
+}
+.status-destination-form {
+  margin-top: 12px;
+}
+.service-status .directory-row-actions .check {
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
 }
 .runtime-variable-value {
   white-space: pre-wrap;

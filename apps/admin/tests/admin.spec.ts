@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto"
-import { effectivePolicy, inherited } from "@narumitw/sumire-policy"
+import { effectivePolicy, inherited, initialStatusNotifications } from "@narumitw/sumire-policy"
 import { expect, type Page, type Route, test } from "@playwright/test"
 import {
   closeConnectionEditor,
@@ -27,6 +27,7 @@ function chatResponse(route: Route, chats: { id: number; name: string; type: str
 
 const policy = {
   githubNotifications: { allowedUsernames: [] },
+  statusNotifications: initialStatusNotifications(),
   skills: [],
   tools: ["read_url_content"],
   servers: [],
@@ -2043,7 +2044,7 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
       exact: false,
     }),
   ).toBeVisible()
-  const search = page.getByLabel("Search stored chats", { exact: true })
+  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
   await search.fill("missing")
   await expect(page.getByText("No stored chats match this search.", { exact: true })).toBeVisible()
   await search.fill("-100")
@@ -2198,7 +2199,11 @@ test("handles chat loading, errors, retry, and empty results independently of se
   await expect(page.getByRole("alert")).toContainText("Could not read chat metadata. Retry chats.")
   await page.route("**/api/chats?*", (route) => route.fulfill({ json: [] }))
   await page.getByRole("button", { name: "Retry chats", exact: true }).click()
-  await expect(page.getByText("No chats observed on this page.", { exact: false })).toBeVisible()
+  await expect(
+    page
+      .getByRole("region", { name: "Chat settings", exact: true })
+      .getByText("No chats observed on this page.", { exact: true }),
+  ).toBeVisible()
 })
 
 for (const missingProvider of [false, true]) {
@@ -2312,7 +2317,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
   page,
 }) => {
   await setup(page)
-  const search = page.getByLabel("Search stored chats", { exact: true })
+  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
   await search.fill("Fixture")
   await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
@@ -2558,7 +2563,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await setup(page)
-  const search = page.getByLabel("Search stored chats", { exact: true })
+  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
   await search.fill("Fixture")
   const row = page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat")
   await row.focus()

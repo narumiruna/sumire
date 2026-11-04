@@ -127,6 +127,7 @@ export function ChatSelector({
   actions,
   footer,
   title = "Find a chat",
+  stateLabel = "Access / status",
   summary,
 }: {
   directory: ChatDirectory
@@ -139,6 +140,7 @@ export function ChatSelector({
   actions?(chat: Chat): ReactNode
   footer?: ReactNode
   title?: string | null
+  stateLabel?: string
   summary?: ReactNode
 }) {
   const searchId = useId()
@@ -211,7 +213,7 @@ export function ChatSelector({
             {actions && visibleChats.length > 0 && (
               <div className="directory-columns" aria-hidden="true">
                 <span>Chat / ID</span>
-                <span>Access / status</span>
+                <span>{stateLabel}</span>
                 <span />
               </div>
             )}
@@ -223,7 +225,7 @@ export function ChatSelector({
                       type="button"
                       aria-current={chat === String(value.id) ? "true" : undefined}
                       aria-label={`${chatName(value)} · ${value.id}`}
-                      aria-describedby={badge ? `directory-state-${value.id}` : undefined}
+                      aria-describedby={badge ? `${searchId}-state-${value.id}` : undefined}
                       onClick={() => onSelect(String(value.id))}
                     >
                       <Flex asChild className="directory-chat-identity" align="start" gap="2">
@@ -243,7 +245,7 @@ export function ChatSelector({
                         <Code variant="ghost">{value.id}</Code>
                       </Text>
                       {badge && !actions && (
-                        <span id={`directory-state-${value.id}`} className="directory-chat-state">
+                        <span id={`${searchId}-state-${value.id}`} className="directory-chat-state">
                           {badge(value)}
                         </span>
                       )}
@@ -251,7 +253,7 @@ export function ChatSelector({
                   </Button>
                   {actions && (
                     <>
-                      <div id={`directory-state-${value.id}`} className="directory-row-state">
+                      <div id={`${searchId}-state-${value.id}`} className="directory-row-state">
                         {badge?.(value)}
                       </div>
                       <div className="directory-row-actions">{actions(value)}</div>

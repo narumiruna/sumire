@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { sections } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 import { durableFixture, historyInput } from "./durable-fixture.js"
 
@@ -107,7 +108,7 @@ for (const width of [1448, 768, 390, 320]) {
       await expect(
         navigation.getByRole("heading", { name: `${name} navigation`, exact: true }),
       ).toBeVisible()
-    await expect(navigation.locator("a > svg")).toHaveCount(10)
+    await expect(navigation.locator("a > svg")).toHaveCount(sections.length)
     for (const icon of await navigation.locator("a > svg").all()) await expect(icon).toBeVisible()
     expect(state.methods.every((method) => method === "GET")).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

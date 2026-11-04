@@ -227,9 +227,10 @@ export function SaveStatus({
         <AlertDialog.Title>Save settings changes?</AlertDialog.Title>
         <AlertDialog.Description>
           Save the changes below across Chats (including Chat access), Shared defaults, tools,
-          skills, GitHub mention authors, and custom endpoints. Connection drafts, provider model
-          additions, and authentication have separate save actions. Active work will be cancelled.
-          Revoked permissions cannot undo completed external actions.
+          skills, GitHub mention authors, service status notifications, and custom endpoints.
+          Connection drafts, provider model additions, and authentication have separate save
+          actions. Active work will be cancelled. Revoked permissions cannot undo completed external
+          actions.
         </AlertDialog.Description>
         {modelReview && (
           <section aria-label="Shared model change">

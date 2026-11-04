@@ -40,6 +40,7 @@ Available now:
 - Morsel rich-rendering tool and mandatory routing for general replies over 1000 characters (excluding `/t` market data)
 - live multi-step progress as the first Telegram reply
 - Native Telegram Rich Message delivery with a 1000-character general reply limit and a separate bounded `/t` delivery path
+- configurable GitHub, OpenAI, Claude, and Cloudflare incident notifications to multiple Telegram chats, with persistent per-destination duplicate prevention
 - secret-redacted logs
 
 ## Requirements
@@ -74,6 +75,10 @@ npm run dev --workspace @narumitw/sumire -- --verbose
 To use the `otter-manage-expenses` skill, set `OTTER_TOKEN` through the ignored `.env` or another deployment secret mechanism.
 The upstream skill runs the bundled `otter` CLI through Pi's shell tool, so approve only trusted chats and their required tools in the administration WebUI before exposing the bot.
 Do not commit the token.
+
+## Service status notifications
+
+Configure **Service status** in the administration WebUI to select providers and multiple Telegram users, groups, or channels. These subscriptions do not grant model or tool access. The bot polls public status pages without model calls and stores delivery checkpoints in the administration database. Notifications are disabled by default. See [setup, filters, provider bounds, and recovery](../../docs/service-status.md).
 
 ## Article command
 

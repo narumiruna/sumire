@@ -1,5 +1,6 @@
 import type { Policy, ProviderSettings, Selection } from "./api.js"
 import type { EditorTarget } from "./navigation.js"
+import { statusProviderNames } from "./status-notifications.js"
 
 export type PolicyChange = { label: string; targets: EditorTarget[] }
 
@@ -28,6 +29,15 @@ const selectionFields = [
   ["models", "Allowed models"],
   ["model", "Model"],
   ["thinking", "Thinking level"],
+] as const
+
+const statusFields = [
+  ["enabled", "notifications", "#status-notifications-enabled"],
+  ["pollIntervalSeconds", "polling interval", "#status-polling-interval"],
+  ["minimumImpact", "minimum impact", "#status-minimum-impact"],
+  ["notifyUpdates", "incident updates", "#status-notification-filters"],
+  ["notifyResolved", "resolved incidents", "#status-notification-filters"],
+  ["includeMaintenance", "scheduled maintenance", "#status-notification-filters"],
 ] as const
 
 function selectionChanges(
@@ -178,6 +188,48 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           label: `GitHub mentions: ${action} username ${username} — automatic replies on GitHub; no Telegram chat or tool permission dependency.`,
           targets: [{ page: "GitHub mentions", selector: "#github-mention-authors" }],
         })
+  for (const [key, label] of [
+    ["providers", "service"],
+    ["chatIds", "destination"],
+  ] as const) {
+    for (const [before, after, action] of [
+      [saved.statusNotifications[key], draft.statusNotifications[key], "add"],
+      [draft.statusNotifications[key], saved.statusNotifications[key], "remove"],
+    ] as const) {
+      for (const value of after) {
+        if ((before as readonly (string | number)[]).includes(value)) continue
+        changes.push({
+          label: `Service status: ${action} ${label} ${typeof value === "number" ? value : statusProviderNames[value]} — notification-only; does not grant Pi access.`,
+          targets: [
+            {
+              page: "Service status",
+              selector:
+                key === "providers"
+                  ? "#status-notification-services"
+                  : "#status-notification-destinations",
+            },
+          ],
+        })
+      }
+    }
+  }
+  for (const [key, label, selector] of statusFields) {
+    const before = saved.statusNotifications[key]
+    const after = draft.statusNotifications[key]
+    if (before === after) continue
+    const format = (value: typeof before) =>
+      typeof value === "boolean"
+        ? value
+          ? "on"
+          : "off"
+        : key === "pollIntervalSeconds"
+          ? `${value} seconds`
+          : value
+    changes.push({
+      label: `Service status: ${label} ${format(before)} → ${format(after)} — applies to all notification destinations; does not grant Pi access.`,
+      targets: [{ page: "Service status", selector }],
+    })
+  }
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
     changes.push({
@@ -248,6 +300,10 @@ export function policyChangeCount(saved: Policy, draft: Policy): number {
     saved.githubNotifications.allowedUsernames,
     draft.githubNotifications.allowedUsernames,
   )
+  for (const key of ["providers", "chatIds"] as const)
+    count += listCount(saved.statusNotifications[key], draft.statusNotifications[key])
+  for (const [key] of statusFields)
+    count += Number(saved.statusNotifications[key] !== draft.statusNotifications[key])
   for (const key of ["privateUsers", "groups", "tools", "servers", "skills", "models"] as const)
     count += listCount(saved[key], draft[key])
   for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {

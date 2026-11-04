@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - "packages/status-page/**"
       - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
@@ -28,6 +29,7 @@ on:
     branches:
       - main
     paths:
+      - "packages/status-page/**"
       - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"

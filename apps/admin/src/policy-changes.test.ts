@@ -44,6 +44,83 @@ const provider: ProviderSettings = {
 }
 
 describe("typed policy review destinations", () => {
+  it("reviews every status service, destination, and filter edit without granting Pi access", () => {
+    const saved = initialPolicy()
+    saved.statusNotifications.providers = ["github", "openai"]
+    saved.statusNotifications.chatIds = [42, -100]
+    const draft = structuredClone(saved)
+    draft.statusNotifications = {
+      enabled: true,
+      providers: ["claude", "cloudflare"],
+      chatIds: [42, -200],
+      pollIntervalSeconds: 300,
+      minimumImpact: "major",
+      notifyUpdates: false,
+      notifyResolved: false,
+      includeMaintenance: true,
+    }
+    const entries = policyChangeEntries(saved, draft)
+    expect(entries).toHaveLength(12)
+    expect(policyChangeCount(saved, draft)).toBe(12)
+    for (const entry of entries) {
+      expect(entry.label).toContain("Service status:")
+      expect(entry.label).toContain("does not grant Pi access.")
+      expect(entry.targets).toHaveLength(1)
+      expect(entry.targets[0]?.page).toBe("Service status")
+    }
+    for (const service of [
+      "add service Claude",
+      "add service Cloudflare",
+      "remove service GitHub",
+      "remove service OpenAI",
+    ])
+      expect(entries).toContainEqual({
+        label: `Service status: ${service} — notification-only; does not grant Pi access.`,
+        targets: [{ page: "Service status", selector: "#status-notification-services" }],
+      })
+    for (const destination of ["add destination -200", "remove destination -100"])
+      expect(entries).toContainEqual({
+        label: `Service status: ${destination} — notification-only; does not grant Pi access.`,
+        targets: [{ page: "Service status", selector: "#status-notification-destinations" }],
+      })
+    expect(entries).toContainEqual({
+      label:
+        "Service status: polling interval 60 seconds → 300 seconds — applies to all notification destinations; does not grant Pi access.",
+      targets: [{ page: "Service status", selector: "#status-polling-interval" }],
+    })
+    expect(entries).toContainEqual({
+      label:
+        "Service status: minimum impact minor → major — applies to all notification destinations; does not grant Pi access.",
+      targets: [{ page: "Service status", selector: "#status-minimum-impact" }],
+    })
+    expect(
+      entries.find((entry) => entry.label.includes("notifications off → on"))?.targets,
+    ).toEqual([{ page: "Service status", selector: "#status-notifications-enabled" }])
+    for (const filter of [
+      "incident updates on → off",
+      "resolved incidents on → off",
+      "scheduled maintenance off → on",
+    ])
+      expect(entries.find((entry) => entry.label.includes(filter))?.targets).toEqual([
+        { page: "Service status", selector: "#status-notification-filters" },
+      ])
+    expect(draft.privateUsers).toEqual(saved.privateUsers)
+    expect(draft.groups).toEqual(saved.groups)
+    expect(draft.tools).toEqual(saved.tools)
+    expect(draft.chats).toEqual(saved.chats)
+  })
+  it("ignores service and destination order when notification selections are restored", () => {
+    const saved = initialPolicy()
+    saved.statusNotifications.chatIds = [42, -100]
+    const draft = structuredClone(saved)
+    draft.statusNotifications.chatIds.reverse()
+    draft.statusNotifications.providers.reverse()
+    expect(policyChangeCount(saved, draft)).toBe(0)
+    expect(policyChanges(saved, draft)).toEqual([])
+    draft.statusNotifications.includeMaintenance = true
+    expect(policyChangeCount(saved, draft)).toBe(1)
+    expect(policyChanges(saved, draft)).toHaveLength(1)
+  })
   it("reviews username additions and removals without changing other access", () => {
     const saved = initialPolicy()
     saved.githubNotifications.allowedUsernames = ["octocat"]

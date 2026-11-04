@@ -11,6 +11,10 @@ import { loadSettings } from "./config/settings.js"
 import { AnyDocConverter, type DocumentConverter } from "./documents/converter.js"
 import { type GithubMentionWorker, startGithubMentionWorker } from "./github/runtime.js"
 import { createLogger } from "./logging.js"
+import {
+  type StatusNotificationWorker,
+  startStatusNotificationWorker,
+} from "./service-status/runtime.js"
 import { createTelegramAgentBot } from "./telegram/bot.js"
 import { ChannelImageIndex } from "./telegram/channel-images.js"
 
@@ -30,6 +34,7 @@ export async function startApplication(): Promise<void> {
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
   let github: GithubMentionWorker | undefined
+  let serviceStatus: StatusNotificationWorker | undefined
   try {
     const store = new AdminStore(
       path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
@@ -67,9 +72,11 @@ export async function startApplication(): Promise<void> {
       runtime,
       recoverChats: () => piFactory.listChats(),
     })
+    serviceStatus = startStatusNotificationWorker(store, telegram.bot.api, logger)
 
     const closeRuntime = () =>
       closeApplicationResources([
+        () => serviceStatus?.close(),
         () => github?.close(),
         () => telegram.stop(),
         () => adminServer?.stop(),
@@ -99,6 +106,7 @@ export async function startApplication(): Promise<void> {
     }
   } finally {
     await closeApplicationResources([
+      () => serviceStatus?.close(),
       () => github?.close(),
       () => adminServer?.stop(),
       () => sessions?.dispose(),

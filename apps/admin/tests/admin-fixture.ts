@@ -1,7 +1,9 @@
+import { initialStatusNotifications } from "@narumitw/sumire-policy"
 import { expect, type Page } from "@playwright/test"
 
 export const basePolicy = {
   githubNotifications: { allowedUsernames: [] },
+  statusNotifications: initialStatusNotifications(),
   tools: ["read_url_content"],
   servers: [],
   models: ["fixture/test"],
@@ -93,6 +95,7 @@ export const sections = [
   "Model providers",
   "Secrets & variables",
   "GitHub mentions",
+  "Service status",
   "Audit",
 ]
 export function sectionLabel(name: string): string {
