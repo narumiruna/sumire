@@ -1,4 +1,4 @@
-import { priceLines } from "./format.js"
+import type { MarketQuote, QuotePrices } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 const twseEndpoint = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
@@ -6,7 +6,7 @@ const twseEndpoint = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 export async function queryTwse(
   symbols: readonly string[],
   fetchImplementation?: MarketFetch,
-): Promise<string[]> {
+): Promise<MarketQuote[]> {
   if (symbols.length === 0) return []
   const url = new URL(twseEndpoint)
   url.searchParams.set(
@@ -25,7 +25,7 @@ export async function queryTwse(
   })
 }
 
-function formatTwseStock(value: unknown): string | undefined {
+function formatTwseStock(value: unknown): MarketQuote | undefined {
   const stock = record(value)
   const symbol = text(stock?.c)
   const name = text(stock?.n)
@@ -33,7 +33,7 @@ function formatTwseStock(value: unknown): string | undefined {
 
   const midpoint = orderBookMidpoint(text(stock.a), text(stock.b))
   const last = positiveNumber(stock.z) ?? positiveNumber(stock.pz) ?? midpoint
-  const lines = priceLines({
+  const prices: QuotePrices = {
     changeFrom: positiveNumber(stock.y),
     currency: "TWD",
     high: positiveNumber(stock.h),
@@ -42,9 +42,14 @@ function formatTwseStock(value: unknown): string | undefined {
     maximumFractionDigits: 2,
     open: positiveNumber(stock.o),
     volume: positiveNumber(stock.v),
-  })
-  if (lines.length === 0) return undefined
-  return [`📊 ${name} (${symbol})`, ...lines, "資料來源: TWSE"].join("\n")
+  }
+  if (
+    [prices.last, prices.open, prices.high, prices.low, prices.volume].every(
+      (value) => value === undefined,
+    )
+  )
+    return undefined
+  return { name, symbol, source: "TWSE", prices }
 }
 
 function positiveNumber(value: unknown): number | undefined {
