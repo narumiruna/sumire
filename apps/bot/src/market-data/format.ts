@@ -12,9 +12,9 @@ interface MarketSource {
   source: string
 }
 
-function sourceFooter(metadata: MarketSource): string {
+function sourceHeading(metadata: MarketSource): string {
   const unit = metadata.currency ? escapeMarkdownText(metadata.currency) : "未提供"
-  return `${unit}｜${escapeMarkdownText(metadata.source)}`
+  return `**${escapeMarkdownText(metadata.source)}｜${unit}**`
 }
 
 export function formatMarketTable(
@@ -23,6 +23,7 @@ export function formatMarketTable(
   metadata?: MarketSource,
 ): string {
   return [
+    ...(metadata ? [sourceHeading(metadata), ""] : []),
     escapeMarkdownText(title),
     "",
     "| 項目 | 數值 |",
@@ -30,7 +31,6 @@ export function formatMarketTable(
     ...rows.map(
       ([label, value]) => `| ${escapeMarkdownText(label)} | ${escapeMarkdownText(value)} |`,
     ),
-    ...(metadata ? ["", sourceFooter(metadata)] : []),
   ].join("\n")
 }
 
@@ -66,7 +66,7 @@ export function formatMarketResults(results: readonly (MarketQuote | string)[]):
       output.push(result)
       continue
     }
-    // Never put prices with different units or sources under a shared footer.
+    // Never put prices with different units or sources under a shared source heading.
     const key = JSON.stringify([result.prices.currency, result.source])
     let group = groups.get(key)
     if (!group) {
@@ -84,6 +84,14 @@ export function formatMarketResults(results: readonly (MarketQuote | string)[]):
 function formatQuoteTable(quotes: readonly MarketQuote[]): string {
   const first = quotes[0]
   if (!first) return ""
+  const columns: Array<readonly ["open" | "high" | "low" | "volume" | "bid" | "ask", string]> = [
+    ["open", "開盤"],
+    ["high", "最高"],
+    ["low", "最低"],
+    ["volume", "成交量"],
+  ]
+  if (quotes.some((quote) => quote.prices.bid !== undefined)) columns.push(["bid", "買價"])
+  if (quotes.some((quote) => quote.prices.ask !== undefined)) columns.push(["ask", "賣價"])
   const rendered = quotes.map((quote) => {
     const values = quote.prices
     const price = (value: number) =>
@@ -99,38 +107,35 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
     ]
     const hasName = quote.name !== quote.symbol && quote.name !== quote.source
     const label = hasName ? `${quote.symbol} ${quote.name}` : quote.symbol
-    const range = (
-      [
-        ["開盤", values.open],
-        ["最高", values.high],
-        ["最低", values.low],
-      ] as const
-    ).flatMap(([label, value]) => (value === undefined ? [] : [`${label} ${price(value)}`]))
-    const trades: string[] = []
-    if (values.volume !== undefined) trades.push(`成交量 ${formatNumber(values.volume)}`)
-    if (values.bid !== undefined) trades.push(`買價 ${price(values.bid)}`)
-    if (values.ask !== undefined) trades.push(`賣價 ${price(values.ask)}`)
-    // A single newline is a Markdown soft break; keep these as distinct paragraphs.
-    const details = [
-      ...(hasName || quotes.length > 1 ? [`**${escapeMarkdownText(label)}**`] : []),
-      ...(range.length ? [range.join(" · ")] : []),
-      ...(trades.length ? [trades.join(" · ")] : []),
-    ].join("\n\n")
-    return { row: `| ${cells.join(" | ")} |`, details }
+    const detailCells = [
+      `**${escapeMarkdownText(label)}**`,
+      ...columns.map(([field]) => {
+        const value = values[field]
+        return value === undefined ? "—" : field === "volume" ? formatNumber(value) : price(value)
+      }),
+    ]
+    return {
+      row: `| ${cells.join(" | ")} |`,
+      detailRow: `| ${detailCells.join(" | ")} |`,
+      hasDetails: hasName || columns.some(([field]) => values[field] !== undefined),
+    }
   })
-  const details = rendered
-    .map((quote) => quote.details)
-    .filter(Boolean)
-    .join("\n\n")
+  const details = rendered.some((quote) => quote.hasDetails)
+    ? [
+        `| 標的 | ${columns.map(([, label]) => label).join(" | ")} |`,
+        `| --- | ${columns.map(() => "---:").join(" | ")} |`,
+        ...rendered.map((quote) => quote.detailRow),
+      ].join("\n")
+    : ""
   return [
+    sourceHeading({ currency: first.prices.currency, source: first.source }),
+    "",
     "| 標的 | 現價 | 漲跌 |",
     "| --- | ---: | ---: |",
     ...rendered.map((quote) => quote.row),
     ...(details
       ? ["", "<details><summary>查看完整名稱與詳細報價</summary>", "", details, "", "</details>"]
       : []),
-    "",
-    sourceFooter({ currency: first.prices.currency, source: first.source }),
   ].join("\n")
 }
 

@@ -19,81 +19,67 @@ const quote: MarketQuote = {
     volume: 239424,
   },
 }
+const disclosure = "<details><summary>查看完整名稱與詳細報價</summary>"
 
 describe("market quote tables", () => {
-  it("renders a three-column summary with names and full details outside the table", () => {
+  it("puts the source first and preserves summary plus a collapsed detail table", () => {
     expect(formatMarketResults([quote])).toBe(
       [
+        "**TWSE｜TWD**",
+        "",
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **0050** | **97.78** | **-2.81%** |",
         "",
-        "<details><summary>查看完整名稱與詳細報價</summary>",
+        disclosure,
         "",
-        "**0050 元大台灣50**",
-        "",
-        "開盤 101.55 · 最高 101.65 · 最低 97.70",
-        "",
-        "成交量 239,424",
+        "| 標的 | 開盤 | 最高 | 最低 | 成交量 |",
+        "| --- | ---: | ---: | ---: | ---: |",
+        "| **0050 元大台灣50** | 101.55 | 101.65 | 97.70 | 239,424 |",
         "",
         "</details>",
-        "",
-        "TWD｜TWSE",
       ].join("\n"),
     )
   })
 
-  it("uses explicit paragraph boundaries for every quote detail component", () => {
+  it("puts each full name and its values on one detail row", () => {
     const result = formatMarketResults([
-      { ...quote, symbol: "VOO", name: "Vanguard S&P 500 ETF" },
-      { ...quote, symbol: "TSM", name: "Taiwan Semiconductor Manufacturing Company Limited" },
+      quote,
+      {
+        ...quote,
+        symbol: "2330",
+        name: "台積電",
+        prices: { ...quote.prices, open: 2320, high: 2320, low: 2235, volume: 23680 },
+      },
     ])
-    expect(result.split("\n\n").slice(1)).toEqual([
-      "<details><summary>查看完整名稱與詳細報價</summary>",
-      "**VOO Vanguard S&P 500 ETF**",
-      "開盤 101.55 · 最高 101.65 · 最低 97.70",
-      "成交量 239,424",
-      "**TSM Taiwan Semiconductor Manufacturing Company Limited**",
-      "開盤 101.55 · 最高 101.65 · 最低 97.70",
-      "成交量 239,424",
-      "</details>",
-      "TWD｜TWSE",
-    ])
+    const details = result.split(disclosure)[1] ?? ""
+    expect(details).toContain("| **0050 元大台灣50** | 101.55 | 101.65 | 97.70 | 239,424 |")
+    expect(details).toContain("| **2330 台積電** | 2,320.00 | 2,320.00 | 2,235.00 | 23,680 |")
+    expect(details.match(/\| 標的 \| 開盤/gu)).toHaveLength(1)
   })
 
-  it("omits absent detail paragraphs without collapsing remaining boundaries", () => {
+  it("uses missing-cell placeholders without inventing zeroes or extra paragraphs", () => {
     const result = formatMarketResults([{ ...quote, prices: { last: 0, volume: 0 } }])
-    expect(result.split("\n\n").slice(1)).toEqual([
-      "<details><summary>查看完整名稱與詳細報價</summary>",
-      "**0050 元大台灣50**",
-      "成交量 0",
-      "</details>",
-      "未提供｜TWSE",
-    ])
     expect(result).toContain("| **0050** | **0.00** | — |")
-    expect(result).not.toContain("開盤")
+    expect(result).toContain("| **0050 元大台灣50** | — | — | — | 0 |")
+    expect(result.startsWith("**TWSE｜未提供**\n\n")).toBe(true)
     expect(result).not.toContain("\n\n\n")
+    expect(formatMarketResults([])).toBe("")
   })
 
-  it("leaves summary and source visible while details are closed by default", () => {
+  it("keeps source and three-column summary visible, with details closed by default", () => {
     const result = formatMarketResults([quote, { ...quote, symbol: "2330", name: "台積電" }])
-    const [visible, hidden] = result.split("<details><summary>查看完整名稱與詳細報價</summary>")
+    const [visible, hidden] = result.split(disclosure)
+    expect(visible?.startsWith("**TWSE｜TWD**\n\n")).toBe(true)
     expect(visible).toContain("| **0050** | **97.78** | **-2.81%** |")
-    expect(visible).toContain("| **2330** | **97.78** | **-2.81%** |")
     expect(visible).not.toContain("開盤")
-    const [body, footer] = (hidden ?? "").split("</details>")
-    expect(body).toContain("**0050 元大台灣50**")
-    expect(body).toContain("**2330 台積電**")
-    expect(body).toContain("成交量 239,424")
-    expect(footer?.trim()).toBe("TWD｜TWSE")
-    expect(result.match(/<details>/gu)).toHaveLength(1)
+    expect(visible).not.toContain("元大台灣50")
+    expect(hidden).toContain("| 標的 | 開盤 | 最高 | 最低 | 成交量 |")
+    expect(hidden?.split("</details>")[1]).toBe("")
     expect(result).not.toContain("<details open")
-    expect(
-      formatMarketResults([{ ...quote, name: quote.symbol, prices: { last: 1 } }]),
-    ).not.toContain("<details>")
   })
 
-  it("escapes upstream HTML so quote names cannot close or open disclosure blocks", () => {
+  it("escapes upstream HTML so names cannot close or open disclosure blocks", () => {
     const result = formatMarketResults([
       { ...quote, name: "X </details><details open><summary>injected</summary>" },
     ])
@@ -104,82 +90,114 @@ describe("market quote tables", () => {
     expect(result).toContain("\\</details\\>\\<details open\\>")
   })
 
-  it("combines same-unit same-source quotes under one header and footer", () => {
-    const second: MarketQuote = { ...quote, symbol: "2330", name: "台積電" }
-    const result = formatMarketResults([quote, second])
-    expect(result.match(/\| 標的 \|/gu)).toHaveLength(1)
+  it("combines same-unit same-source quotes under one source heading", () => {
+    const result = formatMarketResults([quote, { ...quote, symbol: "2330", name: "台積電" }])
+    expect(result.match(/\| 標的 \| 現價/gu)).toHaveLength(1)
+    expect(result.match(/\| 標的 \| 開盤/gu)).toHaveLength(1)
     expect(result.match(/TWSE/gu)).toHaveLength(1)
-    expect(result).toContain("**0050 元大台灣50**")
-    expect(result).toContain("**2330 台積電**")
+    expect(result.match(/<details>/gu)).toHaveLength(1)
   })
 
-  it("separates units and sources rather than sharing misleading footer metadata", () => {
+  it("keeps different currencies and sources in independently labeled groups", () => {
     const result = formatMarketResults([
       quote,
       { ...quote, source: "Yahoo Finance" },
       { ...quote, prices: { ...quote.prices, currency: "USD" } },
     ])
-    expect(result.match(/\| 標的 \|/gu)).toHaveLength(3)
+    for (const source of ["**TWSE｜TWD**", "**Yahoo Finance｜TWD**", "**TWSE｜USD**"]) {
+      expect(result).toContain(`${source}\n\n| 標的 | 現價 | 漲跌 |`)
+    }
     expect(result.match(/<details>/gu)).toHaveLength(3)
     expect(result.match(/<\/details>/gu)).toHaveLength(3)
-    expect(result).toContain("TWD｜TWSE")
-    expect(result).toContain("TWD｜Yahoo Finance")
-    expect(result).toContain("USD｜TWSE")
-  })
-
-  it("shows absent values as dashes without dropping zero or inventing a currency", () => {
-    const result = formatMarketResults([
-      {
-        name: "TEST",
-        symbol: "TEST",
-        source: "Yahoo Finance",
-        prices: { last: 0, volume: 0, changeFrom: 0 },
-      },
-    ])
-    expect(result).toContain("| **TEST** | **0.00** | — |")
-    expect(result).toContain("成交量 0")
-    expect(result).not.toContain("開盤")
-    expect(result).toContain("未提供")
-    expect(formatMarketResults([])).toBe("")
   })
 
   it.each([
     [110, "+10.00%"],
     [100, "+0.00%"],
     [90, "-10.00%"],
-  ])("preserves signed changes without width-consuming icons for price %s", (last, expected) => {
+  ])("preserves signed changes for price %s", (last, expected) => {
     expect(formatMarketResults([{ ...quote, prices: { last, changeFrom: 100 } }])).toContain(
       `**${expected}**`,
     )
   })
 
-  it("retains crypto precision and moves bid/ask values outside the table", () => {
+  it("preserves crypto precision and adds bid/ask columns only inside details", () => {
     const result = formatMarketResults([
       {
-        name: "MAX Exchange",
         symbol: "BTC/USDT",
+        name: "MAX Exchange",
         source: "MAX Exchange",
-        prices: { last: 0.00001234, bid: 0.000012, ask: 0.00001235, maximumFractionDigits: 8 },
+        prices: {
+          last: 0.00001234,
+          bid: 0.000012,
+          ask: 0.00001235,
+          maximumFractionDigits: 8,
+          currency: "USDT",
+        },
       },
-      { ...quote, prices: {} },
     ])
-    expect(result).toContain("**0.00001234**")
-    expect(result).not.toContain("| 買價 |")
-    expect(result).toContain("買價 0.000012 · 賣價 0.00001235")
+    const [visible, hidden] = result.split(disclosure)
+    expect(visible).toContain("| **BTC/USDT** | **0.00001234** | — |")
+    expect(visible).not.toContain("買價")
+    expect(hidden).toContain("| 成交量 | 買價 | 賣價 |")
+    expect(hidden).toContain("| **BTC/USDT** | — | — | — | — | 0.000012 | 0.00001235 |")
+    expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
   })
 
-  it("omits missing bid/ask details without changing the summary columns", () => {
+  it("aligns mixed bid/ask availability and preserves zero and fractional volume", () => {
     const result = formatMarketResults([
-      { ...quote, prices: { ...quote.prices, bid: 97, ask: 98 } },
-      quote,
+      { ...quote, prices: { ...quote.prices, volume: 12.5, bid: 97, ask: 98 } },
+      { ...quote, symbol: "TEST", prices: { volume: 0, currency: "TWD" } },
     ])
-    expect(result).toContain("| 標的 | 現價 | 漲跌 |")
-    expect(result).toContain("成交量 239,424 · 買價 97.00 · 賣價 98.00")
-    expect(result.match(/買價/gu)).toHaveLength(1)
-    expect(result.match(/成交量 239,424/gu)).toHaveLength(2)
+    expect(result).toContain("12.5 | 97.00 | 98.00 |")
+    expect(result).toContain("| **TEST 元大台灣50** | — | — | — | 0 | — | — |")
   })
 
-  it("escapes upstream names, source labels, and currency units", () => {
+  it("preserves a complete MAX quote in one detail-table row with the source only above", () => {
+    const result = formatMarketResults([
+      {
+        symbol: "BTC/USDT",
+        name: "MAX Exchange",
+        source: "MAX Exchange",
+        prices: {
+          currency: "USDT",
+          last: 65500,
+          open: 64500,
+          changeFrom: 64500,
+          high: 66000,
+          low: 64000,
+          volume: 12.5,
+          bid: 65000.1,
+          ask: 65500.2,
+          maximumFractionDigits: 8,
+        },
+      },
+    ])
+    expect(result.startsWith("**MAX Exchange｜USDT**\n\n")).toBe(true)
+    expect(result).toContain("| **BTC/USDT** | **65,500.00** | **+1.55%** |")
+    expect(result).toContain(
+      "| **BTC/USDT** | 64,500.00 | 66,000.00 | 64,000.00 | 12.5 | 65,000.10 | 65,500.20 |",
+    )
+    expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
+    expect(result.endsWith("</details>")).toBe(true)
+  })
+
+  it("adds only an ask column when no bid is available in the group", () => {
+    const result = formatMarketResults([{ ...quote, prices: { ...quote.prices, ask: 98 } }, quote])
+    const body = result.split(disclosure)[1] ?? ""
+    expect(body).toContain("| 標的 | 開盤 | 最高 | 最低 | 成交量 | 賣價 |")
+    expect(body).not.toContain("買價")
+    expect(body).toContain("239,424 | 98.00 |")
+    expect(body).toContain("239,424 | — |")
+    expect(
+      body
+        .split("\n")
+        .filter((line) => line.startsWith("|"))
+        .every((line) => line.split("|").length === 8),
+    ).toBe(true)
+  })
+
+  it("escapes table delimiters and Markdown in names and source headings", () => {
     const result = formatMarketResults([
       {
         ...quote,
@@ -188,11 +206,13 @@ describe("market quote tables", () => {
         prices: { currency: "TWD\nUSD" },
       },
     ])
-    expect(result).toContain("**0050 A \\| \\*\\*B\\*\\* \\[link\\](https://example.test)**")
-    expect(result).toContain("TWD USD｜source\\|test")
+    expect(result).toContain(
+      "| **0050 A \\| \\*\\*B\\*\\* \\[link\\](https://example.test)** | — | — | — | — |",
+    )
+    expect(result.startsWith("**source\\|test｜TWD USD**\n\n")).toBe(true)
   })
 
-  it("keeps long VOO and TSM names out of the three-column summary", () => {
+  it("keeps long VOO and TSM names out of the visible summary", () => {
     const result = formatMarketResults([
       {
         symbol: "VOO",
@@ -207,54 +227,28 @@ describe("market quote tables", () => {
         prices: { last: 404.8, changeFrom: 398.62, currency: "USD", open: 404.99, high: 408.37 },
       },
     ])
-    const table = result.split("\n").filter((line) => line.startsWith("|"))
-    expect(table).toEqual([
+    const [visible, hidden] = result.split(disclosure)
+    expect(visible?.split("\n").filter((line) => line.startsWith("|"))).toEqual([
       "| 標的 | 現價 | 漲跌 |",
       "| --- | ---: | ---: |",
       "| **VOO** | **693.54** | **+0.32%** |",
       "| **TSM** | **404.80** | **+1.55%** |",
     ])
-    expect(table.every((line) => line.split("|").length === 5)).toBe(true)
-    expect(result).toContain("**VOO Vanguard S&P 500 ETF**\n\n開盤 691.88 · 最高 695.90")
-    expect(result).toContain(
-      "**TSM Taiwan Semiconductor Manufacturing Company Limited**\n\n開盤 404.99 · 最高 408.37",
+    expect(hidden).toContain("| **VOO Vanguard S&P 500 ETF** | 691.88 | 695.90 | — | — |")
+    expect(hidden).toContain(
+      "| **TSM Taiwan Semiconductor Manufacturing Company Limited** | 404.99 | 408.37 | — | — |",
     )
     expect(result).not.toMatch(/🔺|🔻|⏸️/u)
   })
 
-  it("preserves names even when no extra price details are available", () => {
+  it("retains names even when no detailed numbers are available", () => {
     const result = formatMarketResults([{ ...quote, prices: { last: 97.78 } }])
-    expect(result).toContain("| **0050** | **97.78** | — |")
-    expect(result).toContain("**0050 元大台灣50**")
-    expect(result).not.toContain("開盤")
-    expect(result).not.toContain("成交量")
+    expect(result).toContain("| **0050 元大台灣50** | — | — | — | — |")
+    expect(result).not.toContain("| 買價 |")
+    expect(result).not.toContain("| 賣價 |")
   })
 
-  it("shows a single MAX source footer without a redundant detail heading", () => {
-    const result = formatMarketResults([
-      {
-        symbol: "BTC/USDT",
-        name: "MAX Exchange",
-        source: "MAX Exchange",
-        prices: {
-          last: 65500,
-          open: 64500,
-          changeFrom: 64500,
-          currency: "USDT",
-          volume: 12.5,
-          bid: 65000.1,
-          ask: 65500.2,
-        },
-      },
-    ])
-    expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
-    expect(result.match(/\*\*BTC\/USDT\*\*/gu)).toHaveLength(1)
-    expect(result).toContain("開盤 64,500.00")
-    expect(result).toContain("成交量 12.5 · 買價 65,000.10 · 賣價 65,500.20")
-    expect(result.endsWith("USDT｜MAX Exchange")).toBe(true)
-  })
-
-  it("keeps symbol headings for multiple MAX instruments while showing the source once", () => {
+  it("does not repeat source names as MAX instrument names", () => {
     const result = formatMarketResults([
       {
         symbol: "BTC/USDT",
@@ -269,56 +263,63 @@ describe("market quote tables", () => {
         prices: { last: 3000, open: 2900, currency: "USDT" },
       },
     ])
-    expect(result).toContain("**BTC/USDT**\n\n開盤 64,500.00")
-    expect(result).toContain("**ETH/USDT**\n\n開盤 2,900.00")
+    expect(result.startsWith("**MAX Exchange｜USDT**\n\n")).toBe(true)
     expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
+    expect(result).toContain("| **BTC/USDT** | 64,500.00 | — | — | — |")
+    expect(result).toContain("| **ETH/USDT** | 2,900.00 | — | — | — |")
   })
 
-  it("does not add an empty details block for a symbol-only quote", () => {
-    expect(
-      formatMarketResults([
-        {
-          name: "TEST",
-          symbol: "TEST",
-          source: "Yahoo Finance",
-          prices: { last: 1 },
-        },
-      ]),
-    ).toBe(
+  it("omits an empty disclosure for one or multiple symbol-only quotes", () => {
+    const minimal: MarketQuote = {
+      name: "TEST",
+      symbol: "TEST",
+      source: "Yahoo Finance",
+      prices: { last: 1 },
+    }
+    expect(formatMarketResults([minimal])).toBe(
       [
+        "**Yahoo Finance｜未提供**",
+        "",
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **TEST** | **1.00** | — |",
-        "",
-        "未提供｜Yahoo Finance",
       ].join("\n"),
     )
+    expect(
+      formatMarketResults([minimal, { ...minimal, name: "OTHER", symbol: "OTHER" }]),
+    ).not.toContain("<details>")
   })
 
-  it("adds escaped source metadata only in a currency table footer", () => {
-    const result = formatMarketTable("💱 USD/TWD", [["參考中價", "31.8 TWD"]], {
-      currency: "TWD",
-      source: "Provider|test\nsource",
-    })
-    expect(result).toBe(
+  it("puts escaped currency source metadata before the pair and table", () => {
+    expect(
+      formatMarketTable("💱 USD/TWD", [["參考中價", "31.8 TWD"]], {
+        currency: "TWD",
+        source: "Provider|test\nsource",
+      }),
+    ).toBe(
       [
+        "**Provider\\|test source｜TWD**",
+        "",
         "💱 USD/TWD",
         "",
         "| 項目 | 數值 |",
         "| --- | --- |",
         "| 參考中價 | 31.8 TWD |",
-        "",
-        "TWD｜Provider\\|test source",
       ].join("\n"),
     )
   })
 
-  it("keeps currency tables intact alongside quote tables", () => {
-    const currency = formatMarketTable("💱 Frankfurter USD/TWD", [["參考中價", "31.8 TWD"]])
-    expect(formatMarketResults([quote, currency])).toContain(`\n\n${currency}`)
+  it("keeps currency tables outside stock disclosures", () => {
+    const currency = formatMarketTable("💱 USD/TWD", [["參考中價", "31.8 TWD"]], {
+      currency: "TWD",
+      source: "Frankfurter v2",
+    })
+    const result = formatMarketResults([quote, currency])
+    expect(result).toContain(`</details>\n\n${currency}`)
+    expect(currency).not.toContain("<details>")
   })
 
-  it("escapes Markdown and prevents values from adding currency table rows or columns", () => {
+  it("keeps metadata optional and escapes currency-table cells", () => {
     expect(
       formatMarketTable("📊 A | **B**\n(TEST)", [
         ["資料|來源", "[link](https://example.test)\r\n`code`\\path"],

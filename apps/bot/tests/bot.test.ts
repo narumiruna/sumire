@@ -1657,6 +1657,8 @@ describe("Telegram bot update routing", () => {
     const markdown = telegramPayloadText(calls[0]?.payload)
     expect(markdown).toBe(
       [
+        "**TWSE｜TWD**",
+        "",
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **0050** | **97.78** | **-2.81%** |",
@@ -1664,21 +1666,12 @@ describe("Telegram bot update routing", () => {
         "",
         "<details><summary>查看完整名稱與詳細報價</summary>",
         "",
-        "**0050 元大台灣50**",
-        "",
-        "開盤 101.55 · 最高 101.65 · 最低 97.70",
-        "",
-        "成交量 239,424",
-        "",
-        "**2330 台積電**",
-        "",
-        "開盤 2,320.00 · 最高 2,320.00 · 最低 2,235.00",
-        "",
-        "成交量 23,680",
+        "| 標的 | 開盤 | 最高 | 最低 | 成交量 |",
+        "| --- | ---: | ---: | ---: | ---: |",
+        "| **0050 元大台灣50** | 101.55 | 101.65 | 97.70 | 239,424 |",
+        "| **2330 台積電** | 2,320.00 | 2,320.00 | 2,235.00 | 23,680 |",
         "",
         "</details>",
-        "",
-        "TWD｜TWSE",
       ].join("\n"),
     )
     expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })
