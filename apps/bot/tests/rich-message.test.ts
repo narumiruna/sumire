@@ -71,18 +71,28 @@ describe("native Rich Message projection", () => {
       type: "details",
       summary: "查看完整名稱與詳細報價",
       blocks: [
-        { type: "paragraph", text: { type: "bold", text: "0050 元大台灣50" } },
-        { type: "paragraph", text: "開盤 101.55 · 最高 101.65 · 最低 97.70" },
-        { type: "paragraph", text: "成交量 239,424" },
+        {
+          type: "table",
+          cells: [
+            [cell("標的"), cell("開盤"), cell("最高"), cell("最低"), cell("成交量")],
+            [
+              cell({ type: "bold", text: "0050 元大台灣50" }),
+              cell("101.55"),
+              cell("101.65"),
+              cell("97.70"),
+              cell("239,424"),
+            ],
+          ],
+        },
       ],
     }
     const blocks: RichBlock[] = [
+      { type: "paragraph", text: { type: "bold", text: "TWSE｜TWD" } },
       { type: "table", cells: [[cell("0050"), cell("97.78"), cell("-2.81%")]] },
       details,
-      { type: "paragraph", text: "TWD｜TWSE" },
     ]
     const expected =
-      "0050\t97.78\t-2.81%\n查看完整名稱與詳細報價\n0050 元大台灣50\n開盤 101.55 · 最高 101.65 · 最低 97.70\n成交量 239,424\nTWD｜TWSE"
+      "TWSE｜TWD\n0050\t97.78\t-2.81%\n查看完整名稱與詳細報價\n標的\t開盤\t最高\t最低\t成交量\n0050 元大台灣50\t101.55\t101.65\t97.70\t239,424"
     expect(richMessageText(blocks)).toBe(expected)
     details.is_open = true
     expect(richMessageText(blocks)).toBe(expected)
