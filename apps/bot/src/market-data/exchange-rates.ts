@@ -100,9 +100,12 @@ function formatExchangeRate(rate: Rate, derived: boolean): string {
   }
   appendRate(rows, "現鈔買入", rate.cashBuy, rate.target)
   appendRate(rows, "現鈔賣出", rate.cashSell, rate.target)
-  if (derived) rows.push(["換算方式", "依台灣銀行牌告匯率換算"])
-  rows.push(["資料時間", formatTimestamp(rate.fetchedAt)], ["資料來源", "台灣銀行"])
-  return formatMarketTable(`💱 台灣銀行 ${rate.source}/${rate.target}`, rows)
+  if (derived) rows.push(["換算方式", "依牌告匯率換算"])
+  rows.push(["資料時間", formatTimestamp(rate.fetchedAt)])
+  return formatMarketTable(`💱 ${rate.source}/${rate.target}`, rows, {
+    currency: rate.target,
+    source: "台灣銀行",
+  })
 }
 
 function appendRate(

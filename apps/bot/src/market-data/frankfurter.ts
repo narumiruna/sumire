@@ -55,11 +55,14 @@ function isIsoDate(value: string): boolean {
 }
 
 function formatFrankfurterRate(rate: FrankfurterRate): string {
-  return formatMarketTable(`💱 Frankfurter ${rate.base}/${rate.quote}`, [
-    ["參考中價", `${formatNumber(rate.rate)} ${rate.quote}`],
-    ["資料日期", formatDate(rate.date)],
-    ["資料來源", "Frankfurter v2"],
-  ])
+  return formatMarketTable(
+    `💱 ${rate.base}/${rate.quote}`,
+    [
+      ["參考中價", `${formatNumber(rate.rate)} ${rate.quote}`],
+      ["資料日期", formatDate(rate.date)],
+    ],
+    { currency: rate.quote, source: "Frankfurter v2" },
+  )
 }
 
 function formatDate(value: string): string {
