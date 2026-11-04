@@ -1610,7 +1610,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("sends multiple TWSE quotes as one C-layout table without invoking Pi", async () => {
+  it("sends mobile quote summaries and full details without invoking Pi", async () => {
     const sessions = createSessions()
     const fetchImplementation = vi.fn(async () =>
       Response.json({
@@ -1657,10 +1657,18 @@ describe("Telegram bot update routing", () => {
     const markdown = telegramPayloadText(calls[0]?.payload)
     expect(markdown).toBe(
       [
-        "| 標的 | 現價 | 漲跌幅 | 開盤 | 最高 | 最低 | 成交量 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-        "| **0050 元大台灣50** | **97.78** | **🔻 -2.81%** | 101.55 | 101.65 | 97.70 | 239,424 |",
-        "| **2330 台積電** | **2,242.50** | **🔻 -2.29%** | 2,320.00 | 2,320.00 | 2,235.00 | 23,680 |",
+        "| 標的 | 現價 | 漲跌 |",
+        "| --- | ---: | ---: |",
+        "| **0050** | **97.78** | **-2.81%** |",
+        "| **2330** | **2,242.50** | **-2.29%** |",
+        "",
+        "**0050 元大台灣50**",
+        "開盤 101.55 · 最高 101.65 · 最低 97.70",
+        "成交量 239,424",
+        "",
+        "**2330 台積電**",
+        "開盤 2,320.00 · 最高 2,320.00 · 最低 2,235.00",
+        "成交量 23,680",
         "",
         "價格單位：TWD｜資料來源：TWSE",
       ].join("\n"),
