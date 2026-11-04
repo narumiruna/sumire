@@ -7,7 +7,21 @@ export function formatNumber(value: number, maximumFractionDigits = 8): string {
 
 export type MarketDataRow = readonly [label: string, value: string]
 
-export function formatMarketTable(title: string, rows: readonly MarketDataRow[]): string {
+interface MarketSource {
+  currency?: string
+  source: string
+}
+
+function sourceFooter(metadata: MarketSource): string {
+  const unit = metadata.currency ? escapeMarkdownText(metadata.currency) : "未提供"
+  return `${unit}｜${escapeMarkdownText(metadata.source)}`
+}
+
+export function formatMarketTable(
+  title: string,
+  rows: readonly MarketDataRow[],
+  metadata?: MarketSource,
+): string {
   return [
     escapeMarkdownText(title),
     "",
@@ -16,6 +30,7 @@ export function formatMarketTable(title: string, rows: readonly MarketDataRow[])
     ...rows.map(
       ([label, value]) => `| ${escapeMarkdownText(label)} | ${escapeMarkdownText(value)} |`,
     ),
+    ...(metadata ? ["", sourceFooter(metadata)] : []),
   ].join("\n")
 }
 
@@ -82,7 +97,8 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
       values.last === undefined ? "—" : `**${price(values.last)}**`,
       change === undefined ? "—" : `**${change}**`,
     ]
-    const label = quote.name === quote.symbol ? quote.symbol : `${quote.symbol} ${quote.name}`
+    const hasName = quote.name !== quote.symbol && quote.name !== quote.source
+    const label = hasName ? `${quote.symbol} ${quote.name}` : quote.symbol
     const range = (
       [
         ["開盤", values.open],
@@ -95,21 +111,23 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
     if (values.bid !== undefined) trades.push(`買價 ${price(values.bid)}`)
     if (values.ask !== undefined) trades.push(`賣價 ${price(values.ask)}`)
     const details = [
-      `**${escapeMarkdownText(label)}**`,
+      ...(hasName || quotes.length > 1 ? [`**${escapeMarkdownText(label)}**`] : []),
       ...(range.length ? [range.join(" · ")] : []),
       ...(trades.length ? [trades.join(" · ")] : []),
     ].join("\n")
     return { row: `| ${cells.join(" | ")} |`, details }
   })
-  const unit = first.prices.currency ? escapeMarkdownText(first.prices.currency) : "未提供"
+  const details = rendered
+    .map((quote) => quote.details)
+    .filter(Boolean)
+    .join("\n\n")
   return [
     "| 標的 | 現價 | 漲跌 |",
     "| --- | ---: | ---: |",
     ...rendered.map((quote) => quote.row),
+    ...(details ? ["", details] : []),
     "",
-    rendered.map((quote) => quote.details).join("\n\n"),
-    "",
-    `價格單位：${unit}｜資料來源：${escapeMarkdownText(first.source)}`,
+    sourceFooter({ currency: first.prices.currency, source: first.source }),
   ].join("\n")
 }
 

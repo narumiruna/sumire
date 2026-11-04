@@ -1670,7 +1670,7 @@ describe("Telegram bot update routing", () => {
         "開盤 2,320.00 · 最高 2,320.00 · 最低 2,235.00",
         "成交量 23,680",
         "",
-        "價格單位：TWD｜資料來源：TWSE",
+        "TWD｜TWSE",
       ].join("\n"),
     )
     expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })

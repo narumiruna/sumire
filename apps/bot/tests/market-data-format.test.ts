@@ -32,7 +32,7 @@ describe("market quote tables", () => {
         "開盤 101.55 · 最高 101.65 · 最低 97.70",
         "成交量 239,424",
         "",
-        "價格單位：TWD｜資料來源：TWSE",
+        "TWD｜TWSE",
       ].join("\n"),
     )
   })
@@ -41,7 +41,7 @@ describe("market quote tables", () => {
     const second: MarketQuote = { ...quote, symbol: "2330", name: "台積電" }
     const result = formatMarketResults([quote, second])
     expect(result.match(/\| 標的 \|/gu)).toHaveLength(1)
-    expect(result.match(/資料來源：TWSE/gu)).toHaveLength(1)
+    expect(result.match(/TWSE/gu)).toHaveLength(1)
     expect(result).toContain("**0050 元大台灣50**")
     expect(result).toContain("**2330 台積電**")
   })
@@ -53,9 +53,9 @@ describe("market quote tables", () => {
       { ...quote, prices: { ...quote.prices, currency: "USD" } },
     ])
     expect(result.match(/\| 標的 \|/gu)).toHaveLength(3)
-    expect(result).toContain("價格單位：TWD｜資料來源：TWSE")
-    expect(result).toContain("價格單位：TWD｜資料來源：Yahoo Finance")
-    expect(result).toContain("價格單位：USD｜資料來源：TWSE")
+    expect(result).toContain("TWD｜TWSE")
+    expect(result).toContain("TWD｜Yahoo Finance")
+    expect(result).toContain("USD｜TWSE")
   })
 
   it("shows absent values as dashes without dropping zero or inventing a currency", () => {
@@ -70,7 +70,7 @@ describe("market quote tables", () => {
     expect(result).toContain("| **TEST** | **0.00** | — |")
     expect(result).toContain("成交量 0")
     expect(result).not.toContain("開盤")
-    expect(result).toContain("價格單位：未提供")
+    expect(result).toContain("未提供")
     expect(formatMarketResults([])).toBe("")
   })
 
@@ -120,7 +120,7 @@ describe("market quote tables", () => {
       },
     ])
     expect(result).toContain("**0050 A \\| \\*\\*B\\*\\* \\[link\\](https://example.test)**")
-    expect(result).toContain("價格單位：TWD USD｜資料來源：source\\|test")
+    expect(result).toContain("TWD USD｜source\\|test")
   })
 
   it("keeps long VOO and TSM names out of the three-column summary", () => {
@@ -159,6 +159,89 @@ describe("market quote tables", () => {
     expect(result).toContain("**0050 元大台灣50**")
     expect(result).not.toContain("開盤")
     expect(result).not.toContain("成交量")
+  })
+
+  it("shows a single MAX source footer without a redundant detail heading", () => {
+    const result = formatMarketResults([
+      {
+        symbol: "BTC/USDT",
+        name: "MAX Exchange",
+        source: "MAX Exchange",
+        prices: {
+          last: 65500,
+          open: 64500,
+          changeFrom: 64500,
+          currency: "USDT",
+          volume: 12.5,
+          bid: 65000.1,
+          ask: 65500.2,
+        },
+      },
+    ])
+    expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
+    expect(result.match(/\*\*BTC\/USDT\*\*/gu)).toHaveLength(1)
+    expect(result).toContain("開盤 64,500.00")
+    expect(result).toContain("成交量 12.5 · 買價 65,000.10 · 賣價 65,500.20")
+    expect(result.endsWith("USDT｜MAX Exchange")).toBe(true)
+  })
+
+  it("keeps symbol headings for multiple MAX instruments while showing the source once", () => {
+    const result = formatMarketResults([
+      {
+        symbol: "BTC/USDT",
+        name: "MAX Exchange",
+        source: "MAX Exchange",
+        prices: { last: 65500, open: 64500, currency: "USDT" },
+      },
+      {
+        symbol: "ETH/USDT",
+        name: "MAX Exchange",
+        source: "MAX Exchange",
+        prices: { last: 3000, open: 2900, currency: "USDT" },
+      },
+    ])
+    expect(result).toContain("**BTC/USDT**\n開盤 64,500.00")
+    expect(result).toContain("**ETH/USDT**\n開盤 2,900.00")
+    expect(result.match(/MAX Exchange/gu)).toHaveLength(1)
+  })
+
+  it("does not add an empty details block for a symbol-only quote", () => {
+    expect(
+      formatMarketResults([
+        {
+          name: "TEST",
+          symbol: "TEST",
+          source: "Yahoo Finance",
+          prices: { last: 1 },
+        },
+      ]),
+    ).toBe(
+      [
+        "| 標的 | 現價 | 漲跌 |",
+        "| --- | ---: | ---: |",
+        "| **TEST** | **1.00** | — |",
+        "",
+        "未提供｜Yahoo Finance",
+      ].join("\n"),
+    )
+  })
+
+  it("adds escaped source metadata only in a currency table footer", () => {
+    const result = formatMarketTable("💱 USD/TWD", [["參考中價", "31.8 TWD"]], {
+      currency: "TWD",
+      source: "Provider|test\nsource",
+    })
+    expect(result).toBe(
+      [
+        "💱 USD/TWD",
+        "",
+        "| 項目 | 數值 |",
+        "| --- | --- |",
+        "| 參考中價 | 31.8 TWD |",
+        "",
+        "TWD｜Provider\\|test source",
+      ].join("\n"),
+    )
   })
 
   it("keeps currency tables intact alongside quote tables", () => {
