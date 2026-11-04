@@ -8,12 +8,14 @@ import type { McpAdmin } from "./mcp.js"
 import { ProviderAdmin } from "./providers.js"
 import type { RuntimeConfigAdmin } from "./runtime-config.js"
 import { createAdminServer } from "./server.js"
+import type { ServiceStatusAdmin } from "./service-status.js"
 import type { AdminStore } from "./store.js"
 
 export function createPolicyApplier(
   store: AdminStore,
   sessions: Pick<ChatSessionRegistry, "invalidatePolicies">,
   providers: Pick<ProviderAdmin, "validate" | "install">,
+  onApplied?: () => void,
 ) {
   let applying: Promise<void> | undefined
   return () => {
@@ -27,6 +29,7 @@ export function createPolicyApplier(
           if (store.snapshot().revision !== revision) continue
           providers.install(policy.providers)
           store.applied(revision, true)
+          onApplied?.()
           return
         } catch {
           if (store.snapshot().revision !== revision) continue
@@ -47,7 +50,13 @@ export function createPolicyApplier(
 
 export async function startAdmin(
   config: AdminConfig,
-  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin; github?: GitHubAuth },
+  control: {
+    store: AdminStore
+    mcp: McpAdmin
+    runtime?: RuntimeConfigAdmin
+    github?: GitHubAuth
+    serviceStatus?: ServiceStatusAdmin
+  },
   factory: PiSessionFactory,
   sessions: ChatSessionRegistry,
 ) {
@@ -69,7 +78,9 @@ export async function startAdmin(
     )
     await apply()
   })
-  const applyPolicy = createPolicyApplier(store, sessions, providers)
+  const applyPolicy = createPolicyApplier(store, sessions, providers, () =>
+    control.serviceStatus?.wake(),
+  )
   const apply = () => {
     mcp.discovered.clear()
     return applyPolicy()
@@ -83,6 +94,7 @@ export async function startAdmin(
     mcp,
     ...(control.runtime ? { runtime: control.runtime } : {}),
     ...(control.github ? { github: control.github } : {}),
+    ...(control.serviceStatus ? { serviceStatus: control.serviceStatus } : {}),
     providers,
     apply,
     tools: () => factory.toolNames ?? [],

@@ -44,6 +44,10 @@ export const pendingEditors = {
     label: "Service status — Telegram chat ID to add",
     target: { page: "Service status", selector: "#status-notification-chat-id" },
   },
+  statusQuietHours: {
+    label: "Service status — quiet hours input",
+    target: { page: "Service status", selector: "#status-quiet-hours-editor" },
+  },
   githubMentionAuthor: {
     label: "GitHub mentions — GitHub username to add",
     target: { page: "GitHub mentions", selector: "#github-mention-author" },

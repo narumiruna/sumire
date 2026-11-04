@@ -78,7 +78,7 @@ Do not commit the token.
 
 ## Service status notifications
 
-Configure **Service status** in the administration WebUI to select providers and multiple Telegram users, groups, or channels. These subscriptions do not grant model or tool access. The bot polls public status pages without model calls and stores delivery checkpoints in the administration database. Notifications are disabled by default. See [setup, filters, provider bounds, and recovery](../../docs/service-status.md).
+Configure **Service status** in the administration WebUI to select providers and multiple Telegram users, groups, or channels. Each chat can inherit defaults or override providers, severity, component/group filters, quiet hours, and update grouping. These subscriptions do not grant model or tool access. The bot polls each needed provider once and stores delivery checkpoints, versioned deferred notices, and recent results in the administration database. A confirmed manual test uses only saved, applied destinations and does not consume incident state. Notifications are disabled by default. Back up the stopped administration database before upgrading; older binaries cannot parse the new settings fields. See [setup, filters, provider bounds, and recovery](../../docs/service-status.md).
 
 ## Article command
 

@@ -275,8 +275,8 @@ describe("incident normalization", () => {
       "cloudflare",
       summary({
         status: { indicator: "none", description: "d".repeat(4096) },
-        components: Array.from({ length: 2048 }, () =>
-          component({ name: "n".repeat(1024), status: "s".repeat(128) }),
+        components: Array.from({ length: 2048 }, (_, index) =>
+          component({ id: `component_${index}`, name: "n".repeat(1024), status: "s".repeat(128) }),
         ),
         incidents: Array.from({ length: 1024 }, () =>
           incident({ components: [], incident_updates: [] }),

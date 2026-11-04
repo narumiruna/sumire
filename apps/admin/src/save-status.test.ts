@@ -117,6 +117,15 @@ describe("SaveStatus", () => {
       /<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/,
     )
   })
+  it("shows an actionable full-request size error and blocks review before any save", () => {
+    const html = render({
+      dirty: true,
+      validationError: "Remove component IDs before review and save. The limit is 262,144 bytes.",
+    })
+    expect(html).toContain('role="alert"')
+    expect(html).toContain("Remove component IDs before review and save")
+    expect(html).toMatch(/<button(?=[^>]*disabled=)[^>]*>Review and save changes<\/button>/)
+  })
   it("does not imply that an unknown save outcome was discarded or applied", () => {
     const html = render({ recover: () => {}, dirty: false }, { status: "failed" })
     expect(html).toContain('data-compact="false"')

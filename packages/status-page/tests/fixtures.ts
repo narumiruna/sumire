@@ -27,6 +27,51 @@ export function summary(overrides: Record<string, unknown> = {}) {
   }
 }
 
+// Minimal metadata from the four public summary endpoints; no page bodies or local state.
+export const publicComponentFixtures = {
+  github: [
+    {
+      id: "8l4ygp009s5s",
+      name: "Git Operations",
+      status: "operational",
+      group: false,
+      group_id: null,
+    },
+  ],
+  openai: [
+    {
+      id: "01JMXBRMFE6N2NNT7DG6XZQ6PW",
+      name: "Chat Completions",
+      status: "operational",
+    },
+  ],
+  claude: [
+    {
+      id: "rwppv331jlwc",
+      name: "claude.ai",
+      status: "operational",
+      group: false,
+      group_id: null,
+    },
+  ],
+  cloudflare: [
+    {
+      id: "zqxhg7y54vy8",
+      name: "Europe",
+      status: "major_outage",
+      group: true,
+      group_id: null,
+    },
+    {
+      id: "57ctn3f2qsyj",
+      name: "Amsterdam, Netherlands - (AMS)",
+      status: "operational",
+      group: false,
+      group_id: "zqxhg7y54vy8",
+    },
+  ],
+}
+
 // Small Statuspage fixtures; OpenAI omits both event arrays.
 export const statusFixtures = {
   github: summary({

@@ -38,6 +38,7 @@ import {
   request,
   type Selection,
   type Snapshot,
+  settingsRequestError,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
 import { BrandIcon } from "./brand-icon.js"
@@ -59,7 +60,6 @@ import {
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
 import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
-import { PolicyRecoveryDialog } from "./policy-recovery-dialog.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
@@ -77,6 +77,11 @@ const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
+const PolicyRecoveryDialog = lazy(() =>
+  import("./policy-recovery-dialog.js").then(({ PolicyRecoveryDialog }) => ({
+    default: PolicyRecoveryDialog,
+  })),
+)
 const ServiceStatus = lazy(() =>
   import("./service-status.js").then(({ ServiceStatus }) => ({ default: ServiceStatus })),
 )
@@ -529,6 +534,7 @@ function App() {
             onReviewOpenChange={setPolicyReviewOpen}
             entries={policyChangeEntries(savedPolicy ?? policy, policy)}
             changeCount={policyChangeCount(savedPolicy ?? policy, policy)}
+            validationError={settingsRequestError(snapshot.revision, policy)}
             modelReview={
               savedPolicy &&
               (savedPolicy.defaults.model !== policy.defaults.model ||
@@ -575,6 +581,8 @@ function App() {
               void run(async () => {
                 if (failedPolicySave)
                   throw new Error("Load latest and review draft before another save.")
+                const requestError = settingsRequestError(snapshot.revision, policy)
+                if (requestError) throw new Error(requestError)
                 const submitted = policySchema.parse(policy)
                 validateReferences(submitted)
                 const version = sessionVersion.current
@@ -642,31 +650,33 @@ function App() {
           />
         )}
         {recoveryReview && (
-          <PolicyRecoveryDialog
-            {...recoveryReview}
-            onReturnFocus={() => {
-              if (document.querySelector('[role="alertdialog"]')) return
-              const target =
-                document.getElementById("policy-recovery-trigger") ??
-                document.getElementById("save-status")
-              if (target?.checkVisibility()) target.focus()
-            }}
-            onCancel={() => {
-              setRecoveryReview(undefined)
-              setError(recoveryReview.failure)
-            }}
-            onConfirm={(recovered) => {
-              const latest = recoveryReview.latest
-              const hasChanges = policyChanges(latest.policy, recovered).length > 0
-              setSavedPolicy(latest.policy)
-              setSnapshot({ ...latest, policy: recovered })
-              setDirty(hasChanges)
-              setFailedPolicySave(undefined)
-              setRecoveryReview(undefined)
-              setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
-              if (hasChanges) setPolicyReviewOpen(true)
-            }}
-          />
+          <Suspense fallback={<Text role="status">Loading draft recovery…</Text>}>
+            <PolicyRecoveryDialog
+              {...recoveryReview}
+              onReturnFocus={() => {
+                if (document.querySelector('[role="alertdialog"]')) return
+                const target =
+                  document.getElementById("policy-recovery-trigger") ??
+                  document.getElementById("save-status")
+                if (target?.checkVisibility()) target.focus()
+              }}
+              onCancel={() => {
+                setRecoveryReview(undefined)
+                setError(recoveryReview.failure)
+              }}
+              onConfirm={(recovered) => {
+                const latest = recoveryReview.latest
+                const hasChanges = policyChanges(latest.policy, recovered).length > 0
+                setSavedPolicy(latest.policy)
+                setSnapshot({ ...latest, policy: recovered })
+                setDirty(hasChanges)
+                setFailedPolicySave(undefined)
+                setRecoveryReview(undefined)
+                setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
+                if (hasChanges) setPolicyReviewOpen(true)
+              }}
+            />
+          </Suspense>
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
@@ -1124,7 +1134,14 @@ function App() {
                 saved={savedPolicy ?? policy}
                 disabled={busy || runtimePending}
                 onChange={update}
-                onPending={(value) => markPending("statusDestination", value)}
+                csrf={session.csrf}
+                application={snapshot}
+                onPending={(value, scope) =>
+                  markPending(
+                    scope === "quietHours" ? "statusQuietHours" : "statusDestination",
+                    value,
+                  )
+                }
                 onSessionExpired={expireInspectorSession}
               />
             </Suspense>

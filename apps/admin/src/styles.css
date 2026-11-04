@@ -3834,6 +3834,74 @@ main .durable-history-heading h3 {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.service-status .panel,
+.service-status .form-field,
+.service-status .rt-SelectTrigger {
+  min-width: 0;
+  max-width: 100%;
+}
+.status-components,
+.status-timing,
+.status-test-panel {
+  display: grid;
+  gap: 12px;
+}
+.status-component-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.status-component-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.status-component-list > li > span,
+.service-status code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.status-component-matches {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+.status-quiet-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+.status-quiet-fields > p,
+.status-quiet-fields > .rt-Flex {
+  grid-column: 1 / -1;
+}
+.status-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  margin-block: 16px;
+}
+.status-result-values {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  font-size: var(--font-size-2);
+}
+.status-result-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-result-values dt {
+  color: var(--ink-muted);
+}
 .status-manual-destination {
   margin-block: 16px;
 }

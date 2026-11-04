@@ -23,6 +23,8 @@ export interface StatusEvent {
   components: StatusComponent[]
   scheduledFor?: string
   scheduledUntil?: string
+  /** Highest qualifying impact observed while this notice was deferred. */
+  observedImpact?: StatusImpact
 }
 
 export function incidentEvent(incident: StatusIncident, maintenance = false): StatusEvent {
@@ -103,11 +105,22 @@ function bounded(value: string, length: number): string {
 export function formatStatusNotification(
   provider: StatusProviderId,
   event: StatusEvent,
-  change: "new" | "update" | "resolved",
+  change: "new" | "update" | "resolved" | "occurred-resolved",
+  changes = 1,
 ): string {
   const name = statusProviders.find((entry) => entry.id === provider)?.name ?? provider
-  const label = change === "resolved" ? "已恢復" : change === "update" ? "事件更新" : "服務異常"
-  const heading = event.maintenance && change !== "resolved" ? "計畫性維護" : label
+  const label =
+    change === "occurred-resolved"
+      ? "期間發生並已恢復"
+      : change === "resolved"
+        ? "已恢復"
+        : change === "update"
+          ? "事件更新"
+          : "服務異常"
+  const heading =
+    event.maintenance && change !== "resolved" && change !== "occurred-resolved"
+      ? "計畫性維護"
+      : label
   const components = event.components.map((component) => `${component.name}: ${component.status}`)
   const schedule = [event.scheduledFor, event.scheduledUntil]
     .filter((value): value is string => Boolean(value))
@@ -115,6 +128,10 @@ export function formatStatusNotification(
   return [
     `[${name}] ${heading}`,
     bounded(event.name, 120),
+    changes > 1 ? `合併 ${changes} 次狀態變更` : "",
+    event.observedImpact && event.observedImpact !== event.impact
+      ? `期間最高影響：${event.observedImpact}`
+      : "",
     `狀態：${bounded(event.status, 40)}｜影響：${event.impact}`,
     schedule.length ? `維護時間：${schedule.join(" → ")}` : "",
     components.length ? `元件：${bounded(components.join(", "), 140)}` : "",

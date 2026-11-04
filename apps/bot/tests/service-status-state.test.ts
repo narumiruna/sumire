@@ -48,6 +48,86 @@ it("adds status storage without changing the administration schema or settings",
   })
 })
 
+it("migrates legacy checkpoints without changing fingerprints, activity, or retention timestamps", () => {
+  const f = fixture()
+  f.store.db.exec(`
+    CREATE TABLE status_deliveries (
+      chat_id INTEGER NOT NULL, provider TEXT NOT NULL, event_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL, active INTEGER NOT NULL, maintenance INTEGER NOT NULL,
+      touched INTEGER NOT NULL, PRIMARY KEY(chat_id,provider,event_id)
+    );
+  `)
+  const insert = f.store.db.prepare("INSERT INTO status_deliveries VALUES (?,?,?,?,?,?,?)")
+  insert.run(101, "github", "legacy-active", "unchanged", 1, 0, now - retention - 1)
+  insert.run(101, "github", "legacy-inactive", "resolved", 0, 1, now - retention)
+  const version = f.store.db.prepare("PRAGMA user_version").get()
+  const state = new StatusDeliveryState(f.store.db)
+  expect(state.get(101, "github", "legacy-active")).toEqual({
+    chatId: 101,
+    provider: "github",
+    eventId: "legacy-active",
+    fingerprint: "unchanged",
+    active: 1,
+    maintenance: 0,
+  })
+  expect(state.active("github")[0]).not.toHaveProperty("components")
+  expect(state.active("github")[0]).not.toHaveProperty("impact")
+  expect(
+    f.store.db.prepare("SELECT touched FROM status_deliveries ORDER BY event_id").all(),
+  ).toEqual([{ touched: now - retention - 1 }, { touched: now - retention }])
+  expect(f.store.db.prepare("PRAGMA user_version").get()).toEqual(version)
+  expect(f.store.db.prepare("SELECT version FROM status_meta WHERE id=1").get()).toEqual({
+    version: 1,
+  })
+  state.prune([101], ["github"], now)
+  expect(state.get(101, "github", "legacy-inactive")).toBeDefined()
+  const active = state.active("github")
+  const restored = f.reopen()
+  expect(restored.active("github")).toEqual(active)
+})
+
+it("rejects a newer service schema without closing the shared database or changing administration data", () => {
+  const f = fixture()
+  const state = new StatusDeliveryState(f.store.db)
+  state.acknowledge(101, "github", "incident", "preserved", true, false, now)
+  const snapshot = f.store.snapshot()
+  const version = f.store.db.prepare("PRAGMA user_version").get()
+  f.store.db.exec("UPDATE status_meta SET version=2 WHERE id=1")
+  expect(() => new StatusDeliveryState(f.store.db)).toThrow(
+    "Service status database schema is newer than this application",
+  )
+  expect(f.store.snapshot()).toEqual(snapshot)
+  expect(f.store.db.prepare("PRAGMA user_version").get()).toEqual(version)
+  expect(f.store.db.prepare("SELECT version FROM status_meta WHERE id=1").get()).toEqual({
+    version: 2,
+  })
+  expect(state.get(101, "github", "incident")?.fingerprint).toBe("preserved")
+})
+
+it("stores optional component metadata without changing legacy checkpoint shapes", () => {
+  const f = fixture()
+  const state = new StatusDeliveryState(f.store.db)
+  const metadata = {
+    components: [{ id: "api", name: "API", status: "partial_outage" }],
+    impact: "major" as const,
+  }
+  state.acknowledge(101, "github", "incident", "active", true, false, now, metadata)
+  state.acknowledge(101, "openai", "legacy", "legacy", true, false, now)
+  expect(state.get(101, "github", "incident")).toMatchObject(metadata)
+  expect(state.active("github")[0]).toMatchObject(metadata)
+  state.acknowledge(101, "github", "incident", "updated", true, false, now + 1)
+  expect(state.get(101, "github", "incident")).toMatchObject(metadata)
+  state.acknowledge(101, "github", "empty", "empty", true, false, now, {
+    components: [],
+    impact: "minor",
+  })
+  const restored = f.reopen()
+  expect(restored.get(101, "github", "incident")).toMatchObject(metadata)
+  expect(restored.get(101, "github", "empty")).toMatchObject({ components: [], impact: "minor" })
+  expect(restored.get(101, "openai", "legacy")).not.toHaveProperty("components")
+  expect(restored.get(101, "openai", "legacy")).not.toHaveProperty("impact")
+})
+
 it("stores independent chat, provider, and event checkpoints and replaces only one acknowledgement", () => {
   const f = fixture()
   const state = new StatusDeliveryState(f.store.db)

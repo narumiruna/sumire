@@ -185,6 +185,7 @@ describe("service status delivery", () => {
     expect(f.logger.warn).toHaveBeenCalledOnce()
 
     f.send.mockClear()
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000)
     const restarted = await f.reopen()
     await restarted.poll()
     expect(f.send.mock.calls.map(([chatId]) => chatId)).toEqual([-202])
@@ -562,6 +563,7 @@ describe("service status delivery", () => {
     f.send.mockRejectedValueOnce(new Error("Telegram unavailable"))
     await f.worker.poll()
     expect(f.state().get(101, "github", "incident:api-errors")).toEqual(original)
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000)
     await f.worker.poll()
     expect(f.send).toHaveBeenCalledTimes(3)
     expect(f.state().get(101, "github", "incident:api-errors")?.fingerprint).toBe(
@@ -927,7 +929,7 @@ describe("service status authorization and lifecycle", () => {
         })
       }
       const polling = f.worker.poll()
-      const rejected = expect(polling).rejects.toMatchObject({ name: "AbortError" })
+      const rejected = expect(polling).rejects.toMatchObject({ status: 503 })
       await started.promise
       const closing = f.worker.close()
       expect(f.worker.close()).toBe(closing)
@@ -963,7 +965,7 @@ describe("service status authorization and lifecycle", () => {
         })
       }
       const polling = f.worker.poll()
-      const rejected = expect(polling).rejects.toMatchObject({ name: "AbortError" })
+      const rejected = expect(polling).rejects.toMatchObject({ status: 409 })
       await started.promise
       f.configure({ enabled: false }, false)
       await vi.advanceTimersByTimeAsync(999)
@@ -1075,7 +1077,7 @@ describe("service status authorization and lifecycle", () => {
     expect(timeout).toHaveBeenCalledExactlyOnceWith(5000)
     expect(f.logger.warn).toHaveBeenCalledOnce()
     expect(f.state().active("github")).toEqual([])
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(60_000)
     await f.worker.poll()
     expect(f.send).toHaveBeenCalledTimes(2)
     expect(f.state().get(101, "github", "incident:api-errors")?.active).toBe(1)

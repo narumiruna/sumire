@@ -1,3 +1,8 @@
+import {
+  type StatusChatOverride,
+  type StatusNotifications,
+  statusProviderIds,
+} from "@narumitw/sumire-policy"
 import type { Policy, ProviderSettings, Selection } from "./api.js"
 import type { EditorTarget } from "./navigation.js"
 import { statusProviderNames } from "./status-notifications.js"
@@ -39,6 +44,130 @@ const statusFields = [
   ["notifyResolved", "resolved incidents", "#status-notification-filters"],
   ["includeMaintenance", "scheduled maintenance", "#status-notification-filters"],
 ] as const
+
+function statusFilterChanges(saved: StatusNotifications, draft: StatusNotifications) {
+  const entries: PolicyChange[] = []
+  let count = 0
+  const componentLabel = (value: string[] | null | undefined) =>
+    value === undefined
+      ? "inherit shared selection"
+      : value === null
+        ? "all components"
+        : value.length
+          ? `${value.length} selected component/group IDs`
+          : "no components (explicit empty selection)"
+  const selectionCount = (
+    before: string[] | null | undefined,
+    after: string[] | null | undefined,
+  ) => {
+    if (!differentSelection(before, after)) return 0
+    if (!Array.isArray(before) || !Array.isArray(after)) return 1
+    return (
+      before.filter((id) => !after.includes(id)).length +
+      after.filter((id) => !before.includes(id)).length
+    )
+  }
+  const quietLabel = (value: StatusNotifications["quietHours"] | undefined) =>
+    value === undefined
+      ? "inherit shared quiet hours"
+      : value === null
+        ? "off"
+        : `${value.start}–${value.end} (${value.timeZone})`
+  const add = (
+    scope: string,
+    field: string,
+    before: string,
+    after: string,
+    selector: string,
+    edits = 1,
+  ) => {
+    count += edits
+    entries.push({
+      label: `Service status: ${scope}${field} ${before} → ${after} — notification-only; does not grant Pi access.`,
+      targets: [{ page: "Service status", selector }],
+    })
+  }
+  const compare = (
+    before: StatusChatOverride,
+    after: StatusChatOverride,
+    scope: string,
+    selector?: string,
+  ) => {
+    for (const provider of statusProviderIds) {
+      const old = before.componentSelections?.[provider]
+      const next = after.componentSelections?.[provider]
+      // An absent shared selection is all components; only per-chat omissions inherit.
+      const a = selector ? old : (old ?? null)
+      const b = selector ? next : (next ?? null)
+      if (differentSelection(a, b))
+        add(
+          scope,
+          `${statusProviderNames[provider]} components`,
+          componentLabel(a),
+          componentLabel(b),
+          selector ?? "#status-default-components",
+          selectionCount(a, b),
+        )
+    }
+    if (different(before.quietHours, after.quietHours))
+      add(
+        scope,
+        "quiet hours",
+        quietLabel(before.quietHours),
+        quietLabel(after.quietHours),
+        selector ?? "#status-default-timing",
+      )
+    if (before.batchWindowSeconds !== after.batchWindowSeconds) {
+      const label = (value: number | undefined) =>
+        value === undefined ? "inherit shared grouping" : value === 0 ? "off" : `${value} seconds`
+      add(
+        scope,
+        "update grouping",
+        label(before.batchWindowSeconds),
+        label(after.batchWindowSeconds),
+        selector ?? "#status-default-batch-window",
+      )
+    }
+  }
+  compare(saved, draft, "shared defaults: ")
+  for (const id of new Set([
+    ...Object.keys(saved.chatOverrides),
+    ...Object.keys(draft.chatOverrides),
+  ])) {
+    const before = saved.chatOverrides[id] ?? {}
+    const after = draft.chatOverrides[id] ?? {}
+    const target = draft.chatIds.includes(Number(id))
+      ? `#status-chat-${id}`
+      : "#status-notification-destinations"
+    const scope = `chat ${id}: `
+    if (differentSelection(before.providers, after.providers)) {
+      const label = (value: StatusChatOverride["providers"]) =>
+        value === undefined
+          ? "inherit shared services"
+          : value.length
+            ? value.map((id) => statusProviderNames[id]).join(", ")
+            : "no services (explicit empty override)"
+      add(
+        scope,
+        "services",
+        label(before.providers),
+        label(after.providers),
+        target,
+        selectionCount(before.providers, after.providers),
+      )
+    }
+    if (before.minimumImpact !== after.minimumImpact)
+      add(
+        scope,
+        "minimum impact",
+        before.minimumImpact ?? "inherit shared impact",
+        after.minimumImpact ?? "inherit shared impact",
+        target,
+      )
+    compare(before, after, scope, target)
+  }
+  return { entries, count }
+}
 
 function selectionChanges(
   saved: Selection | undefined,
@@ -226,10 +355,11 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
           ? `${value} seconds`
           : value
     changes.push({
-      label: `Service status: ${label} ${format(before)} → ${format(after)} — applies to all notification destinations; does not grant Pi access.`,
+      label: `Service status: ${label} ${format(before)} → ${format(after)} — ${key === "minimumImpact" ? "shared default; explicit chat impact overrides unchanged" : "applies to all notification destinations"}; does not grant Pi access.`,
       targets: [{ page: "Service status", selector }],
     })
   }
+  changes.push(...statusFilterChanges(saved.statusNotifications, draft.statusNotifications).entries)
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
     changes.push({
@@ -304,6 +434,7 @@ export function policyChangeCount(saved: Policy, draft: Policy): number {
     count += listCount(saved.statusNotifications[key], draft.statusNotifications[key])
   for (const [key] of statusFields)
     count += Number(saved.statusNotifications[key] !== draft.statusNotifications[key])
+  count += statusFilterChanges(saved.statusNotifications, draft.statusNotifications).count
   for (const key of ["privateUsers", "groups", "tools", "servers", "skills", "models"] as const)
     count += listCount(saved[key], draft[key])
   for (const id of new Set([...Object.keys(saved.chats), ...Object.keys(draft.chats)])) {

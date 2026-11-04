@@ -80,6 +80,7 @@ vi.mock("../src/telegram/channel-images.js", () => ({ ChannelImageIndex: class {
 vi.mock("../src/admin/application.js", () => ({
   startAdmin: async (_settings: unknown, control: unknown) => {
     expect(control).toHaveProperty("github.close", f.githubAuth.close)
+    expect(control).toHaveProperty("serviceStatus.start")
     f.events.push("admin-applied")
     return {
       stop() {
@@ -97,10 +98,14 @@ vi.mock("../src/github/runtime.js", () => ({
   }),
 }))
 vi.mock("../src/service-status/runtime.js", () => ({
-  startStatusNotificationWorker: vi.fn((_store, api) => {
+  createStatusNotificationWorker: vi.fn((_store, api) => {
     expect(api).toBe(f.telegramApi)
-    f.events.push("status-start")
+    f.events.push("status-create")
     return {
+      start() {
+        f.events.push("status-start")
+      },
+      wake() {},
       async close() {
         f.events.push("status-close")
         if (f.statusCloseFailure) throw new Error("fixture status close failure")
@@ -135,8 +140,9 @@ afterEach(() => {
 
 it("starts GitHub after applied provider setup and closes it before sessions and the admin store", async () => {
   await expect(startApplication()).rejects.toThrow("fixture transport failure")
-  expect(f.events.slice(0, 5)).toEqual([
+  expect(f.events.slice(0, 6)).toEqual([
     "factory",
+    "status-create",
     "admin-applied",
     "github-start",
     "status-start",

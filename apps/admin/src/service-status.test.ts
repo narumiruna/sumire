@@ -26,6 +26,8 @@ function render(policy = initialPolicy(), saved = policy, disabled = false) {
         policy,
         saved,
         disabled,
+        csrf: "fixture",
+        application: { revision: 1, applied: 1, status: "applied" },
         onChange,
         onPending,
         onSessionExpired: vi.fn(),
@@ -138,7 +140,8 @@ describe("service status editor", () => {
       "must send /start to the bot first.",
       "posting",
       "rights.",
-      "same services and notification filters.",
+      "Shared defaults apply",
+      "unless a destination overrides that setting.",
       "including chats not",
       "yet observed.",
       "No URLs, plus signs, spaces, or leading zeros.",
@@ -165,6 +168,15 @@ describe("service status editor", () => {
       expect(html.includes(`Select at least one ${name}.`)).toBe(
         missing.some((value) => value === name),
       )
+  })
+
+  it("does not treat shared provider defaults as a gate for an explicit chat subscription", () => {
+    const policy = initialPolicy()
+    policy.statusNotifications.enabled = true
+    policy.statusNotifications.chatIds = [42]
+    policy.statusNotifications.providers = []
+    policy.statusNotifications.chatOverrides = { "42": { providers: ["openai"] } }
+    expect(render(policy)).not.toContain("No notifications will be sent.")
   })
 
   it("keeps saved and staged destination IDs visible without directory metadata", () => {

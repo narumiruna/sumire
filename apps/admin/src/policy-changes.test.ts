@@ -50,6 +50,7 @@ describe("typed policy review destinations", () => {
     saved.statusNotifications.chatIds = [42, -100]
     const draft = structuredClone(saved)
     draft.statusNotifications = {
+      ...draft.statusNotifications,
       enabled: true,
       providers: ["claude", "cloudflare"],
       chatIds: [42, -200],
@@ -90,7 +91,7 @@ describe("typed policy review destinations", () => {
     })
     expect(entries).toContainEqual({
       label:
-        "Service status: minimum impact minor → major — applies to all notification destinations; does not grant Pi access.",
+        "Service status: minimum impact minor → major — shared default; explicit chat impact overrides unchanged; does not grant Pi access.",
       targets: [{ page: "Service status", selector: "#status-minimum-impact" }],
     })
     expect(

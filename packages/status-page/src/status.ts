@@ -18,6 +18,8 @@ export interface StatusComponent {
   id: string
   name: string
   status: string
+  groupId?: string | null
+  isGroup?: boolean
 }
 
 export interface StatusIncident {
@@ -63,11 +65,61 @@ function boundedArray<T extends z.ZodType>(schema: T, limit: number) {
     .pipe(z.array(schema))
 }
 
-const componentSchema = z.object({
-  id: idSchema,
-  name: z.string().min(1).max(1024),
-  status: stateSchema,
-})
+const componentSchema = z
+  .object({
+    id: idSchema,
+    name: z.string().min(1).max(1024),
+    status: stateSchema,
+    group_id: idSchema.nullable().optional(),
+    group: z.boolean().optional(),
+  })
+  .transform(({ id, name, status, group_id, group }) => ({
+    id,
+    name,
+    status,
+    ...(group_id === undefined ? {} : { groupId: group_id }),
+    ...(group === undefined ? {} : { isGroup: group }),
+  }))
+
+function validateComponentHierarchy(components: StatusComponent[], context: z.RefinementCtx) {
+  const byId = new Map<string, { component: StatusComponent; index: number }>()
+  for (const [index, component] of components.entries()) {
+    if (byId.has(component.id))
+      context.addIssue({ code: "custom", path: [index, "id"], message: "Duplicate component ID" })
+    else byId.set(component.id, { component, index })
+  }
+  for (const { component, index } of byId.values()) {
+    const parent = component.groupId ? byId.get(component.groupId)?.component : undefined
+    // Missing parents and missing group markers are valid in partial provider data.
+    if (parent?.isGroup === false)
+      context.addIssue({
+        code: "custom",
+        path: [index, "group_id"],
+        message: "Component parent is explicitly not a group",
+      })
+  }
+  const checked = new Set<string>()
+  for (const { component, index } of byId.values()) {
+    const path = new Set<string>()
+    let current: StatusComponent | undefined = component
+    // Iteration bounds traversal to the catalog size without recursive stack growth.
+    while (current && !checked.has(current.id)) {
+      if (path.has(current.id)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "group_id"],
+          message: "Component hierarchy contains a cycle",
+        })
+        break
+      }
+      path.add(current.id)
+      current = current.groupId ? byId.get(current.groupId)?.component : undefined
+    }
+    for (const id of path) checked.add(id)
+  }
+}
+
+const componentsSchema = boundedArray(componentSchema, 2048).superRefine(validateComponentHierarchy)
 const updateSchema = z.object({
   body: z.string().max(128 * 1024),
   updated_at: timestampSchema.nullish(),
@@ -80,7 +132,7 @@ const incidentSchema = z.object({
   status: stateSchema,
   impact: z.enum(["none", "minor", "major", "critical", "maintenance"]),
   updated_at: timestampSchema,
-  components: boundedArray(componentSchema, 2048).default([]),
+  components: componentsSchema.default([]),
   incident_updates: boundedArray(updateSchema, 1024).default([]),
   scheduled_for: timestampSchema.nullish(),
   scheduled_until: timestampSchema.nullish(),
@@ -91,7 +143,7 @@ const summarySchema = z.object({
     indicator: z.enum(["none", "minor", "major", "critical"]),
     description: z.string().min(1).max(4096),
   }),
-  components: boundedArray(componentSchema, 2048),
+  components: componentsSchema,
   incidents: boundedArray(incidentSchema, 1024).default([]),
   scheduled_maintenances: boundedArray(incidentSchema, 1024).default([]),
 })

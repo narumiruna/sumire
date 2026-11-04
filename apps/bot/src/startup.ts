@@ -12,8 +12,8 @@ import { AnyDocConverter, type DocumentConverter } from "./documents/converter.j
 import { type GithubMentionWorker, startGithubMentionWorker } from "./github/runtime.js"
 import { createLogger } from "./logging.js"
 import {
+  createStatusNotificationWorker,
   type StatusNotificationWorker,
-  startStatusNotificationWorker,
 } from "./service-status/runtime.js"
 import { createTelegramAgentBot } from "./telegram/bot.js"
 import { ChannelImageIndex } from "./telegram/channel-images.js"
@@ -29,12 +29,19 @@ export async function startApplication(): Promise<void> {
   )
   let adminStore: AdminStore | undefined
   let control:
-    | { store: AdminStore; mcp: McpAdmin; runtime: RuntimeConfigAdmin; github: GitHubAuth }
+    | {
+        store: AdminStore
+        mcp: McpAdmin
+        runtime: RuntimeConfigAdmin
+        github: GitHubAuth
+        serviceStatus?: StatusNotificationWorker
+      }
     | undefined
   let adminServer: Awaited<ReturnType<typeof startAdmin>> | undefined
   let sessions: ChatSessionRegistry | undefined
   let github: GithubMentionWorker | undefined
   let serviceStatus: StatusNotificationWorker | undefined
+  let telegram: ReturnType<typeof createTelegramAgentBot> | undefined
   try {
     const store = new AdminStore(
       path.join(settings.projectRoot, ".telegramagent/admin.sqlite"),
@@ -62,23 +69,25 @@ export async function startApplication(): Promise<void> {
       },
     )
     sessions = registry
-    adminServer = await startAdmin(settings.admin, control, piFactory, registry)
-    if (!piFactory.modelRuntime) throw new Error("Shared model runtime is unavailable")
-    github = startGithubMentionWorker(settings, logger, control, piFactory.modelRuntime)
-    const telegram = createTelegramAgentBot(settings, registry, logger, {
+    telegram = createTelegramAgentBot(settings, registry, logger, {
       ...(documentConverter ? { documentConverter } : {}),
       channelImages,
       control: store,
       runtime,
       recoverChats: () => piFactory.listChats(),
     })
-    serviceStatus = startStatusNotificationWorker(store, telegram.bot.api, logger)
+    serviceStatus = createStatusNotificationWorker(store, telegram.bot.api, logger)
+    control.serviceStatus = serviceStatus
+    adminServer = await startAdmin(settings.admin, control, piFactory, registry)
+    if (!piFactory.modelRuntime) throw new Error("Shared model runtime is unavailable")
+    github = startGithubMentionWorker(settings, logger, control, piFactory.modelRuntime)
+    serviceStatus.start()
 
     const closeRuntime = () =>
       closeApplicationResources([
         () => serviceStatus?.close(),
         () => github?.close(),
-        () => telegram.stop(),
+        () => telegram?.stop(),
         () => adminServer?.stop(),
         () => registry.dispose(),
       ])
@@ -108,6 +117,7 @@ export async function startApplication(): Promise<void> {
     await closeApplicationResources([
       () => serviceStatus?.close(),
       () => github?.close(),
+      () => telegram?.stop(),
       () => adminServer?.stop(),
       () => sessions?.dispose(),
       () => control?.github.close(),

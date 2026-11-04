@@ -47,7 +47,7 @@ Send `/allow` in a private chat or group to request access. The administrator op
 
 ### Service status notifications
 
-Use **Service status** in the WebUI to send GitHub, OpenAI, Claude, and Cloudflare incidents to multiple Telegram users, groups, and channels. Select services, destinations, minimum impact, polling interval, and update, recovery, or maintenance notices. Notifications are disabled by default and do not use a model. See [setup, delivery limits, and recovery](docs/service-status.md).
+Use **Service status** in the WebUI to send GitHub, OpenAI, Claude, and Cloudflare incidents to multiple Telegram users, groups, and channels. Select shared defaults or per-chat services, component groups, impact thresholds, quiet hours, and update grouping. Test saved destinations and inspect persistent delivery results. Notifications are disabled by default and do not use a model. See [setup, delivery limits, and recovery](docs/service-status.md).
 
 ### Secrets and variables
 
