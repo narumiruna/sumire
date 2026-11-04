@@ -405,10 +405,8 @@ export class StatusNotificationWorker {
     const checkpoint = this.#state.get(chatId, provider, event.id)
     const pending = this.#state.pendingGet(chatId, provider, event.id)
     const fingerprint = eventFingerprint(event)
-    if (checkpoint?.fingerprint === fingerprint) {
-      if (pending) this.#state.clearPending(chatId, provider, event.id)
-      return
-    }
+    // A matching current state can still have deferred peak or occurrence history.
+    if (checkpoint?.fingerprint === fingerprint && !pending) return
     if (pending?.fingerprint === fingerprint) return
     if (!event.active && !checkpoint?.active && !pending?.initial) return
     if (

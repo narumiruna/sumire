@@ -621,6 +621,132 @@ describe("service status durable scheduling", () => {
     expect(f.send).toHaveBeenCalledOnce()
   })
 
+  it.each([false, true])(
+    "retains deferred history when a critical peak returns to its checkpoint (restart: %s)",
+    async (restart) => {
+      const start = Date.parse("2030-01-01T10:00:00Z")
+      const end = Date.parse("2030-01-01T13:00:00Z")
+      const f = fixture({ quietHours: { timeZone: "UTC", start: "12:00", end: "13:00" } }, start)
+      const original = incident({ impact: "major", body: "Original major state." })
+      f.summaries.set("github", summary("github", { incidents: [original] }))
+      let worker = f.worker
+      await worker.poll()
+      const checkpoint = f.state().get(101, "github", "incident:api-errors")
+      expect(f.send).toHaveBeenCalledOnce()
+
+      f.clock.advanceTo(Date.parse("2030-01-01T12:10:00Z"))
+      f.summaries.set(
+        "github",
+        summary("github", {
+          incidents: [incident({ impact: "critical", body: "Critical state during quiet hours." })],
+        }),
+      )
+      await worker.poll()
+      const first = f.state().pendingGet(101, "github", "incident:api-errors")
+      expect(first).toMatchObject({
+        initial: false,
+        changes: 1,
+        dueAt: end,
+        event: { observedImpact: "critical" },
+      })
+
+      f.clock.advanceTo(Date.parse("2030-01-01T12:30:00Z"))
+      f.summaries.set("github", summary("github", { incidents: [original] }))
+      await worker.poll()
+      const reverted = f.state().pendingGet(101, "github", "incident:api-errors")
+      expect(reverted).toMatchObject({
+        fingerprint: checkpoint?.fingerprint,
+        firstSeenAt: first?.firstSeenAt,
+        dueAt: end,
+        initial: false,
+        changes: 2,
+        change: "update",
+        event: { body: original.body, impact: "major", observedImpact: "critical" },
+      })
+      expect(f.state().get(101, "github", "incident:api-errors")).toEqual(checkpoint)
+      await worker.poll()
+      expect(f.state().pendingGet(101, "github", "incident:api-errors")).toEqual(reverted)
+      if (restart) worker = await f.reopen()
+      expect(f.state().pendingGet(101, "github", "incident:api-errors")).toEqual(reverted)
+      f.clock.advanceTo(end - 1)
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledOnce()
+      f.clock.advanceTo(end)
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledTimes(2)
+      expect(f.send.mock.calls[1]?.[1]).toContain(original.body)
+      expect(f.send.mock.calls[1]?.[1]).toContain("期間最高影響：critical")
+      expect(f.send.mock.calls[1]?.[1]).toContain("合併 2 次狀態變更")
+      expect(f.state().pending()).toEqual([])
+      await worker.poll()
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  it.each([false, true])(
+    "retains deferred history when a reopened issue returns to its resolved checkpoint (restart: %s)",
+    async (restart) => {
+      const start = Date.parse("2030-01-01T10:00:00Z")
+      const end = Date.parse("2030-01-01T13:00:00Z")
+      const f = fixture({ quietHours: { timeZone: "UTC", start: "12:00", end: "13:00" } }, start)
+      let worker = f.worker
+      await worker.poll()
+      const resolved = incident({
+        status: "resolved",
+        impact: "none",
+        components: [],
+        body: "Original resolved state.",
+      })
+      f.clock.advanceTo(start + 60_000)
+      f.summaries.set("github", summary("github", { incidents: [resolved] }))
+      await worker.poll()
+      const checkpoint = f.state().get(101, "github", "incident:api-errors")
+      expect(checkpoint?.active).toBe(0)
+      expect(f.send).toHaveBeenCalledTimes(2)
+
+      f.clock.advanceTo(Date.parse("2030-01-01T12:10:00Z"))
+      f.summaries.set(
+        "github",
+        summary("github", { incidents: [incident({ body: "Reopened during quiet hours." })] }),
+      )
+      await worker.poll()
+      const first = f.state().pendingGet(101, "github", "incident:api-errors")
+      expect(first).toMatchObject({ initial: true, change: "new", dueAt: end, changes: 1 })
+      f.clock.advanceTo(Date.parse("2030-01-01T12:30:00Z"))
+      f.summaries.set("github", summary("github", { incidents: [resolved] }))
+      await worker.poll()
+      const reverted = f.state().pendingGet(101, "github", "incident:api-errors")
+      expect(reverted).toMatchObject({
+        fingerprint: checkpoint?.fingerprint,
+        firstSeenAt: first?.firstSeenAt,
+        dueAt: end,
+        initial: true,
+        changes: 2,
+        change: "resolved",
+        event: { active: false, body: resolved.body, impact: "none", observedImpact: "major" },
+      })
+      expect(f.state().get(101, "github", "incident:api-errors")).toEqual(checkpoint)
+      await worker.poll()
+      expect(f.state().pendingGet(101, "github", "incident:api-errors")).toEqual(reverted)
+      if (restart) worker = await f.reopen()
+      expect(f.state().pendingGet(101, "github", "incident:api-errors")).toEqual(reverted)
+      f.clock.advanceTo(end - 1)
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledTimes(2)
+      f.clock.advanceTo(end)
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledTimes(3)
+      expect(f.send.mock.calls[2]?.[1]).toContain("期間發生並已恢復")
+      expect(f.send.mock.calls[2]?.[1]).toContain(resolved.body)
+      expect(f.send.mock.calls[2]?.[1]).toContain("合併 2 次狀態變更")
+      expect(f.state().pending()).toEqual([])
+      await worker.poll()
+      await worker.flush()
+      expect(f.send).toHaveBeenCalledTimes(3)
+    },
+  )
+
   it("preserves queued versions across restart and reads due deliveries without sending or polling", async () => {
     const f = fixture({ batchWindowSeconds: 60 })
     await f.worker.poll()

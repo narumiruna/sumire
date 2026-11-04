@@ -59,7 +59,7 @@ A daily quiet window uses an explicit IANA time zone. The editor initially offer
 
 The scheduler uses Node.js 26's native Temporal API. Repeated local-time boundaries use the earlier occurrence. Nonexistent boundaries shift forward by the offset gap. UTC instants determine membership, so a repeated hour does not reopen an ended window. The host time zone does not change the subscription.
 
-During quiet hours, provider reads continue and eligible notices are stored in SQLite. At the end of the window, deferred changes can be sent in bounded summaries. If a qualifying issue improves below the threshold before delivery, the summary shows its highest observed impact separately from its latest lower impact; a minor-only issue cannot qualify for a major subscription. An issue observed both starting and resolving during the window is labeled as having occurred and recovered, not as a new active outage. Polling can still miss an issue that starts and ends between reads.
+During quiet hours, provider reads continue and eligible notices are stored in SQLite. At the end of the window, deferred changes can be sent in bounded summaries. If a qualifying issue improves below the threshold before delivery, the summary shows its highest observed impact separately from its latest lower impact; a minor-only issue cannot qualify for a major subscription. An issue observed both starting and resolving during the window is labeled as having occurred and recovered, not as a new active outage. Returning to an acknowledged state does not remove deferred history. The queue keeps its peak, change count, and due time. Polling can still miss an issue that starts and ends between reads.
 
 Outside quiet hours:
 
