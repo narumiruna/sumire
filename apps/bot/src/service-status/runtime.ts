@@ -10,6 +10,7 @@ import type { Api } from "grammy"
 import type { AdminStore } from "../admin/store.js"
 import type { Logger } from "../logging.js"
 import {
+  componentImpacts,
   eventFingerprint,
   formatStatusNotification,
   impactRank,
@@ -38,7 +39,7 @@ export class StatusNotificationWorker {
   #active: Promise<number> | undefined
   #loop: Promise<void> | undefined
   #closed: Promise<void> | undefined
-  #lastSend = 0
+  #nextSend = 0
 
   constructor(private readonly options: StatusWorkerOptions) {
     this.#state = new StatusDeliveryState(options.store.db)
@@ -123,28 +124,59 @@ export class StatusNotificationWorker {
         const summary = result.value
         const events = await this.#events(summary, settings, signal, authorize)
         authorize()
-        const hasActiveIncidents = events.some((event) => event.kind === "incident" && event.active)
-        const hasActiveMaintenance = events.some(
-          (event) => event.kind === "maintenance" && event.active,
+        const activeDetails = events.filter(
+          (event) =>
+            event.kind !== "summary" &&
+            event.active &&
+            (event.maintenance ||
+              impactRank[event.impact as keyof typeof impactRank] >=
+                impactRank[settings.minimumImpact]),
         )
+        const coveredImpacts = new Map<string, number>()
+        const coveredMaintenance = new Set<string>()
+        for (const detail of activeDetails) {
+          for (const component of detail.components) {
+            if (detail.maintenance) coveredMaintenance.add(component.id)
+            else
+              coveredImpacts.set(
+                component.id,
+                Math.max(
+                  coveredImpacts.get(component.id) ?? -1,
+                  impactRank[detail.impact as keyof typeof impactRank],
+                ),
+              )
+          }
+        }
         const confirmedHealthyComponents = summary.components.every(
           (component) =>
             component.status === "operational" ||
             (!settings.includeMaintenance && component.status === "under_maintenance"),
         )
         for (const event of events) {
+          // Suppress only aggregate degradation covered by eligible details. Existing aggregate
+          // checkpoints stay active until the summary itself confirms recovery.
+          if (event.kind === "summary") {
+            if (!event.active && !confirmedHealthyComponents) continue
+            if (
+              event.active &&
+              activeDetails.some(
+                (detail) =>
+                  detail.maintenance === event.maintenance &&
+                  (event.maintenance ||
+                    impactRank[detail.impact as keyof typeof impactRank] >=
+                      impactRank[event.impact as keyof typeof impactRank]),
+              ) &&
+              event.components.every((component) =>
+                component.status === "under_maintenance"
+                  ? coveredMaintenance.has(component.id)
+                  : (coveredImpacts.get(component.id) ?? -1) >=
+                    impactRank[componentImpacts[component.status] ?? "none"],
+              )
+            )
+              continue
+          }
           for (const chatId of settings.chatIds) {
             authorize()
-            // Prefer detailed incidents over a second aggregate alert. Existing aggregate
-            // checkpoints stay active until the summary itself confirms recovery.
-            if (event.kind === "summary") {
-              if (!event.active && !confirmedHealthyComponents) continue
-              if (
-                event.active &&
-                (hasActiveIncidents || (event.maintenance && hasActiveMaintenance))
-              )
-                continue
-            }
             await this.#deliver(provider, event, chatId, settings, signal, authorize)
           }
         }
@@ -243,13 +275,13 @@ export class StatusNotificationWorker {
       (change === "update" && !settings.notifyUpdates) ||
       (change === "resolved" && !settings.notifyResolved)
     if (!suppressed) {
-      // Limit this worker to ten send attempts per second across all destinations and providers.
-      const nextSend = this.#lastSend + 100
-      while (Date.now() < nextSend) {
-        await delay(nextSend - Date.now(), undefined, { signal })
+      // Keep at least 100 ms after each settled attempt across all destinations and providers.
+      let wait = this.#nextSend - performance.now()
+      while (wait > 0) {
+        await delay(Math.ceil(wait), undefined, { signal })
+        wait = this.#nextSend - performance.now()
       }
       authorize()
-      this.#lastSend = Date.now()
       try {
         await this.options.send(
           chatId,
@@ -260,6 +292,8 @@ export class StatusNotificationWorker {
         authorize()
         this.options.logger.warn(`Could not deliver ${provider} service status to chat ${chatId}`)
         return
+      } finally {
+        this.#nextSend = performance.now() + 100
       }
       authorize()
     }

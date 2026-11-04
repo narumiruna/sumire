@@ -44,7 +44,7 @@ The reader uses these fixed endpoints:
 
 Each request rejects redirects and has a 15-second deadline and a streamed 2 MiB response limit. Incident links are built from the fixed source origin. Upstream links cannot change the request target. Source text remains untrusted data.
 
-Detailed incidents take precedence over aggregate notices. When there is no active incident, degraded page or component status can produce an aggregate notice. This supports providers that omit incident arrays, including OpenAI. Component impact mapping is deterministic: `degraded_performance` is minor, `partial_outage` is major, and `major_outage` is critical. The aggregate uses the highest component or page impact. Maintenance-only components are excluded unless maintenance is enabled.
+Eligible detailed incidents take precedence over aggregate notices only when they cover the aggregate impact and each affected component's impact. Maintenance components require maintenance details. Filtered, lower-impact, or unrelated incidents do not suppress aggregate alerts. Degraded page or component status can otherwise produce an aggregate notice. This supports providers that omit incident arrays, including OpenAI. Component impact mapping is deterministic: `degraded_performance` is minor, `partial_outage` is major, and `major_outage` is critical. The aggregate uses the highest component or page impact. Maintenance-only components are excluded unless maintenance is enabled.
 
 - The first active poll sends current eligible issues, not historical resolved incidents.
 - A change in title, body, status, impact, affected components, or maintenance schedule can produce an update. Changes only to timestamps or array order do not.
@@ -57,7 +57,7 @@ Detailed incidents take precedence over aggregate notices. When there is no acti
 - Disabling update or recovery notices consumes those transitions without sending them. Enabling them later does not replay suppressed history.
 - Removed destination or source checkpoints are deleted on the next poll with applied settings. Inactive checkpoints expire after 30 days. Active incident checkpoints remain until confirmed recovery.
 
-Each message is plain text, below 1,000 Unicode code points, with a canonical source link. Long source text and component lists are shortened. Maintenance times use UTC. Link previews are disabled. The worker limits itself to ten send attempts per second and gives each send a five-second timeout. A failure at one provider or destination does not acknowledge another destination. Failures appear in service logs; saved settings do not prove Telegram delivery permission.
+Each message is plain text, below 1,000 Unicode code points, with a canonical source link. Long source text and component lists are shortened. Maintenance times use UTC. Link previews are disabled. The worker waits at least 100 milliseconds after each successful or failed send attempt before the next attempt. It uses a monotonic clock, so wall-clock changes do not shorten this interval. Each send has a five-second timeout. A failure at one provider or destination does not acknowledge another destination. Failures appear in service logs; saved settings do not prove Telegram delivery permission.
 
 Settings changes are checked before new reads and sends. A one-second guard cancels in-flight work if the applied revision changes. A request already accepted by Telegram cannot be recalled. Disablement or shutdown prevents later sends but does not delete messages already delivered.
 

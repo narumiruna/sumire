@@ -317,6 +317,132 @@ describe("service status delivery", () => {
     expect(f.state().get(101, "github", "summary")).toBeUndefined()
   })
 
+  it.each([
+    { reason: "filtered", impact: "minor", componentId: "api", delivered: false },
+    { reason: "lower-impact", impact: "major", componentId: "api", delivered: true },
+    { reason: "unrelated", impact: "critical", componentId: "other", delivered: true },
+  ] as const)(
+    "retains a critical aggregate alongside a $reason detailed incident",
+    async ({ impact, componentId, delivered }) => {
+      const f = fixture({ minimumImpact: "major" })
+      f.summaries.set(
+        "github",
+        summary("github", {
+          indicator: "critical",
+          components: [{ id: "api", name: "API", status: "major_outage" }],
+          incidents: [
+            incident({
+              impact,
+              components: [
+                { id: componentId, name: "Incident component", status: "partial_outage" },
+              ],
+            }),
+          ],
+        }),
+      )
+      await f.worker.poll()
+      expect(f.send).toHaveBeenCalledTimes(delivered ? 2 : 1)
+      expect(f.send.mock.calls.at(-1)?.[1]).toContain("GitHub service status")
+      expect(f.send.mock.calls.at(-1)?.[1]).toContain("影響：critical")
+      expect(f.state().get(101, "github", "summary")?.active).toBe(1)
+      expect(f.state().get(101, "github", "incident:api-errors")?.active).toBe(
+        delivered ? 1 : undefined,
+      )
+      await f.worker.poll()
+      expect(f.send).toHaveBeenCalledTimes(delivered ? 2 : 1)
+    },
+  )
+
+  it("suppresses an aggregate when eligible incidents together cover its components and impact", async () => {
+    const f = fixture({ minimumImpact: "major" })
+    const api = { id: "api", name: "API", status: "partial_outage" }
+    const web = { id: "web", name: "Web", status: "partial_outage" }
+    f.summaries.set(
+      "github",
+      summary("github", {
+        indicator: "major",
+        components: [api, web],
+        incidents: [
+          incident({ components: [api] }),
+          incident({ id: "web-errors", components: [web] }),
+        ],
+      }),
+    )
+    await f.worker.poll()
+    await f.worker.poll()
+    expect(f.send).toHaveBeenCalledTimes(2)
+    expect(f.state().get(101, "github", "summary")).toBeUndefined()
+  })
+
+  it.each([
+    { impact: "minor", status: "major_outage", covered: false },
+    { impact: "critical", status: "major_outage", covered: true },
+    { impact: "minor", status: "degraded_performance", covered: true },
+  ] as const)(
+    "checks a $status component's coverage by a $impact detail independently of the aggregate impact",
+    async ({ impact, status, covered }) => {
+      const f = fixture()
+      const api = { id: "api", name: "API", status: "major_outage" }
+      const web = { id: "web", name: "Web", status }
+      f.summaries.set(
+        "github",
+        summary("github", {
+          indicator: "critical",
+          components: [api, web],
+          incidents: [
+            incident({ impact: "critical", components: [api] }),
+            incident({ id: "web-errors", impact, components: [web] }),
+          ],
+        }),
+      )
+      await f.worker.poll()
+      expect(f.send).toHaveBeenCalledTimes(covered ? 2 : 3)
+      expect(f.state().get(101, "github", "summary")?.active).toBe(covered ? undefined : 1)
+    },
+  )
+
+  it.each(["incident", "maintenance"] as const)(
+    "does not hide unrelated aggregate maintenance behind a detailed %s",
+    async (kind) => {
+      const f = fixture({ includeMaintenance: true, minimumImpact: "critical" })
+      f.summaries.set(
+        "github",
+        summary("github", {
+          components: [{ id: "web", name: "Web", status: "under_maintenance" }],
+          incidents: [incident({ impact: kind === "incident" ? "critical" : "maintenance" })],
+        }),
+      )
+      await f.worker.poll()
+      expect(f.send).toHaveBeenCalledTimes(2)
+      expect(f.send.mock.calls[1]?.[1]).toContain("GitHub service status")
+      expect(f.send.mock.calls[1]?.[1]).toContain("計畫性維護")
+      expect(f.state().get(101, "github", "summary")?.maintenance).toBe(1)
+    },
+  )
+
+  it.each([false, true])(
+    "requires maintenance details to cover a mixed aggregate (covered: %s)",
+    async (covered) => {
+      const f = fixture({ includeMaintenance: true })
+      const api = { id: "api", name: "API", status: "major_outage" }
+      const web = { id: "web", name: "Web", status: "under_maintenance" }
+      f.summaries.set(
+        "github",
+        summary("github", {
+          indicator: "critical",
+          components: [api, web],
+          incidents: [incident({ impact: "critical", components: [api, web] })],
+          maintenances: covered
+            ? [incident({ id: "web-maintenance", impact: "maintenance", components: [web] })]
+            : [],
+        }),
+      )
+      await f.worker.poll()
+      expect(f.send).toHaveBeenCalledTimes(2)
+      expect(f.state().get(101, "github", "summary")?.active).toBe(covered ? undefined : 1)
+    },
+  )
+
   it.each(["minor", "none"] as const)(
     "tracks OpenAI component-only degradation and healthy recovery with top indicator %s",
     async (indicator) => {
@@ -854,23 +980,61 @@ describe("service status authorization and lifecycle", () => {
   it("spaces attempts by 100ms across targets and providers, including failed attempts", async () => {
     const f = fixture({ providers: ["github", "openai"], chatIds: [101, -202] })
     f.summaries.set("openai", summary("openai", { incidents: [incident()] }))
+    let clock = 1_000_000
+    vi.spyOn(Date, "now").mockImplementation(() => clock)
+    vi.spyOn(performance, "now").mockImplementation(() => clock)
     const times: number[] = []
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      // Message preparation can delay the first transport call after its rate-limit check.
+      if (!times.length) clock += 1
+      return new AbortController().signal
+    })
     f.send.mockImplementation(async () => {
-      times.push(Date.now())
+      times.push(performance.now())
       if (times.length === 1) throw new Error("Telegram unavailable")
     })
-    await f.worker.poll()
-    expect(f.send.mock.calls.map(([chatId]) => chatId)).toEqual([101, -202, 101, -202])
-    for (let index = 1; index < times.length; index++) {
-      expect((times[index] ?? 0) - (times[index - 1] ?? 0)).toBeGreaterThanOrEqual(100)
-    }
-    expect(f.state().get(101, "github", "incident:api-errors")).toBeUndefined()
+    await vi.mocked(delay).withImplementation(
+      async (milliseconds, value) => {
+        clock += milliseconds ?? 1
+        return value
+      },
+      async () => {
+        await f.worker.poll()
+        expect(f.send.mock.calls.map(([chatId]) => chatId)).toEqual([101, -202, 101, -202])
+        expect(times).toEqual([1_000_001, 1_000_101, 1_000_201, 1_000_301])
+        expect(f.state().get(101, "github", "incident:api-errors")).toBeUndefined()
+      },
+    )
+  })
+
+  it("keeps send spacing when the wall clock moves forward", async () => {
+    const f = fixture({ chatIds: [101, -202] })
+    let elapsed = 1_000_000
+    let wallClock = 1_000_000
+    vi.spyOn(performance, "now").mockImplementation(() => elapsed)
+    vi.spyOn(Date, "now").mockImplementation(() => wallClock)
+    const times: number[] = []
+    f.send.mockImplementation(async () => {
+      times.push(performance.now())
+      wallClock += 3_600_000
+    })
+    await vi.mocked(delay).withImplementation(
+      async (milliseconds, value) => {
+        elapsed += milliseconds ?? 1
+        return value
+      },
+      async () => {
+        await f.worker.poll()
+        expect(times).toEqual([1_000_000, 1_000_100])
+      },
+    )
   })
 
   it("waits again when a timer returns before the send interval has elapsed", async () => {
     const f = fixture({ chatIds: [101, -202] })
     let clock = 1_000_000
     vi.spyOn(Date, "now").mockImplementation(() => clock)
+    vi.spyOn(performance, "now").mockImplementation(() => clock)
     const waits: number[] = []
     const times: number[] = []
     f.send.mockImplementation(async () => {
@@ -911,6 +1075,7 @@ describe("service status authorization and lifecycle", () => {
     expect(timeout).toHaveBeenCalledExactlyOnceWith(5000)
     expect(f.logger.warn).toHaveBeenCalledOnce()
     expect(f.state().active("github")).toEqual([])
+    await vi.advanceTimersByTimeAsync(100)
     await f.worker.poll()
     expect(f.send).toHaveBeenCalledTimes(2)
     expect(f.state().get(101, "github", "incident:api-errors")?.active).toBe(1)

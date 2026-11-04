@@ -36,7 +36,7 @@ export function incidentEvent(incident: StatusIncident, maintenance = false): St
   }
 }
 
-const componentImpacts: Record<string, keyof typeof impactRank> = {
+export const componentImpacts: Record<string, keyof typeof impactRank> = {
   degraded_performance: "minor",
   partial_outage: "major",
   major_outage: "critical",
