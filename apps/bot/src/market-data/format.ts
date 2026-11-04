@@ -58,7 +58,78 @@ export interface MarketQuote {
   prices: QuotePrices
 }
 
+// Keep source comfortably below Telegram's native rich-message limit.
+export const maxMarketMessageChars = 16_000
+export const maxMarketReplies = 10
+const maxQuotesPerMessage = 50
+const maxSectionsPerMessage = 10
+
+export class MarketDataOutputError extends Error {
+  constructor() {
+    super("報價內容過長，無法完整傳送；請減少查詢代碼或稍後再試。")
+  }
+}
+
 export function formatMarketResults(results: readonly (MarketQuote | string)[]): string {
+  return groupMarketResults(results)
+    .map((item) => (typeof item === "string" ? item : formatQuoteTable(item)))
+    .join("\n\n")
+}
+
+/** Batch structured quotes before formatting; never cut Markdown or disclosure tags. */
+export function formatMarketMessages(results: readonly (MarketQuote | string)[]): string[] {
+  const parts: Array<{ text: string; quotes: number }> = []
+  for (const group of groupMarketResults(results)) {
+    if (typeof group === "string") {
+      parts.push({ text: group, quotes: 0 })
+      continue
+    }
+    let batch: MarketQuote[] = []
+    for (const quote of group) {
+      const candidate = [...batch, quote]
+      if (
+        batch.length &&
+        (candidate.length > maxQuotesPerMessage ||
+          Array.from(formatQuoteTable(candidate)).length > maxMarketMessageChars)
+      ) {
+        parts.push({ text: formatQuoteTable(batch), quotes: batch.length })
+        batch = []
+      }
+      batch.push(quote)
+    }
+    if (batch.length) parts.push({ text: formatQuoteTable(batch), quotes: batch.length })
+  }
+  const messages: string[] = []
+  let current = ""
+  let quoteCount = 0
+  let sections = 0
+  for (const part of parts) {
+    if (Array.from(part.text).length > maxMarketMessageChars) throw new MarketDataOutputError()
+    const combined = current ? `${current}\n\n${part.text}` : part.text
+    // Also bound table rows and source sections below the native block budget.
+    if (
+      current &&
+      (Array.from(combined).length > maxMarketMessageChars ||
+        quoteCount + part.quotes > maxQuotesPerMessage ||
+        sections === maxSectionsPerMessage)
+    ) {
+      messages.push(current)
+      current = ""
+      quoteCount = 0
+      sections = 0
+    }
+    current = current ? `${current}\n\n${part.text}` : part.text
+    quoteCount += part.quotes
+    sections++
+  }
+  if (current) messages.push(current)
+  if (messages.length > maxMarketReplies) throw new MarketDataOutputError()
+  return messages
+}
+
+function groupMarketResults(
+  results: readonly (MarketQuote | string)[],
+): Array<string | MarketQuote[]> {
   const groups = new Map<string, MarketQuote[]>()
   const output: Array<string | MarketQuote[]> = []
   for (const result of results) {
@@ -77,8 +148,6 @@ export function formatMarketResults(results: readonly (MarketQuote | string)[]):
     group.push(result)
   }
   return output
-    .map((item) => (typeof item === "string" ? item : formatQuoteTable(item)))
-    .join("\n\n")
 }
 
 function formatQuoteTable(quotes: readonly MarketQuote[]): string {

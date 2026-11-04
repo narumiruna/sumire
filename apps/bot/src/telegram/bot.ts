@@ -21,7 +21,8 @@ import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
 import { type Logger, withLogSpan } from "../logging.js"
-import { MarketDataInputError, queryMarketData } from "../market-data/query.js"
+import { MarketDataOutputError } from "../market-data/format.js"
+import { MarketDataInputError, queryMarketDataMessages } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
@@ -33,6 +34,7 @@ import {
   downloadTelegramImage,
   TelegramDownloadTooLargeError,
 } from "./files.js"
+import { replyMarketData } from "./market-delivery.js"
 import { deliverGeneratedResponse } from "./media-delivery.js"
 import {
   audioReferences,
@@ -71,7 +73,7 @@ interface TelegramBotDependencies {
   botInfo?: UserFromGetMe
   imageFetchImplementation?: typeof fetch
   documentConverter?: DocumentConverter
-  marketDataQuery?: (input: string) => Promise<string>
+  marketDataQuery?: (input: string) => Promise<string | readonly string[]>
   morselPublisher?: Pick<MorselPublisher, "isConfigured" | "publish">
   audioTranscriber?: AudioTranscriber
   articleUrlLoader?: PublicUrlLoader
@@ -145,7 +147,7 @@ export function createTelegramAgentBot(
   const marketDataQuery =
     dependencies.marketDataQuery ??
     ((input: string) =>
-      queryMarketData(input, {
+      queryMarketDataMessages(input, {
         onError: (provider, error) => logger.warn(`${provider} market-data query failed`, error),
       }))
 
@@ -357,27 +359,31 @@ export function createTelegramAgentBot(
   bot.command("t", async (context) => {
     const query = context.match.trim()
     if (!query) {
-      await delivery.reply(
+      await replyMarketData(
         context,
-        "請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t TWDJPY。",
+        ["請使用 /t <代碼>，例如 /t AAPL、/t 2330、/t BTCUSDT 或 /t TWDJPY。"],
         replyOptions(context),
       )
       return
     }
     try {
       const result = await marketDataQuery(query)
-      await delivery.reply(
+      await replyMarketData(
         context,
-        result || `查不到 ${query} 的市場資料，請確認代碼或稍後再試。`,
+        typeof result === "string" ? [result] : result,
         replyOptions(context),
       )
     } catch (error) {
-      if (error instanceof MarketDataInputError) {
-        await delivery.reply(context, error.message, replyOptions(context))
+      if (error instanceof MarketDataInputError || error instanceof MarketDataOutputError) {
+        await replyMarketData(context, [error.message], replyOptions(context))
         return
       }
       logger.warn(`Market-data command failed for chat_id=${context.chat.id}`, error)
-      await delivery.reply(context, "市場資料服務暫時無法使用，請稍後再試。", replyOptions(context))
+      await replyMarketData(
+        context,
+        ["市場資料服務暫時無法使用，請稍後再試。"],
+        replyOptions(context),
+      )
     }
   })
 
