@@ -876,7 +876,7 @@ test("an old application retry cannot reload or erase a new session's draft", as
     await route.fulfill({ status: 401, json: { error: "Session expired" } })
   })
   const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
-  await page.getByRole("textbox", { name: "Search stored chats", exact: true }).fill("expire")
+  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
   await directoryRequest
   let complete: () => void = () => undefined
   const held = new Promise<void>((resolve) => {
@@ -938,7 +938,7 @@ test("session expiry clears recovery and ignores a late successful settings read
     await route.fulfill({ status: 401, json: { error: "Session expired" } })
   })
   const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
-  await page.getByRole("textbox", { name: "Search stored chats", exact: true }).fill("expire")
+  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
   await directoryRequest
   let complete: () => void = () => undefined
   const held = new Promise<void>((resolve) => {

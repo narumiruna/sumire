@@ -79,22 +79,6 @@ export async function policyRecoveryFixture(page: Page) {
       "/api/inventory": inventory,
       "/api/chats": [{ id: 42, name: "Fixture chat", type: "private" }],
       "/api/audit": [],
-      "/api/service-status/components": {
-        provider: new URL(request.url()).searchParams.get("provider"),
-        components: [],
-        fetchedAt: null,
-        stale: true,
-        error: "source_unavailable",
-      },
-      "/api/service-status/deliveries": {
-        items: [],
-        sources: [],
-        offset: 0,
-        limit: 100,
-        total: 0,
-        serverTime: 1_800_000_000_000,
-        nextPollAt: null,
-      },
       "/api/imports": [],
     }
     return route.fulfill({ json: data[path] ?? {} })

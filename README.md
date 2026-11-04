@@ -9,7 +9,6 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | [`packages/contracts`](packages/contracts/README.md) | Shared management API data types. |
 | [`packages/runtime-config`](packages/runtime-config/README.md) | Encrypted runtime secrets and non-confidential variables, managed in the Web UI. |
 | [`packages/policy`](packages/policy/README.md) | Shared policy schemas and authorization rules. |
-| [`packages/status-page`](packages/status-page/README.md) | Bounded GitHub, OpenAI, Claude, and Cloudflare status-page readers. |
 | [`apps/admin`](docs/admin-webui.md) | Passkey-authenticated Radix administration frontend, served by the bot. |
 | [`apps/bot`](apps/bot/README.md) | Primary TypeScript bot built on Pi Durable and used by CI/CD. |
 | [`packages/login`](packages/login/README.md) | Pi OAuth login client and extension. |
@@ -44,10 +43,6 @@ docker compose down
 See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build`, then send `/admin` to get the local passkey setup URL. For remote access, set `ADMIN_ORIGIN` and use an existing HTTPS reverse proxy. `compose.yaml` publishes only loopback port `17465`, not port 443.
 
 Send `/allow` in a private chat or group to request access. The administrator opens the returned link, signs in with a Passkey, and explicitly approves the displayed chat. Localhost links must open on the Sumire host. Before upgrading from environment-based access, complete the Stage 1 review and backup workflow. Existing database permissions remain unchanged; environment allowlist values no longer grant access. Historical reviews remain available on the Audit page.
-
-### Service status notifications
-
-Use **Service status** in the WebUI to send GitHub, OpenAI, Claude, and Cloudflare incidents to multiple Telegram users, groups, and channels. Select shared defaults or per-chat services, component groups, impact thresholds, quiet hours, and update grouping. Test saved destinations and inspect persistent delivery results. Notifications are disabled by default and do not use a model. See [setup, delivery limits, and recovery](docs/service-status.md).
 
 ### Secrets and variables
 

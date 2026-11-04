@@ -1,5 +1,5 @@
 import type { Snapshot } from "@narumitw/sumire-contracts"
-import { type Policy, policySchema } from "@narumitw/sumire-policy"
+import { policySchema } from "@narumitw/sumire-policy"
 
 export type { Inventory, Snapshot } from "@narumitw/sumire-contracts"
 export type { Policy, ProviderSettings, Selection } from "@narumitw/sumire-policy"
@@ -51,14 +51,6 @@ export function parseSnapshot(value: unknown): Snapshot {
       "Could not verify saved settings. Load the latest settings before another save.",
     )
   return { ...snapshot, policy: policySchema.parse(snapshot.policy) }
-}
-
-/** Measure the complete settings PUT body, including UTF-8 and the revision envelope. */
-export function settingsRequestError(revision: number, policy: Policy): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({ revision, policy })).byteLength
-  return bytes > 262_144
-    ? `Settings request is ${bytes.toLocaleString("en-US")} bytes; the limit is 262,144 bytes. Remove component IDs, chat overrides, destinations, or other large selections before review and save.`
-    : ""
 }
 
 export function parseIds(value: string, positive: boolean) {

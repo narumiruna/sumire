@@ -450,7 +450,7 @@ test("neutral names keep IDs secondary and Chats filters use current policy draf
   page,
 }) => {
   await fixture(page, "/?section=Chats")
-  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
+  const search = page.getByLabel("Search stored chats", { exact: true })
   await search.fill("-9003")
   const row = rows(page).locator(".directory-chat")
   await expect(row.locator("strong")).toHaveText("Unnamed group")
