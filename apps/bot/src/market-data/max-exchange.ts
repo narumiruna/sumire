@@ -1,5 +1,5 @@
 import { collectMarketResults } from "./collect-results.js"
-import { formatNumber, priceLines } from "./format.js"
+import { formatMarketTable, formatNumber, priceRows } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 const maxEndpoint = "https://max-api.maicoin.com"
@@ -44,7 +44,7 @@ export async function queryMaxExchange(
       const ticker = record(await requestJson(url, fetchImplementation))
       const last = finiteNumber(ticker?.last)
       if (!ticker || last === undefined) return undefined
-      const lines = priceLines({
+      const rows = priceRows({
         changeFrom: finiteNumber(ticker.open),
         currency: quote.toUpperCase(),
         high: finiteNumber(ticker.high),
@@ -55,13 +55,12 @@ export async function queryMaxExchange(
       })
       const bid = finiteNumber(ticker.buy)
       const ask = finiteNumber(ticker.sell)
-      if (bid !== undefined) lines.push(`買價: ${formatNumber(bid)} ${quote.toUpperCase()}`)
-      if (ask !== undefined) lines.push(`賣價: ${formatNumber(ask)} ${quote.toUpperCase()}`)
-      return [
-        `📊 MAX Exchange ${base.toUpperCase()}/${quote.toUpperCase()}`,
-        ...lines,
-        "資料來源: MAX Exchange",
-      ].join("\n")
+      if (bid !== undefined) rows.push(["買價", `${formatNumber(bid)} ${quote.toUpperCase()}`])
+      if (ask !== undefined) rows.push(["賣價", `${formatNumber(ask)} ${quote.toUpperCase()}`])
+      return formatMarketTable(`📊 MAX Exchange ${base.toUpperCase()}/${quote.toUpperCase()}`, [
+        ...rows,
+        ["資料來源", "MAX Exchange"],
+      ])
     }),
   )
   return collectMarketResults(results)

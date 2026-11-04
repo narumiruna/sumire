@@ -100,6 +100,8 @@ Use `/t` with one or more whitespace- or comma-separated symbols:
 
 A request accepts at most 10 unique symbols. Bare supported three-letter currencies are treated as foreign-currency queries against TWD. Supported fiat pairs can be written as `TWDJPY`, `TWD/JPY`, `TWD-JPY`, or `TWD_JPY`. Every fiat query returns the Frankfurter v2 daily reference mid-rate. Pairs involving TWD also return Bank of Taiwan spot and cash quotes; reversed TWD pairs are calculated from the bank's published quote and clearly marked. MAX-like suffixes are matched against the MAX markets catalogue; symbols absent from that catalogue (such as `GBTC`) fall back to Yahoo Finance. If the catalogue request fails, candidates still try Yahoo; the original MAX error is retained when no fallback returns data. Failures querying listed MAX markets are not retried through Yahoo.
 
+Each result is a titled two-column Markdown table (field and value), rendered through Telegram’s native Rich Message API. Stock and cryptocurrency quotes retain prices, changes, volume, and available bid/ask values; currency tables retain their quote details, dates, and conversion notes. Each table includes its data source, and missing fields remain omitted. Multiple symbols produce separate tables. The existing 1,000-character source limit and Morsel delivery policy still apply.
+
 Yahoo candle fields use the latest candle position; missing fields are omitted rather than carried forward from an older session.
 
 ## Quality gates

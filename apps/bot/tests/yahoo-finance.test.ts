@@ -35,9 +35,9 @@ describe("Yahoo candle alignment", () => {
     )
 
     expect(results).toHaveLength(1)
-    expect(results[0]).toContain("現價: 110")
-    expect(results[0]).toContain("漲跌: 🔺 +10.00%")
-    for (const label of ["開盤:", "最高:", "最低:", "成交量:"]) {
+    expect(results[0]).toContain("| 現價 | 110 |")
+    expect(results[0]).toContain("| 漲跌 | 🔺 +10.00% |")
+    for (const label of ["| 開盤 |", "| 最高 |", "| 最低 |", "| 成交量 |"]) {
       expect(results[0]).not.toContain(label)
     }
   })
@@ -57,14 +57,14 @@ describe("Yahoo candle alignment", () => {
       ),
     )
 
-    expect(results[0]).toContain("漲跌: 🔺 +10.00%")
+    expect(results[0]).toContain("| 漲跌 | 🔺 +10.00% |")
   })
 
   it("does not skip a missing previous close to calculate a multi-day change", async () => {
     const results = await queryYahooFinance(["TEST"], quoteFetcher({ close: [80, null, 110] }))
 
-    expect(results[0]).toContain("現價: 110")
-    expect(results[0]).not.toContain("漲跌:")
+    expect(results[0]).toContain("| 現價 | 110 |")
+    expect(results[0]).not.toContain("| 漲跌 |")
   })
 
   it.each([true, false])(
@@ -76,9 +76,9 @@ describe("Yahoo candle alignment", () => {
         quoteFetcher(quote, { regularMarketPrice: 110 }, withTimestamps),
       )
 
-      expect(results[0]).toContain("現價: 110")
-      expect(results[0]).not.toContain("最高:")
-      expect(results[0]).not.toContain("成交量:")
+      expect(results[0]).toContain("| 現價 | 110 |")
+      expect(results[0]).not.toContain("| 最高 |")
+      expect(results[0]).not.toContain("| 成交量 |")
     },
   )
 
@@ -88,10 +88,10 @@ describe("Yahoo candle alignment", () => {
       quoteFetcher({ close: [90, 100], open: [89, 99], high: [95, 105] }),
     )
 
-    expect(results[0]).toContain("現價: 110")
-    expect(results[0]).toContain("漲跌: 🔺 +10.00%")
-    expect(results[0]).not.toContain("開盤:")
-    expect(results[0]).not.toContain("最高:")
+    expect(results[0]).toContain("| 現價 | 110 |")
+    expect(results[0]).toContain("| 漲跌 | 🔺 +10.00% |")
+    expect(results[0]).not.toContain("| 開盤 |")
+    expect(results[0]).not.toContain("| 最高 |")
   })
 
   it("retains valid latest values including zero without filtering array positions", async () => {
@@ -109,10 +109,10 @@ describe("Yahoo candle alignment", () => {
       ),
     )
 
-    expect(results[0]).toContain("現價: 110")
-    expect(results[0]).toContain("最高: 115")
-    expect(results[0]).toContain("最低: 99")
-    expect(results[0]).toContain("開盤: 101")
-    expect(results[0]).toContain("成交量: 0")
+    expect(results[0]).toContain("| 現價 | 110 |")
+    expect(results[0]).toContain("| 最高 | 115 |")
+    expect(results[0]).toContain("| 最低 | 99 |")
+    expect(results[0]).toContain("| 開盤 | 101 |")
+    expect(results[0]).toContain("| 成交量 | 0 |")
   })
 })

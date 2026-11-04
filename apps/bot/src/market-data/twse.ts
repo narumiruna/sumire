@@ -1,4 +1,4 @@
-import { priceLines } from "./format.js"
+import { formatMarketTable, priceRows } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 const twseEndpoint = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
@@ -33,7 +33,7 @@ function formatTwseStock(value: unknown): string | undefined {
 
   const midpoint = orderBookMidpoint(text(stock.a), text(stock.b))
   const last = positiveNumber(stock.z) ?? positiveNumber(stock.pz) ?? midpoint
-  const lines = priceLines({
+  const rows = priceRows({
     changeFrom: positiveNumber(stock.y),
     currency: "TWD",
     high: positiveNumber(stock.h),
@@ -43,8 +43,8 @@ function formatTwseStock(value: unknown): string | undefined {
     open: positiveNumber(stock.o),
     volume: positiveNumber(stock.v),
   })
-  if (lines.length === 0) return undefined
-  return [`📊 ${name} (${symbol})`, ...lines, "資料來源: TWSE"].join("\n")
+  if (rows.length === 0) return undefined
+  return formatMarketTable(`📊 ${name} (${symbol})`, [...rows, ["資料來源", "TWSE"]])
 }
 
 function positiveNumber(value: unknown): number | undefined {

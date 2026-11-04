@@ -59,7 +59,7 @@ describe.each([
     const result = await query([empty, success, failure], createProviderFetch())
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toContain(`資料來源: ${provider}`)
+    expect(result[0]).toContain(`| 資料來源 | ${provider} |`)
   })
 
   it("returns no data for a successful batch without matches", async () => {
@@ -83,7 +83,7 @@ describe("MAX catalogue outages", () => {
     const result = await queryMarketData("GBTC", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(result).toContain("| 資料來源 | Yahoo Finance |")
     expect(
       fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
     ).toEqual(["/api/v3/markets", "/v8/finance/chart/GBTC"])
@@ -97,7 +97,7 @@ describe("MAX catalogue outages", () => {
     const result = await queryMarketData("EMPTYUSDT GBTC FAILEDUSDT", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result.match(/資料來源: Yahoo Finance/gu)).toHaveLength(1)
+    expect(result.match(/\| 資料來源 \| Yahoo Finance \|/gu)).toHaveLength(1)
     expect(result).not.toContain("MAX Exchange")
     expect(fetchImplementation).toHaveBeenCalledTimes(4)
   })
@@ -141,7 +141,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("GBTC", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(result).toContain("| 資料來源 | Yahoo Finance |")
     expect(fetchImplementation).toHaveBeenCalledTimes(2)
   })
 
@@ -150,7 +150,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("LTC-BTC", { fetchImplementation })
 
     expect(result).toContain("LTC-BTC")
-    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(result).toContain("| 資料來源 | Yahoo Finance |")
     expect(
       fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
     ).toEqual(["/api/v3/markets", "/v8/finance/chart/LTC-BTC"])
@@ -161,7 +161,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("GBTC BTCUSDT", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(result).toContain("| 資料來源 | Yahoo Finance |")
     expect(result).toContain("MAX Exchange BTC/USDT")
     expect(fetchImplementation).toHaveBeenCalledTimes(3)
   })
@@ -210,7 +210,7 @@ describe("MAX candidate routing", () => {
     })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("資料來源: Yahoo Finance")
+    expect(result).toContain("| 資料來源 | Yahoo Finance |")
     expect(result).not.toContain("MAX Exchange")
   })
 

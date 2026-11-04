@@ -1,6 +1,6 @@
 import { collectMarketResults } from "./collect-results.js"
 import { parseCurrencyPair } from "./exchange-rates.js"
-import { formatNumber } from "./format.js"
+import { formatMarketTable, formatNumber } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 interface FrankfurterRate {
@@ -55,12 +55,11 @@ function isIsoDate(value: string): boolean {
 }
 
 function formatFrankfurterRate(rate: FrankfurterRate): string {
-  return [
-    `💱 Frankfurter ${rate.base}/${rate.quote}`,
-    `參考中價: ${formatNumber(rate.rate)} ${rate.quote}`,
-    `資料日期: ${formatDate(rate.date)}`,
-    "資料來源: Frankfurter v2",
-  ].join("\n")
+  return formatMarketTable(`💱 Frankfurter ${rate.base}/${rate.quote}`, [
+    ["參考中價", `${formatNumber(rate.rate)} ${rate.quote}`],
+    ["資料日期", formatDate(rate.date)],
+    ["資料來源", "Frankfurter v2"],
+  ])
 }
 
 function formatDate(value: string): string {

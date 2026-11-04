@@ -1,5 +1,5 @@
 import { collectMarketResults } from "./collect-results.js"
-import { priceLines } from "./format.js"
+import { formatMarketTable, priceRows } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 export async function queryYahooFinance(
@@ -44,7 +44,7 @@ async function queryYahooSymbol(
   const resolvedSymbol = text(meta.symbol) ?? symbol
   const name = text(meta.shortName) ?? text(meta.longName) ?? resolvedSymbol
   const currency = text(meta.currency)
-  const lines = priceLines({
+  const rows = priceRows({
     changeFrom:
       numberAt(quote?.close, latestIndex - 1) ??
       finiteNumber(meta.previousClose) ??
@@ -57,7 +57,10 @@ async function queryYahooSymbol(
     open: numberAt(quote?.open, latestIndex),
     volume: numberAt(quote?.volume, latestIndex),
   })
-  return [`📊 ${name} (${resolvedSymbol})`, ...lines, "資料來源: Yahoo Finance"].join("\n")
+  return formatMarketTable(`📊 ${name} (${resolvedSymbol})`, [
+    ...rows,
+    ["資料來源", "Yahoo Finance"],
+  ])
 }
 
 function numberAt(value: unknown, index: number): number | undefined {

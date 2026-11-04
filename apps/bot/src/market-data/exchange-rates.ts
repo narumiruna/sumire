@@ -1,5 +1,5 @@
 import { fetchRates, type Rate } from "taiwan-exchange-rates"
-import { formatNumber } from "./format.js"
+import { formatMarketTable, formatNumber, type MarketDataRow } from "./format.js"
 
 export type ExchangeRateFetcher = () => Promise<readonly Rate[]>
 
@@ -92,26 +92,26 @@ function divide(
 }
 
 function formatExchangeRate(rate: Rate, derived: boolean): string {
-  const lines = [`💱 台灣銀行 ${rate.source}/${rate.target}`]
-  appendRate(lines, "即期買入", rate.spotBuy, rate.target)
-  appendRate(lines, "即期賣出", rate.spotSell, rate.target)
+  const rows: MarketDataRow[] = []
+  appendRate(rows, "即期買入", rate.spotBuy, rate.target)
+  appendRate(rows, "即期賣出", rate.spotSell, rate.target)
   if (rate.spotBuy !== undefined && rate.spotSell !== undefined) {
-    appendRate(lines, "即期中價", (rate.spotBuy + rate.spotSell) / 2, rate.target)
+    appendRate(rows, "即期中價", (rate.spotBuy + rate.spotSell) / 2, rate.target)
   }
-  appendRate(lines, "現鈔買入", rate.cashBuy, rate.target)
-  appendRate(lines, "現鈔賣出", rate.cashSell, rate.target)
-  if (derived) lines.push("換算方式: 依台灣銀行牌告匯率換算")
-  lines.push(`資料時間: ${formatTimestamp(rate.fetchedAt)}`, "資料來源: 台灣銀行")
-  return lines.join("\n")
+  appendRate(rows, "現鈔買入", rate.cashBuy, rate.target)
+  appendRate(rows, "現鈔賣出", rate.cashSell, rate.target)
+  if (derived) rows.push(["換算方式", "依台灣銀行牌告匯率換算"])
+  rows.push(["資料時間", formatTimestamp(rate.fetchedAt)], ["資料來源", "台灣銀行"])
+  return formatMarketTable(`💱 台灣銀行 ${rate.source}/${rate.target}`, rows)
 }
 
 function appendRate(
-  lines: string[],
+  rows: MarketDataRow[],
   label: string,
   value: number | undefined,
   target: string,
 ): void {
-  if (value !== undefined) lines.push(`${label}: ${formatNumber(value)} ${target}`)
+  if (value !== undefined) rows.push([label, `${formatNumber(value)} ${target}`])
 }
 
 function formatTimestamp(value: string): string {

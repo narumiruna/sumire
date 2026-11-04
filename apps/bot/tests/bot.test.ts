@@ -1591,7 +1591,8 @@ describe("Telegram bot update routing", () => {
 
   it("answers /t directly without invoking Pi", async () => {
     const sessions = createSessions()
-    const marketDataQuery = vi.fn(async () => "📊 Apple Inc. (AAPL)\n現價: 195.25 USD")
+    const quote = "📊 Apple Inc. (AAPL)\n\n| 項目 | 數值 |\n| --- | --- |\n| 現價 | 195.25 USD |"
+    const marketDataQuery = vi.fn(async () => quote)
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
       sessions,
@@ -1603,8 +1604,67 @@ describe("Telegram bot update routing", () => {
     await telegram.bot.handleUpdate(commandMessage(3, "/t aapl"))
 
     expect(marketDataQuery).toHaveBeenCalledWith("aapl")
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("Apple Inc.")
+    expect(calls[0]?.method).toBe("sendRichMessage")
+    expect(calls[0]?.payload.rich_message).toEqual({ markdown: quote })
     expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
+  it("sends multiple TWSE quotes as native Markdown tables without invoking Pi", async () => {
+    const sessions = createSessions()
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({
+        msgArray: [
+          {
+            c: "0050",
+            n: "元大台灣50",
+            z: "97.78",
+            o: "101.55",
+            h: "101.65",
+            l: "97.7",
+            y: "100.61",
+            v: "239424",
+          },
+          {
+            c: "2330",
+            n: "台積電",
+            z: "2242.5",
+            o: "2320",
+            h: "2320",
+            l: "2235",
+            y: "2295",
+            v: "23680",
+          },
+        ],
+      }),
+    )
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+      sessions,
+      logger,
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        marketDataQuery: (input) => queryMarketData(input, { fetchImplementation }),
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+
+    await telegram.bot.handleUpdate(commandMessage(3, "/t 0050 2330"))
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.method).toBe("sendRichMessage")
+    const markdown = telegramPayloadText(calls[0]?.payload)
+    expect(markdown?.match(/\| 項目 \| 數值 \|/gu)).toHaveLength(2)
+    expect(markdown).toContain("📊 元大台灣50 (0050)")
+    expect(markdown).toContain("| 現價 | 97.78 TWD |")
+    expect(markdown).toContain("| 漲跌 | 🔻 -2.81% |")
+    expect(markdown).toContain("📊 台積電 (2330)")
+    expect(markdown).toContain("| 現價 | 2,242.5 TWD |")
+    expect(markdown).toContain("| 漲跌 | 🔻 -2.29% |")
+    expect(markdown?.match(/\| 資料來源 \| TWSE \|/gu)).toHaveLength(2)
+    expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })
+    expect(fetchImplementation).toHaveBeenCalledOnce()
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
