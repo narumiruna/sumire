@@ -1,5 +1,5 @@
 import { collectMarketResults } from "./collect-results.js"
-import { formatMarketTable, formatNumber, priceRows } from "./format.js"
+import type { MarketQuote, QuotePrices } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 const maxEndpoint = "https://max-api.maicoin.com"
@@ -7,8 +7,8 @@ const maxEndpoint = "https://max-api.maicoin.com"
 export async function queryMaxExchange(
   symbols: readonly string[],
   fetchImplementation?: MarketFetch,
-  queryUnmatchedSymbol?: (symbol: string) => Promise<string | undefined>,
-): Promise<string[]> {
+  queryUnmatchedSymbol?: (symbol: string) => Promise<MarketQuote | undefined>,
+): Promise<MarketQuote[]> {
   if (symbols.length === 0) return []
   let payload: unknown
   try {
@@ -44,23 +44,26 @@ export async function queryMaxExchange(
       const ticker = record(await requestJson(url, fetchImplementation))
       const last = finiteNumber(ticker?.last)
       if (!ticker || last === undefined) return undefined
-      const rows = priceRows({
+      const prices: QuotePrices = {
         changeFrom: finiteNumber(ticker.open),
         currency: quote.toUpperCase(),
+        maximumFractionDigits: 8,
         high: finiteNumber(ticker.high),
         last,
         low: finiteNumber(ticker.low),
         open: finiteNumber(ticker.open),
         volume: finiteNumber(ticker.vol),
-      })
+      }
       const bid = finiteNumber(ticker.buy)
       const ask = finiteNumber(ticker.sell)
-      if (bid !== undefined) rows.push(["買價", `${formatNumber(bid)} ${quote.toUpperCase()}`])
-      if (ask !== undefined) rows.push(["賣價", `${formatNumber(ask)} ${quote.toUpperCase()}`])
-      return formatMarketTable(`📊 MAX Exchange ${base.toUpperCase()}/${quote.toUpperCase()}`, [
-        ...rows,
-        ["資料來源", "MAX Exchange"],
-      ])
+      if (bid !== undefined) prices.bid = bid
+      if (ask !== undefined) prices.ask = ask
+      return {
+        name: "MAX Exchange",
+        symbol: `${base.toUpperCase()}/${quote.toUpperCase()}`,
+        source: "MAX Exchange",
+        prices,
+      }
     }),
   )
   return collectMarketResults(results)

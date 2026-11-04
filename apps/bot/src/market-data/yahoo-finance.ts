@@ -1,11 +1,11 @@
 import { collectMarketResults } from "./collect-results.js"
-import { formatMarketTable, priceRows } from "./format.js"
+import type { MarketQuote, QuotePrices } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
 
 export async function queryYahooFinance(
   symbols: readonly string[],
   fetchImplementation?: MarketFetch,
-): Promise<string[]> {
+): Promise<MarketQuote[]> {
   const results = await Promise.allSettled(
     symbols.map((symbol) => queryYahooSymbol(symbol, fetchImplementation)),
   )
@@ -15,7 +15,7 @@ export async function queryYahooFinance(
 async function queryYahooSymbol(
   symbol: string,
   fetchImplementation?: MarketFetch,
-): Promise<string | undefined> {
+): Promise<MarketQuote | undefined> {
   const url = new URL(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
   )
@@ -44,7 +44,7 @@ async function queryYahooSymbol(
   const resolvedSymbol = text(meta.symbol) ?? symbol
   const name = text(meta.shortName) ?? text(meta.longName) ?? resolvedSymbol
   const currency = text(meta.currency)
-  const rows = priceRows({
+  const prices: QuotePrices = {
     changeFrom:
       numberAt(quote?.close, latestIndex - 1) ??
       finiteNumber(meta.previousClose) ??
@@ -56,11 +56,8 @@ async function queryYahooSymbol(
     maximumFractionDigits: pricePrecision(meta.priceHint),
     open: numberAt(quote?.open, latestIndex),
     volume: numberAt(quote?.volume, latestIndex),
-  })
-  return formatMarketTable(`📊 ${name} (${resolvedSymbol})`, [
-    ...rows,
-    ["資料來源", "Yahoo Finance"],
-  ])
+  }
+  return { name, symbol: resolvedSymbol, source: "Yahoo Finance", prices }
 }
 
 function numberAt(value: unknown, index: number): number | undefined {

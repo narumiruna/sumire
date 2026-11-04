@@ -1,4 +1,5 @@
 import { type ExchangeRateFetcher, queryExchangeRates } from "./exchange-rates.js"
+import { formatMarketResults, type MarketQuote } from "./format.js"
 import { queryFrankfurterRates } from "./frankfurter.js"
 import type { MarketFetch } from "./http.js"
 import { normalizeMaxMarket, queryMaxExchange } from "./max-exchange.js"
@@ -63,7 +64,8 @@ export async function queryMarketData(
     groups[classified.provider].push(classified.symbol)
   }
 
-  const jobs: Array<{ name: MarketProvider; query: () => Promise<string[]> }> = []
+  const jobs: Array<{ name: MarketProvider; query: () => Promise<Array<MarketQuote | string>> }> =
+    []
   if (groups.yahoo.length > 0) {
     jobs.push({
       name: "Yahoo Finance",
@@ -101,7 +103,7 @@ export async function queryMarketData(
   }
 
   const settled = await Promise.allSettled(jobs.map((job) => job.query()))
-  const results: string[] = []
+  const results: Array<MarketQuote | string> = []
   for (const [index, result] of settled.entries()) {
     if (result.status === "fulfilled") {
       results.push(...result.value)
@@ -112,7 +114,7 @@ export async function queryMarketData(
   }
   const failure = settled.find((result) => result.status === "rejected")
   if (results.length === 0 && failure) throw failure.reason
-  return results.join("\n\n")
+  return formatMarketResults(results)
 }
 
 export function parseMarketTerms(input: string): string[] {

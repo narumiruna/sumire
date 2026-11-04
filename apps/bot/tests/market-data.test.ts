@@ -65,9 +65,9 @@ describe("market-data query", () => {
 
     const result = await queryMarketData("00980a, 2881a 00980A", { fetchImplementation })
 
-    expect(result).toContain("主動野村臺灣優選 (00980A)")
-    expect(result).toContain("富邦特 (2881A)")
-    expect(result).toContain("| 資料來源 | TWSE |")
+    expect(result).toContain("**00980A 主動野村臺灣優選**")
+    expect(result).toContain("**2881A 富邦特**")
+    expect(result).toContain("資料來源：TWSE")
     expect(fetchImplementation).toHaveBeenCalledOnce()
   })
 
@@ -161,20 +161,21 @@ describe("market-data query", () => {
       rateFetcher,
     })
 
-    expect(result).toContain("Apple Inc. (AAPL)")
-    expect(result).toContain("| 現價 | 195.25 USD |")
-    expect(result).toContain("台積電 (2330)")
-    expect(result).toContain("MAX Exchange BTC/USDT")
-    expect(result).toContain("| 買價 | 65,000.1 USDT |")
+    expect(result).toContain("**AAPL Apple Inc.**")
+    expect(result).toContain("**195.25**")
+    expect(result).toContain("**2330 台積電**")
+    expect(result).toContain("**BTC/USDT MAX Exchange**")
+    expect(result).toContain("65,000.10")
     expect(result).toContain("Frankfurter USD/TWD")
     expect(result).toContain("| 參考中價 | 31.8 TWD |")
     expect(result).toContain("| 資料日期 | 2026年9月22日 |")
     expect(result).toContain("台灣銀行 USD/TWD")
     expect(result).toContain("| 即期中價 | 31.8 TWD |")
-    expect(result.match(/\| 項目 \| 數值 \|/gu)).toHaveLength(5)
-    expect(result).toContain("| 資料來源 | Yahoo Finance |")
-    expect(result).toContain("| 資料來源 | TWSE |")
-    expect(result).toContain("| 資料來源 | MAX Exchange |")
+    expect(result.match(/\| 項目 \| 數值 \|/gu)).toHaveLength(2)
+    expect(result.match(/\| 標的 \| 現價 \|/gu)).toHaveLength(3)
+    expect(result).toContain("資料來源：Yahoo Finance")
+    expect(result).toContain("資料來源：TWSE")
+    expect(result).toContain("資料來源：MAX Exchange")
     expect(result).toContain("| 資料來源 | Frankfurter v2 |")
     expect(result).toContain("| 資料來源 | 台灣銀行 |")
     expect(result).toContain("| 現鈔買入 | 31.5 TWD |")
@@ -262,7 +263,7 @@ describe("market-data query", () => {
       },
     })
 
-    expect(result).toContain("台積電 (2330)")
+    expect(result).toContain("**2330 台積電**")
     expect(result).toContain("Frankfurter USD/TWD")
     expect(result).not.toContain("台灣銀行 USD/TWD")
     expect(onError).toHaveBeenCalledWith("Bank of Taiwan", expect.any(Error))

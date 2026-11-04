@@ -1,4 +1,3 @@
-import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -19,6 +18,7 @@ import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { renderProgressStatus } from "../src/telegram/progress.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 import { approvedStore } from "./helpers/admin-store.js"
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 
 vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
 
@@ -1610,7 +1610,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.submit).not.toHaveBeenCalled()
   })
 
-  it("sends multiple TWSE quotes as native Markdown tables without invoking Pi", async () => {
+  it("sends multiple TWSE quotes as one C-layout table without invoking Pi", async () => {
     const sessions = createSessions()
     const fetchImplementation = vi.fn(async () =>
       Response.json({
@@ -1655,14 +1655,16 @@ describe("Telegram bot update routing", () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]?.method).toBe("sendRichMessage")
     const markdown = telegramPayloadText(calls[0]?.payload)
-    expect(markdown?.match(/\| 項目 \| 數值 \|/gu)).toHaveLength(2)
-    expect(markdown).toContain("📊 元大台灣50 (0050)")
-    expect(markdown).toContain("| 現價 | 97.78 TWD |")
-    expect(markdown).toContain("| 漲跌 | 🔻 -2.81% |")
-    expect(markdown).toContain("📊 台積電 (2330)")
-    expect(markdown).toContain("| 現價 | 2,242.5 TWD |")
-    expect(markdown).toContain("| 漲跌 | 🔻 -2.29% |")
-    expect(markdown?.match(/\| 資料來源 \| TWSE \|/gu)).toHaveLength(2)
+    expect(markdown).toBe(
+      [
+        "| 標的 | 現價 | 漲跌幅 | 開盤 | 最高 | 最低 | 成交量 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| **0050 元大台灣50** | **97.78** | **🔻 -2.81%** | 101.55 | 101.65 | 97.70 | 239,424 |",
+        "| **2330 台積電** | **2,242.50** | **🔻 -2.29%** | 2,320.00 | 2,320.00 | 2,235.00 | 23,680 |",
+        "",
+        "價格單位：TWD｜資料來源：TWSE",
+      ].join("\n"),
+    )
     expect(calls[0]?.payload.reply_parameters).toEqual({ message_id: 3 })
     expect(fetchImplementation).toHaveBeenCalledOnce()
     expect(sessions.submit).not.toHaveBeenCalled()
