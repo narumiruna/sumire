@@ -39,9 +39,11 @@ for (const width of [390, 1440]) {
         true,
       )
       await page.screenshot({
+        animations: "disabled",
         path: info.outputPath(`${section.replaceAll(" ", "-")}-viewport.png`),
       })
       await page.screenshot({
+        animations: "disabled",
         path: info.outputPath(`${section.replaceAll(" ", "-")}-full.png`),
         fullPage: true,
       })
@@ -84,7 +86,7 @@ test("reading mode uses existing bounded content, folds events, and preserves ex
   const reads = state.requests.length
   await page.getByRole("button", { name: "Conversation reading", exact: true }).click()
   expect(state.requests).toHaveLength(reads)
-  await page.screenshot({ path: info.outputPath("reading-mode.png") })
+  await page.screenshot({ animations: "disabled", path: info.outputPath("reading-mode.png") })
 })
 
 test("navigation rail and reading width controls are reversible without data writes", async ({
@@ -104,7 +106,7 @@ test("navigation rail and reading width controls are reversible without data wri
   expect((await pane.boundingBox())?.width).toBeGreaterThan(initialWidth)
   await page.getByRole("button", { name: "Expand reading", exact: true }).click()
   await expect(page.locator(".durable-directory-pane")).toBeHidden()
-  await page.screenshot({ path: info.outputPath("expanded-reading.png") })
+  await page.screenshot({ animations: "disabled", path: info.outputPath("expanded-reading.png") })
   await page.getByRole("button", { name: "Restore layout", exact: true }).click()
   await page.getByRole("button", { name: "Expand chat list", exact: true }).click()
   await expect(page.locator(".durable-directory-pane")).toBeVisible()
@@ -140,9 +142,25 @@ test("pending save controls follow the rail width and keep review explicit", asy
   await page.getByRole("button", { name: "Expand navigation", exact: true }).click()
   expect((await bar.boundingBox())?.x).toBe(244)
   await page.getByRole("button", { name: "Collapse navigation", exact: true }).click()
-  await page.screenshot({ path: info.outputPath("pending-save-desktop.png") })
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("pending-save-desktop.png"),
+  })
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toBeVisible()
-  await page.screenshot({ path: info.outputPath("review-dialog.png") })
+  await page.screenshot({ animations: "disabled", path: info.outputPath("review-dialog.png") })
+  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect((await bar.boundingBox())?.x).toBe(0)
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("pending-save-mobile.png"),
+  })
+  await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
+  await expect(page.getByRole("alertdialog")).toBeVisible()
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("review-dialog-mobile.png"),
+  })
   expect(fixture.methods.every((method) => method === "GET")).toBe(true)
 })
