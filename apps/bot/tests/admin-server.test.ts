@@ -116,6 +116,35 @@ afterEach(async () => {
 })
 
 describe("admin HTTP security", () => {
+  it("keeps the retired policy archive private and rejects the retired field on authenticated writes", async () => {
+    const legacy = {
+      ...store.snapshot().policy,
+      statusNotifications: { marker: "private-retired-fixture" },
+    }
+    store.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(JSON.stringify(legacy))
+    const reopened = new AdminStore(store.file, new Set(), 42)
+    reopened.close()
+    const before = store.snapshot()
+    const archive = store.db.prepare("SELECT * FROM retired_status_notifications").all()
+    const settings = await call("/api/settings", "GET", undefined, auth())
+    expect(settings.status).toBe(200)
+    expect(JSON.parse(settings.body)).toEqual(before)
+    const reports = await call("/api/imports", "GET", undefined, auth())
+    expect(reports.status).toBe(200)
+    expect(settings.body + reports.body).not.toContain("private-retired-fixture")
+    expect(settings.body + reports.body).not.toContain("statusNotifications")
+    apply.mockClear()
+    const response = await call(
+      "/api/settings",
+      "PUT",
+      { revision: before.revision, policy: legacy },
+      auth(),
+    )
+    expect(response.status).toBe(400)
+    expect(apply).not.toHaveBeenCalled()
+    expect(store.snapshot()).toEqual(before)
+    expect(store.db.prepare("SELECT * FROM retired_status_notifications").all()).toEqual(archive)
+  })
   it("returns provider capability diagnostics only to authenticated administrators without changing policy", async () => {
     toolAvailability.mockClear()
     const before = store.snapshot()

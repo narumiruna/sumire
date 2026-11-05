@@ -1,6 +1,6 @@
 # Admin workflow redesign validation
 
-Sections before **2026-11-05 interaction structure** record historical validation. Their frontend-only scope, measurements, and test counts do not describe the current change.
+Sections before **2026-11-05 interaction structure** record historical validation. Their frontend-only scope, measurements, and test counts do not describe the current change. The later **2026-11-05 retired status policy compatibility** section records the deployment recovery follow-up and supersedes the original no-database-conversion statement.
 
 ## Scope and transaction contract
 
@@ -174,3 +174,31 @@ These items are outside local implementation acceptance. They do not authorize e
 ### Recovery
 
 Deploy or roll back matching admin, bot, and contracts builds together. Missing observation fields render Unknown without parsing legacy prose. This change needs no database restore or migration. A display rollback does not undo committed policy, removed model references, replaced credentials, OAuth authorization, or external actions; use explicit reviewed repair operations. Preserve the existing database/key backup procedure and do not abort agent work or reset sessions merely to revert presentation. No packages, version tags, release workflows, or production deployment were created by this work.
+
+## 2026-11-05 retired status policy compatibility
+
+This follow-up supersedes the original interaction change's no-database-conversion statement. It does not restore the reverted notification feature.
+
+### Failure and correction
+
+Deploy run `41943205196`, job `126970223872`, built `58d33ba` successfully. The operator's startup stack establishes that `AdminStore.snapshot`, called by startup skill registration, rejects persisted `statusNotifications`. The container exited with code 1 and restarted; it was not OOM-killed. The earlier Service status feature wrote that field under database version 5; revert `2e1ac00` removed its schema without converting stored policy. The available CI import check did not exercise this persisted-data path.
+
+Before changing active policy, the corrected constructor archives the original raw settings row and metadata in private `retired_status_notifications`. It removes only the retired top-level key, advances revision/authorization epoch, preserves the applied revision, records a value-free audit event, and requires normal application of Pending settings. Retirement, the older GitHub migration, and final strict validation share the existing transaction; validation or SQL failure rolls back every change. Version-5 data without the retired field is also validated before commit. Other policy values, authentication records, encrypted runtime rows, MCP configuration, access decisions, and old notification state are preserved.
+
+The additional archive table does not change `user_version` or the active policy schema. Archives are not import reports and are not exposed by API responses or audit values. Writes still reject the retired field. No archive restoration, notification worker, generic unknown-field stripping, new permission, environment variable, or production mutation is added.
+
+### Verification
+
+- The first regression failed before the fix with the same Zod error and `registerSkills` stack: `/tmp/sumire-retired-status-red.log`.
+- All 67 focused cases passed in `admin-retired-status-policy.test.ts`, `admin-github-migration.test.ts`, `admin-server.test.ts`, and `pi-session-skills.test.ts`. The 22 new cases cover exact archives, other-table preservation, active-policy validation, private authenticated APIs, stale writes, idempotence, SQL/validation rollback, both older migrations, and actual factory startup without model requests.
+- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. Tests: 3,260 across 200 files, including 1,897 bot tests. Logs: `/tmp/sumire-retired-status-root-{format-check,lint,typecheck,test,build}.log`. A temporary fixture typing error was corrected before the complete rerun.
+- An isolated Compose build of `runtime-application` passed. Its compiled store passed the legacy-database smoke as UID 1000, with networking disabled, no ports, credentials, or production mounts. The smoke checked retirement, exact archive, access gating, successful application, and repeat open. Logs: `/tmp/sumire-retired-status-container-{build,smoke}.log`. No test container remains.
+- An independent design review and final implementation review found no required corrections. The earlier browser results concern the unchanged UI; the browser suite was not rerun for this storage-only follow-up.
+
+### Production handoff and recovery
+
+Responsible role: deployment operator. Before rollout, stop the restarting service and retain a protected state/database backup and the independent encryption key through the existing backup procedure. Do not delete volumes, edit policy by hand, or share database/archive contents. Select the corrected branch head for a **new** Deploy run: rerunning the old failed run still checks out its old SHA.
+
+After an authorized rollout, confirm that the container stays running, `/healthz` succeeds, the new policy revision applies normally, administrator authentication works, and existing allow/deny decisions and provider/secret settings remain intact. Local synthetic checks do not establish these production results. No production deployment, workflow dispatch, live Telegram/provider request, or credential operation was performed by the agent.
+
+The archive is not a full-database backup. The preceding post-revert build can read converted active policy and ignore the added table; preserve the archive if that build is used. Reintroducing a notification-capable build or restoring its settings and queues requires explicit review because it can resume delivery. For a genuine database recovery, stop the service and restore a reviewed consistent backup rather than copying archive values into active settings. Do not restore obsolete access grants.

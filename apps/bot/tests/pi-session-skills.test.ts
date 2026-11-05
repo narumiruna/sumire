@@ -4,6 +4,7 @@ import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, expect, it, vi } from "vitest"
 import { createPolicyApplier } from "../src/admin/application.js"
 import { McpAdmin } from "../src/admin/mcp.js"
+import { AdminStore } from "../src/admin/store.js"
 import type { DurableSession } from "../src/agent/durable/session.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
@@ -56,6 +57,53 @@ async function setup(enabled = new Set<string>()) {
   }
   return { fixture, store, mcp, settings, factory, register, create, save }
 }
+
+it("starts the production factory after retiring persisted status settings and leaves application pending", async () => {
+  const fixture = await createPiFixture()
+  cleanups.push(() => fixture.cleanup())
+  const previous = fixture.factory.control
+  const before = previous.snapshot()
+  const raw = JSON.stringify({
+    ...before.policy,
+    statusNotifications: { enabled: true, chatIds: [123] },
+  })
+  previous.db.prepare("UPDATE settings SET policy=? WHERE id=1").run(raw)
+  const directory = path.join(fixture.settings.botSkillsDir, "retired-status-fixture")
+  await mkdir(directory, { recursive: true })
+  await writeFile(
+    path.join(directory, "SKILL.md"),
+    "---\nname: retired-status-fixture\ndescription: A startup fixture.\n---\nFixture instructions.\n",
+  )
+  const store = new AdminStore(previous.file, fixture.settings.botAdminId)
+  cleanups.push(async () => store.close())
+  const mcp = new McpAdmin(store, fixture.root)
+  cleanups.push(() => mcp.close())
+  const register = vi.spyOn(store, "registerSkills")
+  const factory = await createPiSessionFactory(
+    fixture.settings,
+    fixture.logger,
+    { store, mcp },
+    undefined,
+    fixture.modelRuntime,
+  )
+  expect(register).toHaveBeenCalledOnce()
+  expect(factory.skills).toContainEqual({
+    name: "retired-status-fixture",
+    description: "A startup fixture.",
+  })
+  expect(store.snapshot()).toMatchObject({
+    revision: before.revision + 2,
+    epoch: before.epoch + 1,
+    applied: before.applied,
+    status: "pending",
+  })
+  expect(store.snapshot().policy).not.toHaveProperty("statusNotifications")
+  expect(store.db.prepare("SELECT policy FROM retired_status_notifications").get()?.policy).toBe(
+    raw,
+  )
+  await expect(factory.create(123)).rejects.toThrow("Chat policy")
+  expect(fixture.requests).toEqual([])
+})
 
 it("discovers skill metadata with the configured filter and registers names once", async () => {
   const { factory, register, create } = await setup(new Set(["alpha", "not-installed"]))

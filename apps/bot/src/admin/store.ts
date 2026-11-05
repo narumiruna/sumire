@@ -72,13 +72,49 @@ export class AdminStore {
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
         .run(JSON.stringify(initialPolicy()))
+      this.retireStatusNotifications()
       if (version.user_version < 5) this.migrateGithubMentionAuthors()
+      this.snapshot()
       this.db.exec("COMMIT")
     } catch (error) {
       this.db.exec("ROLLBACK")
       this.db.close()
       throw error
     }
+  }
+  /** The reverted feature wrote this field under schema v5. Keep its original row private. */
+  private retireStatusNotifications() {
+    const row = this.db.prepare("SELECT policy, revision FROM settings WHERE id=1").get() as {
+      policy: string
+      revision: number
+    }
+    const input = JSON.parse(row.policy)
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Array.isArray(input) ||
+      !Object.hasOwn(input, "statusNotifications")
+    )
+      return
+    this.db.exec(`CREATE TABLE IF NOT EXISTS retired_status_notifications (
+      revision INTEGER PRIMARY KEY, applied INTEGER NOT NULL, status TEXT NOT NULL,
+      policy TEXT NOT NULL, epoch INTEGER NOT NULL
+    )`)
+    this.db.exec(`INSERT INTO retired_status_notifications (revision, applied, status, policy, epoch)
+      SELECT revision, applied, status, policy, epoch FROM settings WHERE id=1`)
+    delete input.statusNotifications
+    this.db
+      .prepare(
+        "UPDATE settings SET revision=revision+1, epoch=epoch+1, status='pending', policy=? WHERE id=1",
+      )
+      .run(JSON.stringify(input))
+    this.audit(
+      "system",
+      "settings.retire-status-notifications",
+      row.revision + 1,
+      "retired",
+      "statusNotifications",
+    )
   }
   /** Schema v5 never treats the old Telegram recipient IDs as GitHub usernames. */
   private migrateGithubMentionAuthors() {
