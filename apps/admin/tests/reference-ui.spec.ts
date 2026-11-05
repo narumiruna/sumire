@@ -49,8 +49,8 @@ for (const width of [1448, 768, 390, 320]) {
         expect(list.width).toBeGreaterThanOrEqual(200)
         expect(detail.width).toBeGreaterThanOrEqual(200)
         const directory = await page.locator(".durable-directory-pane").boundingBox()
-        expect(directory?.width).toBeGreaterThanOrEqual(280)
-        expect(directory?.width).toBeLessThanOrEqual(320)
+        expect(directory?.width).toBeGreaterThanOrEqual(240)
+        expect(directory?.width).toBeLessThanOrEqual(272)
       }
     } else await expect(details(page)).toHaveCount(0)
     for (const control of await page

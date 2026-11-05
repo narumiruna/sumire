@@ -1,6 +1,8 @@
 import {
   ActivityLogIcon,
   ChatBubbleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ComponentInstanceIcon,
   CubeIcon,
   FileTextIcon,
@@ -276,6 +278,22 @@ export function SideNavigation({
   onNavigate(page: Page): void
 }) {
   const [open, setOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("sumire.admin.navigation") !== "expanded"
+    } catch {
+      return true
+    }
+  })
+  const toggleNavigation = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    try {
+      window.localStorage.setItem("sumire.admin.navigation", next ? "compact" : "expanded")
+    } catch {
+      /* Presentation works even when browser storage is unavailable. */
+    }
+  }
   const trigger = useRef<HTMLButtonElement>(null)
   const navigationFrame = useRef<number | undefined>(undefined)
   useEffect(
@@ -285,10 +303,10 @@ export function SideNavigation({
     [],
   )
   return (
-    <aside className="sidebar" aria-label={t("nav.navigation")}>
+    <aside className="sidebar" data-collapsed={collapsed} aria-label={t("nav.navigation")}>
       <Flex direction="column" gap="1" className="sidebar-brand">
         <Heading size="5" className="brand">
-          <BrandIcon /> Sumire
+          <BrandIcon /> <span className="brand-name">Sumire</span>
         </Heading>
         <Text size="1" color="gray" className="brand-caption">
           {t("nav.administration")}
@@ -316,6 +334,7 @@ export function SideNavigation({
             <Fragment key={item}>
               <a
                 href={navigationHref(item, chat)}
+                title={pageTitle(item)}
                 aria-current={page === item ? "page" : undefined}
                 aria-describedby={description ? descriptionId : undefined}
                 onClick={(event) => {
@@ -356,6 +375,17 @@ export function SideNavigation({
         })}
         <LanguageSelector />
       </nav>
+      <Button
+        className="rail-toggle"
+        variant="ghost"
+        onClick={toggleNavigation}
+        aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}
+        title={t(collapsed ? "nav.expand" : "nav.collapse")}
+        aria-expanded={!collapsed}
+        aria-controls="section-navigation"
+      >
+        {collapsed ? <ChevronRightIcon aria-hidden /> : <ChevronLeftIcon aria-hidden />}
+      </Button>
       <Flex direction="column" gap="3" className="sidebar-account">
         <Separator size="4" />
         <PersonIcon aria-hidden className="sidebar-account-icon" />

@@ -1,6 +1,8 @@
 import type { Catalog } from "../types.js"
 
 export const commonMessages = {
+  "nav.expand": "Expand navigation",
+  "nav.collapse": "Collapse navigation",
   "app.title": "Sumire administration",
   "app.language": "Language",
   "app.loadingSession": "Loading administrator session…",

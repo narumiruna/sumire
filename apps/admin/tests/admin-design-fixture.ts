@@ -4,8 +4,8 @@ import type { Inventory } from "../src/api.js"
 import { durableFixture } from "./durable-fixture.js"
 
 /** All metadata is synthetic. No request can reach a production API. */
-export async function adminDesignFixture(page: Page) {
-  const records = await durableFixture(page)
+export async function adminDesignFixture(page: Page, historyMode: "reading" | "events" = "events") {
+  const records = await durableFixture(page, undefined, { historyMode })
   const tools = ["read_url_content", "read", "bash", "write"]
   const policy = {
     ...initialPolicy(),

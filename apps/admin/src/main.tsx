@@ -28,6 +28,7 @@ import "@radix-ui/themes/styles.css"
 import "./styles.css"
 import "./chat-cards.css"
 import "./admin-design.css"
+import "./reading-design.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
@@ -431,7 +432,7 @@ function App() {
   const selected = policy.chats[chat]
   return (
     <div
-      className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}${page === "Chats" ? " admin-shell-chats" : ""}`}
+      className={`admin-shell reading-first${page === "Durable" ? " admin-shell-durable" : ""}${page === "Chats" ? " admin-shell-chats" : ""}`}
     >
       <SideNavigation
         page={page}

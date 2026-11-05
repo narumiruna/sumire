@@ -2,6 +2,8 @@ import type { commonMessages as sourceMessages } from "../en/common.js"
 import type { Catalog } from "../types.js"
 
 export const commonMessages = {
+  "nav.expand": "展開導覽",
+  "nav.collapse": "收合導覽",
   "app.title": "Sumire 管理介面",
   "app.language": "語言",
   "app.loadingSession": "正在載入管理員工作階段…",
