@@ -339,7 +339,13 @@ export function response(
 export async function durableFixture(
   page: Page,
   href = "/?section=Durable&chat=42&view=conversations",
+  options: { historyMode?: "reading" | "events" } = {},
 ) {
+  // Legacy inspector regressions explicitly exercise event inspection; new reader specs opt in.
+  await page.addInitScript((mode) => {
+    if (!sessionStorage.getItem("sumire.admin.history-mode"))
+      sessionStorage.setItem("sumire.admin.history-mode", mode)
+  }, options.historyMode ?? "events")
   const state = {
     expired: false,
     failed: false,

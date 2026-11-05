@@ -11,7 +11,11 @@ import type {
 import {
   ChatBubbleIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CopyIcon,
+  EnterFullScreenIcon,
+  ExitFullScreenIcon,
   FileTextIcon,
   LayersIcon,
   MagnifyingGlassIcon,
@@ -314,6 +318,8 @@ export function DurableInspector({
   onChats(): void
   onSessionExpired(): void
 }) {
+  const [readingFocus, setReadingFocus] = useState(false)
+  const [directoryCollapsed, setDirectoryCollapsed] = useState(false)
   const [location, setLocation] = useState(() => readDurableLocation(new URL(window.location.href)))
   // Browser event selection is independent of the history page's read context.
   const [readLocation, setReadLocation] = useState(() => readContextLocation(location))
@@ -984,8 +990,40 @@ export function DurableInspector({
             <ReloadIcon aria-hidden />
             <span className="durable-action-label">{t("record.refresh")}</span>
           </Button>
+          <Button
+            variant="outline"
+            disabled={!validChat}
+            aria-pressed={readingFocus}
+            aria-label={t(readingFocus ? "record.restoreReading" : "record.expandReading")}
+            onClick={() => setReadingFocus(!readingFocus)}
+          >
+            {readingFocus ? (
+              <ExitFullScreenIcon aria-hidden />
+            ) : (
+              <EnterFullScreenIcon aria-hidden />
+            )}
+            <span className="durable-action-label">
+              {t(readingFocus ? "record.restoreReading" : "record.expandReading")}
+            </span>
+          </Button>
         </Flex>
       </header>
+      {validChat && (
+        <div className="reading-cache-status" role="status">
+          <span className="reading-cache-state">{t("record.persistedNotLive")}</span>
+          {data?.readAt && (
+            <span className="reading-cache-time">
+              <span>{t("record.cache")}</span>{" "}
+              <time
+                dateTime={data.readAt}
+                title={t("record.cachedAt", { time: formatReadTime(data.readAt) })}
+              >
+                {formatReadTime(data.readAt)}
+              </time>
+            </span>
+          )}
+        </div>
+      )}
       {metadataError && (
         <div>
           <Text as="p" role="alert">
@@ -1234,12 +1272,75 @@ export function DurableInspector({
       )}
     </>
   )
+  const viewNavigation = (
+    <>
+      {validChat && (
+        <nav className="durable-view-navigation" aria-label={t("record.recordViews")}>
+          {(["history", "conversations"] as const).map((view) => {
+            const target: DurableLocation =
+              view === "history"
+                ? { view, conversationId: inspectedConversation ?? selected?.id }
+                : { view, objectId: inspectedConversation ?? selected?.id }
+            return (
+              <a
+                key={view}
+                href={durableHref(chat, target)}
+                aria-current={
+                  (location.view === "history") === (view === "history") ? "page" : undefined
+                }
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return
+                  event.preventDefault()
+                  navigate(target)
+                }}
+              >
+                {view === "history" ? t("record.history") : t("record.branchView")}
+              </a>
+            )
+          })}
+        </nav>
+      )}
+    </>
+  )
   return (
-    <section className="durable-inspector" aria-label={t("record.inspector")}>
-      <div className="durable-chat-workspace">
+    <section
+      className="durable-inspector"
+      data-reading-focus={readingFocus}
+      aria-label={t("record.inspector")}
+    >
+      <div className="durable-chat-workspace" data-directory-collapsed={directoryCollapsed}>
         {chatSelector && (
-          <aside className="durable-directory-pane" aria-label={t("record.chatDirectory")}>
-            <details className="durable-chat-picker" open={wide || !validChat}>
+          <aside
+            className="durable-directory-pane"
+            hidden={readingFocus}
+            aria-label={t("record.chatDirectory")}
+          >
+            <Button
+              variant="ghost"
+              className="directory-collapse"
+              aria-expanded={!directoryCollapsed}
+              aria-label={t(directoryCollapsed ? "record.showDirectory" : "record.hideDirectory")}
+              title={t(directoryCollapsed ? "record.showDirectory" : "record.hideDirectory")}
+              onClick={() => setDirectoryCollapsed(!directoryCollapsed)}
+            >
+              {directoryCollapsed ? (
+                <ChevronRightIcon aria-hidden />
+              ) : (
+                <ChevronLeftIcon aria-hidden />
+              )}
+            </Button>
+            <details
+              className="durable-chat-picker"
+              hidden={directoryCollapsed}
+              open={wide || !validChat}
+            >
               <summary aria-label={t("record.findChat")}>
                 <ChatBubbleIcon aria-hidden />
                 <span>{validChat ? t("record.switchChat") : t("record.chooseChat")}</span>
@@ -1251,39 +1352,7 @@ export function DurableInspector({
         <div className="durable-reader-pane">
           {header}
           <div className="durable-record-toolbar">
-            {validChat && (
-              <nav className="durable-view-navigation" aria-label={t("record.recordViews")}>
-                {(["history", "conversations"] as const).map((view) => {
-                  const target: DurableLocation =
-                    view === "history"
-                      ? { view, conversationId: inspectedConversation ?? selected?.id }
-                      : { view, objectId: inspectedConversation ?? selected?.id }
-                  return (
-                    <a
-                      key={view}
-                      href={durableHref(chat, target)}
-                      aria-current={
-                        (location.view === "history") === (view === "history") ? "page" : undefined
-                      }
-                      onClick={(event) => {
-                        if (
-                          event.button !== 0 ||
-                          event.metaKey ||
-                          event.ctrlKey ||
-                          event.shiftKey ||
-                          event.altKey
-                        )
-                          return
-                        event.preventDefault()
-                        navigate(target)
-                      }}
-                    >
-                      {view === "history" ? t("record.history") : t("record.branchView")}
-                    </a>
-                  )
-                })}
-              </nav>
-            )}
+            {(location.view !== "history" || !inspectedConversation) && viewNavigation}
             <div className="durable-context-bar" hidden={!validChat}>
               <section
                 className="durable-context-cell"
@@ -1369,6 +1438,7 @@ export function DurableInspector({
                     page={pages.length}
                     selectedId={location.objectId}
                     wide={wide}
+                    navigation={viewNavigation}
                     entryHref={(id) =>
                       durableHref(chat, {
                         view: "history",

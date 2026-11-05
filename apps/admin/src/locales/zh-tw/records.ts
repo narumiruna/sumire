@@ -2,6 +2,16 @@ import type { recordsMessages as sourceMessages } from "../en/records.js"
 import type { Catalog } from "../types.js"
 
 export const recordsMessages = {
+  "record.readingMode": "對話閱讀",
+  "record.eventsMode": "事件檢查",
+  "record.historyMode": "歷程顯示方式",
+  "record.systemEvents": "系統與工具事件 · {count} 筆",
+  "record.expandReading": "展開閱讀",
+  "record.restoreReading": "還原版面",
+  "record.hideDirectory": "收合聊天清單",
+  "record.showDirectory": "展開聊天清單",
+  "record.cache": "快取",
+  "record.cachedAt": "快取更新於 {time}",
   "record.copyContent": "複製內容",
   "record.contentCopied": "已複製內容。",
   "record.copyContentFailed": "複製失敗。請選取並複製下方內容。",

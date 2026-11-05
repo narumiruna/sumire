@@ -15,6 +15,7 @@ import {
   recordTitle,
   recordTone,
 } from "./durable-presentation.js"
+import { ReadingEntries } from "./durable-reading.js"
 import { type MessageKey, t } from "./i18n.js"
 
 export type HistoryFilter = "all" | "user" | "assistant" | "tools" | "other"
@@ -95,6 +96,7 @@ type Props = {
   page: number
   selectedId?: number
   wide: boolean
+  navigation?: ReactNode
   entryHref(id: number): string
   onSelect(id: number): void
   onPrevious(): void
@@ -110,7 +112,8 @@ export function DurableHistory({
   error,
   page,
   selectedId,
-  wide,
+  wide: viewportWide,
+  navigation,
   entryHref,
   onSelect,
   onPrevious,
@@ -119,6 +122,16 @@ export function DurableHistory({
   renderDetail,
   onSessionExpired,
 }: Props) {
+  const [mode, setMode] = useState<"reading" | "events">(() => {
+    try {
+      return window.sessionStorage.getItem("sumire.admin.history-mode") === "events"
+        ? "events"
+        : "reading"
+    } catch {
+      return "reading"
+    }
+  })
+  const wide = viewportWide && mode === "events"
   const [query, setQuery] = useState("")
   const [newestFirst, setNewestFirst] = useState(false)
   const [filter, setFilter] = useState<HistoryFilter>("all")
@@ -348,7 +361,28 @@ export function DurableHistory({
       aria-label={t("record.conversationHistory")}
       className="durable-history-workspace"
       data-details={open && wide}
+      data-mode={mode}
     >
+      <fieldset className="history-mode-switch" aria-label={t("record.historyMode")}>
+        {(["reading", "events"] as const).map((value) => (
+          <Button
+            key={value}
+            variant="ghost"
+            aria-pressed={mode === value}
+            onClick={() => {
+              setMode(value)
+              try {
+                window.sessionStorage.setItem("sumire.admin.history-mode", value)
+              } catch {
+                /* The current view still works without session storage. */
+              }
+            }}
+          >
+            {t(value === "reading" ? "record.readingMode" : "record.eventsMode")}
+          </Button>
+        ))}
+        {navigation}
+      </fieldset>
       <div className="durable-history-filters">
         <label htmlFor="durable-history-search">
           <span className="durable-search-label">{t("record.searchPage")}</span>
@@ -446,62 +480,79 @@ export function DurableHistory({
                       {t("record.precedingTurn")}
                     </Text>
                   )}
-                  {group.entries.map((entry) => {
-                    const Icon = recordIcon(entry)
-                    return (
-                      <article
-                        key={entry.id}
-                        className={`durable-history-entry durable-role-${recordTone(entry)}`}
-                        data-selected={entry.id === selectedId}
-                      >
-                        <header>
-                          <a
-                            href={entryHref(entry.id)}
-                            aria-label={t("record.inspectEntry", { id: entry.id })}
-                            aria-current={entry.id === selectedId ? "true" : undefined}
-                            onClick={(event) => {
-                              if (
-                                event.button !== 0 ||
-                                event.metaKey ||
-                                event.ctrlKey ||
-                                event.shiftKey ||
-                                event.altKey
-                              )
-                                return
-                              event.preventDefault()
-                              opener.current = event.currentTarget
-                              setOpen(true)
-                              onSelect(entry.id)
-                            }}
-                          >
-                            <span className="durable-role-icon">
-                              <Icon aria-hidden />
-                            </span>
-                            <span className="durable-history-row-body">
-                              <span className="durable-history-entry-heading">
-                                <strong>{recordTitle(entry)}</strong>
-                                <span className="durable-record-id">#{entry.id}</span>
-                                {entry.timestamp !== undefined && (
-                                  <time>{formatDurableTime(entry.timestamp)}</time>
+                  {mode === "reading" ? (
+                    <ReadingEntries
+                      entries={group.entries}
+                      conversationId={conversationId}
+                      selectedId={selectedId}
+                      entryHref={entryHref}
+                      preview={entryPreview}
+                      onInspect={(id, anchor) => {
+                        opener.current = anchor
+                        setOpen(true)
+                        onSelect(id)
+                      }}
+                    />
+                  ) : (
+                    group.entries.map((entry) => {
+                      const Icon = recordIcon(entry)
+                      return (
+                        <article
+                          key={entry.id}
+                          className={`durable-history-entry durable-role-${recordTone(entry)}`}
+                          data-selected={entry.id === selectedId}
+                        >
+                          <header>
+                            <a
+                              href={entryHref(entry.id)}
+                              aria-label={t("record.inspectEntry", { id: entry.id })}
+                              aria-current={entry.id === selectedId ? "true" : undefined}
+                              onClick={(event) => {
+                                if (
+                                  event.button !== 0 ||
+                                  event.metaKey ||
+                                  event.ctrlKey ||
+                                  event.shiftKey ||
+                                  event.altKey
+                                )
+                                  return
+                                event.preventDefault()
+                                opener.current = event.currentTarget
+                                setOpen(true)
+                                onSelect(entry.id)
+                              }}
+                            >
+                              <span className="durable-role-icon">
+                                <Icon aria-hidden />
+                              </span>
+                              <span className="durable-history-row-body">
+                                <span className="durable-history-entry-heading">
+                                  <strong>{recordTitle(entry)}</strong>
+                                  <span className="durable-record-id">#{entry.id}</span>
+                                  {entry.timestamp !== undefined && (
+                                    <time>{formatDurableTime(entry.timestamp)}</time>
+                                  )}
+                                </span>
+                                <span className="durable-history-preview">
+                                  {entryPreview(entry)}
+                                </span>
+                                {entry.content?.truncated && (
+                                  <span className="durable-preview-note">
+                                    {t("record.contentTruncated")}
+                                  </span>
+                                )}
+                                {entry.conversationId !== conversationId && (
+                                  <span className="durable-preview-note">
+                                    {t("record.inherited", { id: entry.conversationId })}
+                                  </span>
                                 )}
                               </span>
-                              <span className="durable-history-preview">{entryPreview(entry)}</span>
-                              {entry.content?.truncated && (
-                                <span className="durable-preview-note">
-                                  {t("record.contentTruncated")}
-                                </span>
-                              )}
-                              {entry.conversationId !== conversationId && (
-                                <span className="durable-preview-note">
-                                  {t("record.inherited", { id: entry.conversationId })}
-                                </span>
-                              )}
-                            </span>
-                          </a>
-                        </header>
-                      </article>
-                    )
-                  })}
+                            </a>
+                          </header>
+                        </article>
+                      )
+                    })
+                  )}
                 </section>
               ))}
             </div>

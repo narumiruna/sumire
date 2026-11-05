@@ -2,6 +2,16 @@ import type { recordsMessages as sourceMessages } from "../en/records.js"
 import type { Catalog } from "../types.js"
 
 export const recordsMessages = {
+  "record.readingMode": "会話を読む",
+  "record.eventsMode": "イベントを調査",
+  "record.historyMode": "履歴の表示",
+  "record.systemEvents": "システムとツールのイベント · {count} 件",
+  "record.expandReading": "閲覧領域を拡大",
+  "record.restoreReading": "レイアウトを戻す",
+  "record.hideDirectory": "チャット一覧を折りたたむ",
+  "record.showDirectory": "チャット一覧を展開",
+  "record.cache": "キャッシュ",
+  "record.cachedAt": "キャッシュ更新 {time}",
   "record.copyContent": "内容をコピー",
   "record.contentCopied": "内容をコピーしました。",
   "record.copyContentFailed": "コピーに失敗しました。下の内容を選択してコピーしてください。",

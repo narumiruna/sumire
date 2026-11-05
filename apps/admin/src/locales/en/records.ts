@@ -1,6 +1,16 @@
 import type { Catalog } from "../types.js"
 
 export const recordsMessages = {
+  "record.readingMode": "Conversation reading",
+  "record.eventsMode": "Event inspection",
+  "record.historyMode": "History display",
+  "record.systemEvents": "System and tool events · {count}",
+  "record.expandReading": "Expand reading",
+  "record.restoreReading": "Restore layout",
+  "record.hideDirectory": "Collapse chat list",
+  "record.showDirectory": "Expand chat list",
+  "record.cache": "Cache",
+  "record.cachedAt": "Cache updated {time}",
   "record.copyContent": "Copy content",
   "record.contentCopied": "Content copied.",
   "record.copyContentFailed": "Copy failed. Select and copy the content below.",

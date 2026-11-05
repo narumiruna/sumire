@@ -29,8 +29,8 @@ for (const width of [1440, 1024, 390, 320]) {
     if (width >= 1100) {
       const pane = await directory(page).boundingBox()
       const reader = await page.locator(".durable-reader-pane").boundingBox()
-      expect(pane?.width).toBeGreaterThanOrEqual(280)
-      expect(pane?.width).toBeLessThanOrEqual(320)
+      expect(pane?.width).toBeGreaterThanOrEqual(240)
+      expect(pane?.width).toBeLessThanOrEqual(272)
       expect(reader?.x).toBeGreaterThanOrEqual((pane?.x ?? 0) + (pane?.width ?? 0))
     }
     await directory(page).getByLabel("Search stored chats").fill("Loaded chat")
