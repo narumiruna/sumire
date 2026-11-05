@@ -110,7 +110,7 @@ async function fixture(page: Page) {
     await route.fulfill({ json: data[path] ?? {} })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   return {
     writes,
     auditQueries,
@@ -195,7 +195,13 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
         await expect(bar).toContainText("Settings saved and applied.")
         await expect(bar.getByRole("button")).toHaveCount(0)
         await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
-        await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
+        if (section === "Chats" || section === "Access") {
+          const details = bar.locator(".saved-settings-details")
+          await expect(details).toBeVisible()
+          await details.locator(":scope > summary").click()
+          await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
+          await details.locator(":scope > summary").click()
+        } else await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
       }
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
       const changes = page.getByRole("region", { name: "Pending changes", exact: true })
@@ -577,7 +583,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   const state = await fixture(page)
   const measurements: Record<string, Awaited<ReturnType<typeof contrast>>> = {}
   measurements.normal = await contrast(page.locator("#current-section-heading"))
-  measurements.muted = await contrast(page.locator(".directory-options summary"))
+  measurements.muted = await contrast(page.locator(".chat-card-count"))
   await navigate(page, "Defaults")
   measurements.disabled = await contrast(
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),
@@ -641,7 +647,10 @@ for (const mode of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
-      const initial = page.getByRole("heading", { name: sectionLabel(section), exact: true })
+      const initial = page.getByRole("heading", {
+        name: ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+        exact: true,
+      })
       await initial.focus()
       for (let index = 0; index < 8; index++) {
         await page.keyboard.press("Tab")

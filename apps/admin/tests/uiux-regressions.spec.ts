@@ -295,7 +295,7 @@ test("a connection save completed after navigation does not focus its hidden sec
   await page.getByRole("button", { name: "Save connection", exact: true }).click()
   await saving
   await navigate(page, "Chats")
-  const heading = page.getByRole("heading", { name: "Chats", exact: true })
+  const heading = page.getByRole("heading", { name: "聊天管理", exact: true })
   await expect(heading).toBeFocused()
   respond()
   await expect(page.getByRole("main")).toHaveAttribute("aria-busy", "false")
@@ -907,7 +907,7 @@ test("an old application retry cannot reload or erase a new session's draft", as
     await route.fulfill({ status: 401, json: { error: "Session expired" } })
   })
   const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
-  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
+  await page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true }).fill("expire")
   await directoryRequest
   let complete: () => void = () => undefined
   const held = new Promise<void>((resolve) => {
@@ -969,7 +969,7 @@ test("session expiry clears recovery and ignores a late successful settings read
     await route.fulfill({ status: 401, json: { error: "Session expired" } })
   })
   const directoryRequest = page.waitForRequest((request) => request.url().includes("q=expire"))
-  await page.getByLabel("Search stored chats", { exact: true }).fill("expire")
+  await page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true }).fill("expire")
   await directoryRequest
   let complete: () => void = () => undefined
   const held = new Promise<void>((resolve) => {

@@ -28,13 +28,13 @@ async function fixture(page: Page) {
     })
   })
   await page.reload()
-  await expect(page.locator(".directory-row")).toHaveCount(2)
+  await expect(page.locator(".chat-card")).toHaveCount(2)
   return { ...state, reads }
 }
 
 function row(page: Page, id: number) {
   return page
-    .locator(".directory-row")
+    .locator(".chat-card")
     .filter({ has: page.locator(`.directory-chat[href*="chat=${id}"]`) })
 }
 
@@ -54,28 +54,25 @@ for (const width of [1440, 390, 320]) {
     })
     const state = await fixture(page)
     const approved = row(page, 42)
-    await expect(approved.locator(".directory-approval")).toHaveText("Approved")
-    await expect(approved.locator(".directory-row-state")).toContainText("Disabled")
-    await expect(approved.locator(".directory-model")).toContainText("fixture/test")
-    await expect(approved.locator(".directory-model")).toContainText("Shared defaults")
-    await expect(approved.locator(".directory-issues")).toContainText("The chat is disabled.")
-    await expect(
-      approved.getByRole("button", { name: "Review chat enabled switch", exact: true }),
-    ).toBeVisible()
-    await expect(approved.getByRole("button", { name: "Manage access", exact: true })).toBeVisible()
-    await approved.getByRole("button", { name: "Copy chat ID 42", exact: true }).click()
-    await expect(approved.getByRole("status")).toHaveText("Chat ID copied.")
+    await expect(approved.locator(".chat-card-status")).toHaveText("已停用")
+    await expect(approved.locator(".chat-card-facts")).toContainText("Test")
+    await expect(approved.locator(".chat-card-facts")).toContainText("共用設定")
+    await expect(approved.getByRole("button", { name: "聊天已停用", exact: true })).toBeVisible()
+    await expect(approved.getByRole("button", { name: "設定", exact: true })).toBeVisible()
+    await approved.getByRole("button", { name: /的更多操作$/ }).click()
+    await page.getByRole("menuitem", { name: "複製聊天 ID", exact: true }).click()
+    await expect(approved.getByRole("status")).toHaveText("已複製聊天 ID")
     expect(await page.evaluate(() => Reflect.get(window, "copiedChatId"))).toBe("42")
     await expect(approved.getByRole("link")).toHaveAttribute("href", /chat=42/)
     await expect(approved.locator("a button, button button")).toHaveCount(0)
-    await row(page, 43).getByRole("button", { name: "Grant access", exact: true }).click()
-    await expect(row(page, 43).locator(".directory-approval")).toHaveText("Not approved")
-    await expect(row(page, 43)).toContainText("Pending access grant")
-    await approved.getByRole("button", { name: /^Actions for / }).click()
-    await page.getByRole("menuitem", { name: "Revoke access", exact: true }).click()
-    await expect(approved.locator(".directory-approval")).toHaveText("Approved")
-    await expect(approved).toContainText("Pending access revocation")
-    await expect(approved.locator(".directory-issues")).toContainText("The chat is disabled.")
+    await row(page, 43).getByRole("button", { name: "核准", exact: true }).click()
+    await expect(row(page, 43).locator(".chat-card-status")).toHaveText("待核准")
+    await expect(row(page, 43)).toContainText("核准待儲存")
+    await approved.getByRole("button", { name: /的更多操作$/ }).click()
+    await page.getByRole("menuitem", { name: "撤銷核准", exact: true }).click()
+    await expect(approved.locator(".chat-card-status")).toHaveText("已停用")
+    await expect(approved).toContainText("撤銷核准待儲存")
+    await expect(approved.getByRole("button", { name: "聊天已停用", exact: true })).toBeVisible()
     expect(state.writes).toEqual([])
     expect(state.policy().privateUsers).toEqual([42])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -86,9 +83,9 @@ test("directory return retains query, page filters, selected row focus and exact
   page,
 }) => {
   const state = await fixture(page)
-  const search = page.getByRole("textbox", { name: "Search stored chats", exact: true })
+  const search = page.getByRole("textbox", { name: /搜尋聊天|Search stored chats/, exact: true })
   await search.fill("42")
-  await expect(page.locator(".directory-row")).toHaveCount(1)
+  await expect(page.locator(".chat-card")).toHaveCount(1)
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
   await page.getByRole("option", { name: "Private", exact: true }).click()
@@ -108,13 +105,9 @@ test("unknown inventory is a saved diagnostic with a visible configuration repai
   const state = await fixture(page)
   state.inventory.providers = []
   await page.reload()
-  await expect(row(page, 43).locator(".directory-issues")).toContainText(
-    "Provider configuration is not in the loaded inventory.",
-  )
-  await expect(
-    row(page, 43).getByRole("button", { name: "Review authentication configuration", exact: true }),
-  ).toBeVisible()
   await expect(row(page, 43)).not.toContainText("Ready")
+  await row(page, 42).getByRole("button", { name: "需要處理", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Providers & models", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })
 

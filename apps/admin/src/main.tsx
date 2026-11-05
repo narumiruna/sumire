@@ -4,7 +4,13 @@ import {
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
-import { ExclamationTriangleIcon, ExitIcon, PersonIcon, ReloadIcon } from "@radix-ui/react-icons"
+import {
+  ExclamationTriangleIcon,
+  ExitIcon,
+  PersonIcon,
+  ReloadIcon,
+  UpdateIcon,
+} from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import {
   AlertDialog,
@@ -20,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
+import "./chat-cards.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
@@ -36,6 +43,7 @@ import {
 import { AuditHistory } from "./audit.js"
 import { BrandIcon } from "./brand-icon.js"
 import { ChatAccess } from "./chat-access.js"
+import { ChatAccessIcon } from "./chat-cards.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
@@ -74,7 +82,7 @@ const initialAccess = captureAccessLink(window.location, window.history, accessS
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 const pageDescriptions = {
-  Chats: "Review chat access and effective settings.",
+  Chats: undefined,
   Durable: undefined,
   Defaults:
     "Defaults for chats without corresponding overrides. Explicit chat overrides stay unchanged.",
@@ -421,7 +429,9 @@ function App() {
   const policy = snapshot.policy
   const selected = policy.chats[chat]
   return (
-    <div className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}`}>
+    <div
+      className={`admin-shell${page === "Durable" ? " admin-shell-durable" : ""}${page === "Chats" ? " admin-shell-chats" : ""}`}
+    >
       <SideNavigation
         page={page}
         chat={chat}
@@ -461,7 +471,7 @@ function App() {
       />
       <main aria-busy={busy}>
         <PageHeader
-          title={pageLabel(page)}
+          title={page === "Chats" ? "聊天管理" : pageLabel(page)}
           description={pageDescriptions[page]}
           actions={
             page !== "Durable" && (
@@ -476,7 +486,7 @@ function App() {
                   void run(load)
                 }}
               >
-                <ReloadIcon />
+                {page === "Chats" ? <UpdateIcon /> : <ReloadIcon />}
                 <span className="workspace-action-label">Refresh settings</span>
               </Button>
             )
@@ -522,6 +532,7 @@ function App() {
           snapshot.revision === snapshot.applied
         ) && (
           <SaveStatus
+            quiet={page === "Chats"}
             snapshot={snapshot}
             reviewOpen={policyReviewOpen}
             onReviewOpenChange={setPolicyReviewOpen}
@@ -670,50 +681,6 @@ function App() {
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
           <EditorSection active={page === "Chats"} aria-label="Chat settings">
-            <details className="chat-access-management" id="chat-access-management" tabIndex={-1}>
-              <summary>Manage chat access</summary>
-              <Heading size="3">Chat access</Heading>
-              {accessTarget && (
-                <Panel>
-                  <Heading size="3">Access for chat {accessTarget}</Heading>
-                  <Prose>
-                    Review its access entry below. If approval is missing, add this ID to the
-                    appropriate list.
-                  </Prose>
-                  <Button
-                    variant="soft"
-                    onClick={(event) => {
-                      event.currentTarget.closest("details")?.removeAttribute("open")
-                      openChat(accessTarget)
-                    }}
-                  >
-                    Back to chat details
-                  </Button>
-                  <Button variant="ghost" onClick={() => setAccessTarget("")}>
-                    Show all access entries
-                  </Button>
-                </Panel>
-              )}
-              <ChatAccess
-                policy={policy}
-                saved={savedPolicy ?? policy}
-                target={accessTarget}
-                chats={knownChats}
-                onChange={update}
-                onPending={(value) => markPending("access", value)}
-                onReview={() => setPolicyReviewOpen(true)}
-              />
-              <details className="access-intro">
-                <summary>Imported IDs and review history</summary>
-                <Prose>
-                  Import history never grants access or reverses a revocation. No imported ID is
-                  approved automatically.
-                </Prose>
-                <Button variant="soft" onClick={() => setPage("Audit")}>
-                  Open import history in Audit
-                </Button>
-              </details>
-            </details>
             <ChatWorkspace
               directory={directory}
               chat={chat}
@@ -767,6 +734,53 @@ function App() {
                 />
               </section>
             </ChatWorkspace>
+            <details className="chat-access-management" id="chat-access-management" tabIndex={-1}>
+              <summary>
+                <ChatAccessIcon />
+                存取權限管理
+              </summary>
+              <Heading size="3">Chat access</Heading>
+              {accessTarget && (
+                <Panel>
+                  <Heading size="3">Access for chat {accessTarget}</Heading>
+                  <Prose>
+                    Review its access entry below. If approval is missing, add this ID to the
+                    appropriate list.
+                  </Prose>
+                  <Button
+                    variant="soft"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open")
+                      openChat(accessTarget)
+                    }}
+                  >
+                    Back to chat details
+                  </Button>
+                  <Button variant="ghost" onClick={() => setAccessTarget("")}>
+                    Show all access entries
+                  </Button>
+                </Panel>
+              )}
+              <ChatAccess
+                policy={policy}
+                saved={savedPolicy ?? policy}
+                target={accessTarget}
+                chats={knownChats}
+                onChange={update}
+                onPending={(value) => markPending("access", value)}
+                onReview={() => setPolicyReviewOpen(true)}
+              />
+              <details className="access-intro">
+                <summary>Imported IDs and review history</summary>
+                <Prose>
+                  Import history never grants access or reverses a revocation. No imported ID is
+                  approved automatically.
+                </Prose>
+                <Button variant="soft" onClick={() => setPage("Audit")}>
+                  Open import history in Audit
+                </Button>
+              </details>
+            </details>
           </EditorSection>
           {page === "Durable" && (
             <SectionErrorBoundary key={chat} label="Durable inspector">

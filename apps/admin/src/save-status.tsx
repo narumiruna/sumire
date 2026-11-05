@@ -1,5 +1,5 @@
 import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
-import { type ReactNode, useEffect, useRef } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import type { Snapshot } from "./api.js"
 import { type EditorTarget, type Page, pageLabel } from "./navigation.js"
 import type { PolicyChange } from "./policy-changes.js"
@@ -7,6 +7,7 @@ import { countText } from "./status-text.js"
 import { Prose } from "./surfaces.js"
 
 type Props = {
+  quiet?: boolean
   snapshot: Snapshot
   entries: PolicyChange[]
   changeCount: number
@@ -30,6 +31,7 @@ type Props = {
 }
 
 export function SaveStatus({
+  quiet = false,
   snapshot,
   entries,
   changeCount,
@@ -121,11 +123,62 @@ export function SaveStatus({
     !providerPending &&
     !runtimePending &&
     !recover
+  const [notify, setNotify] = useState(false)
+  const previousBusy = useRef(busy)
+  useEffect(() => {
+    const finished = previousBusy.current && !busy
+    previousBusy.current = busy
+    if (!quiet || !compact || !finished) return
+    setNotify(true)
+    const timer = window.setTimeout(() => setNotify(false), 4500)
+    return () => {
+      window.clearTimeout(timer)
+      setNotify(false)
+    }
+  }, [quiet, compact, busy])
   const reviewEditor = (target: EditorTarget) => {
     navigating.current = true
     setReviewOpen(false)
     openEditor(target)
   }
+  const applicationStatus = (
+    <div className="application-status" id="application-status" tabIndex={-1}>
+      {!compact && <span className="status-scope">Saved configuration</span>}
+      <Badge
+        role="status"
+        color={applied && !recover ? "gray" : "orange"}
+        data-saved={applied && !recover}
+      >
+        {recover
+          ? "Save attempt needs review. Last confirmed revision shown."
+          : snapshot.status === "failed"
+            ? "Saved, but application failed. Retry application."
+            : !applied
+              ? "Saved changes are waiting to apply."
+              : compact
+                ? "Settings saved and applied."
+                : "Saved revision applied."}
+      </Badge>
+      <details>
+        <summary>Revision details</summary>
+        Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
+      </details>
+      {!applied && (
+        <Button
+          variant="outline"
+          disabled={busy || dirty || localPending || Boolean(recover)}
+          onClick={retry}
+        >
+          Retry application
+        </Button>
+      )}
+      {busy && (
+        <Prose size="2" role="status">
+          Operation in progress…
+        </Prose>
+      )}
+    </div>
+  )
   return (
     <AlertDialog.Root open={reviewOpen} onOpenChange={setReviewOpen}>
       <section
@@ -135,43 +188,20 @@ export function SaveStatus({
         className="save-status"
         data-pending={dirty}
         data-compact={compact}
+        data-quiet={quiet}
       >
-        <div className="application-status" id="application-status" tabIndex={-1}>
-          {!compact && <span className="status-scope">Saved configuration</span>}
-          <Badge
-            role="status"
-            color={applied && !recover ? "gray" : "orange"}
-            data-saved={applied && !recover}
-          >
-            {recover
-              ? "Save attempt needs review. Last confirmed revision shown."
-              : snapshot.status === "failed"
-                ? "Saved, but application failed. Retry application."
-                : !applied
-                  ? "Saved changes are waiting to apply."
-                  : compact
-                    ? "Settings saved and applied."
-                    : "Saved revision applied."}
-          </Badge>
-          <details>
-            <summary>Revision details</summary>
-            Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
-          </details>
-          {!applied && (
-            <Button
-              variant="outline"
-              disabled={busy || dirty || localPending || Boolean(recover)}
-              onClick={retry}
-            >
-              Retry application
-            </Button>
-          )}
-          {busy && (
-            <Prose size="2" role="status">
-              Operation in progress…
-            </Prose>
-          )}
-        </div>
+        {quiet && compact ? (
+          notify ? (
+            <div className="settings-saved-toast">{applicationStatus}</div>
+          ) : (
+            <details className="saved-settings-details" id="saved-settings-details" tabIndex={-1}>
+              <summary>儲存與版本資訊</summary>
+              {applicationStatus}
+            </details>
+          )
+        ) : (
+          applicationStatus
+        )}
         {pending && (
           <section ref={ref} className="changes-bar" aria-label="Pending changes">
             <div className="save-status-line">

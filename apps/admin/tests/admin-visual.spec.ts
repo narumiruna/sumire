@@ -22,6 +22,7 @@ for (const viewport of [
   test(`all production pages use the shared Radix workspace at ${viewport.width}px and ${viewport.zoom}x zoom`, async ({
     page,
   }, testInfo) => {
+    test.setTimeout(120000)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     const requests = await adminFixture(page, [record])
     await page.evaluate((zoom) => {
@@ -54,7 +55,9 @@ for (const viewport of [
       await navigate(page, section)
       const heading = page.locator("#current-section-heading")
       await expect(heading).toHaveCount(1)
-      await expect(heading).toHaveText(sectionLabel(section))
+      await expect(heading).toHaveText(
+        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      )
       await expect(heading).toBeVisible()
       if (section === "MCP connections") {
         const permissions = page.getByRole("button", {

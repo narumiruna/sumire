@@ -193,7 +193,7 @@ for (const width of [1440, 390, 320]) {
         if (!target) throw new Error("Missing Chats link")
         target.click()
       })
-      await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+      await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
       await expect(search).toHaveCount(0)
       await expect(trigger).toBeHidden()
       await expect

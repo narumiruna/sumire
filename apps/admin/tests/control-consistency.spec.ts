@@ -60,7 +60,10 @@ async function fixture(page: Page, section = "Chats") {
   })
   await page.goto(`/?section=${encodeURIComponent(section)}`)
   await expect(
-    page.getByRole("heading", { name: sectionLabel(section), exact: true }),
+    page.getByRole("heading", {
+      name: ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      exact: true,
+    }),
   ).toBeVisible()
   if (section === "MCP connections") await openConnectionEditor(page, true)
   if (section === "Audit") await openDisclosure(page, "Filters")
@@ -204,7 +207,12 @@ for (const name of [
     await fixture(page, "Defaults")
     const mcp = name.startsWith("MCP") || name === "Connection type"
     const section = mcp ? "MCP connections" : "Chats"
-    await page.getByRole("link", { name: sectionLabel(section), exact: true }).click()
+    await page
+      .getByRole("link", {
+        name: sectionLabel(section),
+        exact: true,
+      })
+      .click()
     if (!mcp) await openDirectoryFilters(page)
     if (mcp) {
       await openConnectionEditor(page, true)

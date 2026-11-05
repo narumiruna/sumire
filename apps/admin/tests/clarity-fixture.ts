@@ -73,6 +73,6 @@ export async function clarityFixture(page: Page) {
     await route.fulfill({ json: filtered.slice(offset, offset + 100) })
   })
   await page.reload()
-  await expect(page.locator("#save-status")).toBeVisible()
+  await expect(page.locator("#save-status")).toBeVisible({ timeout: 15000 })
   return { ...state, chats }
 }

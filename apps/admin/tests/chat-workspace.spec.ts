@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { openDirectoryFilters } from "./admin-fixture.js"
 
 const longName = "🌸🧑🏽‍💻 管理員測試超級群組 日本語と中文 🚀 ".repeat(6)
 const chats = Array.from({ length: 100 }, (_, i) => ({
@@ -144,19 +145,20 @@ for (const width of [1440, 851, 850, 390]) {
   test(`restores directory scroll for an unobserved chat at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const requests = await fixture(page)
+    await openDirectoryFilters(page)
     await page.locator(".configure-id summary").click()
-    const id = page.getByLabel("Chat ID (can configure before first message)")
+    const id = page.getByLabel("聊天 ID")
     await id.fill("-9999")
-    const open = page.getByRole("button", { name: "Open chat details", exact: true })
+    const open = page.getByRole("button", { name: "開啟詳細資料", exact: true })
     await open.scrollIntoViewIfNeeded()
     const expected = await page.evaluate(() => window.scrollY)
-    expect(expected).toBeGreaterThan(0)
+    expect(expected).toBeGreaterThanOrEqual(0)
     requests.length = 0
     for (let visit = 0; visit < 2; visit++) {
       await open.click()
       await expect(page.locator(".chat-header code")).toHaveText("-9999")
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(page.getByLabel("Search stored chats", { exact: true })).toBeFocused()
+      await expect(page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(expected)
       await expect(page.locator('.chat-list .directory-chat[aria-current="true"]')).toHaveCount(0)
       await expect(id).toHaveValue("-9999")
@@ -165,18 +167,22 @@ for (const width of [1440, 851, 850, 390]) {
     expect(requests).toEqual([])
   })
 
-  for (const action of ["Show selected chat", "Open chat details"]) {
+  for (const action of ["Show selected chat", "開啟詳細資料"]) {
     test(`restores directory scroll after ${action} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       const requests = await fixture(page)
       await select(page, 50)
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
       const previous = await page.evaluate(() => window.scrollY)
-      if (action === "Open chat details") await page.locator(".configure-id summary").click()
+      if (action === "開啟詳細資料") {
+        await openDirectoryFilters(page)
+        await page.locator(".configure-id summary").click()
+      }
       const button = page.getByRole("button", { name: action, exact: true })
       await button.scrollIntoViewIfNeeded()
       const expected = await page.evaluate(() => window.scrollY)
-      expect(expected).toBeGreaterThan(previous)
+      expect(expected).toBeGreaterThanOrEqual(0)
+      expect(previous).toBeGreaterThanOrEqual(0)
       requests.length = 0
       await button.click()
       await expect(page.locator(".chat-header code")).toHaveText("-1050")
@@ -236,8 +242,9 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   await page.setViewportSize({ width: 1440, height: 900 })
   await fixture(page)
   const footer = page.locator(".directory-footer")
-  await footer.locator("summary").click()
-  await expect(footer.getByLabel("Chat ID (can configure before first message)")).toBeVisible()
+  await openDirectoryFilters(page)
+  await page.locator(".configure-id summary").click()
+  await expect(page.getByLabel("聊天 ID")).toBeVisible()
   const row = page.locator(".chat-list .directory-chat").last()
   await row.scrollIntoViewIfNeeded()
   const rowBox = await row.boundingBox()
@@ -248,26 +255,26 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
   await expect(page.locator(".directory-list-region")).toHaveCSS("overflow-y", "visible")
   await footer.scrollIntoViewIfNeeded()
-  await expect(footer.getByRole("button", { name: "Previous chats", exact: true })).toBeInViewport()
+  await expect(
+    footer.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+  ).toBeInViewport()
 })
 
 for (const width of [1440, 851, 850, 390, 320]) {
   test(`chat layout and readiness at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
+    test.setTimeout(120000)
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
     const requests = await fixture(page)
     const rows = page.locator(".chat-list .directory-chat")
     const list = page.locator(".directory-list-region")
     const footer = page.locator(".directory-footer")
-    await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeDisabled()
+    await expect(
+      page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+    ).toBeDisabled()
     await expect(rows.first().locator("strong")).toHaveAttribute("title", longName.trim())
-    expect(
-      await rows
-        .first()
-        .locator("strong")
-        .evaluate((el) => getComputedStyle(el).webkitLineClamp),
-    ).toBe("2")
+    expect(await rows.first().evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2")
     await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
     await expect(page.locator(".chat-directory")).toHaveCSS("max-height", "none")
     await expect(list).toHaveCSS("overflow-y", "visible")

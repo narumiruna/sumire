@@ -26,7 +26,7 @@ test("browser Back requires a decision and preserves the destination on cancel",
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("back-secret")
   page.once("dialog", (dialog) => dialog.accept())
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   await expect(page.getByLabel("Runtime secret value")).toHaveCount(0)
   await navigate(page, "Secrets & variables")
   await page.getByRole("button", { name: "Add secret", exact: true }).click()

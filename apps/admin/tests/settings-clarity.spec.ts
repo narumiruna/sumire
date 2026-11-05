@@ -97,14 +97,11 @@ test("directory groups authentication issues for the displayed page only", async
     if (provider.id === "fixture") provider.configured = false
   })
   await page.reload()
-  const summary = page.getByRole("region", {
-    name: "Authentication on this directory page",
-    exact: true,
-  })
-  await expect(summary).toContainText("fixture")
-  await expect(summary).toContainText("99 chats")
-  await expect(summary).toContainText("second")
-  await expect(summary).toContainText("1 chat")
-  await expect(page.locator(".directory-status-reason")).toHaveCount(0)
+  const cards = page.locator(".chat-card")
+  await expect(cards).toHaveCount(100)
+  await expect(cards.locator(".chat-card-warning")).toHaveCount(100)
+  await expect(cards.first().getByRole("button", { name: "需要處理", exact: true })).toBeVisible()
+  await cards.first().getByRole("button", { name: "需要處理", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Providers & models", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })

@@ -79,7 +79,7 @@ export async function adminFixture(
     await route.fulfill({ json: data[url.pathname] ?? {} })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   return requests
 }
 
@@ -162,6 +162,11 @@ export async function openChatConfiguration(page: Page) {
 }
 
 export async function openDirectoryFilters(page: Page) {
+  const filter = page.getByRole("button", { name: "篩選", exact: true })
+  if (await filter.isVisible()) {
+    if ((await filter.getAttribute("aria-expanded")) !== "true") await filter.click()
+    return
+  }
   const summary = page.getByText("Filters and search scope", { exact: true })
   if ((await summary.locator("..").getAttribute("open")) === null) await summary.click()
 }
@@ -170,7 +175,7 @@ export async function openChatAccess(page: Page) {
   await navigate(page, "Chats")
   if (!(await page.locator("#chat-access-management > summary").isVisible()))
     await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await openDisclosure(page, "Manage chat access")
+  await openDisclosure(page, "存取權限管理")
 }
 
 export async function navigate(page: Page, name: string) {

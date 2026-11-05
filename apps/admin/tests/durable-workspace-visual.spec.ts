@@ -255,7 +255,10 @@ for (const width of [390, 320]) {
     expect(rowBox?.width).toBeGreaterThanOrEqual((listBox?.width ?? 0) - 4)
     for (const name of ["Previous chats", "Next chats"])
       await expect(selector.getByRole("button", { name, exact: true })).toHaveCount(0)
-    const refresh = selector.getByRole("button", { name: "Refresh chats", exact: true })
+    const refresh = selector.getByRole("button", {
+      name: /Refresh settings|Refresh chats/,
+      exact: true,
+    })
     await expect(refresh).toBeVisible()
     const bounds = await refresh.boundingBox()
     expect(bounds?.width).toBeGreaterThan(44)
