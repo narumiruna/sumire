@@ -29,6 +29,8 @@ import {
   useState,
 } from "react"
 import { type Inventory, type Policy, request, type Selection, type Snapshot } from "./api.js"
+import { thinkingLabel } from "./default-model.js"
+import { type MessageKey, t } from "./i18n.js"
 import { focusEditor } from "./navigation.js"
 import {
   configuredProviders,
@@ -66,7 +68,7 @@ export function SearchChoice({
   const id = useId()
   const displayValue =
     options.find((option) => option.id === value)?.label ??
-    (value || `Choose ${label.toLowerCase()}`)
+    (value || t("selection.choose", { label: label.toLowerCase() }))
   const filtered = useMemo(
     () => options.filter((v) => `${v.label} ${v.id}`.toLowerCase().includes(query.toLowerCase())),
     [options, query],
@@ -98,7 +100,7 @@ export function SearchChoice({
             ref={trigger}
             variant="surface"
             disabled={disabled}
-            aria-label={`${label}: ${displayValue}`}
+            aria-label={t("selection.choiceValue", { label, value: displayValue })}
             aria-haspopup="dialog"
           >
             <span>{displayValue}</span>
@@ -107,7 +109,7 @@ export function SearchChoice({
         </Popover.Trigger>
         <Popover.Content
           className="provider-search"
-          aria-label={`Choose ${label.toLowerCase()}`}
+          aria-label={t("selection.choose", { label: label.toLowerCase() })}
           onCloseAutoFocus={(event) => {
             // Navigation must keep focus on the destination, not a hidden trigger.
             if (!sectionActive || tabExit.current || !trigger.current?.checkVisibility())
@@ -116,7 +118,7 @@ export function SearchChoice({
         >
           <TextField.Root
             role="combobox"
-            aria-label={`Search ${label.toLowerCase()}`}
+            aria-label={t("selection.search", { label: label.toLowerCase() })}
             aria-expanded="true"
             aria-autocomplete="list"
             aria-controls={id}
@@ -144,7 +146,12 @@ export function SearchChoice({
               }
             }}
           />
-          <div id={id} role="listbox" aria-label={`${label} results`} className="provider-options">
+          <div
+            id={id}
+            role="listbox"
+            aria-label={t("selection.results", { label })}
+            className="provider-options"
+          >
             {filtered.map((v, index) => (
               <Button asChild variant="ghost" key={v.id}>
                 <button
@@ -165,13 +172,26 @@ export function SearchChoice({
           </div>
           {!filtered.length && (
             <Text as="p" size="2">
-              No matches.
+              {t("selection.noMatches")}
             </Text>
           )}
         </Popover.Content>
       </Popover.Root>
     </div>
   )
+}
+
+const loginStatusKeys = {
+  pending: "provider.loginPending",
+  completed: "provider.loginCompleted",
+  failed: "provider.loginFailed",
+  cancelled: "provider.loginCancelled",
+} as const
+
+function loginStatusLabel(status?: string): string {
+  return status && Object.hasOwn(loginStatusKeys, status)
+    ? t(loginStatusKeys[status as keyof typeof loginStatusKeys])
+    : (status ?? t("provider.loginStarting"))
 }
 
 type LoginState = {
@@ -246,15 +266,15 @@ export function Providers({
   const [answer, setAnswer] = useState("")
   const [oauth, setOauth] = useState("")
   const [login, setLogin] = useState<LoginState>()
-  const [notice, setNotice] = useState("")
+  const [notice, setNotice] = useState<MessageKey | "">("")
   const [credentialCheck, setCredentialCheck] = useState<{
     provider: string
-    status: string
+    status: MessageKey
     revision: number
   }>()
   const [discoveryCheck, setDiscoveryCheck] = useState<{
     provider: string
-    status: string
+    status: MessageKey
     revision: number
     configuration: string
     models: string[]
@@ -315,17 +335,14 @@ export function Providers({
     if (!authRequest || handledAuthRequest.current === authRequest.id) return
     handledAuthRequest.current = authRequest.id
     if (oauth || busy) {
-      setNotice("Finish or cancel the current operation before switching authentication.")
+      setNotice("provider.finishOperation")
       return
     }
     if (
       authRequest.provider !== provider ||
       (authRequest.model && (authRequest.model !== model || authRequest.thinking !== thinking))
     ) {
-      if (
-        (draft || key || answer || authOpen) &&
-        !window.confirm("Replace the pending provider selection and authentication input?")
-      )
+      if ((draft || key || answer || authOpen) && !window.confirm(t("provider.replacePending")))
         return
       if (
         authRequest.provider !== provider &&
@@ -405,20 +422,17 @@ export function Providers({
           setOauth("")
           setAnswer("")
           if (state.status === "completed") {
-            setNotice("Provider authenticated. Your model selection is retained.")
+            setNotice("provider.authenticated")
             setAuthOpen(false)
             // Do not overwrite policy edits made on another page during login.
-            if (dirty)
-              setNotice(
-                "Provider authenticated. Save or discard your policy edits before reloading the new revision.",
-              )
+            if (dirty) setNotice("provider.authenticatedDirty")
             else await run(refresh, false)
           }
         }
       } catch (error) {
         if (!stopped) {
           // Keep the login ID so the administrator can retry or cancel it.
-          setNotice("Could not read provider login. Retry or cancel the interaction.")
+          setNotice("provider.loginReadFailed")
           await run(async () => {
             throw error
           }, false)
@@ -480,7 +494,7 @@ export function Providers({
     if (
       id !== provider &&
       (draft || key || answer || authOpen) &&
-      !window.confirm("Replace the pending provider selection and authentication input?")
+      !window.confirm(t("provider.replacePending"))
     )
       return
     if (id !== provider && onSelectProvider && !onSelectProvider(id)) return
@@ -508,21 +522,20 @@ export function Providers({
             <Callout.Icon>
               <InfoCircledIcon />
             </Callout.Icon>
-            <Callout.Text>
-              Save or discard pending settings before changing provider credentials or saving model
-              availability.
-            </Callout.Text>
+            <Callout.Text>{t("provider.dirtyHelp")}</Callout.Text>
           </Callout.Root>
         )}
         {view === "list" && (
-          <section aria-label="Configured providers" className="settings-stack">
+          <section aria-label={t("provider.configuredList")} className="settings-stack">
             <Text as="p" color="gray">
-              {providers.length} 個供應商
+              {t(providers.length === 1 ? "provider.countOne" : "provider.count", {
+                count: providers.length,
+              })}
             </Text>
             <div className="provider-directory-toolbar">
               <TextField.Root
-                aria-label="Search providers"
-                placeholder="搜尋供應商"
+                aria-label={t("provider.search")}
+                placeholder={t("provider.search")}
                 value={directoryQuery}
                 onChange={(event) => setDirectoryQuery(event.target.value)}
               >
@@ -531,74 +544,86 @@ export function Providers({
                 </TextField.Slot>
               </TextField.Root>
               <Button disabled={busy || Boolean(oauth)} onClick={() => setView("add")}>
-                Add provider
+                {t("provider.add")}
               </Button>
             </div>
-            <fieldset className="scope-segments" aria-label="Provider status">
-              {[
-                ["all", "全部"],
-                ["configured", "已設定"],
-                ["attention", "需處理"],
-              ].map(([value, label]) => (
+            <fieldset className="scope-segments" aria-label={t("provider.status")}>
+              {(
+                [
+                  ["all", "provider.all"],
+                  ["configured", "provider.configured"],
+                  ["attention", "provider.attention"],
+                ] as const
+              ).map(([value, label]) => (
                 <button
                   type="button"
                   key={value}
                   aria-pressed={providerFilter === value}
                   onClick={() => setProviderFilter(value ?? "all")}
                 >
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </fieldset>
-            {!providers.length && (
-              <Prose className="empty-state">
-                No configured or referenced providers. Add a provider to open supported setup.
-              </Prose>
-            )}
+            {!providers.length && <Prose className="empty-state">{t("provider.none")}</Prose>}
             {providers.length > 0 && !visibleProviders.length && (
-              <Prose className="empty-state">沒有符合條件的供應商。請調整搜尋或狀態篩選。</Prose>
+              <Prose className="empty-state">{t("provider.noFiltered")}</Prose>
             )}
             <div className="data-list provider-directory">
               {visibleProviders.map((item) => (
                 <section
                   className="data-row provider-card"
                   key={item.id}
-                  aria-label={`Provider ${item.id}`}
+                  aria-label={t("provider.named", { id: item.id })}
                 >
                   <div className="provider-card-header">
                     <CubeIcon aria-hidden />
                     <strong>{item.name}</strong>
                     <StatusLabel tone={item.configured === false ? "warning" : "neutral"}>
                       {item.configured === null
-                        ? "Credential state unknown"
+                        ? t("provider.credentialUnknown")
                         : item.configured
-                          ? "Credential configured"
-                          : "Missing credential"}
+                          ? t("provider.credentialConfigured")
+                          : t("provider.credentialMissing")}
                     </StatusLabel>
                   </div>
                   <dl className="provider-card-facts">
                     <div>
-                      <dt>可用模型</dt>
-                      <dd>{item.references.available.length} 個</dd>
+                      <dt>{t("provider.availableModels")}</dt>
+                      <dd>
+                        {t(
+                          item.references.available.length === 1
+                            ? "provider.modelCountOne"
+                            : "provider.modelCount",
+                          { count: item.references.available.length },
+                        )}
+                      </dd>
                     </div>
                     <div>
-                      <dt>明確政策引用</dt>
-                      <dd>{item.references.chats.length} 處</dd>
+                      <dt>{t("provider.explicitReferences")}</dt>
+                      <dd>
+                        {t(
+                          item.references.chats.length === 1
+                            ? "provider.referenceCountOne"
+                            : "provider.referenceCount",
+                          { count: item.references.chats.length },
+                        )}
+                      </dd>
                     </div>
                   </dl>
                   <div className="provider-card-footer">
-                    <Prose size="2">本機憑證狀態，未驗證遠端回應</Prose>
+                    <Prose size="2">{t("provider.localCredentialHelp")}</Prose>
                     <Button
                       variant="outline"
                       disabled={busy || Boolean(oauth)}
-                      aria-label={`Manage provider ${item.id}`}
+                      aria-label={t("provider.manageNamed", { id: item.id })}
                       onClick={() => openProvider(item.id)}
                     >
-                      管理設定 →
+                      {t("provider.manage")}
                     </Button>
                   </div>
                   <details className="disclosure">
-                    <summary>技術識別資訊</summary>
+                    <summary>{t("provider.identifiers")}</summary>
                     <Code>{item.id}</Code>
                   </details>
                 </section>
@@ -607,23 +632,20 @@ export function Providers({
           </section>
         )}
         {view === "add" && (
-          <section aria-label="Add provider" className="settings-stack">
+          <section aria-label={t("provider.add")} className="settings-stack">
             <Button
               variant="ghost"
               disabled={busy || Boolean(oauth)}
               onClick={() => setView("list")}
             >
-              Back to providers
+              {t("provider.back")}
             </Button>
             <Heading as="h2" size="4">
-              Add provider
+              {t("provider.add")}
             </Heading>
-            <Prose>
-              Open supported provider setup. Choosing a provider does not grant models, change
-              defaults, or save credentials.
-            </Prose>
+            <Prose>{t("provider.setupHelp")}</Prose>
             <TextField.Root
-              aria-label="Search providers"
+              aria-label={t("provider.search")}
               value={providerQuery}
               onChange={(event) => setProviderQuery(event.target.value)}
             />
@@ -641,28 +663,23 @@ export function Providers({
                     <Button
                       variant="outline"
                       disabled={busy || Boolean(oauth)}
-                      aria-label={`Set up provider ${item.id}`}
+                      aria-label={t("provider.setupNamed", { id: item.id })}
                       onClick={() => openProvider(item.id)}
                     >
-                      Set up
+                      {t("provider.setup")}
                     </Button>
                   </div>
                 ))}
             </div>
             {!inventory.providers.some((item) =>
               `${item.id} ${item.name}`.toLowerCase().includes(providerQuery.toLowerCase()),
-            ) && <Prose>No matching providers.</Prose>}
+            ) && <Prose>{t("provider.noMatches")}</Prose>}
             {onCustomEndpoint && (
               <Button
                 variant="outline"
                 onClick={() => {
                   if (busy || oauth) return
-                  if (
-                    (key || answer || draft) &&
-                    !window.confirm(
-                      "Replace the pending provider selection and authentication input?",
-                    )
-                  )
+                  if ((key || answer || draft) && !window.confirm(t("provider.replacePending")))
                     return
                   if (onCustomEndpoint() === false) return
                   setKey("")
@@ -671,7 +688,7 @@ export function Providers({
                   setView("detail")
                 }}
               >
-                Add custom endpoint
+                {t("provider.addEndpoint")}
               </Button>
             )}
           </section>
@@ -684,30 +701,30 @@ export function Providers({
                 disabled={busy || Boolean(oauth)}
                 onClick={() => setView("list")}
               >
-                Back to providers
+                {t("provider.back")}
               </Button>
               <Heading as="h2" size="5" id="provider-detail-heading" tabIndex={-1}>
-                {selected?.name ?? (provider || "Custom endpoint")}
+                {selected?.name ?? (provider || t("provider.customEndpoint"))}
               </Heading>
               {provider && <Code>{provider}</Code>}
             </Flex>
             <SettingsSection
-              title="Connection"
-              description="Credentials and endpoint configuration are separate from model availability and policy use."
+              title={t("provider.connection")}
+              description={t("provider.connectionHelp")}
             >
               {selected && (
                 <div className="provider-readiness" data-attention={!selected.configured}>
                   <StatusLabel tone={selected.configured ? "neutral" : "warning"}>
-                    {selected.configured ? "Credential configured" : "Missing credential"}
+                    {selected.configured
+                      ? t("provider.credentialConfigured")
+                      : t("provider.credentialMissing")}
                   </StatusLabel>
-                  <Prose size="2">Remote acceptance is not checked.</Prose>
+                  <Prose size="2">{t("provider.remoteUnchecked")}</Prose>
                 </div>
               )}
               {provider && !selected && (
                 <Text as="p" color="orange" mt="3">
-                  The selected provider {provider} is not in the loaded catalog. Its policy
-                  references are retained. Review its endpoint configuration or return to the
-                  provider list; no replacement is selected automatically.
+                  {t("provider.catalogMissing", { provider })}
                 </Text>
               )}
 
@@ -720,7 +737,7 @@ export function Providers({
                   }
                   onToggle={(event) => setAuthDetails({ provider, open: event.currentTarget.open })}
                 >
-                  <summary id="provider-authentication">Authentication</summary>
+                  <summary id="provider-authentication">{t("provider.authentication")}</summary>
                   <Panel className="provider-connection">
                     <Flex align="center" gap="3" wrap="wrap">
                       {selected.apiKey || selected.oauth ? (
@@ -731,12 +748,12 @@ export function Providers({
                             disabled={blocked}
                             onClick={configureAuth}
                           >
-                            Configure authentication
+                            {t("provider.configureAuthentication")}
                           </Button>
                         </Dialog.Trigger>
                       ) : (
                         <Text id="provider-auth-action" tabIndex={-1} size="2">
-                          This provider uses host credentials. Configure them on the trusted host.
+                          {t("provider.hostCredentials")}
                         </Text>
                       )}
                       <Button
@@ -752,42 +769,45 @@ export function Providers({
                               setCredentialCheck({
                                 provider,
                                 revision: snapshot.revision,
-                                status: result.configured ? "Configured locally" : "Not configured",
+                                status: result.configured
+                                  ? "model.configuredLocally"
+                                  : "model.notConfigured",
                               })
                               setNotice(
                                 result.configured
-                                  ? "Credentials are configured locally. Remote acceptance was not checked; no model output was generated."
-                                  : "Credentials are not available locally. Check provider setup.",
+                                  ? "provider.localCheckPassed"
+                                  : "provider.localCheckMissing",
                               )
                             } catch (error) {
                               setCredentialCheck({
                                 provider,
                                 revision: snapshot.revision,
-                                status: "Check failed",
+                                status: "provider.checkFailed",
                               })
                               throw error
                             }
                           })
                         }
                       >
-                        Check authentication
+                        {t("provider.checkAuthentication")}
                       </Button>
                       {selected.configured && (
                         <AlertDialog.Root>
                           <AlertDialog.Trigger>
                             <Button variant="ghost" color="red" disabled={blocked}>
-                              Remove credential
+                              {t("provider.removeCredential")}
                             </Button>
                           </AlertDialog.Trigger>
                           <AlertDialog.Content>
-                            <AlertDialog.Title>Remove provider credential?</AlertDialog.Title>
+                            <AlertDialog.Title>
+                              {t("provider.removeCredentialTitle")}
+                            </AlertDialog.Title>
                             <AlertDialog.Description>
-                              Replace model references first. Ambient environment credentials are
-                              not removed.
+                              {t("provider.removeCredentialHelp")}
                             </AlertDialog.Description>
                             <Flex gap="3" mt="4">
                               <AlertDialog.Cancel>
-                                <Button variant="soft">Cancel</Button>
+                                <Button variant="soft">{t("selection.cancel")}</Button>
                               </AlertDialog.Cancel>
                               <AlertDialog.Action>
                                 <Button
@@ -802,7 +822,7 @@ export function Providers({
                                     })
                                   }
                                 >
-                                  Remove
+                                  {t("selection.remove")}
                                 </Button>
                               </AlertDialog.Action>
                             </Flex>
@@ -811,37 +831,34 @@ export function Providers({
                       )}
                     </Flex>
                     <details className="provider-checks">
-                      <summary>Credential checks</summary>
-                      <Prose size="2">
-                        Provider ID: <Code>{selected.id}</Code>
-                      </Prose>
+                      <summary>{t("provider.credentialChecks")}</summary>
+                      <Prose size="2">{t("provider.idValue", { id: selected.id })}</Prose>
                       <DataList.Root size="2" orientation="vertical">
                         <DataList.Item>
-                          <DataList.Label>Credential resolution</DataList.Label>
+                          <DataList.Label>{t("provider.credentialResolution")}</DataList.Label>
                           <DataList.Value>
                             <Text as="p" size="2" role="status">
-                              Local credential check:{" "}
-                              {credentialCheck?.provider === provider &&
-                              credentialCheck.revision === snapshot.revision
-                                ? credentialCheck.status
-                                : "Not checked"}
+                              {t("provider.localCheck", {
+                                status:
+                                  credentialCheck?.provider === provider &&
+                                  credentialCheck.revision === snapshot.revision
+                                    ? t(credentialCheck.status)
+                                    : t("provider.notChecked"),
+                              })}
                             </Text>
                           </DataList.Value>
                         </DataList.Item>
                         <DataList.Item>
-                          <DataList.Label>Remote acceptance</DataList.Label>
+                          <DataList.Label>{t("provider.remoteAcceptance")}</DataList.Label>
                           <DataList.Value>
                             <Text as="p" size="2">
-                              Remote verification: Not checked. Local credential checks do not
-                              verify remote acceptance.
+                              {t("provider.remoteVerificationHelp")}
                             </Text>
                           </DataList.Value>
                         </DataList.Item>
                       </DataList.Root>
                       <Prose size="2" color="gray" mt="3" className="section-copy">
-                        Model availability is unverified. Check authentication resolves credentials
-                        without generating model output. You can select and save a model before
-                        authentication.
+                        {t("provider.availabilityHelp")}
                       </Prose>
                     </details>
                   </Panel>
@@ -850,13 +867,13 @@ export function Providers({
               {connection?.(provider)}
             </SettingsSection>
             <SettingsSection
-              title="Models"
-              description="Add models to global availability. Shared defaults and chat overrides do not change."
+              title={t("model.title")}
+              description={t("model.availabilityDescription")}
             >
               {selected ? (
                 <>
                   <SearchChoice
-                    label="Model"
+                    label={t("model.label")}
                     value={model}
                     disabled={Boolean(oauth) || busy}
                     options={selected.models.map((m) => ({
@@ -877,31 +894,37 @@ export function Providers({
                   />
                   {model && !selectedModel && (
                     <Text as="p" color="orange">
-                      The selected model is no longer in the catalog. Choose another model before
-                      saving.
+                      {t("model.catalogRemoved")}
                     </Text>
                   )}
                   {selectedModel && (
                     <>
                       <Flex gap="2" my="3" wrap="wrap">
-                        <Badge>{selectedModel.reasoning ? "Reasoning" : "No reasoning"}</Badge>
-                        <Badge>{selectedModel.image ? "Image input" : "Text input"}</Badge>
+                        <Badge>
+                          {selectedModel.reasoning ? t("model.reasoning") : t("model.noReasoning")}
+                        </Badge>
+                        <Badge>
+                          {selectedModel.image ? t("model.imageInput") : t("model.textInput")}
+                        </Badge>
                       </Flex>
                       {!thinkingValid &&
                         (supported.length > 1 || (!thinkingValid && supported.length > 0)) && (
                           <label htmlFor="provider-thinking" className="form-field">
-                            Thinking level
+                            {t("model.thinkingLevel")}
                             <Select.Root
                               value={thinking ?? ""}
                               onValueChange={(v) =>
                                 setDraft({ provider, model, thinking: v as Selection["thinking"] })
                               }
                             >
-                              <Select.Trigger id="provider-thinking" aria-label="Thinking level" />
+                              <Select.Trigger
+                                id="provider-thinking"
+                                aria-label={t("model.thinkingLevel")}
+                              />
                               <Select.Content>
                                 {supported.map((level) => (
                                   <Select.Item key={level} value={level}>
-                                    {level}
+                                    {thinkingLabel(level)}
                                   </Select.Item>
                                 ))}
                               </Select.Content>
@@ -910,7 +933,7 @@ export function Providers({
                         )}
                       {!thinkingValid && (
                         <Text as="p" color="orange">
-                          The selected thinking level is unavailable. Choose a supported level.
+                          {t("model.thinkingUnavailable")}
                         </Text>
                       )}
                       <section className="provider-save">
@@ -925,18 +948,17 @@ export function Providers({
                                 custom?.enabled === false
                               }
                             >
-                              Save model availability
+                              {t("model.saveAvailability")}
                             </Button>
                           </AlertDialog.Trigger>
                           <AlertDialog.Content>
-                            <AlertDialog.Title>Save model selection?</AlertDialog.Title>
+                            <AlertDialog.Title>{t("model.saveSelectionTitle")}</AlertDialog.Title>
                             <AlertDialog.Description>
-                              Add {ref} to availability. Keep the current bot default. Active work
-                              will be cancelled.
+                              {t("model.saveSelectionHelp", { model: ref })}
                             </AlertDialog.Description>
                             <Flex gap="3" mt="4">
                               <AlertDialog.Cancel>
-                                <Button variant="soft">Cancel</Button>
+                                <Button variant="soft">{t("selection.cancel")}</Button>
                               </AlertDialog.Cancel>
                               <AlertDialog.Action>
                                 <Button
@@ -952,13 +974,11 @@ export function Providers({
                                         "PUT",
                                       )
                                       await refresh()
-                                      setNotice(
-                                        "Model selection saved. Check application status above.",
-                                      )
+                                      setNotice("model.selectionSaved")
                                     })
                                   }
                                 >
-                                  Save changes
+                                  {t("selection.saveChanges")}
                                 </Button>
                               </AlertDialog.Action>
                             </Flex>
@@ -966,7 +986,7 @@ export function Providers({
                         </AlertDialog.Root>
                         {!blocked && !modelChanged && (
                           <Text as="p" size="2" color="gray" mt="2">
-                            Selection matches current settings.
+                            {t("model.selectionMatches")}
                           </Text>
                         )}
                       </section>
@@ -974,10 +994,9 @@ export function Providers({
                   )}
                   {custom?.baseUrl && (
                     <details className="provider-advanced">
-                      <summary>Model discovery</summary>
+                      <summary>{t("model.discovery")}</summary>
                       <Text as="p" size="2">
-                        OpenAI-compatible endpoints only. Discovery returns IDs, not verified model
-                        capabilities. Add their metadata under Custom endpoint.
+                        {t("model.discoveryHelp")}
                       </Text>
                       <Button
                         variant="soft"
@@ -994,8 +1013,7 @@ export function Providers({
                                 revision: snapshot.revision,
                                 configuration: discoveryConfiguration,
                                 models,
-                                status:
-                                  "Verified — bounded model-list request only, not model execution",
+                                status: "model.discoveryVerified",
                               })
                             } catch (error) {
                               setDiscoveryCheck({
@@ -1003,17 +1021,19 @@ export function Providers({
                                 revision: snapshot.revision,
                                 configuration: discoveryConfiguration,
                                 models: [],
-                                status: "Check failed",
+                                status: "provider.checkFailed",
                               })
                               throw error
                             }
                           })
                         }
                       >
-                        Discover custom models
+                        {t("model.discover")}
                       </Button>
                       <Text as="p" role="status">
-                        Model-list check: {currentDiscovery?.status ?? "Not checked"}
+                        {t("model.listCheck", {
+                          status: t(currentDiscovery?.status ?? "provider.notChecked"),
+                        })}
                       </Text>
                       {discovered.length > 0 && (
                         <ul>
@@ -1026,9 +1046,7 @@ export function Providers({
                   )}
                 </>
               ) : (
-                <Prose size="2">
-                  Choose a provider to see its models. No model is selected automatically.
-                </Prose>
+                <Prose size="2">{t("model.chooseProviderHelp")}</Prose>
               )}
               {draft && modelChanged && (
                 <Flex>
@@ -1042,7 +1060,7 @@ export function Providers({
                       setDiscoveryCheck(undefined)
                     }}
                   >
-                    Use saved selection
+                    {t("model.savedSelection")}
                   </Button>
                 </Flex>
               )}
@@ -1050,43 +1068,49 @@ export function Providers({
               {availability?.(provider)}
             </SettingsSection>
             <SettingsSection
-              title="Usage policy references"
-              description="Saved policy references, not verified running chats. Inheriting chats are not counted."
+              title={t("provider.policyReferences")}
+              description={t("provider.policyReferencesHelp")}
             >
               <Prose>
-                Shared model: {references.sharedModel ?? "No reference to this provider"}. Shared
-                allowed-model references: {references.sharedAllowed.length}. Explicit chat policy
-                references: {references.chats.length} (including disabled entries).
+                {t("provider.referenceSummary", {
+                  model: references.sharedModel ?? t("provider.noReference"),
+                  allowed: references.sharedAllowed.length,
+                  chats: references.chats.length,
+                })}
               </Prose>
               {references.chats.length > 0 && (
-                <ul aria-label="Explicit chat policy references">
+                <ul aria-label={t("provider.explicitChatReferences")}>
                   {references.chats.map((entry) => (
                     <li key={entry.id}>
-                      Chat {entry.id}
-                      {entry.enabled ? "" : " (disabled)"}: model {entry.model ?? "Inherit"}
-                      {"; "}
-                      allowed models{" "}
-                      {entry.models?.join(", ") || (entry.models === null ? "Inherit" : "None")}
-                      {"; "}
-                      thinking {entry.thinking ?? "Inherit"}
+                      {t(
+                        entry.enabled ? "provider.chatReference" : "provider.disabledChatReference",
+                        {
+                          id: entry.id,
+                          model: entry.model ?? t("selection.inherit"),
+                          models:
+                            entry.models?.join(", ") ||
+                            (entry.models === null ? t("selection.inherit") : t("selection.none")),
+                          thinking:
+                            entry.thinking === null
+                              ? t("selection.inherit")
+                              : thinkingLabel(entry.thinking),
+                        },
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
               <Flex gap="2" wrap="wrap" align="center">
                 <Button variant="outline" onClick={onDefaults}>
-                  Edit shared default
+                  {t("model.editShared")}
                 </Button>
                 {chat && onChat && (
                   <Button variant="outline" onClick={onChat}>
-                    Back to chat {chat}
+                    {t("provider.backChat", { chat })}
                   </Button>
                 )}
               </Flex>
-              <Prose size="2">
-                Set model use in Shared defaults or the chat editor. Adding availability does not
-                change either selection.
-              </Prose>
+              <Prose size="2">{t("model.policyUseHelp")}</Prose>
             </SettingsSection>
           </div>
         </SectionActive.Provider>
@@ -1095,7 +1119,7 @@ export function Providers({
             <Callout.Icon>
               <InfoCircledIcon />
             </Callout.Icon>
-            <Callout.Text>{notice}</Callout.Text>
+            <Callout.Text>{t(notice)}</Callout.Text>
           </Callout.Root>
         )}
       </Flex>
@@ -1106,10 +1130,10 @@ export function Providers({
         }}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <Dialog.Title>Connect {selected?.name}</Dialog.Title>
-        <Dialog.Description size="2">
-          Credentials are stored by Pi on the server. Existing secrets are never displayed.
-        </Dialog.Description>
+        <Dialog.Title>
+          {t("provider.connectNamed", { name: selected?.name ?? provider })}
+        </Dialog.Title>
+        <Dialog.Description size="2">{t("provider.credentialsHelp")}</Dialog.Description>
         {error && (
           <Text as="p" color="red" role="alert">
             {error}
@@ -1118,17 +1142,17 @@ export function Providers({
         {method === "choose" && (
           <Flex direction="column" gap="3" mt="4">
             <Button disabled={busy} onClick={startAccount}>
-              Sign in with account
+              {t("provider.accountSignIn")}
             </Button>
             <Button variant="soft" disabled={busy} onClick={() => setMethod("key")}>
-              Use API key
+              {t("provider.useApiKey")}
             </Button>
           </Flex>
         )}
         {method === "key" && (
           <>
             <label htmlFor="provider-key">
-              API key
+              {t("provider.apiKey")}
               <TextField.Root
                 id="provider-key"
                 disabled={busy}
@@ -1149,41 +1173,41 @@ export function Providers({
                   setKey("")
                   await refresh()
                   setAuthOpen(false)
-                  setNotice("Provider authentication saved. Your model selection is retained.")
+                  setNotice("provider.authenticationSaved")
                 })
               }
             >
-              Save API key
+              {t("provider.saveApiKey")}
             </Button>
           </>
         )}
         {method === "account" && (
           <Flex direction="column" gap="3" mt="3">
-            <Text role="status">Provider login: {login?.status ?? "starting"}</Text>
+            <Text role="status">
+              {t("provider.loginStatus", { status: loginStatusLabel(login?.status) })}
+            </Text>
             {!oauth && (
               <Button variant="soft" disabled={busy || dirty} onClick={startAccount}>
-                Retry account sign-in
+                {t("provider.retrySignIn")}
               </Button>
             )}
             {login?.event?.message && <Text>{login.event.message}</Text>}
             {authLink && (
               <Button asChild variant="soft">
                 <a href={authLink} target="_blank" rel="noopener noreferrer">
-                  Open provider sign-in
+                  {t("provider.openSignIn")}
                 </a>
               </Button>
             )}
             {login?.event?.userCode && (
-              <Text>
-                Verification code: <code>{login.event.userCode}</code>
-              </Text>
+              <Text>{t("provider.verificationCode", { code: login.event.userCode })}</Text>
             )}
             {login?.prompt && (
               <>
                 <Text>{login.prompt.message}</Text>
                 {login.prompt.options ? (
                   <label htmlFor="provider-answer">
-                    Login option
+                    {t("provider.loginOption")}
                     <Select.Root disabled={busy} value={answer} onValueChange={setAnswer}>
                       <Select.Trigger id="provider-answer" aria-label={login.prompt.message} />
                       <Select.Content>
@@ -1197,7 +1221,7 @@ export function Providers({
                   </label>
                 ) : (
                   <label htmlFor="provider-answer">
-                    Provider login response
+                    {t("provider.loginResponse")}
                     <TextField.Root
                       id="provider-answer"
                       disabled={busy}
@@ -1217,7 +1241,7 @@ export function Providers({
                     })
                   }
                 >
-                  Submit response
+                  {t("provider.submitResponse")}
                 </Button>
               </>
             )}
@@ -1225,7 +1249,7 @@ export function Providers({
         )}
         <Flex justify="end" mt="4">
           <Button variant="soft" disabled={busy} onClick={closeAuth}>
-            {oauth ? "Cancel provider login" : "Close"}
+            {oauth ? t("provider.cancelLogin") : t("selection.close")}
           </Button>
         </Flex>
       </Dialog.Content>

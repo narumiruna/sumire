@@ -3,8 +3,25 @@ import { AlertDialog, Button, Callout, Flex, Grid } from "@radix-ui/themes"
 import { useContext, useEffect, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
 import { modelIssues } from "./chat-state.js"
+import { t } from "./i18n.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
 import { Prose, StatusLabel } from "./surfaces.js"
+
+const thinkingKeys = {
+  off: "model.thinking.off",
+  minimal: "model.thinking.minimal",
+  low: "model.thinking.low",
+  medium: "model.thinking.medium",
+  high: "model.thinking.high",
+  xhigh: "model.thinking.xhigh",
+  max: "model.thinking.max",
+} as const
+
+export function thinkingLabel(level: string): string {
+  return Object.hasOwn(thinkingKeys, level)
+    ? t(thinkingKeys[level as keyof typeof thinkingKeys])
+    : level
+}
 
 export function defaultModelOptions(policy: Policy, inventory: Inventory) {
   return inventory.providers
@@ -66,12 +83,14 @@ export function DefaultModel({
   const issue = modelIssues(effectivePolicy(policy, 0).model, value.model, inventory)[0]
   return (
     <fieldset className="model-fields">
-      <legend className="visually-hidden">Default model</legend>
+      <legend className="visually-hidden">{t("model.default")}</legend>
       <Grid gap="3" className="grid settings-grid policy-model__controls">
         <label className="form-field" htmlFor="default-model-selection">
           <span>
-            Shared default model{" "}
-            {saved.model !== value.model && <StatusLabel tone="warning">Changed</StatusLabel>}
+            {t("model.sharedDefaultModel")}{" "}
+            {saved.model !== value.model && (
+              <StatusLabel tone="warning">{t("selection.changed")}</StatusLabel>
+            )}
           </span>
           <Select.Root
             value={value.model ?? "none"}
@@ -91,18 +110,18 @@ export function DefaultModel({
           >
             <Select.Trigger
               id="default-model-selection"
-              aria-label="Shared default model"
-              title={value.model ?? "Not configured"}
+              aria-label={t("model.sharedDefaultModel")}
+              title={value.model ?? t("model.notConfigured")}
             />
             <Select.Content>
               {!value.model && (
                 <Select.Item value="none" disabled>
-                  Not configured
+                  {t("model.notConfigured")}
                 </Select.Item>
               )}
               {value.model && !current && (
                 <Select.Item value={value.model} disabled>
-                  {value.model} (unavailable)
+                  {t("model.unavailableNamed", { model: value.model })}
                 </Select.Item>
               )}
               {options.map((option) => (
@@ -115,8 +134,10 @@ export function DefaultModel({
         </label>
         <label className="form-field" htmlFor="default-thinking-selection">
           <span>
-            Shared default thinking{" "}
-            {saved.thinking !== value.thinking && <StatusLabel tone="warning">Changed</StatusLabel>}
+            {t("model.sharedThinking")}{" "}
+            {saved.thinking !== value.thinking && (
+              <StatusLabel tone="warning">{t("selection.changed")}</StatusLabel>
+            )}
           </span>
           <Select.Root
             value={value.thinking ?? "off"}
@@ -125,16 +146,21 @@ export function DefaultModel({
               onChange({ ...value, thinking: thinking as Selection["thinking"] })
             }
           >
-            <Select.Trigger id="default-thinking-selection" aria-label="Shared default thinking" />
+            <Select.Trigger
+              id="default-thinking-selection"
+              aria-label={t("model.sharedThinking")}
+            />
             <Select.Content>
               {!thinkingValid && (
                 <Select.Item value={value.thinking ?? "off"} disabled>
-                  {value.thinking ?? "off"} (unsupported)
+                  {t("model.unsupportedThinking", {
+                    level: thinkingLabel(value.thinking ?? "off"),
+                  })}
                 </Select.Item>
               )}
               {(current?.levels ?? (thinkingValid ? ["off"] : [])).map((level) => (
                 <Select.Item key={level} value={level}>
-                  {level}
+                  {thinkingLabel(level)}
                 </Select.Item>
               ))}
             </Select.Content>
@@ -143,68 +169,58 @@ export function DefaultModel({
       </Grid>
       {value.model && !current && (
         <Callout.Root color="orange">
-          <Callout.Text>
-            The saved or draft model is not available in the loaded catalog. Choose an approved
-            model or review model availability. No replacement is selected automatically.
-          </Callout.Text>
+          <Callout.Text>{t("model.savedUnavailable")}</Callout.Text>
         </Callout.Root>
       )}
-      {!thinkingValid && (
-        <Prose role="alert">Choose a supported thinking level before saving.</Prose>
-      )}
+      {!thinkingValid && <Prose role="alert">{t("model.chooseThinking")}</Prose>}
       <section
-        aria-label="Shared default model setup"
+        aria-label={t("model.defaultSetup")}
         className="provider-readiness"
         data-attention={Boolean(issue)}
       >
         <div>
           <Flex gap="2" align="center" wrap="wrap">
-            <strong>{provider?.name ?? providerId ?? "No provider selected"}</strong>
+            <strong>{provider?.name ?? providerId ?? t("model.noProvider")}</strong>
             <StatusLabel tone={issue ? "warning" : "neutral"}>
               {issue?.code === "authentication"
-                ? "Authentication required"
-                : (issue?.label ?? "Configured locally")}
+                ? t("model.authenticationRequired")
+                : (issue?.label ?? t("model.configuredLocally"))}
             </StatusLabel>
           </Flex>
-          {saved.model !== value.model && (
-            <Prose size="2">For the draft selection. Shared defaults are not saved yet.</Prose>
-          )}
-          <Prose size="2">
-            {issue?.reason ?? "Credentials configured locally. Model response not checked."}
-          </Prose>
+          {saved.model !== value.model && <Prose size="2">{t("model.draftSetup")}</Prose>}
+          <Prose size="2">{issue?.reason ?? t("model.localUnchecked")}</Prose>
         </div>
         {providerId && (
           <Button variant="outline" onClick={() => onProvider(providerId)}>
-            Configure provider
+            {t("provider.configure")}
           </Button>
         )}
       </section>
       <Flex gap="2" wrap="wrap">
         <Button variant="soft" onClick={onAvailability}>
-          Manage model availability
+          {t("model.manageAvailability")}
         </Button>
         {value.model && (
           <AlertDialog.Root open={clearOpen && active} onOpenChange={setClearOpen}>
             <AlertDialog.Trigger>
-              <Button variant="ghost">Clear shared default model</Button>
+              <Button variant="ghost">{t("model.clearDefault")}</Button>
             </AlertDialog.Trigger>
             <AlertDialog.Content
               onCloseAutoFocus={(event) => {
                 if (!active) event.preventDefault()
               }}
             >
-              <AlertDialog.Title>Clear the shared default model?</AlertDialog.Title>
+              <AlertDialog.Title>{t("model.clearDefaultTitle")}</AlertDialog.Title>
               <AlertDialog.Description>
-                Stage an unconfigured model and thinking default. Allowed models, authentication,
-                and chat overrides stay unchanged. Review and save settings to apply this change.
+                {t("model.clearDefaultDescription")}
               </AlertDialog.Description>
               <Flex gap="3" mt="4">
                 <AlertDialog.Cancel>
-                  <Button variant="soft">Cancel</Button>
+                  <Button variant="soft">{t("selection.cancel")}</Button>
                 </AlertDialog.Cancel>
                 <AlertDialog.Action>
                   <Button onClick={() => onChange({ ...value, model: null, thinking: null })}>
-                    Clear default in draft
+                    {t("model.clearDraftDefault")}
                   </Button>
                 </AlertDialog.Action>
               </Flex>

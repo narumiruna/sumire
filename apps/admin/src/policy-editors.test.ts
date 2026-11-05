@@ -2,8 +2,9 @@ import { effectivePolicy, inherited, initialPolicy } from "@narumitw/sumire-poli
 import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory, Policy } from "./api.js"
+import { setLocale } from "./i18n.js"
 import { Choices, ModelAvailability, withProviderModelSelection } from "./policy-editors.js"
 
 function fixture() {
@@ -56,7 +57,31 @@ function fieldset(html: string, legend: string) {
 
 const lists = ["Authorized tools", "Authorized MCP servers", "Enabled skills", "Allowed models"]
 
+afterEach(() => setLocale("en"))
+
 describe("policy field scope and source labels", () => {
+  it.each([
+    ["zh-TW", "聊天模型覆寫", "繼承預設", "有效思考程度：高", "重設為預設"],
+    ["ja", "チャットのモデル個別設定", "既定値を継承", "有効な思考レベル：高", "既定値に戻す"],
+  ] as const)(
+    "localizes policy controls in %s without changing stored references",
+    (locale, model, inherit, thinking, reset) => {
+      setLocale(locale)
+      const policy = fixture()
+      policy.chats["42"].models = []
+      const before = structuredClone(policy)
+      const html = renderChoices(policy)
+      expect(html).toContain(model)
+      expect(html).toContain(inherit)
+      expect(html).toContain(thinking)
+      expect(html).toContain(reset)
+      expect(html).toContain("provider/model")
+      expect(html).not.toContain("No options allowed.")
+      expect(html).not.toContain("Effective thinking: high")
+      expect(policy).toEqual(before)
+    },
+  )
+
   it("labels every inherited chat list and both inherited scalar fields", () => {
     const html = renderChoices(fixture())
     for (const label of lists) {

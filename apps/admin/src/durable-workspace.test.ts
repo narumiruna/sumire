@@ -2,8 +2,12 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DurableInspector } from "./durable-inspector.js"
+import { setLocale } from "./i18n.js"
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  setLocale("en")
+  vi.unstubAllGlobals()
+})
 
 function renderWorkspace(chat: string, wide: boolean) {
   vi.stubGlobal("window", {
@@ -21,6 +25,20 @@ function renderWorkspace(chat: string, wide: boolean) {
 }
 
 describe("conversation chat workspace", () => {
+  it("resolves labels again when the locale changes", () => {
+    const english = renderWorkspace("", true)
+    expect(english).toContain("Choose a chat")
+    setLocale("zh-TW")
+    const chinese = renderWorkspace("", true)
+    expect(chinese).toContain('aria-label="對話聊天目錄"')
+    expect(chinese).toContain("選擇聊天")
+    expect(chinese).not.toContain("Choose a chat")
+    setLocale("ja")
+    const japanese = renderWorkspace("", true)
+    expect(japanese).toContain("チャットを選択")
+    expect(japanese).toContain("データの範囲と制限")
+  })
+
   it("shows the directory beside a useful read-only unselected state", () => {
     const html = renderWorkspace("", true)
     expect(html).toContain('aria-label="Conversation chat directory"')

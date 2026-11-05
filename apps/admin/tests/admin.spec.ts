@@ -2004,7 +2004,7 @@ for (const destination of ["Defaults", "Chats"]) {
     await navigation.click()
     await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
     const heading = page.getByRole("heading", {
-      name: destination === "Chats" ? "聊天管理" : sectionLabel(destination),
+      name: destination === "Chats" ? "Chats" : sectionLabel(destination),
       exact: true,
     })
     await expect(heading).toBeFocused()
@@ -2023,7 +2023,7 @@ test("dismisses retained model selectors with Escape and outside click", async (
   await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await trigger.click()
-  await page.getByRole("heading", { name: "模型供應商", exact: true }).click()
+  await page.getByRole("heading", { name: "Providers & models", exact: true }).click()
   await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
 })
 
@@ -2050,17 +2050,19 @@ test("shows truthful chat search scope, unknown names, and no-results states on 
     ]),
   )
   await page.reload()
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await openDirectoryFilters(page)
   await expect(
-    page.getByText(/搜尋涵蓋已儲存的聊天/, {
+    page.getByText(/Search covers saved chats/, {
       exact: false,
     }),
   ).toBeVisible()
-  const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = page.getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("missing")
   await expect(
-    page.getByText(/找不到符合搜尋的聊天|No stored chats match this search./, { exact: true }),
+    page.getByText(/No chats match this search|No stored chats match this search./, {
+      exact: true,
+    }),
   ).toBeVisible()
   await search.fill("-100")
   const row = page.locator(".directory-chat").filter({ hasText: "Unnamed supergroup" })
@@ -2164,7 +2166,7 @@ test("paginates chats without reloading settings or dropping cross-section draft
   await navigate(page, "Access")
   await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
   await navigate(page, "Chats")
-  await page.getByRole("button", { name: /下一頁|Next chats/, exact: true }).click()
+  await page.getByRole("button", { name: /^Next(?: chats)?$/, exact: true }).click()
   await expect(page.locator(".directory-chat").filter({ hasText: "Next page chat" })).toBeVisible()
   await expect(page.getByText("1 unsaved change", { exact: true })).toBeVisible()
   await navigate(page, "Access")
@@ -2207,15 +2209,15 @@ test("handles chat loading, errors, retry, and empty results independently of se
     await route.fulfill({ status: 500, json: { error: "Chat list unavailable" } })
   })
   await page.reload()
-  await expect(page.getByText(/載入中…|Loading chats…/, { exact: true })).toBeVisible()
+  await expect(page.getByText(/Loading…|Loading chats…/, { exact: true })).toBeVisible()
   await openChatAccess(page)
   await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toBeEnabled()
   finish()
   await expect(page.getByRole("alert")).toContainText("Could not read chat metadata. Retry chats.")
   await page.route("**/api/chats?*", (route) => route.fulfill({ json: [] }))
-  await page.getByRole("button", { name: /重新載入|Retry chats/, exact: true }).click()
+  await page.getByRole("button", { name: /^(?:Reload|Retry chats)$/, exact: true }).click()
   await expect(
-    page.getByText(/本頁沒有符合條件的聊天|No chats observed on this page./, { exact: false }),
+    page.getByText(/No chats match on this page|No chats observed on this page./, { exact: false }),
   ).toBeVisible()
 })
 
@@ -2304,7 +2306,7 @@ test("filters the loaded directory by type and effective policy access without t
   await page.getByRole("option", { name: "Group / supergroup", exact: true }).click()
   await expect(directory.locator(".directory-chat")).toHaveCount(1)
   await expect(directory).toContainText("Team")
-  await expect(directory).toContainText("已停用")
+  await expect(directory).toContainText("Disabled")
   await directory.locator(".directory-chat").click()
   await page.locator(".setup-details > summary").click()
   await expect(page.locator(".setup-details")).toContainText("Approved")
@@ -2312,11 +2314,11 @@ test("filters the loaded directory by type and effective policy access without t
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   await expect(
-    page.getByText(/本頁沒有符合條件的聊天|No chats match the filters on this page./, {
+    page.getByText(/No chats match on this page|No chats match the filters on this page./, {
       exact: true,
     }),
   ).toBeVisible()
-  await page.getByRole("button", { name: /清除搜尋與篩選|Clear search and filters/ }).click()
+  await page.getByRole("button", { name: /Clear search and filters/ }).click()
   await page.getByRole("combobox", { name: "Chat type", exact: true }).click()
   await page.getByRole("option", { name: "Channel", exact: true }).click()
   await directory.locator(".directory-chat").click()
@@ -2332,7 +2334,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
   page,
 }) => {
   await setup(page)
-  const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = page.getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("Fixture")
   await page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat").click()
   await page.getByRole("tab", { name: "Access", exact: true }).click()
@@ -2341,13 +2343,13 @@ test("keeps directory context and policy drafts through sidebar navigation and b
     .getByRole("button", { name: "Revoke access", exact: true })
     .click()
   await navigate(page, "Defaults")
-  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
   await expect(page).toHaveURL(/section=Defaults.*chat=42|chat=42.*section=Defaults/)
   await page.goBack()
-  await expect(page.getByRole("link", { name: "聊天管理", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Chats", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -2363,7 +2365,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
       .getByText("Pending access revocation", { exact: true }),
   ).toBeVisible()
   await page.goForward()
-  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -2586,7 +2588,7 @@ test("uses keyboard detail tabs and responsive navigation without losing the dir
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await setup(page)
-  const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = page.getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("Fixture")
   const row = page.getByRole("list", { name: "Chats on this page" }).locator(".directory-chat")
   await row.focus()
@@ -2626,7 +2628,7 @@ test("closes a chat model dropdown when browser navigation hides its owning sect
   await page.getByRole("combobox", { name: "Chat model override", exact: true }).click()
   await expect(page.getByRole("listbox")).toBeVisible()
   await page.goForward()
-  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -2712,9 +2714,9 @@ test("Reload refreshes current chat names and new chats while retaining provider
   await expect(page.getByRole("heading", { name: "Updated name", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText("New chat")
-  await expect(page.getByRole("button", { name: /下一頁|Next chats/, exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: /^Next(?: chats)?$/, exact: true })).toHaveCount(0)
   await expect(
-    page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+    page.getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }),
   ).toHaveCount(0)
   await expect(
     page.getByRole("button", { name: /Refresh settings|Refresh chats/, exact: true }),
@@ -2753,7 +2755,7 @@ test("Reload does not let an older chat response replace fresh metadata", async 
     }
   })
   await page.reload()
-  await expect(page.getByText(/載入中…|Loading chats…/, { exact: true })).toBeVisible()
+  await expect(page.getByText(/Loading…|Loading chats…/, { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Refresh settings", exact: true })).toBeEnabled()
   const aborted = page.waitForEvent("requestfailed", (request) =>
     request.url().includes("/api/chats?"),
@@ -2789,11 +2791,11 @@ for (const trigger of ["initial load", "pagination", "retry"]) {
     if (trigger !== "initial load") {
       if (trigger === "retry")
         await expect(
-          page.getByRole("button", { name: /重新載入|Retry chats/, exact: true }),
+          page.getByRole("button", { name: /^(?:Reload|Retry chats)$/, exact: true }),
         ).toBeVisible()
       else
         await expect(
-          page.getByRole("button", { name: /下一頁|Next chats/, exact: true }),
+          page.getByRole("button", { name: /^Next(?: chats)?$/, exact: true }),
         ).toBeEnabled()
       await navigate(page, "Model Providers")
       await chooseModel(page)
@@ -2810,7 +2812,7 @@ for (const trigger of ["initial load", "pagination", "retry"]) {
       expired = true
       await page
         .getByRole("button", {
-          name: trigger === "retry" ? /重新載入|Retry chats/ : /下一頁|Next chats/,
+          name: trigger === "retry" ? /^(?:Reload|Retry chats)$/ : /^Next(?: chats)?$/,
           exact: true,
         })
         .click()
@@ -2910,11 +2912,11 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
   const localUrl = new URL(page.url())
   localUrl.hostname = "localhost"
   await page.goto(localUrl.href)
-  await page.getByRole("button", { name: /下一頁|Next chats/, exact: true }).click()
+  await page.getByRole("button", { name: /^Next(?: chats)?$/, exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
     "Previous session name",
   )
-  await page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }).click()
+  await page.getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }).click()
   await navigate(page, "Access")
   await expect(
     page.getByRole("group", { name: "Private-message access", exact: true }),
@@ -2933,7 +2935,7 @@ test("sign-out clears names from chat pages loaded in the previous session", asy
   await expect(offPage.locator("code")).toHaveText("201")
   await expect(users).not.toContainText("Previous session name")
   await navigate(page, "Chats")
-  await page.getByRole("button", { name: /下一頁|Next chats/, exact: true }).click()
+  await page.getByRole("button", { name: /^Next(?: chats)?$/, exact: true }).click()
   await expect(page.getByRole("list", { name: "Chats on this page" })).toContainText(
     "Updated off-page name",
   )

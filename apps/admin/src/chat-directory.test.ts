@@ -2,10 +2,24 @@ import type { Chat } from "@narumitw/sumire-contracts"
 import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { type ChatDirectory, ChatSelector, chatName, directoryPath } from "./chat-directory.js"
+import { setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 describe("stored chat display names", () => {
+  it("localizes unnamed labels but leaves observed names and API types unchanged", () => {
+    for (const [locale, unnamed] of [
+      ["en", "Unnamed private"],
+      ["zh-TW", "未命名的 private"],
+      ["ja", "名前のない private"],
+    ] as const) {
+      setLocale(locale)
+      expect(chatName({ id: 42, type: "private", name: "" })).toBe(unnamed)
+      expect(chatName({ id: 42, type: "private", name: "測試聊天" })).toBe("測試聊天")
+    }
+  })
   it("trims observed names without interpreting untrusted markup", () => {
     expect(chatName({ id: -100, type: "supergroup", name: "  Same name  " })).toBe("Same name")
     expect(chatName({ id: 42, type: "private", name: "<img src=x onerror=alert(1)>" })).toBe(
@@ -45,6 +59,32 @@ describe("optional chat management columns", () => {
     refresh: () => {},
     selected: { loading: false, error: "", chat: undefined },
   }
+  it("localizes search, counts, pagination and accessibility labels on each render", () => {
+    for (const [locale, search, count, page, list] of [
+      ["en", "Search stored chats", "1 of 1 chat on this page", "Page 2", "Chats on this page"],
+      ["zh-TW", "搜尋已儲存的聊天", "本頁顯示", "第 2 頁", "本頁聊天"],
+      ["ja", "保存済みのチャットを検索", "このページの", "2 ページ", "このページのチャット"],
+    ] as const) {
+      setLocale(locale)
+      const html = renderToStaticMarkup(
+        createElement(
+          Theme,
+          {},
+          createElement(ChatSelector, {
+            directory: { ...directory, offset: 100 },
+            chat: "42",
+            onSelect: () => {},
+          }),
+        ),
+      )
+      expect(html).toContain(search)
+      expect(html).toContain(count)
+      expect(html).toContain(page)
+      expect(html).toContain(`aria-label="${list}"`)
+      expect(html).toContain("Long name 👩‍💻 &lt;untrusted&gt;")
+      expect(html).toContain(">private<")
+    }
+  })
   it("keeps the default selector a button without management columns for Durable", () => {
     const html = renderToStaticMarkup(
       createElement(

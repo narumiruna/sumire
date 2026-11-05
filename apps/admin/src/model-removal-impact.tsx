@@ -1,17 +1,25 @@
-import { Code } from "@radix-ui/themes"
 import type { Policy, Selection } from "./api.js"
+import { thinkingLabel } from "./default-model.js"
+import { t } from "./i18n.js"
 import { modelRemovalImpact } from "./provider-policy.js"
 import { Prose } from "./surfaces.js"
 
 const list = (value: string[] | null) =>
-  value === null ? "Inherit" : value.join(", ") || "None (empty list)"
+  value === null ? t("selection.inherit") : value.join(", ") || t("model.emptyList")
 const selection = (
   value: Pick<Selection, "models" | "model" | "thinking"> | null,
   shared: boolean,
 ) =>
   value
-    ? `Allowed models: ${value.models === null && shared ? "None (null selection)" : list(value.models)}; Model: ${value.model ?? (shared ? "Not configured" : "Inherit")}; Thinking: ${value.thinking ?? (shared ? "off (no shared setting)" : "Inherit")}`
-    : "No explicit entry (inherit)"
+    ? t("model.selectionDetails", {
+        models: value.models === null && shared ? t("model.nullSelection") : list(value.models),
+        model: value.model ?? t(shared ? "model.notConfigured" : "selection.inherit"),
+        thinking:
+          value.thinking === null
+            ? t(shared ? "model.noSharedThinking" : "selection.inherit")
+            : thinkingLabel(value.thinking),
+      })
+    : t("model.noExplicitEntry")
 
 /** Read-only review of the actual staged policy; no directory or remote requests. */
 export function ModelRemovalImpact({ before, after }: { before: Policy; after: Policy }) {
@@ -19,49 +27,56 @@ export function ModelRemovalImpact({ before, after }: { before: Policy; after: P
   if (!impact.removed.length && !impact.sharedChanged && !impact.chats.length) return null
   const rows = [...(impact.sharedChanged ? [impact.shared] : []), ...impact.chats]
   return (
-    <section aria-label="Model removal impact" className="settings-stack">
-      <strong>Model configuration impact</strong>
+    <section aria-label={t("model.removalImpact")} className="settings-stack">
+      <strong>{t("model.configurationImpact")}</strong>
       {impact.removed.length > 0 && (
-        <Prose>Removed availability: {impact.removed.join(", ")}</Prose>
+        <Prose>{t("model.removedAvailability", { models: impact.removed.join(", ") })}</Prose>
       )}
       <Prose>
-        Global allowed models: {list(impact.global.before)} → {list(impact.global.after)}
+        {t("model.globalTransition", {
+          before: list(impact.global.before),
+          after: list(impact.global.after),
+        })}
       </Prose>
       {rows.map((row) => (
         <div key={row.scope} className="provider-impact-row">
           <strong>
-            {row.scope}
-            {"enabled" in row && !row.enabled ? " (disabled)" : ""}
+            {"id" in row
+              ? t(row.enabled ? "selection.chatNamed" : "model.disabledChat", { id: row.id })
+              : t("selection.shared")}
           </strong>
-          <Prose>Before — {selection(row.before, !("id" in row))}</Prose>
-          <Prose>After — {selection(row.after, !("id" in row))}</Prose>
           <Prose>
-            Effective allowed models: {list(row.effectiveBefore.models)} →{" "}
-            {list(row.effectiveAfter.models)}
+            {t("model.beforeSelection", { selection: selection(row.before, !("id" in row)) })}
           </Prose>
           <Prose>
-            Effective model: <Code>{row.effectiveBefore.model ?? "Not configured"}</Code> →{" "}
-            <Code>{row.effectiveAfter.model ?? "Not configured"}</Code>.
-            {"id" in row && row.after?.model === null
-              ? " Result inherits the shared model, subject to this chat's allowed models."
-              : ""}{" "}
-            Effective thinking: {row.effectiveBefore.thinking} → {row.effectiveAfter.thinking}.
+            {t("model.afterSelection", { selection: selection(row.after, !("id" in row)) })}
+          </Prose>
+          <Prose>
+            {t("model.allowedTransition", {
+              before: list(row.effectiveBefore.models),
+              after: list(row.effectiveAfter.models),
+            })}
+          </Prose>
+          <Prose>
+            {t("model.effectiveTransition", {
+              before: row.effectiveBefore.model ?? t("model.notConfigured"),
+              after: row.effectiveAfter.model ?? t("model.notConfigured"),
+            })}{" "}
+            {"id" in row && row.after?.model === null ? t("model.resultInherits") : ""}{" "}
+            {t("model.thinkingTransition", {
+              before: thinkingLabel(row.effectiveBefore.thinking ?? "off"),
+              after: thinkingLabel(row.effectiveAfter.thinking ?? "off"),
+            })}
           </Prose>
         </div>
       ))}
+      <Prose>{t("model.impactPopulation")}</Prose>
+      <Prose>{t("model.restorationHelp")}</Prose>
       <Prose>
-        All affected explicit policy entries are included, including disabled chats. Other
-        inheriting chats are not counted; their complete population is not known here.
-      </Prose>
-      <Prose>
-        Restoring availability does not restore removed allowed-model selections, model choices, or
-        thinking levels. Discard the policy draft to undo an unsaved removal.
-      </Prose>
-      <Prose>
-        GitHub replies use the shared model. Shared effective model:{" "}
-        {impact.shared.effectiveBefore.model ?? "Not configured"} →{" "}
-        {impact.shared.effectiveAfter.model ?? "Not configured"}. Worker and pending outbox effects
-        are unknown; no jobs were inspected.
+        {t("model.githubImpact", {
+          before: impact.shared.effectiveBefore.model ?? t("model.notConfigured"),
+          after: impact.shared.effectiveAfter.model ?? t("model.notConfigured"),
+        })}
       </Prose>
     </section>
   )

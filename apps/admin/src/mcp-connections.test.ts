@@ -2,8 +2,9 @@ import { initialPolicy } from "@narumitw/sumire-policy"
 import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
+import { setLocale } from "./i18n.js"
 import { McpConnections, mcpObservationView } from "./mcp-connections.js"
 
 const server: Inventory["mcp"][number] = {
@@ -41,7 +42,26 @@ function markup(connection = server) {
   )
 }
 
+afterEach(() => setLocale("en"))
+
 describe("MCP observation presentation", () => {
+  it.each([
+    ["zh-TW", "測試與探索 fixture", "尚未測試"],
+    ["ja", "fixture をテストして検出", "未テスト"],
+  ] as const)(
+    "localizes %s observation labels without reading legacy prose",
+    (locale, label, untested) => {
+      setLocale(locale)
+      expect(markup()).toContain(`aria-label="${label}"`)
+      expect(markup()).toContain("fixture")
+      const observation = { state: "succeeded", revision: 1, completedAt: 1000 } as const
+      expect(mcpObservationView({ ...server, observation }, 2)).toMatchObject({
+        label: untested,
+        succeeded: false,
+      })
+      expect(observation.state).toBe("succeeded")
+    },
+  )
   it.each(["connected", "not tested", "failed", "no visible tools or unavailable"])(
     "does not parse legacy prose: %s",
     (connection) => {

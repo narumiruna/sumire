@@ -57,7 +57,7 @@ async function setup(page: Page) {
     return route.fulfill({ json: [] })
   })
   await page.goto("/?section=Skills")
-  await expect(page.getByRole("heading", { name: "技能管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Skills", exact: true })).toBeVisible()
   return { saved: () => saved, writes }
 }
 

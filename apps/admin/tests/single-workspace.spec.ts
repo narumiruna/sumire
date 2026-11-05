@@ -202,7 +202,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       const requests = await fixture(page)
       const directory = page.locator(".chat-directory")
       const search = directory.getByRole("textbox", {
-        name: /搜尋聊天|Search stored chats/,
+        name: /Search chats|Search stored chats/,
         exact: true,
       })
       await search.fill("Fixture")
@@ -227,7 +227,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       await page.getByRole("option", { name: "fixture/other", exact: true }).click()
       await expect(page.locator("#save-status")).toContainText("2 unsaved changes")
       const idDraft = directory.getByRole("textbox", {
-        name: "聊天 ID",
+        name: "Chat ID",
         exact: true,
       })
 
@@ -273,13 +273,13 @@ test("desktop keyboard navigation moves between the directory, details, and chat
   const requests = await fixture(page)
   const directory = page.locator(".chat-directory")
   const search = directory.getByRole("textbox", {
-    name: /搜尋聊天|Search stored chats/,
+    name: /Search chats|Search stored chats/,
     exact: true,
   })
   await search.fill("Fixture chat")
   await expect(directory.getByRole("list").locator(".directory-chat")).toHaveCount(1)
   await search.press("Tab")
-  await expect(directory.getByRole("button", { name: "篩選", exact: true })).toBeFocused()
+  await expect(directory.getByRole("button", { name: "Filter", exact: true })).toBeFocused()
   for (let index = 0; index < 3; index++) await page.keyboard.press("Tab")
   await page.keyboard.press("Tab")
   const selected = directory.getByRole("link", { name: "Fixture chat · 42", exact: true })
@@ -318,10 +318,10 @@ test("desktop keyboard navigation moves between the directory, details, and chat
   await expect(search).toHaveValue("Fixture chat")
   await expect(selected).toHaveAttribute("aria-current", "true")
   await page.keyboard.press("Tab")
-  await expect(directory.getByRole("button", { name: "設定", exact: true })).toBeFocused()
+  await expect(directory.getByRole("button", { name: "Configure", exact: true })).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(
-    directory.getByRole("button", { name: "Fixture chat的更多操作", exact: true }),
+    directory.getByRole("button", { name: "More actions for Fixture chat", exact: true }),
   ).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(
@@ -365,7 +365,7 @@ for (const width of [1440, 390]) {
     await expectPane(page, true)
     await expect(page.getByRole("menu")).toHaveCount(0)
     await expect(
-      page.getByRole("textbox", { name: /搜尋聊天|Search stored chats/, exact: true }),
+      page.getByRole("textbox", { name: /Search chats|Search stored chats/, exact: true }),
     ).toBeFocused()
     expectNoWrites(requests)
   })
@@ -380,7 +380,7 @@ for (const width of [1440, 390]) {
     const management = page.locator("details#chat-access-management")
     const details = page.locator(".chat-detail")
     const id = management.locator("#access-id-input")
-    await expect(management.locator(":scope > summary")).toHaveText("存取權限管理")
+    await expect(management.locator(":scope > summary")).toHaveText("Access management")
     await expect(management).not.toHaveAttribute("open", "")
     await expect(management.locator(".access-approve-form")).toBeHidden()
     await expect(management.locator(".access-lists")).toBeHidden()
@@ -394,7 +394,7 @@ for (const width of [1440, 390]) {
       await expect(management).toHaveAttribute("open", "")
       await expect(id).toBeFocused()
       await expect(page).toHaveURL(chatUrl)
-      await expect(page.locator("#current-section-heading")).toHaveText("聊天管理")
+      await expect(page.locator("#current-section-heading")).toHaveText("Chats")
       await expectPane(page, false)
       await expect(details.locator(".chat-header code")).toHaveText("42")
       await expect(access).toHaveAttribute("aria-selected", "true")
@@ -433,7 +433,7 @@ test("retained access target returns to that chat after history clears the curre
   await expect(management).not.toHaveAttribute("open", "")
   await navigate(page, "Access")
   await expect(management).toHaveAttribute("open", "")
-  await expect(page.locator("#current-section-heading")).toHaveText("聊天管理")
+  await expect(page.locator("#current-section-heading")).toHaveText("Chats")
   await management.getByRole("button", { name: "Back to chat details", exact: true }).click()
   await expect(management).not.toHaveAttribute("open", "")
   await expectPane(page, false)
@@ -442,7 +442,7 @@ test("retained access target returns to that chat after history clears the curre
   expectNoWrites(requests)
 })
 
-for (const activation of ["Control+Enter", "Shift+Enter", "Control+click"]) {
+for (const activation of ["ControlOrMeta+Enter", "Shift+Enter", "ControlOrMeta+click"]) {
   test(`record menu link preserves native ${activation} activation`, async ({ page }) => {
     await fixture(page)
     await page.getByRole("link", { name: "Fixture chat · 42", exact: true }).click()
@@ -460,13 +460,13 @@ for (const activation of ["Control+Enter", "Shift+Enter", "Control+click"]) {
     )
     await records.focus()
     const popupWait = page.context().waitForEvent("page")
-    if (activation === "Control+click") await records.click({ modifiers: ["Control"] })
+    if (activation === "ControlOrMeta+click") await records.click({ modifiers: ["ControlOrMeta"] })
     else await records.press(activation)
     const popup = await popupWait
     await expect(popup).toHaveURL(url)
     await popup.waitForLoadState()
     await expect(popup.getByRole("heading", { name: "Fixture records" })).toBeVisible()
-    await expect(page.locator("#current-section-heading")).toHaveText("聊天管理")
+    await expect(page.locator("#current-section-heading")).toHaveText("Chats")
     await popup.close()
   })
 }

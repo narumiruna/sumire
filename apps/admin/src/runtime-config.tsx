@@ -19,7 +19,8 @@ import {
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { GitHubConnection } from "./github-connection.js"
-import { parseRuntimeConfig, runtimeValueError } from "./runtime-config-state.js"
+import { getLocale, type MessageKey, t } from "./i18n.js"
+import { parseRuntimeConfig, runtimeValueErrorKey } from "./runtime-config-state.js"
 import { Panel, Prose } from "./surfaces.js"
 
 type Draft = { name: string; kind: "secret" | "variable"; value: string; existing: boolean }
@@ -63,9 +64,9 @@ export function RuntimeConfig({
     setConnectionOpen(true)
   }, [connectionRequest])
   const githubGuard = useRef<(() => boolean) | undefined>(undefined)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<MessageKey | "">("")
   const [recovery, setRecovery] = useState(false)
-  const [notice, setNotice] = useState("")
+  const [notice, setNotice] = useState<MessageKey | "">("")
   const generation = useRef(0)
   const alert = useRef<HTMLDivElement>(null)
   const focusTarget = useRef<"runtime-name" | "runtime-value" | "runtime-add">(undefined)
@@ -74,7 +75,7 @@ export function RuntimeConfig({
   }
   const canLeave = () => {
     if (busy) return false
-    if (draft && !window.confirm("Discard the runtime value draft and leave?")) return false
+    if (draft && !window.confirm(t("runtime.leaveConfirm"))) return false
     if (githubGuard.current && !githubGuard.current()) return false
     clear()
     return true
@@ -110,7 +111,7 @@ export function RuntimeConfig({
     } catch (failure) {
       if (version !== generation.current) return
       if (failure instanceof ApiError && failure.status === 401) onSessionExpired()
-      else setError("Could not load safe runtime metadata. No value was submitted.")
+      else setError("runtime.loadFailed")
     } finally {
       if (version === generation.current) setBusy(false)
     }
@@ -135,7 +136,7 @@ export function RuntimeConfig({
           mutation ? "PUT" : "DELETE",
         ),
       )
-      if (committed.revision <= data.revision) throw new Error("Unverified save")
+      if (committed.revision <= data.revision) throw new Error(t("runtime.unverifiedSave"))
       if (version !== generation.current) return
       // Persistence succeeded, including when application failed. Never resubmit the value.
       clear()
@@ -145,20 +146,17 @@ export function RuntimeConfig({
       focusTarget.current = "runtime-add"
       setNotice(
         committed.status === "applied" && committed.applied === committed.revision
-          ? "Saved and applied."
+          ? "runtime.savedApplied"
           : committed.status === "failed"
-            ? "Saved; application failed. Retry application above without submitting the value again."
-            : "Saved. Application is pending; check application status above.",
+            ? "runtime.savedFailed"
+            : "runtime.savedPending",
       )
       try {
         await refresh()
       } catch (failure) {
         if (version !== generation.current) return
         if (failure instanceof ApiError && failure.status === 401) onSessionExpired()
-        else
-          setError(
-            "The value was saved, but related settings could not be refreshed. Reload metadata; do not repeat the save.",
-          )
+        else setError("runtime.refreshFailedSaved")
       }
     } catch (failure) {
       if (version !== generation.current) return
@@ -168,8 +166,8 @@ export function RuntimeConfig({
         setRecovery(true)
         setError(
           failure instanceof ApiError && failure.status === 409
-            ? "The revision conflicts with current configuration, or a connection test is active. No automatic retry will occur. Reload safe metadata before deciding on another replacement."
-            : "The save could not be verified. It may already be saved. No automatic retry will occur. Reload safe metadata before deciding on another replacement.",
+            ? "runtime.conflict"
+            : "runtime.saveUnknown",
         )
       }
     } finally {
@@ -203,41 +201,32 @@ export function RuntimeConfig({
           setSearch("")
         }}
       >
-        <Tabs.List aria-label="Runtime value kinds">
-          <Tabs.Trigger value="secret">Secrets</Tabs.Trigger>
-          <Tabs.Trigger value="variable">Variables</Tabs.Trigger>
+        <Tabs.List aria-label={t("runtime.valueKinds")}>
+          <Tabs.Trigger value="secret">{t("runtime.secrets")}</Tabs.Trigger>
+          <Tabs.Trigger value="variable">{t("runtime.variables")}</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value={kind} className="settings-stack">
-          <Prose>
-            {kind === "secret"
-              ? "Saved secrets are write-only. Only names, configured state, and update times are shown. Enter a new value only to create or replace a secret."
-              : "Variables are not confidential. Authorized chats with read_variable can read all variables in this installation. Returned values can remain in conversation history. Do not store credentials here."}
-          </Prose>
+          <Prose>{kind === "secret" ? t("runtime.secretHelp") : t("runtime.variableHelp")}</Prose>
           {data?.secretStatus !== "ready" && data && (
             <Callout.Root color="orange" role="status">
               <Callout.Text>
                 {data.secretStatus === "locked"
-                  ? "Secret store locked. Restore the matching ENCRYPTION_KEY through trusted host configuration and restart. Do not change the key independently of the database."
-                  : "Secret store unavailable. Configure a valid ENCRYPTION_KEY through trusted host configuration and restart."}{" "}
-                Variable management remains available.
+                  ? t("runtime.storeLocked")
+                  : t("runtime.storeUnavailable")}{" "}
+                {t("runtime.variablesAvailable")}
               </Callout.Text>
             </Callout.Root>
           )}
-          {blocked && (
-            <Prose>
-              Save or discard pending policy, MCP, or other editor drafts before changing runtime
-              values.
-            </Prose>
-          )}
-          {stale && <Prose>Configuration changed. Reload safe metadata before editing.</Prose>}
+          {blocked && <Prose>{t("runtime.blocked")}</Prose>}
+          {stale && <Prose>{t("runtime.stale")}</Prose>}
           {error && (
             <Callout.Root ref={alert} tabIndex={-1} role="alert" color="red">
-              <Callout.Text>{error}</Callout.Text>
+              <Callout.Text>{t(error)}</Callout.Text>
             </Callout.Root>
           )}
-          {notice && <Text role="status">{notice}</Text>}
+          {notice && <Text role="status">{t(notice)}</Text>}
           <label htmlFor="runtime-search">
-            Search names
+            {t("runtime.search")}
             <TextField.Root
               id="runtime-search"
               type="search"
@@ -251,19 +240,13 @@ export function RuntimeConfig({
               disabled={!data || disabled || unavailable || Boolean(draft)}
               onClick={() => start()}
             >
-              Add {kind}
+              {t(kind === "secret" ? "runtime.addSecret" : "runtime.addVariable")}
             </Button>
             <Button
               variant="soft"
               disabled={busy || blocked}
               onClick={() => {
-                if (
-                  draft &&
-                  !window.confirm(
-                    "Discard this draft and reload safe metadata? A previous save may already have committed.",
-                  )
-                )
-                  return
+                if (draft && !window.confirm(t("runtime.reloadConfirm"))) return
                 if (githubGuard.current && !githubGuard.current()) return
                 clear()
                 const version = generation.current
@@ -274,28 +257,25 @@ export function RuntimeConfig({
                   } catch (failure) {
                     if (version !== generation.current) return
                     if (failure instanceof ApiError && failure.status === 401) onSessionExpired()
-                    else
-                      setError("Could not refresh shared application status. Reload before saving.")
+                    else setError("runtime.refreshApplicationFailed")
                   }
                 })
               }}
             >
-              Reload safe metadata
+              {t("runtime.reload")}
             </Button>
           </Flex>
           {draft && (
             <form
               onSubmit={(event) => {
                 event.preventDefault()
-                const message = runtimeValueError(draft.name, draft.kind, draft.value)
+                const message = runtimeValueErrorKey(draft.name, draft.kind, draft.value)
                 if (message) {
                   setError(message)
                   return
                 }
                 if (!draft.existing && data?.entries.some((entry) => entry.name === draft.name)) {
-                  setError(
-                    "This name already exists. Use Replace or Edit for the saved entry. To change its kind, delete it first; variables are not confidential.",
-                  )
+                  setError("runtime.nameExists")
                   return
                 }
                 if (data)
@@ -310,18 +290,15 @@ export function RuntimeConfig({
                 <Heading size="3">
                   {draft.existing
                     ? kind === "secret"
-                      ? "Replace secret"
-                      : "Edit variable"
-                    : `Add ${kind}`}
+                      ? t("runtime.replaceSecret")
+                      : t("runtime.editVariable")
+                    : t(kind === "secret" ? "runtime.addSecret" : "runtime.addVariable")}
                 </Heading>
                 {draft.name === "GH_TOKEN" && (
-                  <Prose size="2">
-                    A manual GH_TOKEN save removes GITHUB_OAUTH_STATE in the same change. It does
-                    not revoke GitHub authorization.
-                  </Prose>
+                  <Prose size="2">{t("runtime.manualTokenHelp")}</Prose>
                 )}
                 <label htmlFor="runtime-name">
-                  Name
+                  {t("settings.name")}
                   <TextField.Root
                     id="runtime-name"
                     value={draft.name}
@@ -331,7 +308,7 @@ export function RuntimeConfig({
                   />
                 </label>
                 <label htmlFor="runtime-value">
-                  {kind === "secret" ? "Runtime secret value" : "Variable value"}
+                  {kind === "secret" ? t("runtime.secretValue") : t("runtime.variableValue")}
                   {kind === "secret" ? (
                     <TextField.Root
                       id="runtime-value"
@@ -351,17 +328,15 @@ export function RuntimeConfig({
                   )}
                 </label>
                 <Prose size="2">
-                  Save writes this value and applies the change. Application can cancel active work.
-                  {draft.existing &&
-                    kind === "secret" &&
-                    " The previous value is not loaded. Keep unchanged submits nothing."}
+                  {t("runtime.saveHelp")}
+                  {draft.existing && kind === "secret" && t("runtime.previousNotLoaded")}
                 </Prose>
                 <Flex gap="3" wrap="wrap" mt="3">
                   <Button
                     type="submit"
                     disabled={disabled || unavailable || (kind === "secret" && !draft.value)}
                   >
-                    Save {kind}
+                    {t(kind === "secret" ? "runtime.saveSecret" : "runtime.saveVariable")}
                   </Button>
                   <Button
                     type="button"
@@ -373,7 +348,7 @@ export function RuntimeConfig({
                       if (!recovery) setError("")
                     }}
                   >
-                    {draft.existing ? "Keep unchanged" : "Cancel"}
+                    {draft.existing ? t("runtime.keepUnchanged") : t("settings.cancel")}
                   </Button>
                 </Flex>
               </Panel>
@@ -382,37 +357,41 @@ export function RuntimeConfig({
           {data ? (
             <>
               <div className="runtime-values-columns" aria-hidden="true">
-                <strong>Name</strong>
-                <strong>Configured state</strong>
-                <strong>Updated</strong>
-                <strong>Actions</strong>
+                <strong>{t("settings.name")}</strong>
+                <strong>{t("runtime.configuredState")}</strong>
+                <strong>{t("settings.updated")}</strong>
+                <strong>{t("settings.actions")}</strong>
               </div>
               {!visible?.length && (
                 <Text role="status">
                   {entries?.length
-                    ? "No matching names."
-                    : `No ${kind === "secret" ? "secrets" : "variables"} configured.`}
+                    ? t("runtime.noMatches")
+                    : t(kind === "secret" ? "runtime.noSecrets" : "runtime.noVariables")}
                 </Text>
               )}
               {visible?.map((entry) => (
                 <Panel
                   key={entry.name}
-                  aria-label={`${entry.name} ${kind}`}
+                  aria-label={t(kind === "secret" ? "runtime.secretName" : "runtime.variableName", {
+                    name: entry.name,
+                  })}
                   className="runtime-values-row"
                 >
                   <Heading as="h2" size="3" className="runtime-entry-name">
                     {entry.name}
                   </Heading>
                   {entry.kind === "secret" ? (
-                    <Badge>Configured · write-only</Badge>
+                    <Badge>{t("runtime.writeOnly")}</Badge>
                   ) : (
                     <div>
-                      <Badge>Configured</Badge>
+                      <Badge>{t("runtime.configured")}</Badge>
                       <pre className="runtime-variable-value">{entry.value}</pre>
                     </div>
                   )}
                   <Text as="p" size="2">
-                    Updated: {new Date(entry.updatedAt).toLocaleString()}
+                    {t("runtime.updatedAt", {
+                      date: new Date(entry.updatedAt).toLocaleString(getLocale()),
+                    })}
                   </Text>
                   <Flex gap="3" wrap="wrap">
                     <Button
@@ -420,7 +399,9 @@ export function RuntimeConfig({
                       disabled={disabled || unavailable || Boolean(draft)}
                       onClick={() => start(entry)}
                     >
-                      {kind === "secret" ? "Replace" : "Edit"} {entry.name}
+                      {t(kind === "secret" ? "runtime.replaceName" : "settings.editName", {
+                        name: entry.name,
+                      })}
                     </Button>
                     <Button
                       variant="soft"
@@ -428,7 +409,7 @@ export function RuntimeConfig({
                       disabled={disabled || unavailable || Boolean(draft)}
                       onClick={() => setDeleting(entry)}
                     >
-                      Delete {entry.name}
+                      {t("settings.deleteName", { name: entry.name })}
                     </Button>
                   </Flex>
                 </Panel>
@@ -436,13 +417,11 @@ export function RuntimeConfig({
             </>
           ) : (
             <Text role="status">
-              {busy
-                ? "Loading runtime metadata…"
-                : "Runtime metadata not available. Reload safe metadata to try again."}
+              {busy ? t("runtime.loading") : t("runtime.metadataUnavailable")}
             </Text>
           )}
           {kind === "secret" && (
-            <section aria-label="GitHub credential options" className="settings-stack">
+            <section aria-label={t("github.credentialOptions")} className="settings-stack">
               <Flex gap="3" wrap="wrap">
                 <Button
                   id="github-connection-entry"
@@ -456,21 +435,11 @@ export function RuntimeConfig({
                     } else setConnectionOpen(true)
                   }}
                 >
-                  {connectionOpen ? "Close GitHub connection" : "Manage GitHub connection"}
+                  {connectionOpen ? t("github.closeConnection") : t("github.manageConnection")}
                 </Button>
               </Flex>
-              <Prose size="2">
-                For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access
-                Token. Once saved and applied, the token is available to the next bash execution
-                without restart. All chats with bash access can use and read the token; give bash
-                only to trusted chats. Configured state does not prove that GitHub accepts the
-                token.
-              </Prose>
-              <Prose size="2">
-                GitHub mentions use GH_TOKEN to identify the bot account. Manage allowed authors on
-                GitHub mentions, not in Variables. An empty saved allowlist disables automatic
-                replies.
-              </Prose>
+              <Prose size="2">{t("runtime.tokenHelp")}</Prose>
+              <Prose size="2">{t("runtime.mentionHelp")}</Prose>
               {connectionOpen && (
                 <GitHubConnection
                   csrf={csrf}
@@ -500,18 +469,21 @@ export function RuntimeConfig({
                 document.getElementById("runtime-add")?.focus()
               }}
             >
-              <AlertDialog.Title>Delete {deleting?.name}?</AlertDialog.Title>
+              <AlertDialog.Title>
+                {t("settings.deleteConfirm", { name: deleting?.name ?? "" })}
+              </AlertDialog.Title>
               <AlertDialog.Description>
-                Delete this {deleting?.kind} and apply the change? Remove saved MCP references
-                first.{" "}
-                {deleting?.name === "GH_TOKEN" && "This removes GH_TOKEN and GITHUB_OAUTH_STATE. "}
-                Application can cancel active work. Deletion does not erase backups or conversation
-                history and does not revoke an upstream key. To change a secret into a public
-                variable, delete it first and explicitly create a variable.
+                {t(
+                  deleting?.kind === "secret"
+                    ? "runtime.deleteSecretHelp"
+                    : "runtime.deleteVariableHelp",
+                )}{" "}
+                {deleting?.name === "GH_TOKEN" && t("runtime.deleteTokenHelp")}
+                {t("runtime.deleteHelp")}
               </AlertDialog.Description>
               <Flex gap="3" mt="4">
                 <AlertDialog.Cancel>
-                  <Button variant="soft">Cancel</Button>
+                  <Button variant="soft">{t("settings.cancel")}</Button>
                 </AlertDialog.Cancel>
                 <AlertDialog.Action>
                   <Button
@@ -521,7 +493,7 @@ export function RuntimeConfig({
                       if (deleting) void mutate(deleting.name)
                     }}
                   >
-                    Delete and apply
+                    {t("runtime.deleteApply")}
                   </Button>
                 </AlertDialog.Action>
               </Flex>

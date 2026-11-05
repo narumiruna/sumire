@@ -5,7 +5,7 @@ import type {
   DurableEntryItem,
   DurableTaskItem,
 } from "@narumitw/sumire-contracts"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import {
   formatDurableTime,
   formatReadTime,
@@ -14,6 +14,10 @@ import {
   recordTitle,
   taskObservation,
 } from "./durable-presentation.js"
+
+import { setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 const conversation: DurableConversationItem = { type: "conversation", id: 7, active: false }
 const task: DurableTaskItem = {
@@ -254,6 +258,21 @@ describe("structured record summaries", () => {
 })
 
 describe("deterministic Durable UTC times", () => {
+  it("translates absence and structured observations but retains UTC evidence", () => {
+    setLocale("zh-TW")
+    expect(formatDurableTime(undefined)).toBe("未記錄")
+    expect(recordTitle(conversation)).toBe("對話")
+    expect(taskObservation(task)).toBe("已記錄狀態：待處理 · 未記錄結果")
+    expect(formatDurableTime(0)).toBe("1970-01-01 00:00:00 UTC")
+    setLocale("ja")
+    expect(formatReadTime("invalid")).toBe("読み取り時刻を取得できません")
+    expect(recordTitle({ ...entry, role: "toolResult", toolName: "read_file" })).toBe(
+      "ツール結果 · read_file",
+    )
+    expect(formatReadTime("2026-10-19T14:30:00+02:30")).toBe("2026-10-19 12:00:00 UTC")
+    expect(task.status).toBe("pending")
+  })
+
   it("formats Date.now wall-clock milliseconds without a seconds conversion", () => {
     // Verified in installed Durable session/session.js and types.d.ts task time fields.
     expect(formatDurableTime(1_792_411_200_000)).toBe("2026-10-19 12:00:00 UTC")

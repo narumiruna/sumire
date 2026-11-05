@@ -147,9 +147,9 @@ for (const width of [1440, 851, 850, 390]) {
     const requests = await fixture(page)
     await openDirectoryFilters(page)
     await page.locator(".configure-id summary").click()
-    const id = page.getByLabel("聊天 ID")
+    const id = page.getByLabel("Chat ID")
     await id.fill("-9999")
-    const open = page.getByRole("button", { name: "開啟詳細資料", exact: true })
+    const open = page.getByRole("button", { name: "Open details", exact: true })
     await open.scrollIntoViewIfNeeded()
     const expected = await page.evaluate(() => window.scrollY)
     expect(expected).toBeGreaterThanOrEqual(0)
@@ -158,7 +158,9 @@ for (const width of [1440, 851, 850, 390]) {
       await open.click()
       await expect(page.locator(".chat-header code")).toHaveText("-9999")
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-      await expect(page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })).toBeFocused()
+      await expect(
+        page.getByLabel(/Search chats|Search stored chats/, { exact: true }),
+      ).toBeFocused()
       expect(await page.evaluate(() => window.scrollY)).toBe(expected)
       await expect(page.locator('.chat-list .directory-chat[aria-current="true"]')).toHaveCount(0)
       await expect(id).toHaveValue("-9999")
@@ -167,14 +169,14 @@ for (const width of [1440, 851, 850, 390]) {
     expect(requests).toEqual([])
   })
 
-  for (const action of ["Show selected chat", "開啟詳細資料"]) {
+  for (const action of ["Show selected chat", "Open details"]) {
     test(`restores directory scroll after ${action} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       const requests = await fixture(page)
       await select(page, 50)
       await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
       const previous = await page.evaluate(() => window.scrollY)
-      if (action === "開啟詳細資料") {
+      if (action === "Open details") {
         await openDirectoryFilters(page)
         await page.locator(".configure-id summary").click()
       }
@@ -244,7 +246,7 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   const footer = page.locator(".directory-footer")
   await openDirectoryFilters(page)
   await page.locator(".configure-id summary").click()
-  await expect(page.getByLabel("聊天 ID")).toBeVisible()
+  await expect(page.getByLabel("Chat ID")).toBeVisible()
   const row = page.locator(".chat-list .directory-chat").last()
   await row.scrollIntoViewIfNeeded()
   const rowBox = await row.boundingBox()
@@ -256,7 +258,7 @@ test("keeps the expanded onboarding footer outside the list and allows short-scr
   await expect(page.locator(".directory-list-region")).toHaveCSS("overflow-y", "visible")
   await footer.scrollIntoViewIfNeeded()
   await expect(
-    footer.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+    footer.getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }),
   ).toBeInViewport()
 })
 
@@ -271,7 +273,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
     const list = page.locator(".directory-list-region")
     const footer = page.locator(".directory-footer")
     await expect(
-      page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+      page.getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }),
     ).toBeDisabled()
     await expect(rows.first().locator("strong")).toHaveAttribute("title", longName.trim())
     expect(await rows.first().evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2")

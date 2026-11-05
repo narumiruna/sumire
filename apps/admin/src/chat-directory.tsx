@@ -8,12 +8,17 @@ import {
 import { Button, Code, Flex, Heading, Text, TextField } from "@radix-ui/themes"
 import { type ReactNode, type Ref, useEffect, useId, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { t } from "./i18n.js"
 import { countText } from "./status-text.js"
 import { Prose } from "./surfaces.js"
 
 export function chatName(chat: Chat) {
   const name = chat.name?.trim()
-  return name && name !== String(chat.id) ? name : `Unnamed ${chat.type || "chat"}`
+  return name && name !== String(chat.id)
+    ? name
+    : chat.type
+      ? t("chat.unnamedType", { type: chat.type })
+      : t("chat.unnamed")
 }
 
 export type SelectedChatMetadata = { chat?: Chat; loading: boolean; error: string }
@@ -26,9 +31,11 @@ export function directoryPath(offset: number, query = "") {
 
 function readError(error: unknown) {
   return error instanceof ApiError && error.status === 403
-    ? "Permission denied. Chat metadata is not available."
-    : "Could not read chat metadata. Retry chats."
+    ? "chat.metadataDenied"
+    : "chat.metadataFailed"
 }
+
+type MetadataError = ReturnType<typeof readError> | ""
 
 export function useChatDirectory(enabled: boolean, chat: string, onExpired: () => void) {
   const [page, setPage] = useState({ offset: 0, query: "" })
@@ -36,12 +43,12 @@ export function useChatDirectory(enabled: boolean, chat: string, onExpired: () =
   const [knownChats, setKnownChats] = useState<Chat[]>([])
   const path = directoryPath(page.offset, page.query)
   const key = `${path}:${revision}`
-  const [result, setResult] = useState<{ key: string; chats: Chat[]; error: string }>()
+  const [result, setResult] = useState<{ key: string; chats: Chat[]; error: MetadataError }>()
   const selectionKey = `${chat}:${revision}`
   const [selection, setSelection] = useState<{
     key: string
     chat?: Chat
-    error: string
+    error: MetadataError
   }>()
   useEffect(() => {
     if (!enabled) {
@@ -100,7 +107,7 @@ export function useChatDirectory(enabled: boolean, chat: string, onExpired: () =
     chats: current?.chats ?? [],
     knownChats: enabled ? knownChats : [],
     loading: enabled && !current,
-    error: current?.error ?? "",
+    error: current?.error ? t(current.error) : "",
     query: page.query,
     offset: page.offset,
     setQuery: (query: string) => setPage({ offset: 0, query }),
@@ -109,7 +116,7 @@ export function useChatDirectory(enabled: boolean, chat: string, onExpired: () =
     selected: {
       chat: selected?.chat,
       loading: Boolean(enabled && chat && !selected),
-      error: selected?.error ?? "",
+      error: selected?.error ? t(selected.error) : "",
     } satisfies SelectedChatMetadata,
   }
 }
@@ -126,7 +133,7 @@ export function ChatSelector({
   badge,
   actions,
   footer,
-  title = "Find a chat",
+  title = t("chat.find"),
   summary,
   columns,
 }: {
@@ -162,7 +169,7 @@ export function ChatSelector({
         <div className="directory-toolbar">
           <label className="directory-search" htmlFor={searchId}>
             <Text size="1" weight="medium">
-              Search stored chats
+              {t("chat.searchStored")}
             </Text>
             <TextField.Root
               id={searchId}
@@ -170,7 +177,7 @@ export function ChatSelector({
               value={directory.query}
               maxLength={128}
               onChange={(event) => directory.setQuery(event.target.value)}
-              placeholder="Name or complete chat ID"
+              placeholder={t("chat.nameOrId")}
             >
               <TextField.Slot>
                 <MagnifyingGlassIcon aria-hidden="true" />
@@ -179,35 +186,34 @@ export function ChatSelector({
           </label>
         </div>
         <details className="directory-options">
-          <summary>{filters ? "Filters and search scope" : "Search scope"}</summary>
+          <summary>{filters ? t("chat.filtersSearchScope") : t("chat.searchScope")}</summary>
           {filters}
           <Prose size="1" color="gray">
-            Search covers the stored directory, not all Telegram chats. Up to 100 matches per page.
+            {t("chat.directoryScope")}
           </Prose>
         </details>
         <div className="directory-result-status" aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
             <Text as="p" role="status">
-              Loading chats…
+              {t("chat.loading")}
             </Text>
           ) : directory.error ? (
             <>
               <Text as="p" role="alert">
                 {directory.error}
               </Text>
-              <Button onClick={directory.refresh}>Retry chats</Button>
+              <Button onClick={directory.refresh}>{t("chat.retry")}</Button>
             </>
           ) : !directory.chats.length ? (
-            <Text as="p">
-              {directory.query
-                ? "No stored chats match this search."
-                : "No chats observed on this page."}
-            </Text>
+            <Text as="p">{directory.query ? t("chat.noSearchMatches") : t("chat.noObserved")}</Text>
           ) : !visibleChats.length ? (
-            <Text as="p">No chats match the filters on this page.</Text>
+            <Text as="p">{t("chat.noFilterMatches")}</Text>
           ) : (
             <Text as="p" size="1" color="gray">
-              {visibleChats.length} of {countText(directory.chats.length, "chat")} on this page
+              {t("chat.visibleCount", {
+                visible: visibleChats.length,
+                total: countText(directory.chats.length, "chat"),
+              })}
             </Text>
           )}
         </div>
@@ -222,14 +228,14 @@ export function ChatSelector({
                 data-management={Boolean(columns)}
                 aria-hidden="true"
               >
-                <span>{columns ? "Chat" : "Chat / ID"}</span>
-                <span>{columns ? "Access" : "Access / status"}</span>
-                {columns && <span>Effective model</span>}
-                {columns && <span>Configuration issues</span>}
-                <span>{columns ? "Actions" : ""}</span>
+                <span>{columns ? t("chat.chat") : t("chat.chatId")}</span>
+                <span>{columns ? t("chat.access") : t("chat.accessStatus")}</span>
+                {columns && <span>{t("chat.effectiveModel")}</span>}
+                {columns && <span>{t("chat.configurationIssues")}</span>}
+                <span>{columns ? t("chat.actions") : ""}</span>
               </div>
             )}
-            <ul className="chat-list" aria-label="Chats on this page">
+            <ul className="chat-list" aria-label={t("chat.onPage")}>
               {visibleChats.map((value) => (
                 <li
                   key={value.id}
@@ -245,7 +251,7 @@ export function ChatSelector({
                         type={columns ? undefined : "button"}
                         href={columns?.href(value)}
                         aria-current={chat === String(value.id) ? "true" : undefined}
-                        aria-label={`${chatName(value)} · ${value.id}`}
+                        aria-label={t("chat.identity", { name: chatName(value), id: value.id })}
                         aria-describedby={badge ? `directory-state-${value.id}` : undefined}
                         onClick={(event) => {
                           if (
@@ -274,7 +280,7 @@ export function ChatSelector({
                           </span>
                         </Flex>
                         <Text as="span" size="1" color="gray" className="directory-chat-meta">
-                          <span>{value.type || "Type not known"}</span>
+                          <span>{value.type || t("chat.typeUnknown")}</span>
                           <Code variant="ghost">{value.id}</Code>
                         </Text>
                         {badge && !actions && (
@@ -292,12 +298,15 @@ export function ChatSelector({
                         {badge?.(value)}
                       </div>
                       {columns && (
-                        <section className="directory-model" aria-label="Effective model">
+                        <section className="directory-model" aria-label={t("chat.effectiveModel")}>
                           {columns.model(value)}
                         </section>
                       )}
                       {columns && (
-                        <section className="directory-issues" aria-label="Configuration issues">
+                        <section
+                          className="directory-issues"
+                          aria-label={t("chat.configurationIssues")}
+                        >
                           {columns.issues(value)}
                         </section>
                       )}
@@ -322,7 +331,7 @@ export function ChatSelector({
                 disabled={directory.loading || directory.offset === 0}
                 onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
               >
-                Previous chats
+                {t("chat.previousChats")}
               </Button>
               <Button
                 variant="soft"
@@ -331,10 +340,10 @@ export function ChatSelector({
                 }
                 onClick={() => directory.setOffset(directory.offset + 100)}
               >
-                Next chats
+                {t("chat.nextChats")}
               </Button>
               <Text size="1" color="gray">
-                Page {Math.floor(directory.offset / 100) + 1}
+                {t("chat.page", { page: Math.floor(directory.offset / 100) + 1 })}
               </Text>
             </>
           )}
@@ -344,7 +353,7 @@ export function ChatSelector({
             disabled={directory.loading}
             onClick={directory.refresh}
           >
-            Refresh chats
+            {t("chat.refresh")}
           </Button>
         </Flex>
         {footer}

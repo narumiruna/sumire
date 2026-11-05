@@ -1,11 +1,12 @@
 import { Badge, Button, Dialog, Flex, RadioGroup, Text } from "@radix-ui/themes"
 import { useEffect, useState } from "react"
 import type { Policy, Snapshot } from "./api.js"
+import { t } from "./i18n.js"
 import { type RecoveryChoice, recoverPolicy } from "./policy-recovery.js"
 import { Prose } from "./surfaces.js"
 
 function valueText(value: unknown) {
-  return value === undefined ? "No entry" : JSON.stringify(value, null, 2)
+  return value === undefined ? t("recovery.noEntry") : JSON.stringify(value, null, 2)
 }
 
 export function PolicyRecoveryDialog({
@@ -67,23 +68,15 @@ export function PolicyRecoveryDialog({
           onReturnFocus()
         }}
       >
-        <Dialog.Title>Review recovered settings draft</Dialog.Title>
+        <Dialog.Title>{t("recovery.title")}</Dialog.Title>
         <Dialog.Description>
-          Compare your retained draft with saved revision {latest.revision}. Nothing is saved by
-          this step. Confirm the recovered draft, then review and save any remaining changes.
+          {t("recovery.description", { revision: latest.revision })}
         </Dialog.Description>
         {latest.revision === revision && (
-          <Prose role="status">
-            The saved revision has not changed. The save failed: {failure}
-          </Prose>
+          <Prose role="status">{t("recovery.failed", { failure })}</Prose>
         )}
-        <Prose size="2">
-          Unedited settings keep their latest saved values. Lists, provider configuration, and each
-          chat record are replaced as a whole when you choose a draft value. They are not combined.
-          In selections, null means inheritance or no shared selection; [] means an explicit empty
-          list.
-        </Prose>
-        <ul className="policy-recovery-changes" aria-label="Recovered settings changes">
+        <Prose size="2">{t("recovery.help")}</Prose>
+        <ul className="policy-recovery-changes" aria-label={t("recovery.changes")}>
           {recovered.changes.map((change) => (
             <li key={change.id}>
               <Text as="p" size="2" weight="bold">
@@ -91,10 +84,10 @@ export function PolicyRecoveryDialog({
               </Text>
               <Badge color={change.state === "conflict" ? "orange" : "gray"}>
                 {change.state === "saved"
-                  ? "Already saved"
+                  ? t("recovery.saved")
                   : change.state === "draft"
-                    ? "Draft retained"
-                    : "Choose a value"}
+                    ? t("recovery.draft")
+                    : t("recovery.choose")}
               </Badge>
               {change.state === "conflict" && (
                 <RadioGroup.Root
@@ -107,34 +100,32 @@ export function PolicyRecoveryDialog({
                     }))
                   }
                 >
-                  <RadioGroup.Item value="saved">Keep saved value</RadioGroup.Item>
-                  <RadioGroup.Item value="draft">Use draft value</RadioGroup.Item>
+                  <RadioGroup.Item value="saved">{t("recovery.keepSaved")}</RadioGroup.Item>
+                  <RadioGroup.Item value="draft">{t("recovery.useDraft")}</RadioGroup.Item>
                 </RadioGroup.Root>
               )}
               <details>
-                <summary>Compare values for {change.label}</summary>
+                <summary>{t("recovery.compare", { label: change.label })}</summary>
                 <Text as="p" size="2">
-                  Latest saved value
+                  {t("recovery.latest")}
                 </Text>
                 <pre className="policy-recovery-value">{valueText(change.saved)}</pre>
                 <Text as="p" size="2">
-                  Your draft value
+                  {t("recovery.yours")}
                 </Text>
                 <pre className="policy-recovery-value">{valueText(change.draft)}</pre>
               </details>
             </li>
           ))}
         </ul>
-        {!recovered.changes.length && <Prose>No local policy changes remain.</Prose>}
-        {recovered.unresolved > 0 && (
-          <Prose role="status">Resolve every overlapping change before continuing.</Prose>
-        )}
+        {!recovered.changes.length && <Prose>{t("recovery.none")}</Prose>}
+        {recovered.unresolved > 0 && <Prose role="status">{t("recovery.resolve")}</Prose>}
         <Flex gap="3" justify="end" wrap="wrap" mt="4">
           <Button variant="soft" onClick={onCancel}>
-            Cancel
+            {t("recovery.cancel")}
           </Button>
           <Button disabled={recovered.unresolved > 0} onClick={() => onConfirm(recovered.policy)}>
-            Use recovered draft
+            {t("recovery.confirm")}
           </Button>
         </Flex>
       </Dialog.Content>

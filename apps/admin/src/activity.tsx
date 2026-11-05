@@ -1,5 +1,6 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
 import { Badge, Code, Flex, Heading, Text } from "@radix-ui/themes"
+import { getLocale, t } from "./i18n.js"
 import { countText } from "./status-text.js"
 import { Disclosure, Panel, Prose, StatusLabel } from "./surfaces.js"
 
@@ -13,14 +14,13 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
   if (!reports.length)
     return (
       <Text as="p" size="2" color="gray" className="empty-state">
-        No import history.
+        {t("audit.noImportHistory")}
       </Text>
     )
   return (
     <Flex direction="column" gap="3" className="import-history settings-stack">
       <Prose size="2" color="gray" className="section-copy">
-        Import history is read-only. It does not approve IDs or restore revoked access. Environment
-        review history is limited to the latest 10 reviews.
+        {t("audit.importScope")}
       </Prose>
       {[...reports]
         .sort(
@@ -36,32 +36,36 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
                   {name}
                 </Heading>
                 {failedImports(report) > 0 && (
-                  <Badge color="red">Import failures — review details</Badge>
+                  <Badge color="red">{t("audit.importFailures")}</Badge>
                 )}
                 {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
                   (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
-                  <Badge color="orange">Incomplete import</Badge>
+                  <Badge color="orange">{t("audit.incompleteImport")}</Badge>
                 )}
                 {report.reviewRequired === true && (
-                  <Badge color="orange">Review required at import</Badge>
+                  <Badge color="orange">{t("audit.reviewAtImport")}</Badge>
                 )}
               </Flex>
               <Text as="p" size="2" className="import-report-summary">
                 {typeof report.servers === "number" &&
-                  `${countText(report.servers, "server")} imported. `}
+                  t("audit.importedCount", { count: countText(report.servers, "server") })}
                 {typeof report.imported === "number" &&
-                  `${countText(report.imported, "model setting")} imported. `}
+                  t("audit.importedCount", { count: countText(report.imported, "model setting") })}
                 {Array.isArray(report.failedChatIds) &&
-                  `${countText(report.failedChatIds.length, "chat")} failed. `}
+                  t("audit.failedCount", { count: countText(report.failedChatIds.length, "chat") })}
                 {typeof report.skippedServers === "number" &&
-                  `${countText(report.skippedServers, "server")} skipped. `}
+                  t("audit.skippedCount", { count: countText(report.skippedServers, "server") })}
                 {typeof report.unscannedEntries === "number" &&
-                  `${countText(report.unscannedEntries, "entry", "entries")} not scanned. `}
+                  t("audit.unscannedCount", {
+                    count: countText(report.unscannedEntries, "entry", "entries"),
+                  })}
                 {Array.isArray(report.decisions) &&
-                  `${countText(report.decisions.length, "recorded access decision")}. `}
+                  t("audit.decisionCount", {
+                    count: countText(report.decisions.length, "recorded access decision"),
+                  })}
               </Text>
               <details>
-                <summary>Imported IDs and review details</summary>
+                <summary>{t("audit.importDetails")}</summary>
                 <pre>{JSON.stringify(report, null, 2)}</pre>
               </details>
             </Flex>
@@ -71,39 +75,39 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
   )
 }
 
-export const operationNames: Record<string, string> = {
-  "tools.register": "Tools registered",
-  "skills.register": "Skills registered",
-  "settings.update": "Settings saved",
-  "settings.apply": "Settings application",
-  "chat.model.update": "Chat model changed",
-  "chat.access.approve": "Chat access approved",
-  "admin.login": "Administrator signed in",
-  "admin.logout": "Administrator signed out",
-  "admin.passkey.register": "Administrator passkey registered",
-  "mcp.import": "MCP configuration imported",
-  "mcp.update": "MCP configuration saved",
-  "mcp.delete": "MCP server deleted",
-  "models.import": "Model settings imported",
-  "provider.credential": "Provider credential changed",
-  "provider.oauth.complete": "Provider sign-in completed",
-}
+export const operationNames = (): Record<string, string> => ({
+  "tools.register": t("audit.toolsRegistered"),
+  "skills.register": t("audit.skillsRegistered"),
+  "settings.update": t("audit.settingsSaved"),
+  "settings.apply": t("audit.settingsApplication"),
+  "chat.model.update": t("audit.chatModelChanged"),
+  "chat.access.approve": t("audit.chatAccessApproved"),
+  "admin.login": t("audit.adminSignedIn"),
+  "admin.logout": t("audit.adminSignedOut"),
+  "admin.passkey.register": t("audit.passkeyRegistered"),
+  "mcp.import": t("audit.mcpImported"),
+  "mcp.update": t("audit.mcpSaved"),
+  "mcp.delete": t("audit.mcpDeleted"),
+  "models.import": t("audit.modelsImported"),
+  "provider.credential": t("audit.credentialChanged"),
+  "provider.oauth.complete": t("audit.signInCompleted"),
+})
 
-export const outcomeNames: Record<string, string> = {
-  saved: "Saved",
-  applied: "Applied",
-  failed: "Failed",
-  stale: "Superseded",
-  completed: "Completed",
-  revoked: "Revoked",
-  deleted: "Deleted",
-  enabled: "Enabled",
-  "imported; review required": "Imported — review required",
-  "partial; review import report": "Partial import — review report",
-}
+export const outcomeNames = (): Record<string, string> => ({
+  saved: t("audit.saved"),
+  applied: t("audit.applied"),
+  failed: t("record.failed"),
+  stale: t("audit.superseded"),
+  completed: t("record.completed"),
+  revoked: t("audit.revoked"),
+  deleted: t("audit.deleted"),
+  enabled: t("audit.enabled"),
+  "imported; review required": t("audit.importedReview"),
+  "partial; review import report": t("audit.partialReview"),
+})
 
 export function auditValueLabel(field: "operation" | "outcome", value: string) {
-  const names = field === "operation" ? operationNames : outcomeNames
+  const names = field === "operation" ? operationNames() : outcomeNames()
   return Object.hasOwn(names, value) ? (names[value] ?? value) : value
 }
 
@@ -147,27 +151,27 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
     <Flex direction="column" gap="2" className="activity-record">
       <dl className="audit-record-fields">
         <div>
-          <dt>Timestamp</dt>
+          <dt>{t("audit.timestamp")}</dt>
           <dd>
-            <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
+            <time dateTime={time.toISOString()}>{time.toLocaleString(getLocale())}</time>
           </dd>
         </div>
         <div>
-          <dt>Actor</dt>
+          <dt>{t("audit.actor")}</dt>
           <dd>{entry.actor}</dd>
         </div>
         <div>
-          <dt>Action</dt>
+          <dt>{t("audit.action")}</dt>
           <dd>{auditValueLabel("operation", entry.operation)}</dd>
         </div>
         <div>
-          <dt>Target</dt>
+          <dt>{t("audit.target")}</dt>
           <dd>
             <Code variant="ghost">{entry.target}</Code>
           </dd>
         </div>
         <div>
-          <dt>Result</dt>
+          <dt>{t("audit.result")}</dt>
           <dd>
             <StatusLabel
               tone={
@@ -178,13 +182,13 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
                     : "neutral"
               }
             >
-              {entry.outcome}
+              {auditValueLabel("outcome", entry.outcome)}
             </StatusLabel>
           </dd>
         </div>
       </dl>
-      <Disclosure title="Raw audit record">
-        <Prose size="2">Revision {entry.revision}. Field-level changes were not recorded.</Prose>
+      <Disclosure title={t("audit.rawRecord")}>
+        <Prose size="2">{t("audit.revisionNotice", { revision: entry.revision })}</Prose>
         <pre>{JSON.stringify(entry, null, 2)}</pre>
       </Disclosure>
     </Flex>
@@ -195,11 +199,11 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
   if (!entries.length)
     return (
       <Text as="p" size="2" color="gray" className="empty-state">
-        No audit records on this page.
+        {t("audit.noRecords")}
       </Text>
     )
   return (
-    <ol className="activity" aria-label="Configuration activity">
+    <ol className="activity" aria-label={t("audit.activity")}>
       {groupActivity(entries).map((group) => (
         <li
           key={group[0]?.id}
@@ -221,7 +225,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
               >
                 <Text size="2" weight="medium">
                   {countText(group.length, "save/application record")} ·{" "}
-                  {group[0] && new Date(group[0].time).toLocaleString()}
+                  {group[0] && new Date(group[0].time).toLocaleString(getLocale())}
                 </Text>
                 <Flex gap="2" wrap="wrap">
                   {[...new Set(group.map((entry) => entry.outcome))].map((outcome) => (
@@ -229,20 +233,21 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
                       key={outcome}
                       color={outcome === "failed" ? "red" : outcome === "applied" ? "teal" : "gray"}
                     >
-                      {outcome}
+                      {auditValueLabel("outcome", outcome)}
                     </Badge>
                   ))}
                 </Flex>
               </Flex>
               <Text as="p" size="2" color="gray">
-                {countText(
-                  group.filter((entry) => entry.outcome === "failed").length,
-                  "failed application",
-                )}
-                . Field-level changes were not recorded.
+                {t("audit.failedNotice", {
+                  count: countText(
+                    group.filter((entry) => entry.outcome === "failed").length,
+                    "failed application",
+                  ),
+                })}
               </Text>
               <details open>
-                <summary>Individual save and application records</summary>
+                <summary>{t("audit.individualRecords")}</summary>
                 <ul className="activity-group-records">
                   {group.map((entry) => (
                     <li key={entry.id}>

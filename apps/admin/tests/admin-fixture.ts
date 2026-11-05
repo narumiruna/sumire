@@ -79,7 +79,7 @@ export async function adminFixture(
     await route.fulfill({ json: data[url.pathname] ?? {} })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   return requests
 }
 
@@ -97,18 +97,18 @@ export const sections = [
 ]
 export function sectionLabel(name: string): string {
   const labels: Record<string, string> = {
-    Access: "聊天管理",
-    Chats: "聊天管理",
-    Durable: "對話紀錄",
-    Defaults: "共用設定",
-    "Tool permissions": "工具權限",
-    Skills: "技能管理",
-    "MCP connections": "MCP 伺服器",
-    "Model Providers": "模型供應商",
-    "Model providers": "模型供應商",
-    "Secrets & variables": "密鑰與變數",
-    "GitHub mentions": "GitHub 提及",
-    Audit: "稽核紀錄",
+    Access: "Chats",
+    Chats: "Chats",
+    Durable: "Conversation logs",
+    Defaults: "Shared defaults",
+    "Tool permissions": "Tool permissions",
+    Skills: "Skills",
+    "MCP connections": "MCP servers",
+    "Model Providers": "Providers & models",
+    "Model providers": "Providers & models",
+    "Secrets & variables": "Secrets & variables",
+    "GitHub mentions": "GitHub mentions",
+    Audit: "Audit log",
   }
   return labels[name] ?? name
 }
@@ -167,7 +167,7 @@ export async function openChatConfiguration(page: Page) {
 }
 
 export async function openDirectoryFilters(page: Page) {
-  const filter = page.getByRole("button", { name: "篩選", exact: true })
+  const filter = page.getByRole("button", { name: "Filter", exact: true })
   if (await filter.isVisible()) {
     if ((await filter.getAttribute("aria-expanded")) !== "true") await filter.click()
     return
@@ -180,7 +180,7 @@ export async function openChatAccess(page: Page) {
   await navigate(page, "Chats")
   if (!(await page.locator("#chat-access-management > summary").isVisible()))
     await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await openDisclosure(page, "存取權限管理")
+  await openDisclosure(page, "Access management")
 }
 
 export async function navigate(page: Page, name: string) {

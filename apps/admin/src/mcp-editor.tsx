@@ -13,6 +13,7 @@ import {
 } from "@radix-ui/themes"
 import { useId } from "react"
 import type { Inventory } from "./api.js"
+import { type MessageKey, t } from "./i18n.js"
 import { SectionSelect } from "./sections.js"
 import { Prose } from "./surfaces.js"
 
@@ -32,25 +33,30 @@ const fields = [
 ]
 export type McpPatch = Record<string, unknown>
 export function parseMcpPatch(text: string): McpPatch {
-  const value: unknown = JSON.parse(text)
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    throw new Error(t("mcp.jsonInvalid"))
+  }
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Enter a configuration object.")
+    throw new Error(t("mcp.objectRequired"))
   if (Object.keys(value).some((key) => !fields.includes(key)))
-    throw new Error("Unknown fields: correct them in advanced JSON. The draft is unchanged.")
+    throw new Error(t("mcp.unknownFields"))
   const patch = value as McpPatch
   for (const key of ["command", "url", "cwd", "description"] as const)
     if (key in patch && typeof patch[key] !== "string")
-      throw new Error(`Correct ${key} in advanced JSON. The draft is unchanged.`)
+      throw new Error(t("mcp.correctField", { field: key }))
   if ("enabled" in patch && typeof patch.enabled !== "boolean")
-    throw new Error("Correct enabled in advanced JSON. The draft is unchanged.")
+    throw new Error(t("mcp.enabledInvalid"))
   if ("timeout" in patch && (typeof patch.timeout !== "number" || !Number.isFinite(patch.timeout)))
-    throw new Error("Timeout must be a positive number; correct advanced JSON.")
+    throw new Error(t("mcp.timeoutInvalid"))
   for (const [key, options] of [
     ["type", ["stdio", "http", "streamable-http"]],
     ["exposure", ["codemode", "direct", "hidden"]],
   ] as const)
     if (key in patch && !options.some((option) => option === patch[key]))
-      throw new Error(`Correct ${key} in advanced JSON. The draft is unchanged.`)
+      throw new Error(t("mcp.correctField", { field: key }))
   return patch
 }
 
@@ -62,7 +68,7 @@ export function mcpSavePatch(
 ) {
   const config = parseMcpPatch(text)
   if (typeof config.timeout === "number" && config.timeout <= 0)
-    throw new Error("Timeout must be positive.")
+    throw new Error(t("mcp.timeoutPositive"))
   for (const scope of ["env", "headers"] as const) {
     const map = config[scope]
     if (
@@ -72,7 +78,7 @@ export function mcpSavePatch(
         Array.isArray(map) ||
         Object.values(map).some((value) => value !== null))
     )
-      throw new Error("Use the masked field for secret replacements")
+      throw new Error(t("mcp.maskedRequired"))
     if (Object.keys(secrets[scope]).length)
       config[scope] = { ...(map ?? previous?.[scope] ?? {}), ...secrets[scope] }
   }
@@ -81,8 +87,18 @@ export function mcpSavePatch(
 
 /** Field operations only. Never include values, including legacy command or URL secrets. */
 export function mcpChangePreview(patch: McpPatch, previous?: Inventory["mcp"][number]) {
-  const operations: { field: string; name?: string; action: string }[] = []
-  const add = (field: string, action: string, name?: string) =>
+  const actionKeys = {
+    Preserved: "mcp.preview.preserved",
+    Replaced: "mcp.preview.replaced",
+    Added: "mcp.preview.added",
+    Removed: "mcp.preview.removed",
+    Cleared: "mcp.preview.cleared",
+    "Set / replaced": "mcp.preview.setReplaced",
+    Set: "mcp.preview.set",
+    "Removed / inferred": "mcp.preview.inferred",
+  } as const satisfies Record<string, MessageKey>
+  const operations: { field: string; name?: string; action: keyof typeof actionKeys }[] = []
+  const add = (field: string, action: keyof typeof actionKeys, name?: string) =>
     operations.push({ field, action, name })
   const known = new Set(previous?.fields ?? [])
   for (const key of known)
@@ -121,9 +137,8 @@ export function mcpChangePreview(patch: McpPatch, previous?: Inventory["mcp"][nu
   return [
     ...operations
       .filter((operation) => !removed.includes(operation.field))
-      .map(
-        ({ field, name, action }) =>
-          `${action}: ${field}${action === "Cleared" ? " map" : name !== undefined ? `.${name}` : ""}`,
+      .map(({ field, name, action }) =>
+        t(actionKeys[action], { field: `${field}${name !== undefined ? `.${name}` : ""}` }),
       ),
     ...removed
       .filter(
@@ -133,7 +148,7 @@ export function mcpChangePreview(patch: McpPatch, previous?: Inventory["mcp"][nu
           (key === "env" && Object.keys(previous?.env ?? {}).length > 0) ||
           (key === "headers" && Object.keys(previous?.headers ?? {}).length > 0),
       )
-      .map((key) => `Removed by transport selection: ${key}`),
+      .map((key) => t("mcp.preview.transportRemoved", { field: key })),
   ]
 }
 
@@ -156,7 +171,7 @@ export function McpGuidedEditor({
       patch.args !== undefined &&
       (!Array.isArray(patch.args) || patch.args.some((arg) => typeof arg !== "string"))
     )
-      throw new Error("Edit invalid arguments in advanced JSON. The draft is unchanged.")
+      throw new Error(t("mcp.argumentsInvalid"))
   } catch (error) {
     return (
       <Callout.Root color="red" role="alert" size="1">
@@ -164,7 +179,7 @@ export function McpGuidedEditor({
           <InfoCircledIcon />
         </Callout.Icon>
         <Callout.Text>
-          {error instanceof Error ? error.message : "Correct advanced JSON to use guided fields."}
+          {error instanceof Error ? error.message : t("mcp.guidedUnavailable")}
         </Callout.Text>
       </Callout.Root>
     )
@@ -195,7 +210,7 @@ export function McpGuidedEditor({
               >
                 <Checkbox
                   id={`${prefix}-${key}-edit`}
-                  aria-label={`Edit MCP ${key}`}
+                  aria-label={t("mcp.editField", { field: key })}
                   aria-describedby={existing ? `${prefix}-replacement-help` : undefined}
                   checked={key in patch}
                   onCheckedChange={(checked) =>
@@ -215,8 +230,7 @@ export function McpGuidedEditor({
                       : omit(key)
                   }
                 />
-                {existing ? "Replace " : "Set "}
-                {key}
+                {t(existing ? "mcp.replaceField" : "mcp.setField", { field: key })}
               </Text>
             )}
             {key in patch &&
@@ -224,23 +238,22 @@ export function McpGuidedEditor({
                 <label className="check mcp-field-value" htmlFor={`${prefix}-enabled-value`}>
                   <Checkbox
                     id={`${prefix}-enabled-value`}
-                    aria-label="MCP enabled value"
+                    aria-label={t("mcp.enabledValue")}
                     checked={patch.enabled === true}
                     onCheckedChange={(v) => set(key, v === true)}
                   />
-                  Enabled after save
+                  {t("mcp.enabledAfterSave")}
                 </label>
               ) : key === "exposure" || key === "type" ? (
                 <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
-                  {existing ? "Replacement " : ""}
-                  {key}
+                  {existing ? t("mcp.replacementField", { field: key }) : key}
                   <SectionSelect.Root
                     value={String(patch[key])}
                     onValueChange={(value) => set(key, value)}
                   >
                     <SectionSelect.Trigger
                       id={`${prefix}-${key}-value`}
-                      aria-label={`MCP ${key} replacement`}
+                      aria-label={t("mcp.fieldReplacement", { field: key })}
                     />
                     <SectionSelect.Content>
                       {(key === "exposure"
@@ -248,7 +261,9 @@ export function McpGuidedEditor({
                         : ["stdio", "http", "streamable-http"]
                       ).map((value) => (
                         <SectionSelect.Item key={value} value={value}>
-                          {value}
+                          {key === "exposure"
+                            ? t(`mcp.exposure.${value as "codemode" | "direct" | "hidden"}`)
+                            : value}
                         </SectionSelect.Item>
                       ))}
                     </SectionSelect.Content>
@@ -256,15 +271,19 @@ export function McpGuidedEditor({
                 </label>
               ) : (
                 <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
-                  {key === "url" ? "URL" : key === "command" ? "Command" : `Replacement ${key}`}
+                  {key === "url"
+                    ? "URL"
+                    : key === "command"
+                      ? t("mcp.command")
+                      : t("mcp.replacementField", { field: key })}
                   <TextField.Root
                     id={`${prefix}-${key}-value`}
                     aria-label={
                       key === "url"
-                        ? "Connection URL"
+                        ? t("mcp.connectionUrl")
                         : key === "command"
-                          ? "Connection command"
-                          : `MCP ${key} replacement`
+                          ? t("mcp.connectionCommand")
+                          : t("mcp.fieldReplacement", { field: key })
                     }
                     type={key === "timeout" ? "number" : "text"}
                     value={String(patch[key] ?? "")}
@@ -286,11 +305,11 @@ export function McpGuidedEditor({
       aria-labelledby={`${prefix}-heading`}
     >
       <VisuallyHidden.Root asChild>
-        <legend id={`${prefix}-heading`}>Connection details</legend>
+        <legend id={`${prefix}-heading`}>{t("mcp.connectionDetails")}</legend>
       </VisuallyHidden.Root>
       {existing && (
         <Prose size="2" id={`${prefix}-replacement-help`}>
-          Saved values are hidden. Select only the fields to replace.
+          {t("mcp.replacementHelp")}
         </Prose>
       )}
       <Text
@@ -300,7 +319,7 @@ export function McpGuidedEditor({
         className="mcp-guided-toolbar"
         htmlFor={`${prefix}-transport`}
       >
-        Connection type
+        {t("mcp.connectionType")}
         <SectionSelect.Root
           value={
             patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : "preserve"
@@ -321,28 +340,28 @@ export function McpGuidedEditor({
             onChange(JSON.stringify(next, null, 2))
           }}
         >
-          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label="Connection type" />
+          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label={t("mcp.connectionType")} />
           <SectionSelect.Content>
             {existing && (
-              <SectionSelect.Item value="preserve">Keep saved transport</SectionSelect.Item>
+              <SectionSelect.Item value="preserve">{t("mcp.keepTransport")}</SectionSelect.Item>
             )}
             <SectionSelect.Item value="stdio">
-              {existing ? "Replace with stdio command" : "stdio command"}
+              {existing ? t("mcp.replaceStdio") : t("mcp.stdioCommand")}
             </SectionSelect.Item>
             <SectionSelect.Item value="http">
-              {existing ? "Replace with HTTP endpoint" : "HTTP endpoint"}
+              {existing ? t("mcp.replaceHttp") : t("mcp.httpEndpoint")}
             </SectionSelect.Item>
           </SectionSelect.Content>
         </SectionSelect.Root>
       </Text>
       {fields(false)}
       <details className="mcp-optional-fields">
-        <summary>Advanced connection fields</summary>
+        <summary>{t("mcp.advancedFields")}</summary>
         {fields(true)}
       </details>
       <Box hidden={transport !== "stdio"} className="mcp-arguments" mt="5">
         <Heading as="h4" size="2" mb="3">
-          Arguments
+          {t("mcp.arguments")}
         </Heading>
         {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
           // Arguments are controlled positional fields with no row state; additions append only.
@@ -356,10 +375,10 @@ export function McpGuidedEditor({
             mb="3"
           >
             <Text as="label" size="2" htmlFor={`${prefix}-arg-${index}`}>
-              Argument {index + 1}
+              {t("mcp.argument", { number: index + 1 })}
               <TextField.Root
                 id={`${prefix}-arg-${index}`}
-                aria-label={`MCP argument ${index + 1}`}
+                aria-label={t("mcp.argumentLabel", { number: index + 1 })}
                 value={arg}
                 onChange={(e) =>
                   set(
@@ -379,7 +398,7 @@ export function McpGuidedEditor({
               }
             >
               <TrashIcon aria-hidden="true" />
-              Remove argument {index + 1}
+              {t("mcp.removeArgument", { number: index + 1 })}
             </Button>
           </Flex>
         ))}
@@ -389,11 +408,11 @@ export function McpGuidedEditor({
             onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
           >
             <PlusIcon aria-hidden="true" />
-            Add argument
+            {t("mcp.addArgument")}
           </Button>
           {existing && "args" in patch && (
             <Button variant="soft" onClick={() => omit("args")}>
-              Keep saved arguments
+              {t("mcp.keepArguments")}
             </Button>
           )}
         </Flex>

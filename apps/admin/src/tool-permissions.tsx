@@ -14,13 +14,17 @@ import {
 } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
+import { t } from "./i18n.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
 import { Panel, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
 
 export function defaultPermissionSummary(policy: Policy) {
   const effective = effectivePolicy(policy, 0)
-  return `${countText(effective.tools.length, "default tool name")} within global permission · ${countText(effective.servers.length, "default MCP server gate")} within global permission`
+  return t("permissions.defaultSummary", {
+    tools: countText(effective.tools.length, "default tool name"),
+    servers: countText(effective.servers.length, "default MCP server gate"),
+  })
 }
 
 export function permissionNames(
@@ -72,11 +76,31 @@ export function permissionResult(
   const effective = chat?.effective ?? effectivePolicy(policy, 0)
   const selection = chat?.selection[key] ?? policy.defaults[key] ?? []
   const source = effective.sources[key] === "chat" ? "Chat override" : "Shared defaults"
+  const sourceLabel = t(
+    effective.sources[key] === "chat" ? "permissions.sourceChat" : "permissions.sourceDefaults",
+  )
   const gates = key === "tools" ? inventory.mcp.filter((server) => server.tools.includes(name)) : []
   const blockedServers = gates.filter((server) => !effective.servers.includes(server.name))
   return {
     selected: selection.includes(name),
     source,
+    sourceLabel,
+    statusLabel: !policy[key].includes(name)
+      ? t("permissions.unavailableGlobally")
+      : !effective[key].includes(name)
+        ? t("permissions.notSelected")
+        : blockedServers.length
+          ? t("permissions.serverBlocked")
+          : t("permissions.allowed"),
+    blockingLabel: !policy[key].includes(name)
+      ? t("permissions.globalPolicy")
+      : !selection.includes(name)
+        ? sourceLabel
+        : blockedServers.length
+          ? t("permissions.serverBlocking", {
+              servers: blockedServers.map((server) => server.name).join(", "),
+            })
+          : null,
     status: !policy[key].includes(name)
       ? "Unavailable globally"
       : !effective[key].includes(name)
@@ -165,7 +189,7 @@ export function toolPermissionGroups(names: string[], inventory: Inventory): Too
   return [
     {
       id: "built-in",
-      label: "Built-in tools",
+      label: t("permissions.builtIn"),
       names: names.filter((name) => inventory.builtInTools?.includes(name)),
     },
     ...inventory.mcp.map((server) => ({
@@ -173,7 +197,11 @@ export function toolPermissionGroups(names: string[], inventory: Inventory): Too
       label: `MCP: ${server.name}`,
       names: names.filter((name) => server.tools.includes(name)),
     })),
-    { id: "unknown", label: "Unknown source", names: names.filter((name) => !known.has(name)) },
+    {
+      id: "unknown",
+      label: t("permissions.unknownSource"),
+      names: names.filter((name) => !known.has(name)),
+    },
   ].filter((group) => group.names.length > 0)
 }
 
@@ -212,10 +240,10 @@ function PermissionGroup({
   const id = useId()
   const columns = (
     <div className="permission-matrix-heading" aria-hidden="true">
-      <strong>{group ? "Tool name" : "Server name"}</strong>
-      <strong hidden={!globalEditing}>Globally allowed</strong>
-      <strong>Default chat permission</strong>
-      <strong>Effective permission</strong>
+      <strong>{group ? t("permissions.toolName") : t("permissions.serverName")}</strong>
+      <strong hidden={!globalEditing}>{t("permissions.globalAllowed")}</strong>
+      <strong>{t("permissions.defaultChat")}</strong>
+      <strong>{t("permissions.effective")}</strong>
     </div>
   )
   const content = <ul className="permission-list">{children}</ul>
@@ -367,88 +395,91 @@ export function ToolPermissions({
       ref={matrix}
       data-global-editing={globalEditing}
     >
-      <section ref={scope} className="permission-scope" aria-label="Permission editing scope">
+      <section ref={scope} className="permission-scope" aria-label={t("permissions.editScope")}>
         <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="3">
-          {globalEditing ? "Editing global limits and shared defaults" : "Editing shared defaults"}
+          {globalEditing ? t("permissions.editGlobalDefaults") : t("permissions.editDefaults")}
         </Heading>
-        <Flex gap="2" wrap="wrap" aria-label="Permission scope">
+        <Flex gap="2" wrap="wrap" aria-label={t("permissions.scope")}>
           <Button
             variant="soft"
             aria-pressed={globalEditing}
             onClick={() => setGlobalEditing(true)}
           >
-            Global policy
+            {t("permissions.globalPolicy")}
           </Button>
           <Button
             variant="soft"
             aria-pressed={!globalEditing}
             onClick={() => setGlobalEditing(false)}
           >
-            Shared defaults
+            {t("permissions.sourceDefaults")}
           </Button>
           <Button
             variant="soft"
             aria-label={
-              selectedChat ? `Selected chat ${selectedChat}` : "Selected chat · none selected"
+              selectedChat
+                ? t("permissions.selectedChat", { id: selectedChat })
+                : t("permissions.noSelectedChat")
             }
             disabled={!selectedChat}
             onClick={() => onChat(selectedChat)}
           >
-            {selectedChat ? `Chat ${selectedChat}` : "Chat"}
+            {selectedChat ? t("permissions.chatName", { id: selectedChat }) : t("permissions.chat")}
           </Button>
         </Flex>
         <Text as="p" size="1">
-          {globalEditing
-            ? "Global policy limits every chat."
-            : "Chats without a tool override use these defaults."}
+          {globalEditing ? t("permissions.globalHelp") : t("permissions.defaultsHelp")}
         </Text>
         {(changes.global > 0 || changes.defaults > 0) && (
           <Text as="p" size="2">
-            {countText(changes.global, "changed global tool/server name")} ·{" "}
-            {countText(changes.defaults, "changed shared-default tool/server name")} · Includes
-            filtered names
+            {t("permissions.changedCounts", {
+              global: countText(changes.global, "changed global tool/server name"),
+              defaults: countText(changes.defaults, "changed shared-default tool/server name"),
+            })}
           </Text>
         )}
       </section>
-      <Callout.Root color="amber" aria-label="Shell and file credential access">
-        <Callout.Text>
-          Shell and file tools are not sandboxed. They can access process-readable credentials.
-          Skill selection does not grant tool permission.
-        </Callout.Text>
+      <Callout.Root color="amber" aria-label={t("permissions.credentialAccess")}>
+        <Callout.Text>{t("permissions.hostWarning")}</Callout.Text>
       </Callout.Root>
       {conflicts.length > 0 && (
-        <section className="permission-conflicts" aria-label="Retained permission conflicts">
+        <section className="permission-conflicts" aria-label={t("permissions.retainedConflicts")}>
           <Heading as="h3" size="3">
-            Cannot save: {countText(conflicts.length, "tool/server name")} outside Global policy
+            {t("permissions.cannotSaveCount", {
+              count: countText(conflicts.length, "tool/server name"),
+            })}
           </Heading>
           <Text as="p" size="2">
-            Conflicts include filtered names and collapsed groups. Clear retained selections or
-            restore global permission.
+            {t("permissions.conflictsHelp")}
           </Text>
           <ul>
             {conflicts.map((conflict) => (
               <li key={`${conflict.key}:${conflict.name}`}>
-                <Code>{conflict.name}</Code> · {conflict.defaults ? "Shared defaults; " : ""}
+                <Code>{conflict.name}</Code> ·{" "}
+                {conflict.defaults ? t("permissions.conflictDefaults") : ""}
                 {conflict.chats.length > 0
-                  ? `${countText(conflict.chats.length, "explicit chat override")}: ${conflict.chats.join(", ")}`
+                  ? t("permissions.chatOverrides", {
+                      count: countText(conflict.chats.length, "explicit chat override"),
+                      chats: conflict.chats.join(", "),
+                    })
                   : ""}
                 <Button
                   variant="ghost"
                   onClick={() => repairPermission(conflict.key, conflict.name)}
                 >
-                  Review global permission for {conflict.name}
+                  {t("permissions.reviewGlobalName", { name: conflict.name })}
                 </Button>
                 {conflict.defaults && (
                   <Button
                     variant="ghost"
                     onClick={() => repairPermission(conflict.key, conflict.name, false)}
                   >
-                    Review shared selection for {conflict.name}
+                    {t("permissions.reviewSharedName", { name: conflict.name })}
                   </Button>
                 )}
                 {conflict.chats.map((id) => (
                   <Button key={id} variant="ghost" onClick={() => onChat(id)}>
-                    Review chat {id}
+                    {t("permissions.reviewChat", { id })}
                   </Button>
                 ))}
               </li>
@@ -458,7 +489,7 @@ export function ToolPermissions({
       )}
       <TableToolbar className="tool-search">
         <label className="form-field" htmlFor={`${prefix}-search`}>
-          Search tools and servers
+          {t("permissions.search")}
           <TextField.Root
             id={`${prefix}-search`}
             value={query}
@@ -466,19 +497,21 @@ export function ToolPermissions({
           />
         </label>
         <label className="form-field" htmlFor={`${prefix}-filter`}>
-          Tool status
+          {t("permissions.toolStatus")}
           <Select.Root
             value={filter}
             onValueChange={(value) => setFilter(value as PermissionFilter)}
           >
-            <Select.Trigger id={`${prefix}-filter`} aria-label="Tool status" />
+            <Select.Trigger id={`${prefix}-filter`} aria-label={t("permissions.toolStatus")} />
             <Select.Content>
-              <Select.Item value="all">All</Select.Item>
-              <Select.Item value="selected">Selected by default</Select.Item>
-              <Select.Item value="blocked">Blocked by policy</Select.Item>
-              <Select.Item value="changed">Pending changes</Select.Item>
-              <Select.Item value="missing">Not in inventory</Select.Item>
-              <Select.Item value="unavailable">Capability unavailable</Select.Item>
+              <Select.Item value="all">{t("permissions.all")}</Select.Item>
+              <Select.Item value="selected">{t("permissions.selectedDefault")}</Select.Item>
+              <Select.Item value="blocked">{t("permissions.blockedPolicy")}</Select.Item>
+              <Select.Item value="changed">{t("permissions.pendingChanges")}</Select.Item>
+              <Select.Item value="missing">{t("permissions.notInventory")}</Select.Item>
+              <Select.Item value="unavailable">
+                {t("permissions.capabilityUnavailable")}
+              </Select.Item>
             </Select.Content>
           </Select.Root>
         </label>
@@ -487,14 +520,19 @@ export function ToolPermissions({
           aria-pressed={globalEditing}
           onClick={() => setGlobalEditing(!globalEditing)}
         >
-          Edit global limits
+          {t("permissions.editGlobal")}
         </Button>
       </TableToolbar>
       {filtering && (
         <Flex gap="2" wrap="wrap" align="center">
           <Text role="status" size="2">
-            {countText(new Set(groups.flatMap((group) => group.names)).size, "matching tool")} ·{" "}
-            {countText(servers.length, "matching server")}
+            {t("permissions.matchCounts", {
+              tools: countText(
+                new Set(groups.flatMap((group) => group.names)).size,
+                "matching tool",
+              ),
+              servers: countText(servers.length, "matching server"),
+            })}
           </Text>
           <Button
             variant="ghost"
@@ -503,33 +541,35 @@ export function ToolPermissions({
               setFilter("all")
             }}
           >
-            Clear tool filters
+            {t("permissions.clearFilters")}
           </Button>
         </Flex>
       )}
       {filtering && !groups.length && !servers.length && (
-        <Prose role="status">No matching tools or servers.</Prose>
+        <Prose role="status">{t("permissions.noMatches")}</Prose>
       )}
       {(["tools", "servers"] as const).map((key) => (
         <Panel
           key={key}
           className="permission-section"
           hidden={filtering && (key === "tools" ? !groups.length : !servers.length)}
-          aria-label={key === "tools" ? "Individual tool permissions" : "MCP server permissions"}
+          aria-label={
+            key === "tools"
+              ? t("permissions.individualPermissions")
+              : t("permissions.serverPermissions")
+          }
         >
           <Heading as="h3" size="3" className="section-heading">
-            {key === "tools" ? "Tools" : "MCP servers"}
+            {key === "tools" ? t("permissions.tools") : t("permissions.servers")}
           </Heading>
           {key === "servers" && (
             <Text as="p" size="2" color="gray">
-              A server gate does not approve its tools. Each tool also needs permission. Connection
-              enabled state is separate.
+              {t("permissions.gateHelp")}
             </Text>
           )}
           {!permissionNames(key, policy, saved, inventory).length && (
             <Text as="p" size="2" className="empty-state">
-              No {key === "tools" ? "tool names" : "MCP servers"} known. Manual tool-name approval
-              remains available below.
+              {t(key === "tools" ? "permissions.noKnownTools" : "permissions.noKnownServers")}
             </Text>
           )}
           {key === "tools" && (
@@ -543,18 +583,23 @@ export function ToolPermissions({
               className="permission-toolbar"
             >
               <Text size="2" color="gray">
-                {countText(permissionNames(key, policy, saved, inventory).length, "tool name")} ·{" "}
-                {countText(groups.length, "source group")}
+                {t("permissions.groupCounts", {
+                  tools: countText(
+                    permissionNames(key, policy, saved, inventory).length,
+                    "tool name",
+                  ),
+                  groups: countText(groups.length, "source group"),
+                })}
               </Text>
               <Flex gap="2" wrap="wrap">
                 <Button
                   variant="soft"
                   onClick={() => changeExpansion(allGroups.map((group) => group.id))}
                 >
-                  Expand all
+                  {t("permissions.expandAll")}
                 </Button>
                 <Button variant="soft" onClick={() => changeExpansion([])}>
-                  Collapse all
+                  {t("permissions.collapseAll")}
                 </Button>
               </Flex>
             </Flex>
@@ -564,7 +609,7 @@ export function ToolPermissions({
             : [
                 {
                   id: "servers",
-                  label: "MCP server gates",
+                  label: t("permissions.serverGates"),
                   names: servers,
                 },
               ]
@@ -613,8 +658,8 @@ export function ToolPermissions({
                         <Flex direction="column" gap="1" mt="1">
                           <Badge color={availability.available ? "gray" : "orange"}>
                             {availability.available
-                              ? "Capability configured"
-                              : "Capability unavailable"}
+                              ? t("permissions.capabilityConfigured")
+                              : t("permissions.capabilityUnavailable")}
                           </Badge>
                           <Text as="p" size="2">
                             {availability.reason}
@@ -623,18 +668,19 @@ export function ToolPermissions({
                       )}
                       {servers.length > 1 && (
                         <Text as="p" size="2">
-                          MCP server: {servers.map((m) => m.name).join(", ")} · server gate also
-                          required
+                          {t("permissions.serverRequirement", {
+                            servers: servers.map((m) => m.name).join(", "),
+                          })}
                         </Text>
                       )}
                       {key === "tools" && !inventory.tools.includes(name) && !servers.length && (
                         <Text as="p" size="2">
-                          <Badge color="gray">Not in inventory</Badge>
+                          <Badge color="gray">{t("permissions.notInventory")}</Badge>
                         </Text>
                       )}
                       {key === "servers" && !inventory.mcp.some((m) => m.name === name) && (
                         <Text as="p" size="2">
-                          <Badge color="gray">Not in inventory</Badge>
+                          <Badge color="gray">{t("permissions.notInventory")}</Badge>
                         </Text>
                       )}
                     </div>
@@ -646,7 +692,10 @@ export function ToolPermissions({
                     >
                       <Checkbox
                         id={`${id}-global`}
-                        aria-label={`Globally allow ${key === "tools" ? "tool" : "server"} ${name}`}
+                        aria-label={t(
+                          key === "tools" ? "permissions.globalTool" : "permissions.globalServer",
+                          { name },
+                        )}
                         checked={global}
                         onCheckedChange={(checked) =>
                           onChange({
@@ -658,7 +707,9 @@ export function ToolPermissions({
                           })
                         }
                       />
-                      <span className="permission-mobile-label">Globally allowed</span>
+                      <span className="permission-mobile-label">
+                        {t("permissions.globalAllowed")}
+                      </span>
                     </label>
                     <div>
                       <label
@@ -669,7 +720,12 @@ export function ToolPermissions({
                         <Checkbox
                           id={`${id}-default`}
                           aria-describedby={`${id}-status`}
-                          aria-label={`Default chat permission for ${key === "tools" ? "tool" : "server"} ${name}`}
+                          aria-label={t(
+                            key === "tools"
+                              ? "permissions.defaultTool"
+                              : "permissions.defaultServer",
+                            { name },
+                          )}
                           checked={selected}
                           disabled={!global && !selected}
                           onCheckedChange={(checked) =>
@@ -685,38 +741,45 @@ export function ToolPermissions({
                             })
                           }
                         />
-                        <span className="permission-mobile-label">Use by default</span>
+                        <span className="permission-mobile-label">
+                          {t("permissions.useDefault")}
+                        </span>
                       </label>
                     </div>
                     <div>
                       <div id={`${id}-status`}>
                         <StatusLabel tone={!global && selected ? "warning" : "neutral"}>
-                          {result.status}
+                          {result.statusLabel}
                         </StatusLabel>
                         {!global && selected && (
                           <Text as="p" size="2">
-                            Default selection retained.
+                            {t("permissions.selectionRetained")}
                           </Text>
                         )}
                       </div>
                       <Text as="p" size="2">
-                        Configured: {selected ? "Allow" : "Deny"} · {result.source}
+                        {t("permissions.configuredSummary", {
+                          selection: t(selected ? "permissions.allow" : "permissions.deny"),
+                          source: result.sourceLabel,
+                        })}
                       </Text>
                       {result.blocking && (
                         <div>
                           <Text as="p" size="2">
-                            Blocking source: {result.blocking}
+                            {t("permissions.blockingSource", {
+                              source: result.blockingLabel ?? "",
+                            })}
                           </Text>
                           {!global ? (
                             <Button variant="ghost" onClick={() => repairPermission(key, name)}>
-                              Review global permission
+                              {t("permissions.reviewGlobal")}
                             </Button>
                           ) : !selected ? (
                             <Button
                               variant="ghost"
                               onClick={() => repairPermission(key, name, false)}
                             >
-                              Review shared selection
+                              {t("permissions.reviewShared")}
                             </Button>
                           ) : (
                             result.blockedServers.map((server) => (
@@ -731,7 +794,7 @@ export function ToolPermissions({
                                   )
                                 }
                               >
-                                Review server gate {server.name}
+                                {t("permissions.reviewServer", { name: server.name })}
                               </Button>
                             ))
                           )}
@@ -739,42 +802,42 @@ export function ToolPermissions({
                       )}
                       {servers.map((server) => (
                         <Text key={server.name} as="p" size="2">
-                          {server.name}:{" "}
-                          {policy.servers.includes(server.name) &&
-                          policy.defaults.servers?.includes(server.name)
-                            ? "Gate allowed"
-                            : "Blocked by server permission"}
-                          .
+                          {t("permissions.serverGateState", {
+                            name: server.name,
+                            state: t(
+                              policy.servers.includes(server.name) &&
+                                policy.defaults.servers?.includes(server.name)
+                                ? "permissions.gateAllowed"
+                                : "permissions.serverPermissionBlocked",
+                            ),
+                          })}
                         </Text>
                       ))}
                     </div>
                     {removed && (
                       <Text as="p" size="2" color="orange" className="permission-impact">
-                        Global removal blocks this capability for every chat after a valid policy
-                        save.
+                        {t("permissions.removalImpact")}
                       </Text>
                     )}
                     {restored && (
                       <Text as="p" size="2" color="orange" className="permission-impact">
-                        Global approval makes retained default or explicit chat selections effective
-                        again, subject to other required gates.
+                        {t("permissions.restoreImpact")}
                       </Text>
                     )}
                     {!global && (selected || refs.length > 0) && (
                       <Callout.Root color="orange" className="permission-impact">
                         <Callout.Text>
-                          Cannot save while this name remains selected:{" "}
-                          {selected ? "shared defaults; " : ""}
-                          {refs.length > 0 ? "Explicit chat selections; " : ""}
-                          Clear these selections explicitly or restore global permission. No
-                          selections were deleted.
+                          {t("permissions.cannotSaveRetained", {
+                            defaults: selected ? t("permissions.retainedDefaults") : "",
+                            chats: refs.length > 0 ? t("permissions.retainedChats") : "",
+                          })}
                         </Callout.Text>
                       </Callout.Root>
                     )}
                     {(global !== saved[key].includes(name) ||
                       selected !== (saved.defaults[key]?.includes(name) ?? false)) && (
                       <Badge color="orange" className="permission-pending">
-                        Pending policy change
+                        {t("permissions.pendingPolicy")}
                       </Badge>
                     )}
                   </li>
@@ -785,38 +848,28 @@ export function ToolPermissions({
         </Panel>
       ))}
       <details className="permission-rules">
-        <summary>Permission rules and inheritance</summary>
+        <summary>{t("permissions.rules")}</summary>
         <Text as="p" size="2" color="gray">
-          Shared defaults select tools for chats without an override, within global limits. Not in
-          inventory means the name is absent from the loaded inventory; permissions remain editable.
-          Capability unavailable means a local requirement is missing, not a permission denial.
-          Global permission alone does not install a tool. Global permission is the system-wide
-          ceiling. Defaults apply only to inheriting chats. Explicit overrides stay in chat details.
-          Global changes never clear stored selections. MCP requires both server and individual tool
-          permission.
+          {t("permissions.rulesHelp")}
         </Text>
         <Text as="p" size="2">
-          Ordinary built-in tools can be enabled when first registered. MCP discovery records
-          published names without granting permissions. Approval-only tools such as generate_image
-          need explicit approval. Manual removals and explicit chat overrides are preserved. MCP
-          execution also requires its server gate.
+          {t("permissions.registrationHelp")}
         </Text>
         <Panel className="permission-summary">
           <DataList.Root size="2" className="data-list">
             <DataList.Item className="data-row">
-              <DataList.Label>Saved defaults</DataList.Label>
+              <DataList.Label>{t("permissions.savedDefaults")}</DataList.Label>
               <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
             </DataList.Item>
             {dirty && (
               <DataList.Item className="data-row">
-                <DataList.Label>Policy draft defaults</DataList.Label>
+                <DataList.Label>{t("permissions.draftDefaults")}</DataList.Label>
                 <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
               </DataList.Item>
             )}
           </DataList.Root>
           <Prose size="2" color="gray" className="section-copy">
-            These counts describe policy selections, not installed tools or verified provider
-            access.
+            {t("permissions.countsHelp")}
           </Prose>
         </Panel>
       </details>

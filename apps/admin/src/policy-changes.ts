@@ -1,11 +1,12 @@
 import type { Policy, ProviderSettings, Selection } from "./api.js"
+import { t } from "./i18n.js"
 import type { EditorTarget } from "./navigation.js"
 
 export type PolicyChange = { label: string; targets: EditorTarget[] }
 
 /** Stage one explicit approval without changing chat overrides or other access scopes. */
 export function withChatAccess(policy: Policy, id: number, allowed: boolean): Policy {
-  if (!Number.isSafeInteger(id) || id === 0) throw new Error("Enter a valid, non-zero Telegram ID")
+  if (!Number.isSafeInteger(id) || id === 0) throw new Error(t("policy.invalidTelegramId"))
   const key = id > 0 ? "privateUsers" : "groups"
   return {
     ...policy,
@@ -22,12 +23,12 @@ const differentSelection = (a: unknown, b: unknown) =>
     : different(a, b)
 
 const selectionFields = [
-  ["tools", "Authorized tools"],
-  ["skills", "Enabled skills"],
-  ["servers", "Authorized MCP servers"],
-  ["models", "Allowed models"],
-  ["model", "Model"],
-  ["thinking", "Thinking level"],
+  ["tools", "policy.field.tools"],
+  ["skills", "policy.field.skills"],
+  ["servers", "policy.field.servers"],
+  ["models", "policy.field.models"],
+  ["model", "policy.field.model"],
+  ["thinking", "policy.field.thinking"],
 ] as const
 
 function selectionChanges(
@@ -41,16 +42,16 @@ function selectionChanges(
     const source =
       value == null
         ? chat
-          ? "inherit shared defaults"
-          : "no shared default"
+          ? t("policy.source.inherit")
+          : t("policy.source.noDefault")
         : Array.isArray(value) && value.length === 0
           ? chat
-            ? "explicit empty override"
-            : "explicit empty selection"
+            ? t("policy.source.emptyOverride")
+            : t("policy.source.emptySelection")
           : chat
-            ? "explicit override"
-            : "explicit selection"
-    return [`${label} (${source})`]
+            ? t("policy.source.override")
+            : t("policy.source.selection")
+    return [t("policy.selection", { field: t(label), source })]
   })
 }
 
@@ -59,23 +60,23 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
   for (const id of new Set([...saved, ...draft].map((provider) => provider.id))) {
     const before = saved.find((provider) => provider.id === id)
     const after = draft.find((provider) => provider.id === id)
-    if (!before) fields.add("Added provider settings")
-    if (!after) fields.add("Removed provider settings")
+    if (!before) fields.add(t("policy.provider.added"))
+    if (!after) fields.add(t("policy.provider.removed"))
     for (const [key, label] of [
-      ["enabled", "Enabled switch"],
-      ["baseUrl", "Endpoint URL"],
-      ["api", "API protocol"],
+      ["enabled", "policy.field.enabled"],
+      ["baseUrl", "policy.field.baseUrl"],
+      ["api", "policy.field.api"],
     ] as const)
-      if (different(before?.[key], after?.[key])) fields.add(label)
+      if (different(before?.[key], after?.[key])) fields.add(t(label))
     if (different(before?.models, after?.models)) {
       const models = new Set([...(before?.models ?? []), ...(after?.models ?? [])].map((m) => m.id))
       const changed = [
-        ["id", "Model ID"],
-        ["name", "Display name"],
-        ["reasoning", "Reasoning support"],
-        ["image", "Image support"],
-        ["contextWindow", "Context window"],
-        ["maxTokens", "Maximum output tokens"],
+        ["id", "policy.field.modelId"],
+        ["name", "policy.field.name"],
+        ["reasoning", "policy.field.reasoning"],
+        ["image", "policy.field.image"],
+        ["contextWindow", "policy.field.contextWindow"],
+        ["maxTokens", "policy.field.maxTokens"],
       ] as const
       const labels = changed
         .filter(([key]) =>
@@ -86,7 +87,7 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
             ),
           ),
         )
-        .map(([, label]) => label)
+        .map(([, label]) => t(label))
       if (
         labels.length ||
         different(
@@ -94,8 +95,14 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
           after?.models.map((model) => model.id),
         )
       ) {
-        const detail = labels.join(", ") || (before && after ? "entry order" : "")
-        fields.add(`Model definitions${detail ? ` (${detail})` : ""}`)
+        const detail =
+          labels.join(t("policy.listSeparator")) ||
+          (before && after ? t("policy.provider.entryOrder") : "")
+        fields.add(
+          detail
+            ? t("policy.provider.modelDetails", { detail })
+            : t("policy.provider.modelDefinitions"),
+        )
       }
     }
   }
@@ -107,7 +114,7 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
       draft.map((provider) => provider.id),
     )
   )
-    fields.add("Provider order")
+    fields.add(t("policy.provider.order"))
   return [...fields]
 }
 
@@ -115,11 +122,11 @@ function providerChanges(saved: ProviderSettings[], draft: ProviderSettings[]): 
 export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[] {
   const changes: PolicyChange[] = []
   for (const key of ["privateUsers", "groups"] as const) {
-    const label = key === "privateUsers" ? "Private-message access" : "Group/channel access"
+    const label = t(key === "privateUsers" ? "policy.scope.privateUsers" : "policy.scope.groups")
     for (const id of draft[key])
       if (!saved[key].includes(id))
         changes.push({
-          label: `${label}: approve ${id}`,
+          label: t("policy.access.approve", { scope: label, id }),
           targets: [
             {
               page: "Chats",
@@ -130,7 +137,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     for (const id of saved[key])
       if (!draft[key].includes(id))
         changes.push({
-          label: `${label}: revoke ${id}`,
+          label: t("policy.access.revoke", { scope: label, id }),
           targets: [
             {
               page: "Chats",
@@ -144,9 +151,13 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     const after = draft.chats[id]
     const fields = selectionChanges(before, after, true)
     if (before?.enabled !== after?.enabled)
-      fields.push(after ? "Enabled switch" : "Enabled switch (reset)")
+      fields.push(t(after ? "policy.field.enabled" : "policy.field.enabledReset"))
     if (fields.length) {
-      const action = !before ? "added settings; " : !after ? "removed settings; " : ""
+      const message = !before
+        ? "policy.chat.added"
+        : !after
+          ? "policy.chat.removed"
+          : "policy.chat.changed"
       const changed = selectionFields.find(([key]) =>
         differentSelection(before?.[key] ?? null, after?.[key] ?? null),
       )?.[0]
@@ -159,7 +170,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
               ? "#model-selection"
               : "#chat-policy-enabled"
       changes.push({
-        label: `Chat ${id}: ${action}${fields.join(", ")} — this chat only; shared defaults and access approval unchanged.`,
+        label: t(message, { id, fields: fields.join(t("policy.listSeparator")) }),
         targets: [{ page: "Chats", chat: id, selector }],
       })
     }
@@ -175,13 +186,13 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
     for (const username of after)
       if (!before.includes(username))
         changes.push({
-          label: `GitHub mentions: ${action} username ${username} — automatic replies on GitHub; no Telegram chat or tool permission dependency.`,
+          label: t(action === "add" ? "policy.github.add" : "policy.github.remove", { username }),
           targets: [{ page: "GitHub mentions", selector: "#github-mention-authors" }],
         })
   const defaults = selectionChanges(saved.defaults, draft.defaults, false)
   if (defaults.length)
     changes.push({
-      label: `Shared defaults: ${defaults.join(", ")} — affects chats inheriting each changed field; explicit overrides unchanged; does not grant access.`,
+      label: t("policy.defaults.changed", { fields: defaults.join(t("policy.listSeparator")) }),
       targets: selectionFields
         .filter(([key]) =>
           differentSelection(saved.defaults[key] ?? null, draft.defaults[key] ?? null),
@@ -196,14 +207,14 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
         ),
     })
   for (const [key, label] of [
-    ["tools", "Global tool availability"],
-    ["skills", "Global skill availability"],
-    ["servers", "Global MCP availability"],
-    ["models", "Global model availability"],
+    ["tools", "policy.global.tools"],
+    ["skills", "policy.global.skills"],
+    ["servers", "policy.global.servers"],
+    ["models", "policy.global.models"],
   ] as const)
     if (differentSelection(saved[key], draft[key]))
       changes.push({
-        label: `${label} (${key}): limits shared defaults and all chat selections, including explicit overrides; does not grant access.`,
+        label: t("policy.global.changed", { scope: t(label), key }),
         targets: [
           key === "skills"
             ? { page: "Skills", selector: "#skill-search" }
@@ -215,7 +226,7 @@ export function policyChangeEntries(saved: Policy, draft: Policy): PolicyChange[
   const providers = providerChanges(saved.providers, draft.providers)
   if (providers.length)
     changes.push({
-      label: `Provider configuration: ${providers.join(", ")} — global provider settings; may affect chats using these providers, including explicit overrides.`,
+      label: t("policy.provider.changed", { fields: providers.join(t("policy.listSeparator")) }),
       targets: [{ page: "Model Providers", selector: "#endpoint-provider-id" }],
     })
   return changes

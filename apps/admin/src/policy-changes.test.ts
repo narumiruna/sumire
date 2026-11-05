@@ -1,6 +1,7 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { ProviderSettings, Selection } from "./api.js"
+import { setLocale } from "./i18n.js"
 import {
   policyChangeCount,
   policyChangeEntries,
@@ -473,6 +474,139 @@ describe("policyChanges", () => {
     ])
       expect(text).not.toContain(secret)
     expect({ saved, draft }).toEqual(before)
+  })
+})
+
+describe("localized policy review", () => {
+  afterEach(() => setLocale("en"))
+
+  it.each([
+    {
+      locale: "zh-TW",
+      approval: "私人訊息存取權：核准 7",
+      group: "群組／頻道存取權：核准 -7",
+      chat: "聊天 42：已授權的工具（明確的空白覆寫）、啟用開關",
+      defaults: "共用預設值：模型（明確選取）",
+      global: "全域工具可用性（tools）",
+      provider: "供應商設定：模型定義（項目順序）",
+      username: "GitHub 提及：新增使用者名稱 octocat-unchanged",
+      validation: "請輸入有效且非零的 Telegram ID",
+    },
+    {
+      locale: "ja",
+      approval: "ダイレクトメッセージのアクセス権：7 を承認",
+      group: "グループ／チャンネルのアクセス権：-7 を承認",
+      chat: "チャット 42：許可されたツール（明示的な空の上書き）、有効化スイッチ",
+      defaults: "共通の既定値：モデル（明示的な選択）",
+      global: "グローバルなツールの利用可否（tools）",
+      provider: "プロバイダー設定：モデル定義（項目の順序）",
+      username: "GitHub メンション：ユーザー名 octocat-unchanged を追加",
+      validation: "有効なゼロ以外の Telegram ID を入力してください",
+    },
+  ] as const)("uses $locale at invocation without changing counts or editor targets", (text) => {
+    const saved = initialPolicy()
+    saved.chats["42"] = { ...inherited, enabled: true }
+    saved.providers = [{ ...provider, models: [providerModel, { ...providerModel, id: "other" }] }]
+    const draft = structuredClone(saved)
+    draft.privateUsers = [7]
+    draft.groups = [-7]
+    draft.githubNotifications.allowedUsernames = ["octocat-unchanged"]
+    draft.chats["42"] = { ...inherited, tools: [], enabled: false }
+    draft.defaults.model = "sensitive-provider/private-model"
+    draft.tools = ["sensitive-tool"]
+    draft.providers[0]?.models.reverse()
+    const original = structuredClone({ saved, draft })
+    const english = policyChangeEntries(saved, draft)
+    const count = policyChangeCount(saved, draft)
+
+    setLocale(text.locale)
+    const localized = policyChangeEntries(saved, draft)
+    expect(localized.map((change) => change.targets)).toEqual(
+      english.map((change) => change.targets),
+    )
+    expect(policyChangeCount(saved, draft)).toBe(count)
+    for (const label of [
+      text.approval,
+      text.group,
+      text.chat,
+      text.defaults,
+      text.global,
+      text.provider,
+      text.username,
+    ])
+      expect(localized.some((change) => change.label.includes(label))).toBe(true)
+    for (const value of [
+      "sensitive-tool",
+      "sensitive-provider",
+      "private-model",
+      "private.example.test",
+    ])
+      expect(JSON.stringify(localized)).not.toContain(value)
+    expect(() => withChatAccess(saved, 0, true)).toThrow(text.validation)
+    expect(withChatAccess(saved, 7, true)).toEqual({ ...saved, privateUsers: [7] })
+    expect({ saved, draft }).toEqual(original)
+
+    setLocale("en")
+    expect(policyChangeEntries(saved, draft)).toEqual(english)
+  })
+
+  it.each([
+    {
+      locale: "zh-TW",
+      fields: [
+        "已授權的工具",
+        "已啟用的技能",
+        "已授權的 MCP 伺服器",
+        "允許的模型",
+        "模型",
+        "思考層級",
+      ],
+      inherit: "繼承共用預設值",
+      noDefault: "無共用預設值",
+      empty: "明確的空白選取",
+      override: "明確覆寫",
+      selection: "明確選取",
+    },
+    {
+      locale: "ja",
+      fields: [
+        "許可されたツール",
+        "有効なスキル",
+        "許可された MCP サーバー",
+        "許可されたモデル",
+        "モデル",
+        "思考レベル",
+      ],
+      inherit: "共通の既定値を継承",
+      noDefault: "共通の既定値なし",
+      empty: "明示的な空の選択",
+      override: "明示的な上書き",
+      selection: "明示的な選択",
+    },
+  ] as const)("localizes selection fields and fallback sources in $locale", (text) => {
+    const saved = initialPolicy()
+    saved.defaults = { ...inherited }
+    saved.chats["42"] = { ...inherited, enabled: true }
+    const draft = structuredClone(saved)
+    draft.defaults = {
+      tools: [],
+      skills: [],
+      servers: [],
+      models: [],
+      model: "private-model",
+      thinking: "high",
+    }
+    draft.chats["42"] = { ...draft.defaults, enabled: true, tools: ["private-tool"] }
+    setLocale(text.locale)
+    const forward = policyChanges(saved, draft).join(" ")
+    const reset = policyChanges(draft, saved).join(" ")
+    for (const field of text.fields) expect(forward).toContain(field)
+    for (const source of [text.empty, text.override, text.selection])
+      expect(forward).toContain(source)
+    for (const source of [text.inherit, text.noDefault]) expect(reset).toContain(source)
+    expect(forward).not.toContain("private-tool")
+    expect(forward).not.toContain("private-model")
+    expect(forward).not.toContain("high")
   })
 })
 

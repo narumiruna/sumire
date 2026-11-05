@@ -1,14 +1,51 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { EntryContent } from "./durable-inspector.js"
+import { type Locale, setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 const untrusted = '<img src="https://untrusted.invalid/image" onerror="alert(1)">'
 const render = (content: NonNullable<DurableEntryItem["content"]>) =>
   renderToStaticMarkup(createElement(EntryContent, { content }))
 
 describe("Durable entry content", () => {
+  it.each([
+    ["zh-TW", "工具呼叫", "助理", "已記錄錯誤"],
+    ["ja", "ツール呼び出し", "アシスタント", "記録されたエラー"],
+  ] satisfies [Locale, string, string, string][])(
+    "localizes reader labels in %s without changing stored content",
+    (locale, call, role, error) => {
+      setLocale(locale)
+      const html = render({
+        truncated: false,
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "toolCall", id: "call-42", name: "read_file", arguments: '{"path":"User"}' },
+            ],
+          },
+          {
+            role: "toolResult",
+            isError: true,
+            content: [{ type: "text", text: "Recorded error: raw tool output" }],
+          },
+        ],
+      })
+      expect(html).toContain(`aria-label="${call}"`)
+      expect(html).toContain('class="durable-tool-call"')
+      expect(html).toContain(role)
+      expect(html).toContain(error)
+      expect(html).toContain("Recorded error: raw tool output")
+      expect(html).toContain("read_file")
+      expect(html).toContain("call-42")
+      expect(html).toContain("{&quot;path&quot;:&quot;User&quot;}")
+    },
+  )
+
   it("renders roles, text, thinking, tool calls, results, and omitted images literally", () => {
     const html = render({
       truncated: false,
@@ -86,7 +123,9 @@ describe("Durable entry content", () => {
         },
       }),
     )
-    expect(html).toContain('<details aria-label="Tool call"><summary>lookup · Arguments</summary>')
+    expect(html).toContain(
+      '<details aria-label="Tool call" class="durable-tool-call"><summary>lookup · Arguments</summary>',
+    )
     expect(html).toContain("<details><summary>Tool output</summary>")
     expect(html).toContain("Checking the result.")
     expect(html).toContain("Saved output")

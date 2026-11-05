@@ -2,12 +2,13 @@ import type { RuntimeConfigResponse } from "@narumitw/sumire-contracts"
 import { Button, Flex, Text, TextField } from "@radix-ui/themes"
 import { useEffect, useId, useState } from "react"
 import { request } from "./api.js"
+import { t } from "./i18n.js"
 import { parseRuntimeConfig } from "./runtime-config-state.js"
 import { SectionSelect } from "./sections.js"
 import { Prose } from "./surfaces.js"
 
 export function storedReference(name: string, prefix = "") {
-  if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name)) throw new Error("Enter a valid stored name.")
+  if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name)) throw new Error(t("mcp.referenceInvalid"))
   return `${prefix}\${${name}}`
 }
 
@@ -36,28 +37,23 @@ export function McpReferenceEditor({
   useEffect(() => () => onPending(false), [])
   return (
     <div className="settings-stack" id="mcp-reference-editor" tabIndex={-1}>
-      <Prose size="2">
-        Use explicit {`\${NAME}`} references in headers or environment fields. Values are resolved
-        from Secrets & variables for each connection, not from the host environment. References
-        grant no tool permissions. Missing names can be saved but are unavailable until configured.
-        Do not put references in commands, arguments, URLs, or working directories.
-      </Prose>
+      <Prose size="2">{t("mcp.referenceHelp", { reference: `\${NAME}` })}</Prose>
       <Flex gap="3" wrap="wrap">
         <label htmlFor={`${id}-scope`}>
-          Binding scope
+          {t("mcp.bindingScope")}
           <SectionSelect.Root
             value={scope}
             onValueChange={(value) => setScope(value as "env" | "headers")}
           >
-            <SectionSelect.Trigger id={`${id}-scope`} aria-label="Binding scope" />
+            <SectionSelect.Trigger id={`${id}-scope`} aria-label={t("mcp.bindingScope")} />
             <SectionSelect.Content>
-              <SectionSelect.Item value="headers">headers</SectionSelect.Item>
-              <SectionSelect.Item value="env">env</SectionSelect.Item>
+              <SectionSelect.Item value="headers">{t("mcp.headers")}</SectionSelect.Item>
+              <SectionSelect.Item value="env">{t("mcp.environment")}</SectionSelect.Item>
             </SectionSelect.Content>
           </SectionSelect.Root>
         </label>
         <label htmlFor={`${id}-field`}>
-          Binding field name
+          {t("mcp.bindingField")}
           <TextField.Root
             id={`${id}-field`}
             value={field}
@@ -65,7 +61,7 @@ export function McpReferenceEditor({
           />
         </label>
         <label htmlFor={`${id}-name`}>
-          Stored name
+          {t("mcp.storedName")}
           <TextField.Root
             id={`${id}-name`}
             value={name}
@@ -73,7 +69,7 @@ export function McpReferenceEditor({
           />
         </label>
         <label htmlFor={`${id}-prefix`}>
-          Literal prefix (not a secret)
+          {t("mcp.literalPrefix")}
           <TextField.Root
             id={`${id}-prefix`}
             value={prefix}
@@ -93,16 +89,16 @@ export function McpReferenceEditor({
           })
         }
       >
-        Load stored names
+        {t("mcp.loadNames")}
       </Button>
       {names.length > 0 && (
         <label htmlFor={`${id}-stored`}>
-          Choose stored reference
+          {t("mcp.chooseReference")}
           <SectionSelect.Root value={names.includes(name) ? name : ""} onValueChange={setName}>
             <SectionSelect.Trigger
               id={`${id}-stored`}
-              aria-label="Choose stored reference"
-              placeholder="Choose a name"
+              aria-label={t("mcp.chooseReference")}
+              placeholder={t("mcp.chooseName")}
             />
             <SectionSelect.Content>
               {names.map((item) => (
@@ -123,10 +119,10 @@ export function McpReferenceEditor({
             setPrefix("")
           }}
         >
-          Clear reference input
+          {t("mcp.clearReference")}
         </Button>
       )}
-      <Text size="2">Only names are listed; stored values are never inserted into this draft.</Text>
+      <Text size="2">{t("mcp.referencePrivacy")}</Text>
       <Button
         variant="soft"
         disabled={!field || !/^[A-Z][A-Z0-9_]{0,127}$/.test(name)}
@@ -137,7 +133,7 @@ export function McpReferenceEditor({
           setPrefix("")
         }}
       >
-        Stage stored reference
+        {t("mcp.stageReference")}
       </Button>
     </div>
   )

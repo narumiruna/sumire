@@ -4,6 +4,7 @@ import { Badge, Button, Code, Flex, Table, Text, TextField } from "@radix-ui/the
 import { useEffect, useId, useState } from "react"
 import { type Policy, parseIds } from "./api.js"
 import { type Chat, chatName } from "./chats.js"
+import { t } from "./i18n.js"
 import { withChatAccess } from "./policy-changes.js"
 import { Panel, Prose, SettingsSection } from "./surfaces.js"
 
@@ -52,7 +53,7 @@ function IdList({
     >
       <legend>{label}</legend>
       <label className="form-field access-list__search" htmlFor={searchId}>
-        {`Search ${label.toLowerCase()}`}
+        {t(positive ? "access.searchPrivate" : "access.searchGroups")}
         <TextField.Root
           id={searchId}
           value={query}
@@ -68,11 +69,26 @@ function IdList({
         </TextField.Root>
       </label>
       <Prose size="2" color="gray" className="access-list__summary" aria-live="polite">
-        {matches.length
-          ? `${offset + 1}–${offset + visible.length} of ${matches.length}`
-          : "No matching entries"}
-        {pending.length > 0 && ` · ${pending.length} pending approval`}
-        {revoked.length > 0 && ` · ${revoked.length} pending revocation`}
+        {t(
+          pending.length > 0
+            ? revoked.length > 0
+              ? "access.summaryBoth"
+              : "access.summaryApproval"
+            : revoked.length > 0
+              ? "access.summaryRevocation"
+              : "access.summary",
+          {
+            range: matches.length
+              ? t("access.range", {
+                  start: offset + 1,
+                  end: offset + visible.length,
+                  count: matches.length,
+                })
+              : t("access.noMatches"),
+            pending: pending.length,
+            revoked: revoked.length,
+          },
+        )}
       </Prose>
       <Table.Root size="1" className="access-table">
         <VisuallyHidden.Root asChild>
@@ -80,25 +96,22 @@ function IdList({
         </VisuallyHidden.Root>
         <Table.Header>
           <Table.Row>
-            <Table.ColumnHeaderCell scope="col">Chat / ID</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">Access</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">Action</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell scope="col">{t("access.chatId")}</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell scope="col">{t("access.access")}</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell scope="col">{t("access.action")}</Table.ColumnHeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>
           {visible.map((id) => {
+            const known = metadata.get(id)
             const removed = revoked.includes(id)
             return (
               <Table.Row key={id} className={removed ? "access-row--revoked" : undefined}>
                 <Table.Cell>
                   <Prose weight="medium">
-                    {chatName(
-                      metadata.get(id) ?? {
-                        id,
-                        name: "",
-                        type: id > 0 ? "private" : "group or channel",
-                      },
-                    )}
+                    {known
+                      ? chatName(known)
+                      : t(id > 0 ? "access.unnamedPrivate" : "access.unnamedGroup")}
                   </Prose>
                   <Code size="2" variant="ghost" className="access-id">
                     {id}
@@ -110,25 +123,25 @@ function IdList({
                     variant="soft"
                   >
                     {removed
-                      ? "Pending revocation"
+                      ? t("access.pendingRevocation")
                       : pending.includes(id)
-                        ? "Pending approval"
-                        : "Approved"}
+                        ? t("access.pendingApproval")
+                        : t("access.approved")}
                   </Badge>
                 </Table.Cell>
                 <Table.Cell>
                   {removed ? (
                     <Button variant="soft" onClick={() => onChange([...values, id])}>
-                      Undo revocation for {id}
+                      {t("access.undoRevocation", { id })}
                     </Button>
                   ) : (
                     <Button
                       variant="ghost"
                       color="red"
-                      aria-label={`Revoke access for ID ${id}`}
+                      aria-label={t("access.revokeId", { id })}
                       onClick={() => onChange(values.filter((value) => value !== id))}
                     >
-                      Revoke access
+                      {t("access.revoke")}
                     </Button>
                   )}
                 </Table.Cell>
@@ -138,22 +151,27 @@ function IdList({
         </Table.Body>
       </Table.Root>
       {lastPage > 0 && (
-        <Flex gap="2" mt="3" wrap="wrap" aria-label={`${label} pages`}>
+        <Flex
+          gap="2"
+          mt="3"
+          wrap="wrap"
+          aria-label={t(positive ? "access.privatePages" : "access.groupPages")}
+        >
           <Button
             variant="soft"
-            aria-label={`Previous ${label.toLowerCase()} page`}
+            aria-label={t(positive ? "access.previousPrivate" : "access.previousGroups")}
             disabled={currentPage === 0}
             onClick={() => setPage(currentPage - 1)}
           >
-            Previous
+            {t("access.previous")}
           </Button>
           <Button
             variant="soft"
-            aria-label={`Next ${label.toLowerCase()} page`}
+            aria-label={t(positive ? "access.nextPrivate" : "access.nextGroups")}
             disabled={currentPage === lastPage}
             onClick={() => setPage(currentPage + 1)}
           >
-            Next
+            {t("access.next")}
           </Button>
         </Flex>
       )}
@@ -179,25 +197,24 @@ export function ChatAccess({
   onReview(): void
 }) {
   const [draft, setDraft] = useState("")
-  const [error, setError] = useState("")
+  const [error, setError] = useState<"" | "access.duplicate" | "access.invalidId">("")
   return (
     <Flex direction="column" gap="4">
       <SettingsSection
-        title="Approve a chat"
-        description="Review access for one Telegram user, group, or channel."
+        title={t("access.approveTitle")}
+        description={t("access.approveDescription")}
       >
         <form
           className="access-approve-form"
-          aria-label="Approve chat access"
+          aria-label={t("access.approveLabel")}
           onSubmit={(event) => {
             event.preventDefault()
             try {
               const ids = parseIds(draft, Number(draft.trim()) > 0)
               const [id] = ids
-              if (ids.length !== 1 || id === undefined)
-                throw new Error("Enter one non-zero Telegram user, group, or channel ID.")
+              if (ids.length !== 1 || id === undefined) throw new Error(t("access.invalidId"))
               if ((id > 0 ? policy.privateUsers : policy.groups).includes(id)) {
-                setError("This ID is already approved or pending approval.")
+                setError("access.duplicate")
                 return
               }
               onChange(withChatAccess(policy, id, true))
@@ -206,13 +223,13 @@ export function ChatAccess({
               onPending(false)
               onReview()
             } catch {
-              setError("Enter one non-zero whole-number Telegram user, group, or channel ID.")
+              setError("access.invalidId")
             }
           }}
         >
           <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
             <label className="form-field" htmlFor="access-id-input">
-              Telegram ID to approve
+              {t("access.idInput")}
               <TextField.Root
                 id="access-id-input"
                 value={draft}
@@ -227,7 +244,7 @@ export function ChatAccess({
               />
             </label>
             <Button type="submit" disabled={!draft}>
-              Review approval
+              {t("access.reviewApproval")}
             </Button>
             {draft && (
               <Button
@@ -239,20 +256,20 @@ export function ChatAccess({
                   onPending(false)
                 }}
               >
-                Clear ID input
+                {t("access.clearInput")}
               </Button>
             )}
           </Flex>
           {error && (
             <Text as="p" id="access-id-error" role="alert" color="red" size="2">
-              {error}
+              {t(error)}
             </Text>
           )}
         </form>
       </SettingsSection>
       <div className="access-lists">
         <IdList
-          label="Private-message access"
+          label={t("access.privateAccess")}
           positive
           values={policy.privateUsers}
           savedValues={saved.privateUsers}
@@ -261,7 +278,7 @@ export function ChatAccess({
           onChange={(values) => onChange({ ...policy, privateUsers: values })}
         />
         <IdList
-          label="Group and channel access"
+          label={t("access.groupAccess")}
           positive={false}
           values={policy.groups}
           savedValues={saved.groups}
@@ -271,12 +288,8 @@ export function ChatAccess({
         />
       </div>
       <details className="access-search-help">
-        <summary>About chat IDs and search</summary>
-        <Prose size="2">
-          Positive IDs identify private users. Negative IDs identify groups and channels. Search
-          includes every access entry, not only this page. Names are available only for loaded chat
-          metadata. Access does not grant additional tool permissions.
-        </Prose>
+        <summary>{t("access.searchHelpTitle")}</summary>
+        <Prose size="2">{t("access.searchHelp")}</Prose>
       </details>
     </Flex>
   )

@@ -2,31 +2,33 @@ import type { DurableEntryItem } from "@narumitw/sumire-contracts"
 import { ChatBubbleIcon, CopyIcon } from "@radix-ui/react-icons"
 import { Button, Heading, Text } from "@radix-ui/themes"
 import { useState } from "react"
+import { type MessageKey, t } from "./i18n.js"
 
 function CopyContent({ text }: { text: string }) {
-  const [status, setStatus] = useState("")
+  const [status, setStatus] = useState<MessageKey>()
   return (
     <>
       <Button
         type="button"
         className="durable-copy-button"
-        aria-label="Copy content"
+        aria-label={t("record.copyContent")}
         size="1"
         variant="outline"
         onClick={() => {
           void Promise.resolve()
             .then(() => navigator.clipboard.writeText(text))
             .then(
-              () => setStatus("Content copied."),
-              () => setStatus("Copy failed. Select and copy the content below."),
+              () => setStatus("record.contentCopied"),
+              () => setStatus("record.copyContentFailed"),
             )
         }}
       >
-        <CopyIcon aria-hidden /> <span className="durable-copy-label">Copy content</span>
+        <CopyIcon aria-hidden />{" "}
+        <span className="durable-copy-label">{t("record.copyContent")}</span>
       </Button>
       {status && (
         <Text size="1" role="status">
-          {status}
+          {t(status)}
         </Text>
       )}
     </>
@@ -43,37 +45,38 @@ export function EntryContent({
   collapseTools?: boolean
 }) {
   const roles = {
-    system: "System",
-    user: "User",
-    assistant: "Assistant",
-    toolResult: "Tool result",
+    system: t("record.system"),
+    user: t("record.user"),
+    assistant: t("record.assistant"),
+    toolResult: t("record.toolResult"),
   }
   return (
-    <section aria-label="Entry content" className="durable-entry-content">
+    <section aria-label={t("record.entryContent")} className="durable-entry-content">
       {content.truncated && (
         <Text as="p" role="status">
-          Content truncated · inspection limits were reached. Messages, blocks, or text may be
-          incomplete.
+          {t("record.contentTruncatedDetails")}
         </Text>
       )}
       {content.messages.length === 0 && (
         <Text as="p">
-          {content.truncated
-            ? "No message content included in this response."
-            : "No message content recorded."}
+          {content.truncated ? t("record.noMessagesIncluded") : t("record.noMessages")}
         </Text>
       )}
       {content.messages.map((message, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: A read-only message snapshot has no message IDs.
-        <section key={index} aria-label={`Message ${index + 1}`} className="durable-entry-message">
+        <section
+          // biome-ignore lint/suspicious/noArrayIndexKey: A read-only message snapshot has no message IDs.
+          key={index}
+          aria-label={t("record.messageNumber", { number: index + 1 })}
+          className="durable-entry-message"
+        >
           <div className="durable-message-heading">
             <ChatBubbleIcon aria-hidden />
             <Heading as="h4" size="2">
               {content.messages.length > 1
                 ? roles[message.role]
                 : message.role === "toolResult"
-                  ? "Output"
-                  : "Message"}
+                  ? t("record.output")
+                  : t("record.message")}
             </Heading>
             {message.toolName !== undefined &&
               (content.messages.length > 1 || message.toolName !== toolName) && (
@@ -82,10 +85,10 @@ export function EntryContent({
             {(message.role === "toolResult" || message.isError !== undefined) && (
               <span className="durable-tree-badge">
                 {message.isError === undefined
-                  ? "Result not recorded"
+                  ? t("record.resultMissing")
                   : message.isError
-                    ? "Recorded error"
-                    : "Recorded result · not an error"}
+                    ? t("record.recordedError")
+                    : t("record.recordedResult")}
               </span>
             )}
             {message.content.some(
@@ -106,9 +109,7 @@ export function EntryContent({
           </div>
           {message.content.length === 0 && (
             <Text as="p">
-              {content.truncated
-                ? "No content blocks included in this response."
-                : "No content blocks recorded."}
+              {content.truncated ? t("record.noBlocksIncluded") : t("record.noBlocks")}
             </Text>
           )}
           {message.content.map((block, blockIndex) => {
@@ -118,7 +119,7 @@ export function EntryContent({
                   collapseTools ? (
                     // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs in this snapshot.
                     <details key={blockIndex}>
-                      <summary>Tool output</summary>
+                      <summary>{t("record.toolOutput")}</summary>
                       <pre className="durable-tool-output">{block.text}</pre>
                     </details>
                   ) : (
@@ -137,29 +138,35 @@ export function EntryContent({
                 return (
                   // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
                   <details key={blockIndex}>
-                    <summary>Thinking</summary>
+                    <summary>{t("record.thinking")}</summary>
                     <p className="durable-message-text">{block.thinking}</p>
                   </details>
                 )
               case "toolCall": {
                 const Container = collapseTools ? "details" : "section"
                 return (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
-                  <Container key={blockIndex} aria-label="Tool call">
-                    {collapseTools && <summary>{block.name} · Arguments</summary>}
+                  <Container
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
+                    key={blockIndex}
+                    aria-label={t("record.toolCall")}
+                    className="durable-tool-call"
+                  >
+                    {collapseTools && (
+                      <summary>{t("record.argumentsForTool", { name: block.name })}</summary>
+                    )}
                     <div className="durable-message-heading">
                       <Heading as="h5" size="2">
-                        {block.name} · Arguments
+                        {t("record.argumentsForTool", { name: block.name })}
                       </Heading>
-                      <span>JSON text</span>
+                      <span>{t("record.jsonText")}</span>
                     </div>
                     <pre className="durable-arguments">{block.arguments}</pre>
                     <details className="durable-message-details">
-                      <summary>Tool call details</summary>
+                      <summary>{t("record.toolCallDetails")}</summary>
                       <dl className="durable-metadata">
-                        <dt>Tool name</dt>
+                        <dt>{t("record.toolName")}</dt>
                         <dd>{block.name}</dd>
-                        <dt>Call ID</dt>
+                        <dt>{t("record.callId")}</dt>
                         <dd>{block.id}</dd>
                       </dl>
                     </details>
@@ -170,7 +177,7 @@ export function EntryContent({
                 return (
                   // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
                   <Text as="p" key={blockIndex}>
-                    Image omitted · {block.mimeType}. Image bytes are not sent.
+                    {t("record.imageOmitted", { mimeType: block.mimeType })}
                   </Text>
                 )
               default:
@@ -179,9 +186,9 @@ export function EntryContent({
           })}
           {message.toolCallId !== undefined && (
             <details className="durable-message-details">
-              <summary>Message details</summary>
+              <summary>{t("record.messageDetails")}</summary>
               <dl className="durable-metadata">
-                <dt>Call ID</dt>
+                <dt>{t("record.callId")}</dt>
                 <dd>{message.toolCallId}</dd>
               </dl>
             </details>

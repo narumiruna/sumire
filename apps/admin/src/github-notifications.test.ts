@@ -1,13 +1,14 @@
 import { initialPolicy } from "@narumitw/sumire-policy"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import {
   GithubNotifications,
   mentionAuthorError,
   mentionBlockers,
   mentionConnection,
 } from "./github-notifications.js"
+import { setLocale } from "./i18n.js"
 
 function render(usernames: string[] = [], savedUsernames = usernames) {
   const policy = initialPolicy()
@@ -26,7 +27,29 @@ function render(usernames: string[] = [], savedUsernames = usernames) {
   )
 }
 
+afterEach(() => setLocale("en"))
+
 describe("GitHub mention administration", () => {
+  it.each([
+    ["zh-TW", "提及作者允許清單", "移除使用者名稱 new-author", "此 GitHub 使用者名稱已獲允許。"],
+    [
+      "ja",
+      "メンション投稿者許可リスト",
+      "ユーザー名 new-author を削除",
+      "この GitHub ユーザー名はすでに許可されています。",
+    ],
+  ] as const)(
+    "localizes %s presentation without changing account identifiers",
+    (locale, heading, label, duplicate) => {
+      setLocale(locale)
+      const html = render(["new-author"], [])
+      expect(html).toContain(heading)
+      expect(html).toContain(`aria-label="${label}"`)
+      expect(html).toContain("GH_TOKEN")
+      expect(html).not.toContain("Mention author allowlist")
+      expect(mentionAuthorError("NEW-AUTHOR", ["new-author"])).toBe(duplicate)
+    },
+  )
   it.each([
     "",
     "-cat",

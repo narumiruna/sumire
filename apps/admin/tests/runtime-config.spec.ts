@@ -320,7 +320,7 @@ test("navigation, tab changes, signout and session expiry clear drafts", async (
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("navigation-secret")
   page.once("dialog", (dialog) => dialog.accept())
   await navigate(page, "Audit")
-  await expect(page.getByRole("heading", { name: "稽核紀錄", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeFocused()
   await navigate(page, "Secrets & variables")
   await page.getByRole("button", { name: "Add secret", exact: true }).click()
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("")

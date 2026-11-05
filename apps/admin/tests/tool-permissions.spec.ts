@@ -88,7 +88,7 @@ async function setup(page: Page, options: { actor?: string; inventory?: Inventor
     return route.fulfill({ json: [] })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   return { initial, writes, saved: () => saved }
 }
 
@@ -532,11 +532,11 @@ test("legacy links open canonical permissions without policy changes or remote t
 }) => {
   const state = await setup(page)
   await page.goto("/?section=Tools+%2F+MCP&chat=42")
-  await expect(page.getByRole("heading", { name: "工具權限", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Tool permissions", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Manage MCP servers", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "MCP 伺服器", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible()
   await navigate(page, "Tool permissions")
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "MCP 伺服器", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })

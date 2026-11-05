@@ -23,6 +23,7 @@ import {
 } from "@radix-ui/themes"
 import { useContext, useEffect, useRef, useState } from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
+import { getLocale, t } from "./i18n.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { McpReferenceEditor } from "./mcp-reference-editor.js"
 import { focusEditor, type PendingEditor } from "./navigation.js"
@@ -55,10 +56,13 @@ export function mcpObservationView(server: Inventory["mcp"][number], revision: n
       ? { state: "untested" as const }
       : observed
   const label = observation
-    ? { untested: "Not tested", checking: "Checking", succeeded: "Succeeded", failed: "Failed" }[
-        observation.state
-      ]
-    : "Unknown"
+    ? {
+        untested: t("mcp.notTested"),
+        checking: t("mcp.checking"),
+        succeeded: t("mcp.succeeded"),
+        failed: t("mcp.failed"),
+      }[observation.state]
+    : t("settings.unknownTitle")
   return {
     observation,
     label,
@@ -66,7 +70,7 @@ export function mcpObservationView(server: Inventory["mcp"][number], revision: n
     count:
       observation?.state === "succeeded"
         ? countText(server.tools.length, "published tool name")
-        : "Published tool names: Unknown",
+        : t("mcp.publishedUnknown"),
   }
 }
 
@@ -129,11 +133,7 @@ export function McpConnections({
   )
   const [mcpEditorVersion, setMcpEditorVersion] = useState(0)
   const startEditor = (name = "") => {
-    if (
-      (mcpDirty || secretPending) &&
-      !window.confirm("Discard the current MCP draft and edit this server?")
-    )
-      return
+    if ((mcpDirty || secretPending) && !window.confirm(t("mcp.discardSwitch"))) return
     setMcpName(name)
     setMcpConfig(
       name ? "{}" : '{ "command": "", "args": [], "enabled": true, "exposure": "codemode" }',
@@ -152,13 +152,13 @@ export function McpConnections({
     const previous = inventory.mcp.find((m) => m.name === mcpName)
     mcpPreview = mcpChangePreview(mcpSavePatch(mcpConfig, previous, mcpSecrets), previous)
   } catch (error) {
-    mcpValidation = error instanceof Error ? error.message : "Invalid configuration"
+    mcpValidation = error instanceof Error ? error.message : t("mcp.invalidConfig")
   }
   return (
     <Box className="page-content settings-stack">
       <TableToolbar hidden={editorOpen}>
         <Button id="mcp-add" disabled={busy} onClick={() => startEditor()}>
-          Add connection
+          {t("mcp.addConnection")}
         </Button>
         {editing && !editorOpen && (
           <Button
@@ -169,24 +169,21 @@ export function McpConnections({
               requestEditorFocus("#mcp-name")
             }}
           >
-            Resume connection draft
+            {t("mcp.resumeDraft")}
           </Button>
         )}
         <Button variant="soft" onClick={onTools}>
-          Manage tool and MCP server permissions
+          {t("mcp.managePermissions")}
         </Button>
       </TableToolbar>
       <Box className="mcp-workspace mcp-list-only">
         <Panel className="mcp-step mcp-chooser" hidden={editorOpen}>
           <Heading as="h2" size="3" className="section-heading">
-            Saved connections
+            {t("mcp.savedConnections")}
           </Heading>
           {!inventory.mcp.length && (
             <Box className="empty-state">
-              <Prose>
-                No connections configured. Select Add connection, then test it and approve its tools
-                separately.
-              </Prose>
+              <Prose>{t("mcp.emptyConnections")}</Prose>
             </Box>
           )}
           <div className="mcp-choice-grid">
@@ -211,7 +208,7 @@ export function McpConnections({
                   <Panel
                     key={m.name}
                     className="mcp-connection-summary"
-                    aria-label={`${m.name} connection`}
+                    aria-label={t("mcp.connectionName", { name: m.name })}
                   >
                     <div className="mcp-connection-row">
                       <Flex justify="between" align="start" gap="2" wrap="wrap">
@@ -220,19 +217,21 @@ export function McpConnections({
                         </Heading>
                         {mcpName === m.name && (
                           <Badge color="blue" variant="outline">
-                            Editing
+                            {t("settings.editing")}
                           </Badge>
                         )}
                       </Flex>
                       <Flex gap="2" wrap="wrap" className="mcp-summary-state">
-                        <StatusLabel>{m.enabled === false ? "Disabled" : "Enabled"}</StatusLabel>
-                        <StatusLabel>Connection test: {view.label}</StatusLabel>
+                        <StatusLabel>
+                          {m.enabled === false ? t("settings.disabled") : t("settings.enabled")}
+                        </StatusLabel>
+                        <StatusLabel>{t("mcp.testStatus", { status: view.label })}</StatusLabel>
                         <Text size="2">{view.count}</Text>
                       </Flex>
                       <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
                         <Button
                           variant="solid"
-                          aria-label={`Test and discover ${m.name}`}
+                          aria-label={t("mcp.testName", { name: m.name })}
                           disabled={
                             busy ||
                             m.enabled === false ||
@@ -257,23 +256,23 @@ export function McpConnections({
                             })
                           }
                         >
-                          Test & discover
+                          {t("mcp.testDiscover")}
                         </Button>
                         <Button
                           variant="soft"
-                          aria-label={`Edit fields for ${m.name}`}
+                          aria-label={t("mcp.editFieldsName", { name: m.name })}
                           disabled={busy}
                           onClick={() => startEditor(m.name)}
                         >
                           <Pencil2Icon aria-hidden="true" />
-                          Edit
+                          {t("settings.edit")}
                         </Button>
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger>
                             <Button
                               id={`connection-actions-${encodeURIComponent(m.name)}`}
                               variant="ghost"
-                              aria-label={`Actions for ${m.name}`}
+                              aria-label={t("mcp.actionsName", { name: m.name })}
                               disabled={busy}
                             >
                               <DotsHorizontalIcon aria-hidden />
@@ -282,11 +281,11 @@ export function McpConnections({
                           <DropdownMenu.Content align="end">
                             <DropdownMenu.Item
                               color="red"
-                              aria-label={`Delete ${m.name}`}
+                              aria-label={t("settings.deleteName", { name: m.name })}
                               disabled={busy || dirty || localPending}
                               onSelect={() => setDeleting(m.name)}
                             >
-                              <TrashIcon aria-hidden /> Delete
+                              <TrashIcon aria-hidden /> {t("settings.delete")}
                             </DropdownMenu.Item>
                           </DropdownMenu.Content>
                         </DropdownMenu.Root>
@@ -304,16 +303,13 @@ export function McpConnections({
                                 ?.focus()
                             }}
                           >
-                            <AlertDialog.Title>Delete MCP server {m.name}?</AlertDialog.Title>
-                            <AlertDialog.Description>
-                              This deletes its configuration and inline credentials. Referenced
-                              runtime values remain in Secrets & variables. Remove it from global,
-                              default, and chat selections first. Application cancels active work
-                              and retains transcripts.
-                            </AlertDialog.Description>
+                            <AlertDialog.Title>
+                              {t("mcp.deleteServerConfirm", { name: m.name })}
+                            </AlertDialog.Title>
+                            <AlertDialog.Description>{t("mcp.deleteHelp")}</AlertDialog.Description>
                             <Flex gap="3" justify="end" mt="4">
                               <AlertDialog.Cancel>
-                                <Button variant="soft">Cancel</Button>
+                                <Button variant="soft">{t("settings.cancel")}</Button>
                               </AlertDialog.Cancel>
                               <AlertDialog.Action>
                                 <Button
@@ -339,7 +335,7 @@ export function McpConnections({
                                     })
                                   }
                                 >
-                                  Delete server and apply
+                                  {t("mcp.deleteApply")}
                                 </Button>
                               </AlertDialog.Action>
                             </Flex>
@@ -347,10 +343,9 @@ export function McpConnections({
                         </AlertDialog.Root>
                       </Flex>
                     </div>
-                    <Disclosure title="Connection and permission details">
+                    <Disclosure title={t("mcp.details")}>
                       {view.observation && view.observation.state !== "untested" && (
                         <Prose size="2">
-                          {view.observation.state === "checking" ? "Started" : "Completed"}{" "}
                           <time
                             dateTime={new Date(
                               view.observation.state === "checking"
@@ -358,31 +353,38 @@ export function McpConnections({
                                 : view.observation.completedAt,
                             ).toISOString()}
                           >
-                            {new Date(
+                            {t(
                               view.observation.state === "checking"
-                                ? view.observation.startedAt
-                                : view.observation.completedAt,
-                            ).toLocaleString()}
-                          </time>{" "}
-                          · Configuration revision {view.observation.revision}
+                                ? "mcp.observationStarted"
+                                : "mcp.observationCompleted",
+                              {
+                                date: new Date(
+                                  view.observation.state === "checking"
+                                    ? view.observation.startedAt
+                                    : view.observation.completedAt,
+                                ).toLocaleString(getLocale()),
+                                revision: view.observation.revision,
+                              },
+                            )}
+                          </time>
                           {view.observation.state === "failed" && ` · ${view.observation.reason}`}
                         </Prose>
                       )}
                       <DataList.Root size="1" className="mcp-summary-facts data-list">
                         <DataList.Item className="data-row">
-                          <DataList.Label minWidth="80px">Exposure</DataList.Label>
+                          <DataList.Label minWidth="80px">{t("mcp.exposure")}</DataList.Label>
                           <DataList.Value>
                             <Code>{m.exposure ?? "codemode"}</Code>
                           </DataList.Value>
                         </DataList.Item>
                         <DataList.Item className="data-row">
-                          <DataList.Label minWidth="80px">Execution</DataList.Label>
+                          <DataList.Label minWidth="80px">{t("mcp.execution")}</DataList.Label>
                           <DataList.Value>
                             <Flex direction="column" align="start" gap="2">
                               <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
                                 {policy.servers.includes(m.name)
-                                  ? "Globally available"
-                                  : "Not globally available"}
+                                  ? t("mcp.globallyAvailable")
+                                  : t("mcp.notGloballyAvailable")}
                               </Badge>
                               <Text size="1" color="gray">
                                 {view.succeeded
@@ -390,45 +392,42 @@ export function McpConnections({
                                       m.tools.filter((name) => policy.tools.includes(name)).length,
                                       "globally approved published tool name",
                                     )
-                                  : "Globally approved published tool names: Unknown"}{" "}
-                                · {dirty ? "Policy draft" : "Saved policy"}
+                                  : t("mcp.approvedUnknown")}{" "}
+                                · {dirty ? t("mcp.policyDraft") : t("mcp.savedPolicy")}
                               </Text>
                               <Text size="2">
-                                Shared default server gate:{" "}
-                                {policy.defaults.servers === null
-                                  ? "inherits global selection"
-                                  : policy.defaults.servers.includes(m.name)
-                                    ? "selected"
-                                    : "not selected"}
-                                . Execution also requires the tool selection and effective chat
-                                permissions.
+                                {t("mcp.gateSummary", {
+                                  state:
+                                    policy.defaults.servers === null
+                                      ? t("mcp.inheritsGlobal")
+                                      : policy.defaults.servers.includes(m.name)
+                                        ? t("mcp.selected")
+                                        : t("mcp.notSelected"),
+                                })}
                               </Text>
                             </Flex>
                           </DataList.Value>
                         </DataList.Item>
                       </DataList.Root>
                       <details className="mcp-disclosure">
-                        <summary>Published tool names</summary>
+                        <summary>{t("mcp.publishedNames")}</summary>
                         <Flex direction="column" align="start" gap="2" mt="3">
                           {view.succeeded && m.tools.length ? (
                             m.tools.map((name) => <Code key={name}>{name}</Code>)
                           ) : (
                             <Text size="2" color="gray">
-                              {view.succeeded
-                                ? "No published tool names."
-                                : "Published tool names are unknown. Run Test & discover."}
+                              {view.succeeded ? t("mcp.noPublishedNames") : t("mcp.runDiscovery")}
                             </Text>
                           )}
                         </Flex>
                       </details>
+                      <Prose size="2">{t("mcp.resultHelp")}</Prose>
                       <Prose size="2">
-                        This result lists published tool names after exposure and safety limits, not
-                        every remote tool. Saving or testing a connection does not grant execution
-                        permission.
-                      </Prose>
-                      <Prose size="2">
-                        Secret fields:{" "}
-                        {[...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") || "none"}
+                        {t("mcp.secretFields", {
+                          fields:
+                            [...Object.keys(m.env), ...Object.keys(m.headers)].join(", ") ||
+                            t("settings.none"),
+                        })}
                       </Prose>
                     </Disclosure>
                   </Panel>
@@ -443,12 +442,12 @@ export function McpConnections({
           onToggle={(event) => setEditorOpen(event.currentTarget.open)}
           className="settings-stack mcp-editor-column"
         >
-          <summary className="mcp-editor-summary">Connection editor</summary>
+          <summary className="mcp-editor-summary">{t("mcp.editor")}</summary>
           <Flex justify="between" align="center" gap="3" wrap="wrap">
             <Heading as="h2" size="4">
               {inventory.mcp.some((server) => server.name === mcpName)
-                ? "Edit connection"
-                : "Add connection"}
+                ? t("mcp.editConnection")
+                : t("mcp.addConnection")}
             </Heading>
             <Button
               variant="soft"
@@ -457,22 +456,20 @@ export function McpConnections({
                 requestEditorFocus("#mcp-resume")
               }}
             >
-              Close connection editor
+              {t("mcp.closeEditor")}
             </Button>
           </Flex>
           <div className="mcp-server-name">
             <Field
               id="mcp-name"
-              label="MCP server name"
+              label={t("mcp.serverName")}
               value={mcpName}
               onChange={(name) => {
                 if (
                   (Object.keys(mcpSecrets.env).length ||
                     Object.keys(mcpSecrets.headers).length ||
                     secretPending) &&
-                  !window.confirm(
-                    "Changing the server name discards staged secret replacements. Continue?",
-                  )
+                  !window.confirm(t("mcp.renameConfirm"))
                 )
                   return
                 markPending("secret", false)
@@ -503,7 +500,7 @@ export function McpConnections({
               }}
             />
             <details className="mcp-disclosure">
-              <summary>Stored references (recommended)</summary>
+              <summary>{t("mcp.referencesRecommended")}</summary>
               <McpReferenceEditor
                 key={mcpEditorVersion}
                 run={run}
@@ -518,7 +515,7 @@ export function McpConnections({
               />
             </details>
             <details className="mcp-secret-editor mcp-disclosure">
-              <summary>Secrets (optional)</summary>
+              <summary>{t("mcp.secretsOptional")}</summary>
               <SecretFields
                 key={mcpEditorVersion}
                 onPending={(v) => markPending("secret", v)}
@@ -534,8 +531,12 @@ export function McpConnections({
             {(Object.keys(mcpSecrets.env).length > 0 ||
               Object.keys(mcpSecrets.headers).length > 0) && (
               <Prose size="2" color="gray">
-                <LockClosedIcon aria-hidden="true" /> Pending secret fields:{" "}
-                {[...Object.keys(mcpSecrets.env), ...Object.keys(mcpSecrets.headers)].join(", ")}.
+                <LockClosedIcon aria-hidden="true" />{" "}
+                {t("mcp.pendingSecrets", {
+                  fields: [...Object.keys(mcpSecrets.env), ...Object.keys(mcpSecrets.headers)].join(
+                    ", ",
+                  ),
+                })}
               </Prose>
             )}
             {mcpValidation && (
@@ -548,12 +549,13 @@ export function McpConnections({
             )}
             {(dirty || localPending || !mcpName) && (
               <Prose size="2">
-                MCP save unavailable:{" "}
-                {dirty
-                  ? "save or discard policy edits first."
-                  : localPending
-                    ? "finish or clear unstaged input first."
-                    : "enter a server name."}
+                {t("mcp.saveUnavailable", {
+                  reason: dirty
+                    ? t("mcp.savePolicyFirst")
+                    : localPending
+                      ? t("mcp.finishInputFirst")
+                      : t("mcp.nameRequired"),
+                })}
               </Prose>
             )}
             <Flex className="mcp-review-footer" gap="3" wrap="wrap" mt="4">
@@ -588,14 +590,14 @@ export function McpConnections({
                 }
               >
                 <CheckIcon aria-hidden="true" />
-                Save connection
+                {t("mcp.saveConnection")}
               </Button>
               {(mcpDirty || secretPending) && (
                 <Button
                   variant="soft"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm("Discard pending MCP configuration and secrets?")) {
+                    if (window.confirm(t("mcp.discardConfirm"))) {
                       setEditing(false)
                       setEditorOpen(false)
                       setMcpName("")
@@ -612,17 +614,17 @@ export function McpConnections({
                   }}
                 >
                   <ResetIcon aria-hidden="true" />
-                  Discard MCP draft
+                  {t("mcp.discardDraft")}
                 </Button>
               )}
             </Flex>
             <Prose size="2" color="gray">
-              Saving a connection does not approve its tools.
+              {t("mcp.savePermissionHelp")}
             </Prose>
             <details className="mcp-disclosure">
-              <summary>Review field changes</summary>
-              <section aria-label="MCP change preview">
-                <Prose size="2">Only field names are shown. Saved values are never returned.</Prose>
+              <summary>{t("mcp.reviewChanges")}</summary>
+              <section aria-label={t("mcp.changePreview")}>
+                <Prose size="2">{t("mcp.namesOnly")}</Prose>
                 <Box asChild className="mcp-review-operations">
                   <ul>
                     {mcpPreview.map((line) => (
@@ -637,9 +639,9 @@ export function McpConnections({
               </section>
             </details>
             <details className="provider-advanced mcp-disclosure">
-              <summary>Advanced server configuration JSON</summary>
+              <summary>{t("mcp.advancedJson")}</summary>
               <label htmlFor="mcp-config">
-                Server configuration JSON
+                {t("mcp.configJson")}
                 <TextArea
                   id="mcp-config"
                   value={mcpConfig}
@@ -653,40 +655,24 @@ export function McpConnections({
             </details>
 
             <details className="mcp-disclosure">
-              <summary>Secret preservation and transport rules</summary>
-              <Prose>
-                Omit env or headers to preserve that map. A map in JSON replaces the whole map:
-                include every key to retain with null. Omitted keys are removed. An empty object
-                clears the map. Masked replacements preserve existing keys when JSON omits that map.
-                Do not put secrets in commands, arguments, descriptions, or URLs. Selecting an HTTP
-                URL removes command, arguments, working directory, and environment fields. Selecting
-                a stdio command removes URL and header fields. For a command-only update, an omitted
-                transport type is cleared and inferred again.
-              </Prose>
+              <summary>{t("mcp.transportRules")}</summary>
+              <Prose>{t("mcp.transportRulesHelp")}</Prose>
             </details>
 
             <details className="mcp-disclosure">
-              <summary>Changing a connection name</summary>
-              <Prose size="2">
-                A new name creates a connection. The configuration patch is kept. Changing the name
-                requires confirmation before secret replacements are removed.
-              </Prose>
+              <summary>{t("mcp.rename")}</summary>
+              <Prose size="2">{t("mcp.renameHelp")}</Prose>
             </details>
           </Panel>
         </details>
       </Box>
       <details className="mcp-disclosure">
-        <summary>Connection permissions and discovery</summary>
+        <summary>{t("mcp.discoveryRules")}</summary>
         <Callout.Root size="2" color="blue">
           <Callout.Icon>
             <InfoCircledIcon />
           </Callout.Icon>
-          <Callout.Text>
-            Connection configuration and enabled state do not grant execution permission. First
-            discovery registers published tool names for selection, but does not add global, shared
-            default, or chat permissions or open server gates. Connection tests run only when
-            requested.
-          </Callout.Text>
+          <Callout.Text>{t("mcp.discoveryRulesHelp")}</Callout.Text>
         </Callout.Root>
       </details>
     </Box>

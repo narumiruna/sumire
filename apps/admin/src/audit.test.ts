@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
+import { afterEach, describe, expect, it } from "vitest"
 import {
+  Activity,
   type AuditEntry,
   auditValueLabel,
   groupActivity,
@@ -7,6 +10,9 @@ import {
   outcomeNames,
 } from "./activity.js"
 import { auditSearch } from "./audit.js"
+import { setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 const base: AuditEntry = {
   id: 1,
@@ -18,9 +24,50 @@ const base: AuditEntry = {
   target: "settings",
 }
 describe("audit views", () => {
+  it("translates known audit values at render time and keeps raw evidence and query values", () => {
+    setLocale("zh-TW")
+    expect(operationNames()["settings.update"]).toBe("已儲存設定")
+    const html = renderToStaticMarkup(createElement(Activity, { entries: [base] }))
+    expect(html).toContain("設定活動")
+    expect(html).toContain("已儲存")
+    expect(html).toContain("settings.update")
+    expect(html).toContain("&quot;saved&quot;")
+    expect(auditValueLabel("operation", "custom.operation")).toBe("custom.operation")
+    const query = auditSearch(
+      { actor: "42", operation: "settings.update", outcome: "saved", from: "", to: "" },
+      100,
+    )
+    expect(query).toBe("offset=100&actor=42&operation=settings.update&outcome=saved")
+    setLocale("ja")
+    expect(operationNames()["settings.update"]).toBe("設定保存")
+    expect(auditValueLabel("outcome", "saved")).toBe("保存済み")
+  })
+
+  it.each([
+    ["en", "Saved", "Applied"],
+    ["zh-TW", "已儲存", "已套用"],
+    ["ja", "保存済み", "適用済み"],
+  ] as const)(
+    "localizes %s grouped result badges without changing raw outcomes",
+    (locale, saved, applied) => {
+      setLocale(locale)
+      const entries = [base, { ...base, id: 2, operation: "settings.apply", outcome: "applied" }]
+      const html = renderToStaticMarkup(createElement(Activity, { entries }))
+      const heading = html.match(
+        /class="[^"]*\bactivity-group-heading\b[^"]*">([\s\S]*?)<\/div>/,
+      )?.[1]
+      expect(heading).toBeDefined()
+      expect(heading).toContain(`>${saved}</span>`)
+      expect(heading).toContain(`>${applied}</span>`)
+      expect(html).toContain("&quot;saved&quot;")
+      expect(html).toContain("&quot;applied&quot;")
+      expect(groupActivity(entries)).toEqual([entries])
+    },
+  )
+
   it("labels the current audit writer values without making the filters a closed enum", () => {
     // Verified against admin/{store,server,auth,import,mcp,application}.ts.
-    expect(operationNames).toEqual({
+    expect(operationNames()).toEqual({
       "tools.register": "Tools registered",
       "skills.register": "Skills registered",
       "settings.update": "Settings saved",
@@ -37,7 +84,7 @@ describe("audit views", () => {
       "provider.credential": "Provider credential changed",
       "provider.oauth.complete": "Provider sign-in completed",
     })
-    expect(outcomeNames).toEqual({
+    expect(outcomeNames()).toEqual({
       saved: "Saved",
       applied: "Applied",
       failed: "Failed",
@@ -49,9 +96,9 @@ describe("audit views", () => {
       "imported; review required": "Imported — review required",
       "partial; review import report": "Partial import — review report",
     })
-    for (const [value, label] of Object.entries(operationNames))
+    for (const [value, label] of Object.entries(operationNames()))
       expect(auditValueLabel("operation", value)).toBe(label)
-    for (const [value, label] of Object.entries(outcomeNames))
+    for (const [value, label] of Object.entries(outcomeNames()))
       expect(auditValueLabel("outcome", value)).toBe(label)
   })
   it.each(["historical.operation", "constructor", "__proto__"])(

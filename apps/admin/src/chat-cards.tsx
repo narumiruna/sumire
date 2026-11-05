@@ -15,9 +15,11 @@ import { type ReactNode, type Ref, useContext, useEffect, useId, useState } from
 import type { Inventory, Policy, Snapshot } from "./api.js"
 import { type ChatDirectory, chatName } from "./chat-directory.js"
 import { type ChatRepair, chatState } from "./chat-state.js"
+import { t } from "./i18n.js"
 import { navigationHref } from "./navigation.js"
 import { withChatAccess } from "./policy-changes.js"
 import { SectionActive, SectionSelect } from "./sections.js"
+import { countText } from "./status-text.js"
 
 export type ChatScope = "all" | "enabled" | "pending"
 
@@ -31,7 +33,7 @@ export function matchesChatScope(chat: Chat, policy: Policy, scope: ChatScope) {
 }
 
 export function chatModelName(model: string | null, inventory: Inventory) {
-  if (!model) return "尚未設定"
+  if (!model) return t("chat.notConfigured")
   for (const provider of inventory.providers) {
     const found = provider.models.find((candidate) => `${provider.id}/${candidate.id}` === model)
     if (found) return found.name || found.id
@@ -114,7 +116,7 @@ export function ChatCard({
 }: CardProps) {
   const active = useContext(SectionActive)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [copyStatus, setCopyStatus] = useState("")
+  const [copyStatus, setCopyStatus] = useState<"" | "copied" | "failed">("")
   useEffect(() => {
     if (!active || busy) setMenuOpen(false)
   }, [active, busy])
@@ -126,13 +128,17 @@ export function ChatCard({
   )
   const issue = issues[0]
   const name = chatName(chat)
-  const status = !saved.approved ? "待核准" : saved.enabled ? "已啟用" : "已停用"
+  const status = !saved.approved
+    ? t("chat.pendingApproval")
+    : saved.enabled
+      ? t("chat.enabled")
+      : t("chat.disabled")
   const copyId = async () => {
     try {
       await navigator.clipboard.writeText(String(chat.id))
-      setCopyStatus("已複製聊天 ID")
+      setCopyStatus("copied")
     } catch {
-      setCopyStatus(`無法複製，請至詳細資料手動複製聊天 ID：${chat.id}`)
+      setCopyStatus("failed")
     }
   }
   return (
@@ -149,7 +155,7 @@ export function ChatCard({
         </span>
         <a
           className="chat-card-name directory-chat"
-          aria-label={`${name} · ${chat.id}`}
+          aria-label={t("chat.identity", { name, id: chat.id })}
           href={navigationHref("Chats", String(chat.id))}
           aria-current={selected === String(chat.id) ? "true" : undefined}
           title={name}
@@ -170,7 +176,7 @@ export function ChatCard({
         </a>
         <span
           className="chat-card-status"
-          title="已儲存政策狀態，尚未驗證模型回應"
+          title={t("chat.savedStatusHint")}
           data-status={!saved.approved ? "pending" : saved.enabled ? "enabled" : "disabled"}
         >
           <span aria-hidden="true" />
@@ -180,22 +186,26 @@ export function ChatCard({
       {saved.approved ? (
         <dl className="chat-card-facts">
           <div>
-            <dt>模型</dt>
+            <dt>{t("chat.model")}</dt>
             <dd title={saved.effective.model ?? undefined}>
               {chatModelName(saved.effective.model, inventory)}
             </dd>
           </div>
           <div>
-            <dt>來源</dt>
-            <dd>{saved.effective.sources.model === "chat" ? "個別設定" : "共用設定"}</dd>
+            <dt>{t("chat.source")}</dt>
+            <dd>
+              {saved.effective.sources.model === "chat"
+                ? t("chat.individualSettings")
+                : t("chat.sharedSettings")}
+            </dd>
           </div>
         </dl>
       ) : (
-        <p className="chat-card-waiting">等待管理員核准</p>
+        <p className="chat-card-waiting">{t("chat.waitingApproval")}</p>
       )}
       {pending && (
         <p className="chat-card-pending" role="status">
-          {approved ? "核准待儲存" : "撤銷核准待儲存"}
+          {approved ? t("chat.approvalUnsaved") : t("chat.revocationUnsaved")}
         </p>
       )}
       {saved.approved && !saved.enabled && (
@@ -207,7 +217,7 @@ export function ChatCard({
             onClick={() => onRepair(chat, "enabled")}
           >
             <ExclamationTriangleIcon aria-hidden="true" />
-            <span>聊天已停用</span>
+            <span>{t("chat.chatDisabled")}</span>
             <ChevronRightIcon aria-hidden="true" />
           </button>
         </div>
@@ -221,7 +231,11 @@ export function ChatCard({
             onClick={() => onRepair(chat, issue.target)}
           >
             <ExclamationTriangleIcon aria-hidden="true" />
-            <span>需要處理{issues.length > 1 ? `（${issues.length}）` : ""}</span>
+            <span>
+              {issues.length > 1
+                ? t("chat.needsAttentionCount", { count: issues.length })
+                : t("chat.needsAttention")}
+            </span>
             <ChevronRightIcon aria-hidden="true" />
           </button>
         </div>
@@ -230,7 +244,7 @@ export function ChatCard({
         {saved.approved ? (
           <Button className="chat-card-primary" disabled={busy} onClick={() => onConfigure(chat)}>
             <GearIcon aria-hidden="true" />
-            設定
+            {t("chat.configure")}
           </Button>
         ) : (
           <>
@@ -240,7 +254,7 @@ export function ChatCard({
               onClick={() => onChange(withChatAccess(policy, chat.id, !approved))}
             >
               <CheckIcon aria-hidden="true" />
-              {approved ? "取消核准" : "核准"}
+              {approved ? t("chat.cancelApproval") : t("chat.approve")}
             </Button>
             <Button
               variant="outline"
@@ -248,7 +262,7 @@ export function ChatCard({
               disabled={busy}
               onClick={() => onOpen(chat)}
             >
-              查看
+              {t("chat.view")}
             </Button>
           </>
         )}
@@ -258,7 +272,7 @@ export function ChatCard({
               variant="ghost"
               className="chat-card-menu"
               disabled={busy}
-              aria-label={`${name}的更多操作`}
+              aria-label={t("chat.moreActions", { name })}
             >
               <DotsHorizontalIcon aria-hidden="true" />
             </Button>
@@ -269,10 +283,12 @@ export function ChatCard({
               if (!active || busy) event.preventDefault()
             }}
           >
-            <DropdownMenu.Item onSelect={() => onOpen(chat)}>查看詳細資料</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => void copyId()}>複製聊天 ID</DropdownMenu.Item>
+            <DropdownMenu.Item onSelect={() => onOpen(chat)}>
+              {t("chat.viewDetails")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onSelect={() => void copyId()}>{t("chat.copyId")}</DropdownMenu.Item>
             <DropdownMenu.Item onSelect={() => onRepair(chat, "access")}>
-              管理存取權限
+              {t("chat.manageAccess")}
             </DropdownMenu.Item>
             <DropdownMenu.Separator />
             <DropdownMenu.Item
@@ -281,18 +297,18 @@ export function ChatCard({
             >
               {approved
                 ? pending
-                  ? "取消待儲存核准"
-                  : "撤銷核准"
+                  ? t("chat.cancelPendingApproval")
+                  : t("chat.revokeApproval")
                 : pending
-                  ? "取消待儲存撤銷"
-                  : "核准存取"}
+                  ? t("chat.cancelPendingRevocation")
+                  : t("chat.approveAccess")}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       </div>
       {copyStatus && (
         <p className="chat-card-copy" role="status">
-          {copyStatus}
+          {copyStatus === "copied" ? t("chat.copied") : t("chat.copyManualId", { id: chat.id })}
         </p>
       )}
     </li>
@@ -333,17 +349,25 @@ export function ChatCards({
     <>
       <p className="chat-card-count" aria-live="polite" aria-busy={directory.loading}>
         {directory.loading
-          ? "載入中…"
+          ? t("chat.loadingShort")
           : directory.error
-            ? "無法載入聊天"
-            : `${visible.length} 個聊天${directory.offset || directory.chats.length >= 100 || scope !== "all" || type !== "all" ? "（本頁）" : ""}`}
+            ? t("chat.loadFailed")
+            : t(
+                directory.offset ||
+                  directory.chats.length >= 100 ||
+                  scope !== "all" ||
+                  type !== "all"
+                  ? "chat.pageCount"
+                  : "chat.count",
+                { count: countText(visible.length, "chat") },
+              )}
       </p>
       <div className="chat-card-toolbar">
         <TextField.Root
           id={searchId}
           ref={searchRef}
-          aria-label="搜尋聊天"
-          placeholder="搜尋聊天"
+          aria-label={t("chat.search")}
+          placeholder={t("chat.search")}
           value={directory.query}
           maxLength={128}
           onChange={(event) => directory.setQuery(event.target.value)}
@@ -354,25 +378,25 @@ export function ChatCards({
         </TextField.Root>
         <Button
           className="chat-card-filter"
-          aria-label="篩選"
+          aria-label={t("chat.filter")}
           variant="outline"
           aria-expanded={filtersOpen}
           aria-controls={filterId}
           onClick={() => setFiltersOpen(!filtersOpen)}
         >
           <ChatFilterIcon />
-          篩選
+          {t("chat.filter")}
           {(type !== "all" || access !== "all") && (
-            <span className="chat-filter-dot" role="img" aria-label="已套用類型篩選" />
+            <span className="chat-filter-dot" role="img" aria-label={t("chat.typeFilterApplied")} />
           )}
         </Button>
       </div>
-      <fieldset className="chat-card-scopes" aria-label="聊天狀態篩選">
+      <fieldset className="chat-card-scopes" aria-label={t("chat.statusFilter")}>
         {(
           [
-            ["all", "全部"],
-            ["enabled", "已啟用"],
-            ["pending", "待核准"],
+            ["all", "chat.all"],
+            ["enabled", "chat.enabled"],
+            ["pending", "chat.pendingApproval"],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -384,7 +408,7 @@ export function ChatCards({
               setAccess("all")
             }}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </fieldset>
@@ -392,20 +416,20 @@ export function ChatCards({
         className="chat-card-filters"
         id={filterId}
         hidden={!filtersOpen}
-        aria-label="搜尋與篩選選項"
+        aria-label={t("chat.searchFilterOptions")}
       >
-        <label htmlFor={typeId}>Chat type</label>
+        <label htmlFor={typeId}>{t("chat.chatType")}</label>
         <SectionSelect.Root value={type} onValueChange={setType}>
           <SectionSelect.Trigger id={typeId} />
           <SectionSelect.Content>
-            <SectionSelect.Item value="all">All types</SectionSelect.Item>
-            <SectionSelect.Item value="private">Private</SectionSelect.Item>
-            <SectionSelect.Item value="group">Group / supergroup</SectionSelect.Item>
-            <SectionSelect.Item value="channel">Channel</SectionSelect.Item>
-            <SectionSelect.Item value="unknown">Unknown type</SectionSelect.Item>
+            <SectionSelect.Item value="all">{t("chat.allTypes")}</SectionSelect.Item>
+            <SectionSelect.Item value="private">{t("chat.private")}</SectionSelect.Item>
+            <SectionSelect.Item value="group">{t("chat.groupSupergroup")}</SectionSelect.Item>
+            <SectionSelect.Item value="channel">{t("chat.channel")}</SectionSelect.Item>
+            <SectionSelect.Item value="unknown">{t("chat.unknownType")}</SectionSelect.Item>
           </SectionSelect.Content>
         </SectionSelect.Root>
-        <label htmlFor={accessId}>Access status</label>
+        <label htmlFor={accessId}>{t("chat.accessFilter")}</label>
         <SectionSelect.Root
           value={access}
           onValueChange={(value) => {
@@ -415,15 +439,12 @@ export function ChatCards({
         >
           <SectionSelect.Trigger id={accessId} />
           <SectionSelect.Content>
-            <SectionSelect.Item value="all">All access</SectionSelect.Item>
-            <SectionSelect.Item value="allowed">Approved and enabled</SectionSelect.Item>
-            <SectionSelect.Item value="denied">Not approved or disabled</SectionSelect.Item>
+            <SectionSelect.Item value="all">{t("chat.allAccess")}</SectionSelect.Item>
+            <SectionSelect.Item value="allowed">{t("chat.approvedEnabled")}</SectionSelect.Item>
+            <SectionSelect.Item value="denied">{t("chat.notApprovedDisabled")}</SectionSelect.Item>
           </SectionSelect.Content>
         </SectionSelect.Root>
-        <p>
-          可搜尋名稱或完整聊天
-          ID。搜尋涵蓋已儲存的聊天；類型與狀態篩選僅套用本頁，狀態以已儲存的設定為準，不代表已驗證模型可用。
-        </p>
+        <p>{t("chat.filterHelp")}</p>
         {(directory.query || type !== "all" || scope !== "all" || access !== "all") && (
           <Button
             variant="soft"
@@ -434,7 +455,7 @@ export function ChatCards({
               setAccess("all")
             }}
           >
-            清除搜尋與篩選
+            {t("chat.clearFilters")}
           </Button>
         )}
         {children}
@@ -442,14 +463,14 @@ export function ChatCards({
       {directory.error ? (
         <div className="chat-card-empty">
           <p role="alert">{directory.error}</p>
-          <Button onClick={directory.refresh}>重新載入</Button>
+          <Button onClick={directory.refresh}>{t("chat.reload")}</Button>
         </div>
       ) : !directory.loading && visible.length === 0 ? (
         <p className="chat-card-empty">
-          {directory.query ? "找不到符合搜尋的聊天" : "本頁沒有符合條件的聊天"}
+          {directory.query ? t("chat.noSearchMatchesShort") : t("chat.noPageMatches")}
         </p>
       ) : null}
-      <ul className="chat-cards chat-list directory-list-region" aria-label="Chats on this page">
+      <ul className="chat-cards chat-list directory-list-region" aria-label={t("chat.onPage")}>
         {!directory.loading &&
           !directory.error &&
           visible.map((chat) => <ChatCard key={chat.id} {...props} chat={chat} />)}
@@ -466,19 +487,19 @@ export function ChatCards({
               props.onOpen(current)
             }}
           >
-            Show selected chat
+            {t("chat.selected")}
           </Button>
         )}
         {(directory.offset > 0 || directory.chats.length >= 100) && (
-          <nav className="chat-card-pagination" aria-label="聊天分頁">
+          <nav className="chat-card-pagination" aria-label={t("chat.pagination")}>
             <Button
               variant="outline"
               disabled={directory.loading || directory.offset === 0}
               onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
             >
-              上一頁
+              {t("chat.previous")}
             </Button>
-            <span>第 {Math.floor(directory.offset / 100) + 1} 頁</span>
+            <span>{t("chat.page", { page: Math.floor(directory.offset / 100) + 1 })}</span>
             <Button
               variant="outline"
               disabled={
@@ -486,7 +507,7 @@ export function ChatCards({
               }
               onClick={() => directory.setOffset(directory.offset + 100)}
             >
-              下一頁
+              {t("chat.next")}
             </Button>
           </nav>
         )}

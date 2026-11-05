@@ -4,16 +4,16 @@ import { navigate, openProviderDetail } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 
 const destinations = [
-  ["Chats", "聊天管理"],
-  ["Defaults", "共用設定"],
-  ["Model Providers", "模型供應商"],
-  ["Tool permissions", "工具權限"],
-  ["Skills", "技能管理"],
-  ["MCP connections", "MCP 伺服器"],
-  ["Secrets & variables", "密鑰與變數"],
-  ["GitHub mentions", "GitHub 提及"],
-  ["Audit", "稽核紀錄"],
-  ["Durable", "對話紀錄"],
+  ["Chats", "Chats"],
+  ["Defaults", "Shared defaults"],
+  ["Model Providers", "Providers & models"],
+  ["Tool permissions", "Tool permissions"],
+  ["Skills", "Skills"],
+  ["MCP connections", "MCP servers"],
+  ["Secrets & variables", "Secrets & variables"],
+  ["GitHub mentions", "GitHub mentions"],
+  ["Audit", "Audit log"],
+  ["Durable", "Conversation logs"],
 ] as const
 
 for (const [width, height, zoom] of [
@@ -42,7 +42,7 @@ for (const [width, height, zoom] of [
       await page.evaluate(() => window.scrollTo(0, 0))
       const heading = page.locator("#current-section-heading")
       await expect(heading).toHaveText(title)
-      await expect(heading).toHaveCSS("font-size", "30px")
+      await expect(heading).toHaveCSS("font-size", width <= 360 ? "28px" : "30px")
       await expect(page.locator(".admin-shell > main")).toHaveCSS(
         "background-color",
         "rgb(250, 250, 249)",
@@ -95,22 +95,24 @@ test("provider filters and independent add-provider search never write policy or
   const cards = page.locator(".provider-card")
   await expect(cards).toHaveCount(2)
   const filters = page.getByRole("group", { name: "Provider status" })
-  await filters.getByRole("button", { name: "已設定", exact: true }).click()
+  await filters.getByRole("button", { name: "Configured", exact: true }).click()
   await expect(cards).toHaveCount(1)
   await expect(cards).toContainText("Alpha")
-  await filters.getByRole("button", { name: "需處理", exact: true }).click()
+  await filters.getByRole("button", { name: "Needs attention", exact: true }).click()
   await expect(cards).toHaveCount(1)
   await expect(cards).toContainText("Beta")
   await page.getByRole("textbox", { name: "Search providers" }).fill("nothing matches")
   await expect(cards).toHaveCount(0)
-  await expect(page.getByText("沒有符合條件的供應商。請調整搜尋或狀態篩選。")).toBeVisible()
+  await expect(
+    page.getByText("No providers match. Adjust the search or status filter."),
+  ).toBeVisible()
   await page.getByRole("button", { name: "Add provider", exact: true }).click()
   await expect(
     page.getByRole("button", { name: "Set up provider fixture", exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "Back to providers", exact: true }).click()
   await page.getByRole("textbox", { name: "Search providers" }).fill("")
-  await filters.getByRole("button", { name: "全部", exact: true }).click()
+  await filters.getByRole("button", { name: "All", exact: true }).click()
   await expect(cards).toHaveCount(2)
   expect(fixture.methods.every((method) => method === "GET")).toBe(true)
 })

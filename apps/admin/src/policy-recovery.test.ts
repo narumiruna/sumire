@@ -1,11 +1,102 @@
 import { inherited, initialPolicy, type Policy } from "@narumitw/sumire-policy"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
+import { setLocale } from "./i18n.js"
 import { recoverPolicy } from "./policy-recovery.js"
 
 function policies() {
   const base = initialPolicy()
   return { base, draft: structuredClone(base), latest: structuredClone(base) }
 }
+
+describe("localized policy recovery", () => {
+  afterEach(() => setLocale("en"))
+
+  it.each([
+    {
+      locale: "zh-TW",
+      labels: [
+        "全域工具可用性",
+        "全域技能可用性",
+        "全域 MCP 可用性",
+        "全域模型可用性",
+        "私人訊息存取權",
+        "群組與頻道存取權",
+        "供應商設定與順序",
+        "GitHub 提及作者",
+        "共用預設值：已授權的工具",
+        "共用預設值：已啟用的技能",
+        "共用預設值：已授權的 MCP 伺服器",
+        "共用預設值：允許的模型",
+        "共用預設值：模型",
+        "共用預設值：思考層級",
+        "聊天 42 設定",
+      ],
+    },
+    {
+      locale: "ja",
+      labels: [
+        "グローバルなツールの利用可否",
+        "グローバルなスキルの利用可否",
+        "グローバルな MCP の利用可否",
+        "グローバルなモデルの利用可否",
+        "ダイレクトメッセージのアクセス権",
+        "グループとチャンネルのアクセス権",
+        "プロバイダーの設定と順序",
+        "GitHub メンションの投稿者",
+        "共通の既定値：許可されたツール",
+        "共通の既定値：有効なスキル",
+        "共通の既定値：許可された MCP サーバー",
+        "共通の既定値：許可されたモデル",
+        "共通の既定値：モデル",
+        "共通の既定値：思考レベル",
+        "チャット 42 の設定",
+      ],
+    },
+  ] as const)("uses $locale labels without changing recovery values, IDs, or choices", (text) => {
+    const { base, draft, latest } = policies()
+    for (const key of ["tools", "skills", "servers", "models"] as const) {
+      draft[key] = ["local-value"]
+      latest[key] = ["saved-value"]
+      draft.defaults[key] = ["local-value"]
+      latest.defaults[key] = ["saved-value"]
+    }
+    draft.privateUsers = [42]
+    latest.privateUsers = [43]
+    draft.groups = [-42]
+    latest.groups = [-43]
+    draft.providers = [{ id: "local-provider", enabled: true, models: [] }]
+    latest.providers = [{ id: "saved-provider", enabled: false, models: [] }]
+    draft.githubNotifications.allowedUsernames = ["octocat"]
+    latest.githubNotifications.allowedUsernames = ["hubot"]
+    draft.defaults.model = "local-provider/model"
+    latest.defaults.model = "saved-provider/model"
+    draft.defaults.thinking = "high"
+    latest.defaults.thinking = "low"
+    draft.chats["42"] = { ...inherited, tools: [], enabled: true }
+    latest.chats["42"] = { ...inherited, enabled: false }
+    const original = structuredClone({ base, draft, latest })
+    const english = recoverPolicy(base, draft, latest)
+    const choices = Object.fromEntries(english.changes.map(({ id }) => [id, "draft" as const]))
+    const chosen = recoverPolicy(base, draft, latest, choices)
+
+    setLocale(text.locale)
+    const result = recoverPolicy(base, draft, latest)
+    expect(result.changes.map(({ label }) => label)).toEqual(text.labels)
+    expect(result.policy).toEqual(english.policy)
+    expect(result.unresolved).toBe(15)
+    expect(result.changes.map(({ label: _, ...change }) => change)).toEqual(
+      english.changes.map(({ label: _, ...change }) => change),
+    )
+    const resolved = recoverPolicy(base, draft, latest, choices)
+    expect(resolved.policy).toEqual(chosen.policy)
+    expect(resolved.policy).toEqual(draft)
+    expect(resolved.unresolved).toBe(0)
+    expect({ base, draft, latest }).toEqual(original)
+
+    setLocale("en")
+    expect(recoverPolicy(base, draft, latest)).toEqual(english)
+  })
+})
 
 describe("policy recovery", () => {
   it("recovers mention author edits without unioning concurrent grants or revocations", () => {

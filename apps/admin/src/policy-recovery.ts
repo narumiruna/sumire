@@ -1,4 +1,5 @@
 import type { Policy, Selection } from "./api.js"
+import { type MessageKey, t } from "./i18n.js"
 
 export type RecoveryChoice = "saved" | "draft"
 export type RecoveryChange = {
@@ -24,23 +25,23 @@ function equal(a: unknown, b: unknown): boolean {
 }
 
 const lists = {
-  tools: "Global tool availability",
-  skills: "Global skill availability",
-  servers: "Global MCP availability",
-  models: "Global model availability",
-  privateUsers: "Private-message access",
-  groups: "Group and channel access",
-  providers: "Provider configuration and order",
-  githubNotifications: "GitHub mention authors",
+  tools: "policy.global.tools",
+  skills: "policy.global.skills",
+  servers: "policy.global.servers",
+  models: "policy.global.models",
+  privateUsers: "policy.scope.privateUsers",
+  groups: "policy.recovery.groups",
+  providers: "policy.recovery.providers",
+  githubNotifications: "policy.recovery.github",
 } as const
 const defaults = {
-  tools: "Authorized tools",
-  skills: "Enabled skills",
-  servers: "Authorized MCP servers",
-  models: "Allowed models",
-  model: "Model",
-  thinking: "Thinking level",
-} satisfies Record<keyof Selection, string>
+  tools: "policy.field.tools",
+  skills: "policy.field.skills",
+  servers: "policy.field.servers",
+  models: "policy.field.models",
+  model: "policy.field.model",
+  thinking: "policy.field.thinking",
+} as const satisfies Record<keyof Selection, MessageKey>
 
 /** Reapply only non-overlapping edits. Lists and chat records are atomic, never unioned. */
 export function recoverPolicy(
@@ -64,13 +65,13 @@ export function recoverPolicy(
   }
   const policy = structuredClone(latest)
   const recoverList = <K extends keyof typeof lists>(key: K) => {
-    policy[key] = choose(key, lists[key], base[key], draft[key], latest[key], submitted[key])
+    policy[key] = choose(key, t(lists[key]), base[key], draft[key], latest[key], submitted[key])
   }
   for (const key of Object.keys(lists) as (keyof typeof lists)[]) recoverList(key)
   const recoverDefault = <K extends keyof Selection>(key: K) => {
     policy.defaults[key] = choose(
       `defaults.${key}`,
-      `Shared defaults: ${defaults[key]}`,
+      t("policy.recovery.default", { field: t(defaults[key]) }),
       base.defaults[key],
       draft.defaults[key],
       latest.defaults[key],
@@ -85,7 +86,7 @@ export function recoverPolicy(
   ])) {
     const value = choose(
       `chats.${id}`,
-      `Chat ${id} settings`,
+      t("policy.recovery.chat", { id }),
       base.chats[id],
       draft.chats[id],
       latest.chats[id],
