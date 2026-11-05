@@ -9,6 +9,8 @@ function CopyContent({ text }: { text: string }) {
     <>
       <Button
         type="button"
+        className="durable-copy-button"
+        aria-label="Copy content"
         size="1"
         variant="outline"
         onClick={() => {
@@ -20,7 +22,7 @@ function CopyContent({ text }: { text: string }) {
             )
         }}
       >
-        <CopyIcon aria-hidden /> Copy content
+        <CopyIcon aria-hidden /> <span className="durable-copy-label">Copy content</span>
       </Button>
       {status && (
         <Text size="1" role="status">

@@ -55,15 +55,12 @@ export function SharedDefaults({
   const skills = effective.skills
   return (
     <div className="defaults-layout">
-      <Prose>
-        Chats inherit each shared selection unless that category has an explicit chat override.
-        Shared changes do not replace explicit overrides.
-      </Prose>
+      <Prose>共用選項不會覆蓋聊天的個別設定。</Prose>
       <SettingsSection
         id="default-model-settings"
         tabIndex={-1}
-        title="Model & thinking"
-        description="Choose the default model and its thinking level."
+        title="模型與思考"
+        description="選擇預設模型與思考程度"
       >
         <DefaultModel
           policy={policy}
@@ -102,10 +99,7 @@ export function SharedDefaults({
           />
         </Disclosure>
       </SettingsSection>
-      <SettingsSection
-        title="Default tool permissions"
-        description="Configured permissions within global limits."
-      >
+      <SettingsSection title="工具權限" description="共用預設仍受全域上限限制">
         <TableToolbar>
           <Prose size="2">
             {countText(effective.tools.length, "tool")} · {countText(groups.length, "source")} ·{" "}
@@ -123,7 +117,7 @@ export function SharedDefaults({
           </Prose>
         )}
       </SettingsSection>
-      <SettingsSection title="Default skills" description="Instruction sets, not tool access.">
+      <SettingsSection title="技能" description="指令集，不代表工具授權">
         <TableToolbar>
           <Prose size="2">{countText(skills.length, "skill")} selected</Prose>
           {managementLink("Skills", "Manage default skills", "default-skills")}
@@ -134,10 +128,7 @@ export function SharedDefaults({
           </Prose>
         )}
       </SettingsSection>
-      <SettingsSection
-        title="Default MCP servers"
-        description="Server gates do not grant tool execution permission."
-      >
+      <SettingsSection title="MCP 伺服器" description="開放伺服器不等於授予工具執行權限">
         <TableToolbar>
           <Prose size="2">
             {countText(effective.servers.length, "server gate")} allowed by default

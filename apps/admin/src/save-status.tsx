@@ -123,6 +123,7 @@ export function SaveStatus({
     !providerPending &&
     !runtimePending &&
     !recover
+  const foldSaved = quiet && applied && !busy && !recover
   const [notify, setNotify] = useState(false)
   const previousBusy = useRef(busy)
   useEffect(() => {
@@ -189,9 +190,10 @@ export function SaveStatus({
         data-pending={dirty}
         data-compact={compact}
         data-quiet={quiet}
+        data-folded={foldSaved}
       >
-        {quiet && compact ? (
-          notify ? (
+        {foldSaved ? (
+          notify && compact ? (
             <div className="settings-saved-toast">{applicationStatus}</div>
           ) : (
             <details className="saved-settings-details" id="saved-settings-details" tabIndex={-1}>

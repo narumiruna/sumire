@@ -195,13 +195,13 @@ test("persistent scope status follows clean, single-scope, and mixed drafts thro
         await expect(bar).toContainText("Settings saved and applied.")
         await expect(bar.getByRole("button")).toHaveCount(0)
         await expect(bar.getByText("How saving works", { exact: true })).toHaveCount(0)
-        if (section === "Chats" || section === "Access") {
+        {
           const details = bar.locator(".saved-settings-details")
           await expect(details).toBeVisible()
           await details.locator(":scope > summary").click()
           await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
           await details.locator(":scope > summary").click()
-        } else await expect(bar.getByText("Revision details", { exact: true })).toBeVisible()
+        }
       }
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
       const changes = page.getByRole("region", { name: "Pending changes", exact: true })
@@ -290,7 +290,7 @@ test("Durable keeps pending or failed application and busy actions visible, then
     release()
   }
   await expect(bar).toBeHidden()
-  await expect(page.getByRole("heading", { name: "Conversation logs", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "對話紀錄", exact: true })).toBeVisible()
 })
 
 test("guided and advanced MCP edits share a draft and a redacted transport-aware preview", async ({
@@ -663,13 +663,14 @@ for (const mode of [
         }
         await expect(active).toBeVisible()
         const focused = await active.boundingBox()
-        const bar = await page.locator("#save-status").boundingBox()
+        const overlay = page.locator(".changes-bar")
+        const bar = (await overlay.count()) ? await overlay.boundingBox() : null
         if (
           focused &&
           bar &&
           !(await active.evaluate((element) => Boolean(element.closest("#save-status"))))
         )
-          expect(focused.y).toBeGreaterThanOrEqual(bar.y + bar.height)
+          expect(focused.y + focused.height).toBeLessThanOrEqual(bar.y)
         expect(await active.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
           "none",
         )

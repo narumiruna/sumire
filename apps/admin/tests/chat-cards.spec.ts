@@ -82,7 +82,7 @@ test("settings, warning repair, manual ID configuration and access management re
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(page.locator('[data-chat-id="-100"] .chat-card-name')).toBeFocused()
   await page.locator('[data-chat-id="-101"]').getByRole("button", { name: "需要處理" }).click()
-  await expect(page.getByRole("heading", { name: "Providers & models", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "模型供應商", exact: true })).toBeVisible()
   await page.goto("/")
   await page.getByRole("button", { name: "篩選", exact: true }).click()
   await page.getByText("以聊天 ID 開啟設定", { exact: true }).click()

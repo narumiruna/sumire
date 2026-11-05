@@ -147,6 +147,10 @@ for (const viewport of [
       await expect(detail.locator(".durable-raw-data")).not.toHaveAttribute("open", "")
       await expect(page.locator(".durable-compact-list")).toBeHidden()
       if (viewport.width < 1100) {
+        await page.screenshot({
+          path: testInfo.outputPath("workspace-initial.png"),
+          fullPage: true,
+        })
         await expect(tree(page)).toBeHidden()
         expect((await body.boundingBox())?.y).toBeLessThan(viewport.height - 120)
         await testInfo.attach("workspace-geometry", {
@@ -185,7 +189,10 @@ for (const viewport of [
         .locator(".durable-tree-row :is(a, span, small, time)")
         .all()) {
         if (!(await element.isVisible()) || !(await element.textContent())?.trim()) continue
-        expect((await contrast(element)).text).toBeGreaterThanOrEqual(4.5)
+        expect(
+          (await contrast(element)).text,
+          await element.evaluate((node) => node.outerHTML),
+        ).toBeGreaterThanOrEqual(4.5)
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,

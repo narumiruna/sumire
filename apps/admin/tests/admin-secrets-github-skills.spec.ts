@@ -125,9 +125,7 @@ async function fixture(
     await route.fulfill({ json: data[path] ?? {} })
   })
   await page.goto("/?section=Secrets+%26+variables")
-  await expect(
-    page.getByRole("heading", { name: "Secrets & variables", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "密鑰與變數", exact: true })).toBeVisible()
   return { calls, state }
 }
 

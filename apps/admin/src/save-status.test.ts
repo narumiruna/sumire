@@ -47,15 +47,44 @@ describe("SaveStatus", () => {
     expect(html).not.toContain("<button")
     expect(html).not.toContain("save-scopes")
   })
-  it("folds clean chat save information without hiding actionable states", () => {
+  it("folds saved metadata across pages without hiding actionable states", () => {
     const html = render({ quiet: true })
     expect(html).toContain('id="saved-settings-details"')
     expect(html).toContain("儲存與版本資訊")
     expect(html).not.toContain('class="saved-settings-details" open')
     const pending = render({ quiet: true, dirty: true })
-    expect(pending).not.toContain('id="saved-settings-details"')
+    expect(pending).toContain('id="saved-settings-details"')
+    expect(pending).toContain('data-compact="false"')
+    expect(pending).toContain('data-folded="true"')
+    expect(pending).toContain('class="changes-bar"')
     expect(pending).toContain("Review and save changes")
     expect(render({ quiet: true }, { status: "failed" })).toContain("Retry application")
+  })
+  it.each([
+    { localPending: true },
+    { mcpDirty: true },
+    { providerPending: true },
+    { runtimePending: true },
+  ])(
+    "keeps editor-draft warnings visible while folding previously applied metadata: %j",
+    (draft) => {
+      const html = render({ quiet: true, ...draft })
+      expect(html).toContain('data-folded="true"')
+      expect(html).toContain('data-compact="false"')
+      expect(html).toContain('aria-label="Pending changes"')
+      expect(html).toContain("Unsubmitted editor draft")
+      expect(html).toContain('id="saved-settings-details"')
+    },
+  )
+  it("never folds failed, waiting, busy or uncertain saved outcomes", () => {
+    for (const status of ["failed", "pending", "unknown"] as const) {
+      const html = render({ quiet: true }, { status })
+      expect(html).toContain('data-folded="false"')
+      expect(html).not.toContain('id="saved-settings-details"')
+      expect(html).toContain("Retry application")
+    }
+    expect(render({ quiet: true, busy: true })).toContain('data-folded="false"')
+    expect(render({ quiet: true, recover: () => {} })).toContain('data-folded="false"')
   })
   it.each([
     { dirty: true },

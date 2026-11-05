@@ -27,6 +27,7 @@ import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
 import "./chat-cards.css"
+import "./admin-design.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
@@ -56,6 +57,7 @@ import {
   type Page,
   type PendingEditor,
   pageLabel,
+  pageTitle,
   pendingEditors,
   SideNavigation,
   useNavigation,
@@ -84,16 +86,16 @@ const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 const pageDescriptions = {
   Chats: undefined,
   Durable: undefined,
-  Defaults:
-    "Defaults for chats without corresponding overrides. Explicit chat overrides stay unchanged.",
-  "Tool permissions": "Manage global, default, and chat permissions.",
-  Skills: "Manage skill instructions for defaults and individual chats.",
-  "MCP connections": "Manage connections and protected configuration.",
-  "Model Providers": "Manage models and provider authentication.",
-  "Secrets & variables": "Manage stored runtime values without changing tool or chat permissions.",
-  "GitHub mentions": "Allow GitHub mention authors to trigger replies on GitHub.",
-  Audit: "Review configuration activity and imports.",
+  Defaults: "未個別設定的聊天將沿用這些選項",
+  "Tool permissions": "全域上限、共用預設與聊天授權分開管理",
+  Skills: "管理指令集，不代表授予工具權限",
+  "MCP connections": "管理伺服器連線與受保護的設定",
+  "Model Providers": "憑證設定與模型開放分開管理",
+  "Secrets & variables": "密鑰僅能寫入；一般變數不應存放憑證",
+  "GitHub mentions": "管理可觸發 GitHub 自動回覆的作者",
+  Audit: "檢視設定變更與匯入紀錄",
 }
+
 function App() {
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
@@ -471,7 +473,7 @@ function App() {
       />
       <main aria-busy={busy}>
         <PageHeader
-          title={page === "Chats" ? "聊天管理" : pageLabel(page)}
+          title={pageTitle(page)}
           description={pageDescriptions[page]}
           actions={
             page !== "Durable" && (
@@ -486,7 +488,7 @@ function App() {
                   void run(load)
                 }}
               >
-                {page === "Chats" ? <UpdateIcon /> : <ReloadIcon />}
+                <UpdateIcon aria-hidden />
                 <span className="workspace-action-label">Refresh settings</span>
               </Button>
             )
@@ -532,7 +534,7 @@ function App() {
           snapshot.revision === snapshot.applied
         ) && (
           <SaveStatus
-            quiet={page === "Chats"}
+            quiet
             snapshot={snapshot}
             reviewOpen={policyReviewOpen}
             onReviewOpenChange={setPolicyReviewOpen}
@@ -1099,7 +1101,7 @@ function App() {
                   title="Manage model availability"
                   id="model-availability"
                   tabIndex={-1}
-                  description="Removing a model also removes it from shared and chat allowed-model lists. Matching shared model and thinking defaults are cleared. Matching chat model and thinking overrides reset to shared defaults. Review and save to apply."
+                  description="移除模型會同步移出共用與聊天的允許清單；相符的共用模型與思考預設將清除，聊天覆寫則恢復繼承。審閱並儲存後才會套用。"
                 >
                   <ModelAvailability
                     key={snapshot.revision}
@@ -1108,8 +1110,7 @@ function App() {
                     onChange={(models) => update(withModelAvailability(policy, models))}
                   />
                   <Prose size="2">
-                    Selecting a model again restores availability only. Discard settings changes to
-                    undo removal. Selecting a provider never grants its full catalog.
+                    再次勾選只恢復模型開放，不會還原先前選用。要撤回移除，請捨棄設定變更；切換供應商不會開放整份目錄。
                   </Prose>
                   <ModelRemovalImpact before={savedPolicy ?? policy} after={policy} />
                 </SettingsSection>

@@ -117,7 +117,7 @@ test("mobile chat actions support keyboard focus return and record navigation", 
   await expect(trigger).toBeFocused()
   await trigger.click()
   await page.getByRole("menuitem", { name: "View conversation records", exact: true }).click()
-  await expect(page.locator("#current-section-heading")).toHaveText("Conversation logs")
+  await expect(page.locator("#current-section-heading")).toHaveText("對話紀錄")
 })
 
 test("browser Back closes the mobile chat menu instead of leaving hidden-section actions open", async ({
@@ -135,7 +135,7 @@ test("browser Back closes the mobile chat menu instead of leaving hidden-section
   await page.getByRole("button", { name: "Chat actions", exact: true }).click()
   await expect(page.getByRole("menuitem", { name: "Copy chat ID", exact: true })).toBeVisible()
   await page.goBack()
-  await expect(page.locator("#current-section-heading")).toHaveText("Shared defaults")
+  await expect(page.locator("#current-section-heading")).toHaveText("共用設定")
   await expect(page.getByRole("menuitem", { name: "Copy chat ID", exact: true })).toHaveCount(0)
   await page.goForward()
   await expect(page.getByRole("button", { name: "Chat actions", exact: true })).toBeVisible()

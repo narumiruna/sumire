@@ -98,6 +98,21 @@ const pageLabels = {
   Audit: "Audit log",
 } satisfies Record<Page, string>
 export const pageLabel = (page: Page) => pageLabels[page]
+/** Localized presentation only; URL identifiers and transaction labels stay stable. */
+export const pageTitles = {
+  Chats: "聊天管理",
+  Durable: "對話紀錄",
+  Defaults: "共用設定",
+  "Tool permissions": "工具權限",
+  Skills: "技能管理",
+  "MCP connections": "MCP 伺服器",
+  "Model Providers": "模型供應商",
+  "Secrets & variables": "密鑰與變數",
+  "GitHub mentions": "GitHub 提及",
+  Audit: "稽核紀錄",
+} satisfies Record<Page, string>
+export const pageTitle = (page: Page) => pageTitles[page]
+
 const navigationOrder: readonly Page[] = [
   "Chats",
   "Durable",
@@ -327,7 +342,7 @@ export function SideNavigation({
                 }}
               >
                 <Icon aria-hidden />
-                <span>{pageLabel(item)}</span>
+                <span>{pageTitle(item)}</span>
               </a>
               {description && (
                 <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>

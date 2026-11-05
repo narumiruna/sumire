@@ -97,13 +97,18 @@ export const sections = [
 ]
 export function sectionLabel(name: string): string {
   const labels: Record<string, string> = {
-    Access: "Chats",
-    Defaults: "Shared defaults",
-    Durable: "Conversation logs",
-    "MCP connections": "MCP servers",
-    "Model Providers": "Providers & models",
-    "Model providers": "Providers & models",
-    Audit: "Audit log",
+    Access: "聊天管理",
+    Chats: "聊天管理",
+    Durable: "對話紀錄",
+    Defaults: "共用設定",
+    "Tool permissions": "工具權限",
+    Skills: "技能管理",
+    "MCP connections": "MCP 伺服器",
+    "Model Providers": "模型供應商",
+    "Model providers": "模型供應商",
+    "Secrets & variables": "密鑰與變數",
+    "GitHub mentions": "GitHub 提及",
+    Audit: "稽核紀錄",
   }
   return labels[name] ?? name
 }

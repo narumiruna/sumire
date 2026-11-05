@@ -107,7 +107,7 @@ test("unknown inventory is a saved diagnostic with a visible configuration repai
   await page.reload()
   await expect(row(page, 43)).not.toContainText("Ready")
   await row(page, 42).getByRole("button", { name: "需要處理", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "Providers & models", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "模型供應商", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })
 
