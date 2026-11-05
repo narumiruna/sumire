@@ -9,6 +9,7 @@ import {
   localeNames,
   localeStorageKey,
   locales,
+  type MessageKey,
   messages,
   resolveLocale,
   setLocale,
@@ -16,12 +17,12 @@ import {
   translate,
 } from "./i18n.js"
 import { LanguageSelector } from "./language-selector.js"
-import { chatsMessages } from "./locales/chats.js"
-import { commonMessages } from "./locales/common.js"
-import { policyMessages } from "./locales/policy.js"
-import { providersMessages } from "./locales/providers.js"
-import { recordsMessages } from "./locales/records.js"
-import { settingsMessages } from "./locales/settings.js"
+import { chatsMessages } from "./locales/en/chats.js"
+import { commonMessages } from "./locales/en/common.js"
+import { policyMessages } from "./locales/en/policy.js"
+import { providersMessages } from "./locales/en/providers.js"
+import { recordsMessages } from "./locales/en/records.js"
+import { settingsMessages } from "./locales/en/settings.js"
 import { countText } from "./status-text.js"
 
 afterEach(() => {
@@ -123,11 +124,16 @@ describe("admin message catalogs", () => {
   it("provides complete translations with identical interpolation fields", () => {
     const fields = (value: string) =>
       [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
-    for (const [key, translations] of Object.entries(messages)) {
-      expect(translations, key).toHaveLength(3)
-      for (const value of translations) {
-        expect(value.trim().length, key).toBeGreaterThan(0)
-        expect(fields(value), key).toEqual(fields(translations[0]))
+    const keys = Object.keys(messages.en) as MessageKey[]
+    for (const locale of locales) {
+      const catalog = messages[locale]
+      expect(Object.keys(catalog).sort(), locale).toEqual([...keys].sort())
+      for (const key of keys) {
+        const value = catalog[key]
+        const context = `${locale}:${key}`
+        expect(value.trim().length, context).toBeGreaterThan(0)
+        expect(fields(value), context).toEqual(fields(messages.en[key]))
+        expect(translate(locale, key), context).toBe(value)
       }
     }
   })

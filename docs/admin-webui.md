@@ -10,7 +10,11 @@ The WebUI stores an explicit choice in this browser as `sumire.admin.locale`. On
 
 Chat names, messages, tool output, provider metadata, skill descriptions, server diagnostics, and raw JSON remain in their original language. Technical IDs, API values, URLs, and saved policies do not change. Telegram bot messages are not part of this setting.
 
-Translation catalogs are in `apps/admin/src/locales/`. Each stable key has English, Traditional Chinese, and Japanese text with the same interpolation fields. Add presentation text through `t()` in `apps/admin/src/i18n.ts`; keep protocol and policy identifiers outside the catalogs. Resolve translated labels when rendering or calling a presentation helper, not at module initialization.
+Translation catalogs are grouped by language in `apps/admin/src/locales/`. The entry modules `en.ts`, `zh-tw.ts`, and `ja.ts` combine the feature modules in their matching language directories. Each feature module contains text for one language only; a message key maps directly to a string, not a multilingual tuple.
+
+English defines the message keys. Mapped types require each translated feature module to have the same keys as its English source. Catalog tests check complete key sets, nonempty text, matching interpolation fields, and lookup in every language. When adding a label, update the matching feature module in all three language directories.
+
+Add presentation text through `t()` in `apps/admin/src/i18n.ts`; keep protocol and policy identifiers outside the catalogs. Resolve translated labels when rendering or calling a presentation helper, not at module initialization.
 
 ## Workspace layout
 

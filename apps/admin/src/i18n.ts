@@ -1,11 +1,8 @@
 import { useSyncExternalStore } from "react"
-import { chatsMessages } from "./locales/chats.js"
-import { commonMessages } from "./locales/common.js"
-import { policyMessages } from "./locales/policy.js"
-import { providersMessages } from "./locales/providers.js"
-import { recordsMessages } from "./locales/records.js"
-import { settingsMessages } from "./locales/settings.js"
+import { en } from "./locales/en.js"
+import { ja } from "./locales/ja.js"
 import type { Catalog } from "./locales/types.js"
+import { zhTW } from "./locales/zh-tw.js"
 
 export const locales = ["en", "zh-TW", "ja"] as const
 export type Locale = (typeof locales)[number]
@@ -15,18 +12,12 @@ export const localeNames: Record<Locale, string> = {
   ja: "日本語",
 }
 export const localeStorageKey = "sumire.admin.locale"
-export const messages = {
-  ...commonMessages,
-  ...chatsMessages,
-  ...recordsMessages,
-  ...providersMessages,
-  ...policyMessages,
-  ...settingsMessages,
-} as const satisfies Catalog
-export type MessageKey = keyof typeof messages
+export const messages = { en, "zh-TW": zhTW, ja } as const satisfies Record<
+  Locale,
+  Catalog<typeof en>
+>
+export type MessageKey = keyof typeof en
 export type MessageValues = Record<string, string | number>
-
-const localeIndex: Record<Locale, 0 | 1 | 2> = { en: 0, "zh-TW": 1, ja: 2 }
 
 /** Browser language tags select supported presentation only, never API identifiers. */
 export function resolveLocale(saved: string | null, languages: readonly string[]): Locale {
@@ -41,7 +32,7 @@ export function resolveLocale(saved: string | null, languages: readonly string[]
 }
 
 export function translate(locale: Locale, key: MessageKey, values: MessageValues = {}): string {
-  const message = messages[key][localeIndex[locale]]
+  const message = messages[locale][key]
   return message.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
     Object.hasOwn(values, name) ? String(values[name]) : placeholder,
   )
