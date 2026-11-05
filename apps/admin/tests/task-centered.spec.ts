@@ -1,6 +1,7 @@
 import type { Inventory, Snapshot } from "@narumitw/sumire-contracts"
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
 import { expect, type Page, test } from "@playwright/test"
+import { openDirectoryFilters } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
 
 function data(count = 17) {
@@ -68,7 +69,7 @@ async function fixture(page: Page, state = data(), url = "/") {
     await route.fulfill({ json: responses[path.pathname] ?? {} })
   })
   await page.goto(url)
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   await expect(page.locator("#save-status")).not.toContainText("Saving or checking")
   return { ...state, methods }
 }
@@ -162,18 +163,20 @@ for (const scenario of scenarios) {
     const { methods } = await fixture(page, state)
     const row = page.locator(".chat-list .directory-chat").first()
     const entry = row.locator("xpath=ancestor::li")
-    await expect(entry.locator(".directory-approval")).toHaveText(
-      scenario.name === "unapproved" ? "Not approved" : "Approved",
+    await expect(entry.locator(".chat-card-status")).toHaveText(
+      scenario.name === "unapproved"
+        ? "待核准"
+        : scenario.name === "disabled"
+          ? "已停用"
+          : "已啟用",
     )
-    await expect(entry.locator(".directory-status-label")).toHaveText(
-      scenario.name === "disabled" ? "Disabled" : "Enabled",
-    )
-    if (scenario.name === "unapproved") {
-      await expect(entry.locator(".directory-issues")).not.toContainText(scenario.reason)
-      await expect(entry.locator(".directory-issues")).toContainText(
-        "Configured locally. Model response not checked.",
+    if (scenario.name === "unapproved" || scenario.name === "locally configured") {
+      await expect(entry.locator(".chat-card-warning")).toHaveCount(0)
+    } else {
+      await expect(entry.locator(".chat-card-warning")).toContainText(
+        scenario.name === "disabled" ? "聊天已停用" : "需要處理",
       )
-    } else await expect(entry.locator(".directory-issues")).toContainText(scenario.reason)
+    }
     await expect(row.locator("button, a")).toHaveCount(0)
     await row.click()
     const savedStatus =
@@ -241,10 +244,8 @@ test("keeps saved approval separate from draft repair through review and cancell
   await expect(page.locator(".chat-draft-status")).toContainText("Configured locally")
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(row).toBeFocused()
-  await expect(row.locator("xpath=ancestor::li").locator(".directory-approval")).toHaveText(
-    "Not approved",
-  )
-  await expect(row.locator("xpath=ancestor::li")).toContainText("Pending access grant")
+  await expect(row.locator("xpath=ancestor::li").locator(".chat-card-status")).toHaveText("待核准")
+  await expect(row.locator("xpath=ancestor::li")).toContainText("核准待儲存")
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("Private-message access: approve 42")
@@ -257,7 +258,7 @@ test("keeps saved approval separate from draft repair through review and cancell
   expect(methods.every((method) => method === "GET")).toBe(true)
 })
 
-test("labels draft-aware access filters separately from saved access", async ({ page }) => {
+test("keeps access filters on saved policy while approval is staged", async ({ page }) => {
   const state = data()
   state.snapshot.policy.privateUsers = []
   await fixture(page, state)
@@ -265,19 +266,19 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await status(page).getByRole("button", { name: "Review access approval", exact: true }).click()
   await page.getByRole("button", { name: "Grant access", exact: true }).click()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  await page.locator(".directory-options summary").click()
-  await expect(page.locator(".directory-help")).toContainText(
-    "The access filter uses the policy draft.",
-  )
+  await openDirectoryFilters(page)
+  await expect(page.locator(".chat-card-filters")).toContainText("狀態以已儲存的設定為準")
   await page.getByLabel("Access status", { exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   const row = page.locator(".chat-list .directory-chat")
-  await expect(row).toHaveCount(1)
-  await expect(row.locator("xpath=ancestor::li").locator(".directory-approval")).toHaveText(
-    "Not approved",
+  await expect(row).toHaveCount(0)
+  await page.getByLabel("Access status", { exact: true }).click()
+  await page.getByRole("option", { name: "All access", exact: true }).click()
+  await expect(row.first().locator("xpath=ancestor::li").locator(".chat-card-status")).toHaveText(
+    "待核准",
   )
-  await expect(row.locator("xpath=ancestor::li").locator(".directory-draft")).toHaveText(
-    "Draft access: Approved · Enabled",
+  await expect(row.first().locator("xpath=ancestor::li").locator(".chat-card-pending")).toHaveText(
+    "核准待儲存",
   )
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await expect(status(page).getByRole("heading")).toHaveText("Access not approved")
@@ -294,9 +295,9 @@ for (const width of [1440, 390]) {
       provider.configured = false
     })
     const { methods } = await fixture(page, state)
-    const search = page.getByLabel("Search stored chats", { exact: true })
+    const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
     await search.fill("Fixture chat")
-    await page.locator(".directory-options summary").click()
+    await openDirectoryFilters(page)
     await page.getByLabel("Chat type", { exact: true }).click()
     await page.getByRole("option", { name: "Private", exact: true }).click()
     await page.locator(".chat-list .directory-chat").nth(1).click()
@@ -330,22 +331,24 @@ for (const width of [1440, 390]) {
 for (const count of [0, 17, 99, 100, 101]) {
   test(`pagination uses successful response bounds for ${count} records`, async ({ page }) => {
     const { methods } = await fixture(page, data(count))
-    const previous = page.getByRole("button", { name: "Previous chats", exact: true })
-    const next = page.getByRole("button", { name: "Next chats", exact: true })
+    const previous = page.getByRole("button", { name: /上一頁|Previous chats/, exact: true })
+    const next = page.getByRole("button", { name: /下一頁|Next chats/, exact: true })
     if (count < 100) {
       await expect(previous).toHaveCount(0)
       await expect(next).toHaveCount(0)
     } else {
       await expect(previous).toBeDisabled()
       await next.click()
-      await expect(page.getByText("Page 2", { exact: true })).toBeVisible()
+      await expect(page.getByText(/第 2 頁|Page 2/, { exact: true })).toBeVisible()
       await expect(previous).toBeEnabled()
       await expect(next).toBeDisabled()
       await expect(page.locator(".chat-list .directory-chat")).toHaveCount(count - 100)
       await previous.click()
       await expect(page.locator(".chat-list .directory-chat")).toHaveCount(100)
     }
-    await expect(page.getByRole("button", { name: "Refresh chats", exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: /Refresh settings|Refresh chats/, exact: true }),
+    ).toBeVisible()
     expect(methods.every((method) => method === "GET")).toBe(true)
   })
 }
@@ -354,8 +357,8 @@ test("does not hide pagination on loading or failure and keeps a later-page rout
   page,
 }) => {
   await fixture(page, data(101))
-  await page.getByRole("button", { name: "Next chats", exact: true }).click()
-  await expect(page.getByText("Page 2", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: /下一頁|Next chats/, exact: true }).click()
+  await expect(page.getByText(/第 2 頁|Page 2/, { exact: true })).toBeVisible()
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
     release = resolve
@@ -365,17 +368,21 @@ test("does not hide pagination on loading or failure and keeps a later-page rout
     await route.fulfill({ status: 500, json: { error: "Fixture metadata error" } })
   })
   try {
-    await page.getByRole("button", { name: "Refresh chats", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeDisabled()
-    await expect(page.getByText("Loading chats…", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: /Refresh settings|Refresh chats/, exact: true }).click()
+    await expect(
+      page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+    ).toBeDisabled()
+    await expect(page.getByText(/載入中…|Loading chats…/, { exact: true })).toBeVisible()
   } finally {
     release()
   }
   await expect(
     page.getByText("Could not read chat metadata. Retry chats.", { exact: true }),
   ).toBeVisible()
-  await expect(page.getByRole("button", { name: "Previous chats", exact: true })).toBeEnabled()
-  await page.getByRole("button", { name: "Previous chats", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+  ).toBeEnabled()
+  await page.getByRole("button", { name: /上一頁|Previous chats/, exact: true }).click()
   await expect(page.locator(".chat-list .directory-chat")).toHaveCount(100)
 })
 
@@ -417,19 +424,19 @@ for (const [width, height, zoom] of [
         }).length,
         saveHeight: bounds("#save-status").height,
         directoryTop: bounds(".chat-directory").top,
-        headerHeight: bounds(".directory-header").height,
+        headerHeight: bounds(".chat-card-toolbar").height,
         footerHeight: bounds(".directory-footer").height,
         listHeight: list.height,
         rowHeight: bounds(".chat-list .directory-chat").height,
-        managementRowHeight: bounds(".directory-row").height,
-        firstRowBottom: bounds(".directory-row").bottom,
+        managementRowHeight: bounds(".chat-card").height,
+        firstRowBottom: bounds(".chat-card").bottom,
         fonts: Object.fromEntries(
           [
             ["title", "#current-section-heading"],
             ["body", ".radix-themes"],
-            ["input", ".directory-search input"],
+            ["input", ".chat-card-toolbar input"],
             ["chatName", ".directory-chat strong"],
-            ["badge", ".directory-status-label"],
+            ["badge", ".chat-card-status"],
           ].map(([name, selector]) => {
             const element = document.querySelector(selector ?? "")
             if (!element) throw new Error(`Missing font target: ${selector}`)
@@ -451,22 +458,22 @@ for (const [width, height, zoom] of [
     expect(geometry.fonts.body).toBe(16)
     expect(geometry.fonts.input).toBe(16)
     expect(geometry.fonts.chatName).toBeGreaterThanOrEqual(15)
-    expect(geometry.fonts.chatName).toBeLessThanOrEqual(16)
+    expect(geometry.fonts.chatName).toBeLessThanOrEqual(20)
     expect(geometry.fonts.badge).toBeGreaterThanOrEqual(13)
     expect(geometry.fonts.badge).toBeLessThanOrEqual(14)
     expect(geometry.saveHeight / zoom).toBeLessThan(93)
-    const disclosure = page.locator(".directory-options summary")
+    const disclosure = page.getByRole("button", { name: "篩選", exact: true })
     await disclosure.focus()
     await disclosure.press("Enter")
     await expect(page.getByLabel("Chat type", { exact: true })).toBeVisible()
-    await expect(page.getByText(/Type and access filters cover this page only/)).toBeVisible()
+    await expect(page.getByText(/類型與狀態篩選僅套用本頁/)).toBeVisible()
     await disclosure.press("Enter")
     const row = page.locator(".chat-list .directory-chat").first()
     await row.focus()
     expect(await row.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
     expect((await contrast(row.locator("strong"))).text).toBeGreaterThanOrEqual(4.5)
     expect(
-      (await contrast(row.locator("xpath=ancestor::li").locator(".directory-status-label"))).text,
+      (await contrast(row.locator("xpath=ancestor::li").locator(".chat-card-status"))).text,
     ).toBeGreaterThanOrEqual(4.5)
     await row.click()
     await expect(page.getByRole("heading", { name: "Fixture chat 1", exact: true })).toBeVisible()

@@ -47,6 +47,16 @@ describe("SaveStatus", () => {
     expect(html).not.toContain("<button")
     expect(html).not.toContain("save-scopes")
   })
+  it("folds clean chat save information without hiding actionable states", () => {
+    const html = render({ quiet: true })
+    expect(html).toContain('id="saved-settings-details"')
+    expect(html).toContain("儲存與版本資訊")
+    expect(html).not.toContain('class="saved-settings-details" open')
+    const pending = render({ quiet: true, dirty: true })
+    expect(pending).not.toContain('id="saved-settings-details"')
+    expect(pending).toContain("Review and save changes")
+    expect(render({ quiet: true }, { status: "failed" })).toContain("Retry application")
+  })
   it.each([
     { dirty: true },
     { mcpDirty: true },

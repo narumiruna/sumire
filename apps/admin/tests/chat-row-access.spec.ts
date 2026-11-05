@@ -29,19 +29,19 @@ async function fixture(page: Page) {
     })
   })
   await page.reload()
-  await expect(page.locator(".directory-row")).toHaveCount(chats.length)
+  await expect(page.locator(".chat-card")).toHaveCount(chats.length)
   return state
 }
 
 function row(page: Page, id: number) {
-  return page.locator(".directory-row").filter({
+  return page.locator(".chat-card").filter({
     has: page.getByRole("link", { name: new RegExp(` · ${id}$`) }),
   })
 }
 
 async function action(page: Page, id: number, name: string) {
   await row(page, id)
-    .getByRole("button", { name: /^Actions for / })
+    .getByRole("button", { name: /的更多操作$/ })
     .click()
   await page.getByRole("menuitem", { name, exact: true }).click()
 }
@@ -68,20 +68,20 @@ for (const width of [1440, 390, 320]) {
       const entry = row(page, chat.id)
       const identity = entry.locator(".directory-chat")
       const menu = entry.getByRole("button", {
-        name: `Actions for ${chat.name.trim()} · ${chat.id}`,
+        name: `${chat.name.trim()}的更多操作`,
       })
       const identityBox = await identity.boundingBox()
       const menuBox = await menu.boundingBox()
       const entryBox = await entry.boundingBox()
-      const actionsBox = await entry.locator(".directory-row-actions").boundingBox()
+      const actionsBox = await entry.locator(".chat-card-actions").boundingBox()
       if (!identityBox || !menuBox || !entryBox || !actionsBox)
         throw new Error("Missing chat row geometry")
       expect(menuBox.width).toBeGreaterThanOrEqual(44)
       expect(menuBox.height).toBeGreaterThanOrEqual(44)
       expect(menuBox.x).toBeGreaterThanOrEqual(actionsBox.x)
       expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(actionsBox.x + actionsBox.width + 1)
-      expect(menuBox.y).toBeGreaterThanOrEqual(actionsBox.y)
-      expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(actionsBox.y + actionsBox.height + 1)
+      expect(menuBox.y).toBeGreaterThanOrEqual(entryBox.y)
+      expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(entryBox.y + entryBox.height + 1)
       expect(actionsBox.x).toBeGreaterThanOrEqual(entryBox.x)
       expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(entryBox.x + entryBox.width + 1)
       expect(
@@ -92,16 +92,14 @@ for (const width of [1440, 390, 320]) {
       await expect(entry.locator("a button, button button")).toHaveCount(0)
     }
     const trigger = row(page, 42).getByRole("button", {
-      name: "Actions for Alice · 42",
+      name: "Alice的更多操作",
       exact: true,
     })
     await trigger.focus()
     await trigger.press("Enter")
-    await expect(
-      page.getByRole("menuitem", { name: "Open chat details", exact: true }),
-    ).toBeFocused()
+    await expect(page.getByRole("menuitem", { name: "查看詳細資料", exact: true })).toBeFocused()
     await page.keyboard.press("End")
-    await expect(page.getByRole("menuitem", { name: "Revoke access", exact: true })).toBeFocused()
+    await expect(page.getByRole("menuitem", { name: "撤銷核准", exact: true })).toBeFocused()
     await page.keyboard.press("Escape")
     await expect(trigger).toBeFocused()
     await expect(page.locator(".directory-chat[aria-current]")).toHaveCount(0)
@@ -123,12 +121,12 @@ for (const width of [1440, 390, 320]) {
     const original = structuredClone(state.policy())
     const initialUrl = page.url()
     for (const id of [42, -100]) {
-      await action(page, id, "Revoke access")
-      await expect(row(page, id)).toContainText("Draft access: Not approved")
-      await expect(row(page, id).locator(".directory-approval")).toHaveText("Approved")
+      await action(page, id, "撤銷核准")
+      await expect(row(page, id)).toContainText("撤銷核准待儲存")
+      await expect(row(page, id).locator(".chat-card-status")).toHaveText("已啟用")
       await expect(page.locator("#save-status")).toContainText("1 unsaved change")
-      await action(page, id, "Undo pending revocation")
-      await expect(row(page, id).locator(".directory-draft")).toHaveCount(0)
+      await action(page, id, "取消待儲存撤銷")
+      await expect(row(page, id).locator(".chat-card-pending")).toHaveCount(0)
       await expect(page.locator(".pending-bar")).toHaveCount(0)
     }
     expect(page.url()).toBe(initialUrl)
@@ -144,11 +142,11 @@ test("row actions preserve disabled overrides and save only explicit approval ch
   state.policy().chats["42"] = { ...inherited, enabled: false }
   await page.reload()
   const original = structuredClone(state.policy())
-  await action(page, 42, "Revoke access")
-  await action(page, 43, "Grant access")
-  await expect(row(page, 43)).toContainText("Draft access: Approved")
-  await action(page, 43, "Undo pending grant")
-  await action(page, -100, "Revoke access")
+  await action(page, 42, "撤銷核准")
+  await action(page, 43, "核准存取")
+  await expect(row(page, 43)).toContainText("核准待儲存")
+  await action(page, 43, "取消待儲存核准")
+  await action(page, -100, "撤銷核准")
   expect(state.writes).toEqual([])
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   const dialog = page.getByRole("alertdialog")
@@ -160,17 +158,17 @@ test("row actions preserve disabled overrides and save only explicit approval ch
   expect(state.writes).toEqual([{ path: "/api/settings", body: { revision: 1, policy: expected } }])
 })
 
-test("revoking the last filtered row restores focus to directory search", async ({ page }) => {
+test("revoking a filtered row keeps saved-state access until review", async ({ page }) => {
   const state = await fixture(page)
-  const search = page.getByLabel("Search stored chats", { exact: true })
+  const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
   await search.fill("Alice")
   await openDirectoryFilters(page)
   await page.getByRole("combobox", { name: "Access status", exact: true }).click()
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
-  await action(page, 42, "Revoke access")
-  await expect(page.locator(".directory-row")).toHaveCount(0)
+  await action(page, 42, "撤銷核准")
+  await expect(page.locator(".chat-card")).toHaveCount(1)
   await expect(page.getByRole("menu")).toHaveCount(0)
-  await expect(search).toBeFocused()
+  await expect(page.locator(".chat-card")).toContainText("撤銷核准待儲存")
   expect(state.writes).toEqual([])
 })
 
@@ -178,11 +176,11 @@ test("row menus close when history hides the directory and can open chat details
   page,
 }) => {
   const state = await fixture(page)
-  await action(page, 42, "Open chat details")
+  await action(page, 42, "查看詳細資料")
   await expect(page.locator(".chat-header").getByRole("heading")).toHaveText("Alice")
   await expect(page.getByRole("menu")).toHaveCount(0)
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
-  const trigger = row(page, 42).getByRole("button", { name: /^Actions for / })
+  const trigger = row(page, 42).getByRole("button", { name: /的更多操作$/ })
   await trigger.click()
   await page.evaluate(() => {
     history.pushState(null, "", "?section=Defaults&chat=42")
@@ -202,7 +200,7 @@ test("legacy Access links reveal merged management on load, reload, and history"
   await page.goto("/?section=Access&chat=42&existing=1")
   const input = page.getByLabel("Telegram ID to approve", { exact: true })
   await expect(input).toBeFocused()
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   await expect(page.locator(".chat-header code")).toHaveText("42")
   await page.reload()
   await expect(input).toBeFocused()
@@ -217,7 +215,7 @@ test("unfinished manual approval resumes in a collapsed management area with a r
   page,
 }) => {
   const state = await fixture(page)
-  await action(page, 42, "Open chat details")
+  await action(page, 42, "查看詳細資料")
   await page.getByRole("tab", { name: "History", exact: true }).click()
   await openChatAccess(page)
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()

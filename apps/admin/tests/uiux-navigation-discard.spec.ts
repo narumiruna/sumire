@@ -249,7 +249,7 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
   await page
     .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
   await openChatAccess(page)
   const access = page.getByLabel("Telegram ID to approve", { exact: true })
@@ -266,9 +266,9 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
   await page
     .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeFocused()
   await expect(page.getByLabel("MCP server name", { exact: true })).not.toBeFocused()
   expect(state.writes).toEqual([])
 
@@ -420,7 +420,7 @@ test("modified sidebar clicks remain native links", async ({ page }) => {
       return intercepted
     }, modifier)
     expect(prevented).toBe(false)
-    await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
     expect(await audit.getAttribute("href")).toBe(href)
   }
   expect(state.writes).toEqual([])

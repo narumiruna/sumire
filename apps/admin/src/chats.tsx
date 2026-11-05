@@ -1,8 +1,6 @@
-import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import { ArrowLeftIcon, DotsHorizontalIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons"
 import {
-  Badge,
   Button,
   Callout,
   Code,
@@ -17,110 +15,18 @@ import {
 import { type ReactNode, useContext, useEffect, useRef, useState } from "react"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy, Snapshot } from "./api.js"
-import { type ChatDirectory, ChatSelector, chatName } from "./chat-directory.js"
+import { ChatCards } from "./chat-cards.js"
+import { type ChatDirectory, chatName } from "./chat-directory.js"
 import { type ChatRepair, chatState } from "./chat-state.js"
 import { type EditorTarget, focusEditor, navigationHref } from "./navigation.js"
 import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
-import { SectionActive, SectionSelect } from "./sections.js"
+import { SectionActive } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
 import { permissionResult } from "./tool-permissions.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
-
-function chatType(chat: Chat) {
-  if (chat.type === "supergroup") return "group"
-  return ["private", "group", "channel"].includes(chat.type) ? chat.type : "unknown"
-}
-
-function ChatRowActions({
-  chat,
-  policy,
-  savedPolicy,
-  busy,
-  onSelect,
-  onChange,
-  onAccess,
-}: {
-  chat: Chat
-  policy: Policy
-  savedPolicy: Policy
-  busy: boolean
-  onSelect(chat: string): void
-  onChange(policy: Policy): void
-  onAccess(): void
-}) {
-  const active = useContext(SectionActive)
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    if (!active || busy) setOpen(false)
-  }, [active, busy])
-  const key = chat.id > 0 ? "privateUsers" : "groups"
-  const approved = policy[key].includes(chat.id)
-  const savedApproval = savedPolicy[key].includes(chat.id)
-  return (
-    <Flex gap="2" align="center" wrap="wrap">
-      <Button variant="soft" disabled={busy} onClick={onAccess}>
-        Manage access
-      </Button>
-      {approved && !savedApproval && (
-        <Button
-          variant="soft"
-          disabled={busy}
-          onClick={() => onChange(withChatAccess(policy, chat.id, false))}
-        >
-          Undo pending grant
-        </Button>
-      )}
-      {!approved && (
-        <Button
-          variant="soft"
-          disabled={busy}
-          onClick={() => onChange(withChatAccess(policy, chat.id, true))}
-        >
-          {savedApproval ? "Undo pending revocation" : "Grant access"}
-        </Button>
-      )}
-      <DropdownMenu.Root open={open && active && !busy} onOpenChange={setOpen}>
-        <DropdownMenu.Trigger>
-          <Button
-            variant="ghost"
-            className="directory-row-menu"
-            disabled={busy}
-            aria-label={`Actions for ${chatName(chat)} · ${chat.id}`}
-          >
-            <DotsHorizontalIcon aria-hidden="true" />
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content
-          align="end"
-          onCloseAutoFocus={(event) => {
-            if (!active || busy) event.preventDefault()
-          }}
-        >
-          <DropdownMenu.Item disabled={busy || !active} onSelect={() => onSelect(String(chat.id))}>
-            Open chat details
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            color={approved && savedApproval ? "red" : undefined}
-            disabled={busy || !active}
-            onSelect={() => onChange(withChatAccess(policy, chat.id, !approved))}
-          >
-            {approved
-              ? savedApproval
-                ? "Revoke access"
-                : "Undo pending grant"
-              : savedApproval
-                ? "Undo pending revocation"
-                : "Grant access"}
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </Flex>
-  )
-}
 
 function ChatFact({
   label,
@@ -203,12 +109,10 @@ export function ChatWorkspace({
 }) {
   const active = useContext(SectionActive)
   const [actionsOpen, setActionsOpen] = useState(false)
-  const { chats, selected: metadataState } = directory
+  const { selected: metadataState } = directory
   const [chatDraft, setChatDraft] = useState(chat)
   useEffect(() => setChatDraft(chat), [chat])
   const validDraft = /^-?[1-9]\d*$/.test(chatDraft) && Number.isSafeInteger(Number(chatDraft))
-  const [type, setType] = useState("all")
-  const [access, setAccess] = useState("all")
   const [tab, setTab] = useState("overview")
   const [showDirectory, setShowDirectory] = useState(!chat)
   useEffect(() => {
@@ -233,10 +137,11 @@ export function ChatWorkspace({
   const focusedDirectory = useRef<boolean | undefined>(undefined)
   useEffect(() => {
     if (!active || focusedDirectory.current === showDirectory) return
+    const initial = focusedDirectory.current === undefined
     focusedDirectory.current = showDirectory
+    if (initial && showDirectory) return
     if (showDirectory) {
-      const selected =
-        directoryRef.current?.querySelector<HTMLButtonElement>('[aria-current="true"]')
+      const selected = directoryRef.current?.querySelector<HTMLElement>('[aria-current="true"]')
       const target = selected ?? searchRef.current
       target?.focus({ preventScroll: true })
       window.scrollTo({ top: directoryScroll.current, behavior: "instant" })
@@ -285,18 +190,6 @@ export function ChatWorkspace({
       setCopyStatus({ chat: id, message: "Could not copy. Select the ID to copy it manually." })
     }
   }
-  const filtered = chats.filter(
-    (c) =>
-      (type === "all" || chatType(c) === type) &&
-      (access === "all" || effectivePolicy(policy, c.id).enabled === (access === "allowed")),
-  )
-  const authentication = new Map<string, number>()
-  for (const entry of filtered) {
-    const status = chatState(entry.id, savedPolicy, inventory, application)
-    if (status.primary?.code !== "authentication") continue
-    const provider = status.effective.model?.split("/")[0]
-    if (provider) authentication.set(provider, (authentication.get(provider) ?? 0) + 1)
-  }
   const metadata = metadataState.chat
   const detailName = metadataState.loading
     ? "Loading chat name…"
@@ -344,247 +237,43 @@ export function ChatWorkspace({
     >
       <SectionActive value={active && showDirectory}>
         <aside ref={directoryRef} className="chat-directory chat-sidebar" aria-label="Find a chat">
-          <ChatSelector
+          <ChatCards
             directory={directory}
-            chat={chat}
-            onSelect={openChat}
+            selected={chat}
             searchRef={searchRef}
-            title="Chat directory"
-            visibleChats={filtered}
-            actions={(value) => (
-              <ChatRowActions
-                chat={value}
-                policy={policy}
-                savedPolicy={savedPolicy}
-                busy={busy}
-                onSelect={openChat}
-                onAccess={() => {
-                  openChat(String(value.id))
-                  repair("access")
-                }}
-                onChange={(next) => {
-                  onPolicyChange(next)
-                  if (
-                    access !== "all" &&
-                    effectivePolicy(next, value.id).enabled !== (access === "allowed")
-                  )
-                    requestAnimationFrame(() => searchRef.current?.focus())
-                }}
+            policy={policy}
+            savedPolicy={savedPolicy}
+            inventory={inventory}
+            application={application}
+            busy={busy}
+            onOpen={(value) => openChat(String(value.id))}
+            onConfigure={(value) => {
+              openChat(String(value.id))
+              setTab("configuration")
+            }}
+            onRepair={(value, target) => {
+              openChat(String(value.id))
+              if (target === "providers") {
+                const status = chatState(value.id, savedPolicy, inventory, application)
+                onProviders(status.effective.model?.split("/")[0] ?? "")
+              } else repair(target)
+            }}
+            onChange={onPolicyChange}
+          >
+            <details className="configure-id">
+              <summary>以聊天 ID 開啟設定</summary>
+              <p>可在首次訊息前設定聊天；這不會核准存取。</p>
+              <label htmlFor="chat-id">聊天 ID</label>
+              <TextField.Root
+                id="chat-id"
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
               />
-            )}
-            columns={{
-              href: (value) => navigationHref("Chats", String(value.id)),
-              copyId: (value) => (
-                <>
-                  <Button
-                    variant="ghost"
-                    aria-label={`Copy chat ID ${value.id}`}
-                    onClick={() => void copyChatId(String(value.id))}
-                  >
-                    Copy ID
-                  </Button>
-                  {copyStatus.chat === String(value.id) && (
-                    <Text as="p" size="2" role="status">
-                      {copyStatus.message}
-                    </Text>
-                  )}
-                </>
-              ),
-              model: (value) => {
-                const status = chatState(value.id, savedPolicy, inventory, application)
-                return (
-                  <>
-                    <Code variant="ghost">{status.effective.model ?? "No allowed model"}</Code>
-                    <Text as="p" size="2" color="gray">
-                      {status.effective.sources.model === "chat"
-                        ? "Chat override"
-                        : "Shared defaults"}
-                    </Text>
-                  </>
-                )
-              },
-              issues: (value) => {
-                const status = chatState(value.id, savedPolicy, inventory, application)
-                const issues = status.issues.filter((issue) => issue.code !== "approval")
-                const issue = issues[0]
-                return (
-                  <>
-                    {issues.length ? (
-                      issues.map((issue) => (
-                        <Text key={issue.code} as="p" size="2">
-                          {issue.reason}
-                        </Text>
-                      ))
-                    ) : (
-                      <Text as="p" size="2">
-                        Configured locally. Model response not checked.
-                      </Text>
-                    )}
-                    {issue && (
-                      <Button
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => {
-                          openChat(String(value.id))
-                          if (issue.target === "providers")
-                            onProviders(status.effective.model?.split("/")[0] ?? "")
-                          else repair(issue.target)
-                        }}
-                      >
-                        {issue.action}
-                      </Button>
-                    )}
-                    {issues.length > 1 && (
-                      <Text as="p" size="2" color="gray">
-                        {issues.length} configuration issues · open details
-                      </Text>
-                    )}
-                  </>
-                )
-              },
-            }}
-            summary={
-              authentication.size > 0 && (
-                <section
-                  className="directory-authentication"
-                  aria-label="Authentication on this directory page"
-                >
-                  <Text as="p" size="2" weight="medium">
-                    Authentication required · displayed page
-                  </Text>
-                  {[...authentication].map(([provider, count]) => (
-                    <Flex key={provider} gap="2" align="center" wrap="wrap">
-                      <Text size="2">
-                        {provider}: {count} {count === 1 ? "chat" : "chats"}
-                      </Text>
-                      <Button variant="ghost" onClick={() => onProviders(provider)}>
-                        Configure {provider}
-                      </Button>
-                    </Flex>
-                  ))}
-                </section>
-              )
-            }
-            filters={
-              <>
-                <div className="directory-filters">
-                  <div>
-                    <label htmlFor="chat-type-filter">Chat type</label>
-                    <SectionSelect.Root value={type} onValueChange={setType}>
-                      <SectionSelect.Trigger id="chat-type-filter" />
-                      <SectionSelect.Content>
-                        <SectionSelect.Item value="all">All types</SectionSelect.Item>
-                        <SectionSelect.Item value="private">Private</SectionSelect.Item>
-                        <SectionSelect.Item value="group">Group / supergroup</SectionSelect.Item>
-                        <SectionSelect.Item value="channel">Channel</SectionSelect.Item>
-                        <SectionSelect.Item value="unknown">Unknown type</SectionSelect.Item>
-                      </SectionSelect.Content>
-                    </SectionSelect.Root>
-                  </div>
-                  <div>
-                    <label htmlFor="chat-access-filter">Access status</label>
-                    <SectionSelect.Root value={access} onValueChange={setAccess}>
-                      <SectionSelect.Trigger id="chat-access-filter" />
-                      <SectionSelect.Content>
-                        <SectionSelect.Item value="all">All access</SectionSelect.Item>
-                        <SectionSelect.Item value="allowed">
-                          Approved and enabled
-                        </SectionSelect.Item>
-                        <SectionSelect.Item value="denied">
-                          Not approved or disabled
-                        </SectionSelect.Item>
-                      </SectionSelect.Content>
-                    </SectionSelect.Root>
-                  </div>
-                </div>
-                {(directory.query || type !== "all" || access !== "all") && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      directory.setQuery("")
-                      setType("all")
-                      setAccess("all")
-                    }}
-                  >
-                    Clear search and filters
-                  </Button>
-                )}
-                <div className="directory-help">
-                  <Text as="p" size="1" color="gray">
-                    Search covers stored chats. Type and access filters cover this page only. The
-                    access filter uses {preview ? "the policy draft" : "saved policy"}. Status and
-                    access labels show saved policy, not verified runtime readiness; draft access is
-                    separate. Names reflect observed Telegram metadata; ID-only records have no
-                    known name.
-                  </Text>
-                </div>
-              </>
-            }
-            badge={(c) => {
-              const status = chatState(c.id, savedPolicy, inventory, application)
-              return (
-                <span className="directory-status" data-blocked={Boolean(status.primary)}>
-                  <Text as="span" size="1" weight="medium" className="directory-approval">
-                    {savedPolicy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                      ? "Approved"
-                      : "Not approved"}
-                  </Text>
-                  <Badge
-                    className="directory-status-label"
-                    color={status.enabled ? "gray" : "orange"}
-                  >
-                    {status.enabled ? "Enabled" : "Disabled"}
-                  </Badge>
-                  {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) !==
-                    status.approved && (
-                    <Text as="span" size="2">
-                      {status.approved ? "Pending access revocation" : "Pending access grant"}
-                    </Text>
-                  )}
-                  {preview && (
-                    <span className="directory-draft">
-                      Draft access:{" "}
-                      {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id)
-                        ? "Approved"
-                        : "Not approved"}{" "}
-                      · {policy.chats[String(c.id)]?.enabled === false ? "Disabled" : "Enabled"}
-                    </span>
-                  )}
-                </span>
-              )
-            }}
-            footer={
-              <>
-                <Button
-                  className="directory-action"
-                  variant="soft"
-                  mt="3"
-                  disabled={!chat}
-                  style={{ visibility: chat ? undefined : "hidden" }}
-                  onClick={showChatDetails}
-                >
-                  Show selected chat
-                </Button>
-                <details className="configure-id">
-                  <summary>Configure chat ID</summary>
-                  <Text as="p" size="2">
-                    This creates settings, not access approval.
-                  </Text>
-                  <label htmlFor="chat-id">
-                    Chat ID (can configure before first message)
-                    <TextField.Root
-                      id="chat-id"
-                      value={chatDraft}
-                      onChange={(e) => setChatDraft(e.target.value)}
-                    />
-                  </label>
-                  <Button variant="soft" disabled={!validDraft} onClick={() => openChat(chatDraft)}>
-                    Open chat details
-                  </Button>
-                </details>
-              </>
-            }
-          />
+              <Button variant="soft" disabled={!validDraft} onClick={() => openChat(chatDraft)}>
+                開啟詳細資料
+              </Button>
+            </details>
+          </ChatCards>
         </aside>
       </SectionActive>
       <SectionActive value={active && !showDirectory}>

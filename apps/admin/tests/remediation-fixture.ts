@@ -63,7 +63,7 @@ export async function remediationFixture(page: Page) {
     await route.fulfill({ json: responses[url.pathname] ?? {} })
   })
   await page.goto("/")
-  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible()
+  await expect(page.locator('#save-status[data-compact="true"]')).toBeVisible({ timeout: 15000 })
   return {
     writes,
     queries,

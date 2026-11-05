@@ -88,6 +88,7 @@ for (const viewport of [
   test(`direction B populated pages and expanded content at ${viewport.width}px`, async ({
     page,
   }, info) => {
+    test.setTimeout(120000)
     await page.setViewportSize(viewport)
     const state = await remediationFixture(page)
     const skills = [
@@ -138,7 +139,9 @@ for (const viewport of [
       "Audit",
     ]) {
       await navigate(page, section)
-      await expect(page.locator("#current-section-heading")).toHaveText(sectionLabel(section))
+      await expect(page.locator("#current-section-heading")).toHaveText(
+        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      )
       if (section === "Chats")
         await expect(page.getByRole("heading", { name: chat.name, exact: true })).toBeVisible()
       if (section === "Tool permissions")

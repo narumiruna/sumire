@@ -26,7 +26,9 @@ for (const width of [1440, 1024, 768, 390, 320]) {
         const header = await page.locator(".workspace-header").boundingBox()
         expect(directory && header && Math.abs(directory.width - header.width) < 2).toBe(true)
       }
-      await expect(heading).toHaveText(sectionLabel(section))
+      await expect(heading).toHaveText(
+        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      )
       await expect(page.locator(".page-breadcrumb")).toHaveCount(0)
       expect(
         await heading.evaluate((node) => parseFloat(getComputedStyle(node).fontSize)),

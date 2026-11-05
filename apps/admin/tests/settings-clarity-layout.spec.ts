@@ -129,7 +129,7 @@ for (const [width, height] of [
         await page.evaluate(() => window.scrollTo(0, 0))
       }
       if (section === "Chats") {
-        const row = page.locator(".chat-list .directory-row").first()
+        const row = page.locator(".chat-list .chat-card").first()
         expect(
           await row
             .locator("strong")
@@ -137,13 +137,11 @@ for (const [width, height] of [
         ).toBeGreaterThanOrEqual(14)
         expect(
           await row
-            .locator(".directory-status-label")
+            .locator(".chat-card-status")
             .evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
         ).toBeGreaterThanOrEqual(13)
         expect((await contrast(row.locator("strong"))).text).toBeGreaterThanOrEqual(4.5)
-        expect(
-          (await contrast(row.locator(".directory-status-label"))).text,
-        ).toBeGreaterThanOrEqual(4.5)
+        expect((await contrast(row.locator(".chat-card-status"))).text).toBeGreaterThanOrEqual(4.5)
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,

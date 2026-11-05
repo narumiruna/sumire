@@ -17,7 +17,9 @@ for (const mode of ["font", "zoom"] as const) {
       // Chromium resets this CDP override on same-document history navigation.
       // Reapply it to each page, then verify that the measured body text doubled.
       if (client) await client.send("Page.setFontSizes", { fontSizes: { standard: 32 } })
-      await expect(page.locator("#current-section-heading")).toHaveText(sectionLabel(section))
+      await expect(page.locator("#current-section-heading")).toHaveText(
+        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      )
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )

@@ -88,7 +88,7 @@ async function setup(page: Page, options: { actor?: string; inventory?: Inventor
     return route.fulfill({ json: [] })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
   return { initial, writes, saved: () => saved }
 }
 
