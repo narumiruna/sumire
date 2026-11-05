@@ -7,7 +7,7 @@ import {
 } from "../src/telegram/progress.js"
 
 describe("Telegram progress status", () => {
-  it("renders completed, active, pending, and blocked steps", () => {
+  it("renders a native heading and task list, checking only completed steps", () => {
     expect(
       renderProgressStatus([
         { text: "分析需求", status: "completed" },
@@ -16,18 +16,44 @@ describe("Telegram progress status", () => {
         { text: "發布 — 等待核准", status: "blocked" },
       ]),
     ).toBe(
-      ["進度 1/4", "", "✅ 分析需求", "🔄 修改程式", "⬜ 執行測試", "⛔ 發布 — 等待核准"].join(
-        "\n",
-      ),
+      [
+        "### 進度 1/4",
+        "",
+        "- [x] 分析需求",
+        "- [ ] 🔄 修改程式",
+        "- [ ] 執行測試",
+        "- [ ] ⛔ 發布 — 等待核准",
+      ].join("\n"),
     )
   })
 
-  it("shows tool names without exposing arguments or control characters", () => {
-    expect(renderActivityStatus("tool", "bash")).toBe("正在執行工具…\n工具：bash")
-    expect(renderActivityStatus("tool_finished", "read\u202e\n")).toBe(
-      "工具執行結束，等待模型回覆…\n工具：read",
+  it("keeps activity in a native footer with a literal tool name", () => {
+    expect(renderActivityStatus("tool", "bash")).toBe(
+      "<footer>正在執行工具… · 工具：<code>bash</code></footer>",
     )
-    expect(renderActivityStatus("model")).toBe("正在等待模型回覆…")
+    expect(renderActivityStatus("tool_finished", "read\u202e\n")).toBe(
+      "<footer>工具執行結束，等待模型回覆… · 工具：<code>read</code></footer>",
+    )
+    expect(renderActivityStatus("model")).toBe("<footer>正在等待模型回覆…</footer>")
+    expect(renderActivityStatus("tool")).toBe("<footer>正在執行工具…</footer>")
+    expect(renderActivityStatus("tool", " \u202e\n")).toBe("<footer>正在執行工具…</footer>")
+  })
+
+  it("escapes tool names without allowing HTML or Markdown injection into the footer", () => {
+    expect(renderActivityStatus("tool", "</code></footer>& `**bash**`")).toBe(
+      "<footer>正在執行工具… · 工具：<code>&lt;/code&gt;&lt;/footer&gt;&amp; `**bash**`</code></footer>",
+    )
+  })
+
+  it("preserves links and literal code inside separate checklist items", () => {
+    expect(
+      renderProgressStatus([
+        { text: "參考 [文件](https://example.test/path)", status: "completed" },
+        { text: "檢查 `*literal*`", status: "in_progress" },
+      ]),
+    ).toBe(
+      "### 進度 1/2\n\n- [x] 參考 [文件](https://example.test/path)\n- [ ] 🔄 檢查 `*literal*`",
+    )
   })
 
   it("renders the progress clear operation", () => {
@@ -47,12 +73,12 @@ describe("Telegram progress status", () => {
 
     expect(text).toBe(
       [
-        "進度 8/11",
+        "### 進度 8/11",
         "",
-        ...Array.from({ length: 8 }, (_, index) => `✅ 完成 ${index}`),
-        "🔄 目前工作",
-        "⬜ 等待工作",
-        "⛔ 發布操作 — 等待 核准",
+        ...Array.from({ length: 8 }, (_, index) => `- [x] 完成 ${index}`),
+        "- [ ] 🔄 目前工作",
+        "- [ ] 等待工作",
+        "- [ ] ⛔ 發布操作 — 等待 核准",
       ].join("\n"),
     )
   })
