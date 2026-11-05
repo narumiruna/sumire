@@ -1,2 +1,4 @@
-/** English, Traditional Chinese, and Japanese text for each stable message key. */
-export type Catalog = Record<string, readonly [string, string, string]>
+/** Require the source catalog keys while allowing translated string values. */
+export type Catalog<Source extends Record<string, string> = Record<string, string>> = {
+  [Key in keyof Source]: string
+}
