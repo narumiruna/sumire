@@ -1,6 +1,10 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { entryPreview, historyGroups, matchesHistory } from "./durable-history.js"
+
+import { setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 function entry(
   id: number,
@@ -23,6 +27,28 @@ function entry(
 }
 
 describe("compact history previews", () => {
+  it("translates generated preview notices without translating stored events or content", () => {
+    setLocale("ja")
+    const item = entry(4, "assistant")
+    item.content = {
+      truncated: false,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Image omitted: saved assistant text" },
+            { type: "toolCall", name: "read", id: "call", arguments: "{}" },
+          ],
+        },
+      ],
+    }
+    expect(entryPreview(item)).toBe("Image omitted: saved assistant text\nread · 引数")
+    expect(entryPreview(entry(5))).toBe(
+      "保存されたイベント：custom.event。内部ペイロードは公開されません。",
+    )
+    expect(matchesHistory(item, "tools", "Image omitted: saved assistant text")).toBe(true)
+  })
+
   it("keeps untrusted text literal and bounds previews without exposing thinking or tool arguments", () => {
     const item = entry(8, "assistant")
     item.content = {

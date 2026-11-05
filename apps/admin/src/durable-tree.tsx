@@ -15,7 +15,10 @@ import {
   recordSummary,
   recordTitle,
   recordTone,
+  recordTypeLabel,
 } from "./durable-presentation.js"
+import { getLocale, type MessageKey, t } from "./i18n.js"
+import { countText } from "./status-text.js"
 
 type Read = (path: string, signal: AbortSignal) => Promise<DurableInspectionResponse>
 type TreeProps = {
@@ -101,11 +104,11 @@ function RecordRow({
         </span>
         <span className="durable-row-caption">
           {persisted ? (
-            <span className="durable-tree-badge">Persisted selection</span>
+            <span className="durable-tree-badge">{t("record.persistedSelection")}</span>
           ) : badge ? (
             <span className="durable-tree-badge">{badge}</span>
           ) : (
-            item.type
+            recordTypeLabel(item.type)
           )}
         </span>
       </span>
@@ -119,7 +122,10 @@ function RecordRow({
             type="button"
             className="durable-expand"
             aria-expanded={open}
-            aria-label={`${open ? "Collapse" : "Expand"} ${label} ${item.id}`}
+            aria-label={t(open ? "record.collapseRecord" : "record.expandRecord", {
+              label,
+              id: item.id,
+            })}
             onClick={() => {
               setOpen(!open)
               setLoaded(true)
@@ -167,7 +173,7 @@ function useCollection(
     items: DurableInspectionItem[]
     nextCursor?: string
     truncated?: boolean
-    error?: string
+    error?: MessageKey
     unloaded?: boolean
     loading: boolean
   }>({ path, items: [], loading: true })
@@ -210,7 +216,7 @@ function useCollection(
         setState((value) => ({
           ...(denied || value.path !== path ? { path, items: [] } : value),
           loading: false,
-          error: denied ? "Permission denied." : "Read failed.",
+          error: denied ? "record.permissionDenied" : "record.readFailed",
         }))
         if (error instanceof ApiError && error.status === 401) onSessionExpired()
       })
@@ -235,35 +241,44 @@ function useCollection(
 }
 
 type Collection = ReturnType<typeof useCollection>
-function CollectionStatus({ collection, label }: { collection: Collection; label: string }) {
+function CollectionStatus({
+  collection,
+  label: heading,
+}: {
+  collection: Collection
+  label: string
+}) {
+  const label = getLocale() === "en" ? heading.toLowerCase() : heading
   return (
     <div className="durable-tree-status">
       {collection.loading && (
         <Text as="p" role="status">
-          Loading {label}…
+          {t("record.loadingCollection", { label })}
         </Text>
       )}
       {collection.error && (
         <>
           <Text as="p" role="alert">
-            {collection.error} {label} may be incomplete.
+            {t("record.incompleteCollection", { error: t(collection.error), label })}
           </Text>
           <Button size="1" variant="soft" onClick={collection.retry}>
-            Retry {label}
+            {t("record.retryCollection", { label })}
           </Button>
         </>
       )}
-      {collection.unloaded && <Text as="p">Session not loaded. {label} unavailable.</Text>}
+      {collection.unloaded && <Text as="p">{t("record.unloadedCollection", { label })}</Text>}
       {!collection.loading &&
         !collection.error &&
         !collection.unloaded &&
-        collection.items.length === 0 && <Text as="p">No {label} on the loaded page.</Text>}
+        collection.items.length === 0 && (
+          <Text as="p">{t("record.emptyCollection", { label })}</Text>
+        )}
       {(collection.nextCursor || collection.truncated) && (
-        <Text as="p">Partial {label} · more records may exist.</Text>
+        <Text as="p">{t("record.partialCollection", { label })}</Text>
       )}
       {collection.nextCursor && (
         <Button size="1" variant="soft" disabled={collection.loading} onClick={collection.more}>
-          Load more {label}
+          {t("record.moreCollection", { label })}
         </Button>
       )}
     </div>
@@ -281,7 +296,7 @@ function Documents({ props, location }: { props: TreeProps; location: DurableLoc
           </li>
         ))}
       </ul>
-      <CollectionStatus collection={collection} label="documents" />
+      <CollectionStatus collection={collection} label={t("record.documents")} />
     </>
   )
 }
@@ -308,7 +323,7 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
           />
           {taskId === undefined && entry.byTaskId !== undefined && (
             <Text as="p" size="1">
-              Recorded by task {entry.byTaskId}, not on the loaded task pages.
+              {t("record.taskNotLoaded", { id: entry.byTaskId })}
             </Text>
           )}
         </li>
@@ -333,21 +348,21 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
           >
             {task.ownerTaskId !== undefined && !parents.has(task.ownerTaskId) && (
               <Text as="p" size="1">
-                Parent task {task.ownerTaskId} is not on the loaded pages.
+                {t("record.parentTaskMissing", { id: task.ownerTaskId })}
               </Text>
             )}
             {task.ownerTaskId !== undefined &&
               parents.has(task.ownerTaskId) &&
               parents.get(task.id) === undefined && (
                 <Text as="p" size="1">
-                  Parent task cycle · shown at root.
+                  {t("record.taskCycle")}
                 </Text>
               )}
             <ul>
               {taskNodes(task.id)}
               {entryNodes(task.id)}
             </ul>
-            <Branch label={`Documents for task ${task.id}`}>
+            <Branch label={t("record.taskDocuments", { id: task.id })}>
               <Documents
                 props={props}
                 location={{ view: "documents", scope: "task", conversationId: id, taskId: task.id }}
@@ -359,12 +374,12 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
   return (
     <>
       <ul>{taskNodes()}</ul>
-      <CollectionStatus collection={taskPage} label="tasks" />
-      <Branch label="Entries without a loaded task">
+      <CollectionStatus collection={taskPage} label={t("record.tasks")} />
+      <Branch label={t("record.entriesWithoutTask")}>
         <ul>{entryNodes()}</ul>
       </Branch>
-      <CollectionStatus collection={entryPage} label="entries" />
-      <Branch label={`Documents in conversation ${id}`}>
+      <CollectionStatus collection={entryPage} label={t("record.entries")} />
+      <Branch label={t("record.conversationDocuments", { id })}>
         <Documents
           props={props}
           location={{ view: "documents", scope: "conversation", conversationId: id }}
@@ -399,7 +414,7 @@ export function DurableTree(props: TreeProps) {
   if (props.target && !known.has(props.target))
     known.set(props.target, { type: "conversation", id: props.target, active: false })
   const nodes =
-    conversationPage.error === "Permission denied." || conversationPage.unloaded
+    conversationPage.error === "record.permissionDenied" || conversationPage.unloaded
       ? []
       : [...known.values()]
   const loadedCount = nodes.filter((item) => loadedIds.has(item.id)).length
@@ -431,16 +446,17 @@ export function DurableTree(props: TreeProps) {
         >
           {!loadedIds.has(item.id) && (
             <Text as="p" size="1">
-              Relationship metadata is not on the loaded conversation page.
+              {t("record.relationshipMissing")}
             </Text>
           )}
           {item.parent && (
             <Text as="p" size="1" className="durable-tree-note">
-              Branched from conversation {item.parent.conversationId} at entry {item.parent.at}.
-              {!known.has(item.parent.conversationId) ? " Parent is not on the loaded pages." : ""}
-              {cycles.has(item.id)
-                ? " Parent relationship cycle · shown once in loaded records."
-                : ""}
+              {t("record.branchedFrom", {
+                conversation: item.parent.conversationId,
+                entry: item.parent.at,
+              })}
+              {!known.has(item.parent.conversationId) ? t("record.parentMissing") : ""}
+              {cycles.has(item.id) ? t("record.parentCycle") : ""}
             </Text>
           )}
           <ConversationContents props={props} id={item.id} />
@@ -450,29 +466,30 @@ export function DurableTree(props: TreeProps) {
     )
   }
   return (
-    <section aria-label="Relationship tree" className="durable-tree">
+    <section aria-label={t("record.relationshipTree")} className="durable-tree">
       <div className="durable-navigator-heading">
         <Heading as="h3" size="3">
-          <LayersIcon aria-hidden /> Records
+          <LayersIcon aria-hidden />
+          {t("record.records")}
         </Heading>
         <span className="durable-count">
-          {loadedCount} {loadedCount === 1 ? "conversation" : "conversations"} loaded
+          {t("record.conversationsLoaded", { count: countText(loadedCount, "conversation") })}
         </span>
       </div>
       <ul>
         {roots.map(node)}
         {nodes.filter((item) => !rendered.has(item.id)).map(node)}
       </ul>
-      <CollectionStatus collection={{ ...conversationPage, items: nodes }} label="conversations" />
-      <Branch label="About these records">
+      <CollectionStatus
+        collection={{ ...conversationPage, items: nodes }}
+        label={t("record.conversations")}
+      />
+      <Branch label={t("record.aboutRecords")}>
         <Text as="p" size="1">
-          Expand a conversation to read one task page and one entry page. Expand document
-          collections separately. Only loaded records are grouped; missing parents and cycles appear
-          at the root. Conversation branches outside the loaded pages are not shown. Refresh clears
-          the tree pages.
+          {t("record.treeScope")}
         </Text>
       </Branch>
-      <Branch label="Session documents">
+      <Branch label={t("record.sessionDocuments")}>
         <Documents props={props} location={{ view: "documents", scope: "session" }} />
       </Branch>
     </section>

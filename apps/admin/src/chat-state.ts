@@ -1,5 +1,6 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import type { Inventory, Policy, Snapshot } from "./api.js"
+import { t } from "./i18n.js"
 
 export type ChatRepair =
   | "access"
@@ -28,11 +29,9 @@ export function modelIssues(
   if (!model)
     issues.push({
       code: "model",
-      label: "Setup required",
-      reason: selected
-        ? "Selected model is excluded by model availability rules."
-        : "No effective model configured.",
-      action: "Configure model",
+      label: t("chat.setupRequired"),
+      reason: selected ? t("chat.modelExcluded") : t("chat.noEffectiveModel"),
+      action: t("chat.configureModel"),
       target: "model",
     })
   else {
@@ -41,19 +40,17 @@ export function modelIssues(
     if (provider && !provider.configured)
       issues.push({
         code: "authentication",
-        label: "Setup required",
-        reason: "Model authentication is not configured.",
-        action: "Configure authentication",
+        label: t("chat.setupRequired"),
+        reason: t("chat.authenticationMissing"),
+        action: t("chat.configureAuthentication"),
         target: "providers",
       })
     if (!provider?.models.some((candidate) => `${provider.id}/${candidate.id}` === model))
       issues.push({
         code: "inventory",
-        label: "Status unknown",
-        reason: !provider
-          ? "Provider configuration is not in the loaded inventory."
-          : "Selected model is not in the loaded inventory.",
-        action: "Review authentication configuration",
+        label: t("chat.statusUnknown"),
+        reason: !provider ? t("chat.providerNotLoaded") : t("chat.modelNotLoaded"),
+        action: t("chat.reviewAuthentication"),
         target: "providers",
       })
   }
@@ -75,33 +72,33 @@ export function chatState(
   if (!approved)
     issues.push({
       code: "approval",
-      label: "Access not approved",
-      reason: "Access approval is missing.",
-      action: "Review access approval",
+      label: t("chat.accessNotApproved"),
+      reason: t("chat.approvalMissing"),
+      action: t("chat.reviewApproval"),
       target: "access",
     })
   if (!enabled)
     issues.push({
       code: "disabled",
-      label: "Disabled",
-      reason: "The chat is disabled.",
-      action: "Review chat enabled switch",
+      label: t("chat.disabled"),
+      reason: t("chat.chatDisabledReason"),
+      action: t("chat.reviewEnabled"),
       target: "enabled",
     })
   if (application.status === "failed")
     issues.push({
       code: "application-failed",
-      label: "Application failed",
-      reason: "Saved settings could not be applied.",
-      action: "Review application status",
+      label: t("chat.applicationFailed"),
+      reason: t("chat.settingsApplyFailed"),
+      action: t("chat.reviewApplication"),
       target: "application",
     })
   else if (application.status !== "applied" || application.revision !== application.applied)
     issues.push({
       code: "application-pending",
-      label: "Application pending",
-      reason: "Saved settings are waiting to apply.",
-      action: "Review application status",
+      label: t("chat.applicationPending"),
+      reason: t("chat.settingsWaiting"),
+      action: t("chat.reviewApplication"),
       target: "application",
     })
   issues.push(...modelIssues(effective.model, override?.model ?? policy.defaults.model, inventory))
@@ -111,9 +108,16 @@ export function chatState(
     if (blocked.length)
       issues.push({
         code: `global-${category}`,
-        label: "Selection blocked",
-        reason: `${category === "servers" ? "MCP server" : category === "skills" ? "Skill" : "Tool"} selections excluded by global policy: ${blocked.join(", ")}.`,
-        action: "Review chat permissions",
+        label: t("chat.selectionBlocked"),
+        reason: t(
+          category === "servers"
+            ? "chat.serversExcluded"
+            : category === "skills"
+              ? "chat.skillsExcluded"
+              : "chat.toolsExcluded",
+          { names: blocked.join(", ") },
+        ),
+        action: t("chat.reviewPermissions"),
         target: category,
       })
   }
@@ -123,7 +127,7 @@ export function chatState(
     effective,
     issues,
     primary: issues[0],
-    label: issues[0]?.label ?? "Configured locally",
-    reason: issues[0]?.reason ?? "Model response not checked.",
+    label: issues[0]?.label ?? t("chat.configuredLocally"),
+    reason: issues[0]?.reason ?? t("chat.responseUnchecked"),
   }
 }

@@ -110,7 +110,7 @@ async function fixture(page: Page) {
     await route.fulfill({ json: data[path] ?? {} })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   return {
     writes,
     auditQueries,
@@ -290,7 +290,7 @@ test("Durable keeps pending or failed application and busy actions visible, then
     release()
   }
   await expect(bar).toBeHidden()
-  await expect(page.getByRole("heading", { name: "對話紀錄", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Conversation logs", exact: true })).toBeVisible()
 })
 
 test("guided and advanced MCP edits share a draft and a redacted transport-aware preview", async ({
@@ -648,7 +648,7 @@ for (const mode of [
         true,
       )
       const initial = page.getByRole("heading", {
-        name: ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+        name: ["Chats", "Access"].includes(section) ? "Chats" : sectionLabel(section),
         exact: true,
       })
       await initial.focus()

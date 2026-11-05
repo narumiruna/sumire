@@ -251,7 +251,7 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   )
   await expect(page).toHaveURL(/view=tasks&conversationId=7/)
   await expectRecord(page, "Model response", "task #8")
-  await expect(detailsFor(page)).toContainText("Recorded outcome: completed")
+  await expect(detailsFor(page)).toContainText("Recorded outcome: Completed")
   await openDisclosure(inspector.locator(".durable-record-details"))
   await expect(field(detailsFor(page), "Started")).toHaveText("2026-10-19 11:59:00 UTC")
   await expect(field(detailsFor(page), "Ended")).toHaveText("2026-10-19 11:59:30 UTC")
@@ -876,7 +876,7 @@ test("unknown task kinds stay generic and nonterminal records do not claim an ou
   await page.goto("/?section=Durable&chat=42&view=tasks&conversationId=7")
   const inspector = inspectorFor(page)
   await expectRecord(page, "Task", "task #81")
-  await expect(detailsFor(page)).toContainText("Recorded status: waiting")
+  await expect(detailsFor(page)).toContainText("Recorded status: Waiting")
   await expect(inspector.getByText("fixture.unknown-task-kind", { exact: true })).toBeHidden()
   await expect(inspector).not.toContainText(
     /Recorded outcome:|healthy|currently running|successfully completed/i,
@@ -886,7 +886,7 @@ test("unknown task kinds stay generic and nonterminal records do not claim an ou
   await expect(field(detailsFor(page), "Ended")).toHaveText("Not recorded")
   await expect(field(detailsFor(page), "Owning task")).toHaveText("No owner recorded")
   await expect(field(detailsFor(page), "Stored kind")).toHaveText("fixture.unknown-task-kind")
-  await expect(field(detailsFor(page), "Stored status")).toHaveText("waiting")
+  await expect(field(detailsFor(page), "Stored status")).toHaveText("Waiting")
   await expect(inspector.locator("pre:visible")).toHaveCount(0)
   expect(state.requests).toHaveLength(2)
 })

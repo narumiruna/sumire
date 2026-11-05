@@ -50,7 +50,7 @@ describe("SaveStatus", () => {
   it("folds saved metadata across pages without hiding actionable states", () => {
     const html = render({ quiet: true })
     expect(html).toContain('id="saved-settings-details"')
-    expect(html).toContain("儲存與版本資訊")
+    expect(html).toContain("Save and revision information")
     expect(html).not.toContain('class="saved-settings-details" open')
     const pending = render({ quiet: true, dirty: true })
     expect(pending).toContain('id="saved-settings-details"')

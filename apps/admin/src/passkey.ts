@@ -21,7 +21,12 @@ async function post<T>(path: string, value: unknown): Promise<T> {
     body: JSON.stringify(value),
   })
   const data = await response.json()
-  if (!response.ok) throw new ApiError(response.status, data.error ?? "Passkey sign-in failed")
+  if (!response.ok)
+    throw new ApiError(
+      response.status,
+      data.error ?? "",
+      data.error == null ? "error.passkey" : undefined,
+    )
   return data as T
 }
 

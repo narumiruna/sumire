@@ -1,5 +1,7 @@
 import type { RuntimeConfigEntry, RuntimeConfigResponse } from "@narumitw/sumire-contracts"
 
+import { LocalizedError, type MessageKey, t } from "./i18n.js"
+
 /** Validate a safe save base. Never retain additional response fields. */
 export function parseRuntimeConfig(value: RuntimeConfigResponse): RuntimeConfigResponse {
   if (
@@ -13,7 +15,7 @@ export function parseRuntimeConfig(value: RuntimeConfigResponse): RuntimeConfigR
     !value.status ||
     !Array.isArray(value.entries)
   )
-    throw new Error("Could not verify runtime configuration.")
+    throw new LocalizedError("runtime.verifyFailed")
   const entries: RuntimeConfigEntry[] = value.entries.map((entry) => {
     if (
       !entry ||
@@ -23,13 +25,13 @@ export function parseRuntimeConfig(value: RuntimeConfigResponse): RuntimeConfigR
       !Number.isFinite(entry.updatedAt) ||
       entry.updatedAt < 0
     )
-      throw new Error("Invalid entry metadata.")
+      throw new LocalizedError("runtime.invalidEntry")
     const metadata = { name: entry.name, revision: entry.revision, updatedAt: entry.updatedAt }
     if (entry.kind === "secret" && entry.configured === true)
       return { ...metadata, kind: "secret", configured: true }
     if (entry.kind === "variable" && typeof entry.value === "string")
       return { ...metadata, kind: "variable", value: entry.value }
-    throw new Error("Invalid entry metadata.")
+    throw new LocalizedError("runtime.invalidEntry")
   })
   return {
     revision: value.revision,
@@ -40,16 +42,24 @@ export function parseRuntimeConfig(value: RuntimeConfigResponse): RuntimeConfigR
   }
 }
 
-export function runtimeValueError(name: string, kind: "secret" | "variable", value: string) {
-  if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name))
-    return "Use an uppercase name starting with A–Z, with only A–Z, digits, and underscores (maximum 128 characters)."
+export function runtimeValueErrorKey(
+  name: string,
+  kind: "secret" | "variable",
+  value: string,
+): MessageKey | "" {
+  if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name)) return "runtime.nameInvalid"
   if (
     ["BOT_TOKEN", "BOT_ADMIN_ID", "LOGFIRE_TOKEN", "ENCRYPTION_KEY"].includes(name) ||
     name.startsWith("ADMIN_")
   )
-    return "This name is reserved for host configuration."
-  if (kind === "secret" && !value) return "Enter a nonempty replacement secret."
-  if (new TextEncoder().encode(value).length > 8192)
-    return "The value must not exceed 8 KiB of UTF-8."
+    return "runtime.nameReserved"
+  if (kind === "secret" && !value) return "runtime.secretRequired"
+  if (new TextEncoder().encode(value).length > 8192) return "runtime.valueLimit"
+  return ""
+}
+
+export function runtimeValueError(name: string, kind: "secret" | "variable", value: string) {
+  const key = runtimeValueErrorKey(name, kind, value)
+  if (key) return t(key)
   return ""
 }

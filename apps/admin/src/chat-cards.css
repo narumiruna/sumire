@@ -380,6 +380,15 @@
   }
 }
 @media (max-width: 360px) {
+  .admin-shell-chats .chat-card-actions {
+    flex-wrap: wrap;
+    height: auto;
+  }
+  .chat-card-actions .rt-Button {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .chat-card-header {
     grid-template-columns: 32px minmax(0, 1fr);
     gap: 8px;

@@ -95,7 +95,7 @@ async function openSelector(page: Page) {
   if ((await details.getAttribute("open")) === null)
     await details.locator(":scope > summary").click()
   await expect(
-    selector(page).getByLabel(/搜尋聊天|Search stored chats/, { exact: true }),
+    selector(page).getByLabel(/Search chats|Search stored chats/, { exact: true }),
   ).toBeVisible()
 }
 function gate() {
@@ -128,7 +128,7 @@ for (const width of [1440, 390, 320]) {
       expect(bounds.scrollHeight).toBeGreaterThan(bounds.height)
     }
     expect(state.durableReads).toEqual([])
-    const search = selector(page).getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+    const search = selector(page).getByLabel(/Search chats|Search stored chats/, { exact: true })
     await search.fill("Beyond first page")
     const row = rows(page).getByRole("button", { name: /Beyond first page/ })
     await expect(row).toBeVisible()
@@ -156,13 +156,13 @@ test("searches complete IDs, retains duplicate names with separate IDs, and shar
   page,
 }) => {
   const state = await fixture(page)
-  const search = selector(page).getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = selector(page).getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("-1001234567890")
   await expect(rows(page).getByRole("button")).toHaveCount(1)
   await expect(rows(page)).toContainText("Beyond first page")
   await search.fill("-100123456789")
   await expect(
-    selector(page).getByText(/找不到符合搜尋的聊天|No stored chats match this search./, {
+    selector(page).getByText(/No chats match this search|No stored chats match this search./, {
       exact: true,
     }),
   ).toBeVisible()
@@ -205,28 +205,28 @@ test("paginates each global query independently and resets its offset on search"
   const state = await fixture(page)
   await expect(rows(page).getByRole("button")).toHaveCount(100)
   await selector(page)
-    .getByRole("button", { name: /下一頁|Next chats/, exact: true })
+    .getByRole("button", { name: /^Next(?: chats)?$/, exact: true })
     .click()
   await expect(rows(page)).toContainText("Stored group 100")
   await expect(rows(page)).not.toContainText("Stored group 99")
-  await expect(selector(page).getByText(/第 2 頁|Page 2/, { exact: true })).toBeVisible()
+  await expect(selector(page).getByText(/Page 2/, { exact: true })).toBeVisible()
   await selector(page)
-    .getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+    .getByLabel(/Search chats|Search stored chats/, { exact: true })
     .fill("Stored group")
   await expect(rows(page)).toContainText("Stored group 0")
   await expect(
-    selector(page).getByRole("button", { name: /上一頁|Previous chats/, exact: true }),
+    selector(page).getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }),
   ).toBeDisabled()
   await selector(page)
-    .getByRole("button", { name: /下一頁|Next chats/, exact: true })
+    .getByRole("button", { name: /^Next(?: chats)?$/, exact: true })
     .click()
   await expect(rows(page)).toContainText("Stored group 100")
   await selector(page)
-    .getByRole("button", { name: /下一頁|Next chats/, exact: true })
+    .getByRole("button", { name: /^Next(?: chats)?$/, exact: true })
     .click()
   await expect(rows(page).getByRole("button")).toHaveCount(5)
   await expect(
-    selector(page).getByRole("button", { name: /下一頁|Next chats/, exact: true }),
+    selector(page).getByRole("button", { name: /^Next(?: chats)?$/, exact: true }),
   ).toBeDisabled()
   expect(
     state.directoryReads.some(
@@ -235,7 +235,7 @@ test("paginates each global query independently and resets its offset on search"
     ),
   ).toBe(true)
   await selector(page)
-    .getByRole("button", { name: /上一頁|Previous chats/, exact: true })
+    .getByRole("button", { name: /^Previous(?: chats)?$/, exact: true })
     .click()
   await expect(rows(page)).toContainText("Stored group 100")
 })
@@ -349,10 +349,10 @@ test("old queries and old pages cannot replace the current global search", async
     return true
   }
   await selector(page)
-    .getByRole("button", { name: /下一頁|Next chats/, exact: true })
+    .getByRole("button", { name: /^Next(?: chats)?$/, exact: true })
     .click()
   await expect(selector(page).getByRole("status")).toHaveText("Loading chats…")
-  const search = selector(page).getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = selector(page).getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("old query")
   await expect
     .poll(() => state.directoryReads.some((url) => url.searchParams.get("q") === "old query"))
@@ -399,7 +399,7 @@ test("rapid A→B→A switching rejects stale metadata and restores browser hist
     return true
   }
   await selector(page)
-    .getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+    .getByLabel(/Search chats|Search stored chats/, { exact: true })
     .fill("Same name")
   const a = rows(page).getByRole("button").filter({ hasText: "-9001" })
   const b = rows(page).getByRole("button").filter({ hasText: "-9002" })
@@ -461,7 +461,7 @@ test("explicitly choosing a different chat clears old inspector scope and object
   ).toBeVisible()
   await openSelector(page)
   await selector(page)
-    .getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+    .getByLabel(/Search chats|Search stored chats/, { exact: true })
     .fill("Same name")
   await rows(page).getByRole("button").filter({ hasText: "-9001" }).click()
   await expect(page).toHaveURL(/objectId=9/)
@@ -478,7 +478,7 @@ test("neutral names keep IDs in accessible labels and Chats filters use saved po
   page,
 }) => {
   await fixture(page, "/?section=Chats")
-  const search = page.getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+  const search = page.getByLabel(/Search chats|Search stored chats/, { exact: true })
   await search.fill("-9003")
   const row = rows(page).getByRole("link", { name: "Unnamed group · -9003", exact: true })
   await expect(row.locator("strong")).toHaveText("Unnamed group")
@@ -501,7 +501,7 @@ test("neutral names keep IDs in accessible labels and Chats filters use saved po
     .click()
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(rows(page).getByRole("link")).toBeFocused()
-  await expect(rows(page).locator(".chat-card-pending")).toHaveText("撤銷核准待儲存")
+  await expect(rows(page).locator(".chat-card-pending")).toHaveText("Revocation not saved")
   await expect(page.getByRole("region", { name: "Pending changes", exact: true })).toContainText(
     "1 unsaved change",
   )
@@ -514,7 +514,7 @@ test("manual ID input stays a local draft until an explicit chat choice", async 
   await back.click()
   await openDirectoryFilters(page)
   await page.locator(".configure-id summary").click()
-  const input = page.getByLabel("聊天 ID", { exact: true })
+  const input = page.getByLabel("Chat ID", { exact: true })
   const previousReads = state.directoryReads.length
   await input.fill("-9002")
   await expect(page).toHaveURL(/chat=-9001/)
@@ -523,7 +523,7 @@ test("manual ID input stays a local draft until an explicit chat choice", async 
   expect(state.directoryReads.length).toBe(previousReads)
   await back.click()
   await expect(input).toHaveValue("-9002")
-  await page.getByRole("button", { name: "開啟詳細資料", exact: true }).click()
+  await page.getByRole("button", { name: "Open details", exact: true }).click()
   await expect(page).toHaveURL(/chat=-9002/)
   await expect(page.locator(".chat-header code")).toHaveText("-9002")
   await page.goBack()
@@ -539,7 +539,7 @@ for (const trigger of ["directory", "lookup", "logout"] as const) {
   }) => {
     const state = await fixture(page)
     await selector(page)
-      .getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+      .getByLabel(/Search chats|Search stored chats/, { exact: true })
       .fill("Beyond first page")
     await rows(page)
       .getByRole("button", { name: /Beyond first page/ })
@@ -563,7 +563,7 @@ for (const trigger of ["directory", "lookup", "logout"] as const) {
       }
       await openSelector(page)
       await selector(page)
-        .getByLabel(/搜尋聊天|Search stored chats/, { exact: true })
+        .getByLabel(/Search chats|Search stored chats/, { exact: true })
         .fill("late query")
       await expect
         .poll(() => state.directoryReads.some((url) => url.searchParams.get("q") === "late query"))

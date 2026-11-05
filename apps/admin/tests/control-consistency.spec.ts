@@ -61,7 +61,7 @@ async function fixture(page: Page, section = "Chats") {
   await page.goto(`/?section=${encodeURIComponent(section)}`)
   await expect(
     page.getByRole("heading", {
-      name: ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+      name: ["Chats", "Access"].includes(section) ? "Chats" : sectionLabel(section),
       exact: true,
     }),
   ).toBeVisible()
@@ -176,7 +176,7 @@ test("MCP field replacement selectors stay distinct from values and preserve pat
   await expect(preview).toContainText("Removed by transport selection: command")
   await expect(preview).toContainText("Removed by transport selection: env")
   await page.getByRole("checkbox", { name: "Edit MCP exposure", exact: true }).check()
-  await choose(page, "MCP exposure replacement", "hidden")
+  await choose(page, "MCP exposure replacement", "Hidden")
   await choose(page, "MCP type replacement", "streamable-http")
   await page.getByText("Advanced server configuration JSON", { exact: true }).click()
   await expect(
@@ -230,7 +230,7 @@ for (const name of [
     await expect(trigger).toBeFocused()
     await trigger.click()
     await page.goBack()
-    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     await page.goForward()
     await expect(trigger).toBeVisible()

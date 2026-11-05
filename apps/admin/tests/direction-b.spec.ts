@@ -140,7 +140,7 @@ for (const viewport of [
     ]) {
       await navigate(page, section)
       await expect(page.locator("#current-section-heading")).toHaveText(
-        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+        ["Chats", "Access"].includes(section) ? "Chats" : sectionLabel(section),
       )
       if (section === "Chats")
         await expect(page.getByRole("heading", { name: chat.name, exact: true })).toBeVisible()

@@ -1,6 +1,7 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { setLocale } from "./i18n.js"
 import {
   navigationHref,
   type Page,
@@ -12,6 +13,8 @@ import {
   readNavigation,
   SideNavigation,
 } from "./navigation.js"
+
+afterEach(() => setLocale("en"))
 
 const taskLabels = {
   Chats: "Chats",
@@ -57,9 +60,23 @@ describe("admin navigation", () => {
   it("has a distinct localized title for every stable page identifier", () => {
     expect(Object.keys(pageTitles)).toEqual([...pages])
     expect(new Set(Object.values(pageTitles)).size).toBe(pages.length)
-    expect(pageTitle("Defaults")).toBe("共用設定")
-    expect(pageTitle("Model Providers")).toBe("模型供應商")
-    expect(pageTitle("Tool permissions")).toBe("工具權限")
+    expect(pageTitle("Defaults")).toBe("Shared defaults")
+    expect(pageTitle("Model Providers")).toBe("Providers & models")
+    expect(pageTitle("Tool permissions")).toBe("Tool permissions")
+  })
+
+  it.each([
+    ["en", "Chats", "Shared defaults"],
+    ["zh-TW", "聊天管理", "共用設定"],
+    ["ja", "チャット", "共通の既定値"],
+  ] as const)("translates labels without changing routes in %s", (locale, chats, defaults) => {
+    setLocale(locale)
+    const html = renderNavigation()
+    expect(pageTitle("Chats")).toBe(chats)
+    expect(pageTitle("Defaults")).toBe(defaults)
+    expect(html).toContain(`<span>${chats}</span>`)
+    expect(html).toContain("section=Defaults")
+    expect(html).toContain("section=Durable")
   })
 
   it("lists every destination once without redundant groups", () => {
@@ -81,7 +98,7 @@ describe("admin navigation", () => {
     expect(links).toHaveLength(pages.length)
     for (const [index, page] of orderedPages.entries()) {
       const link = links[index]
-      expect(link?.[2]).toContain(`<span>${pageTitle(page)}</span>`)
+      expect(link?.[2]).toContain(`<span>${taskLabels[page]}</span>`)
       const href = link?.[1]?.match(/href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&")
       const url = new URL(href ?? "", "https://example.com")
       expect(readNavigation(url)).toEqual({ page, chat: "-100" })
@@ -95,8 +112,8 @@ describe("admin navigation", () => {
   it("keeps protocol and inspector details in accessible descriptions", () => {
     const html = renderNavigation()
     for (const [id, label, technicalTerm] of [
-      ["Durable", "對話紀錄", "Durable Inspector"],
-      ["MCP-connections", "MCP 伺服器", "Model Context Protocol (MCP)"],
+      ["Durable", "Conversation logs", "Durable Inspector"],
+      ["MCP-connections", "MCP servers", "Model Context Protocol (MCP)"],
     ]) {
       const descriptionId = `navigation-description-${id}`
       const link = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].find((match) =>

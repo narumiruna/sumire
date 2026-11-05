@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
+import { setLocale } from "./i18n.js"
 import { mcpChangePreview, mcpSavePatch, parseMcpPatch } from "./mcp-editor.js"
 
 const previous = {
@@ -9,7 +10,27 @@ const previous = {
   env: { OLD: null, REMOVE: null },
   headers: {},
 }
+afterEach(() => setLocale("en"))
+
 describe("MCP patch and preview", () => {
+  it.each([
+    ["zh-TW", "保留：env.OLD", "新增：env.NEW", "逾時必須為正數。"],
+    ["ja", "保持：env.OLD", "追加：env.NEW", "タイムアウトには正の数が必要です。"],
+  ] as const)(
+    "localizes %s operations but not patches or secret field identifiers",
+    (locale, retained, added, timeout) => {
+      setLocale(locale)
+      const patch = mcpSavePatch("{}", previous, { env: { NEW: "sentinel-secret" }, headers: {} })
+      expect(patch).toEqual({ env: { OLD: null, REMOVE: null, NEW: "sentinel-secret" } })
+      const preview = mcpChangePreview(patch, previous)
+      expect(preview).toContain(retained)
+      expect(preview).toContain(added)
+      expect(JSON.stringify(preview)).not.toContain("sentinel-secret")
+      expect(() => mcpSavePatch('{"timeout":0}', previous, { env: {}, headers: {} })).toThrow(
+        timeout,
+      )
+    },
+  )
   it("retains unknown editor data for correction rather than silently dropping it", () => {
     for (const text of ["[1]", "null", "{", '{"unknown":1}'])
       expect(() => parseMcpPatch(text)).toThrow()

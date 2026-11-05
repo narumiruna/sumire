@@ -1,6 +1,7 @@
 import { Button, Code, Dialog, Flex, Heading } from "@radix-ui/themes"
 import { useContext, useEffect, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { t } from "./i18n.js"
 import { Check, Field } from "./policy-editors.js"
 import { SectionActive } from "./sections.js"
 import { Disclosure, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
@@ -53,11 +54,11 @@ export function Skills({
   return (
     <Flex id="default-skills" tabIndex={-1} direction="column" gap="4" className="skills-workspace">
       <Flex gap="3" align="start" justify="between" wrap="wrap">
-        <Prose>Skills add model instructions, not tool permissions or file restrictions.</Prose>
+        <Prose>{t("skill.intro")}</Prose>
         <Dialog.Root open={maintenanceOpen && active} onOpenChange={setMaintenanceOpen}>
           <Dialog.Trigger>
             <Button id="skill-maintenance" variant="soft">
-              Installation instructions
+              {t("skill.installation")}
             </Button>
           </Dialog.Trigger>
           <Dialog.Content
@@ -66,49 +67,35 @@ export function Skills({
               if (!active) event.preventDefault()
             }}
           >
-            <Dialog.Title>Installation instructions</Dialog.Title>
-            <Dialog.Description>
-              Skill files require trusted host maintenance. This page manages policy selections
-              only.
-            </Dialog.Description>
-            <Prose>
-              Install, update, or remove skill files on the host, then restart the bot to refresh
-              this inventory. Loaded skills are enabled globally and by default when first
-              registered. Manual removals and explicit chat selections stay unchanged after restart.
-            </Prose>
+            <Dialog.Title>{t("skill.installation")}</Dialog.Title>
+            <Dialog.Description>{t("skill.installationDescription")}</Dialog.Description>
+            <Prose>{t("skill.installationHelp")}</Prose>
             <Flex justify="end" mt="4">
               <Dialog.Close>
-                <Button variant="soft">Close</Button>
+                <Button variant="soft">{t("selection.close")}</Button>
               </Dialog.Close>
             </Flex>
           </Dialog.Content>
         </Dialog.Root>
       </Flex>
       <TableToolbar>
-        <Field id="skill-search" label="Search skills" value={query} onChange={setQuery} />
-        <Prose size="2">
-          {visible.length} of {names.length} skills
-        </Prose>
+        <Field id="skill-search" label={t("skill.search")} value={query} onChange={setQuery} />
+        <Prose size="2">{t("skill.count", { visible: visible.length, total: names.length })}</Prose>
       </TableToolbar>
-      {inventory.skills === undefined && (
-        <Prose role="status">
-          Skill inventory unavailable. Retained policy selections are shown; loaded state is
-          unknown.
-        </Prose>
-      )}
+      {inventory.skills === undefined && <Prose role="status">{t("skill.inventoryUnknown")}</Prose>}
       <div className="skill-columns" aria-hidden="true">
-        <strong>Skill</strong>
-        <strong>Global enablement</strong>
-        <strong>Default selection</strong>
-        <strong>Default result</strong>
+        <strong>{t("skill.column")}</strong>
+        <strong>{t("skill.globalEnablement")}</strong>
+        <strong>{t("skill.defaultSelection")}</strong>
+        <strong>{t("skill.defaultResult")}</strong>
       </div>
       {!visible.length && (
         <Prose className="empty-state">
           {names.length
-            ? "No matching skills."
+            ? t("skill.noMatches")
             : inventoryKnown
-              ? "No skills loaded or selected."
-              : "No retained skill selections."}
+              ? t("skill.noLoaded")
+              : t("skill.noRetained")}
         </Prose>
       )}
       {visible.map((name) => {
@@ -121,7 +108,7 @@ export function Skills({
           global !== (saved.skills ?? []).includes(name) ||
           selected !== (saved.defaults.skills?.includes(name) ?? false)
         return (
-          <section key={name} aria-label={`Skill ${name}`} className="skill-row">
+          <section key={name} aria-label={t("skill.named", { name })} className="skill-row">
             <div className="skill-identity">
               <Heading as="h3" size="3">
                 <Code variant="ghost">{name}</Code>
@@ -130,24 +117,24 @@ export function Skills({
                 {skill?.description
                   ? skillPurpose(skill.description)
                   : skill
-                    ? "No description available."
+                    ? t("skill.noDescription")
                     : inventoryKnown
-                      ? "Not in the loaded inventory."
-                      : "Loaded state unknown."}
+                      ? t("skill.notInInventory")
+                      : t("skill.loadedUnknown")}
               </Prose>
-              <Disclosure title="Full description">
-                <Prose size="2">{skill?.description || "No description available."}</Prose>
+              <Disclosure title={t("skill.fullDescription")}>
+                <Prose size="2">{skill?.description || t("skill.noDescription")}</Prose>
                 <Prose size="2">
-                  {inherited} configured chat overrides inherit the default skill selection.{" "}
-                  {Object.keys(policy.chats).length - inherited} use explicit lists, including empty
-                  lists. Explicit chat selections remain unchanged when the default changes. Skill
-                  selection does not grant tool access.
+                  {t("skill.inheritanceHelp", {
+                    inherited,
+                    explicit: Object.keys(policy.chats).length - inherited,
+                  })}
                 </Prose>
               </Disclosure>
             </div>
             <Check
-              label={`Globally enable skill ${name}`}
-              visibleLabel="Enabled globally"
+              label={t("skill.enableNamed", { name })}
+              visibleLabel={t("skill.enabledGlobally")}
               checked={global}
               onChange={(checked) =>
                 onChange({
@@ -159,8 +146,8 @@ export function Skills({
               }
             />
             <Check
-              label={`Default chat selection for skill ${name}`}
-              visibleLabel="Use by default"
+              label={t("skill.defaultNamed", { name })}
+              visibleLabel={t("skill.useDefault")}
               checked={selected}
               disabled={!global && !selected}
               onChange={(checked) =>
@@ -179,36 +166,35 @@ export function Skills({
               <StatusLabel tone={global && selected && skill ? "success" : "neutral"}>
                 {global && selected
                   ? skill
-                    ? "Selected by default"
+                    ? t("skill.selectedDefault")
                     : inventoryKnown
-                      ? "Unavailable: not loaded"
-                      : "Unknown: inventory unavailable"
+                      ? t("skill.unavailableNotLoaded")
+                      : t("skill.unknownInventory")
                   : !global && selected
-                    ? "Blocked globally"
-                    : "Not selected"}
+                    ? t("skill.blockedGlobally")
+                    : t("skill.notSelected")}
               </StatusLabel>
               {!skill && (
                 <StatusLabel tone="warning">
-                  {inventoryKnown ? "Not loaded" : "Inventory unavailable"}
+                  {inventoryKnown ? t("skill.notLoaded") : t("skill.inventoryUnavailable")}
                 </StatusLabel>
               )}
-              {pending && <StatusLabel tone="warning">Pending change</StatusLabel>}
+              {pending && <StatusLabel tone="warning">{t("selection.pendingChange")}</StatusLabel>}
             </Flex>
             {!global && (selected || refs.length > 0) && (
               <Prose size="2" color="orange" className="skill-impact">
-                Clear retained default and chat selections, or restore global availability before
-                saving.
+                {t("skill.retainedHelp")}
               </Prose>
             )}
             {refs.length > 0 && (
               <Disclosure
-                title={`Explicit chat selections (${refs.length})`}
+                title={t("skill.explicitChats", { count: refs.length })}
                 className="skill-impact"
                 open={!global}
               >
                 {refs.map(([id]) => (
                   <Button key={id} variant="ghost" onClick={() => onChat(id)}>
-                    Chat {id}
+                    {t("selection.chatNamed", { id })}
                   </Button>
                 ))}
               </Disclosure>

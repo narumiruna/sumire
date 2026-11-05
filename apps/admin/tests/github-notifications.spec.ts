@@ -19,9 +19,9 @@ test("legacy GitHub notifications links open the GitHub mention author allowlist
 }) => {
   const fixture = await policyRecoveryFixture(page)
   await page.goto("/?section=GitHub+notifications")
-  await expect(page.getByRole("heading", { name: "GitHub 提及", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "GitHub mentions", exact: true })).toBeVisible()
   await expect(page.getByLabel("GitHub username", { exact: true })).toBeVisible()
-  await expect(page.getByRole("link", { name: "GitHub 提及", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "GitHub mentions", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -212,7 +212,9 @@ for (const width of [375, 1440]) {
       }),
     )
     await page.getByRole("button", { name: "Manage GH_TOKEN", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "密鑰與變數", exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: "Secrets & variables", exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Add secret", exact: true })).toBeEnabled()
   })
 }

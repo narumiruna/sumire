@@ -1,18 +1,20 @@
 # Shared administration design
 
 Extends the approved chat-management design and the three follow-up concepts to
-all ten administration destinations. Page and navigation titles are localized;
-stable URL identifiers, policy labels and existing editor accessibility contracts
-remain compatible. Technical editor copy is not comprehensively translated.
+all ten administration destinations. Interface text supports English, Traditional
+Chinese, and Japanese. URL identifiers and policy values remain stable; labels
+and accessible names follow the selected language. External data stays literal.
+See [interface language selection](../admin-webui.md#interface-language).
 
 ## Shared presentation
 
 - Off-white `#fafaf9`, forest-green `#24553e`, neutral borders, white 12px cards.
-- 30px page headings, 20px primary card headings, readable 16px fields and body
-  copy. Secondary metadata can remain 14px. Native permission checkbox semantics
+- 30px page headings (28px at viewport widths of 360px or less), 20px primary
+  card headings, readable 16px fields and body copy. Secondary metadata can remain 14px. Native permission checkbox semantics
   and role-specific conversation colors are retained.
 - The same compact mobile menu/brand/account header across pages; desktop keeps
-  the navigation sidebar. Form controls and primary actions retain touch targets.
+  the navigation sidebar. At narrow widths, language selection is inside the
+  Sections menu. Form controls and primary actions retain touch targets.
 - Previously applied revision metadata is folded below the editor. Unsaved edits
   still have the existing fixed changes bar. Failed, waiting, busy and uncertain
   outcomes remain visible rather than being hidden in a clean-state disclosure.

@@ -1,7 +1,10 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
-import { chatState } from "./chat-state.js"
+import { chatState, modelIssues } from "./chat-state.js"
+import { setLocale } from "./i18n.js"
+
+afterEach(() => setLocale("en"))
 
 function fixture() {
   const policy = initialPolicy()
@@ -27,6 +30,28 @@ function fixture() {
 }
 
 describe("saved chat state", () => {
+  it("translates issue presentation without changing repair targets or issue codes", () => {
+    const { policy, inventory, application } = fixture()
+    policy.privateUsers = []
+    for (const [locale, label, action, modelReason] of [
+      ["en", "Access not approved", "Review access approval", "No effective model configured."],
+      ["zh-TW", "存取尚未核准", "檢視存取核准", "尚未設定有效模型。"],
+      ["ja", "アクセス未承認", "アクセス承認を確認", "有効なモデルが設定されていません。"],
+    ] as const) {
+      setLocale(locale)
+      expect(chatState(42, policy, inventory, application).primary).toMatchObject({
+        code: "approval",
+        target: "access",
+        label,
+        action,
+      })
+      expect(modelIssues(null, null, inventory)[0]).toMatchObject({
+        code: "model",
+        target: "model",
+        reason: modelReason,
+      })
+    }
+  })
   it("does not mistake local configuration for successful execution", () => {
     const { policy, inventory, application } = fixture()
     expect(chatState(42, policy, inventory, application)).toMatchObject({

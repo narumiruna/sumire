@@ -6,16 +6,34 @@ import type {
   GitHubReceipt,
 } from "@narumitw/sumire-contracts"
 
+import { t } from "./i18n.js"
+
+/** Known application states have labels; unknown stored metadata remains unchanged. */
+export function githubApplicationStatusLabel(status: string) {
+  switch (status) {
+    case "applied":
+      return t("settings.application.applied")
+    case "pending":
+      return t("settings.application.pending")
+    case "failed":
+      return t("settings.application.failed")
+    case "unknown":
+      return t("settings.application.unknown")
+    default:
+      return status
+  }
+}
+
 export const githubVerificationUri = "https://github.com/login/device"
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid GitHub metadata")
+    throw new Error(t("github.invalidMetadata"))
   return value as Record<string, unknown>
 }
 function integer(value: unknown, minimum = 0): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum)
-    throw new Error("Invalid GitHub metadata")
+    throw new Error(t("github.invalidMetadata"))
   return value
 }
 function account(value: unknown): GitHubAccount {
@@ -24,7 +42,7 @@ function account(value: unknown): GitHubAccount {
     typeof data.login !== "string" ||
     !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(data.login)
   )
-    throw new Error("Invalid GitHub account")
+    throw new Error(t("github.invalidAccount"))
   return { id: integer(data.id, 1), login: data.login }
 }
 function scopes(value: unknown): string[] {
@@ -33,7 +51,7 @@ function scopes(value: unknown): string[] {
     value.length > 64 ||
     value.some((scope) => typeof scope !== "string" || !/^[a-z][a-z0-9:_-]{0,63}$/.test(scope))
   )
-    throw new Error("Invalid GitHub scopes")
+    throw new Error(t("github.invalidScopes"))
   return [...new Set(value as string[])]
 }
 
@@ -46,17 +64,17 @@ export function parseGitHubApplication(value: unknown): GitHubApplicationState {
     data.status !== "failed" &&
     data.status !== "unknown"
   )
-    throw new Error("Invalid GitHub application state")
+    throw new Error(t("github.invalidApplication"))
   const revision = integer(data.revision, 1)
   const applied = integer(data.applied)
-  if (applied > revision) throw new Error("Invalid GitHub application state")
+  if (applied > revision) throw new Error(t("github.invalidApplication"))
   return { revision, applied, status: data.status }
 }
 function receipt(value: unknown): GitHubReceipt {
   const data = object(value)
   const savedRevision = integer(data.savedRevision, 1)
   const application = parseGitHubApplication(data.application)
-  if (application.revision !== savedRevision) throw new Error("Invalid GitHub receipt")
+  if (application.revision !== savedRevision) throw new Error(t("github.invalidReceipt"))
   return { savedRevision, application }
 }
 export function activeGitHubFlow(flow?: GitHubFlow): boolean {
@@ -67,7 +85,7 @@ export function activeGitHubFlow(flow?: GitHubFlow): boolean {
 export function parseGitHubFlow(value: unknown): GitHubFlow {
   const data = object(value)
   if (typeof data.id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(data.id))
-    throw new Error("Invalid GitHub interaction")
+    throw new Error(t("github.invalidInteraction"))
   if (
     data.status !== "pending" &&
     data.status !== "authorized" &&
@@ -77,20 +95,19 @@ export function parseGitHubFlow(value: unknown): GitHubFlow {
     data.status !== "failed" &&
     data.status !== "conflict"
   )
-    throw new Error("Invalid GitHub interaction")
+    throw new Error(t("github.invalidInteraction"))
   const result: GitHubFlow = {
     id: data.id,
     status: data.status,
     expiresAt: integer(data.expiresAt),
   }
-  if (result.expiresAt > 8640000000000000) throw new Error("Invalid GitHub deadline")
+  if (result.expiresAt > 8640000000000000) throw new Error(t("github.invalidDeadline"))
   if (data.verificationUri !== undefined && data.verificationUri !== githubVerificationUri)
-    throw new Error("Unsafe GitHub verification link")
+    throw new Error(t("github.unsafeLink"))
   if (data.userCode !== undefined) {
     if (typeof data.userCode !== "string" || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(data.userCode))
-      throw new Error("Invalid GitHub user code")
-    if (data.verificationUri !== githubVerificationUri)
-      throw new Error("Missing GitHub verification link")
+      throw new Error(t("github.invalidCode"))
+    if (data.verificationUri !== githubVerificationUri) throw new Error(t("github.missingLink"))
     if (data.status === "pending") {
       result.userCode = data.userCode
       result.verificationUri = githubVerificationUri
@@ -99,12 +116,12 @@ export function parseGitHubFlow(value: unknown): GitHubFlow {
   if (data.account !== undefined) result.account = account(data.account)
   if (data.scopes !== undefined) result.scopes = scopes(data.scopes)
   if (data.status === "authorized" && (!result.account || !result.scopes))
-    throw new Error("Missing verified GitHub account")
+    throw new Error(t("github.missingAccount"))
   if (data.receipt !== undefined) {
-    if (data.status !== "completed") throw new Error("Invalid GitHub receipt")
+    if (data.status !== "completed") throw new Error(t("github.invalidReceipt"))
     result.receipt = receipt(data.receipt)
   }
-  if (data.status === "completed" && !result.receipt) throw new Error("Missing GitHub receipt")
+  if (data.status === "completed" && !result.receipt) throw new Error(t("github.missingReceipt"))
   return result
 }
 
@@ -121,7 +138,7 @@ export function parseGitHubConnection(value: unknown): GitHubConnection {
       data.mode !== "invalid") ||
     typeof data.reconnectRequired !== "boolean"
   )
-    throw new Error("Invalid GitHub connection")
+    throw new Error(t("github.invalidConnection"))
   const application = parseGitHubApplication(data)
   const result: GitHubConnection = {
     revision: application.revision,
@@ -133,14 +150,14 @@ export function parseGitHubConnection(value: unknown): GitHubConnection {
   }
   if (data.clientId !== undefined) {
     if (typeof data.clientId !== "string" || !/^[a-zA-Z0-9_.-]{1,128}$/.test(data.clientId))
-      throw new Error("Invalid GitHub Client ID")
+      throw new Error(t("github.invalidClient"))
     result.clientId = data.clientId
   }
   if (data.account !== undefined) result.account = account(data.account)
   if (data.scopes !== undefined) result.scopes = scopes(data.scopes)
   if (data.expiresAt !== undefined) {
     result.expiresAt = integer(data.expiresAt)
-    if (result.expiresAt > 8640000000000000) throw new Error("Invalid GitHub expiry")
+    if (result.expiresAt > 8640000000000000) throw new Error(t("github.invalidExpiry"))
   }
   if (data.flow !== undefined) result.flow = parseGitHubFlow(data.flow)
   return result

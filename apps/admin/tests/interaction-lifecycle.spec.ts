@@ -16,7 +16,7 @@ test("Skills maintenance closes on browser history without focus on a hidden tri
     page.getByRole("dialog", { name: "Installation instructions", exact: true }),
   ).toBeVisible()
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await expect(page.getByRole("dialog")).toHaveCount(0)
   await expect(trigger).not.toBeFocused()
   await navigate(page, "Skills")

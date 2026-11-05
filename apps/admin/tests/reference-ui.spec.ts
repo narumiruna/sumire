@@ -16,7 +16,9 @@ for (const width of [1448, 768, 390, 320]) {
     await expect(
       entries(page).getByRole("link", { name: "Inspect entry 170", exact: true }),
     ).toBeVisible()
-    await expect(page.getByRole("heading", { name: "對話紀錄", exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: "Conversation logs", exact: true }),
+    ).toBeVisible()
     await expect(
       page.getByRole("region", { name: "Inspected conversation ID", exact: true }),
     ).toContainText("7")
@@ -97,16 +99,16 @@ for (const width of [1448, 768, 390, 320]) {
       await page.getByRole("button", { name: /^Sections ·/ }).click()
     await expect(navigation.getByRole("heading")).toHaveCount(0)
     await expect(navigation.getByRole("link")).toHaveText([
-      "聊天管理",
-      "對話紀錄",
-      "共用設定",
-      "模型供應商",
-      "工具權限",
-      "技能管理",
-      "MCP 伺服器",
-      "密鑰與變數",
-      "GitHub 提及",
-      "稽核紀錄",
+      "Chats",
+      "Conversation logs",
+      "Shared defaults",
+      "Providers & models",
+      "Tool permissions",
+      "Skills",
+      "MCP servers",
+      "Secrets & variables",
+      "GitHub mentions",
+      "Audit log",
     ])
     await expect(navigation.locator("a > svg")).toHaveCount(10)
     for (const icon of await navigation.locator("a > svg").all()) await expect(icon).toBeVisible()

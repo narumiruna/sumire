@@ -1,8 +1,9 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
+import { setLocale } from "./i18n.js"
 import { Skills, skillNames, skillPurpose } from "./skills.js"
 
 const inventory: Inventory = {
@@ -15,7 +16,46 @@ const inventory: Inventory = {
   ],
 }
 
+afterEach(() => setLocale("en"))
+
 describe("skills workspace", () => {
+  it.each([
+    ["zh-TW", "搜尋技能", "未載入", "全域啟用技能 技能名稱", "聊天 42"],
+    ["ja", "スキルを検索", "未読み込み", "スキル 技能名稱 をグローバルで有効にする", "チャット 42"],
+  ] as const)(
+    "localizes skill controls in %s and preserves external names and descriptions",
+    (locale, search, missing, enable, chat) => {
+      setLocale(locale)
+      const policy = initialPolicy()
+      policy.skills = ["技能名稱", "missing"]
+      policy.defaults.skills = ["missing"]
+      policy.chats["42"] = { ...inherited, enabled: true, skills: ["missing"] }
+      const before = structuredClone(policy)
+      const html = renderToStaticMarkup(
+        createElement(Skills, {
+          policy,
+          saved: policy,
+          inventory: {
+            ...inventory,
+            skills: [
+              { name: "技能名稱", description: "外部說明。Do not translate this description." },
+            ],
+          },
+          onChange: () => {},
+          onChat: () => {},
+        }),
+      )
+      expect(html).toContain(search)
+      expect(html).toContain(missing)
+      expect(html).toContain(enable)
+      expect(html).toContain(chat)
+      expect(html).toContain("外部說明。Do not translate this description.")
+      expect(html).not.toContain("No description available")
+      expect(html).not.toContain("Use by default")
+      expect(policy).toEqual(before)
+    },
+  )
+
   it("retains loaded, removed, default, and explicit chat names without duplicates", () => {
     const saved = initialPolicy()
     saved.skills = ["removed", "loaded"]

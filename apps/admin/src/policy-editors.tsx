@@ -2,7 +2,8 @@ import type { effectivePolicy } from "@narumitw/sumire-policy"
 import { Badge, Button, Callout, Checkbox, Flex, Grid, Text, TextField } from "@radix-ui/themes"
 import { useId, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
-import { DefaultModel } from "./default-model.js"
+import { DefaultModel, thinkingLabel } from "./default-model.js"
+import { t } from "./i18n.js"
 import { focusEditor } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
@@ -93,39 +94,35 @@ export function List({
   )
   const source =
     scope === "global"
-      ? "Global availability"
+      ? t("selection.global")
       : scope === "defaults"
-        ? "Shared defaults"
+        ? t("selection.shared")
         : value === null
-          ? "From shared defaults"
-          : "This chat override"
+          ? t("selection.fromShared")
+          : t("selection.chatOverride")
   return (
     <Panel as="fieldset" className="policy-list">
       <legend>{label}</legend>
       <Badge color={scope === "chat" && value !== null ? "orange" : "gray"}>{source}</Badge>
       <Prose size="2" color="gray">
         {scope === "global"
-          ? "Limits shared defaults and all chat overrides. Availability alone does not select an option for a chat."
+          ? t("selection.globalHelp")
           : scope === "defaults"
-            ? "Used by chats without an override. Global availability still limits this selection."
+            ? t("selection.sharedHelp")
             : value === null
-              ? "Uses shared defaults. Global availability still limits this chat."
-              : "Applies only to this chat. Shared defaults do not change. Global availability still limits this selection."}
+              ? t("selection.inheritedHelp")
+              : t("selection.overrideHelp")}
       </Prose>
       <Prose size="2">
-        Configured:{" "}
         {value === null
-          ? scope === "chat"
-            ? "Inherit this category from shared defaults"
-            : "None selected"
+          ? t(scope === "chat" ? "selection.configuredInherit" : "selection.configuredNone")
           : value.length
-            ? `Allow ${value.join(", ")}; deny other names in this category`
-            : "Deny all names in this category"}
-        .
+            ? t("selection.configuredAllow", { names: value.join(", ") })
+            : t("selection.configuredDeny")}
       </Prose>
       {inheritable && (
         <Check
-          label="Inherit default"
+          label={t("selection.inheritDefault")}
           checked={value === null}
           onChange={(v) => onChange(v ? null : [])}
         />
@@ -136,7 +133,7 @@ export function List({
             displayed.map((name) => (
               <Check
                 key={name}
-                label={options.includes(name) ? name : `${name} (no longer available)`}
+                label={options.includes(name) ? name : t("selection.noLongerAvailable", { name })}
                 checked={value.includes(name)}
                 onChange={(checked) =>
                   onChange(checked ? [...value, name] : value.filter((v) => v !== name))
@@ -145,31 +142,30 @@ export function List({
             ))
           ) : (
             <Text size="2" color="gray" className="empty-state">
-              No approved options.
+              {t("selection.noApproved")}
             </Text>
           ))}
       </Flex>
       {value === null && !inheritable && (
-        <Prose size="2">None selected. Global availability does not select default options.</Prose>
+        <Prose size="2">{t("selection.noDefaultSelection")}</Prose>
       )}
       {value?.length === 0 && (
         <Prose size="2">
           {scope === "global"
-            ? "No options available globally."
+            ? t("selection.noGlobalOptions")
             : scope === "defaults"
-              ? "No options allowed for chats that inherit shared defaults."
-              : "No options allowed. This does not inherit shared defaults."}
+              ? t("selection.noInheritedOptions")
+              : t("selection.denyNoInherit")}
         </Prose>
       )}
       {blocked.length > 0 && (
         <div className="policy-selection-conflict">
           <Prose size="2" color="orange">
-            Selected but blocked by Global availability: {blocked.join(", ")}. Retained selections
-            must be cleared or globally approved before saving.
+            {t("selection.blockedRetained", { names: blocked.join(", ") })}
           </Prose>
           {onRepair && (
             <Button variant="ghost" onClick={onRepair}>
-              Review global availability
+              {t("selection.reviewGlobal")}
             </Button>
           )}
         </div>
@@ -177,13 +173,13 @@ export function List({
       {scope !== "global" && (
         <Flex direction="column" align="start" gap="2" className="policy-list__status">
           <Prose size="2" color="gray">
-            Effective: {effective?.join(", ") || "None"}
+            {t("selection.effective", { names: effective?.join(", ") || t("selection.none") })}
           </Prose>
         </Flex>
       )}
       {inheritable && value !== null && (
         <Button variant="soft" onClick={() => onChange(null)}>
-          Reset {label.toLowerCase()} to default
+          {t("selection.reset", { label: label.toLowerCase() })}
         </Button>
       )}
     </Panel>
@@ -211,7 +207,7 @@ export function ModelAvailability({
   const [approved] = useState(value)
   return (
     <List
-      label="Globally available models"
+      label={t("selection.globallyAvailableModels")}
       scope="global"
       options={[...new Set([...approved, ...value])].filter(
         (ref) => !provider || ref.startsWith(`${provider}/`),
@@ -254,11 +250,11 @@ export function Choices({
         />
       ) : (
         <Panel as="fieldset" className="policy-model">
-          <legend>Model and thinking</legend>
+          <legend>{t("model.thinkingTitle")}</legend>
           <Grid gap="3" className="grid settings-grid policy-model__controls">
             <Flex direction="column" gap="2">
               <label className="form-field" htmlFor="model-selection">
-                Chat model override
+                {t("model.chatModelOverride")}
                 <Select.Root
                   value={value.model ?? "inherit"}
                   onValueChange={(v) =>
@@ -267,13 +263,13 @@ export function Choices({
                 >
                   <Select.Trigger
                     id="model-selection"
-                    aria-label="Chat model override"
+                    aria-label={t("model.chatModelOverride")}
                     aria-describedby="model-selection-source"
-                    placeholder="Choose model"
+                    placeholder={t("model.choose")}
                   />
                   <Select.Content>
                     <Select.Item value="inherit">
-                      {defaults ? "Not configured" : "Inherit default"}
+                      {defaults ? t("model.notConfigured") : t("selection.inheritDefault")}
                     </Select.Item>
                     {[
                       ...new Set([
@@ -282,27 +278,23 @@ export function Choices({
                       ]),
                     ].map((ref) => (
                       <Select.Item key={ref} value={ref}>
-                        {ref}
-                        {!(value.models ?? policy.defaults.models ?? []).includes(ref)
-                          ? " (not allowed)"
-                          : ""}
+                        {(value.models ?? policy.defaults.models ?? []).includes(ref)
+                          ? ref
+                          : t("model.notAllowedNamed", { model: ref })}
                       </Select.Item>
                     ))}
                   </Select.Content>
                 </Select.Root>
               </label>
               <Prose id="model-selection-source" size="2" color="gray">
-                {effective.sources.model === "chat" ? "This chat override" : "From shared defaults"}
-                {value.model === null
-                  ? " · No override for this chat."
-                  : ". Shared defaults do not change."}{" "}
-                Effective model: {effective.model ?? "No allowed model"}. Global availability and
-                Allowed models limit this choice.
+                {t(value.model === null ? "model.inheritedSource" : "model.overrideSource", {
+                  model: effective.model ?? t("model.noAllowed"),
+                })}
               </Prose>
             </Flex>
             <Flex direction="column" gap="2">
               <label className="form-field" htmlFor="thinking-selection">
-                Thinking level
+                {t("model.thinkingLevel")}
                 <Select.Root
                   value={value.thinking ?? "inherit"}
                   onValueChange={(v) =>
@@ -314,29 +306,25 @@ export function Choices({
                 >
                   <Select.Trigger
                     id="thinking-selection"
-                    aria-label="Thinking level"
+                    aria-label={t("model.thinkingLevel")}
                     aria-describedby="thinking-selection-source"
                   />
                   <Select.Content>
                     <Select.Item value="inherit">
-                      {defaults ? "Off (default)" : "Inherit default"}
+                      {defaults ? t("model.offDefault") : t("selection.inheritDefault")}
                     </Select.Item>
                     {levels.map((level) => (
                       <Select.Item key={level} value={level}>
-                        {level}
+                        {thinkingLabel(level)}
                       </Select.Item>
                     ))}
                   </Select.Content>
                 </Select.Root>
               </label>
               <Prose id="thinking-selection-source" size="2" color="gray">
-                {effective.sources.thinking === "chat"
-                  ? "This chat override"
-                  : "From shared defaults"}
-                {value.thinking === null
-                  ? " · No override for this chat."
-                  : ". Shared defaults do not change."}{" "}
-                Effective thinking: {effective.thinking}.
+                {t(value.thinking === null ? "model.inheritedThinking" : "model.overrideThinking", {
+                  level: thinkingLabel(effective.thinking ?? "off"),
+                })}
               </Prose>
             </Flex>
           </Grid>
@@ -345,7 +333,7 @@ export function Choices({
               variant="soft"
               onClick={() => onChange({ ...value, model: null, thinking: null })}
             >
-              Reset model and thinking to default
+              {t("model.resetDefault")}
             </Button>
           )}
         </Panel>
@@ -353,34 +341,31 @@ export function Choices({
       {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
         <Callout.Root color="red" role="alert">
           <Callout.Text>
-            Model "{value.model}" is not in Allowed models
-            {value.models === null ? " inherited from Defaults" : ""}. Review Allowed models
-            {value.models === null ? " by editing Defaults or clearing Inherit default" : ""}, or
-            change the {defaults ? "default model above" : "chat model override"}.
+            {t(
+              defaults
+                ? "model.defaultConflict"
+                : value.models === null
+                  ? "model.inheritedConflict"
+                  : "model.chatConflict",
+              { model: value.model },
+            )}
           </Callout.Text>
           <Button
             variant="soft"
             onClick={() => focusEditor(`#${defaults ? "default" : "chat"}-models-options`)}
           >
-            Review allowed models
+            {t("model.reviewAllowed")}
           </Button>
         </Callout.Root>
       )}
       {!defaults && (
         <>
-          <Callout.Root color="amber" aria-label="Chat authorization rules">
-            <Callout.Text>
-              Shell and file tools are not sandboxed. They can access process-readable credentials.
-              Each Inherit control resets a whole category. An empty custom list denies the
-              category. Effective lists show each category after global limits; MCP tools also
-              require their server gate. Skills do not grant tool permission.
-            </Callout.Text>
+          <Callout.Root color="amber" aria-label={t("selection.chatAuthorization")}>
+            <Callout.Text>{t("selection.authorizationHelp")}</Callout.Text>
           </Callout.Root>
-          <section aria-label="Chat tool permission results">
+          <section aria-label={t("selection.chatToolResults")}>
             <Text as="p" size="2" weight="medium">
-              Configured tool selection:{" "}
-              {value.tools === null ? "Inherit from shared defaults" : "This chat override"}. Global
-              policy is the ceiling.
+              {t(value.tools === null ? "selection.toolInherited" : "selection.toolOverride")}
             </Text>
             <ul>
               {[...new Set(value.tools ?? policy.defaults.tools ?? [])].map((name) => {
@@ -391,21 +376,24 @@ export function Choices({
                 const availability = inventory.toolAvailability?.[name]
                 return (
                   <li key={name}>
-                    <strong>{name}</strong> · Configured: Allow · {result.source} · Effective
-                    permission: {result.status}
+                    <strong>{name}</strong> ·{" "}
+                    {t("selection.toolResult", {
+                      source: result.sourceLabel,
+                      status: result.statusLabel,
+                    })}
                     {result.blocking && (
                       <>
                         <Text as="p" size="2">
-                          Blocking source: {result.blocking}
+                          {t("selection.blockingSource", { source: result.blockingLabel ?? "" })}
                         </Text>
                         <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
-                          Review blocking permission for {name}
+                          {t("selection.reviewBlocking", { name })}
                         </Button>
                       </>
                     )}
                     {availability?.available === false && (
                       <Text as="p" size="2">
-                        Capability unavailable: {availability.reason}
+                        {t("selection.capabilityUnavailable", { reason: availability.reason })}
                       </Text>
                     )}
                   </li>
@@ -414,7 +402,7 @@ export function Choices({
             </ul>
             {!(value.tools ?? policy.defaults.tools ?? []).length && (
               <Text as="p" size="2">
-                No tool names selected for this chat.
+                {t("selection.noChatTools")}
               </Text>
             )}
           </section>
@@ -426,16 +414,18 @@ export function Choices({
           : (["tools", "servers", "skills", "models"] as const)
         ).map((key) => {
           const label = {
-            tools: "Authorized tools",
-            servers: "Authorized MCP servers",
-            skills: "Enabled skills",
-            models: "Allowed models",
+            tools: t("selection.authorizedTools"),
+            servers: t("selection.authorizedServers"),
+            skills: t("selection.enabledSkills"),
+            models: t("selection.allowedModels"),
           }[key]
           return (
             <details key={key} className="policy-options">
               <summary id={`${defaults ? "default" : "chat"}-${key}-options`}>
-                {label} · {effective[key].length} effective ·{" "}
-                {value[key] == null ? "Shared defaults" : "Custom selection"}
+                {t(value[key] == null ? "selection.inheritedSummary" : "selection.customSummary", {
+                  label,
+                  count: effective[key].length,
+                })}
               </summary>
               <List
                 label={label}
@@ -463,10 +453,10 @@ export function Choices({
       {!defaults && (
         <Flex gap="3" wrap="wrap">
           <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
-            Manage global and default tool permissions
+            {t("selection.manageTools")}
           </Button>
           <Button variant="ghost" onClick={() => navigate("Skills")}>
-            Manage global and default skills
+            {t("skill.manageGlobalDefaults")}
           </Button>
         </Flex>
       )}
@@ -485,21 +475,21 @@ export function SecretFields({
   const [scope, setScope] = useState<"env" | "headers">("env")
   return (
     <Panel as="fieldset">
-      <legend>MCP secret replacement</legend>
-      <Prose size="2">Enter only values to replace in the masked field, not the JSON editor.</Prose>
+      <legend>{t("selection.secretReplacement")}</legend>
+      <Prose size="2">{t("selection.secretHelp")}</Prose>
       <label htmlFor="secret-scope">
-        Field map
+        {t("selection.fieldMap")}
         <Select.Root value={scope} onValueChange={(v) => setScope(v as "env" | "headers")}>
-          <Select.Trigger id="secret-scope" aria-label="Field map" />
+          <Select.Trigger id="secret-scope" aria-label={t("selection.fieldMap")} />
           <Select.Content>
-            <Select.Item value="env">Environment</Select.Item>
-            <Select.Item value="headers">Headers</Select.Item>
+            <Select.Item value="env">{t("selection.environment")}</Select.Item>
+            <Select.Item value="headers">{t("selection.headers")}</Select.Item>
           </Select.Content>
         </Select.Root>
       </label>
       <Field
         id="secret-name"
-        label="Secret field name"
+        label={t("selection.secretName")}
         value={name}
         onChange={(v) => {
           setName(v)
@@ -508,7 +498,7 @@ export function SecretFields({
       />
       <Field
         secret
-        label="New secret value"
+        label={t("selection.secretValue")}
         value={value}
         onChange={(v) => {
           setValue(v)
@@ -525,7 +515,7 @@ export function SecretFields({
           setValue("")
         }}
       >
-        Set pending secret replacement
+        {t("selection.stageSecret")}
       </Button>
       {(name || value) && (
         <Button
@@ -536,7 +526,7 @@ export function SecretFields({
             onPending(false)
           }}
         >
-          Clear secret input
+          {t("selection.clearSecret")}
         </Button>
       )}
     </Panel>

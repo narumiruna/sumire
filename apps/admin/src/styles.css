@@ -3313,7 +3313,7 @@ main .durable-record-meta a {
   border-left: 2px solid var(--orange-7);
   background: var(--orange-2);
 }
-.durable-entry-message section[aria-label="Tool call"] {
+.durable-entry-message .durable-tool-call {
   margin-top: 20px;
 }
 .durable-detail-disclosures {

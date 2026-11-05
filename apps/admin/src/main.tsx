@@ -49,6 +49,8 @@ import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { GithubNotifications } from "./github-notifications.js"
+import { errorMessage, initializeLocale, LocalizedError, t, useLocale } from "./i18n.js"
+import { LanguageSelector } from "./language-selector.js"
 import { McpConnections } from "./mcp-connections.js"
 import { ModelRemovalImpact } from "./model-removal-impact.js"
 import {
@@ -79,24 +81,27 @@ import { countText } from "./status-text.js"
 import { PageHeader, Panel, Prose, SettingsSection } from "./surfaces.js"
 import { ToolPermissions } from "./tool-permissions.js"
 
+initializeLocale()
+
 const accessStorage = tabStorage(window)
 const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
 const initialSetup = captureSetupLink(window.location, window.history)
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
-const pageDescriptions = {
+const pageDescriptions = () => ({
   Chats: undefined,
   Durable: undefined,
-  Defaults: "未個別設定的聊天將沿用這些選項",
-  "Tool permissions": "全域上限、共用預設與聊天授權分開管理",
-  Skills: "管理指令集，不代表授予工具權限",
-  "MCP connections": "管理伺服器連線與受保護的設定",
-  "Model Providers": "憑證設定與模型開放分開管理",
-  "Secrets & variables": "密鑰僅能寫入；一般變數不應存放憑證",
-  "GitHub mentions": "管理可觸發 GitHub 自動回覆的作者",
-  Audit: "檢視設定變更與匯入紀錄",
-}
+  Defaults: t("description.defaults"),
+  "Tool permissions": t("description.tools"),
+  Skills: t("description.skills"),
+  "MCP connections": t("description.mcp"),
+  "Model Providers": t("description.providers"),
+  "Secrets & variables": t("description.secrets"),
+  "GitHub mentions": t("description.github"),
+  Audit: t("description.audit"),
+})
 
 function App() {
+  useLocale()
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [savedPolicy, setSavedPolicy] = useState<Policy>()
@@ -106,17 +111,17 @@ function App() {
     base: Policy
     submitted: Policy
     revision: number
-    message: string
+    message: Error | string
   }>()
   const [recoveryReview, setRecoveryReview] = useState<{
     base: Policy
     draft: Policy
     submitted: Policy
     revision: number
-    failure: string
+    failure: Error | string
     latest: Snapshot
   }>()
-  const [refreshError, setRefreshError] = useState("")
+  const [refreshError, setRefreshError] = useState<Error | string>("")
   const [inventory, setInventory] = useState<Inventory>(emptyInventory)
   const runtimeGuard = useRef<(() => boolean) | undefined>(undefined)
   const [runtimePending, setRuntimePending] = useState(false)
@@ -190,7 +195,9 @@ function App() {
     })
     return () => cancelAnimationFrame(frame)
   }, [editorRequest, page])
-  const [error, setError] = useState("")
+  const [error, setError] = useState<Error | string>("")
+  const errorText = errorMessage(error)
+  const refreshErrorText = errorMessage(refreshError)
   const [busy, setBusy] = useState(false)
   const errorAlert = useRef<HTMLDivElement>(null)
   const focusError = useRef(false)
@@ -220,7 +227,7 @@ function App() {
     localPending ||
     runtimePending ||
     Boolean(failedPolicySave)
-  const confirmDiscard = () => !pending || window.confirm("Discard pending changes and leave?")
+  const confirmDiscard = () => !pending || window.confirm(t("app.discardLeave"))
   const [editingProvider, setEditingProvider] = useState<ProviderSettings>()
   const [endpointEditorVersion, setEndpointEditorVersion] = useState(0)
   const [toolName, setToolName] = useState("")
@@ -253,7 +260,7 @@ function App() {
   }, [])
   const expireInspectorSession = useCallback(() => {
     expireSession()
-    setError("Administrator session expired. Sign in again.")
+    setError(new LocalizedError("app.expired"))
   }, [expireSession])
   const run = useCallback(
     async (action: () => Promise<void>, focusFailure = true) => {
@@ -267,7 +274,7 @@ function App() {
         if (version !== sessionVersion.current) return
         if (e instanceof ApiError && e.status === 401) expireSession()
         else focusError.current = focusFailure
-        setError(e instanceof Error ? e.message : "Operation failed")
+        setError(e instanceof Error ? e : new LocalizedError("app.failed"))
       } finally {
         if (version === sessionVersion.current) setBusy(false)
       }
@@ -328,7 +335,7 @@ function App() {
     void request<{ csrf: string; actor: string }>("session").then(setSession, (e) => {
       setSession(null)
       if (!(e instanceof ApiError && e.status === 401))
-        setError("Could not load administrator session")
+        setError(new LocalizedError("app.loadFailed"))
     })
   }, [])
   useEffect(() => {
@@ -354,9 +361,10 @@ function App() {
       <main className="session-screen">
         <Panel className="session-card" aria-busy="true">
           <BrandIcon />
-          <PageHeader title="Sumire administration" description="Loading administrator session…" />
+          <LanguageSelector />
+          <PageHeader title={t("app.title")} description={t("app.loadingSession")} />
           <Text size="2" color="gray" role="status">
-            Checking your administrator session.
+            {t("app.checkingSession")}
           </Text>
         </Panel>
       </main>
@@ -366,25 +374,18 @@ function App() {
       <main className="session-screen">
         <Panel className="session-card">
           <BrandIcon />
+          <LanguageSelector />
           <PageHeader
-            title="Sumire administration"
-            description={
-              setup
-                ? "Register your administrator passkey with your device."
-                : "Use your administrator passkey to sign in."
-            }
+            title={t("app.title")}
+            description={setup ? t("app.registerHelp") : t("app.signInHelp")}
           />
-          {!setup && (
-            <Prose>
-              First visit? Send /admin in a private chat with Sumire to get a setup link.
-            </Prose>
-          )}
+          {!setup && <Prose>{t("app.firstVisit")}</Prose>}
           {error && (
             <Callout.Root role="alert" color="red">
               <Callout.Icon>
                 <ExclamationTriangleIcon />
               </Callout.Icon>
-              <Callout.Text>{error}</Callout.Text>
+              <Callout.Text>{errorText}</Callout.Text>
             </Callout.Root>
           )}
           <Button
@@ -397,7 +398,7 @@ function App() {
               })
             }
           >
-            {setup ? "Register passkey" : "Sign in with passkey"}
+            {setup ? t("app.register") : t("app.signIn")}
           </Button>
         </Panel>
       </main>
@@ -407,23 +408,21 @@ function App() {
       <main className="session-screen">
         <Panel className="session-card">
           <BrandIcon />
-          <PageHeader
-            title="Sumire administration"
-            description="Load the saved policy and connected services."
-          />
+          <LanguageSelector />
+          <PageHeader title={t("app.title")} description={t("app.loadHelp")} />
           {error ? (
             <Callout.Root role="alert" color="red">
               <Callout.Icon>
                 <ExclamationTriangleIcon />
               </Callout.Icon>
-              <Callout.Text>{error}</Callout.Text>
+              <Callout.Text>{errorText}</Callout.Text>
             </Callout.Root>
           ) : (
-            <Text role="status">Loading settings…</Text>
+            <Text role="status">{t("app.loadingSettings")}</Text>
           )}
           <Button variant="soft" onClick={() => void run(load)}>
             <ReloadIcon aria-hidden />
-            Retry
+            {t("app.retry")}
           </Button>
         </Panel>
       </main>
@@ -442,15 +441,19 @@ function App() {
         account={
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <Button variant="ghost" aria-label="Account" disabled={busy}>
+              <Button variant="ghost" aria-label={t("app.account")} disabled={busy}>
                 <PersonIcon aria-hidden />
-                <span className="workspace-action-label">Account</span>
+                <span className="workspace-action-label">{t("app.account")}</span>
                 <DropdownMenu.TriggerIcon />
               </Button>
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="end" aria-label="Account" className="account-menu">
+            <DropdownMenu.Content
+              align="end"
+              aria-label={t("app.account")}
+              className="account-menu"
+            >
               <DropdownMenu.Label className="account-menu-actor">
-                Administrator: {session.actor}
+                {t("app.actor", { actor: session.actor })}
               </DropdownMenu.Label>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
@@ -465,7 +468,7 @@ function App() {
                 }
               >
                 <ExitIcon aria-hidden />
-                Sign out
+                {t("app.signOut")}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
@@ -474,12 +477,12 @@ function App() {
       <main aria-busy={busy}>
         <PageHeader
           title={pageTitle(page)}
-          description={pageDescriptions[page]}
+          description={pageDescriptions()[page]}
           actions={
             page !== "Durable" && (
               <Button
                 variant="ghost"
-                aria-label="Refresh settings"
+                aria-label={t("app.refresh")}
                 disabled={
                   busy || dirty || localPending || runtimePending || Boolean(failedPolicySave)
                 }
@@ -489,7 +492,7 @@ function App() {
                 }}
               >
                 <UpdateIcon aria-hidden />
-                <span className="workspace-action-label">Refresh settings</span>
+                <span className="workspace-action-label">{t("app.refresh")}</span>
               </Button>
             )
           }
@@ -506,11 +509,8 @@ function App() {
               <ExclamationTriangleIcon />
             </Callout.Icon>
             <Callout.Text>
-              {error || refreshError}{" "}
-              {error &&
-                (failedPolicySave
-                  ? "Your settings draft is retained. Load the latest settings and review it before saving again."
-                  : "Review the input and retry. Check application status before repeating a saved operation.")}
+              {errorText || refreshErrorText}{" "}
+              {error && (failedPolicySave ? t("app.retainedDraft") : t("app.retryHelp"))}
             </Callout.Text>
           </Callout.Root>
         )}
@@ -586,8 +586,7 @@ function App() {
             }
             apply={() =>
               void run(async () => {
-                if (failedPolicySave)
-                  throw new Error("Load latest and review draft before another save.")
+                if (failedPolicySave) throw new LocalizedError("app.reviewBeforeSave")
                 const submitted = policySchema.parse(policy)
                 validateReferences(submitted)
                 const version = sessionVersion.current
@@ -601,9 +600,7 @@ function App() {
                   )
                   committed = parseSnapshot(committed)
                   if (committed.revision <= snapshot.revision)
-                    throw new Error(
-                      "Save outcome is unknown. Load the latest settings before another save.",
-                    )
+                    throw new LocalizedError("app.unknownSaveHelp")
                 } catch (failure) {
                   if (version !== sessionVersion.current) return
                   if (!(failure instanceof ApiError && failure.status === 401))
@@ -612,7 +609,7 @@ function App() {
                       submitted: previous?.submitted ?? submitted,
                       revision: previous?.revision ?? snapshot.revision,
                       message:
-                        failure instanceof Error ? failure.message : "Save outcome is unknown",
+                        failure instanceof Error ? failure : new LocalizedError("app.unknownSave"),
                     }))
                   throw failure
                 }
@@ -628,9 +625,7 @@ function App() {
                   if (version !== sessionVersion.current) return
                   if (failure instanceof ApiError && failure.status === 401) throw failure
                   focusError.current = true
-                  setRefreshError(
-                    "Settings were saved, but related data could not be refreshed. Check application status, then Reload to refresh related data without repeating the save.",
-                  )
+                  setRefreshError(new LocalizedError("app.refreshFailed"))
                 }
               })
             }
@@ -642,11 +637,7 @@ function App() {
             }
             discard={() => {
               if (
-                window.confirm(
-                  failedPolicySave
-                    ? "Discard local policy edits? The save outcome still needs review. This does not undo a save. Load the latest settings to check it."
-                    : "Discard pending policy edits? Other editor drafts stay unchanged.",
-                )
+                window.confirm(failedPolicySave ? t("app.discardUnknown") : t("app.discardPolicy"))
               ) {
                 setSnapshot({ ...snapshot, policy: savedPolicy ?? policy })
                 setDirty(false)
@@ -657,6 +648,7 @@ function App() {
         {recoveryReview && (
           <PolicyRecoveryDialog
             {...recoveryReview}
+            failure={errorMessage(recoveryReview.failure)}
             onReturnFocus={() => {
               if (document.querySelector('[role="alertdialog"]')) return
               const target =
@@ -681,8 +673,8 @@ function App() {
             }}
           />
         )}
-        <fieldset disabled={busy} className="editor-panel" aria-label="Configuration editors">
-          <EditorSection active={page === "Chats"} aria-label="Chat settings">
+        <fieldset disabled={busy} className="editor-panel" aria-label={t("app.editors")}>
+          <EditorSection active={page === "Chats"} aria-label={t("app.chatSettings")}>
             <ChatWorkspace
               directory={directory}
               chat={chat}
@@ -706,10 +698,10 @@ function App() {
               onTools={() => setPage("Tool permissions")}
               onDurable={() => setPage("Durable")}
             >
-              <section className="chat-policy-editor" aria-label="Chat policy settings">
+              <section className="chat-policy-editor" aria-label={t("app.chatPolicy")}>
                 <Check
                   id="chat-policy-enabled"
-                  label="Chat enabled"
+                  label={t("app.chatEnabled")}
                   checked={selected?.enabled !== false}
                   onChange={(enabled) =>
                     update({
@@ -739,16 +731,13 @@ function App() {
             <details className="chat-access-management" id="chat-access-management" tabIndex={-1}>
               <summary>
                 <ChatAccessIcon />
-                存取權限管理
+                {t("app.accessManagement")}
               </summary>
-              <Heading size="3">Chat access</Heading>
+              <Heading size="3">{t("app.chatAccess")}</Heading>
               {accessTarget && (
                 <Panel>
-                  <Heading size="3">Access for chat {accessTarget}</Heading>
-                  <Prose>
-                    Review its access entry below. If approval is missing, add this ID to the
-                    appropriate list.
-                  </Prose>
+                  <Heading size="3">{t("app.chatAccessFor", { id: accessTarget })}</Heading>
+                  <Prose>{t("app.accessReview")}</Prose>
                   <Button
                     variant="soft"
                     onClick={(event) => {
@@ -756,10 +745,10 @@ function App() {
                       openChat(accessTarget)
                     }}
                   >
-                    Back to chat details
+                    {t("app.backChat")}
                   </Button>
                   <Button variant="ghost" onClick={() => setAccessTarget("")}>
-                    Show all access entries
+                    {t("app.allAccess")}
                   </Button>
                 </Panel>
               )}
@@ -773,19 +762,16 @@ function App() {
                 onReview={() => setPolicyReviewOpen(true)}
               />
               <details className="access-intro">
-                <summary>Imported IDs and review history</summary>
-                <Prose>
-                  Import history never grants access or reverses a revocation. No imported ID is
-                  approved automatically.
-                </Prose>
+                <summary>{t("app.importHistory")}</summary>
+                <Prose>{t("app.importHelp")}</Prose>
                 <Button variant="soft" onClick={() => setPage("Audit")}>
-                  Open import history in Audit
+                  {t("app.openImports")}
                 </Button>
               </details>
             </details>
           </EditorSection>
           {page === "Durable" && (
-            <SectionErrorBoundary key={chat} label="Durable inspector">
+            <SectionErrorBoundary key={chat} label={t("app.inspector")}>
               <DurableInspector
                 key={chat}
                 chat={chat}
@@ -803,7 +789,7 @@ function App() {
           )}
           <EditorSection
             active={page === "Defaults"}
-            aria-label="Shared defaults"
+            aria-label={t("app.defaults")}
             className="admin-page--defaults"
           >
             <SharedDefaults
@@ -816,8 +802,8 @@ function App() {
               onProvider={openProvider}
             />
             <details className="defaults-advanced">
-              <summary>Advanced actions</summary>
-              <section className="defaults-reset" aria-label="Default inheritance">
+              <summary>{t("app.advanced")}</summary>
+              <section className="defaults-reset" aria-label={t("app.inheritance")}>
                 <AlertDialog.Root>
                   <AlertDialog.Trigger>
                     <Button
@@ -830,32 +816,27 @@ function App() {
                         )
                       }
                     >
-                      Reset all chats to inherit defaults
+                      {t("app.resetDefaults")}
                     </Button>
                   </AlertDialog.Trigger>
                   <AlertDialog.Content>
-                    <AlertDialog.Title>
-                      Reset all chat overrides to inherit defaults?
-                    </AlertDialog.Title>
+                    <AlertDialog.Title>{t("app.resetConfirm")}</AlertDialog.Title>
                     <AlertDialog.Description>
-                      {countText(
-                        Object.values(policy.chats).filter((choice) =>
-                          Object.keys(inherit).some(
-                            (key) => choice[key as keyof Selection] !== null,
-                          ),
-                        ).length,
-                        "chat has",
-                        "chats have",
-                      )}{" "}
-                      explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed
-                      model, model, and thinking overrides for all chats, including chats outside
-                      the current page. Explicit empty lists will also inherit Defaults. Chat access
-                      and enabled switches stay unchanged. Future chats already inherit Defaults.
-                      This stages edits only; use Review and save changes to apply them.
+                      {t("app.resetHelp", {
+                        count: countText(
+                          Object.values(policy.chats).filter((choice) =>
+                            Object.keys(inherit).some(
+                              (key) => choice[key as keyof Selection] !== null,
+                            ),
+                          ).length,
+                          "chat has",
+                          "chats have",
+                        ),
+                      })}
                     </AlertDialog.Description>
                     <Flex gap="3" mt="4">
                       <AlertDialog.Cancel>
-                        <Button variant="soft">Cancel</Button>
+                        <Button variant="soft">{t("app.cancel")}</Button>
                       </AlertDialog.Cancel>
                       <AlertDialog.Action>
                         <Button
@@ -871,7 +852,7 @@ function App() {
                             })
                           }
                         >
-                          Stage reset of all chat overrides
+                          {t("app.stageReset")}
                         </Button>
                       </AlertDialog.Action>
                     </Flex>
@@ -880,7 +861,7 @@ function App() {
               </section>
             </details>
           </EditorSection>
-          <EditorSection active={page === "Skills"} aria-label="Skills">
+          <EditorSection active={page === "Skills"} aria-label={t("app.skills")}>
             <Skills
               policy={policy}
               saved={savedPolicy ?? policy}
@@ -891,7 +872,7 @@ function App() {
           </EditorSection>
           <EditorSection
             active={page === "Tool permissions"}
-            aria-label="Tool permissions"
+            aria-label={t("app.tools")}
             className="admin-page--permissions"
           >
             <ToolPermissions
@@ -912,12 +893,12 @@ function App() {
             />
             <div className="permission-footer">
               <details className="permission-manual">
-                <summary>Approve an exact tool name</summary>
+                <summary>{t("app.exactTool")}</summary>
                 <Panel as="fieldset">
-                  <legend>Manual tool approval</legend>
+                  <legend>{t("app.manualTool")}</legend>
                   <Field
                     id="tool-input"
-                    label="Additional approved tool name"
+                    label={t("app.additionalTool")}
                     value={toolName}
                     onChange={(v) => {
                       setToolName(v)
@@ -932,7 +913,7 @@ function App() {
                       markPending("tool", false)
                     }}
                   >
-                    Add tool to pending approval
+                    {t("app.addTool")}
                   </Button>
                   {toolName && (
                     <Button
@@ -942,17 +923,14 @@ function App() {
                         markPending("tool", false)
                       }}
                     >
-                      Clear tool input
+                      {t("app.clearTool")}
                     </Button>
                   )}
-                  <Prose size="2">
-                    Enter an exact tool name even if discovery is unavailable. This stages global
-                    approval only; default and chat permissions remain unchanged.
-                  </Prose>
+                  <Prose size="2">{t("app.exactToolHelp")}</Prose>
                 </Panel>
               </details>
               <Button variant="soft" onClick={() => setPage("MCP connections")}>
-                Manage MCP servers
+                {t("app.manageMcp")}
               </Button>
             </div>
           </EditorSection>
@@ -980,7 +958,7 @@ function App() {
           </EditorSection>
           <EditorSection
             active={page === "Model Providers"}
-            aria-label="Model providers"
+            aria-label={t("app.providers")}
             className="admin-page--providers"
           >
             <Providers
@@ -991,7 +969,7 @@ function App() {
               busy={busy}
               run={run}
               refresh={load}
-              error={error}
+              error={errorText}
               onPending={setProviderPending}
               authRequest={authRequest}
               editorTarget={
@@ -1005,17 +983,14 @@ function App() {
               onChat={() => openEditor({ page: "Chats", chat, selector: "#model-selection" })}
               onSelectProvider={() => {
                 if (!editorPending.endpoint) return true
-                if (!window.confirm("Discard unfinished custom endpoint edits?")) return false
+                if (!window.confirm(t("app.discardEndpoint"))) return false
                 setEditingProvider(undefined)
                 setEndpointEditorVersion((version) => version + 1)
                 markPending("endpoint", false)
                 return true
               }}
               onCustomEndpoint={() => {
-                if (
-                  editorPending.endpoint &&
-                  !window.confirm("Discard unfinished custom endpoint edits?")
-                )
+                if (editorPending.endpoint && !window.confirm(t("app.discardEndpoint")))
                   return false
                 setEditingProvider(undefined)
                 setEndpointEditorVersion((version) => version + 1)
@@ -1025,18 +1000,14 @@ function App() {
               }}
               connection={(providerId) => (
                 <details className="provider-advanced">
-                  <summary>Custom endpoint</summary>
-                  <Prose size="2">
-                    Use this only for a compatible endpoint that is not in the provider catalog.
-                    Save its configuration above before authentication. Costs are unknown, not
-                    verified zero-cost.
-                  </Prose>
+                  <summary>{t("app.endpoint")}</summary>
+                  <Prose size="2">{t("app.endpointHelp")}</Prose>
                   {policy.providers
                     .filter((p) => !providerId || p.id === providerId)
                     .map((p) => (
                       <Panel key={p.id}>
                         <Check
-                          label={`${p.id} enabled`}
+                          label={t("app.providerEnabled", { provider: p.id })}
                           checked={p.enabled}
                           onChange={(v) =>
                             update({
@@ -1053,14 +1024,14 @@ function App() {
                             onClick={() => {
                               if (
                                 !editorPending.endpoint ||
-                                window.confirm("Discard unfinished custom endpoint edits?")
+                                window.confirm(t("app.discardEndpoint"))
                               ) {
                                 setEditingProvider(p)
                                 markPending("endpoint", false)
                               }
                             }}
                           >
-                            Edit configuration {p.id}
+                            {t("app.editConfig", { provider: p.id })}
                           </Button>
                           <Button
                             variant="soft"
@@ -1072,7 +1043,7 @@ function App() {
                               })
                             }
                           >
-                            Remove configuration
+                            {t("app.removeConfig")}
                           </Button>
                         </Flex>
                       </Panel>
@@ -1098,10 +1069,10 @@ function App() {
               )}
               availability={(providerId) => (
                 <SettingsSection
-                  title="Manage model availability"
+                  title={t("app.availability")}
                   id="model-availability"
                   tabIndex={-1}
-                  description="移除模型會同步移出共用與聊天的允許清單；相符的共用模型與思考預設將清除，聊天覆寫則恢復繼承。審閱並儲存後才會套用。"
+                  description={t("app.removeModelsHelp")}
                 >
                   <ModelAvailability
                     key={snapshot.revision}
@@ -1109,15 +1080,13 @@ function App() {
                     provider={providerId || undefined}
                     onChange={(models) => update(withModelAvailability(policy, models))}
                   />
-                  <Prose size="2">
-                    再次勾選只恢復模型開放，不會還原先前選用。要撤回移除，請捨棄設定變更；切換供應商不會開放整份目錄。
-                  </Prose>
+                  <Prose size="2">{t("app.restoreModelsHelp")}</Prose>
                   <ModelRemovalImpact before={savedPolicy ?? policy} after={policy} />
                 </SettingsSection>
               )}
             />
           </EditorSection>
-          <EditorSection active={page === "GitHub mentions"} aria-label="GitHub mentions">
+          <EditorSection active={page === "GitHub mentions"} aria-label={t("app.github")}>
             <GithubNotifications
               active={page === "GitHub mentions"}
               policy={policy}
@@ -1134,7 +1103,7 @@ function App() {
             />
           </EditorSection>
           {page === "Secrets & variables" && (
-            <EditorSection active aria-label="Secrets & variables">
+            <EditorSection active aria-label={t("app.secrets")}>
               <RuntimeConfig
                 key={sessionGeneration}
                 connectionRequest={connectionRequest}
@@ -1170,20 +1139,17 @@ function App() {
           )}
           <EditorSection
             active={page === "Audit"}
-            aria-label="Audit history"
+            aria-label={t("app.audit")}
             className="admin-page--audit"
           >
             <div className="audit-workspace">
-              <section className="audit-configuration" aria-label="Configuration operations">
-                <Heading size="3">Configuration activity</Heading>
-                <Prose size="2">
-                  Latest configuration operations. Field-level changes were not recorded. Secret
-                  values and conversation contents are excluded.
-                </Prose>
+              <section className="audit-configuration" aria-label={t("app.configOperations")}>
+                <Heading size="3">{t("app.configActivity")}</Heading>
+                <Prose size="2">{t("app.activityHelp")}</Prose>
                 <AuditHistory revision={snapshot.revision} run={run} />
               </section>
-              <section className="audit-imports" aria-label="Import reports">
-                <Heading size="3">Import reports</Heading>
+              <section className="audit-imports" aria-label={t("app.importReports")}>
+                <Heading size="3">{t("app.importReports")}</Heading>
                 <ImportHistory reports={imports} />
               </section>
             </div>
@@ -1193,12 +1159,12 @@ function App() {
         <VisuallyHidden.Root>
           <span role="status">
             {busy
-              ? "Operation in progress"
+              ? t("app.operation")
               : error
-                ? "Operation failed. Review the error and retry."
+                ? t("app.operationError")
                 : pending
-                  ? "Pending changes. Submit each editor separately."
-                  : "No pending browser edits."}
+                  ? t("app.pending")
+                  : t("app.noPending")}
           </span>
         </VisuallyHidden.Root>
       </main>

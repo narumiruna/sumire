@@ -59,7 +59,7 @@ for (const width of [1440, 390, 320]) {
       // Sections stay mounted to retain drafts. Invoke the retained source again to exercise
       // an explicit same-page request without adding a test-only route or UI control.
       const historyLength = await page.evaluate(() => window.history.length)
-      await page.getByRole("heading", { name: "模型供應商", exact: true }).focus()
+      await page.getByRole("heading", { name: "Providers & models", exact: true }).focus()
       await page.evaluate(() => window.scrollTo(0, 0))
       await page
         .locator("button")
@@ -104,7 +104,7 @@ for (const width of [1440, 390, 320]) {
     await navigate(page, "Defaults")
     const destination =
       width === 1440
-        ? page.getByRole("heading", { name: "共用設定", exact: true })
+        ? page.getByRole("heading", { name: "Shared defaults", exact: true })
         : page.getByRole("button", { name: "Sections · Shared defaults", exact: true })
     await expect(destination).toBeFocused()
     if (width === 1440) expect(await page.evaluate(() => window.scrollY)).toBe(0)
@@ -113,9 +113,11 @@ for (const width of [1440, 390, 320]) {
     await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toHaveValue("8001")
     await page.getByLabel("Telegram ID to approve", { exact: true }).focus()
     await page.goForward()
-    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
     await expect(page.locator("#model-availability")).not.toBeFocused()
-    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).not.toBeFocused()
+    await expect(
+      page.getByRole("heading", { name: "Shared defaults", exact: true }),
+    ).not.toBeFocused()
     expect(state.writes).toEqual([])
   })
 
@@ -207,11 +209,11 @@ test("later navigation and history cancel explicit target focus before its frame
     .evaluate((element) => (element as HTMLButtonElement).click())
   await expect(page.locator("#model-availability")).toBeVisible()
   await page
-    .getByRole("link", { name: "稽核紀錄", exact: true })
+    .getByRole("link", { name: "Audit log", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "稽核紀錄", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
-  await expect(page.getByRole("heading", { name: "稽核紀錄", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeFocused()
   await expect(page.locator("#model-availability")).not.toBeFocused()
 
   await navigate(page, "Defaults")
@@ -221,7 +223,7 @@ test("later navigation and history cancel explicit target focus before its frame
     .evaluate((element) => (element as HTMLButtonElement).click())
   await expect(page.locator("#model-availability")).toBeVisible()
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
   const model = page.getByRole("combobox", { name: "Shared default model", exact: true })
   await model.focus()
   await releaseFocusFrames(page)
@@ -245,9 +247,9 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
     .getByRole("button", { name: "Discard MCP draft", exact: true })
     .evaluate((element) => (element as HTMLButtonElement).click())
   await page
-    .getByRole("link", { name: "聊天管理", exact: true })
+    .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
   await openChatAccess(page)
   const access = page.getByLabel("Telegram ID to approve", { exact: true })
@@ -262,11 +264,11 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
     .evaluate((element) => (element as HTMLButtonElement).click())
   await expect(page.getByLabel("MCP server name", { exact: true })).toBeVisible()
   await page
-    .getByRole("link", { name: "聊天管理", exact: true })
+    .getByRole("link", { name: "Chats", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeFocused()
   await expect(page.getByLabel("MCP server name", { exact: true })).not.toBeFocused()
   expect(state.writes).toEqual([])
 
@@ -317,7 +319,7 @@ for (const cancelBeforeReady of [false, true]) {
     }
     respond()
     if (cancelBeforeReady) {
-      const heading = page.getByRole("heading", { name: "模型供應商", exact: true })
+      const heading = page.getByRole("heading", { name: "Providers & models", exact: true })
       await expect(heading).toBeVisible()
       await heading.focus()
       await releaseFocusFrames(page)
@@ -372,9 +374,9 @@ test("later navigation and history do not revive a cancelled explicit editor req
   for (const method of ["sections", "history"]) {
     await holdFocusFrames(page)
     await resume.evaluate((element) => (element as HTMLButtonElement).click())
-    await expect(page.getByRole("heading", { name: "工具權限", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Tool permissions", exact: true })).toBeVisible()
     if (method === "sections") {
-      for (const name of ["聊天管理", "工具權限"]) {
+      for (const name of ["Chats", "Tool permissions"]) {
         await page
           .getByRole("link", { name, exact: true })
           .evaluate((element) => (element as HTMLAnchorElement).click())
@@ -388,10 +390,10 @@ test("later navigation and history do not revive a cancelled explicit editor req
           window.dispatchEvent(new PopStateEvent("popstate"))
         }
       })
-      await page.getByRole("heading", { name: "工具權限", exact: true }).focus()
+      await page.getByRole("heading", { name: "Tool permissions", exact: true }).focus()
     }
     await releaseFocusFrames(page)
-    await expect(page.getByRole("heading", { name: "工具權限", exact: true })).toBeFocused()
+    await expect(page.getByRole("heading", { name: "Tool permissions", exact: true })).toBeFocused()
     await expect(page.locator("#tool-input")).not.toBeFocused()
     await expect(page.getByLabel("Additional approved tool name", { exact: true })).toHaveValue(
       "retained-tool-draft",
@@ -402,7 +404,7 @@ test("later navigation and history do not revive a cancelled explicit editor req
 
 test("modified sidebar clicks remain native links", async ({ page }) => {
   const state = await remediationFixture(page)
-  const audit = page.getByRole("link", { name: "稽核紀錄", exact: true })
+  const audit = page.getByRole("link", { name: "Audit log", exact: true })
   const href = await audit.getAttribute("href")
   for (const modifier of ["ctrlKey", "metaKey", "shiftKey", "altKey"]) {
     const prevented = await audit.evaluate((element, key) => {
@@ -418,7 +420,7 @@ test("modified sidebar clicks remain native links", async ({ page }) => {
       return intercepted
     }, modifier)
     expect(prevented).toBe(false)
-    await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
     expect(await audit.getAttribute("href")).toBe(href)
   }
   expect(state.writes).toEqual([])

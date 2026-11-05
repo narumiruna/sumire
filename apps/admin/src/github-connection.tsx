@@ -18,10 +18,12 @@ import { type MutableRefObject, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import {
   activeGitHubFlow,
+  githubApplicationStatusLabel,
   parseGitHubApplication,
   parseGitHubConnection,
   parseGitHubFlow,
 } from "./github-state.js"
+import { getLocale, type MessageKey, t } from "./i18n.js"
 import { parseRuntimeConfig } from "./runtime-config-state.js"
 import { Panel, Prose } from "./surfaces.js"
 
@@ -78,8 +80,8 @@ export function GitHubConnection({
   const [busy, setBusy] = useState(false)
   const [recovery, setRecovery] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
-  const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
+  const [error, setError] = useState<MessageKey | "">("")
+  const [notice, setNotice] = useState<MessageKey | "">("")
   const alert = useRef<HTMLDivElement>(null)
   const flowPanel = useRef<HTMLElement>(null)
   const focusFlow = useRef(false)
@@ -158,9 +160,7 @@ export function GitHubConnection({
     else if (!activeGitHubFlow(previous) && previous?.receipt) receiveFlow(previous)
     else {
       receiveFlow(undefined)
-      setNotice(
-        "The previous authorization outcome is unknown. Current local metadata is shown. No authorization or save was repeated.",
-      )
+      setNotice("github.previousUnknown")
     }
     return next
   }
@@ -198,10 +198,10 @@ export function GitHubConnection({
       setRecovery((cancelled.current || completionAttempted.current) && active)
       setError(
         cancelled.current && active
-          ? "Cancellation could not be confirmed. The code is cleared. Check GitHub status or cancel again; no save will occur automatically."
+          ? "github.cancelUnconfirmed"
           : completionAttempted.current && active
-            ? "The save outcome is not confirmed. Reload GitHub status to recover its receipt. Do not save this authorization again."
-            : "The response was lost or could not be verified. Local GitHub status was recovered. No authorization or save was repeated.",
+            ? "github.saveUnconfirmed"
+            : "github.responseRecovered",
       )
       await showReceipt(currentFlow.current, version, signal)
       if (!currentFlow.current?.receipt) await refreshRelated(version, signal)
@@ -209,10 +209,7 @@ export function GitHubConnection({
       if (!valid(version, signal)) return
       if (recoveryFailure instanceof ApiError && recoveryFailure.status === 401)
         latest.current.onSessionExpired()
-      else
-        setError(
-          "GitHub outcome is unknown. Reload GitHub status before another action. No authorization or save will be repeated automatically.",
-        )
+      else setError("github.outcomeUnknownAction")
     }
   }
   const load = async () => {
@@ -230,11 +227,7 @@ export function GitHubConnection({
       else {
         if (!owner.current.unresolved) setConnection(undefined)
         setUnavailable(!owner.current.unresolved)
-        setError(
-          owner.current.unresolved
-            ? "GitHub outcome is unknown. Reload GitHub status. No authorization or save will be repeated automatically."
-            : "GitHub connection is unavailable. Manual GH_TOKEN controls remain available.",
-        )
+        setError(owner.current.unresolved ? "github.outcomeUnknown" : "github.unavailable")
         setRecovery(owner.current.unresolved)
       }
     } finally {
@@ -286,7 +279,7 @@ export function GitHubConnection({
         await request(`github/oauth/${id}/complete`, csrf, {}, "POST", signal),
       )
       if (!valid(version, signal)) return
-      if (next.id !== id) throw new Error("Unexpected GitHub interaction")
+      if (next.id !== id) throw new Error(t("github.unexpectedInteraction"))
       receiveFlow(next)
       await showReceipt(next, version, signal)
     } catch (failure) {
@@ -325,14 +318,14 @@ export function GitHubConnection({
           await request(`github/oauth/${id}/cancel`, csrf, {}, "POST", signal),
         )
         if (!valid(version, signal)) return
-        if (next.id !== id) throw new Error("Unexpected GitHub interaction")
+        if (next.id !== id) throw new Error(t("github.unexpectedInteraction"))
         receiveFlow(next)
         setRecovery(activeGitHubFlow(next))
         await showReceipt(next, version, signal)
       } else {
         owner.current = { unresolved: false }
         setRecovery(false)
-        setNotice("No active GitHub authorization was found. No save was repeated.")
+        setNotice("github.noActive")
       }
     } catch (failure) {
       await failed(failure, version, signal)
@@ -348,11 +341,7 @@ export function GitHubConnection({
     if (owned.unresolved) void abandonGitHub(csrf, owned.id)
   }
   guard.current = () => {
-    if (
-      latest.current.pending &&
-      !window.confirm("Cancel GitHub authorization and discard the Client ID draft before leaving?")
-    )
-      return false
+    if (latest.current.pending && !window.confirm(t("github.leaveConfirm"))) return false
     abandon()
     setFlow(undefined)
     setOpen(false)
@@ -372,7 +361,7 @@ export function GitHubConnection({
           await request(`github/oauth/${id}`, undefined, undefined, "GET", signal),
         )
         if (!valid(version, signal) || owner.current.id !== id) return
-        if (next.id !== id) throw new Error("Unexpected GitHub interaction")
+        if (next.id !== id) throw new Error(t("github.unexpectedInteraction"))
         receiveFlow(next)
         await showReceipt(next, version, signal)
       } catch (failure) {
@@ -478,14 +467,10 @@ export function GitHubConnection({
         ),
       )
       if (!valid(version, signal)) return
-      if (next.revision <= revision) throw new Error("Unverified Client ID save")
+      if (next.revision <= revision) throw new Error(t("github.unverifiedClientSave"))
       setClientDraft(undefined)
       report(next)
-      setNotice(
-        next.status === "failed"
-          ? "Client ID saved; application failed. Use Retry application above. Do not save it again."
-          : "Client ID saved. Check application status above before connecting.",
-      )
+      setNotice(next.status === "failed" ? "github.clientSavedFailed" : "github.clientSaved")
       await refreshRelated(version, signal)
     } catch (failure) {
       if (!valid(version, signal)) return
@@ -511,15 +496,11 @@ export function GitHubConnection({
         ),
       )
       if (!valid(version, signal)) return
-      if (next.revision <= connection.revision) throw new Error("Unverified disconnect")
+      if (next.revision <= connection.revision) throw new Error(t("github.unverifiedDisconnect"))
       setConnection(next)
       receiveFlow(next.flow)
       report(next)
-      setNotice(
-        next.status === "failed"
-          ? "Disconnected locally; application failed. Use Retry application above. Do not repeat deletion."
-          : "Disconnected locally. Check application status above. GitHub authorization was not revoked.",
-      )
+      setNotice(next.status === "failed" ? "github.disconnectedFailed" : "github.disconnected")
       await refreshRelated(version, signal)
     } catch (failure) {
       await failed(failure, version, signal)
@@ -529,70 +510,67 @@ export function GitHubConnection({
   }
   const terminalMessage =
     flow?.status === "conflict"
-      ? "Configuration changed. This authorization cannot be saved. Start a new authorization only after reviewing current settings."
+      ? t("github.conflict")
       : flow?.status === "expired"
-        ? "GitHub authorization expired. Nothing was saved."
+        ? t("github.expired")
         : flow?.status === "failed"
-          ? "GitHub authorization failed. Reload local status before another action."
+          ? t("github.failed")
           : flow?.status === "cancelled"
-            ? "GitHub authorization cancelled. Nothing was saved."
+            ? t("github.cancelled")
             : ""
 
   return (
-    <Panel aria-label="GitHub connection" aria-busy={busy}>
+    <Panel aria-label={t("github.connection")} aria-busy={busy}>
       <Heading as="h2" size="4" id="github-connection-heading" tabIndex={-1}>
-        Connect GitHub
+        {t("github.connect")}
       </Heading>
-      <Prose size="2">
-        Use a deployment-owned GitHub.com OAuth App with Device Flow enabled. Enter only its public
-        Client ID; no client secret is needed. Manual Personal Access Token controls remain in the
-        secret list above.
-      </Prose>
-      <Prose size="2">
-        Requested scopes: repo and read:org. repo includes private-repository read/write access;
-        OAuth is not restricted to one selected repository. Use a fine-grained PAT for repository
-        restrictions. This connection grants no chat or tool permissions. Every approved bash chat
-        can use or read the effective token.
-      </Prose>
+      <Prose size="2">{t("github.setupHelp")}</Prose>
+      <Prose size="2">{t("github.scopeHelp")}</Prose>
       {connection && (
         <Text as="p" size="2">
           {connection.mode === "none"
-            ? "No GitHub credential configured."
+            ? t("github.noCredential")
             : connection.mode === "manual"
-              ? "Manual GH_TOKEN configured; remote acceptance is not checked."
+              ? t("github.manualCredential")
               : connection.mode === "invalid"
-                ? "Managed GitHub state is invalid. Reset GH_TOKEN and GITHUB_OAUTH_STATE before connecting."
-                : `GitHub account: ${connection.account?.login ?? "unknown"}. Granted scopes: ${connection.scopes?.join(", ") || "none"}.`}
-          {connection.reconnectRequired &&
-            " Reconnect required. The managed credential is unavailable."}
+                ? t("github.invalidManaged")
+                : t("github.accountScopes", {
+                    login: connection.account?.login ?? t("settings.unknown"),
+                    scopes: connection.scopes?.join(", ") || t("settings.none"),
+                  })}
+          {connection.reconnectRequired && t("github.reconnectRequired")}
         </Text>
       )}
       {flow?.receipt && (
-        <div role="status" aria-label="GitHub saved outcome">
+        <div role="status" aria-label={t("github.savedOutcome")}>
           <Text as="p" weight="medium">
             {flow.receipt.application.status === "failed"
-              ? "Saved; application failed."
+              ? t("github.savedFailed")
               : flow.receipt.application.status === "unknown"
-                ? "GitHub account saved; application outcome unknown or superseded."
+                ? t("github.savedUnknown")
                 : flow.receipt.application.status === "applied" &&
                     flow.receipt.application.applied === flow.receipt.savedRevision
-                  ? "GitHub account saved and applied."
-                  : "GitHub account saved; application pending."}
+                  ? t("github.savedApplied")
+                  : t("github.savedPending")}
           </Text>
           <Text as="p" size="2">
-            Saved GitHub revision {flow.receipt.savedRevision}. Application at settlement: revision{" "}
-            {flow.receipt.application.revision}, applied {flow.receipt.application.applied},{" "}
-            {flow.receipt.application.status}.
+            {t("github.receipt", {
+              saved: flow.receipt.savedRevision,
+              revision: flow.receipt.application.revision,
+              applied: flow.receipt.application.applied,
+              status: githubApplicationStatusLabel(flow.receipt.application.status),
+            })}
           </Text>
-          <Prose size="2">
-            Do not save this authorization again. Use Retry application above when current
-            application has failed.
-          </Prose>
+          <Prose size="2">{t("github.noResave")}</Prose>
         </div>
       )}
       {current && (
-        <Text as="p" size="2" aria-label="Current GitHub application state">
-          Current settings revision {current.revision}; applied {current.applied}; {current.status}.
+        <Text as="p" size="2" aria-label={t("github.currentApplication")}>
+          {t("github.currentRevision", {
+            revision: current.revision,
+            applied: current.applied,
+            status: githubApplicationStatusLabel(current.status),
+          })}
         </Text>
       )}
       {terminalMessage && (
@@ -602,7 +580,7 @@ export function GitHubConnection({
       )}
       {notice && (
         <Text as="p" role="status">
-          {notice}
+          {t(notice)}
         </Text>
       )}
       {error && !open && (
@@ -612,68 +590,67 @@ export function GitHubConnection({
           role={unavailable ? "status" : "alert"}
           color="orange"
         >
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>{t(error)}</Callout.Text>
         </Callout.Root>
       )}
       {busy && owner.current.unresolved && !flow && (
         <Text as="p" role="status">
-          Starting GitHub authorization…
+          {t("github.starting")}
         </Text>
       )}
       {activeGitHubFlow(flow) && (
-        <section ref={flowPanel} tabIndex={-1} aria-label="GitHub authorization">
+        <section ref={flowPanel} tabIndex={-1} aria-label={t("github.authorization")}>
           {flow?.status === "pending" && (
             <Flex direction="column" gap="3" mt="3">
-              <Text role="status">Waiting for GitHub authorization. Nothing is saved.</Text>
+              <Text role="status">{t("github.waiting")}</Text>
               {flow.userCode && (
                 <Text as="p">
-                  GitHub user code: <code>{flow.userCode}</code>
+                  {t("github.userCode")} <code>{flow.userCode}</code>
                 </Text>
               )}
               {flow.verificationUri && (
                 <Button asChild variant="soft">
                   <a href={flow.verificationUri} target="_blank" rel="noopener noreferrer">
-                    Open GitHub device authorization
+                    {t("github.openDevice")}
                   </a>
                 </Button>
               )}
               <Text as="p" size="2">
-                Expires: {new Date(flow.expiresAt).toLocaleString()}
+                {t("github.expires", {
+                  date: new Date(flow.expiresAt).toLocaleString(getLocale()),
+                })}
               </Text>
             </Flex>
           )}
           {flow?.status === "authorized" && flow.account && (
             <Flex direction="column" gap="3" mt="3">
               <Text as="p" weight="medium">
-                Verified GitHub account: {flow.account.login} (ID {flow.account.id})
+                {t("github.verifiedAccount", { login: flow.account.login, id: flow.account.id })}
               </Text>
-              <Text as="p">Actual granted scopes: {flow.scopes?.join(", ") || "none"}.</Text>
-              <Prose size="2">
-                Save this account to encrypted GH_TOKEN and GITHUB_OAUTH_STATE and apply the change.
-                Existing credentials remain unchanged until this save. Application can cancel active
-                work.
-              </Prose>
+              <Text as="p">
+                {t("github.actualScopes", {
+                  scopes: flow.scopes?.join(", ") || t("settings.none"),
+                })}
+              </Text>
+              <Prose size="2">{t("github.saveAccountHelp")}</Prose>
               <Button
                 disabled={disabled || !flow.scopes || completionAttempted.current}
                 onClick={() => void complete()}
               >
-                Save and apply this account
+                {t("github.saveAccount")}
               </Button>
             </Flex>
           )}
-          <Prose size="2">
-            Cancel keeps GH_TOKEN and GITHUB_OAUTH_STATE unchanged unless a save has already
-            committed.
-          </Prose>
+          <Prose size="2">{t("github.cancelHelp")}</Prose>
         </section>
       )}
       {connection && !connection.clientId && (
-        <Prose size="2">Configure and apply GITHUB_OAUTH_CLIENT_ID before connecting.</Prose>
+        <Prose size="2">{t("github.configureClientHelp")}</Prose>
       )}
       <Flex gap="3" wrap="wrap" mt="3">
         {activeGitHubFlow(flow) || owner.current.unresolved ? (
           <Button variant="soft" onClick={() => void cancel()}>
-            Cancel GitHub authorization
+            {t("github.cancelAuthorization")}
           </Button>
         ) : (
           <Button
@@ -685,7 +662,7 @@ export function GitHubConnection({
               setOpen(true)
             }}
           >
-            {connection?.mode === "oauth" ? "Reconnect GitHub" : "Connect GitHub"}
+            {connection?.mode === "oauth" ? t("github.reconnect") : t("github.connect")}
           </Button>
         )}
         <Button
@@ -693,7 +670,7 @@ export function GitHubConnection({
           disabled={busy || blocked || clientDraft !== undefined}
           onClick={() => void load()}
         >
-          Reload GitHub status
+          {t("github.reload")}
         </Button>
         {connection && !activeGitHubFlow(flow) && !recovery && (
           <>
@@ -702,7 +679,7 @@ export function GitHubConnection({
               disabled={disabled || clientDraft !== undefined}
               onClick={() => setClientDraft(connection.clientId ?? "")}
             >
-              {connection.clientId ? "Edit GitHub Client ID" : "Configure GitHub Client ID"}
+              {connection.clientId ? t("github.editClient") : t("github.configureClient")}
             </Button>
             {connection.mode !== "none" && (
               <Button
@@ -713,7 +690,7 @@ export function GitHubConnection({
                 }
                 onClick={() => setDisconnecting(true)}
               >
-                {connection.mode === "invalid" ? "Reset GitHub connection" : "Disconnect GitHub"}
+                {connection.mode === "invalid" ? t("github.reset") : t("github.disconnect")}
               </Button>
             )}
           </>
@@ -733,7 +710,7 @@ export function GitHubConnection({
           }}
         >
           <label htmlFor="github-client-id">
-            Public GitHub OAuth Client ID
+            {t("github.publicClient")}
             <TextField.Root
               id="github-client-id"
               value={clientDraft}
@@ -744,16 +721,13 @@ export function GitHubConnection({
               onChange={(event) => setClientDraft(event.target.value)}
             />
           </label>
-          <Prose size="2">
-            This is the public variable GITHUB_OAUTH_CLIENT_ID, not a client secret. Save and apply
-            it before authorization.
-          </Prose>
+          <Prose size="2">{t("github.publicClientHelp")}</Prose>
           <Flex gap="3" wrap="wrap" mt="3">
             <Button
               type="submit"
               disabled={disabled || !/^[a-zA-Z0-9_.-]{1,128}$/.test(clientDraft)}
             >
-              Save GitHub Client ID
+              {t("github.saveClient")}
             </Button>
             <Button
               type="button"
@@ -761,7 +735,7 @@ export function GitHubConnection({
               disabled={busy}
               onClick={() => setClientDraft(undefined)}
             >
-              Discard Client ID draft
+              {t("github.discardClient")}
             </Button>
           </Flex>
         </form>
@@ -774,16 +748,12 @@ export function GitHubConnection({
       >
         <Dialog.Content maxWidth="520px" onInteractOutside={(event) => event.preventDefault()}>
           <Dialog.Title>
-            {activeGitHubFlow(flow) ? "GitHub authorization" : "Connect GitHub account"}
+            {activeGitHubFlow(flow) ? t("github.authorization") : t("github.connectAccount")}
           </Dialog.Title>
-          <Dialog.Description size="2">
-            Authorize at GitHub, check the verified account, then explicitly save and apply.
-            Authorization alone does not save credentials. Cancel keeps GH_TOKEN and
-            GITHUB_OAUTH_STATE unchanged unless a save has already committed.
-          </Dialog.Description>
+          <Dialog.Description size="2">{t("github.authorizeHelp")}</Dialog.Description>
           {error && (
             <Text as="p" color="red" role="alert">
-              {error}
+              {t(error)}
             </Text>
           )}
           {!activeGitHubFlow(flow) && !owner.current.unresolved && (
@@ -793,8 +763,7 @@ export function GitHubConnection({
                   checked={scopeConsent}
                   onCheckedChange={(value) => setScopeConsent(value === true)}
                 />{" "}
-                I consent to repo (private-repository read/write) and read:org. Access is not
-                limited to one repository.
+                {t("github.scopeConsent")}
               </Text>
               {replacing && (
                 <Text as="label" size="2">
@@ -802,15 +771,14 @@ export function GitHubConnection({
                     checked={replaceConsent}
                     onCheckedChange={(value) => setReplaceConsent(value === true)}
                   />{" "}
-                  Replace the existing GH_TOKEN and GITHUB_OAUTH_STATE only when I save the verified
-                  account.
+                  {t("github.replaceConsent")}
                 </Text>
               )}
               <Button
                 disabled={!canConnect || !scopeConsent || (replacing && !replaceConsent)}
                 onClick={() => void start()}
               >
-                Start GitHub authorization
+                {t("github.start")}
               </Button>
             </Flex>
           )}
@@ -822,8 +790,8 @@ export function GitHubConnection({
           <Flex justify="end" mt="4">
             <Button variant="soft" onClick={() => void cancel()}>
               {activeGitHubFlow(flow) || owner.current.unresolved
-                ? "Cancel GitHub authorization"
-                : "Close"}
+                ? t("github.cancelAuthorization")
+                : t("settings.close")}
             </Button>
           </Flex>
         </Dialog.Content>
@@ -831,17 +799,14 @@ export function GitHubConnection({
       <AlertDialog.Root open={disconnecting} onOpenChange={setDisconnecting}>
         <AlertDialog.Content>
           <AlertDialog.Title>
-            {connection?.mode === "invalid" ? "Reset GitHub connection?" : "Disconnect GitHub?"}
+            {connection?.mode === "invalid"
+              ? t("github.resetConfirm")
+              : t("github.disconnectConfirm")}
           </AlertDialog.Title>
-          <AlertDialog.Description>
-            Delete GH_TOKEN and GITHUB_OAUTH_STATE and apply the change, including orphaned or
-            colliding state. Application can cancel active work. Remove saved MCP references first.
-            This does not revoke GitHub authorization, remove manually installed CLI credentials, or
-            erase backups.
-          </AlertDialog.Description>
+          <AlertDialog.Description>{t("github.deleteHelp")}</AlertDialog.Description>
           <Flex gap="3" wrap="wrap" mt="4">
             <AlertDialog.Cancel>
-              <Button variant="soft">Keep GitHub connection</Button>
+              <Button variant="soft">{t("github.keepConnection")}</Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action>
               <Button
@@ -849,7 +814,7 @@ export function GitHubConnection({
                 disabled={disabled || connection?.secretStatus !== "ready"}
                 onClick={() => void disconnect()}
               >
-                Delete both entries and apply
+                {t("github.deleteBoth")}
               </Button>
             </AlertDialog.Action>
           </Flex>

@@ -8,6 +8,49 @@ import {
   MagicWandIcon,
   PersonIcon,
 } from "@radix-ui/react-icons"
+import { getLocale, t } from "./i18n.js"
+
+export function recordTypeLabel(type: DurableInspectionItem["type"]): string {
+  const keys = {
+    conversation: "record.conversation",
+    task: "record.task",
+    document: "record.document",
+    entry: "record.entry",
+  } as const
+  const label = t(keys[type])
+  return getLocale() === "en" ? label.toLowerCase() : label
+}
+
+export function recordRoleLabel(
+  role: NonNullable<Extract<DurableInspectionItem, { type: "entry" }>["role"]>,
+): string {
+  const keys = {
+    system: "record.system",
+    user: "record.user",
+    assistant: "record.assistant",
+    toolResult: "record.toolResult",
+  } as const
+  return t(keys[role])
+}
+
+export function recordStatusLabel(
+  status: DurableTaskItem["status"] | NonNullable<DurableTaskItem["outcome"]>,
+): string {
+  const keys = {
+    completed: "record.completed",
+    failed: "record.failed",
+    aborted: "record.aborted",
+    orphaned: "record.orphaned",
+    faulted: "record.faulted",
+    pending: "record.pending",
+    running: "record.running",
+    sleeping: "record.sleeping",
+    waiting: "record.waiting",
+    completing: "record.completing",
+    terminal: "record.terminal",
+  } as const
+  return t(keys[status])
+}
 
 export function recordTone(item: DurableInspectionItem): string {
   if (item.type === "entry") return item.role === "toolResult" ? "result" : (item.role ?? "neutral")
@@ -32,114 +75,109 @@ export function recordIcon(item: DurableInspectionItem) {
 
 export function recordBadge(item: DurableInspectionItem): string | undefined {
   if (item.type === "task")
-    return `Recorded ${item.outcome === undefined ? "status" : "outcome"}: ${item.outcome ?? item.status}`
+    return item.outcome === undefined
+      ? t("record.recordedStatus", { status: recordStatusLabel(item.status) })
+      : t("record.recordedOutcome", { outcome: recordStatusLabel(item.outcome) })
   if (item.type === "entry" && item.isError !== undefined)
-    return item.isError ? "Recorded error" : "Recorded result · not an error"
+    return item.isError ? t("record.recordedError") : t("record.recordedResult")
   return undefined
 }
 
 export function recordTitle(item: DurableInspectionItem): string {
   switch (item.type) {
     case "conversation":
-      return "Conversation"
+      return t("record.conversation")
     case "task":
       switch (item.kind) {
         case "pi.generation":
-          return "Model response"
+          return t("record.modelResponse")
         case "pi.tool":
-          return "Tool call"
+          return t("record.toolCall")
         case "pi.compaction":
-          return "Compaction"
+          return t("record.compaction")
         default:
-          return "Task"
+          return t("record.task")
       }
     case "document":
       switch (item.kind) {
         case "pi.agent":
-          return "Model settings"
+          return t("record.modelSettings")
         case "pi.usage":
-          return "Model usage"
+          return t("record.modelUsage")
         case "sumire.session":
-          return "Session selection"
+          return t("record.sessionSelection")
         default:
-          return "Document"
+          return t("record.document")
       }
     case "entry":
       switch (item.role) {
         case "assistant":
-          return "Assistant message"
+          return t("record.assistantMessage")
         case "user":
-          return "User message"
+          return t("record.userMessage")
         case "system":
-          return "System message"
+          return t("record.systemMessage")
         case "toolResult":
-          return item.toolName ? `Tool result · ${item.toolName}` : "Tool result"
+          return item.toolName
+            ? t("record.toolResultNamed", { name: item.toolName })
+            : t("record.toolResult")
         default:
-          return "Entry"
+          return t("record.entry")
       }
   }
 }
 
 export function taskObservation(item: DurableTaskItem): string {
   if (item.outcome !== undefined) {
-    const outcomes = {
-      completed: "Completed",
-      failed: "Failed",
-      aborted: "Aborted",
-      orphaned: "Orphaned",
-      faulted: "Faulted",
-    }
-    return `Recorded outcome: ${outcomes[item.outcome]}`
+    return t("record.recordedOutcome", { outcome: recordStatusLabel(item.outcome) })
   }
-  const statuses = {
-    pending: "Pending",
-    running: "Running",
-    sleeping: "Sleeping",
-    waiting: "Waiting",
-    completing: "Completing",
-    terminal: "Terminal",
-  }
-  return `Recorded status: ${statuses[item.status]} · no outcome recorded`
+  return t("record.statusWithoutOutcome", { status: recordStatusLabel(item.status) })
 }
 
 export function recordSummary(item: DurableInspectionItem): string {
   switch (item.type) {
     case "conversation":
       return item.parent
-        ? `Branched from conversation ${item.parent.conversationId} at entry ${item.parent.at}.`
-        : "No parent relationship recorded."
+        ? t("record.branchedFrom", {
+            conversation: item.parent.conversationId,
+            entry: item.parent.at,
+          })
+        : t("record.noParentRelationship")
     case "task":
       return taskObservation(item)
     case "entry": {
       const content = !item.content
-        ? "Only metadata is included. Inspect this entry to read message content."
+        ? t("record.entryMetadataOnly")
         : item.content.truncated
-          ? "Message content is truncated."
+          ? t("record.messageTruncated")
           : item.content.messages.length === 0
-            ? "No message content recorded."
-            : "Message content is available."
+            ? t("record.noMessages")
+            : t("record.messageAvailable")
       return item.isError === undefined
         ? content
-        : `${item.isError ? "Recorded tool error." : "Recorded tool result (not an error)."} ${content}`
+        : t("record.resultSummary", {
+            result: item.isError ? t("record.toolError") : t("record.toolSuccess"),
+            content,
+          })
     }
     case "document":
       switch (item.valueState) {
         case "metadata-only":
-          return "Only metadata is included. Inspect this document to read approved fields."
+          return t("record.documentMetadataOnly")
         case "available":
-          return "Approved document fields are available."
+          return t("record.fieldsAvailable")
         case "unavailable":
-          return "The document value is unavailable."
+          return t("record.valueUnavailable")
         case "withheld":
           switch (item.withheldReason) {
             case "unknown-kind":
-              return "This document is not approved for value inspection."
+              return t("record.unknownDocument")
             case "invalid-value":
-              return "The document value is withheld because it does not match the approved format."
+              return t("record.invalidDocument")
             case "limit":
-              return "The document value is withheld because it exceeds inspection limits."
+              return t("record.limitedDocument")
             default:
-              return "The document value is withheld. No reason is recorded."
+              return t("record.withheldDocument")
           }
       }
   }
@@ -166,9 +204,10 @@ function utcTime(date: Date): string {
 
 // Durable task times are wall-clock milliseconds, not document commit sequence numbers.
 export function formatDurableTime(value: number | undefined): string {
-  if (value === undefined || !Number.isSafeInteger(value) || value < 0) return "Not recorded"
+  if (value === undefined || !Number.isSafeInteger(value) || value < 0)
+    return t("record.notRecorded")
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? "Not recorded" : utcTime(date)
+  return Number.isNaN(date.getTime()) ? t("record.notRecorded") : utcTime(date)
 }
 
 export function formatReadTime(value: string): string {
@@ -177,7 +216,7 @@ export function formatReadTime(value: string): string {
     /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
       value,
     )
-  if (!match) return "Read time unavailable"
+  if (!match) return t("record.readTimeUnavailable")
   const calendarDate = new Date(`${match[1]}T00:00:00Z`)
   const date = new Date(value)
   if (
@@ -185,6 +224,6 @@ export function formatReadTime(value: string): string {
     calendarDate.toISOString().slice(0, 10) !== match[1] ||
     Number.isNaN(date.getTime())
   )
-    return "Read time unavailable"
+    return t("record.readTimeUnavailable")
   return utcTime(date)
 }

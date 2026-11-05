@@ -1,7 +1,8 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
-import { defaultModelOptions, selectDefaultModel } from "./default-model.js"
+import { defaultModelOptions, selectDefaultModel, thinkingLabel } from "./default-model.js"
+import { setLocale } from "./i18n.js"
 
 const inventory: Inventory = {
   tools: [],
@@ -27,7 +28,23 @@ const inventory: Inventory = {
     },
   ],
 }
+afterEach(() => setLocale("en"))
+
 describe("inline shared model selection", () => {
+  it("translates thinking labels at call time without changing selection values or unknown metadata", () => {
+    expect(thinkingLabel("off")).toBe("off")
+    setLocale("zh-TW")
+    expect(thinkingLabel("off")).toBe("關閉")
+    expect(thinkingLabel("high")).toBe("高")
+    setLocale("ja")
+    expect(thinkingLabel("off")).toBe("オフ")
+    expect(thinkingLabel("minimal")).toBe("最小")
+    expect(thinkingLabel("max")).toBe("最大")
+    expect(thinkingLabel("external-level")).toBe("external-level")
+    const selection = selectDefaultModel(inherited, "fixture/model", "high")
+    expect(selection.thinking).toBe("high")
+  })
+
   it("offers only globally approved models with usable metadata, without requiring credentials", () => {
     const policy = initialPolicy()
     policy.models = ["fixture/family/test", "fixture/unknown", "fixture/missing"]

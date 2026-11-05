@@ -56,7 +56,7 @@ for (const viewport of [
       const heading = page.locator("#current-section-heading")
       await expect(heading).toHaveCount(1)
       await expect(heading).toHaveText(
-        ["Chats", "Access"].includes(section) ? "聊天管理" : sectionLabel(section),
+        ["Chats", "Access"].includes(section) ? "Chats" : sectionLabel(section),
       )
       await expect(heading).toBeVisible()
       if (section === "MCP connections") {

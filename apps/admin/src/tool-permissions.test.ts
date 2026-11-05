@@ -7,8 +7,9 @@ import {
 import { Theme } from "@radix-ui/themes"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
+import { setLocale } from "./i18n.js"
 import {
   defaultPermissionSummary,
   permissionChangeCounts,
@@ -34,7 +35,37 @@ const inventory: Inventory = {
   mcp: [server],
 }
 
+afterEach(() => setLocale("en"))
+
 describe("tool permission presentation and existing policy rules", () => {
+  it.each([
+    ["zh-TW", "全域無法使用", "共用預設值", "全域政策", "內建工具"],
+    ["ja", "全体で利用不可", "共通の既定値", "全体ポリシー", "組み込みツール"],
+  ] as const)(
+    "localizes %s labels and preserves permission discriminants",
+    (locale, statusLabel, sourceLabel, blockingLabel, builtIn) => {
+      setLocale(locale)
+      const policy = initialPolicy()
+      policy.defaults.tools = ["read"]
+      expect(permissionResult("tools", "read", policy, inventory)).toMatchObject({
+        status: "Unavailable globally",
+        source: "Shared defaults",
+        blocking: "Global policy",
+        statusLabel,
+        sourceLabel,
+        blockingLabel,
+      })
+      expect(toolPermissionGroups(["read"], inventory)[0]?.label).toBe(builtIn)
+      expect(defaultPermissionSummary(policy)).not.toContain("within global permission")
+      policy.tools = ["read"]
+      expect(permissionResult("tools", "read", policy, inventory)).toMatchObject({
+        status: "Allowed",
+        blocking: null,
+        blockingLabel: null,
+      })
+      expect(policy.defaults.tools).toEqual(["read"])
+    },
+  )
   it("traces configured selection, effective denial, and server/global blocking sources", () => {
     const policy = initialPolicy()
     const name = "mcp__fixture__new"

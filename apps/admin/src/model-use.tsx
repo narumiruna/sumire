@@ -3,6 +3,7 @@ import { Button, Dialog, Flex, Text } from "@radix-ui/themes"
 import { useContext, useEffect, useState } from "react"
 import type { Policy, Selection } from "./api.js"
 import { selectDefaultModel } from "./default-model.js"
+import { t } from "./i18n.js"
 import { SectionActive, SectionSelect as Select } from "./sections.js"
 
 export type ModelUseTarget = "defaults" | "chat" | "inherit"
@@ -77,7 +78,7 @@ export function ModelUse({
           disabled={disabled}
           onClick={() => setTarget(chat ? "chat" : "defaults")}
         >
-          Choose model use
+          {t("model.chooseUse")}
         </Button>
       </Dialog.Trigger>
       <Dialog.Content
@@ -85,44 +86,41 @@ export function ModelUse({
           if (!active) event.preventDefault()
         }}
       >
-        <Dialog.Title>Choose where to use this model</Dialog.Title>
-        <Dialog.Description>
-          Use {model}. Earlier credential and availability saves remain saved if you cancel. This
-          step stages policy changes only. The review includes other pending policy edits.
-        </Dialog.Description>
+        <Dialog.Title>{t("model.chooseUseTitle")}</Dialog.Title>
+        <Dialog.Description>{t("model.useDescription", { model })}</Dialog.Description>
         <label className="form-field" htmlFor="model-use-target">
-          Model use
+          {t("model.use")}
           <Select.Root value={target} onValueChange={(value) => setTarget(value as ModelUseTarget)}>
-            <Select.Trigger id="model-use-target" aria-label="Model use" />
+            <Select.Trigger id="model-use-target" aria-label={t("model.use")} />
             <Select.Content>
-              <Select.Item value="defaults">Shared default</Select.Item>
-              {chat && <Select.Item value="chat">Chat {chat} override</Select.Item>}
-              {chat && <Select.Item value="inherit">Chat {chat} inherits shared model</Select.Item>}
+              <Select.Item value="defaults">{t("model.sharedDefault")}</Select.Item>
+              {chat && <Select.Item value="chat">{t("model.chatOverride", { chat })}</Select.Item>}
+              {chat && (
+                <Select.Item value="inherit">{t("model.chatInherits", { chat })}</Select.Item>
+              )}
             </Select.Content>
           </Select.Root>
         </label>
         <Text as="p" size="2" role="status">
           {pending
-            ? "Policy changes pending"
+            ? t("model.usePending")
             : matches
-              ? "Model use saved"
-              : "Model use incomplete"}
+              ? t("model.useSaved")
+              : t("model.useIncomplete")}
         </Text>
         {target === "inherit" && effectivePolicy(policy, 0).model !== model && (
           <Text as="p" color="orange">
-            The shared default does not use this model. Choose Shared default first, or use a chat
-            override.
+            {t("model.inheritRequiresDefault")}
           </Text>
         )}
         {target === "inherit" && (
           <Text as="p" size="2">
-            Clear this chat’s model, thinking, and allowed-model overrides. Other chat settings stay
-            unchanged.
+            {t("model.inheritUseHelp")}
           </Text>
         )}
         <Flex gap="3" mt="4" justify="end" wrap="wrap">
           <Dialog.Close>
-            <Button variant="soft">Cancel</Button>
+            <Button variant="soft">{t("selection.cancel")}</Button>
           </Dialog.Close>
           <Button
             disabled={disabled || unchanged}
@@ -131,7 +129,7 @@ export function ModelUse({
               onReview(next)
             }}
           >
-            Review model use
+            {t("model.reviewUse")}
           </Button>
         </Flex>
       </Dialog.Content>

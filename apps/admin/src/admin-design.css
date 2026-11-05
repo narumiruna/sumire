@@ -75,6 +75,44 @@
   font-size: 16px;
   color: var(--chat-muted);
 }
+.language-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+.language-selector select {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid var(--gray-7);
+  border-radius: 6px;
+  background: var(--color-panel);
+  color: var(--gray-12);
+  font: inherit;
+  font-size: 1rem;
+}
+.language-selector select:focus-visible {
+  outline: 2px solid var(--teal-9);
+  outline-offset: 2px;
+}
+.sidebar .language-selector {
+  margin-block: 12px;
+}
+.session-card > .language-selector {
+  align-self: flex-end;
+}
+@media (max-width: 650px) {
+  .sidebar .language-selector {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 0;
+  }
+}
 @media (max-width: 650px) {
   .admin-shell .sidebar {
     min-height: 56px;
@@ -157,6 +195,11 @@
   }
   .admin-shell .sidebar .mobile-menu {
     border: 0;
+  }
+}
+@media (max-width: 360px) {
+  .admin-shell > main > .workspace-header #current-section-heading {
+    font-size: 28px;
   }
 }
 .settings-saved-toast {
@@ -537,6 +580,12 @@ body {
   }
   .admin-shell .permission-scope {
     padding: 8px;
+  }
+  .admin-shell .tool-permissions {
+    gap: 4px;
+  }
+  .admin-shell #model-availability {
+    padding-block: 0;
   }
   .admin-shell .permission-scope .rt-Heading {
     font-size: 16px;

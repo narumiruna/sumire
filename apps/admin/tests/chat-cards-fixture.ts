@@ -102,7 +102,7 @@ export async function chatCardsFixture(page: Page, count = 3) {
     await route.fulfill({ json: responses[url.pathname] ?? {} })
   })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "聊天管理", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible()
   await expect(page.locator(".chat-card")).toHaveCount(Math.min(count, 100))
   return { writes, reads, policy: () => snapshot.policy }
 }

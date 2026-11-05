@@ -1,5 +1,6 @@
 import type { RuntimeConfigResponse } from "@narumitw/sumire-contracts"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
+import { errorMessage, LocalizedError, setLocale } from "./i18n.js"
 import { storedReference } from "./mcp-reference-editor.js"
 import { parseRuntimeConfig, runtimeValueError } from "./runtime-config-state.js"
 
@@ -14,7 +15,64 @@ const response: RuntimeConfigResponse = {
   ],
 }
 
+afterEach(() => setLocale("en"))
+
 describe("runtime management metadata", () => {
+  it.each([
+    ["zh-TW", "此名稱保留給主機設定使用。", "請輸入有效的已儲存名稱。"],
+    [
+      "ja",
+      "この名前はホスト設定用に予約されています。",
+      "有効な保存済みの名前を入力してください。",
+    ],
+  ] as const)(
+    "localizes %s validation while preserving metadata and references",
+    (locale, reserved, reference) => {
+      setLocale(locale)
+      expect(runtimeValueError("ADMIN_PORT", "variable", "x")).toBe(reserved)
+      expect(() => storedReference("bad-name")).toThrow(reference)
+      expect(storedReference("TOKEN", "Bearer ")).toBe(`Bearer \${TOKEN}`)
+      expect(parseRuntimeConfig(response)).toEqual(response)
+    },
+  )
+  it.each([
+    [
+      { ...response, revision: 0 },
+      "Could not verify runtime configuration.",
+      "無法驗證執行階段設定。",
+      "ランタイム設定を確認できません。",
+    ],
+    [
+      { ...response, entries: [{ ...response.entries[0], name: "invalid-name" }] },
+      "Invalid entry metadata.",
+      "項目中繼資料無效。",
+      "項目のメタデータが無効です。",
+    ],
+    [
+      { ...response, entries: [{ ...response.entries[0], kind: "other" }] },
+      "Invalid entry metadata.",
+      "項目中繼資料無效。",
+      "項目のメタデータが無効です。",
+    ],
+  ] as const)(
+    "retains a message key for invalid metadata %j",
+    (value, english, chinese, japanese) => {
+      let retained: unknown
+      try {
+        parseRuntimeConfig(value as RuntimeConfigResponse)
+      } catch (error) {
+        retained = error
+      }
+      expect(retained).toBeInstanceOf(LocalizedError)
+      if (!(retained instanceof LocalizedError)) throw new Error("Expected a localized error")
+      expect(errorMessage(retained)).toBe(english)
+      setLocale("zh-TW")
+      expect(errorMessage(retained)).toBe(chinese)
+      setLocale("ja")
+      expect(errorMessage(retained)).toBe(japanese)
+    },
+  )
+
   it("retains committed application failure and only safe response fields", () => {
     const untrusted = structuredClone(response)
     Object.assign(untrusted.entries[0] ?? {}, {

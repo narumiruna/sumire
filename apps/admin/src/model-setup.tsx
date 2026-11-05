@@ -1,6 +1,7 @@
 import { Badge, Button, Code, Flex } from "@radix-ui/themes"
 import type { Inventory } from "./api.js"
 import { modelIssues } from "./chat-state.js"
+import { t } from "./i18n.js"
 import { Prose } from "./surfaces.js"
 
 /** A scoped local setup summary. Never a claim about successful remote execution. */
@@ -26,14 +27,14 @@ export function ModelSetup({
     <section aria-label={scope} className="model-setup">
       <Flex gap="2" align="center" wrap="wrap">
         <strong>{scope}</strong>
-        <Code variant="ghost">{selected ?? "Not configured"}</Code>
+        <Code variant="ghost">{selected ?? t("model.notConfigured")}</Code>
         <Badge color={issue ? "orange" : "gray"}>
           {issue?.code === "authentication"
-            ? "Authentication required"
-            : (issue?.label ?? "Configured locally")}
+            ? t("model.authenticationRequired")
+            : (issue?.label ?? t("model.configuredLocally"))}
         </Badge>
       </Flex>
-      <Prose size="2">{issue?.reason ?? "Model response not checked."}</Prose>
+      <Prose size="2">{issue?.reason ?? t("model.responseUnchecked")}</Prose>
       {issue && (
         <Button
           variant="soft"

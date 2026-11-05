@@ -1,6 +1,7 @@
 import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import type { Snapshot } from "./api.js"
+import { t } from "./i18n.js"
 import { type EditorTarget, type Page, pageLabel } from "./navigation.js"
 import type { PolicyChange } from "./policy-changes.js"
 import { countText } from "./status-text.js"
@@ -60,7 +61,7 @@ export function SaveStatus({
     ...new Set(
       entries.flatMap((entry) =>
         entry.targets.map((target) =>
-          target.chat ? `Chat ${target.chat}` : pageLabel(target.page),
+          target.chat ? t("save.scopeChat", { id: target.chat }) : pageLabel(target.page),
         ),
       ),
     ),
@@ -144,25 +145,29 @@ export function SaveStatus({
   }
   const applicationStatus = (
     <div className="application-status" id="application-status" tabIndex={-1}>
-      {!compact && <span className="status-scope">Saved configuration</span>}
+      {!compact && <span className="status-scope">{t("save.configuration")}</span>}
       <Badge
         role="status"
         color={applied && !recover ? "gray" : "orange"}
         data-saved={applied && !recover}
       >
         {recover
-          ? "Save attempt needs review. Last confirmed revision shown."
+          ? t("save.reviewNeeded")
           : snapshot.status === "failed"
-            ? "Saved, but application failed. Retry application."
+            ? t("save.applyFailed")
             : !applied
-              ? "Saved changes are waiting to apply."
+              ? t("save.applyPending")
               : compact
-                ? "Settings saved and applied."
-                : "Saved revision applied."}
+                ? t("save.applied")
+                : t("save.revisionApplied")}
       </Badge>
       <details>
-        <summary>Revision details</summary>
-        Saved {snapshot.revision} · Applied {snapshot.applied} · {snapshot.status}
+        <summary>{t("save.revisions")}</summary>
+        {t("save.revisionValues", {
+          saved: snapshot.revision,
+          applied: snapshot.applied,
+          status: snapshot.status,
+        })}
       </details>
       {!applied && (
         <Button
@@ -170,12 +175,12 @@ export function SaveStatus({
           disabled={busy || dirty || localPending || Boolean(recover)}
           onClick={retry}
         >
-          Retry application
+          {t("save.retry")}
         </Button>
       )}
       {busy && (
         <Prose size="2" role="status">
-          Operation in progress…
+          {t("save.operation")}
         </Prose>
       )}
     </div>
@@ -185,7 +190,7 @@ export function SaveStatus({
       <section
         id="save-status"
         tabIndex={-1}
-        aria-label="Save status and pending changes"
+        aria-label={t("save.status")}
         className="save-status"
         data-pending={dirty}
         data-compact={compact}
@@ -197,7 +202,7 @@ export function SaveStatus({
             <div className="settings-saved-toast">{applicationStatus}</div>
           ) : (
             <details className="saved-settings-details" id="saved-settings-details" tabIndex={-1}>
-              <summary>儲存與版本資訊</summary>
+              <summary>{t("save.savedDetails")}</summary>
               {applicationStatus}
             </details>
           )
@@ -205,21 +210,20 @@ export function SaveStatus({
           applicationStatus
         )}
         {pending && (
-          <section ref={ref} className="changes-bar" aria-label="Pending changes">
+          <section ref={ref} className="changes-bar" aria-label={t("save.pending")}>
             <div className="save-status-line">
               <Badge role="status" color="orange">
                 {dirty
                   ? countText(changeCount, "unsaved change")
                   : recover
-                    ? "Save outcome needs review"
-                    : "Unsubmitted editor draft"}
+                    ? t("save.outcomeReview")
+                    : t("save.unsubmitted")}
               </Badge>
-              {dirty && <span>Settings draft</span>}
+              {dirty && <span>{t("save.draft")}</span>}
             </div>
             {dirty && (
               <Prose size="2" className="policy-save-scopes">
-                Policy transaction: {scopes.join(" · ") || "Settings"}. All staged policy edits are
-                saved together; other editor drafts have separate save actions.
+                {t("save.scopes", { scopes: scopes.join(" · ") || t("save.settings") })}
               </Prose>
             )}
             {(mcpDirty || providerPending || runtimePending || unfinished.length > 0) && (
@@ -230,7 +234,7 @@ export function SaveStatus({
                     className="navigation-control"
                     onClick={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
                   >
-                    MCP: Unsaved configuration
+                    {t("save.mcp")}
                   </Button>
                 )}
                 {providerPending && (
@@ -239,7 +243,7 @@ export function SaveStatus({
                     className="navigation-control"
                     onClick={() => navigate("Model Providers")}
                   >
-                    Provider: Unsaved selection or authentication
+                    {t("save.provider")}
                   </Button>
                 )}
                 {runtimePending && (
@@ -249,13 +253,13 @@ export function SaveStatus({
                       openEditor({ page: "Secrets & variables", selector: "#runtime-add" })
                     }
                   >
-                    Runtime values: Separate editor draft or operation
+                    {t("save.runtime")}
                   </Button>
                 )}
                 {unfinished.map((editor) => (
                   <div key={editor.label} className="unfinished-editor">
                     <Button variant="soft" onClick={() => openEditor(editor.target)}>
-                      Continue editing: {editor.label}
+                      {t("save.continue", { editor: editor.label })}
                     </Button>
                   </div>
                 ))}
@@ -268,17 +272,17 @@ export function SaveStatus({
                 disabled={busy}
                 onClick={recover}
               >
-                Load latest and review draft
+                {t("save.loadLatest")}
               </Button>
             )}
             {dirty && (
               <div className="save-actions">
                 <Button variant="outline" disabled={busy} onClick={discard}>
-                  Discard settings changes
+                  {t("save.discard")}
                 </Button>
                 <AlertDialog.Trigger>
                   <Button disabled={busy || localPending || Boolean(recover)}>
-                    Review and save changes
+                    {t("save.review")}
                   </Button>
                 </AlertDialog.Trigger>
               </div>
@@ -294,28 +298,25 @@ export function SaveStatus({
           }
         }}
       >
-        <AlertDialog.Title>Save settings changes?</AlertDialog.Title>
-        <AlertDialog.Description>
-          Save the changes below across Chats (including Chat access), Shared defaults, tools,
-          skills, GitHub mention authors, and custom endpoints. Connection drafts, provider model
-          additions, and authentication have separate save actions. Active work will be cancelled.
-          Revoked permissions cannot undo completed external actions.
-        </AlertDialog.Description>
+        <AlertDialog.Title>{t("save.confirm")}</AlertDialog.Title>
+        <AlertDialog.Description>{t("save.confirmHelp")}</AlertDialog.Description>
         {modelReview && (
-          <section aria-label="Shared model change">
+          <section aria-label={t("save.modelChange")}>
             <Prose size="2">
-              Model: {modelReview.before ?? "Not configured"} →{" "}
-              {modelReview.after ?? "Not configured"}
+              {t("save.modelBeforeAfter", {
+                before: modelReview.before ?? t("save.notConfigured"),
+                after: modelReview.after ?? t("save.notConfigured"),
+              })}
             </Prose>
             {modelReview.added.map((ref) => (
               <Prose size="2" key={ref}>
-                Add shared allowed model: {ref}
+                {t("save.addModel", { model: ref })}
               </Prose>
             ))}
           </section>
         )}
         {removalReview}
-        <ul aria-label="Settings changes to save" className="settings-review-list">
+        <ul aria-label={t("save.changes")} className="settings-review-list">
           {entries.map((entry) => (
             <li key={entry.label}>
               <Prose size="2">{entry.label}</Prose>
@@ -333,7 +334,11 @@ export function SaveStatus({
                       variant="ghost"
                       onClick={() => reviewEditor(target)}
                     >
-                      Review {target.chat ? `chat ${target.chat}` : pageLabel(target.page)}
+                      {t("save.reviewScope", {
+                        scope: target.chat
+                          ? t("save.reviewChat", { id: target.chat })
+                          : pageLabel(target.page),
+                      })}
                     </Button>
                   ))}
               </Flex>
@@ -342,15 +347,15 @@ export function SaveStatus({
         </ul>
         {unfinished.map((editor) => (
           <Prose key={editor.label} size="2" role="alert">
-            Finish or clear {editor.label} before saving.{" "}
+            {t("save.finish", { editor: editor.label })}{" "}
             <Button variant="soft" onClick={() => reviewEditor(editor.target)}>
-              Continue editing: {editor.label}
+              {t("save.continue", { editor: editor.label })}
             </Button>
           </Prose>
         ))}
         <Flex gap="3" mt="4" justify="end" wrap="wrap">
           <AlertDialog.Cancel>
-            <Button variant="soft">Cancel</Button>
+            <Button variant="soft">{t("save.cancel")}</Button>
           </AlertDialog.Cancel>
           {recover && (
             <Button
@@ -362,12 +367,12 @@ export function SaveStatus({
                 recover()
               }}
             >
-              Load latest and review draft
+              {t("save.loadLatest")}
             </Button>
           )}
           <AlertDialog.Action>
             <Button disabled={busy || localPending || !dirty || Boolean(recover)} onClick={apply}>
-              Save changes
+              {t("save.save")}
             </Button>
           </AlertDialog.Action>
         </Flex>

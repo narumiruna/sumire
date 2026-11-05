@@ -16,6 +16,8 @@ import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
 import { BrandIcon } from "./brand-icon.js"
+import { type MessageKey, t } from "./i18n.js"
+import { LanguageSelector } from "./language-selector.js"
 
 export const pages = [
   "Chats",
@@ -35,27 +37,39 @@ export type EditorTarget = { page: Page; selector: string; chat?: string }
 
 export const pendingEditors = {
   access: {
-    label: "Chat access — Telegram ID to approve",
+    get label() {
+      return t("nav.pendingAccess")
+    },
     target: { page: "Chats", selector: "#access-id-input" },
   },
   githubMentionAuthor: {
-    label: "GitHub mentions — GitHub username to add",
+    get label() {
+      return t("nav.pendingGithub")
+    },
     target: { page: "GitHub mentions", selector: "#github-mention-author" },
   },
   tool: {
-    label: "Tool permissions — Additional approved tool name",
+    get label() {
+      return t("nav.pendingTool")
+    },
     target: { page: "Tool permissions", selector: "#tool-input" },
   },
   endpoint: {
-    label: "Providers & models — Custom endpoint",
+    get label() {
+      return t("nav.pendingEndpoint")
+    },
     target: { page: "Model Providers", selector: "#endpoint-provider-id" },
   },
   mcpReference: {
-    label: "MCP servers — Stored reference input",
+    get label() {
+      return t("nav.pendingReference")
+    },
     target: { page: "MCP connections", selector: "#mcp-reference-editor" },
   },
   secret: {
-    label: "MCP servers — Secret replacement",
+    get label() {
+      return t("nav.pendingSecret")
+    },
     target: { page: "MCP connections", selector: "#secret-name" },
   },
 } satisfies Record<string, { label: string; target: EditorTarget }>
@@ -85,33 +99,21 @@ const pageIcons = {
   "GitHub mentions": GitHubLogoIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
-const pageLabels = {
-  Chats: "Chats",
-  Durable: "Conversation logs",
-  Defaults: "Shared defaults",
-  "Tool permissions": "Tool permissions",
-  Skills: "Skills",
-  "MCP connections": "MCP servers",
-  "Model Providers": "Providers & models",
-  "Secrets & variables": "Secrets & variables",
-  "GitHub mentions": "GitHub mentions",
-  Audit: "Audit log",
-} satisfies Record<Page, string>
-export const pageLabel = (page: Page) => pageLabels[page]
-/** Localized presentation only; URL identifiers and transaction labels stay stable. */
 export const pageTitles = {
-  Chats: "聊天管理",
-  Durable: "對話紀錄",
-  Defaults: "共用設定",
-  "Tool permissions": "工具權限",
-  Skills: "技能管理",
-  "MCP connections": "MCP 伺服器",
-  "Model Providers": "模型供應商",
-  "Secrets & variables": "密鑰與變數",
-  "GitHub mentions": "GitHub 提及",
-  Audit: "稽核紀錄",
-} satisfies Record<Page, string>
-export const pageTitle = (page: Page) => pageTitles[page]
+  Chats: "nav.chats",
+  Durable: "nav.durable",
+  Defaults: "nav.defaults",
+  "Tool permissions": "nav.tools",
+  Skills: "nav.skills",
+  "MCP connections": "nav.mcp",
+  "Model Providers": "nav.providers",
+  "Secrets & variables": "nav.secrets",
+  "GitHub mentions": "nav.github",
+  Audit: "nav.audit",
+} as const satisfies Record<Page, MessageKey>
+/** Translate presentation only; URL identifiers remain stable. */
+export const pageLabel = (page: Page) => t(pageTitles[page])
+export const pageTitle = pageLabel
 
 const navigationOrder: readonly Page[] = [
   "Chats",
@@ -125,9 +127,9 @@ const navigationOrder: readonly Page[] = [
   "GitHub mentions",
   "Audit",
 ]
-const technicalDescriptions: Partial<Record<Page, string>> = {
-  Durable: "Durable Inspector: stored conversations and execution records.",
-  "MCP connections": "Model Context Protocol (MCP) connections.",
+const technicalDescriptions: Partial<Record<Page, MessageKey>> = {
+  Durable: "nav.durableDescription",
+  "MCP connections": "nav.mcpDescription",
 }
 
 export function readNavigation(url: URL) {
@@ -283,13 +285,13 @@ export function SideNavigation({
     [],
   )
   return (
-    <aside className="sidebar" aria-label="Administration navigation">
+    <aside className="sidebar" aria-label={t("nav.navigation")}>
       <Flex direction="column" gap="1" className="sidebar-brand">
         <Heading size="5" className="brand">
           <BrandIcon /> Sumire
         </Heading>
         <Text size="1" color="gray" className="brand-caption">
-          Administration
+          {t("nav.administration")}
         </Text>
       </Flex>
       <Button
@@ -301,9 +303,11 @@ export function SideNavigation({
         onClick={() => setOpen(!open)}
       >
         <HamburgerMenuIcon aria-hidden />
-        <span className="section-trigger-label">Sections · {pageLabel(page)}</span>
+        <span className="section-trigger-label">
+          {t("nav.sectionTrigger", { page: pageLabel(page) })}
+        </span>
       </Button>
-      <nav id="section-navigation" aria-label="Administration sections" data-open={open}>
+      <nav id="section-navigation" aria-label={t("nav.sections")} data-open={open}>
         {navigationOrder.map((item) => {
           const Icon = pageIcons[item]
           const description = technicalDescriptions[item]
@@ -345,17 +349,18 @@ export function SideNavigation({
                 <span>{pageTitle(item)}</span>
               </a>
               {description && (
-                <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>
+                <VisuallyHidden.Root id={descriptionId}>{t(description)}</VisuallyHidden.Root>
               )}
             </Fragment>
           )
         })}
+        <LanguageSelector />
       </nav>
       <Flex direction="column" gap="3" className="sidebar-account">
         <Separator size="4" />
         <PersonIcon aria-hidden className="sidebar-account-icon" />
         <Text size="1" color="gray">
-          Administrator
+          {t("nav.administrator")}
         </Text>
         <Text size="2" weight="medium">
           {actor}

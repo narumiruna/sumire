@@ -2,6 +2,7 @@ import { PlusIcon } from "@radix-ui/react-icons"
 import { Badge, Button, Code, Flex, Grid, Text } from "@radix-ui/themes"
 import { useState } from "react"
 import type { ProviderSettings } from "./api.js"
+import { t } from "./i18n.js"
 import { Check, Field } from "./policy-editors.js"
 import { SectionSelect as Select } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
@@ -47,15 +48,15 @@ export function ProviderEditor({
       className="provider-editor settings-stack"
       onChangeCapture={() => onPending(true)}
     >
-      <legend>{initial ? "Edit provider configuration" : "Add provider configuration"}</legend>
+      <legend>{initial ? t("provider.editConfiguration") : t("provider.addConfiguration")}</legend>
       <Grid columns={{ initial: "1", md: "2" }} gap="3" className="settings-grid">
-        <Field id="endpoint-provider-id" label="Provider ID" value={id} onChange={setId} />
-        <Field label="API base URL" value={url} onChange={setUrl} />
+        <Field id="endpoint-provider-id" label={t("provider.id")} value={id} onChange={setId} />
+        <Field label={t("provider.baseUrl")} value={url} onChange={setUrl} />
       </Grid>
       <details className="provider-advanced">
-        <summary>Advanced protocol</summary>
+        <summary>{t("provider.protocol")}</summary>
         <label htmlFor="provider-api" className="form-field">
-          API
+          {t("provider.api")}
           <Select.Root
             value={api}
             onValueChange={(v) => {
@@ -63,7 +64,7 @@ export function ProviderEditor({
               setApi(v as ProviderSettings["api"])
             }}
           >
-            <Select.Trigger id="provider-api" aria-label="API" />
+            <Select.Trigger id="provider-api" aria-label={t("provider.api")} />
             <Select.Content>
               {[
                 "openai-completions",
@@ -80,7 +81,7 @@ export function ProviderEditor({
         </label>
       </details>
       {models.length > 0 && (
-        <section className="data-list" aria-label="Custom endpoint models">
+        <section className="data-list" aria-label={t("provider.customModels")}>
           {models.map((m) => (
             <div className="data-row" key={m.id}>
               <Flex direction="column" gap="2">
@@ -91,10 +92,10 @@ export function ProviderEditor({
                   <Code size="1">{m.id}</Code>
                 </Flex>
                 <Flex gap="2" wrap="wrap">
-                  <Badge color="gray">Context {m.contextWindow}</Badge>
-                  <Badge color="gray">Output {m.maxTokens}</Badge>
-                  {m.reasoning && <Badge color="gray">Reasoning</Badge>}
-                  {m.image && <Badge color="gray">Image input</Badge>}
+                  <Badge color="gray">{t("model.contextValue", { count: m.contextWindow })}</Badge>
+                  <Badge color="gray">{t("model.outputValue", { count: m.maxTokens })}</Badge>
+                  {m.reasoning && <Badge color="gray">{t("model.reasoning")}</Badge>}
+                  {m.image && <Badge color="gray">{t("model.imageInput")}</Badge>}
                 </Flex>
               </Flex>
               <Flex gap="2" wrap="wrap">
@@ -109,7 +110,7 @@ export function ProviderEditor({
                     setOutput(String(m.maxTokens))
                   }}
                 >
-                  Edit model {m.id}
+                  {t("model.editNamed", { id: m.id })}
                 </Button>
                 <Button
                   variant="soft"
@@ -123,20 +124,20 @@ export function ProviderEditor({
                     }
                   }}
                 >
-                  Remove model {m.id}
+                  {t("model.removeNamed", { id: m.id })}
                 </Button>
               </Flex>
             </div>
           ))}
         </section>
       )}
-      <Field label="Model ID (required for custom endpoint)" value={model} onChange={setModel} />
+      <Field label={t("model.endpointId")} value={model} onChange={setModel} />
       <details className="provider-advanced">
-        <summary>Advanced model metadata</summary>
-        <Field label="Model display name" value={name} onChange={setName} />
+        <summary>{t("model.metadata")}</summary>
+        <Field label={t("model.displayName")} value={name} onChange={setName} />
         <Flex gap="4" wrap="wrap" my="3">
           <Check
-            label="Reasoning supported"
+            label={t("model.reasoningSupported")}
             checked={reasoning}
             onChange={(v) => {
               onPending(true)
@@ -144,7 +145,7 @@ export function ProviderEditor({
             }}
           />
           <Check
-            label="Image input supported"
+            label={t("model.imageSupported")}
             checked={image}
             onChange={(v) => {
               onPending(true)
@@ -153,8 +154,8 @@ export function ProviderEditor({
           />
         </Flex>
         <Grid columns={{ initial: "1", md: "2" }} gap="3" className="settings-grid">
-          <Field label="Context window tokens" value={context} onChange={setContext} />
-          <Field label="Maximum output tokens" value={output} onChange={setOutput} />
+          <Field label={t("model.contextTokens")} value={context} onChange={setContext} />
+          <Field label={t("model.outputTokens")} value={output} onChange={setOutput} />
         </Grid>
       </details>
       <Flex gap="2" wrap="wrap">
@@ -168,7 +169,7 @@ export function ProviderEditor({
             setName("")
           }}
         >
-          <PlusIcon /> Add / update model
+          <PlusIcon /> {t("model.update")}
         </Button>
         <Button
           disabled={!id}
@@ -181,15 +182,14 @@ export function ProviderEditor({
             })
           }
         >
-          Set provider configuration
+          {t("provider.setConfiguration")}
         </Button>
         <Button variant="soft" onClick={onDiscard}>
-          Discard custom endpoint draft
+          {t("provider.discardEndpoint")}
         </Button>
       </Flex>
       <Prose size="2" color="gray" className="section-copy">
-        This stages settings only. Review and save changes before authentication. This replaces the
-        custom model list. Custom model costs are unknown, not verified zero-cost.
+        {t("provider.stageHelp")}
       </Prose>
     </Panel>
   )

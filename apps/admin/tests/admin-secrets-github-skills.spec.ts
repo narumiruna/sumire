@@ -125,7 +125,9 @@ async function fixture(
     await route.fulfill({ json: data[path] ?? {} })
   })
   await page.goto("/?section=Secrets+%26+variables")
-  await expect(page.getByRole("heading", { name: "密鑰與變數", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "Secrets & variables", exact: true }),
+  ).toBeVisible()
   return { calls, state }
 }
 
@@ -266,7 +268,7 @@ test("pending mention authors do not replace the saved author policy status", as
   await page.getByLabel("GitHub username", { exact: true }).fill("draft-author")
   await page.getByRole("button", { name: "Add username", exact: true }).click()
   const status = page.getByRole("region", { name: "GitHub mentions status", exact: true })
-  await expect(status).toContainText("Saved author policy: 1 allowed usernames")
+  await expect(status).toContainText("Saved author policy: 1 allowed username")
   await expect(status).toContainText(
     "Draft author policy: 2 allowed usernames. Unsaved; saved policy still applies.",
   )
@@ -280,7 +282,7 @@ test("GitHub mentions opens the one on-demand connection panel and closing cance
   const { calls } = await fixture(page)
   await navigate(page, "GitHub mentions")
   const status = page.getByRole("region", { name: "GitHub mentions status", exact: true })
-  await expect(status).toContainText("Saved author policy: 1 allowed usernames")
+  await expect(status).toContainText("Saved author policy: 1 allowed username")
   await expect(status).toContainText("prior-account (ID 7) during GitHub authorization")
   await expect(status).toContainText("Remote verification and worker status: unavailable")
   expect(calls.filter((call) => call.method !== "GET")).toEqual([])

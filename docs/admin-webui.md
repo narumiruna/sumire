@@ -2,6 +2,16 @@
 
 The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, model providers, runtime secrets, and variables. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
 
+## Interface language
+
+Use **Language** on the sign-in screen or in the sidebar to select **English**, **正體中文**, or **日本語**. The selection takes effect without reloading the page or discarding editor drafts. It changes presentation only and does not save or apply service settings.
+
+The WebUI stores an explicit choice in this browser as `sumire.admin.locale`. On the first visit, it uses the first supported browser language. English, Chinese, and Japanese language tags select `en`, `zh-TW`, and `ja`; all Chinese variants use Traditional Chinese. Other languages fall back to English. If browser storage is unavailable, selection still works for the current page. At narrow widths, open **Sections** to access the selector.
+
+Chat names, messages, tool output, provider metadata, skill descriptions, server diagnostics, and raw JSON remain in their original language. Technical IDs, API values, URLs, and saved policies do not change. Telegram bot messages are not part of this setting.
+
+Translation catalogs are in `apps/admin/src/locales/`. Each stable key has English, Traditional Chinese, and Japanese text with the same interpolation fields. Add presentation text through `t()` in `apps/admin/src/i18n.ts`; keep protocol and policy identifiers outside the catalogs. Resolve translated labels when rendering or calling a presentation helper, not at module initialization.
+
 ## Workspace layout
 
 The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults**, **Providers & models**, **Tool permissions**, **Skills**, **MCP servers**, **Secrets & variables**, **GitHub mentions**, and **Audit log**. Existing section IDs, aliases, anchors, and selected-chat URLs remain valid. There is no notification settings page in this build. Telegram lifecycle notices are a separate feature, not a polling-service dashboard.

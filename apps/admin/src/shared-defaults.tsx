@@ -2,6 +2,7 @@ import { effectivePolicy } from "@narumitw/sumire-policy"
 import { Button, Callout } from "@radix-ui/themes"
 import type { Inventory, Policy } from "./api.js"
 import { DefaultModel } from "./default-model.js"
+import { t } from "./i18n.js"
 import { focusEditor, navigationHref, type Page } from "./navigation.js"
 import { List } from "./policy-editors.js"
 import { countText } from "./status-text.js"
@@ -55,12 +56,12 @@ export function SharedDefaults({
   const skills = effective.skills
   return (
     <div className="defaults-layout">
-      <Prose>共用選項不會覆蓋聊天的個別設定。</Prose>
+      <Prose>{t("selection.defaultsHelp")}</Prose>
       <SettingsSection
         id="default-model-settings"
         tabIndex={-1}
-        title="模型與思考"
-        description="選擇預設模型與思考程度"
+        title={t("model.thinkingTitle")}
+        description={t("model.defaultDescription")}
       >
         <DefaultModel
           policy={policy}
@@ -73,24 +74,20 @@ export function SharedDefaults({
         {policy.defaults.model && !policy.defaults.models?.includes(policy.defaults.model) && (
           <Callout.Root color="orange" role="alert">
             <Callout.Text>
-              Model "{policy.defaults.model}" is not in Allowed models. Restore its selection or
-              choose another default.
+              {t("model.defaultNotAllowed", { model: policy.defaults.model })}
             </Callout.Text>
             <Button variant="outline" onClick={() => focusEditor("#default-models-options")}>
-              Review allowed models
+              {t("model.reviewAllowed")}
             </Button>
           </Callout.Root>
         )}
         <Disclosure
           summaryId="default-models-options"
-          title={`Allowed models · ${effective.models.length} effective`}
+          title={t("selection.allowedEffective", { count: effective.models.length })}
         >
-          <Prose size="2">
-            Selecting a default model also adds it to this shared selection. Global availability
-            still limits the selection.
-          </Prose>
+          <Prose size="2">{t("model.defaultSelectionHelp")}</Prose>
           <List
-            label="Allowed models"
+            label={t("selection.allowedModels")}
             options={policy.models}
             value={policy.defaults.models}
             effective={effective.models}
@@ -99,46 +96,56 @@ export function SharedDefaults({
           />
         </Disclosure>
       </SettingsSection>
-      <SettingsSection title="工具權限" description="共用預設仍受全域上限限制">
+      <SettingsSection title={t("selection.toolsTitle")} description={t("selection.globalLimits")}>
         <TableToolbar>
           <Prose size="2">
-            {countText(effective.tools.length, "tool")} · {countText(groups.length, "source")} ·{" "}
-            {countText(effective.servers.length, "server gate")}
+            {t("selection.toolCounts", {
+              tools: countText(effective.tools.length, "tool"),
+              sources: countText(groups.length, "source"),
+              servers: countText(effective.servers.length, "server gate"),
+            })}
           </Prose>
           {managementLink(
             "Tool permissions",
-            "Manage default tool permissions",
+            t("selection.manageDefaultTools"),
             "default-tool-permissions",
           )}
         </TableToolbar>
         {effective.tools.length === 0 && (
           <Prose size="2" color="gray">
-            No tools allowed by default.
+            {t("selection.noDefaultTools")}
           </Prose>
         )}
       </SettingsSection>
-      <SettingsSection title="技能" description="指令集，不代表工具授權">
+      <SettingsSection title={t("skill.title")} description={t("skill.defaultsDescription")}>
         <TableToolbar>
-          <Prose size="2">{countText(skills.length, "skill")} selected</Prose>
-          {managementLink("Skills", "Manage default skills", "default-skills")}
+          <Prose size="2">
+            {t("skill.selectedCount", { count: countText(skills.length, "skill") })}
+          </Prose>
+          {managementLink("Skills", t("skill.manageDefaults"), "default-skills")}
         </TableToolbar>
         {skills.length === 0 && (
           <Prose size="2" color="gray">
-            No skills selected by default.
+            {t("skill.noDefaults")}
           </Prose>
         )}
       </SettingsSection>
-      <SettingsSection title="MCP 伺服器" description="開放伺服器不等於授予工具執行權限">
+      <SettingsSection
+        title={t("selection.serversTitle")}
+        description={t("selection.serverGateHelp")}
+      >
         <TableToolbar>
           <Prose size="2">
-            {countText(effective.servers.length, "server gate")} allowed by default
+            {t("selection.defaultGatesCount", {
+              count: countText(effective.servers.length, "server gate"),
+            })}
           </Prose>
           {managementLink(
             "Tool permissions",
-            "Manage default server gates",
+            t("selection.manageDefaultGates"),
             "default-tool-permissions",
           )}
-          {managementLink("MCP connections", "Manage MCP servers")}
+          {managementLink("MCP connections", t("selection.manageServers"))}
         </TableToolbar>
       </SettingsSection>
     </div>
