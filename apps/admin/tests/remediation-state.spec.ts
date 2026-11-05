@@ -21,14 +21,14 @@ const unfinished = [
     section: "Model Providers",
     field: "Provider ID",
     value: "draft-provider",
-    label: "Model providers — Custom endpoint",
+    label: "Providers & models — Custom endpoint",
     clear: "Discard custom endpoint draft",
   },
   {
     section: "MCP connections",
     field: "Secret field name",
     value: "TEST_TOKEN",
-    label: "MCP Servers — Secret replacement",
+    label: "MCP servers — Secret replacement",
     clear: "Clear secret input",
   },
 ]
@@ -49,6 +49,7 @@ for (const { width, zoom } of [
     const users = page.getByLabel("Telegram ID to approve", { exact: true })
     await users.fill("7001")
     await navigate(page, "Model Providers")
+    await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
     await openDisclosure(page, "Custom endpoint")
     const endpoint = page.getByLabel("Provider ID", { exact: true })
     await endpoint.fill("draft-provider")
@@ -89,6 +90,7 @@ for (const { width, zoom } of [
 }
 
 async function chooseOtherModel(page: Page) {
+  await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
   await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
 }
@@ -107,7 +109,10 @@ for (const width of [1440, 390]) {
         .getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true })
         .uncheck()
       await navigate(page, editor.section)
-      if (editor.section === "Model Providers") await openDisclosure(page, "Custom endpoint")
+      if (editor.section === "Model Providers") {
+        await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
+        await openDisclosure(page, "Custom endpoint")
+      }
       if (editor.section === "MCP connections") {
         await page.getByRole("button", { name: "Edit fields for fixture", exact: true }).click()
         await openDisclosure(page, "Secrets (optional)")
@@ -217,6 +222,8 @@ test("F1 endpoint discard restores its staged configuration and keeps the policy
 }) => {
   const state = await fixture(page)
   await navigate(page, "Model Providers")
+  await page.getByRole("button", { name: "Add provider", exact: true }).click()
+  await page.getByRole("button", { name: "Add custom endpoint", exact: true }).click()
   await openDisclosure(page, "Custom endpoint")
   await page.getByLabel("Provider ID", { exact: true }).fill("custom")
   await page.getByRole("button", { name: "Set provider configuration", exact: true }).click()
@@ -250,9 +257,7 @@ test("F2 navigation and authentication preserve an availability draft without co
   await page.getByRole("button", { name: "Check authentication", exact: true }).click()
   await navigate(page, "Chats")
   await navigate(page, "Model Providers")
-  await expect(
-    page.getByRole("heading", { name: "Add an available model", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: /^Model: / })).toContainText("Other")
   await expect(
     page.getByRole("button", { name: "Save model availability", exact: true }),
@@ -304,7 +309,7 @@ test("F4 dirty connection switching and closed secret inputs retain the same dra
   await navigate(page, "Audit")
   await page
     .getByRole("button", {
-      name: "Continue editing: MCP Servers — Secret replacement",
+      name: "Continue editing: MCP servers — Secret replacement",
       exact: true,
     })
     .click()
@@ -351,7 +356,7 @@ test("F4 failed save and cancelled reload preserve guided, JSON, and staged secr
   await page.getByRole("button", { name: "Save connection", exact: true }).click()
   await expect(page.getByRole("alert").first()).toContainText("Settings changed; reload")
   page.once("dialog", (dialog) => dialog.dismiss())
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath("failed-connection-save.png"), fullPage: true })
   await expect(json).toHaveValue(/draft description/)
   state.fail(false)

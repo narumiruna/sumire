@@ -123,7 +123,7 @@ for (const width of [1440, 390]) {
     ).toHaveCount(0)
     await openDisclosure(page, "Permission rules and inheritance")
     await expect(
-      page.getByText(/New tools are added to global and default permissions/),
+      page.getByText(/MCP discovery records published names without granting permissions/),
     ).toBeVisible()
     if (
       (await page
@@ -285,7 +285,11 @@ test("global removal retains defaults and overrides, shows exact references, and
       .getAttribute("aria-expanded")) === "false"
   )
     await page.getByRole("button", { name: "Built-in tools · 3 tools", exact: true }).click()
-  const global = page.getByRole("checkbox", { name: "Globally allow tool read", exact: true })
+  const global = page.getByRole("checkbox", {
+    name: "Globally allow tool read",
+    exact: true,
+    includeHidden: true,
+  })
   const defaults = page.getByRole("checkbox", {
     name: "Default chat permission for tool read",
     exact: true,
@@ -305,7 +309,10 @@ test("global removal retains defaults and overrides, shows exact references, and
   await expect(defaults).toBeChecked()
   await defaults.uncheck()
   await expect(defaults).toBeDisabled()
-  await page.getByRole("button", { name: "Review chat 43", exact: true }).click()
+  await page
+    .getByRole("region", { name: "Retained permission conflicts", exact: true })
+    .getByRole("button", { name: "Review chat 43", exact: true })
+    .click()
   await expect(page).toHaveURL(/section=Chats.*chat=43|chat=43.*section=Chats/)
   await openChatConfiguration(page)
   const tools = page.getByRole("group", { name: "Authorized tools", exact: true })
@@ -526,10 +533,10 @@ test("legacy links open canonical permissions without policy changes or remote t
   const state = await setup(page)
   await page.goto("/?section=Tools+%2F+MCP&chat=42")
   await expect(page.getByRole("heading", { name: "Tool permissions", exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Manage MCP Servers", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "MCP Servers", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Manage MCP servers", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible()
   await navigate(page, "Tool permissions")
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "MCP Servers", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })

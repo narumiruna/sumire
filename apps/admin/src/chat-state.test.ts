@@ -112,6 +112,26 @@ describe("saved chat state", () => {
       "inventory",
     ])
   })
+  it("keeps retained permission diagnostics separate from access and inherited category resets", () => {
+    const { policy, inventory, application } = fixture()
+    policy.defaults.tools = ["removed-tool"]
+    policy.defaults.servers = ["removed-server"]
+    policy.defaults.skills = ["removed-skill"]
+    const before = structuredClone(policy)
+    const state = chatState(42, policy, inventory, application)
+    expect(state.approved).toBe(true)
+    expect(state.enabled).toBe(true)
+    expect(state.issues.map((issue) => issue.code)).toEqual([
+      "global-tools",
+      "global-servers",
+      "global-skills",
+    ])
+    expect(state.primary).toMatchObject({ target: "tools", action: "Review chat permissions" })
+    expect(state.primary?.reason).toContain("removed-tool")
+    expect(policy).toEqual(before)
+    policy.chats["42"] = { ...inherited, enabled: true, tools: [], servers: [], skills: [] }
+    expect(chatState(42, policy, inventory, application).issues).toEqual([])
+  })
   it("does not repair saved state with an unsaved approval, model, or enabled draft", () => {
     const { policy, inventory, application } = fixture()
     policy.privateUsers = []

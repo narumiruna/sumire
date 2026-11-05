@@ -161,11 +161,19 @@ for (const scenario of scenarios) {
     scenario.prepare(state)
     const { methods } = await fixture(page, state)
     const row = page.locator(".chat-list .directory-chat").first()
-    await expect(row.locator("..").locator(".directory-status-label")).toContainText(scenario.label)
-    await expect(row.locator("..").locator(".directory-status-label")).toHaveAttribute(
-      "title",
-      scenario.reason,
+    const entry = row.locator("xpath=ancestor::li")
+    await expect(entry.locator(".directory-approval")).toHaveText(
+      scenario.name === "unapproved" ? "Not approved" : "Approved",
     )
+    await expect(entry.locator(".directory-status-label")).toHaveText(
+      scenario.name === "disabled" ? "Disabled" : "Enabled",
+    )
+    if (scenario.name === "unapproved") {
+      await expect(entry.locator(".directory-issues")).not.toContainText(scenario.reason)
+      await expect(entry.locator(".directory-issues")).toContainText(
+        "Configured locally. Model response not checked.",
+      )
+    } else await expect(entry.locator(".directory-issues")).toContainText(scenario.reason)
     await expect(row.locator("button, a")).toHaveCount(0)
     await row.click()
     const savedStatus =
@@ -208,7 +216,9 @@ for (const scenario of scenarios) {
       else
         await expect(
           page.locator(
-            scenario.name === "unknown provider" ? "#provider-choice" : "#provider-authentication",
+            scenario.name === "unknown provider"
+              ? "#provider-detail-heading"
+              : "#provider-authentication",
           ),
         ).toBeFocused()
       await expect(page).toHaveURL(/chat=42/)
@@ -231,7 +241,10 @@ test("keeps saved approval separate from draft repair through review and cancell
   await expect(page.locator(".chat-draft-status")).toContainText("Configured locally")
   await page.getByRole("button", { name: "Back to chat directory", exact: true }).click()
   await expect(row).toBeFocused()
-  await expect(row.locator("..")).toContainText("Access not approved")
+  await expect(row.locator("xpath=ancestor::li").locator(".directory-approval")).toHaveText(
+    "Not approved",
+  )
+  await expect(row.locator("xpath=ancestor::li")).toContainText("Pending access grant")
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await expect(page.getByRole("alertdialog")).toContainText("Private-message access: approve 42")
@@ -260,10 +273,10 @@ test("labels draft-aware access filters separately from saved access", async ({ 
   await page.getByRole("option", { name: "Approved and enabled", exact: true }).click()
   const row = page.locator(".chat-list .directory-chat")
   await expect(row).toHaveCount(1)
-  await expect(row.locator("..").locator(".directory-status-label")).toContainText(
-    "Access not approved",
+  await expect(row.locator("xpath=ancestor::li").locator(".directory-approval")).toHaveText(
+    "Not approved",
   )
-  await expect(row.locator("..").locator(".directory-draft")).toHaveText(
+  await expect(row.locator("xpath=ancestor::li").locator(".directory-draft")).toHaveText(
     "Draft access: Approved · Enabled",
   )
   await page.getByRole("button", { name: "Show selected chat", exact: true }).click()
@@ -408,6 +421,21 @@ for (const [width, height, zoom] of [
         footerHeight: bounds(".directory-footer").height,
         listHeight: list.height,
         rowHeight: bounds(".chat-list .directory-chat").height,
+        managementRowHeight: bounds(".directory-row").height,
+        firstRowBottom: bounds(".directory-row").bottom,
+        fonts: Object.fromEntries(
+          [
+            ["title", "#current-section-heading"],
+            ["body", ".radix-themes"],
+            ["input", ".directory-search input"],
+            ["chatName", ".directory-chat strong"],
+            ["badge", ".directory-status-label"],
+          ].map(([name, selector]) => {
+            const element = document.querySelector(selector ?? "")
+            if (!element) throw new Error(`Missing font target: ${selector}`)
+            return [name, parseFloat(getComputedStyle(element).fontSize)]
+          }),
+        ),
       }
     })
     await testInfo.attach("geometry", {
@@ -415,7 +443,17 @@ for (const [width, height, zoom] of [
       contentType: "application/json",
     })
     console.log("GEOMETRY", width, zoom, geometry)
-    if (width === 1440) expect(geometry.fullRows).toBeGreaterThanOrEqual(6)
+    // Management rows include access, model, issues, and repair actions; they are not compact names.
+    if (width === 1440) expect(geometry.firstRowBottom).toBeLessThanOrEqual(height)
+    expect(geometry.managementRowHeight / zoom).toBeGreaterThanOrEqual(64)
+    expect(geometry.fonts.title).toBeGreaterThanOrEqual(28)
+    expect(geometry.fonts.title).toBeLessThanOrEqual(32)
+    expect(geometry.fonts.body).toBe(16)
+    expect(geometry.fonts.input).toBe(16)
+    expect(geometry.fonts.chatName).toBeGreaterThanOrEqual(15)
+    expect(geometry.fonts.chatName).toBeLessThanOrEqual(16)
+    expect(geometry.fonts.badge).toBeGreaterThanOrEqual(13)
+    expect(geometry.fonts.badge).toBeLessThanOrEqual(14)
     expect(geometry.saveHeight / zoom).toBeLessThan(93)
     const disclosure = page.locator(".directory-options summary")
     await disclosure.focus()
@@ -428,7 +466,7 @@ for (const [width, height, zoom] of [
     expect(await row.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none")
     expect((await contrast(row.locator("strong"))).text).toBeGreaterThanOrEqual(4.5)
     expect(
-      (await contrast(row.locator("..").locator(".directory-status-label"))).text,
+      (await contrast(row.locator("xpath=ancestor::li").locator(".directory-status-label"))).text,
     ).toBeGreaterThanOrEqual(4.5)
     await row.click()
     await expect(page.getByRole("heading", { name: "Fixture chat 1", exact: true })).toBeVisible()
@@ -466,7 +504,8 @@ test("account menu returns keyboard focus and copy feedback reports success and 
   )
   await actions.click()
   await copy.click()
-  await expect(page.getByText("Chat ID copied.", { exact: true })).toBeVisible()
+  await expect(page.locator(".chat-copy-status")).toHaveText("Chat ID copied.")
+  await expect(page.locator(".chat-copy-status")).toBeVisible()
   await page.evaluate(() =>
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -480,6 +519,8 @@ test("account menu returns keyboard focus and copy feedback reports success and 
   await actions.click()
   await copy.click()
   await expect(
-    page.getByText("Could not copy. Select the ID to copy it manually.", { exact: true }),
+    page.locator(".chat-copy-status").filter({
+      hasText: "Could not copy. Select the ID to copy it manually.",
+    }),
   ).toBeVisible()
 })

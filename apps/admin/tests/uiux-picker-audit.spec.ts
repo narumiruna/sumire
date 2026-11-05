@@ -1,5 +1,5 @@
 import { expect, type Locator, test } from "@playwright/test"
-import { navigate, openDisclosure } from "./admin-fixture.js"
+import { navigate, openDisclosure, openProviderDetail } from "./admin-fixture.js"
 import { remediationFixture } from "./remediation-fixture.js"
 
 async function activeResultVisible(search: Locator) {
@@ -52,6 +52,30 @@ for (const width of [1440, 390, 320]) {
       )
       await page.reload()
       await navigate(page, "Model providers")
+      if (label === "Provider") {
+        await page.getByRole("button", { name: "Add provider", exact: true }).click()
+        const search = page.getByRole("textbox", { name: "Search providers", exact: true })
+        const options = page.locator("#provider-choice .data-row")
+        await expect(options).toHaveCount(122)
+        await search.fill("121")
+        await expect(options).toHaveCount(1)
+        await search.fill("no-synthetic-matches")
+        await expect(options).toHaveCount(0)
+        await expect(page.getByText("No matching providers.", { exact: true })).toBeVisible()
+        await search.fill("121")
+        await search.press("Tab")
+        const setup = page.getByRole("button", {
+          name: "Set up provider provider-121",
+          exact: true,
+        })
+        await expect(setup).toBeFocused()
+        await setup.press("Enter")
+        await expect(page.locator("#provider-detail-heading")).toHaveText("Provider 121")
+        await expect(page.getByRole("button", { name: /^Model: / })).toBeVisible()
+        expect(state.writes).toEqual([])
+        return
+      }
+      await openProviderDetail(page)
       const trigger = page.getByRole("button", { name: new RegExp(`^${label}: `) })
       const search = page.getByRole("combobox", {
         name: `Search ${label.toLowerCase()}`,
@@ -131,6 +155,27 @@ for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 900 })
       const state = await remediationFixture(page)
       await navigate(page, "Model providers")
+      if (label === "Provider") {
+        await page.getByRole("button", { name: "Add provider", exact: true }).click()
+        const search = page.getByRole("textbox", { name: "Search providers", exact: true })
+        await search.fill("fixture")
+        await navigate(page, "Chats")
+        await expect(search).toBeHidden()
+        await expect(
+          page.getByRole("textbox", { name: "Search providers", exact: true, includeHidden: true }),
+        ).not.toBeFocused()
+        await page.goBack()
+        await expect(search).toBeVisible()
+        await expect(search).toHaveValue("fixture")
+        await search.focus()
+        await search.press("Tab")
+        await expect(
+          page.getByRole("button", { name: "Set up provider fixture", exact: true }),
+        ).toBeFocused()
+        expect(state.writes).toEqual([])
+        return
+      }
+      await openProviderDetail(page)
       const trigger = page.getByRole("button", {
         name: new RegExp(`^${label}: `),
         includeHidden: true,

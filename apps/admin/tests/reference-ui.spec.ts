@@ -17,7 +17,7 @@ for (const width of [1448, 768, 390, 320]) {
       entries(page).getByRole("link", { name: "Inspect entry 170", exact: true }),
     ).toBeVisible()
     await expect(
-      page.getByRole("heading", { name: "Conversation records", exact: true }),
+      page.getByRole("heading", { name: "Conversation logs", exact: true }),
     ).toBeVisible()
     await expect(
       page.getByRole("region", { name: "Inspected conversation ID", exact: true }),
@@ -26,9 +26,7 @@ for (const width of [1448, 768, 390, 320]) {
       page.getByRole("region", { name: "Current inspection target", exact: true }),
     ).toContainText("Inspecting Conversation 7")
     await expect(page.locator(".durable-context-bar > section")).toHaveCount(3)
-    const breadcrumb = page.locator(".page-breadcrumb")
-    if (width > 650) await expect(breadcrumb).toBeVisible()
-    else await expect(breadcrumb).toBeHidden()
+    await expect(page.locator(".page-breadcrumb")).toHaveCount(0)
     const views = page.getByRole("navigation", { name: "Conversation record views", exact: true })
     await expect(views.getByRole("link", { name: "History", exact: true })).toHaveAttribute(
       "aria-current",
@@ -48,8 +46,11 @@ for (const width of [1448, 768, 390, 320]) {
         expect(list.x + list.width).toBeLessThanOrEqual(detail.x)
         expect(Math.abs(list.y - detail.y)).toBeLessThan(2)
         expect(filters.y + filters.height).toBeLessThanOrEqual(list.y)
-        expect(list.width).toBeGreaterThan(400)
-        expect(detail.width).toBeGreaterThan(list.width)
+        expect(list.width).toBeGreaterThanOrEqual(200)
+        expect(detail.width).toBeGreaterThanOrEqual(200)
+        const directory = await page.locator(".durable-directory-pane").boundingBox()
+        expect(directory?.width).toBeGreaterThanOrEqual(280)
+        expect(directory?.width).toBeLessThanOrEqual(320)
       }
     } else await expect(details(page)).toHaveCount(0)
     for (const control of await page
@@ -96,17 +97,19 @@ for (const width of [1448, 768, 390, 320]) {
     })
     if (!(await navigation.isVisible()))
       await page.getByRole("button", { name: /^Sections ·/ }).click()
-    for (const name of [
+    await expect(navigation.getByRole("heading")).toHaveCount(0)
+    await expect(navigation.getByRole("link")).toHaveText([
       "Chats",
-      "Conversation",
-      "Models",
-      "Tools & skills",
-      "Configuration",
-      "Monitoring",
+      "Conversation logs",
+      "Shared defaults",
+      "Providers & models",
+      "Tool permissions",
+      "Skills",
+      "MCP servers",
+      "Secrets & variables",
+      "GitHub mentions",
+      "Audit log",
     ])
-      await expect(
-        navigation.getByRole("heading", { name: `${name} navigation`, exact: true }),
-      ).toBeVisible()
     await expect(navigation.locator("a > svg")).toHaveCount(10)
     for (const icon of await navigation.locator("a > svg").all()) await expect(icon).toBeVisible()
     expect(state.methods.every((method) => method === "GET")).toBe(true)

@@ -2,7 +2,12 @@ import { initialPolicy } from "@narumitw/sumire-policy"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-import { GithubNotifications, mentionAuthorError } from "./github-notifications.js"
+import {
+  GithubNotifications,
+  mentionAuthorError,
+  mentionBlockers,
+  mentionConnection,
+} from "./github-notifications.js"
 
 function render(usernames: string[] = [], savedUsernames = usernames) {
   const policy = initialPolicy()
@@ -63,6 +68,59 @@ describe("GitHub mention administration", () => {
     expect(html).not.toContain("Manage tool permissions")
     expect(html).not.toContain("read_github_notifications")
     expect(html).not.toContain("GITHUB_NOTIFICATIONS_ALLOWED_USER_IDS")
+  })
+  it("reports saved policy, local application, and unmeasured health before the author editor", () => {
+    const html = render(["pending"], [])
+    expect(html).toContain("Saved author policy: automatic replies disabled")
+    expect(html).toContain("Unsaved; saved policy still applies")
+    expect(html).toContain("Remote verification and worker status: unavailable")
+    expect(html.indexOf("GitHub mentions status")).toBeLessThan(
+      html.indexOf("Mention author allowlist"),
+    )
+  })
+  it("strips flow codes, raw failures, and credentials from mention metadata", () => {
+    const connection = mentionConnection({
+      revision: 3,
+      applied: 2,
+      status: "failed",
+      secretStatus: "ready",
+      mode: "oauth",
+      reconnectRequired: false,
+      account: { id: 7, login: "fixture-user" },
+      flow: { userCode: "NEVER-RETAIN", token: "synthetic-secret" },
+      accessToken: "synthetic-secret",
+      error: "synthetic-secret",
+    })
+    expect(connection.account?.login).toBe("fixture-user")
+    expect(connection.flow).toBeUndefined()
+    expect(JSON.stringify(connection)).not.toMatch(/NEVER|synthetic-secret/)
+    expect(mentionBlockers(initialPolicy(), connection, connection)).toEqual([
+      "The saved author allowlist is empty; automatic replies are disabled.",
+      "A shared default model must be selected and allowed for GitHub replies.",
+      "Settings were saved but application failed.",
+    ])
+  })
+  it("does not claim remote readiness when known local blockers are absent", () => {
+    const saved = initialPolicy()
+    saved.githubNotifications.allowedUsernames = ["octocat"]
+    saved.models = ["fixture/model"]
+    saved.defaults.models = ["fixture/model"]
+    saved.defaults.model = "fixture/model"
+    const connection = mentionConnection({
+      revision: 1,
+      applied: 1,
+      status: "applied",
+      secretStatus: "ready",
+      mode: "manual",
+      reconnectRequired: false,
+    })
+    expect(mentionBlockers(saved, connection, connection)).toEqual([])
+    saved.providers = [{ id: "fixture", enabled: false, models: [] }]
+    expect(mentionBlockers(saved, connection, connection)).toContain(
+      "A shared default model must be selected and allowed for GitHub replies.",
+    )
+    expect(mentionBlockers(saved)).toContain("Local credential state is unknown.")
+    expect(mentionBlockers(saved)).toContain("Application state is unknown.")
   })
   it("distinguishes staged additions and removals from saved authors", () => {
     const html = render(["octocat", "new-author"], ["octocat", "old-author"])

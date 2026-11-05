@@ -139,12 +139,12 @@ test("secret CRUD is write-only, replacements are empty, search and confirmed de
   page,
 }) => {
   const state = await fixture(page)
-  await expect(page.getByText("Configured · ••••••••", { exact: true })).toBeVisible()
+  await expect(page.getByText("Configured · write-only", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Replace EXISTING", exact: true }).click()
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("")
   await expect(page.getByLabel("Runtime secret value")).toHaveAttribute("type", "password")
   await expect(page.getByRole("button", { name: "Save secret", exact: true })).toBeDisabled()
-  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.getByRole("button", { name: "Keep unchanged", exact: true }).click()
   const sentinel = "sentinel-not-visible-123"
   await add(page, "secret", "NEW_TOKEN", sentinel)
   await noLeak(page, sentinel)
@@ -184,6 +184,8 @@ test("GH_TOKEN uses existing secret controls without exposing tokens or starting
   await expect(guidance).toHaveText(
     "For GitHub CLI, create a secret named GH_TOKEN with a GitHub.com Personal Access Token. Once saved and applied, the token is available to the next bash execution without restart. All chats with bash access can use and read the token; give bash only to trusted chats. Configured state does not prove that GitHub accepts the token.",
   )
+  await expect(page.getByRole("region", { name: "GitHub connection", exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Manage GitHub connection", exact: true }).click()
   await expect(page.getByRole("region", { name: "GitHub connection", exact: true })).toContainText(
     "GitHub connection is unavailable. Manual GH_TOKEN controls remain available.",
   )
@@ -221,7 +223,7 @@ test("GH_TOKEN uses existing secret controls without exposing tokens or starting
     })
     await expect(page.getByText("Saved and applied.", { exact: true })).toBeVisible()
     await expect(page.getByRole("region", { name: "GH_TOKEN secret", exact: true })).toContainText(
-      "Configured · ••••••••",
+      "Configured · write-only",
     )
     await expect(page.getByLabel("Runtime secret value")).toHaveCount(0)
     for (const sentinel of tokens) {
@@ -318,7 +320,7 @@ test("navigation, tab changes, signout and session expiry clear drafts", async (
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("navigation-secret")
   page.once("dialog", (dialog) => dialog.accept())
   await navigate(page, "Audit")
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeFocused()
   await navigate(page, "Secrets & variables")
   await page.getByRole("button", { name: "Add secret", exact: true }).click()
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("")
@@ -453,7 +455,7 @@ test("mention replies reuse the write-only GH_TOKEN secret and a separate author
 }) => {
   const state = await fixture(page)
   await expect(page.getByText(/^GitHub mentions use/)).toContainText(
-    "Allow mention authors by GitHub username on the GitHub mentions page, not in Variables.",
+    "Manage allowed authors on GitHub mentions, not in Variables. An empty saved allowlist disables automatic replies.",
   )
   await add(page, "secret", "GH_TOKEN", "fixture-notifications-private-token")
   await page.getByRole("button", { name: "Save secret", exact: true }).click()

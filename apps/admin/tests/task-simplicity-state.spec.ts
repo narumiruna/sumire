@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test"
-import { navigate, openDisclosure, reviewPolicyRecovery } from "./admin-fixture.js"
+import {
+  navigate,
+  openDisclosure,
+  openProviderDetail,
+  reviewPolicyRecovery,
+} from "./admin-fixture.js"
 import { remediationFixture as fixture } from "./remediation-fixture.js"
 
 for (const width of [390, 1440]) {
@@ -72,6 +77,7 @@ for (const width of [390, 1440]) {
       await page.getByRole("button", { name: "Add connection", exact: true }).click()
       await page.getByLabel("MCP server name", { exact: true }).fill("connection-draft")
       await navigate(page, "Model Providers")
+      await openProviderDetail(page)
       await page.getByRole("button", { name: /^Model: / }).click()
       await page.getByRole("option", { name: /Other/ }).click()
       await openDisclosure(page, "Custom endpoint")
@@ -85,7 +91,7 @@ for (const width of [390, 1440]) {
       expect(state.writes).toEqual([])
       await review
         .getByRole("button", {
-          name: "Continue editing: Model providers — Custom endpoint",
+          name: "Continue editing: Providers & models — Custom endpoint",
           exact: true,
         })
         .click()
@@ -99,7 +105,9 @@ for (const width of [390, 1440]) {
       await expect
         .poll(() => state.policy())
         .toEqual({ ...original, groups: [...original.groups, -246] })
-      await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeEnabled()
+      await expect(
+        page.getByRole("button", { name: "Refresh settings", exact: true }),
+      ).toBeEnabled()
       await navigate(page, "MCP connections")
       await expect(page.getByLabel("MCP server name", { exact: true })).toHaveValue(
         "connection-draft",
@@ -232,6 +240,7 @@ test("credential refresh keeps the authentication controls open and restores key
   provider.configured = false
   await page.reload()
   await navigate(page, "Model Providers")
+  await openProviderDetail(page)
   await page.route("**/api/providers/fixture/credential", async (route) => {
     provider.configured = true
     await route.fulfill({ json: { ok: true } })

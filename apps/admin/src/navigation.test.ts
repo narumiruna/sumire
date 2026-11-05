@@ -13,15 +13,15 @@ import {
 
 const taskLabels = {
   Chats: "Chats",
-  Durable: "Conversation records",
+  Durable: "Conversation logs",
   Defaults: "Shared defaults",
   "Tool permissions": "Tool permissions",
   Skills: "Skills",
-  "MCP connections": "MCP Servers",
-  "Model Providers": "Model providers",
+  "MCP connections": "MCP servers",
+  "Model Providers": "Providers &amp; models",
   "Secrets & variables": "Secrets &amp; variables",
   "GitHub mentions": "GitHub mentions",
-  Audit: "Audit",
+  Audit: "Audit log",
 } satisfies Record<Page, string>
 
 function renderNavigation(page: Page = "Durable") {
@@ -52,33 +52,18 @@ describe("admin navigation", () => {
     }
   })
 
-  it("groups every destination by task in the planned order", () => {
+  it("lists every destination once without redundant groups", () => {
     const html = renderNavigation()
-    const groups = [
-      ["chat-management", "Chats"],
-      ["conversation", "Conversation"],
-      ["models", "Models"],
-      ["tools-and-skills", "Tools &amp; skills"],
-      ["system-settings", "Configuration"],
-      ["activity", "Monitoring"],
-    ]
-    let previous = -1
-    for (const [id, label] of groups) {
-      const position = html.indexOf(`class="navigation-group" aria-labelledby="navigation-${id}"`)
-      expect(position).toBeGreaterThan(previous)
-      expect(html).toContain(`id="navigation-${id}"`)
-      expect(html).toContain(`>${label}</h2>`)
-      previous = position
-    }
+    expect(html).not.toContain("navigation-group")
     const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)]
     const orderedPages: Page[] = [
       "Chats",
       "Durable",
+      "Defaults",
       "Model Providers",
       "Tool permissions",
       "Skills",
       "MCP connections",
-      "Defaults",
       "Secrets & variables",
       "GitHub mentions",
       "Audit",
@@ -100,8 +85,8 @@ describe("admin navigation", () => {
   it("keeps protocol and inspector details in accessible descriptions", () => {
     const html = renderNavigation()
     for (const [id, label, technicalTerm] of [
-      ["Durable", "Conversation records", "Durable Inspector"],
-      ["MCP-connections", "MCP Servers", "Model Context Protocol (MCP)"],
+      ["Durable", "Conversation logs", "Durable Inspector"],
+      ["MCP-connections", "MCP servers", "Model Context Protocol (MCP)"],
     ]) {
       const descriptionId = `navigation-description-${id}`
       const link = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].find((match) =>

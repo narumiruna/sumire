@@ -1,6 +1,9 @@
 import type { Chat } from "@narumitw/sumire-contracts"
+import { Theme } from "@radix-ui/themes"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-import { chatName, directoryPath } from "./chat-directory.js"
+import { type ChatDirectory, ChatSelector, chatName, directoryPath } from "./chat-directory.js"
 
 describe("stored chat display names", () => {
   it("trims observed names without interpreting untrusted markup", () => {
@@ -26,6 +29,61 @@ describe("stored chat display names", () => {
     expect(chatName({ id: 42, type: "private", name: "43" })).toBe("43")
     for (const id of [-100, -200])
       expect(chatName({ id, type: "group", name: "Same name" })).toBe("Same name")
+  })
+})
+
+describe("optional chat management columns", () => {
+  const directory: ChatDirectory = {
+    chats: [{ id: 42, name: "Long name 👩‍💻 <untrusted>", type: "private" }],
+    knownChats: [],
+    loading: false,
+    error: "",
+    query: "",
+    offset: 0,
+    setQuery: () => {},
+    setOffset: () => {},
+    refresh: () => {},
+    selected: { loading: false, error: "", chat: undefined },
+  }
+  it("keeps the default selector a button without management columns for Durable", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Theme,
+        {},
+        createElement(ChatSelector, { directory, chat: "42", onSelect: () => {} }),
+      ),
+    )
+    expect(html).toMatch(/<button[^>]*aria-current="true"/)
+    expect(html).not.toContain("directory-model")
+    expect(html).not.toContain("Copy ID")
+  })
+  it("renders five management columns, native detail links and independent ID controls", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Theme,
+        {},
+        createElement(ChatSelector, {
+          directory,
+          chat: "42",
+          onSelect: () => {},
+          badge: () => "Approved · Disabled",
+          actions: () => "Manage access",
+          columns: {
+            model: () => "Shared model",
+            issues: () => "Inventory unknown",
+            href: (chat) => `?section=Chats&chat=${chat.id}`,
+            copyId: () => createElement("button", { type: "button" }, "Copy ID"),
+          },
+        }),
+      ),
+    )
+    for (const label of ["Chat", "Access", "Effective model", "Configuration issues", "Actions"])
+      expect(html).toContain(`>${label}<`)
+    expect(html).toContain('href="?section=Chats&amp;chat=42"')
+    expect(html).toContain("Long name 👩‍💻 &lt;untrusted&gt;")
+    expect(html).toContain("Approved · Disabled")
+    expect(html).toContain("Copy ID")
+    expect(html).not.toMatch(/<a[^>]*>[\s\S]*?<button[^>]*>Copy ID[\s\S]*?<\/a>/)
   })
 })
 

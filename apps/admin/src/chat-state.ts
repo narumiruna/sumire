@@ -1,7 +1,15 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
 import type { Inventory, Policy, Snapshot } from "./api.js"
 
-export type ChatRepair = "access" | "enabled" | "application" | "model" | "providers"
+export type ChatRepair =
+  | "access"
+  | "enabled"
+  | "application"
+  | "model"
+  | "providers"
+  | "tools"
+  | "servers"
+  | "skills"
 export type ChatIssue = {
   code: string
   label: string
@@ -97,6 +105,18 @@ export function chatState(
       target: "application",
     })
   issues.push(...modelIssues(effective.model, override?.model ?? policy.defaults.model, inventory))
+  for (const category of ["tools", "servers", "skills"] as const) {
+    const selected = override?.[category] ?? policy.defaults[category] ?? []
+    const blocked = selected.filter((name) => !policy[category].includes(name))
+    if (blocked.length)
+      issues.push({
+        code: `global-${category}`,
+        label: "Selection blocked",
+        reason: `${category === "servers" ? "MCP server" : category === "skills" ? "Skill" : "Tool"} selections excluded by global policy: ${blocked.join(", ")}.`,
+        action: "Review chat permissions",
+        target: category,
+      })
+  }
   return {
     approved,
     enabled,

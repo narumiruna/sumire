@@ -3,7 +3,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
-import { Skills, skillNames } from "./skills.js"
+import { Skills, skillNames, skillPurpose } from "./skills.js"
 
 const inventory: Inventory = {
   tools: [],
@@ -55,6 +55,31 @@ describe("skills workspace", () => {
     expect(html).not.toContain("<script>")
   })
 
+  it("bounds the purpose and keeps complete text in details", () => {
+    expect(skillPurpose("First purpose. Full instructions follow.")).toBe("First purpose.")
+    expect(skillPurpose("long ".repeat(100))).toHaveLength(140)
+    const policy = initialPolicy()
+    policy.skills = ["loaded", "missing"]
+    policy.defaults.skills = ["loaded", "missing"]
+    policy.chats["42"] = { ...inherited, enabled: true }
+    policy.chats["43"] = { ...inherited, enabled: true, skills: [] }
+    const html = renderToStaticMarkup(
+      createElement(Skills, {
+        policy,
+        saved: policy,
+        inventory,
+        onChange: () => {},
+        onChat: () => {},
+      }),
+    )
+    expect(html).toContain('id="default-skills"')
+    expect(html).toContain("Installation instructions")
+    expect(html).not.toContain("Show skill setup instructions")
+    expect(html).toContain("1 configured chat overrides inherit")
+    expect(html).toContain("1 use explicit lists, including empty lists")
+    expect(html).toContain("Unavailable: not loaded")
+    expect(html).toContain("Skill selection does not grant tool access")
+  })
   it("shows an empty inventory without adding tool permissions", () => {
     const policy = initialPolicy()
     const html = renderToStaticMarkup(
@@ -66,7 +91,8 @@ describe("skills workspace", () => {
         onChat: () => {},
       }),
     )
-    expect(html).toContain("No skills loaded or selected.")
+    expect(html).toContain("Skill inventory unavailable")
+    expect(html).toContain("No retained skill selections.")
     expect(policy.tools).toEqual([])
   })
 })

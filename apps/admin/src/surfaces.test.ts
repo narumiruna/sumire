@@ -7,14 +7,14 @@ describe("shared presentation primitives", () => {
   it("adds administration breadcrumbs without changing the page heading or action slot", () => {
     const html = renderToStaticMarkup(
       createElement(PageHeader, {
-        title: "Conversation records",
+        title: "Conversation logs",
         breadcrumb: "Administration",
         actions: createElement("button", { type: "button" }, "Account"),
       }),
     )
     expect(html).toContain('class="page-breadcrumb"')
     expect(html).toContain(">Administration</span>")
-    expect(html).toContain(">Conversation records</span>")
+    expect(html).toContain(">Conversation logs</span>")
     expect(html).toContain('id="current-section-heading"')
     expect(html).toContain('<button type="button">Account</button>')
   })

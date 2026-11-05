@@ -231,6 +231,7 @@ async function fixture(page: Page, options: Options = {}) {
     await route.fulfill({ json: data[path] ?? {} })
   })
   await page.goto("/?section=Secrets+%26+variables")
+  await page.getByRole("button", { name: "Manage GitHub connection", exact: true }).click()
   await expect(
     card(page).getByRole("heading", { name: "Connect GitHub", exact: true }),
   ).toBeVisible()
@@ -278,6 +279,8 @@ async function fixture(page: Page, options: Options = {}) {
   }
 }
 async function start(page: Page, replace = false) {
+  const entry = page.getByRole("button", { name: "Manage GitHub connection", exact: true })
+  if (await entry.isVisible()) await entry.click()
   await card(page)
     .getByRole("button", { name: /^(Connect|Reconnect) GitHub$/ })
     .click()
@@ -575,8 +578,10 @@ test("navigation confirmation cancels an active flow; a late status cannot resto
   await navigate(page, "Audit")
   release()
   await expect.poll(state.cancellations).toBe(1)
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible()
   await navigate(page, "Secrets & variables")
+  await expect(card(page)).toHaveCount(0)
+  await page.getByRole("button", { name: "Manage GitHub connection", exact: true }).click()
   await expect(card(page)).toBeVisible()
   await expect(page.getByText(/late-account/)).toHaveCount(0)
   await noLeak(page, code)
@@ -648,9 +653,10 @@ test("late start after navigation is ignored and recovered local authorization i
   await navigate(page, "Audit")
   await expect.poll(state.cancellations).toBe(1)
   release()
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible()
   await noLeak(page, code)
   await navigate(page, "Secrets & variables")
+  await page.getByRole("button", { name: "Manage GitHub connection", exact: true }).click()
   await expect(card(page)).toContainText("GitHub authorization cancelled")
   await noLeak(page, code)
   expect(state.completions()).toBe(0)
@@ -709,7 +715,7 @@ test("tab and Back navigation guard pending authorization without retaining a co
   await expect(page.getByText(`GitHub user code: ${code}`, { exact: true })).toBeVisible()
   page.once("dialog", (dialog) => dialog.accept())
   await page.goBack()
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible()
   await expect.poll(state.cancellations).toBe(2)
   await noLeak(page, code)
 })
@@ -888,14 +894,25 @@ test("unknown credential fields and raw errors never enter DOM, review, storage,
 test("invalid verified account cannot be saved or rendered as markup", async ({ page }) => {
   const state = await fixture(page, { invalidAccount: true })
   await start(page)
+  await expect(page.getByText(`GitHub user code: ${code}`, { exact: true })).toBeVisible()
+  const response = page.waitForResponse("**/api/github/oauth/fixture-flow")
   state.authorize()
-  await expect(page.getByRole("alert")).toContainText("GitHub outcome is unknown")
+  expect((await (await response).json()).account).toEqual({ id: 7, login: "<img src=x>" })
+  await expect(card(page).getByRole("alert")).toContainText("GitHub outcome is unknown")
   await expect(
     page.getByRole("button", { name: "Save and apply this account", exact: true }),
   ).toHaveCount(0)
   await expect(page.locator('img[src="x"]')).toHaveCount(0)
   await noLeak(page, "<img src=x>")
+  await noLeak(page, code)
   expect(state.completions()).toBe(0)
+  expect(state.calls.filter((call) => call.method !== "GET")).toEqual([
+    {
+      path: "/api/github/oauth",
+      method: "POST",
+      body: { revision: 1, replace: false },
+    },
+  ])
 })
 
 test("missing optional API shows unavailable GitHub without blocking generic secrets", async ({

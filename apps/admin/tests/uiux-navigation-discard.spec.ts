@@ -59,7 +59,7 @@ for (const width of [1440, 390, 320]) {
       // Sections stay mounted to retain drafts. Invoke the retained source again to exercise
       // an explicit same-page request without adding a test-only route or UI control.
       const historyLength = await page.evaluate(() => window.history.length)
-      await page.getByRole("heading", { name: "Model providers", exact: true }).focus()
+      await page.getByRole("heading", { name: "Providers & models", exact: true }).focus()
       await page.evaluate(() => window.scrollTo(0, 0))
       await page
         .locator("button")
@@ -209,11 +209,11 @@ test("later navigation and history cancel explicit target focus before its frame
     .evaluate((element) => (element as HTMLButtonElement).click())
   await expect(page.locator("#model-availability")).toBeVisible()
   await page
-    .getByRole("link", { name: "Audit", exact: true })
+    .getByRole("link", { name: "Audit log", exact: true })
     .evaluate((element) => (element as HTMLAnchorElement).click())
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible()
   await releaseFocusFrames(page)
-  await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeFocused()
   await expect(page.locator("#model-availability")).not.toBeFocused()
 
   await navigate(page, "Defaults")
@@ -283,7 +283,7 @@ test("MCP discard and queued editor focus cannot take focus after navigation or 
     route.fulfill({ status: 401, json: { error: "Session expired" } }),
   )
   await page
-    .getByRole("button", { name: "Reload", exact: true })
+    .getByRole("button", { name: "Refresh settings", exact: true })
     .evaluate((element) => (element as HTMLButtonElement).click())
   const signIn = page.getByRole("button", { name: "Sign in with passkey", exact: true })
   await expect(signIn).toBeVisible()
@@ -319,7 +319,7 @@ for (const cancelBeforeReady of [false, true]) {
     }
     respond()
     if (cancelBeforeReady) {
-      const heading = page.getByRole("heading", { name: "Model providers", exact: true })
+      const heading = page.getByRole("heading", { name: "Providers & models", exact: true })
       await expect(heading).toBeVisible()
       await heading.focus()
       await releaseFocusFrames(page)
@@ -346,7 +346,7 @@ test("session expiry cancels an explicit target frame", async ({ page }) => {
     route.fulfill({ status: 401, json: { error: "Session expired" } }),
   )
   await page
-    .getByRole("button", { name: "Reload", exact: true })
+    .getByRole("button", { name: "Refresh settings", exact: true })
     .evaluate((element) => (element as HTMLButtonElement).click())
   const signIn = page.getByRole("button", { name: "Sign in with passkey", exact: true })
   await expect(signIn).toBeVisible()
@@ -404,7 +404,7 @@ test("later navigation and history do not revive a cancelled explicit editor req
 
 test("modified sidebar clicks remain native links", async ({ page }) => {
   const state = await remediationFixture(page)
-  const audit = page.getByRole("link", { name: "Audit", exact: true })
+  const audit = page.getByRole("link", { name: "Audit log", exact: true })
   const href = await audit.getAttribute("href")
   for (const modifier of ["ctrlKey", "metaKey", "shiftKey", "altKey"]) {
     const prevented = await audit.evaluate((element, key) => {

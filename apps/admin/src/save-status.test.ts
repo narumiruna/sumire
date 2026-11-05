@@ -51,6 +51,7 @@ describe("SaveStatus", () => {
     { dirty: true },
     { mcpDirty: true },
     { providerPending: true },
+    { runtimePending: true },
     { localPending: true },
     { busy: true },
   ])("does not compact when attention is required: %j", (props) => {
@@ -108,6 +109,23 @@ describe("SaveStatus", () => {
     expect(html).toContain("MCP: Unsaved configuration")
     expect(html).toContain("Provider: Unsaved selection or authentication")
     expect(html).toContain("Discard settings changes</button>")
+  })
+  it("names the policy transaction separately from runtime-value drafts", () => {
+    const html = render({
+      dirty: true,
+      runtimePending: true,
+      entries: [
+        {
+          label: "Shared tools",
+          targets: [{ page: "Tool permissions", selector: "#default-tool-permissions" }],
+        },
+      ],
+    })
+    expect(html).toContain("Policy transaction: Tool permissions")
+    expect(html).toContain("All staged policy edits are saved together")
+    expect(html).toContain("Runtime values: Separate editor draft or operation")
+    expect(html).toContain("Saved configuration")
+    expect(html).not.toContain("Settings saved and applied.")
   })
   it("retains pending-input guards on review and application retry", () => {
     expect(render({ dirty: true, localPending: true })).toMatch(

@@ -12,6 +12,8 @@ import type {
   DurableInspectionView,
   ImportReport,
   Inventory,
+  McpObservation,
+  McpObservationFailure,
   Snapshot,
 } from "../src/index.js"
 
@@ -40,6 +42,39 @@ it("defines shared wire types without runtime dependencies", async () => {
   expectTypeOf<ImportReport["report"]>().toEqualTypeOf<Record<string, unknown>>()
   expectTypeOf<Inventory["mcp"][number]["env"]>().toEqualTypeOf<Record<string, null>>()
   expect(Object.keys(await import("../src/index.js"))).toEqual([])
+})
+
+it("adds optional structured MCP observations without changing legacy fields", () => {
+  const legacy: Inventory["mcp"][number] = {
+    name: "fixture",
+    connection: "no visible tools or unavailable",
+    tools: [],
+    env: {},
+    headers: {},
+  }
+  expect(legacy.observation).toBeUndefined()
+  expectTypeOf<Inventory["mcp"][number]["observation"]>().toEqualTypeOf<
+    McpObservation | undefined
+  >()
+  const observations: McpObservation[] = [
+    { state: "untested" },
+    { state: "checking", revision: 2, startedAt: 1000 },
+    { state: "succeeded", revision: 2, completedAt: 2000 },
+    { state: "failed", revision: 2, completedAt: 2000, reason: "listing" },
+  ]
+  expect(observations.map((observation) => ({ ...legacy, observation }).observation.state)).toEqual(
+    ["untested", "checking", "succeeded", "failed"],
+  )
+  expectTypeOf<McpObservationFailure>().toEqualTypeOf<
+    "transport" | "listing" | "timeout" | "cancelled"
+  >()
+  expectTypeOf<{ state: "succeeded" }>().not.toExtend<McpObservation>()
+  expectTypeOf<{
+    state: "failed"
+    revision: number
+    completedAt: number
+    reason: "raw private error"
+  }>().not.toExtend<McpObservation>()
 })
 
 it("adds history with the existing bounded entry content shape and response envelope", () => {

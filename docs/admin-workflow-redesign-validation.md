@@ -1,5 +1,7 @@
 # Admin workflow redesign validation
 
+Sections before **2026-11-05 interaction structure** record historical validation. Their frontend-only scope, measurements, and test counts do not describe the current change. The later **2026-11-05 retired status policy compatibility** section records the deployment recovery follow-up and supersedes the original no-database-conversion statement.
+
 ## Scope and transaction contract
 
 This change is frontend-only. API schemas, authorization, durable reads, and policy inheritance remain unchanged.
@@ -97,3 +99,106 @@ Initial browser failures included old selectors for moved readiness details, mob
 - Scope: only admin source/tests, documentation, and an admin minor changeset are changed. The completed implementation plan is removed; this document retains its evidence.
 - Tests use mocked provider and Telegram responses. Real external OAuth, live provider acceptance, and production deployment were not exercised. Local configuration is not a claim of successful model execution.
 - Rollback: deploy the preceding matching application build. This change needs no database restore or migration. Do not publish packages or dispatch release workflows as part of this PR.
+
+## 2026-11-05 interaction structure
+
+### Outcome and boundaries
+
+The current change replaces grouped navigation and mixed setup tasks with explicit scopes and separate operations. It retains the Sumire theme, section IDs/aliases, policy schema, revision recovery, write-only credentials, and bounded read-only conversation APIs. There is no database migration, environment-variable change, notification subsystem, automatic remote check, or second credential store.
+
+Provider detail has Connection, Models, and Usage policy references. Shared defaults remains the shared model editor. Model-removal review lists configured/effective list, model, and thinking effects for saved explicit entries, including disabled/off-page chats and inherited fallback. Availability restoration does not restore removed selections. GitHub outbox effects and the complete inheriting-chat population are not inferred.
+
+Chats uses the full content width; details keep a bounded reading width. The five row columns separate access from effective model and configuration diagnostics. Secrets puts its list before optional connection details. GitHub mentions opens the same connection panel and labels prior identity separately from worker health. Skills maintenance is instructions only. Conversation logs places a 300 px desktop directory beside the reader and uses a narrow selector.
+
+MCP inventory adds optional structured memory-only observations. Untested, checking, success (including zero published names), failure, and missing/unknown results are separate. Times use Unix milliseconds; observations bind to revision and authorization epoch and are invalidated by apply/configuration changes/restart. Discovery grants no permissions. Typed HTTP/client timeout errors are distinguished without changing the existing separate initial-discovery budget.
+
+### Baseline and artifacts
+
+Base: `c8c6d76` on `origin/main`; Node.js 26.11.1. The earlier plan referenced `f4dafac`; the intervening base change was a package release. The initial working tree contained only the supplied uncommitted planning files.
+
+- `npm ci` and local Playwright Chromium setup passed.
+- Baseline admin unit tests: 389 passed. Baseline browser suite: 639 passed.
+- Baseline first-viewport/full-page captures cover ten pages at 1440, 1024, 768, 390, and 320 px. Attachments record computed text/control geometry and read-only request traces.
+- Baseline logs: `/tmp/sumire-interaction-baseline-{unit,browser,captures}.log`. Baseline artifacts: `/tmp/sumire-interaction-baseline-{browser,captures}/`.
+- Current complete-suite logs: `/tmp/sumire-interaction-complete-browser-{one,two}.log`; artifacts: `/tmp/sumire-interaction-complete-browser-{one,two}/`.
+- The final full-width directory capture and its direct width assertion are in `/tmp/sumire-interaction-final-fullwidth/` and `interaction-structure-layout.spec.ts`. The 99 affected layout/directory tests passed after removing the old workspace width cap.
+- Capture artifacts contain synthetic fixtures only. They are local, not committed; rerun the named tests to regenerate them.
+
+The default test port 17466 was occupied. Temporary configurations retained the tracked Playwright settings but used isolated loopback ports 17476 and 17486 for the two final shards. No existing service was stopped, and no permanent test option or environment variable was added.
+
+### Task evidence
+
+| Administrator task | Current acceptance evidence |
+| --- | --- |
+| Explain a chat's blocked tool | `interaction-directory-permissions.spec.ts`, `tool-permissions.spec.ts`, and `task-centered.spec.ts`: saved access/model diagnostics, configured/effective values, blocking sources, exact repair focus, filtered conflicts, category inheritance, no writes from inspection. |
+| Connect provider, enable model, set shared default | `model-workflow.spec.ts` and `admin.spec.ts`: exact independent credential/availability/policy payloads; no catalog grant or implicit use; unchanged explicit overrides; invalid thinking/credentials/conflict and cancellation guards. |
+| Remove an in-use model | `provider-policy.test.ts`, `provider-model-workflow.test.ts`, and model workflow review: disabled/off-page entries, list/thinking resets, resulting inherited model, restore limit, unknown outbox/population limits. |
+| Replace a secret | `admin-secrets-github-skills.spec.ts`, `runtime-config.spec.ts`, and `github-connection.spec.ts`: list first, blank write-only replacement, keep/delete distinction, one shared authorization flow, optional-API/read failures, no code/secret storage or duplicate write. |
+| Recover a failed save | `uiux-regressions.spec.ts`, recovery tests, and `usability.spec.ts`: retained drafts, explicit overlapping-choice recovery, lost replies, committed-but-failed application, refresh-only failure, isolated editor drafts, expiry and stale-session responses. |
+| Read conversations without starting work | Durable history/inspector/workspace tests: explicit chat choice, unselected/unloaded/empty/failed distinctions, bounded reads, loaded-page search, role/time content, collapsed tool payloads, branch/deep-link preservation and expired-content cleanup. |
+| Use narrow or enlarged layouts | `interaction-accessibility.spec.ts`, `interaction-structure-layout.spec.ts`, existing layout/contrast tests: 320–1440 px reflow, 200% CSS zoom, doubled browser font, all four chat tabs, 44 px primary controls, contrast, and full keyboard focus above the changes bar. |
+
+The font-enlargement test uses Chromium's `Page.setFontSizes` and verifies 32 px body text. Chromium resets that override on same-document history navigation, so the test reapplies it to each page. CSS zoom is a separate geometry check. Neither establishes physical-device, screen-reader, or complete WCAG acceptance.
+
+Independent reviews found and verified corrections for HTTP timeout classification, saved-provider reference visibility, hidden-detail editor focus, provider selection focus, and Skills dialog closure on history changes. Regression tests retain these gates. Old numeric density targets and removed selector-first/wizard assertions were replaced with measured new-layout constraints and explicit task assertions, not skipped. The production build retains the 500 kB JavaScript chunk gate by splitting policy/schema code.
+
+### Final checks
+
+All commands ran from the repository root against the combined implementation:
+
+| Check | Result |
+| --- | --- |
+| `npm run format:check` | Passed |
+| `npm run lint` | Passed; no warnings in changed workspaces |
+| `npm run typecheck` | Passed |
+| `npm test` | 3,238 passed across 199 test files; admin 424, bot 1,875 |
+| `npm run build` | Passed; browser JavaScript chunks remain below 500 kB |
+| Complete admin Playwright suite, two shards | 680 passed: 340 per shard; no retries or skipped tests |
+| `git diff --check` | Passed |
+
+For the complete browser suite, each shard used `npm exec --workspace @narumitw/sumire-admin -- playwright test --config=<temporary-config> --workers=4 --reporter=line --shard=1/2` (then `2/2`). The tracked configuration also remains usable when 17466 is free. Root logs are `/tmp/sumire-interaction-root-{format-check,lint,typecheck,test,build}.log`.
+
+Known baseline diagnostics remain: dependency installation reports seven moderate advisories and deprecated transitive packages; root lint has an informational string-concatenation suggestion in unchanged GitHub-notifications tests. Both baseline and final browser logs contain one ResizeObserver loop diagnostic; the status-bar sizing implementation is unchanged and all bounded-height/focus gates pass. Injected malformed Audit records deliberately log their display error. These are not concealed failures or claims of production acceptance.
+
+### External handoff and release restrictions
+
+These items are outside local implementation acceptance. They do not authorize external writes or credential access.
+
+| Responsible role | Prerequisite and action | Expected result and unverified behavior | Release restriction |
+| --- | --- | --- | --- |
+| Product/repository owner | Identify the missing Service status source/build/API, or authorize separate notification work with services, destinations, conditions, and delivery rules. | An implementable notification contract; the review's polling-service notifications do not exist in this checkout. | No placeholder link or claim that Status notifications was redesigned. A notification-inclusive release requires separate work. |
+| Account administrator | After local checks, use approved accounts and explicit consent to exercise real provider/GitHub authorization and required permissions. Do not send secrets or MFA codes to the agent. | Live authorization, upstream model/repository entitlement, and reconnect behavior; local configuration and mocks do not establish these. | Do not claim live acceptance or enable new automatic replies from mock evidence alone. |
+| Deployment operator | Review the matching admin/bot/contracts build and trusted-host backups; deploy only with authorization. Approve any real discovery or delivery target explicitly. | Production behavior with approved credentials and destinations; no deployment, live message, or billable model request was performed here. | Local checks do not authorize deployment, credential rotation, or external effects. |
+| Design/accessibility reviewer | Review sanitized captures and, where required, physical devices or assistive technology not available to the agent. | Subjective scanability and manual/device accessibility acceptance beyond automation. | Do not claim complete usability, WCAG, or real-device acceptance. This handoff alone does not block verified agent work. |
+
+### Recovery
+
+Deploy or roll back matching admin, bot, and contracts builds together. Missing observation fields render Unknown without parsing legacy prose. This change needs no database restore or migration. A display rollback does not undo committed policy, removed model references, replaced credentials, OAuth authorization, or external actions; use explicit reviewed repair operations. Preserve the existing database/key backup procedure and do not abort agent work or reset sessions merely to revert presentation. No packages, version tags, release workflows, or production deployment were created by this work.
+
+## 2026-11-05 retired status policy compatibility
+
+This follow-up supersedes the original interaction change's no-database-conversion statement. It does not restore the reverted notification feature.
+
+### Failure and correction
+
+Deploy run `41943205196`, job `126970223872`, built `58d33ba` successfully. The operator's startup stack establishes that `AdminStore.snapshot`, called by startup skill registration, rejects persisted `statusNotifications`. The container exited with code 1 and restarted; it was not OOM-killed. The earlier Service status feature wrote that field under database version 5; revert `2e1ac00` removed its schema without converting stored policy. The available CI import check did not exercise this persisted-data path.
+
+Before changing active policy, the corrected constructor archives the original raw settings row and metadata in private `retired_status_notifications`. It removes only the retired top-level key, advances revision/authorization epoch, preserves the applied revision, records a value-free audit event, and requires normal application of Pending settings. Retirement, the older GitHub migration, and final strict validation share the existing transaction; validation or SQL failure rolls back every change. Version-5 data without the retired field is also validated before commit. Other policy values, authentication records, encrypted runtime rows, MCP configuration, access decisions, and old notification state are preserved.
+
+The additional archive table does not change `user_version` or the active policy schema. Archives are not import reports and are not exposed by API responses or audit values. Writes still reject the retired field. No archive restoration, notification worker, generic unknown-field stripping, new permission, environment variable, or production mutation is added.
+
+### Verification
+
+- The first regression failed before the fix with the same Zod error and `registerSkills` stack: `/tmp/sumire-retired-status-red.log`.
+- All 67 focused cases passed in `admin-retired-status-policy.test.ts`, `admin-github-migration.test.ts`, `admin-server.test.ts`, and `pi-session-skills.test.ts`. The 22 new cases cover exact archives, other-table preservation, active-policy validation, private authenticated APIs, stale writes, idempotence, SQL/validation rollback, both older migrations, and actual factory startup without model requests.
+- Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` passed. Tests: 3,260 across 200 files, including 1,897 bot tests. Logs: `/tmp/sumire-retired-status-root-{format-check,lint,typecheck,test,build}.log`. A temporary fixture typing error was corrected before the complete rerun.
+- An isolated Compose build of `runtime-application` passed. Its compiled store passed the legacy-database smoke as UID 1000, with networking disabled, no ports, credentials, or production mounts. The smoke checked retirement, exact archive, access gating, successful application, and repeat open. Logs: `/tmp/sumire-retired-status-container-{build,smoke}.log`. No test container remains.
+- An independent design review and final implementation review found no required corrections. The earlier browser results concern the unchanged UI; the browser suite was not rerun for this storage-only follow-up.
+
+### Production handoff and recovery
+
+Responsible role: deployment operator. Before rollout, stop the restarting service and retain a protected state/database backup and the independent encryption key through the existing backup procedure. Do not delete volumes, edit policy by hand, or share database/archive contents. Select the corrected branch head for a **new** Deploy run: rerunning the old failed run still checks out its old SHA.
+
+After an authorized rollout, confirm that the container stays running, `/healthz` succeeds, the new policy revision applies normally, administrator authentication works, and existing allow/deny decisions and provider/secret settings remain intact. Local synthetic checks do not establish these production results. No production deployment, workflow dispatch, live Telegram/provider request, or credential operation was performed by the agent.
+
+The archive is not a full-database backup. The preceding post-revert build can read converted active policy and ignore the added table; preserve the archive if that build is used. Reintroducing a notification-capable build or restoring its settings and queues requires explicit review because it can resume delivery. For a genuine database recovery, stop the service and restore a reviewed consistent backup rather than copying archive values into active settings. Do not restore obsolete access grants.

@@ -35,7 +35,7 @@ async function fixture(page: Page) {
 
 function row(page: Page, id: number) {
   return page.locator(".directory-row").filter({
-    has: page.locator(".directory-chat", { hasText: String(id) }),
+    has: page.getByRole("link", { name: new RegExp(` · ${id}$`) }),
   })
 }
 
@@ -47,7 +47,7 @@ async function action(page: Page, id: number, name: string) {
 }
 
 for (const width of [1440, 390, 320]) {
-  test(`chat row menus are separate, right-aligned, and keyboard accessible at ${width}px`, async ({
+  test(`chat row menus are separate, contained, and keyboard accessible at ${width}px`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
@@ -73,12 +73,23 @@ for (const width of [1440, 390, 320]) {
       const identityBox = await identity.boundingBox()
       const menuBox = await menu.boundingBox()
       const entryBox = await entry.boundingBox()
-      if (!identityBox || !menuBox || !entryBox) throw new Error("Missing chat row geometry")
+      const actionsBox = await entry.locator(".directory-row-actions").boundingBox()
+      if (!identityBox || !menuBox || !entryBox || !actionsBox)
+        throw new Error("Missing chat row geometry")
       expect(menuBox.width).toBeGreaterThanOrEqual(44)
       expect(menuBox.height).toBeGreaterThanOrEqual(44)
-      expect(menuBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width)
-      expect(Math.abs(menuBox.x + menuBox.width - entryBox.x - entryBox.width)).toBeLessThan(2)
-      await expect(entry.locator("button button")).toHaveCount(0)
+      expect(menuBox.x).toBeGreaterThanOrEqual(actionsBox.x)
+      expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(actionsBox.x + actionsBox.width + 1)
+      expect(menuBox.y).toBeGreaterThanOrEqual(actionsBox.y)
+      expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(actionsBox.y + actionsBox.height + 1)
+      expect(actionsBox.x).toBeGreaterThanOrEqual(entryBox.x)
+      expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(entryBox.x + entryBox.width + 1)
+      expect(
+        menuBox.y >= identityBox.y + identityBox.height ||
+          menuBox.x >= identityBox.x + identityBox.width,
+      ).toBe(true)
+      await expect(identity).toHaveAttribute("href", new RegExp(`chat=${chat.id}(?:&|$)`))
+      await expect(entry.locator("a button, button button")).toHaveCount(0)
     }
     const trigger = row(page, 42).getByRole("button", {
       name: "Actions for Alice · 42",

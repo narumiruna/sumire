@@ -12,8 +12,10 @@ import type { Inventory } from "./api.js"
 import {
   defaultPermissionSummary,
   permissionChangeCounts,
+  permissionConflicts,
   permissionMatches,
   permissionNames,
+  permissionResult,
   ToolPermissions,
   toolPermissionGroups,
 } from "./tool-permissions.js"
@@ -33,6 +35,77 @@ const inventory: Inventory = {
 }
 
 describe("tool permission presentation and existing policy rules", () => {
+  it("traces configured selection, effective denial, and server/global blocking sources", () => {
+    const policy = initialPolicy()
+    const name = "mcp__fixture__new"
+    policy.tools = [name]
+    policy.defaults.tools = [name]
+    expect(permissionResult("tools", name, policy, inventory)).toMatchObject({
+      selected: true,
+      source: "Shared defaults",
+      status: "Server gate blocked",
+      blocking: "MCP server permission: fixture",
+    })
+    policy.servers = ["fixture"]
+    policy.defaults.servers = ["fixture"]
+    expect(permissionResult("tools", name, policy, inventory).status).toBe("Allowed")
+    policy.chats["42"] = { ...inherited, enabled: true, tools: [] }
+    expect(
+      permissionResult("tools", name, policy, inventory, {
+        selection: policy.chats["42"],
+        effective: effectivePolicy(policy, 42),
+      }),
+    ).toMatchObject({
+      selected: false,
+      source: "Chat override",
+      status: "Not selected",
+      blocking: "Chat override",
+    })
+    policy.tools = []
+    expect(permissionResult("tools", name, policy, inventory).blocking).toBe("Global policy")
+    expect(policy.defaults.tools).toEqual([name])
+  })
+  it("reports all retained conflict names and scopes independently of filtering and expansion", () => {
+    const policy = initialPolicy()
+    policy.defaults.tools = ["read"]
+    policy.chats["42"] = { ...inherited, enabled: true, tools: ["read"], servers: ["fixture"] }
+    policy.chats["43"] = { ...inherited, enabled: true, tools: [] }
+    const before = structuredClone(policy)
+    expect(permissionConflicts(policy)).toEqual([
+      { key: "tools", name: "read", defaults: true, chats: ["42"] },
+      { key: "servers", name: "fixture", defaults: false, chats: ["42"] },
+    ])
+    expect(permissionMatches("tools", "read", inventory, "missing", policy)).toBe(false)
+    expect(() => validateReferences(policy)).toThrow(
+      "Defaults: tools selection exceeds global availability: read",
+    )
+    expect(policy).toEqual(before)
+    const html = renderToStaticMarkup(
+      createElement(
+        Theme,
+        {},
+        createElement(ToolPermissions, {
+          actor: "42",
+          selectedChat: "42",
+          policy,
+          saved: policy,
+          inventory,
+          dirty: false,
+          defaultContext: false,
+          onChange: () => {},
+          onChat: () => {},
+        }),
+      ),
+    )
+    expect(html).toContain("Global policy")
+    expect(html).toContain("Shared defaults")
+    expect(html).toContain("Chat 42")
+    expect(html).toContain("Retained permission conflicts")
+    expect(html).toContain("2 tool/server names")
+    expect(html).toContain("Review global permission for read")
+    expect(html).toContain("Review chat 42")
+    expect(html).toContain("process-readable credentials")
+  })
   it("filters inventory presence independently from source and capability requirements", () => {
     const current = {
       ...inventory,
@@ -109,7 +182,7 @@ describe("tool permission presentation and existing policy rules", () => {
       expect(html).toContain(available ? "Capability configured" : "Capability unavailable")
       expect(html).toContain(available ? reason : "Requires Codex OAuth &lt;not a probe&gt;.")
       expect(html).toContain("Global permission alone does not install a tool")
-      expect(html).toContain("except approval-only tools such as generate_image")
+      expect(html).toContain("Approval-only tools such as generate_image")
       expect(policy).toEqual(before)
     },
   )

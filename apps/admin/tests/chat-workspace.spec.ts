@@ -108,7 +108,7 @@ test("keeps a directory below a tall API error usable after document scrolling",
       json: { error: "Fixture API failure. ".repeat(300) },
     }),
   )
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await expect(page.getByRole("alert")).toContainText("Fixture API failure.")
   const workspace = page.locator(".chat-workspace")
   expect(
@@ -133,7 +133,7 @@ test("keeps a directory below a tall API error usable after document scrolling",
   await expect(page.locator(".pending-bar")).toHaveCount(0)
   expect(requests).toEqual([])
   await page.unroute("**/api/settings")
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await expect(page.getByRole("alert")).toHaveCount(0)
   await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
   await expect(list).toHaveCSS("overflow-y", "visible")
@@ -331,10 +331,23 @@ for (const width of [1440, 851, 850, 390, 320]) {
       if (!action || !header) throw new Error("Missing header geometry")
       const id = await page.locator(".chat-header code").boundingBox()
       if (!id) throw new Error("Missing chat ID geometry")
-      expect(action.y).toBeLessThanOrEqual(id.y)
-      expect(action.x).toBeGreaterThanOrEqual(header.x + header.width - action.width - 1)
+      const copy = await page
+        .getByRole("button", { name: "Copy chat ID", exact: true })
+        .boundingBox()
+      if (!copy) throw new Error("Missing copy action geometry")
+      expect(action.width).toBeGreaterThanOrEqual(44)
+      expect(action.height).toBeGreaterThanOrEqual(44)
+      expect(action.x).toBeGreaterThanOrEqual(header.x)
+      expect(action.x + action.width).toBeLessThanOrEqual(header.x + header.width + 1)
       expect(action.y + action.height).toBeLessThanOrEqual(header.y + header.height)
       expect(action.y).toBeGreaterThanOrEqual(header.y)
+      for (const other of [id, copy])
+        expect(
+          action.x >= other.x + other.width ||
+            action.x + action.width <= other.x ||
+            action.y >= other.y + other.height ||
+            action.y + action.height <= other.y,
+        ).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )

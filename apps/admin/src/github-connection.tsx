@@ -395,6 +395,7 @@ export function GitHubConnection({
   }
   useEffect(() => onPending(pending), [onPending, pending])
   useEffect(() => {
+    document.getElementById("github-connection-heading")?.focus()
     void operations.current.load()
     return () => {
       operations.current.abandon()
@@ -539,12 +540,13 @@ export function GitHubConnection({
 
   return (
     <Panel aria-label="GitHub connection" aria-busy={busy}>
-      <Heading as="h2" size="4">
+      <Heading as="h2" size="4" id="github-connection-heading" tabIndex={-1}>
         Connect GitHub
       </Heading>
       <Prose size="2">
         Use a deployment-owned GitHub.com OAuth App with Device Flow enabled. Enter only its public
-        Client ID; no client secret is needed. Manual Personal Access Token controls remain below.
+        Client ID; no client secret is needed. Manual Personal Access Token controls remain in the
+        secret list above.
       </Prose>
       <Prose size="2">
         Requested scopes: repo and read:org. repo includes private-repository read/write access;
@@ -648,7 +650,8 @@ export function GitHubConnection({
               <Text as="p">Actual granted scopes: {flow.scopes?.join(", ") || "none"}.</Text>
               <Prose size="2">
                 Save this account to encrypted GH_TOKEN and GITHUB_OAUTH_STATE and apply the change.
-                Existing credentials remain unchanged until this save.
+                Existing credentials remain unchanged until this save. Application can cancel active
+                work.
               </Prose>
               <Button
                 disabled={disabled || !flow.scopes || completionAttempted.current}
@@ -832,8 +835,9 @@ export function GitHubConnection({
           </AlertDialog.Title>
           <AlertDialog.Description>
             Delete GH_TOKEN and GITHUB_OAUTH_STATE and apply the change, including orphaned or
-            colliding state. Remove saved MCP references first. This does not revoke GitHub
-            authorization, remove manually installed CLI credentials, or erase backups.
+            colliding state. Application can cancel active work. Remove saved MCP references first.
+            This does not revoke GitHub authorization, remove manually installed CLI credentials, or
+            erase backups.
           </AlertDialog.Description>
           <Flex gap="3" wrap="wrap" mt="4">
             <AlertDialog.Cancel>

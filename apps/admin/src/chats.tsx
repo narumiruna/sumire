@@ -1,12 +1,6 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import {
-  ArrowLeftIcon,
-  CheckCircledIcon,
-  DotsHorizontalIcon,
-  ExclamationTriangleIcon,
-  MinusCircledIcon,
-} from "@radix-ui/react-icons"
+import { ArrowLeftIcon, DotsHorizontalIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons"
 import {
   Badge,
   Button,
@@ -30,6 +24,7 @@ import { policyChanges, withChatAccess } from "./policy-changes.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { SectionActive, SectionSelect } from "./sections.js"
 import { Panel, Prose } from "./surfaces.js"
+import { permissionResult } from "./tool-permissions.js"
 
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
@@ -46,6 +41,7 @@ function ChatRowActions({
   busy,
   onSelect,
   onChange,
+  onAccess,
 }: {
   chat: Chat
   policy: Policy
@@ -53,6 +49,7 @@ function ChatRowActions({
   busy: boolean
   onSelect(chat: string): void
   onChange(policy: Policy): void
+  onAccess(): void
 }) {
   const active = useContext(SectionActive)
   const [open, setOpen] = useState(false)
@@ -63,42 +60,65 @@ function ChatRowActions({
   const approved = policy[key].includes(chat.id)
   const savedApproval = savedPolicy[key].includes(chat.id)
   return (
-    <DropdownMenu.Root open={open && active && !busy} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger>
+    <Flex gap="2" align="center" wrap="wrap">
+      <Button variant="soft" disabled={busy} onClick={onAccess}>
+        Manage access
+      </Button>
+      {approved && !savedApproval && (
         <Button
-          variant="ghost"
-          className="directory-row-menu"
+          variant="soft"
           disabled={busy}
-          aria-label={`Actions for ${chatName(chat)} · ${chat.id}`}
+          onClick={() => onChange(withChatAccess(policy, chat.id, false))}
         >
-          <DotsHorizontalIcon aria-hidden="true" />
+          Undo pending grant
         </Button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content
-        align="end"
-        onCloseAutoFocus={(event) => {
-          if (!active || busy) event.preventDefault()
-        }}
-      >
-        <DropdownMenu.Item disabled={busy || !active} onSelect={() => onSelect(String(chat.id))}>
-          Open chat details
-        </DropdownMenu.Item>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item
-          color={approved && savedApproval ? "red" : undefined}
-          disabled={busy || !active}
-          onSelect={() => onChange(withChatAccess(policy, chat.id, !approved))}
+      )}
+      {!approved && (
+        <Button
+          variant="soft"
+          disabled={busy}
+          onClick={() => onChange(withChatAccess(policy, chat.id, true))}
         >
-          {approved
-            ? savedApproval
-              ? "Revoke access"
-              : "Undo pending grant"
-            : savedApproval
-              ? "Undo pending revocation"
-              : "Grant access"}
-        </DropdownMenu.Item>
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
+          {savedApproval ? "Undo pending revocation" : "Grant access"}
+        </Button>
+      )}
+      <DropdownMenu.Root open={open && active && !busy} onOpenChange={setOpen}>
+        <DropdownMenu.Trigger>
+          <Button
+            variant="ghost"
+            className="directory-row-menu"
+            disabled={busy}
+            aria-label={`Actions for ${chatName(chat)} · ${chat.id}`}
+          >
+            <DotsHorizontalIcon aria-hidden="true" />
+          </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content
+          align="end"
+          onCloseAutoFocus={(event) => {
+            if (!active || busy) event.preventDefault()
+          }}
+        >
+          <DropdownMenu.Item disabled={busy || !active} onSelect={() => onSelect(String(chat.id))}>
+            Open chat details
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Item
+            color={approved && savedApproval ? "red" : undefined}
+            disabled={busy || !active}
+            onSelect={() => onChange(withChatAccess(policy, chat.id, !approved))}
+          >
+            {approved
+              ? savedApproval
+                ? "Revoke access"
+                : "Undo pending grant"
+              : savedApproval
+                ? "Undo pending revocation"
+                : "Grant access"}
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    </Flex>
   )
 }
 
@@ -242,6 +262,8 @@ export function ChatWorkspace({
       providers: "",
       application: "",
       tools: "#chat-tools-options",
+      servers: "#chat-servers-options",
+      skills: "#chat-skills-options",
     }[repairRequest.target]
     if (selector) {
       const frame = requestAnimationFrame(() => focusEditor(selector))
@@ -255,12 +277,12 @@ export function ChatWorkspace({
     setRepairRequest({ target })
   }
   const [copyStatus, setCopyStatus] = useState({ chat: "", message: "" })
-  const copyChatId = async () => {
+  const copyChatId = async (id = chat) => {
     try {
-      await navigator.clipboard.writeText(chat)
-      setCopyStatus({ chat, message: "Chat ID copied." })
+      await navigator.clipboard.writeText(id)
+      setCopyStatus({ chat: id, message: "Chat ID copied." })
     } catch {
-      setCopyStatus({ chat, message: "Could not copy. Select the ID to copy it manually." })
+      setCopyStatus({ chat: id, message: "Could not copy. Select the ID to copy it manually." })
     }
   }
   const filtered = chats.filter(
@@ -336,6 +358,10 @@ export function ChatWorkspace({
                 savedPolicy={savedPolicy}
                 busy={busy}
                 onSelect={openChat}
+                onAccess={() => {
+                  openChat(String(value.id))
+                  repair("access")
+                }}
                 onChange={(next) => {
                   onPolicyChange(next)
                   if (
@@ -346,6 +372,77 @@ export function ChatWorkspace({
                 }}
               />
             )}
+            columns={{
+              href: (value) => navigationHref("Chats", String(value.id)),
+              copyId: (value) => (
+                <>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Copy chat ID ${value.id}`}
+                    onClick={() => void copyChatId(String(value.id))}
+                  >
+                    Copy ID
+                  </Button>
+                  {copyStatus.chat === String(value.id) && (
+                    <Text as="p" size="2" role="status">
+                      {copyStatus.message}
+                    </Text>
+                  )}
+                </>
+              ),
+              model: (value) => {
+                const status = chatState(value.id, savedPolicy, inventory, application)
+                return (
+                  <>
+                    <Code variant="ghost">{status.effective.model ?? "No allowed model"}</Code>
+                    <Text as="p" size="2" color="gray">
+                      {status.effective.sources.model === "chat"
+                        ? "Chat override"
+                        : "Shared defaults"}
+                    </Text>
+                  </>
+                )
+              },
+              issues: (value) => {
+                const status = chatState(value.id, savedPolicy, inventory, application)
+                const issues = status.issues.filter((issue) => issue.code !== "approval")
+                const issue = issues[0]
+                return (
+                  <>
+                    {issues.length ? (
+                      issues.map((issue) => (
+                        <Text key={issue.code} as="p" size="2">
+                          {issue.reason}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text as="p" size="2">
+                        Configured locally. Model response not checked.
+                      </Text>
+                    )}
+                    {issue && (
+                      <Button
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          openChat(String(value.id))
+                          if (issue.target === "providers")
+                            onProviders(status.effective.model?.split("/")[0] ?? "")
+                          else repair(issue.target)
+                        }}
+                      >
+                        {issue.action}
+                      </Button>
+                    )}
+                    {issues.length > 1 && (
+                      <Text as="p" size="2" color="gray">
+                        {issues.length} configuration issues · open details
+                      </Text>
+                    )}
+                  </>
+                )
+              },
+            }}
             summary={
               authentication.size > 0 && (
                 <section
@@ -434,16 +531,16 @@ export function ChatWorkspace({
                   </Text>
                   <Badge
                     className="directory-status-label"
-                    color={status.primary ? "orange" : "gray"}
-                    title={status.reason}
+                    color={status.enabled ? "gray" : "orange"}
                   >
-                    {status.primary ? (
-                      <MinusCircledIcon aria-hidden="true" />
-                    ) : (
-                      <CheckCircledIcon aria-hidden="true" />
-                    )}
-                    {status.label}
+                    {status.enabled ? "Enabled" : "Disabled"}
                   </Badge>
+                  {policy[c.id > 0 ? "privateUsers" : "groups"].includes(c.id) !==
+                    status.approved && (
+                    <Text as="span" size="2">
+                      {status.approved ? "Pending access revocation" : "Pending access grant"}
+                    </Text>
+                  )}
                   {preview && (
                     <span className="directory-draft">
                       Draft access:{" "}
@@ -537,6 +634,9 @@ export function ChatWorkspace({
                     </Code>
                   </Flex>
                 </div>
+                <Button variant="ghost" onClick={() => void copyChatId()}>
+                  Copy chat ID
+                </Button>
                 <DropdownMenu.Root
                   open={actionsOpen && active && !showDirectory}
                   onOpenChange={setActionsOpen}
@@ -878,29 +978,50 @@ export function ChatWorkspace({
                           {[
                             ...new Set([
                               ...inventory.tools,
+                              ...inventory.mcp.flatMap((server) => server.tools),
                               ...policy.tools,
                               ...(override?.tools ?? policy.defaults.tools ?? []),
                             ]),
-                          ].map((name) => (
-                            <li key={name}>
-                              <strong>{name}</strong> ·{" "}
-                              {inventory.tools.includes(name)
-                                ? "In loaded inventory"
-                                : "Not in loaded inventory"}{" "}
-                              ·{" "}
-                              {policy.tools.includes(name)
-                                ? "Globally available"
-                                : "Excluded by global policy"}{" "}
-                              ·{" "}
-                              {(override?.tools ?? policy.defaults.tools ?? []).includes(name)
-                                ? "Selected"
-                                : "Not selected"}{" "}
-                              ·{" "}
-                              {effective.tools.includes(name)
-                                ? "Tool permission allowed"
-                                : "Tool permission denied"}
-                            </li>
-                          ))}
+                          ].map((name) => {
+                            const result = permissionResult("tools", name, policy, inventory, {
+                              selection: override ?? policy.defaults,
+                              effective,
+                            })
+                            return (
+                              <li key={name}>
+                                <strong>{name}</strong> · {result.source} · Configured:{" "}
+                                {result.selected ? "Allow" : "Deny"} ·{" "}
+                                {result.status === "Allowed"
+                                  ? "Tool permission allowed"
+                                  : "Tool permission denied"}
+                                {result.blocking && (
+                                  <>
+                                    <Text as="p" size="2">
+                                      Blocking source: {result.blocking}
+                                    </Text>
+                                    <Button
+                                      variant="ghost"
+                                      onClick={() =>
+                                        result.blockedServers.length
+                                          ? repair("servers")
+                                          : result.blocking === "Global policy"
+                                            ? onTools()
+                                            : repair("tools")
+                                      }
+                                    >
+                                      Review blocking permission for {name}
+                                    </Button>
+                                  </>
+                                )}
+                                {inventory.toolAvailability?.[name]?.available === false && (
+                                  <Text as="p" size="2">
+                                    Capability unavailable:{" "}
+                                    {inventory.toolAvailability[name]?.reason}
+                                  </Text>
+                                )}
+                              </li>
+                            )
+                          })}
                         </ul>
                       </details>
                       {!!effective.servers.length && (

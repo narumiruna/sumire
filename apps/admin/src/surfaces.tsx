@@ -70,7 +70,7 @@ export function PageHeader({
   )
 }
 
-/** A shared editorial section: context on the left, controls on the right. */
+/** A shared section: title and necessary context before its controls. */
 export function SettingsSection({
   title,
   description,

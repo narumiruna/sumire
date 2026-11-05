@@ -241,7 +241,10 @@ for (const width of [390, 320]) {
   }) => {
     await page.setViewportSize({ width, height: 844 })
     await fixture(page, "user")
-    const selector = page.getByRole("region", { name: "Find a chat", exact: true })
+    const selector = page.getByRole("complementary", {
+      name: "Conversation chat directory",
+      exact: true,
+    })
     await selector.getByLabel("Find or switch chat", { exact: true }).click()
     const list = selector.getByRole("list", { name: "Chats on this page", exact: true })
     await expect(list).toBeVisible()

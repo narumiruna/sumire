@@ -6,6 +6,7 @@ import {
   openDirectoryFilters,
   openDisclosure,
   openGlobalLimits,
+  openProviderDetail,
   sectionLabel,
 } from "./admin-fixture.js"
 import { contrast } from "./contrast.js"
@@ -162,6 +163,7 @@ async function stageMcp(page: Page) {
 }
 async function stageProvider(page: Page) {
   await navigate(page, "Model providers")
+  await openProviderDetail(page)
   await page.getByRole("button", { name: /^Model: / }).click()
   await page.getByRole("option", { name: /Other/ }).click()
 }
@@ -255,14 +257,14 @@ test("Durable keeps pending or failed application and busy actions visible, then
 }) => {
   const state = await fixture(page)
   state.pending()
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await navigate(page, "Durable")
   await expect(page.getByRole("region", { name: "Save status and pending changes" })).toContainText(
     "Saved changes are waiting to apply.",
   )
   state.fail()
   await navigate(page, "Defaults")
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh settings", exact: true }).click()
   await navigate(page, "Durable")
   const bar = page.getByRole("region", { name: "Save status and pending changes" })
   await expect(bar).toContainText("Saved, but application failed.")
@@ -282,9 +284,7 @@ test("Durable keeps pending or failed application and busy actions visible, then
     release()
   }
   await expect(bar).toBeHidden()
-  await expect(
-    page.getByRole("heading", { name: "Conversation records", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Conversation logs", exact: true })).toBeVisible()
 })
 
 test("guided and advanced MCP edits share a draft and a redacted transport-aware preview", async ({
@@ -352,6 +352,7 @@ test("local provider checks distinguish failure and configuration from remote ve
 }) => {
   await fixture(page)
   await navigate(page, "Model providers")
+  await openProviderDetail(page)
   await openDisclosure(page, "Credential checks")
   await page.route("**/api/providers/fixture/test", (route) =>
     route.fulfill({ status: 500, json: { error: "Fixture credential check failed" } }),
@@ -491,6 +492,7 @@ for (const change of ["url", "protocol"] as const) {
     )
     await page.reload()
     await navigate(page, "Model providers")
+    await openProviderDetail(page)
     await page.getByText("Model discovery", { exact: true }).click()
     const check = page.getByText("Model-list check:", { exact: false })
     await page.getByRole("button", { name: "Discover custom models" }).click()
