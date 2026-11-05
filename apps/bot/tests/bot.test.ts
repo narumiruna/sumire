@@ -2017,10 +2017,10 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
 
-    expect(calls.map((call) => telegramPayloadText(call.payload))).toEqual([
-      "處理中…",
-      "正在等待模型回覆…",
-      "完成",
+    expect(calls.map((call) => call.payload.rich_message)).toEqual([
+      { markdown: "處理中…" },
+      { markdown: "<footer>正在等待模型回覆…</footer>" },
+      { markdown: "完成" },
     ])
     expect(calls.map((call) => call.method)).toEqual([
       "sendRichMessage",
@@ -2037,7 +2037,7 @@ describe("Telegram bot update routing", () => {
         const steps: ProgressStep[] = Array.from(
           { length: publication === "inline-boundary" ? 3 : 5 },
           (_, index) => ({
-            text: `Step ${index} ${"x".repeat(publication === "inline-boundary" ? 318 : 250)}`,
+            text: `Step ${index} ${"x".repeat(publication === "inline-boundary" ? 314 : 250)}`,
             status: index === 0 ? "in_progress" : "pending",
           }),
         )
@@ -2077,17 +2077,34 @@ describe("Telegram bot update routing", () => {
         )
         if (publication === "inline-boundary") {
           const snapshot = renderProgressStatus(steps)
-          expect(Array.from(snapshot).length).toBeLessThanOrEqual(1_000)
-          expect(Array.from(`${snapshot}\n\n正在執行工具…\n工具：read`).length).toBeGreaterThan(
-            1_000,
-          )
-          expect(calls.map((call) => telegramPayloadText(call.payload))).toEqual([
-            "處理中…",
-            snapshot,
-            "Done",
+          expect(Array.from(snapshot)).toHaveLength(997)
+          expect(
+            Array.from(`${snapshot}\n\n<footer>正在執行工具… · 工具：<code>read</code></footer>`)
+              .length,
+          ).toBeGreaterThan(1_000)
+          expect(calls.map((call) => call.payload.rich_message)).toEqual([
+            { markdown: "處理中…" },
+            { markdown: snapshot },
+            { markdown: "Done" },
           ])
         } else {
-          expect(activity.length).toBeGreaterThanOrEqual(2)
+          expect(activity.map((call) => call.payload.rich_message)).toEqual([
+            {
+              markdown: expect.stringContaining(
+                "\n\n<footer>正在執行工具… · 工具：<code>read</code></footer>",
+              ),
+            },
+            {
+              markdown: expect.stringContaining(
+                "\n\n<footer>工具執行結束，等待模型回覆… · 工具：<code>read</code></footer>",
+              ),
+            },
+            {
+              markdown: expect.stringContaining(
+                "\n\n<footer>正在執行工具… · 工具：<code>bash</code></footer>",
+              ),
+            },
+          ])
         }
         if (publication === "published") {
           expect(
@@ -2160,13 +2177,15 @@ describe("Telegram bot update routing", () => {
 
       await telegram.bot.handleUpdate(privateMessage(2, "長任務"))
 
-      const snapshot = `進度 0/1\n\n🔄 ${text}`
-      expect(calls.map((call) => telegramPayloadText(call.payload))).toEqual([
-        "處理中…",
-        snapshot,
-        `${snapshot}\n\n正在執行工具…\n工具：read`,
-        snapshot,
-        "完成",
+      const snapshot = `### 進度 0/1\n\n- [ ] 🔄 ${text}`
+      expect(calls.map((call) => call.payload.rich_message)).toEqual([
+        { markdown: "處理中…" },
+        { markdown: snapshot },
+        {
+          markdown: `${snapshot}\n\n<footer>正在執行工具… · 工具：<code>read</code></footer>`,
+        },
+        { markdown: snapshot },
+        { markdown: "完成" },
       ])
       expect(publish).not.toHaveBeenCalled()
     },
@@ -2200,7 +2219,9 @@ describe("Telegram bot update routing", () => {
       "editMessageText",
       "sendRichMessage",
     ])
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("🔄 分析需求")
+    expect(calls[1]?.payload.rich_message).toEqual({
+      markdown: "### 進度 0/1\n\n- [ ] 🔄 分析需求",
+    })
     expect(telegramPayloadText(calls[2]?.payload)).toBe("處理中…")
   })
 
@@ -2214,7 +2235,7 @@ describe("Telegram bot update routing", () => {
         await new Promise<void>((resolve) => setImmediate(resolve))
         return {
           kind: "completed" as const,
-          text: "進度 0/1\n\n🔄 分析需求\u0000",
+          text: "### 進度 0/1\n\n- [ ] 🔄 分析需求\u0000",
           checkpoint,
         }
       }),
@@ -2245,8 +2266,10 @@ describe("Telegram bot update routing", () => {
       "editMessageText",
       "sendRichMessage",
     ])
-    expect(telegramPayloadText(calls[1]?.payload)).toBe("進度 0/1\n\n🔄 分析需求")
-    expect(telegramPayloadText(calls[2]?.payload)).toBe(telegramPayloadText(calls[1]?.payload))
+    expect(calls[1]?.payload.rich_message).toEqual({
+      markdown: "### 進度 0/1\n\n- [ ] 🔄 分析需求",
+    })
+    expect(calls[2]?.payload.rich_message).toEqual(calls[1]?.payload.rich_message)
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
 
@@ -2257,7 +2280,7 @@ describe("Telegram bot update routing", () => {
         options.onAccepted?.()
         options.onProgress?.([{ text: "分析需求", status: "in_progress" }])
         await new Promise<void>((resolve) => setImmediate(resolve))
-        return { kind: "completed" as const, text: "進度 0/1\n\n🔄 分析需求", checkpoint }
+        return { kind: "completed" as const, text: "### 進度 0/1\n\n- [ ] 🔄 分析需求", checkpoint }
       }),
     })
     const telegram = createTelegramAgentBot(
@@ -2283,7 +2306,9 @@ describe("Telegram bot update routing", () => {
       "sendRichMessage",
       "editMessageText",
     ])
-    expect(telegramPayloadText(calls[3]?.payload)).toBe("進度 0/1\n\n🔄 分析需求")
+    expect(calls[3]?.payload.rich_message).toEqual({
+      markdown: "### 進度 0/1\n\n- [ ] 🔄 分析需求",
+    })
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [101])
   })
 
@@ -2366,21 +2391,22 @@ describe("Telegram bot update routing", () => {
       "sendRichMessage",
     ])
     expect(telegramPayloadText(calls[0]?.payload)).toBe("處理中…")
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("🔄 執行中")
+    expect(calls[1]?.payload.rich_message).toEqual({ markdown: "### 進度 0/1\n\n- [ ] 🔄 執行中" })
     expect(telegramPayloadText(calls[2]?.payload)).toBe("處理中…")
-    expect(telegramPayloadText(calls[3]?.payload)).toBe(
-      "最後回報的進度（已清除）\n\n進度 0/1\n\n🔄 執行中",
-    )
+    expect(calls[3]?.payload.rich_message).toEqual({
+      markdown: "最後回報的進度（已清除）\n\n### 進度 0/1\n\n- [ ] 🔄 執行中",
+    })
     expect(telegramPayloadText(calls[4]?.payload)).toBe("完成")
   })
 
   it("keeps a full inline snapshot when the clear label would require Morsel", async () => {
     const steps = Array.from({ length: 4 }, (_, index) => ({
-      text: `${"字".repeat(244)}${index}`,
+      text: `${"字".repeat(239)}${index}`,
       status: "completed" as const,
     }))
     const snapshot = renderProgressStatus(steps)
     expect(Array.from(snapshot)).toHaveLength(999)
+    expect(Array.from(`最後回報的進度（已清除）\n\n${snapshot}`).length).toBeGreaterThan(1_000)
     const checkpoint = { sessionId: "session", entryId: "entry", generation: 0 }
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
@@ -2415,8 +2441,8 @@ describe("Telegram bot update routing", () => {
       "editMessageText",
       "sendRichMessage",
     ])
-    expect(telegramPayloadText(calls[1]?.payload)).toBe(snapshot)
-    expect(telegramPayloadText(calls[3]?.payload)).toBe(snapshot)
+    expect(calls[1]?.payload.rich_message).toEqual({ markdown: snapshot })
+    expect(calls[3]?.payload.rich_message).toEqual({ markdown: snapshot })
     expect(telegramPayloadText(calls[4]?.payload)).toBe("完成")
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
@@ -2458,14 +2484,21 @@ describe("Telegram bot update routing", () => {
     expect(telegramPayloadText(calls[4]?.payload)).toBe("處理中…")
   })
 
-  it("retains the structured progress reply alongside the final answer", async () => {
+  it("sends all progress states as native task lists with an activity footer and retains the snapshot", async () => {
+    const snapshot =
+      "### 進度 1/4\n\n- [x] 分析需求\n- [ ] 🔄 撰寫回覆\n- [ ] 檢查結果\n- [ ] ⛔ 等待資料"
     const sessions = createSessions({
       submit: vi.fn(async (_chatId, _prompt, options) => {
         options.onAccepted?.()
         options.onProgress?.([
           { text: "分析需求", status: "completed" },
           { text: "撰寫回覆", status: "in_progress" },
+          { text: "檢查結果", status: "pending" },
+          { text: "等待資料", status: "blocked" },
         ])
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        options.onActivity?.("tool", "read")
+        await new Promise<void>((resolve) => setImmediate(resolve))
         return { kind: "completed" as const, text: "完成" }
       }),
     })
@@ -2482,19 +2515,28 @@ describe("Telegram bot update routing", () => {
     expect(calls.map((call) => call.method)).toEqual([
       "sendRichMessage",
       "editMessageText",
+      "editMessageText",
+      "editMessageText",
       "sendRichMessage",
     ])
-    expect(telegramPayloadText(calls[0]?.payload)).toBe("處理中…")
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("進度 1/2")
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("✅ 分析需求")
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("🔄 撰寫回覆")
+    expect(calls.map((call) => call.payload.rich_message)).toEqual([
+      { markdown: "處理中…" },
+      { markdown: snapshot },
+      {
+        markdown: `${snapshot}\n\n<footer>正在執行工具… · 工具：<code>read</code></footer>`,
+      },
+      { markdown: snapshot },
+      { markdown: "完成" },
+    ])
+    for (const call of calls) {
+      expect(call.payload.parse_mode).toBeUndefined()
+      expect(call.payload.text).toBeUndefined()
+    }
     expect(calls[0]?.payload.reply_parameters).toEqual({
       message_id: 2,
       allow_sending_without_reply: true,
     })
-    expect(calls[0]?.payload.parse_mode).toBeUndefined()
-    expect(telegramPayloadText(calls[2]?.payload)).toBe("完成")
-    expect(calls[2]?.payload.reply_parameters).toEqual({
+    expect(calls[4]?.payload.reply_parameters).toEqual({
       message_id: 2,
       allow_sending_without_reply: true,
     })
@@ -2520,7 +2562,7 @@ describe("Telegram bot update routing", () => {
     const calls = installApiMock(telegram.bot)
 
     await telegram.bot.handleUpdate(privateMessage(2, "請處理"))
-    expect(telegramPayloadText(calls[1]?.payload)).toContain("✅ 分析需求")
+    expect(calls[1]?.payload.rich_message).toEqual({ markdown: "### 進度 1/1\n\n- [x] 分析需求" })
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
 
     for (const [index, messageId] of [100, 101].entries()) {
@@ -2531,7 +2573,7 @@ describe("Telegram bot update routing", () => {
           date: 1_700_000_001,
           chat: reply.message.chat,
           from: botInfo,
-          text: messageId === 100 ? "進度 1/1\n\n✅ 分析需求" : "完成",
+          text: messageId === 100 ? "### 進度 1/1\n\n- [x] 分析需求" : "完成",
           reply_to_message: undefined,
         }
       }
@@ -2584,7 +2626,7 @@ describe("Telegram bot update routing", () => {
           date: 1_700_000_001,
           chat: reply.message.chat,
           from: botInfo,
-          text: "進度 1/1\n\n✅ 檢查",
+          text: "### 進度 1/1\n\n- [x] 檢查",
           reply_to_message: undefined,
         }
       }
@@ -2637,7 +2679,7 @@ describe("Telegram bot update routing", () => {
           date: 1_700_000_001,
           chat: reply.message.chat,
           from: botInfo,
-          text: "進度 1/1\n\n✅ 檢查",
+          text: "### 進度 1/1\n\n- [x] 檢查",
           reply_to_message: undefined,
         }
       }
@@ -2671,7 +2713,7 @@ describe("Telegram bot update routing", () => {
     const calls = installApiMock(telegram.bot, (method, payload) => {
       if (
         method === "editMessageText" &&
-        String(telegramPayloadText(payload)).startsWith("進度 ")
+        String(telegramPayloadText(payload)).startsWith("### 進度 ")
       ) {
         throw new Error("progress edit failed")
       }
@@ -2720,7 +2762,7 @@ describe("Telegram bot update routing", () => {
       "editMessageText",
       "sendRichMessage",
     ])
-    expect(telegramPayloadText(calls[1]?.payload)).toBe("進度 1/1\n\n✅ 已完成")
+    expect(calls[1]?.payload.rich_message).toEqual({ markdown: "### 進度 1/1\n\n- [x] 已完成" })
     expect(telegramPayloadText(calls[3]?.payload)).toBe("完成")
     expect(sessions.recordDelivery).toHaveBeenCalledWith(7, checkpoint, [100, 101])
   })
@@ -2766,7 +2808,7 @@ describe("Telegram bot update routing", () => {
       "sendRichMessage",
     ])
     expect(telegramPayloadText(calls[2]?.payload)).toContain("Morsel 暫時無法使用")
-    expect(telegramPayloadText(calls[3]?.payload)).toBe("進度 1/1\n\n✅ 已完成")
+    expect(calls[3]?.payload.rich_message).toEqual({ markdown: "### 進度 1/1\n\n- [x] 已完成" })
     expect(
       calls.some((call) => String(telegramPayloadText(call.payload)).includes("未發布 0")),
     ).toBe(false)
@@ -2878,7 +2920,7 @@ describe("Telegram bot update routing", () => {
     const calls = installApiMock(telegram.bot, async (method, payload) => {
       if (
         method === "editMessageText" &&
-        String(telegramPayloadText(payload)).startsWith("進度 ")
+        String(telegramPayloadText(payload)).startsWith("### 進度 ")
       ) {
         await pendingProgressEdit
       }
@@ -3336,7 +3378,11 @@ describe("Telegram bot update routing", () => {
       calls
         .filter((call) => call.method === "editMessageText")
         .map((call) => telegramPayloadText(call.payload)),
-    ).toEqual(["進度 0/1\n\n🔄 檢查", "此請求已因重設對話而取消。", "此請求已因重設對話而取消。"])
+    ).toEqual([
+      "### 進度 0/1\n\n- [ ] 🔄 檢查",
+      "此請求已因重設對話而取消。",
+      "此請求已因重設對話而取消。",
+    ])
     expect(sessions.recordDelivery).not.toHaveBeenCalled()
   })
 
@@ -3836,12 +3882,12 @@ describe("Telegram bot update routing", () => {
     )
     const calls = installApiMock(telegram.bot)
     await telegram.bot.handleUpdate(privateMessage(82, "長任務"))
-    expect(publish).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("進度 7/8"))
+    expect(publish).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("### 進度 7/8"))
     const published = publish.mock.calls[0]?.[0] ?? ""
     for (let index = 0; index < 7; index += 1) {
-      expect(published).toContain(`✅ 工作 ${index}`)
+      expect(published).toContain(`- [x] 工作 ${index}`)
     }
-    expect(published).toContain("🔄 工作 7")
+    expect(published).toContain("- [ ] 🔄 工作 7")
     expect(calls.map((call) => call.method)).toEqual([
       "sendRichMessage",
       "editMessageText",

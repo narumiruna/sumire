@@ -14,7 +14,7 @@ export function renderProgressStatus(steps: readonly ProgressStep[]): string {
   if (steps.length === 0) return "進度已清除"
 
   const completed = steps.filter((step) => step.status === "completed").length
-  return [`進度 ${completed}/${steps.length}`, "", ...steps.map(renderStep)].join("\n")
+  return [`### 進度 ${completed}/${steps.length}`, "", ...steps.map(renderStep)].join("\n")
 }
 
 export function renderActivityStatus(
@@ -27,7 +27,9 @@ export function renderActivityStatus(
       : activity === "tool"
         ? "正在執行工具…"
         : "工具執行結束，等待模型回覆…"
-  return toolName ? `${status}\n工具：${sanitizeLine(toolName)}` : status
+  const tool = toolName ? sanitizeLine(toolName) : ""
+  const suffix = tool ? ` · 工具：<code>${escapeHtml(tool)}</code>` : ""
+  return `<footer>${status}${suffix}</footer>`
 }
 
 export function createProgressStatusEditor(
@@ -118,14 +120,18 @@ function renderStep(step: ProgressStep): string {
   const text = sanitizeLine(step.text)
   switch (step.status) {
     case "completed":
-      return `✅ ${text}`
+      return `- [x] ${text}`
     case "in_progress":
-      return `🔄 ${text}`
+      return `- [ ] 🔄 ${text}`
     case "blocked":
-      return `⛔ ${text}`
+      return `- [ ] ⛔ ${text}`
     case "pending":
-      return `⬜ ${text}`
+      return `- [ ] ${text}`
   }
+}
+
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
 }
 
 function sanitizeLine(value: string): string {
