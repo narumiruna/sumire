@@ -34,7 +34,7 @@ for (const control of [
     await trigger.click()
     await expect(page.getByRole("listbox")).toBeVisible()
     await page.goForward()
-    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     expect(await page.evaluate(() => Boolean(document.activeElement?.closest("[hidden]")))).toBe(
       false,
@@ -271,6 +271,6 @@ for (const time of ["invalid", "absent"] as const) {
     )
     await expect(page.getByRole("alert")).toHaveCount(0)
     await navigate(page, "Defaults")
-    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
   })
 }

@@ -230,7 +230,7 @@ for (const name of [
     await expect(trigger).toBeFocused()
     await trigger.click()
     await page.goBack()
-    await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
     await expect(page.getByRole("listbox")).toHaveCount(0)
     await page.goForward()
     await expect(trigger).toBeVisible()

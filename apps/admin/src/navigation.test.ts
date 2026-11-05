@@ -6,6 +6,8 @@ import {
   type Page,
   pageLabel,
   pages,
+  pageTitle,
+  pageTitles,
   pendingEditors,
   readNavigation,
   SideNavigation,
@@ -52,6 +54,14 @@ describe("admin navigation", () => {
     }
   })
 
+  it("has a distinct localized title for every stable page identifier", () => {
+    expect(Object.keys(pageTitles)).toEqual([...pages])
+    expect(new Set(Object.values(pageTitles)).size).toBe(pages.length)
+    expect(pageTitle("Defaults")).toBe("共用設定")
+    expect(pageTitle("Model Providers")).toBe("模型供應商")
+    expect(pageTitle("Tool permissions")).toBe("工具權限")
+  })
+
   it("lists every destination once without redundant groups", () => {
     const html = renderNavigation()
     expect(html).not.toContain("navigation-group")
@@ -71,7 +81,7 @@ describe("admin navigation", () => {
     expect(links).toHaveLength(pages.length)
     for (const [index, page] of orderedPages.entries()) {
       const link = links[index]
-      expect(link?.[2]).toContain(`<span>${taskLabels[page]}</span>`)
+      expect(link?.[2]).toContain(`<span>${pageTitle(page)}</span>`)
       const href = link?.[1]?.match(/href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&")
       const url = new URL(href ?? "", "https://example.com")
       expect(readNavigation(url)).toEqual({ page, chat: "-100" })
@@ -85,8 +95,8 @@ describe("admin navigation", () => {
   it("keeps protocol and inspector details in accessible descriptions", () => {
     const html = renderNavigation()
     for (const [id, label, technicalTerm] of [
-      ["Durable", "Conversation logs", "Durable Inspector"],
-      ["MCP-connections", "MCP servers", "Model Context Protocol (MCP)"],
+      ["Durable", "對話紀錄", "Durable Inspector"],
+      ["MCP-connections", "MCP 伺服器", "Model Context Protocol (MCP)"],
     ]) {
       const descriptionId = `navigation-description-${id}`
       const link = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].find((match) =>

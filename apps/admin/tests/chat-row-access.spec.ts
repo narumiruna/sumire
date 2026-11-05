@@ -57,7 +57,7 @@ for (const width of [1440, 390, 320]) {
       includeHidden: true,
     })
     await expect(
-      navigation.getByRole("link", { name: "Chats", exact: true, includeHidden: true }),
+      navigation.getByRole("link", { name: "聊天管理", exact: true, includeHidden: true }),
     ).toHaveCount(1)
     await expect(
       navigation.getByRole("link", { name: "Chat access", exact: true, includeHidden: true }),

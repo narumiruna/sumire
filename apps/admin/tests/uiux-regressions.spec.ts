@@ -94,14 +94,14 @@ for (const method of ["pointer", "keyboard"]) {
     const audit = page
       .getByRole("navigation", { name: "Administration sections" })
       .getByRole("link", {
-        name: "Audit log",
+        name: "稽核紀錄",
         exact: true,
       })
     if (method === "keyboard") {
       await audit.focus()
       await audit.press("Enter")
     } else await audit.click()
-    const heading = page.getByRole("heading", { name: "Audit log", exact: true })
+    const heading = page.getByRole("heading", { name: "稽核紀錄", exact: true })
     await expect(heading).toBeFocused()
     await expect(heading).toBeInViewport({ ratio: 1 })
     expect(await page.evaluate(() => window.scrollY)).toBe(0)
@@ -142,7 +142,7 @@ for (const width of [1440, 390]) {
         "active section",
         page
           .getByRole("navigation", { name: "Administration sections" })
-          .getByRole("link", { name: "Chats", exact: true }),
+          .getByRole("link", { name: "聊天管理", exact: true }),
       )
       await check("Reload", page.getByRole("button", { name: "Refresh settings", exact: true }))
       await check("Account", page.getByRole("button", { name: "Account", exact: true }))
@@ -200,7 +200,7 @@ for (const label of ["Provider", "Model"]) {
     if (label === "Provider") {
       await expect(
         page.getByRole("button", { name: "Manage provider fixture", exact: true }),
-      ).toHaveText("Manage")
+      ).toHaveText("管理設定 →")
       await page.getByRole("button", { name: "Add provider", exact: true }).click()
       const search = page.getByRole("textbox", { name: "Search providers", exact: true })
       await search.fill("Second")
@@ -303,7 +303,7 @@ test("a connection save completed after navigation does not focus its hidden sec
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeHidden()
   expect(state.writes.map((write) => write.path)).toEqual(["/api/mcp/fixture"])
   await navigate(page, "MCP connections")
-  await expect(page.getByRole("heading", { name: "MCP servers", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "MCP 伺服器", exact: true })).toBeFocused()
   await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeVisible()
 })
 

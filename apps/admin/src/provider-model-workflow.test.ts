@@ -52,12 +52,15 @@ describe("provider and model workflow presentation", () => {
         refresh: vi.fn(),
       }),
     )
-    expect(html).toContain("Configured or referenced providers")
+    expect(html).toContain('aria-label="Configured providers"')
+    expect(html).toContain("1 個供應商")
+    expect(html).toContain('aria-label="Search providers"')
+    expect(html).toContain('aria-label="Provider status"')
     expect(html).toContain("Manage provider fixture")
     expect(html).toContain("Add provider")
     expect(html).toContain("Credential configured")
     expect(html).not.toContain("Catalog only")
-    expect(html.indexOf("Configured or referenced providers")).toBeLessThan(
+    expect(html.indexOf('aria-label="Configured providers"')).toBeLessThan(
       html.indexOf("<div hidden"),
     )
     expect(html).not.toContain("Choose model use")
@@ -146,6 +149,6 @@ describe("provider and model workflow presentation", () => {
     expect(html).not.toContain("Detailed skill purpose must not be repeated")
     expect(html).not.toContain("Default tool summary")
     expect(html).not.toContain("Default skill summary")
-    expect(html).toContain("Shared changes do not replace explicit overrides")
+    expect(html).toContain("共用選項不會覆蓋聊天的個別設定。")
   })
 })

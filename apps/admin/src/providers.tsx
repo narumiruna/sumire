@@ -1,4 +1,9 @@
-import { ChevronDownIcon, InfoCircledIcon } from "@radix-ui/react-icons"
+import {
+  ChevronDownIcon,
+  CubeIcon,
+  InfoCircledIcon,
+  MagnifyingGlassIcon,
+} from "@radix-ui/react-icons"
 import {
   AlertDialog,
   Badge,
@@ -232,6 +237,8 @@ export function Providers({
   // Untouched fields follow saved settings. An explicit preview survives credential refresh.
   const [draft, setDraft] = useState<ReturnType<typeof savedProviderSelection> | null>(null)
   const { provider, model, thinking } = draft ?? saved
+  const [directoryQuery, setDirectoryQuery] = useState("")
+  const [providerFilter, setProviderFilter] = useState("all")
   const [authOpen, setAuthOpen] = useState(false)
   const [authDetails, setAuthDetails] = useState<{ provider: string; open: boolean }>()
   const [method, setMethod] = useState<"choose" | "key" | "account">("choose")
@@ -278,6 +285,12 @@ export function Providers({
       ].map((entry) => [entry.id, entry]),
     ).values(),
   ].sort((a, b) => a.id.localeCompare(b.id))
+  const visibleProviders = providers.filter(
+    (item) =>
+      `${item.name} ${item.id}`.toLowerCase().includes(directoryQuery.trim().toLowerCase()) &&
+      (providerFilter === "all" ||
+        (providerFilter === "configured" ? item.configured === true : item.configured !== true)),
+  )
   const references = providerReferences(savedPolicy, provider)
   const supported = selectedModel?.thinking ?? []
   const thinkingValid = thinking !== null && supported.includes(thinking)
@@ -503,29 +516,58 @@ export function Providers({
         )}
         {view === "list" && (
           <section aria-label="Configured providers" className="settings-stack">
-            <Flex justify="between" gap="3" wrap="wrap">
-              <Heading as="h2" size="4">
-                Configured or referenced providers
-              </Heading>
+            <Text as="p" color="gray">
+              {providers.length} 個供應商
+            </Text>
+            <div className="provider-directory-toolbar">
+              <TextField.Root
+                aria-label="Search providers"
+                placeholder="搜尋供應商"
+                value={directoryQuery}
+                onChange={(event) => setDirectoryQuery(event.target.value)}
+              >
+                <TextField.Slot>
+                  <MagnifyingGlassIcon aria-hidden />
+                </TextField.Slot>
+              </TextField.Root>
               <Button disabled={busy || Boolean(oauth)} onClick={() => setView("add")}>
                 Add provider
               </Button>
-            </Flex>
-            <Prose>
-              Manage connections and model availability separately. Policy references do not
-              establish running chat use.
-            </Prose>
+            </div>
+            <fieldset className="scope-segments" aria-label="Provider status">
+              {[
+                ["all", "全部"],
+                ["configured", "已設定"],
+                ["attention", "需處理"],
+              ].map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={providerFilter === value}
+                  onClick={() => setProviderFilter(value ?? "all")}
+                >
+                  {label}
+                </button>
+              ))}
+            </fieldset>
             {!providers.length && (
-              <Prose>
+              <Prose className="empty-state">
                 No configured or referenced providers. Add a provider to open supported setup.
               </Prose>
             )}
-            <div className="data-list">
-              {providers.map((item) => (
-                <div className="data-row" key={item.id}>
-                  <Flex direction="column" gap="2">
+            {providers.length > 0 && !visibleProviders.length && (
+              <Prose className="empty-state">沒有符合條件的供應商。請調整搜尋或狀態篩選。</Prose>
+            )}
+            <div className="data-list provider-directory">
+              {visibleProviders.map((item) => (
+                <section
+                  className="data-row provider-card"
+                  key={item.id}
+                  aria-label={`Provider ${item.id}`}
+                >
+                  <div className="provider-card-header">
+                    <CubeIcon aria-hidden />
                     <strong>{item.name}</strong>
-                    <Code>{item.id}</Code>
                     <StatusLabel tone={item.configured === false ? "warning" : "neutral"}>
                       {item.configured === null
                         ? "Credential state unknown"
@@ -533,20 +575,33 @@ export function Providers({
                           ? "Credential configured"
                           : "Missing credential"}
                     </StatusLabel>
-                    <Prose size="2">
-                      {item.references.available.length} globally available models ·{" "}
-                      {item.references.chats.length} explicit chat policy references
-                    </Prose>
-                  </Flex>
-                  <Button
-                    variant="outline"
-                    disabled={busy || Boolean(oauth)}
-                    aria-label={`Manage provider ${item.id}`}
-                    onClick={() => openProvider(item.id)}
-                  >
-                    Manage
-                  </Button>
-                </div>
+                  </div>
+                  <dl className="provider-card-facts">
+                    <div>
+                      <dt>可用模型</dt>
+                      <dd>{item.references.available.length} 個</dd>
+                    </div>
+                    <div>
+                      <dt>明確政策引用</dt>
+                      <dd>{item.references.chats.length} 處</dd>
+                    </div>
+                  </dl>
+                  <div className="provider-card-footer">
+                    <Prose size="2">本機憑證狀態，未驗證遠端回應</Prose>
+                    <Button
+                      variant="outline"
+                      disabled={busy || Boolean(oauth)}
+                      aria-label={`Manage provider ${item.id}`}
+                      onClick={() => openProvider(item.id)}
+                    >
+                      管理設定 →
+                    </Button>
+                  </div>
+                  <details className="disclosure">
+                    <summary>技術識別資訊</summary>
+                    <Code>{item.id}</Code>
+                  </details>
+                </section>
               ))}
             </div>
           </section>

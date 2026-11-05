@@ -1,0 +1,593 @@
+/* Low-specificity component internals precede frame overrides. */
+.scope-segments button {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 6px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ink-muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.scope-segments button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--forest);
+  font-weight: 600;
+}
+.scope-segments button:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+.provider-card-header > svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--forest);
+}
+.provider-card-footer > p {
+  flex: 1 1 180px;
+  margin: 0;
+  color: var(--ink-muted);
+}
+/* Shared administration frame, promoted from the approved chat design. */
+.admin-shell {
+  --chat-ink: #111514;
+  --chat-muted: #666b68;
+  --chat-green: #24553e;
+  --chat-border: #d4d6d4;
+  --chat-bg: #fafaf9;
+}
+.admin-shell > main {
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-bg);
+  color: var(--chat-ink);
+}
+.admin-shell > main > .workspace-header {
+  order: 0;
+  margin: 0;
+  padding-bottom: 0;
+}
+.admin-shell > main > .editor-panel {
+  order: 2;
+}
+.admin-shell > main > .save-status[data-folded="true"] {
+  order: 3;
+  min-height: 44px;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.admin-shell > main > :is(.workspace-error, .save-status:not([data-folded="true"])) {
+  order: 1;
+}
+.admin-shell > main > .workspace-header #current-section-heading {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.4;
+  letter-spacing: -0.6px;
+  font-weight: 750;
+  color: var(--chat-ink);
+}
+.saved-settings-details > summary {
+  font-size: 16px;
+  color: var(--chat-muted);
+}
+@media (max-width: 650px) {
+  .admin-shell .sidebar {
+    min-height: 56px;
+    padding: 8px 16px;
+    column-gap: 14px;
+    background: var(--chat-bg);
+    border-color: var(--chat-border);
+  }
+  .admin-shell .sidebar .mobile-menu {
+    order: -1;
+    flex: 0 0 32px;
+    align-self: center;
+    justify-content: center;
+    width: 32px;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #263c31;
+  }
+  .admin-shell .mobile-menu > svg {
+    width: 24px;
+    height: 24px;
+  }
+  .admin-shell .section-trigger-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .admin-shell .sidebar-brand {
+    flex: 1 1 0;
+  }
+  .admin-shell .sidebar-brand .brand {
+    gap: 9px;
+    font-size: 23px;
+    color: #17382a;
+    line-height: 1.4;
+  }
+  .admin-shell .sidebar-brand .brand-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .admin-shell .sidebar-account {
+    order: 2;
+  }
+  .admin-shell .sidebar-account > .rt-Separator {
+    display: none;
+  }
+  .admin-shell .sidebar-account button {
+    border-radius: 50%;
+    color: var(--chat-green);
+    background: #e0eddf;
+    width: 36px;
+    min-height: 36px;
+  }
+  .admin-shell .sidebar-account button > svg:first-child {
+    width: 22px;
+    height: 22px;
+  }
+  .admin-shell .sidebar-account button > svg:last-child:not(:first-child) {
+    display: none;
+  }
+  .admin-shell .sidebar nav {
+    order: 3;
+  }
+  .admin-shell > main {
+    padding: 14px 16px calc(var(--changes-bar-height, 0px) + 24px);
+  }
+  .admin-shell .workspace-header .page-header__actions {
+    align-self: center;
+  }
+}
+@media (max-width: 650px) {
+  .admin-shell .sidebar {
+    padding-block: 4px;
+    min-height: 52px;
+  }
+  .admin-shell .sidebar .mobile-menu {
+    border: 0;
+  }
+}
+.settings-saved-toast {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100vw - 32px);
+  padding: 8px 16px;
+  border: 1px solid #c4d9c5;
+  border-radius: 12px;
+  background: #f0f8ed;
+  box-shadow: 0 4px 20px #142e2020;
+}
+.settings-saved-toast .application-status {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-saved-toast .application-status > details {
+  display: none;
+}
+@media (max-width: 650px) {
+  .admin-shell .sidebar .mobile-menu {
+    flex-basis: 44px;
+    width: 44px;
+    margin-right: -12px;
+  }
+  .admin-shell .mobile-menu > svg {
+    margin-left: -12px;
+  }
+  .admin-shell .sidebar-account button {
+    position: relative;
+    isolation: isolate;
+    width: 44px;
+    min-height: 44px;
+    margin-right: -4px;
+    background: transparent;
+  }
+  .admin-shell .sidebar-account button::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    z-index: -1;
+    border-radius: 50%;
+    background: #e0eddf;
+  }
+}
+
+/* One neutral/forest palette for every page, dialog and signed-out surface. */
+.radix-themes {
+  --surface-main: #fafaf9;
+  --surface-sidebar: #fafaf9;
+  --surface-line: #d4d6d4;
+  --ink: #111514;
+  --ink-muted: #666b68;
+  --forest: #24553e;
+  --forest-dark: #173c2b;
+  --gray-2: #f6f7f5;
+  --gray-3: #eef2ed;
+  --gray-4: #e4ebe2;
+  --gray-7: #b7beb7;
+  --gray-8: #879087;
+  --gray-9: #717a73;
+  --sand-2: #fafaf9;
+  --teal-3: #edf4eb;
+  --teal-4: #e1eddf;
+  --teal-7: #a3bba4;
+  --teal-8: #658769;
+  --teal-a8: #658769;
+  --font-size-4: 1.25rem;
+}
+body {
+  background: #fafaf9;
+}
+.admin-shell main {
+  margin: 0;
+  padding: 24px 28px calc(var(--changes-bar-height, 0px) + 28px);
+  border: 0;
+  border-radius: 0;
+}
+.admin-shell .sidebar {
+  border-color: var(--surface-line);
+}
+.admin-shell .sidebar a {
+  border-radius: 10px;
+  color: var(--ink-muted);
+}
+.admin-shell .sidebar a[aria-current="page"] {
+  color: var(--forest);
+  background: var(--teal-3);
+}
+.admin-shell .sidebar a svg {
+  color: var(--forest);
+}
+.admin-shell > main > .workspace-header {
+  margin-bottom: 18px;
+}
+.admin-shell .page-header__description {
+  margin-top: 4px;
+  font-size: 16px;
+}
+.admin-shell .workspace-action-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.admin-shell .page-header__actions > .rt-Button {
+  width: 44px;
+  padding-inline: 0;
+}
+.admin-shell :is(.rt-Button, .rt-SelectTrigger, .rt-TextFieldRoot, .rt-TextArea) {
+  border-radius: 10px;
+  font-size: 16px;
+}
+.admin-shell :is(.rt-SelectTrigger, .rt-TextFieldRoot, .rt-TextArea) {
+  background: #fff;
+}
+.admin-shell .rt-Badge {
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.admin-shell :is(.prose, .form-field, .check, .rt-DataListValue) {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.admin-shell :is(.rt-CalloutRoot, .empty-state) {
+  border-radius: 10px;
+}
+.admin-shell .panel,
+.admin-shell .settings-section,
+.admin-shell .skill-row,
+.admin-shell .runtime-values-row,
+.admin-shell .activity-group,
+.admin-shell .provider-card {
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: none;
+}
+.admin-shell .settings-section {
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-shell .settings-section__intro .rt-Heading,
+.admin-shell .skill-identity .rt-Heading,
+.admin-shell .runtime-entry-name {
+  font-size: 20px;
+  line-height: 1.4;
+}
+.admin-shell .settings-section__intro > p {
+  margin-top: 4px;
+}
+.admin-shell :is(.defaults-layout, .audit-workspace, .data-list) {
+  display: grid;
+  gap: 14px;
+  margin-block: 0;
+}
+.admin-shell .defaults-layout > .prose {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--teal-3);
+  color: var(--forest-dark);
+}
+.admin-shell .provider-readiness {
+  border-radius: 10px;
+}
+.admin-shell .disclosure > summary,
+.admin-shell :is(.defaults-advanced, .permission-manual, .audit-filter-disclosure) > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  font-size: 16px;
+  color: var(--forest);
+}
+.admin-shell .saved-settings-details {
+  margin-top: 16px;
+}
+.admin-shell .changes-bar {
+  background: #fff;
+  border-top-color: var(--surface-line);
+  box-shadow: 0 -4px 20px #173c2b0a;
+}
+.admin-shell .permission-scope {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-main);
+}
+.admin-shell .permission-scope > .rt-Flex {
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--surface-line);
+  border-radius: 10px;
+  background: #fff;
+}
+.admin-shell .permission-scope button {
+  flex: 1 1 0;
+  padding: 8px;
+  border: 0;
+  font-size: 16px;
+}
+.admin-shell .permission-scope button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--forest);
+}
+.admin-shell .tool-permissions .permission-group {
+  padding: 0 14px 8px;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.admin-shell .permission-group-heading {
+  padding-block: 8px;
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+}
+.admin-shell .permission-group-toggle {
+  font-size: 20px;
+  color: var(--ink);
+}
+.admin-shell .permission-name .rt-Code {
+  font-size: 16px;
+}
+.admin-shell .permission-section > .permission-list {
+  padding: 0 14px;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.admin-shell .skill-row + .skill-row,
+.admin-shell .runtime-values-row + .runtime-values-row {
+  margin-top: 14px;
+}
+.admin-shell .mcp-connection-summary {
+  padding: 16px;
+}
+.admin-shell .mcp-summary-facts :is(.rt-DataListLabel, .rt-DataListValue),
+.admin-shell .mcp-summary-actions > button {
+  font-size: 16px;
+}
+.admin-shell .activity > .activity-group {
+  margin-block: 0 14px;
+}
+.admin-shell .audit-imports {
+  padding: 16px;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.admin-shell .github-author-list li {
+  padding: 12px;
+  border: 1px solid var(--surface-line);
+  border-radius: 10px;
+}
+.admin-shell .durable-inspector {
+  --durable-panel: #f6f7f5;
+  --durable-muted: #59645c;
+  font-size: 16px;
+}
+.admin-shell
+  :is(
+    .durable-context-bar,
+    .durable-summary,
+    .durable-conversation-history,
+    .durable-event-details,
+    .durable-detail
+  ) {
+  border-radius: 12px;
+}
+.admin-shell .durable-message-text {
+  font-size: 16px;
+}
+.admin-shell .durable-view-navigation {
+  border-radius: 10px;
+}
+.session-card {
+  padding: 24px;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+/* Provider directory: local status and saved references, never invented uptime. */
+.provider-directory-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.provider-directory-toolbar .rt-TextFieldRoot {
+  width: 100%;
+}
+.provider-directory-toolbar .rt-TextFieldSlot {
+  padding-left: 12px;
+}
+.scope-segments {
+  display: flex;
+  gap: 0;
+  margin: 0;
+  padding: 3px;
+  min-inline-size: 0;
+  border: 1px solid var(--surface-line);
+  border-radius: 10px;
+  background: #fff;
+}
+.admin-shell .provider-card {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.provider-card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.provider-card-header > strong {
+  flex: 1 1 100px;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+.provider-card-facts {
+  margin: 0;
+}
+.provider-card-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--surface-line);
+}
+.provider-card-facts dt {
+  color: var(--ink-muted);
+}
+.provider-card-facts dd {
+  margin: 0;
+}
+.provider-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (min-width: 1100px) {
+  .provider-directory {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+@media (max-width: 650px) {
+  .admin-shell > main {
+    padding: 16px 16px calc(var(--changes-bar-height, 0px) + 24px);
+  }
+  .admin-shell > main > .workspace-header {
+    margin-bottom: 16px;
+  }
+  .admin-shell .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-shell .panel,
+  .admin-shell .settings-section,
+  .admin-shell .skill-row,
+  .admin-shell .runtime-values-row {
+    padding: 14px;
+  }
+  .admin-shell .tool-search {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .admin-shell .permission-scope {
+    padding: 8px;
+  }
+  .admin-shell .permission-scope .rt-Heading {
+    font-size: 16px;
+  }
+  .admin-shell .permission-scope button {
+    font-size: 14px;
+  }
+  .admin-shell .permission-group-toggle {
+    font-size: 18px;
+  }
+}
+
+.admin-shell > main > .workspace-header .page-header__actions button {
+  color: var(--chat-green);
+}
+.admin-shell > main > .workspace-header .page-header__actions svg {
+  width: 26px;
+  height: 26px;
+}
+.admin-shell .permission-group-toggle > .rt-Text {
+  font: inherit;
+}
+.admin-shell .permission-section.panel,
+.admin-shell .mcp-chooser.panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.admin-shell .mcp-connection-summary .rt-Heading {
+  font-size: 20px;
+}
+
+@media (max-width: 650px) {
+  .admin-shell-durable > main {
+    padding-top: 12px;
+  }
+  .admin-shell-durable > main > .workspace-header {
+    margin-bottom: 12px;
+  }
+  .admin-shell .durable-copy-button {
+    width: 44px;
+    padding-inline: 0;
+  }
+  .durable-copy-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .durable-message-heading > .durable-tree-badge {
+    order: 2;
+  }
+}

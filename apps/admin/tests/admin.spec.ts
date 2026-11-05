@@ -994,6 +994,7 @@ test("searches built-in catalogs and adds only the selected model", async ({ pag
     revision: 1,
     policy: { ...policy, models: ["fixture/test", "fixture/other"] },
   })
+  await page.locator(".saved-settings-details > summary").click()
   await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 
@@ -1036,6 +1037,7 @@ test("opens a single API-key method directly and preserves model selection after
   expect((await saving).postDataJSON()).toEqual({ key: "fixture-secret", revision: 1 })
   await expect(page.getByRole("dialog")).toHaveCount(0)
   await expect(page.getByRole("button", { name: /^Model: / })).toHaveText(/Other model/)
+  await page.locator(".saved-settings-details > summary").click()
   await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Configure authentication" }).click()
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("")
@@ -1114,8 +1116,9 @@ test("opens account-only authentication directly and cancels it on Escape", asyn
   await page.keyboard.press("Escape")
   await expect(page.getByRole("dialog")).toHaveCount(0)
   expect(cancelled).toBe(true)
-  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Configure authentication" })).toBeFocused()
+  await page.locator(".saved-settings-details > summary").click()
+  await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 
 test("keeps a failed login cancellation open until the server accepts it", async ({ page }) => {
@@ -1979,6 +1982,7 @@ for (const method of ["PUT", "DELETE"] as const) {
     }
     await checkDraft()
     await page.getByRole("button", { name: "Retry application", exact: true }).click()
+    await page.locator(".saved-settings-details > summary").click()
     await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
     await checkDraft()
     expect(attempts).toBe(1)
@@ -2019,7 +2023,7 @@ test("dismisses retained model selectors with Escape and outside click", async (
   await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await trigger.click()
-  await page.getByRole("heading", { name: "Providers & models", exact: true }).click()
+  await page.getByRole("heading", { name: "模型供應商", exact: true }).click()
   await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0)
 })
 
@@ -2337,13 +2341,13 @@ test("keeps directory context and policy drafts through sidebar navigation and b
     .getByRole("button", { name: "Revoke access", exact: true })
     .click()
   await navigate(page, "Defaults")
-  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
   await expect(page).toHaveURL(/section=Defaults.*chat=42|chat=42.*section=Defaults/)
   await page.goBack()
-  await expect(page.getByRole("link", { name: "Chats", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "聊天管理", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -2359,7 +2363,7 @@ test("keeps directory context and policy drafts through sidebar navigation and b
       .getByText("Pending access revocation", { exact: true }),
   ).toBeVisible()
   await page.goForward()
-  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )
@@ -2486,6 +2490,7 @@ test("applies chat policy changes without saving model-provider or MCP drafts", 
   const saved = (await request).postDataJSON().policy
   expect(saved.privateUsers).toEqual([])
   expect(saved.defaults.model).toBe("fixture/test")
+  await page.locator(".saved-settings-details > summary").click()
   await expect(page.getByText("Saved revision applied.", { exact: true })).toBeVisible()
   await expect(page.getByText("MCP: Unsaved configuration", { exact: true })).toBeVisible()
   await expect(
@@ -2621,7 +2626,7 @@ test("closes a chat model dropdown when browser navigation hides its owning sect
   await page.getByRole("combobox", { name: "Chat model override", exact: true }).click()
   await expect(page.getByRole("listbox")).toBeVisible()
   await page.goForward()
-  await expect(page.getByRole("link", { name: "Shared defaults", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "共用設定", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   )

@@ -313,7 +313,7 @@ for (const width of [1440, 390]) {
     await expect(page.locator("#save-status")).toContainText("1 unsaved change")
     const chats = page
       .getByRole("navigation", { name: "Administration sections" })
-      .getByRole("link", { name: "Chats", exact: true })
+      .getByRole("link", { name: "聊天管理", exact: true })
     if (!(await chats.isVisible())) await page.getByRole("button", { name: /^Sections ·/ }).click()
     await chats.click()
     await expect(page.getByRole("tab", { name: "Access", exact: true })).toHaveAttribute(

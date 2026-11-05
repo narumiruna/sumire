@@ -37,7 +37,7 @@ for (const { width, zoom } of [
   { width: 320, zoom: 1 },
   { width: 640, zoom: 2 },
 ]) {
-  test(`F1 multiple unfinished fields keep keyboard focus below status at ${width}px and ${zoom}x zoom`, async ({
+  test(`F1 multiple unfinished fields keep keyboard focus above pending actions at ${width}px and ${zoom}x zoom`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 })
@@ -66,8 +66,8 @@ for (const { width, zoom } of [
     await page.keyboard.press("Enter")
     await expect(users).toBeFocused()
     const box = await users.boundingBox()
-    const status = await page.locator("#save-status").boundingBox()
-    expect(box && status && box.y >= status.y + status.height).toBe(true)
+    const status = await page.locator(".changes-bar").boundingBox()
+    expect(box && status && box.y >= 0 && box.y + box.height <= status.y).toBe(true)
     await page
       .locator(".access-approve-form")
       .getByRole("button", { name: "Clear ID input", exact: true })
@@ -140,10 +140,11 @@ for (const width of [1440, 390]) {
       const geometry = await input.evaluate((element) => ({
         top: element.getBoundingClientRect().top,
         bottom: element.getBoundingClientRect().bottom,
-        bar: document.querySelector("#save-status")?.getBoundingClientRect().bottom ?? 0,
+        bar: document.querySelector(".changes-bar")?.getBoundingClientRect().top ?? innerHeight,
         height: innerHeight,
       }))
-      expect(geometry.top).toBeGreaterThanOrEqual(geometry.bar)
+      expect(geometry.top).toBeGreaterThanOrEqual(0)
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.bar)
       expect(geometry.bottom).toBeLessThanOrEqual(geometry.height)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
@@ -210,8 +211,8 @@ for (const width of [1440, 390]) {
     const field = page.getByRole("combobox", { name: "Chat model override", exact: true })
     await expect(field).toBeFocused()
     const box = await field.boundingBox()
-    const bar = await page.locator("#save-status").boundingBox()
-    expect(box && bar && box.y >= bar.y + bar.height).toBe(true)
+    const bar = await page.locator(".changes-bar").boundingBox()
+    expect(box && bar && box.y >= 0 && box.y + box.height <= bar.y).toBe(true)
     expect(box && box.y + box.height <= (width === 1440 ? 900 : 844)).toBe(true)
     expect(state.writes).toEqual([])
   })
@@ -279,7 +280,7 @@ test("F2 a failed default-model save retains its exact draft for retry", async (
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect(page.getByRole("alert").first()).toContainText("Settings changed; reload")
-  await expect(page.getByRole("heading", { name: "Shared defaults", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "共用設定", exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("failed-default-save.png"), fullPage: true })
   expect(state.policy().defaults.model).toBe("fixture/test")
   state.fail(false)
