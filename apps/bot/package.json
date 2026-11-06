@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.19.5",
+  "version": "0.19.6",
   "private": true,
   "type": "module",
   "engines": {
@@ -37,7 +37,7 @@
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
     "@narumitw/otter-cli": "0.5.0",
-    "@narumitw/sumire-contracts": "0.9.2",
+    "@narumitw/sumire-contracts": "0.10.0",
     "@narumitw/sumire-github-notifications": "0.2.2",
     "@narumitw/sumire-imagegen": "0.2.2",
     "@narumitw/sumire-pi-polymarket": "0.2.4",
