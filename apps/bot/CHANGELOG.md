@@ -1,5 +1,18 @@
 # @narumitw/sumire
 
+## 0.19.6
+
+### Patch Changes
+
+- 58d33ba: Reorganize administration around explicit configuration scopes and separate save operations. Add provider list/detail, model-removal impact review, list-first secrets, shared GitHub connection entry, compact capability lists, and a chat-directory conversation reader. Preserve policy inheritance, read-only inspection, credential boundaries, and draft recovery.
+  
+  Add optional, revision-bound MCP discovery observations with safe typed outcomes and timestamps. Distinguish untested, successful-empty, failed, and unknown results without granting tool permissions.
+- f73b921: Render Telegram progress with a native heading and task list so steps do not merge into one paragraph. Check only completed steps, retain active and blocked markers, and place model/tool activity in a separate footer with escaped literal tool names. Preserve progress history, reply checkpoints, and the existing message-size and Morsel policy.
+- 41a8b92: Recover startup with persisted statusNotifications settings left by the reverted Service status feature. Atomically archive the original settings row, retire only that field, and require normal application of a new policy revision without changing other settings, credentials, access decisions, or delivery checkpoints. Keep API validation strict and never restore archived notifications automatically.
+- f7f2b37: Share compiled workspace outputs between the container build and production application. Remove redundant application-directory initialization while preserving runtime paths, ownership, and build cache boundaries.
+- Updated dependencies [58d33ba]
+  - @narumitw/sumire-contracts@0.10.0
+
 ## 0.19.5
 
 ### Patch Changes

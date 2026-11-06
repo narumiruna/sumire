@@ -1,5 +1,24 @@
 # @narumitw/sumire-admin
 
+## 0.12.0
+
+### Minor Changes
+
+- 58d33ba: Reorganize administration around explicit configuration scopes and separate save operations. Add provider list/detail, model-removal impact review, list-first secrets, shared GitHub connection entry, compact capability lists, and a chat-directory conversation reader. Preserve policy inheritance, read-only inspection, credential boundaries, and draft recovery.
+  
+  Add optional, revision-bound MCP discovery observations with safe typed outcomes and timestamps. Distinguish untested, successful-empty, failed, and unknown results without granting tool permissions.
+- 63ca9b0: Add English, Traditional Chinese, and Japanese translations across the administration WebUI. Detect the browser language and retain an explicit selection without reloading editors or changing service settings.
+
+### Patch Changes
+
+- 02927c4: Group administration translation modules by language, with separate English, Traditional Chinese, and Japanese catalogs. Keep all message keys and text unchanged and check matching keys and interpolation fields.
+- d75e616: Stabilize administration visual-acceptance captures by completing transient animations before screenshots and explicitly checking the mobile pending-save bar and review dialog. Runtime behavior is unchanged.
+- 7baf733: Unify all administration pages with a compact reversible navigation rail and a warm reading-first layout. Add a default full-content conversation reader with folded technical events, optional expanded reading width, and the existing event inspector retained. Preserve read bounds, saved text, authentication, and explicit save boundaries, with responsive screenshot and interaction regression coverage.
+- 11ed856: Apply the readable off-white and forest-green mobile design to every administration page, with consistent cards, navigation, forms and folded saved metadata. Add read-only provider search and status filters while preserving permission review, connection and credential workflows.
+- d7f989e: Redesign chat management with readable Traditional Chinese cards, concise saved-state badges, model summaries, actionable warnings, search and status filters. Simplify the mobile header and move technical details and clean save status behind disclosures while preserving reviewed access changes.
+- Updated dependencies [58d33ba]
+  - @narumitw/sumire-contracts@0.10.0
+
 ## 0.11.2
 
 ### Patch Changes
