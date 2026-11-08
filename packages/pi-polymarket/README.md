@@ -1,6 +1,6 @@
 # Pi Polymarket
 
-Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.16.0**. Requires Node.js 26 or newer.
+Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.17.0**. Requires Node.js 26 or newer.
 
 The package exposes all **122 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
 
@@ -169,6 +169,6 @@ npm run typecheck --workspace @narumitw/sumire-pi-polymarket
 npm run build --workspace @narumitw/sumire-pi-polymarket
 ```
 
-`generate` reads the pinned installed SDK declarations and updates `src/api.json` and `src/handles-api.json`. It checks coverage against both default action types. Tests check that these generated files match the installed SDK. Regenerate them when changing the SDK version. The generator uses the compiler API exported by `ts-morph`. TypeScript 7 does not provide this API. Type checking and builds use the TypeScript 7 CLI.
+`generate` reads the pinned installed SDK declarations and updates `src/api.json` and `src/handles-api.json`. It checks coverage against both default action types. Tests check that these generated files match the installed SDK. Regenerate them when changing the SDK version. The generator uses TypeScript 6 through the pinned `typescript-compiler` npm alias. TypeScript 7 does not provide the compiler API. Type checking and builds use the TypeScript 7 CLI.
 
 Tests use client doubles or construct a public client without sending requests. They do not authenticate, sign, approve, or submit live transactions.

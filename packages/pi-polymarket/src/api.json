@@ -213,7 +213,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -263,7 +263,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -412,7 +412,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -462,7 +462,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -623,7 +623,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -673,7 +673,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -1033,7 +1033,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1083,7 +1083,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -1232,7 +1232,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1282,7 +1282,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -1431,7 +1431,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1481,7 +1481,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -1630,7 +1630,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1680,7 +1680,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -2464,7 +2464,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2514,7 +2514,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -2663,7 +2663,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2713,7 +2713,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -3026,7 +3026,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3076,7 +3076,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -3225,7 +3225,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3275,7 +3275,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -8218,7 +8218,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8268,7 +8268,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -8417,7 +8417,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8467,7 +8467,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -8653,7 +8653,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8703,7 +8703,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -10876,7 +10876,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2225": {
+                    "__@toPrimitive@2230": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -10926,7 +10926,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2225"
+                    "__@toPrimitive@2230"
                   ],
                   "additionalProperties": true
                 }
@@ -11075,7 +11075,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2225": {
+                    "__@toPrimitive@2230": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -11125,7 +11125,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2225"
+                    "__@toPrimitive@2230"
                   ],
                   "additionalProperties": true
                 }
@@ -12039,7 +12039,7 @@
     "secure": false,
     "readOnly": true,
     "signature": "(request: ListActivityRequest, options?: RequestOptions): Paginated<Activity[]>",
-    "description": "Lists wallet activity.\nTrades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on\n`isCombo` before using market-only metadata; a basket's outcome names its\ntoken side, not a selected leg.\n\nEvery activity type is included by default, including deposits and\nwithdrawals; use the `type` filter to narrow results. An omitted `window`\nserves the most recent three years; `window: 'full'` requests the complete\nhistory. Window bounds accept Unix epoch seconds or `Date` values. Results\nare newest-first by default. `pageSize` defaults to 100 (max 1000), and\ntransient rate limits are retried by default.",
+    "description": "Lists wallet activity.\nTrades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on\n`isCombo` before using market-only metadata; a basket's outcome names its\ntoken side, not a selected leg.\n\nRows with a type this SDK version does not list yet carry only the shared\naccount fields and an `OpaqueActivityType`, so switches over `type` need a\n`default` branch. `activity.type` is not assignable to `string`. Read\nthe served type with `String(activity.type)`.\n\nEvery activity type is included by default, including deposits and\nwithdrawals; use the `type` filter to narrow results. An omitted `window`\nserves the most recent three years; `window: 'full'` requests the complete\nhistory. Window bounds accept Unix epoch seconds or `Date` values. Results\nare newest-first by default. `pageSize` defaults to 100 (max 1000), and\ntransient rate limits are retried by default.",
     "args": [
       {
         "name": "request",
@@ -12155,6 +12155,22 @@
                       },
                       {
                         "const": "TIP",
+                        "type": "string"
+                      },
+                      {
+                        "const": "DIRECTIONAL_SPLIT",
+                        "type": "string"
+                      },
+                      {
+                        "const": "DIRECTIONAL_MERGE",
+                        "type": "string"
+                      },
+                      {
+                        "const": "THRESHOLD_COMPOSE",
+                        "type": "string"
+                      },
+                      {
+                        "const": "THRESHOLD_DECOMPOSE",
                         "type": "string"
                       }
                     ]
@@ -13120,7 +13136,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13170,7 +13186,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -13319,7 +13335,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2225": {
+                        "__@toPrimitive@2230": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13369,7 +13385,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2225"
+                        "__@toPrimitive@2230"
                       ],
                       "additionalProperties": true
                     }
@@ -14172,7 +14188,7 @@
     "secure": true,
     "readOnly": true,
     "signature": "(request?: SecureListActivityRequest, options?: RequestOptions): Paginated<Activity[]>",
-    "description": "Lists wallet activity.\nTrades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on\n`isCombo` before using market-only metadata; a basket's outcome names its\ntoken side, not a selected leg.\n\nDefaults to the authenticated account's wallet when `user` is omitted.\n\nEvery activity type is included by default, including deposits and\nwithdrawals; use the `type` filter to narrow results. An omitted `window`\nserves the most recent three years; `window: 'full'` requests the complete\nhistory. Window bounds accept Unix epoch seconds or `Date` values. Results\nare newest-first by default. `pageSize` defaults to 100 (max 1000), and\ntransient rate limits are retried by default.",
+    "description": "Lists wallet activity.\nTrades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on\n`isCombo` before using market-only metadata; a basket's outcome names its\ntoken side, not a selected leg.\n\nDefaults to the authenticated account's wallet when `user` is omitted.\n\nRows with a type this SDK version does not list yet carry only the shared\naccount fields and an `OpaqueActivityType`, so switches over `type` need a\n`default` branch. `activity.type` is not assignable to `string`. Read\nthe served type with `String(activity.type)`.\n\nEvery activity type is included by default, including deposits and\nwithdrawals; use the `type` filter to narrow results. An omitted `window`\nserves the most recent three years; `window: 'full'` requests the complete\nhistory. Window bounds accept Unix epoch seconds or `Date` values. Results\nare newest-first by default. `pageSize` defaults to 100 (max 1000), and\ntransient rate limits are retried by default.",
     "args": [
       {
         "name": "request",
@@ -14346,6 +14362,22 @@
                           },
                           {
                             "const": "TIP",
+                            "type": "string"
+                          },
+                          {
+                            "const": "DIRECTIONAL_SPLIT",
+                            "type": "string"
+                          },
+                          {
+                            "const": "DIRECTIONAL_MERGE",
+                            "type": "string"
+                          },
+                          {
+                            "const": "THRESHOLD_COMPOSE",
+                            "type": "string"
+                          },
+                          {
+                            "const": "THRESHOLD_DECOMPOSE",
                             "type": "string"
                           }
                         ]
@@ -19671,7 +19703,7 @@
     "secure": true,
     "readOnly": true,
     "signature": "<const TSubscriptions extends readonly SecureSubscriptionSpec[]>(subscriptions: TSubscriptions): Promise<SubscriptionHandle<EventForSubscriptionSpecs<TSubscriptions>>>",
-    "description": "Starts one or more realtime subscriptions on this client.\n\nThe `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and\n`prices.equity.twap` topics\nrequire explicit filters and include history snapshots and live updates.\nLegacy source-named topics retain their existing filter and event behavior.\nThese four topics include `source`, identifying the source of the update\nor entire history batch, including empty batches. Unknown source names remain\nstrings. Crypto sources are constant; equity sources may change across\nreconnects. Cached history starts fresh whenever the source changes.\nThese four topics accept an optional `provider` pin. Omit it to follow the\ndefault. A pin may fall back or be ignored when selection is disabled;\n`source` always identifies the actual producer. Different provider choices,\nincluding omission, use separate connections, even if they serve the same source.\nAn optional `onSubscribed` callback reports the provider the server confirms,\non acceptance and after every reconnect.\nEvent `seq` values are scoped to one channel on one WebSocket connection\nand reset after reconnecting. Subscriptions with more than 64 filters use\nmultiple connections, so their sequence values may interleave.",
+    "description": "Starts one or more realtime subscriptions on this client.\n\nThe `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and\n`prices.equity.twap` topics\nrequire explicit filters and include history snapshots and live updates.\nLegacy source-named topics retain their existing filter and event behavior.\nThese four topics include `source`, identifying the source of the update\nor entire history batch, including empty batches. Unknown source names remain\nstrings. Crypto sources are constant; equity sources may change across\nreconnects. Cached history starts fresh whenever the source changes.\nThese four topics accept an optional `provider` pin. Omit it to follow the\ndefault. A pin may fall back or be ignored when selection is disabled;\n`source` always identifies the actual producer. Different provider choices,\nincluding omission, use separate connections, even if they serve the same source.\nAn optional `onSubscribed` callback reports the provider the server confirms,\non acceptance and after every reconnect.\n`PriceProvider.Binance` requests Binance USDT spot closes under USD symbols\non `prices.crypto`; on other price topics it falls back to the default.\nEvent `seq` values are scoped to one channel on one WebSocket connection\nand reset after reconnecting. Subscriptions with more than 64 filters use\nmultiple connections, so their sequence values may interleave.",
     "args": [
       {
         "name": "subscriptions",

@@ -125,7 +125,27 @@ describe("client-backed tools", () => {
     expect(downloadAccountingSnapshot).not.toHaveBeenCalled()
   })
 
-  it("discovers open Perps instrument categories from SDK 0.16.0", async () => {
+  it("discovers SDK 0.17.0 activity types for both clients", async () => {
+    const { value } = setup({}, {})
+    const methods = await value("polymarket_api", { method: "listActivity" })
+    expect(methods).toHaveLength(2)
+    for (const method of methods) {
+      const schema = method.args[0].schema
+      const request = method.secure ? schema.anyOf[0] : schema
+      expect(request.properties.type.anyOf[0].items.anyOf).toEqual(
+        expect.arrayContaining(
+          [
+            "DIRECTIONAL_SPLIT",
+            "DIRECTIONAL_MERGE",
+            "THRESHOLD_COMPOSE",
+            "THRESHOLD_DECOMPOSE",
+          ].map((type) => ({ const: type, type: "string" })),
+        ),
+      )
+    }
+  })
+
+  it("discovers open Perps instrument categories from the SDK", async () => {
     const { value } = setup()
     const methods = await value("polymarket_api", { method: "fetchPerpsInstruments" })
     expect(methods[0].args[0].schema.anyOf[0].properties.category.anyOf).toEqual(

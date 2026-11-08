@@ -53,8 +53,8 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/node": "26.6.6",
-    "ts-morph": "^17.0.1",
     "typescript": "7.0.2",
+    "typescript-compiler": "npm:typescript@6.0.2",
     "vitest": "5.1.0"
   }
 }

@@ -8,3 +8,5 @@
 ---
 
 Refresh workspace dependencies, including the Polymarket client, TypeBox, URL-reading libraries, and application tooling.
+
+Generate the Polymarket SDK catalogs with a pinned TypeScript compiler. Include the SDK 0.17.0 activity filters.
