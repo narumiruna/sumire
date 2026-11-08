@@ -103,6 +103,172 @@ describe("durable bot runtime", () => {
     expect(JSON.stringify(fixture.requests[1]?.messages)).toContain("look at this")
   })
 
+  it("keeps chat identities, selected forks, and outboxes independent after reopen", async () => {
+    const fixture = await setup()
+    const sessions = [await fixture.createSession(123), await fixture.createSession(456)] as const
+    for (const [index, session] of sessions.entries()) {
+      expect(session.sessionFile).toBe(
+        path.join(
+          fixture.settings.botSessionLogDir,
+          String([123, 456][index]),
+          "durable/session.sqlite",
+        ),
+      )
+      await session.appendPassiveContext(`Root context ${index}`)
+      const checkpoint = session.getCheckpoint()
+      if (!checkpoint) throw new Error("Missing root checkpoint")
+      await session.appendPassiveContext(`Discarded context ${index}`)
+      await session.restoreBranch(checkpoint)
+      fixture.enqueueAnswer(`Pending answer ${index}`)
+      await session.prompt(`Question ${index}`, {
+        delivery: { sourceMessageId: 200 + index, statusMessageId: 300 + index, mode: "default" },
+      })
+    }
+    const saved = await Promise.all(
+      sessions.map(async (session) => ({
+        id: session.sessionId,
+        state: await session.harness.snapshot(BotSessionDoc, context),
+        outbox: await session.harness.snapshot(OutboxDoc, context),
+        checkpoint: session.getCheckpoint(),
+      })),
+    )
+    expect(saved[0]?.id).not.toBe(saved[1]?.id)
+    for (const item of saved) {
+      expect(item.state).toMatchObject({
+        sessionId: item.id,
+        activeConversation: expect.any(Number),
+      })
+      expect(item.state?.activeConversation).not.toBe(1)
+      expect(item.outbox?.pending).toHaveLength(1)
+    }
+    for (const session of sessions) await session.dispose()
+
+    const reopened = [await fixture.createSession(123), await fixture.createSession(456)] as const
+    for (const [index, session] of reopened.entries()) {
+      expect(session.sessionId).toBe(saved[index]?.id)
+      expect(await session.harness.snapshot(BotSessionDoc, context)).toEqual(saved[index]?.state)
+      expect(await session.harness.snapshot(OutboxDoc, context)).toEqual(saved[index]?.outbox)
+      expect(session.getCheckpoint()).toBe(saved[index]?.checkpoint)
+      const transcript = JSON.stringify(session.messages)
+      expect(transcript).toContain(`Root context ${index}`)
+      expect(transcript).not.toContain(`Root context ${1 - index}`)
+      expect(transcript).not.toContain("Discarded context")
+      expect(transcript).not.toContain(`Pending answer ${1 - index}`)
+    }
+    for (const [index, session] of reopened.entries()) {
+      const deliver = vi.fn<Parameters<typeof session.recoverPending>[0]>(
+        async (answer, delivery) => {
+          expect(answer).toMatchObject({
+            text: `Pending answer ${index}`,
+            requestId: saved[index]?.outbox?.pending[0]?.requestId,
+            entryId: saved[index]?.checkpoint,
+          })
+          expect(delivery).toEqual({
+            sourceMessageId: 200 + index,
+            statusMessageId: 300 + index,
+            mode: "default",
+          })
+          if (!answer.requestId) throw new Error("Missing recovered request ID")
+          await session.acknowledge(answer.requestId)
+        },
+      )
+      await session.recoverPending(deliver)
+      expect(deliver).toHaveBeenCalledOnce()
+      expect(await session.hasPendingResponses()).toBe(false)
+      if (index === 0)
+        expect(await reopened[1].harness.snapshot(OutboxDoc, context)).toEqual(saved[1]?.outbox)
+    }
+    expect(fixture.requests).toHaveLength(2)
+  })
+
+  it.each(["cancel", "reset"] as const)(
+    "keeps the peer chat active and its outbox intact through targeted %s",
+    async (command) => {
+      const fixture = await setup()
+      const sessions = new Map<number, Awaited<ReturnType<typeof fixture.createSession>>>()
+      const registry = new ChatSessionRegistry(
+        async (chatId) => {
+          const session = await fixture.createSession(chatId)
+          sessions.set(chatId, session)
+          return session
+        },
+        fixture.settings.botSessionLogDir,
+        fixture.logger,
+        { control: fixture.factory.control, replyTreeEnabled: true },
+      )
+      let release = () => {}
+      let peerWork: ReturnType<typeof registry.submit> | undefined
+      try {
+        for (const chatId of [123, 456]) {
+          await registry.appendPassiveContext(chatId, `Branch root ${chatId}`)
+          const session = sessions.get(chatId)
+          const checkpoint = session?.getCheckpoint()
+          if (!session || !checkpoint) throw new Error("Missing branch checkpoint")
+          await session.restoreBranch(checkpoint)
+          fixture.enqueueAnswer(`Saved answer ${chatId}`)
+          const answer = await registry.submit(chatId, `Saved question ${chatId}`, {
+            delivery: { sourceMessageId: chatId, mode: "default" },
+          })
+          if (answer.kind !== "completed") throw new Error("Missing pending answer")
+          await registry.recordDelivery(chatId, answer.checkpoint, [chatId], false)
+        }
+        const target = sessions.get(123)
+        const peer = sessions.get(456)
+        if (!target || !peer) throw new Error("Missing chat owners")
+        const peerState = await peer.harness.snapshot(BotSessionDoc, context)
+        expect(peerState?.activeConversation).not.toBe(1)
+        const peerOutbox = await peer.harness.snapshot(OutboxDoc, context)
+        expect(peerOutbox?.pending).toHaveLength(1)
+        expect(await target.hasPendingResponses()).toBe(true)
+        const replyFile = (chatId: number) =>
+          path.join(fixture.settings.botSessionLogDir, String(chatId), "telegram-reply-index.json")
+        const targetReplies = await readFile(replyFile(123), "utf8")
+        const peerReplies = await readFile(replyFile(456), "utf8")
+        const peerAbort = vi.spyOn(peer, "abort")
+        const peerDispose = vi.spyOn(peer, "dispose")
+        release = fixture.pauseNextRequest()
+        fixture.enqueueAnswer("Peer work completed")
+        peerWork = registry.submit(456, "Continue peer work")
+        await vi.waitFor(() => expect(fixture.requests).toHaveLength(3))
+
+        await registry[command](123)
+        expect(peer.isStreaming).toBe(true)
+        expect(peerAbort).not.toHaveBeenCalled()
+        expect(peerDispose).not.toHaveBeenCalled()
+        expect(await peer.harness.snapshot(BotSessionDoc, context)).toEqual(peerState)
+        expect(await peer.harness.snapshot(OutboxDoc, context)).toEqual(peerOutbox)
+        expect(await readFile(replyFile(456), "utf8")).toBe(peerReplies)
+        if (command === "reset") {
+          await expect(stat(target.sessionFile)).rejects.toMatchObject({ code: "ENOENT" })
+          await expect(stat(replyFile(123))).rejects.toMatchObject({ code: "ENOENT" })
+        } else {
+          expect(await target.hasPendingResponses()).toBe(false)
+          expect(await readFile(replyFile(123), "utf8")).toBe(targetReplies)
+        }
+
+        release()
+        expect(await peerWork).toMatchObject({ kind: "completed", text: "Peer work completed" })
+        await registry.dispose()
+        const targetReopened = await fixture.createSession(123)
+        const peerReopened = await fixture.createSession(456)
+        expect(targetReopened.sessionId === target.sessionId).toBe(command === "cancel")
+        expect(await targetReopened.hasPendingResponses()).toBe(false)
+        if (command === "reset") expect(targetReopened.messages).toEqual([])
+        else expect(JSON.stringify(targetReopened.messages)).toContain("Saved question 123")
+        expect(peerReopened.sessionId).toBe(peer.sessionId)
+        expect(await peerReopened.harness.snapshot(BotSessionDoc, context)).toEqual(peerState)
+        expect(await peerReopened.harness.snapshot(OutboxDoc, context)).toEqual(peerOutbox)
+        expect(JSON.stringify(peerReopened.messages)).toContain("Peer work completed")
+        expect(JSON.stringify(peerReopened.messages)).not.toContain("Saved question 123")
+        expect(fixture.requests).toHaveLength(3)
+      } finally {
+        release()
+        await peerWork
+        await registry.dispose()
+      }
+    },
+  )
+
   it("detaches commit observations on branch restore and shutdown", async () => {
     const openHarness = Harness.open.bind(Harness)
     const detaches: (() => void)[] = []
