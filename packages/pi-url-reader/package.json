@@ -63,7 +63,7 @@
   "dependencies": {
     "@narumitw/sumire-url-reader": "0.26.2",
     "ipaddr.js": "2.5.0",
-    "typebox": "1.4.3",
+    "typebox": "1.4.4",
     "undici": "8.12.3"
   },
   "peerDependencies": {

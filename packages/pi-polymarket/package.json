@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@polymarket/client": "0.16.0",
-    "typebox": "1.4.3"
+    "typebox": "1.4.4"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
