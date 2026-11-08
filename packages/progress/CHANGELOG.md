@@ -1,5 +1,13 @@
 # @narumitw/sumire-progress
 
+## 0.3.5
+
+### Patch Changes
+
+- 9f8ddd4: Refresh workspace dependencies, including the Polymarket client, TypeBox, URL-reading libraries, and application tooling.
+  
+  Generate the Polymarket SDK catalogs with a pinned TypeScript compiler. Include the SDK 0.17.0 activity filters.
+
 ## 0.3.4
 
 ### Patch Changes
