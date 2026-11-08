@@ -42,8 +42,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@polymarket/client": "0.16.0",
-    "typebox": "1.4.3"
+    "@polymarket/client": "0.17.0",
+    "typebox": "1.4.6"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
@@ -53,8 +53,8 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/node": "26.6.6",
-    "ts-morph": "28.0.0",
     "typescript": "7.0.2",
+    "typescript-compiler": "npm:typescript@6.0.2",
     "vitest": "5.1.0"
   }
 }
