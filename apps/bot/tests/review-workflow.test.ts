@@ -29,9 +29,9 @@ describe("PR review workflow", () => {
   })
 
   it("pins the review and persistence actions to the same full revision", () => {
-    const revision = workflow.match(/pi-action\/review@([a-f0-9]{40})\b/)?.[1]
+    const revision = workflow.match(/pi-actions\/review@([a-f0-9]{40})\b/)?.[1]
     expect(revision).toBeDefined()
-    expect(workflow).toContain(`pi-action/persist-auth@${revision}`)
+    expect(workflow).toContain(`pi-actions/persist-auth@${revision}`)
     expect(workflow.match(/uses:/g)).toHaveLength(2)
   })
 
