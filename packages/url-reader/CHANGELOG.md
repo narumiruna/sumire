@@ -1,5 +1,18 @@
 # @narumitw/sumire-url-reader
 
+## 0.27.0
+
+### Minor Changes
+
+- f277bbe: Add source-specific New York Times article loading with article-body extraction, strict news pipeline planning, and bounded HTTP, fingerprinted HTTP, and browser fallbacks. Preserve cancellation between news transport attempts.
+  
+  Add explicit Wallhop article links through its raw endpoint, with embedded public-target validation, checked local redirects, source metadata checks, streaming byte limits, and bounded cancellation-aware loading.
+- 95443a6: Prefer Wallhop for public article and web URLs that match its safely parsed, cached routing ruleset. Preserve the original fallback chain, content contracts, and explicit loader overrides, and reserve time for later attempts. Bound ruleset retrieval, parsing, refresh concurrency, and cancellation without executing upstream rules.
+
+### Patch Changes
+
+- 7ba6a37: Preserve embedded article hosts when normalizing Wallhop URLs, redirect locations, and source metadata. Reject recognized challenge content and classify Wallhop HTTP failures as service errors while retaining target errors after off-service redirects. Keep the existing raw transport, URL aliases, public APIs, bounded cancellation, checked redirects, and New York Times support. Document the source-loader routing and external service limits.
+
 ## 0.26.3
 
 ### Patch Changes
