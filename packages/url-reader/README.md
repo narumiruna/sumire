@@ -4,7 +4,7 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 
 ## Features
 
-- Source-aware plans for YouTube, Twitter/X, Threads, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, PDFs, OpenAI pages, and generic web pages
+- Source-aware plans for YouTube, Twitter/X, Threads, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, New York Times, explicit Wallhop links, PDFs, OpenAI pages, and generic web pages
 - Local AnyDoc conversion of public Office, OpenDocument, RTF, EPUB, and CSV document URLs in killable child processes
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
@@ -155,6 +155,34 @@ The `google-docs` loader converts public document links (`/document/d/<id>`, `/e
 
 Documents must permit unauthenticated viewing and text export. HTTP failures, HTML login/editor pages, non-text responses, and empty exports are rejected rather than passed to generic HTML loaders. Requests and redirects use public-address validation; exports have a 20-second timeout and a 10 MiB response limit. Text is preserved without HTML conversion. Sheets, Slides, and published `/document/d/e/.../pub` links are not handled by this loader.
 
+### New York Times
+
+The `nytimes` loader recognizes dated `.html` article URLs on `nytimes.com` and `www.nytimes.com`, including public share query parameters. Homepages, section pages, live coverage, and other New York Times services retain generic planning.
+
+The loader tries HTTP, browser-fingerprinted HTTP, then Playwright. It extracts Markdown from New York Times article-body elements, removes advertising and navigation elements, and falls back to JSON-LD `articleBody`. A page without article text fails instead of returning a login, challenge, or navigation page through generic fallback. It returns only text present in the public response; that text can be an excerpt. It does not supply subscription access or solve browser challenges. No additional API key or runtime setting is needed.
+
+Requests retain public-target and redirect validation, 20-second HTTP transport timeouts, a browser timeout of up to 30 seconds, and 10 MiB response limits. The client deadline and caller cancellation apply to all attempts.
+
+```bash
+sumire-url-reader https://www.nytimes.com/2026/11/06/us/politics/chinese-spy-agency-nvidia-jensen-huang.html
+```
+
+Live check on 2026-11-09: this direct URL returned HTTP 403 through all three transports. The explicit Wallhop link below returned article text through the public package API; this does not establish direct New York Times access.
+
+### Wallhop
+
+Use an explicit Wallhop prefix to request an article through this third-party service:
+
+```bash
+sumire-url-reader https://wallhop.io/https://www.nytimes.com/2026/11/06/us/politics/chinese-spy-agency-nvidia-jensen-huang.html
+```
+
+The `wallhop` loader accepts prefix, `/raw/`, and `/api/` links on `wallhop.io` and normalizes them to HTTPS `/raw/<target-url>`. It preserves the embedded target query and drops the fragment. It does not wrap ordinary URLs or become a global fallback. Choosing a Wallhop link sends the embedded URL, including its query, to Wallhop. No API key, browser, or new runtime setting is needed.
+
+The loader validates the embedded target as public HTTP(S) before any service request. It rejects credentials and recursive Wallhop targets, applies the client scheme policy to both URLs, and checks every local redirect, including new embedded targets. It rejects article-target changes on Wallhop redirects. Wallhop performs remote navigation and archive lookups; their intermediate targets cannot be independently inspected by this package.
+
+Responses must be HTML with article prose or JSON-LD `articleBody`. Available source links and canonical metadata must match the requested article host and path; nonempty source queries must also match. Reader controls and non-content elements are removed before Markdown conversion. Challenge pages and empty readers fail without generic fallback. The loader has a 30-second total timeout and a streamed 10 MiB response limit. Caller cancellation and the client deadline apply throughout validation, requests, and body reading.
+
 ### Firecrawl
 
 Set `FIRECRAWL_API_KEY` for OpenAI web pages or explicit `firecrawl` loading:
@@ -211,14 +239,14 @@ Strict source plans do not accept unrelated generic HTML:
 
 - YouTube video URLs require transcript output.
 - Twitter status, Threads post/share, Reddit, Truth Social, PTT, Reel, PDF, pi.dev session, GitHub, and Google Docs plans require their matching source loader.
-- BBC, CNN, and LTN use the same article extractor after HTTP, `impers`, or browser retrieval.
+- BBC, CNN, and LTN use article-aware extraction after HTTP, `impers`, or browser retrieval. New York Times uses its article-body selectors; explicit Wallhop links use its raw endpoint.
 - Generic pages try `curl-cffi` (`impers`), fast Playwright (`domcontentloaded`), standard fetch, then Playwright network-idle; opted-in Firecrawl is last. Successful extraction stops further attempts.
 - AnyDoc document plans require native document conversion and do not fall back to generic HTML.
 - Generic HTML and XHTML conversion removes `script`, `style`, and `template` nodes before Markdown extraction, but keeps readable no-JavaScript content inside `noscript`. Non-HTML textual responses retain literal tags instead of being parsed as HTML; escaped markup in visible HTML code examples is preserved. Empty output and recognized challenge headings are rejected so the chain can continue.
 
 ## Kabigon compatibility
 
-All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and contract compatibility, not byte-for-byte behavioral identity. Sumire keeps stricter source verification, public-target and redirect checks, bounded responses and media, cancellation cleanup, and Node.js-specific transport/transcription implementations. The versioned [Kabigon loader parity matrix](../../docs/kabigon-loader-parity.md) records applicability, pipeline placement, resource admission, limits, outputs, failures, and intentional differences for every baseline loader. Sumire-only loaders are documented separately as `anydoc`, `threads`, and `google-docs`.
+All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and contract compatibility, not byte-for-byte behavioral identity. Sumire keeps stricter source verification, public-target and redirect checks, bounded responses and media, cancellation cleanup, and Node.js-specific transport/transcription implementations. The versioned [Kabigon loader parity matrix](../../docs/kabigon-loader-parity.md) records applicability, pipeline placement, resource admission, limits, outputs, failures, and intentional differences for every baseline loader. Sumire-only loaders are documented separately as `anydoc`, `threads`, `google-docs`, `nytimes`, and `wallhop`.
 
 ## Implementation notes
 

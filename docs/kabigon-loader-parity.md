@@ -4,7 +4,7 @@ Audit date: 2026-09-22
 
 This matrix compares `@narumitw/sumire-url-reader` with Kabigon at commit [`b68986bd4bf76f89aeacde31ad278e1d067ddb65`](https://github.com/narumiruna/kabigon/tree/b68986bd4bf76f89aeacde31ad278e1d067ddb65) (`0.19.6` baseline). The authoritative registries are [Sumire's `loader-registry.ts`](../packages/url-reader/src/loader-registry.ts) and [Kabigon's pinned `loader_registry.py`](https://github.com/narumiruna/kabigon/blob/b68986bd4bf76f89aeacde31ad278e1d067ddb65/src/kabigon/loader_registry.py).
 
-All 20 Kabigon loader IDs exist in Sumire. Sumire additionally registers `anydoc`, `threads`, and `google-docs`. Kabigon's `loaders/audio.py` supports transcription but is not a registered loader.
+All 20 Kabigon loader IDs exist in Sumire. Sumire additionally registers `anydoc`, `threads`, `google-docs`, `nytimes`, and `wallhop`. Kabigon's `loaders/audio.py` supports transcription but is not a registered loader.
 
 ## Reading the matrix
 
@@ -48,6 +48,6 @@ The remaining observed differences are retained intentionally:
 1. Sumire narrows PTT and LTN automatic applicability to article URLs, verifies requested social-post IDs, and rejects broad BBC/CNN `<main>` shells. These checks prevent a strict source pipeline from returning a listing, login page, or unrelated shell.
 2. Sumire enforces public-target and redirect validation, response/media limits, bounded browser defaults, caller cancellation, context/process cleanup, and worker admission where Kabigon relies more heavily on its shared deadline or blocking runner.
 3. JavaScript runtime substitutions can change Markdown whitespace or transcript availability: `fetch` replaces `httpx`, `impers` replaces `curl_cffi`, `youtube-transcript` replaces `youtube-transcript-api`, and command-line Whisper replaces the embedded Python model.
-4. Sumire's extra `anydoc`, `threads`, and `google-docs` loaders remain outside the Kabigon baseline set.
+4. Sumire's extra `anydoc`, `threads`, `google-docs`, `nytimes`, and `wallhop` loaders remain outside the Kabigon baseline set.
 
 No live source smoke was needed: URL routing, selectors, fallback decisions, limits, cancellation, cleanup, and output contracts are covered by deterministic fixtures. The relevant evidence is in [`applicability.test.ts`](../packages/url-reader/tests/applicability.test.ts), [`extractors.test.ts`](../packages/url-reader/tests/extractors.test.ts), [`loaders.test.ts`](../packages/url-reader/tests/loaders.test.ts), [`browser.test.ts`](../packages/url-reader/tests/browser.test.ts), [`youtube.test.ts`](../packages/url-reader/tests/youtube.test.ts), [`ytdlp.test.ts`](../packages/url-reader/tests/ytdlp.test.ts), and [`loader-registry-parity.test.ts`](../packages/url-reader/tests/loader-registry-parity.test.ts).

@@ -27,6 +27,8 @@ export const ANYDOC_EXTENSIONS = [
 export const BBC_DOMAIN_SUFFIX = "bbc.com"
 export const CNN_DOMAIN_SUFFIX = "cnn.com"
 export const LTN_DOMAIN_SUFFIX = "ltn.com.tw"
+export const NYTIMES_HOSTS = ["nytimes.com", "www.nytimes.com"] as const
+export const WALLHOP_HOST = "wallhop.io"
 export const OPENAI_WEB_HOSTS = [
   "openai.com",
   "www.openai.com",
@@ -136,6 +138,12 @@ export interface ThreadsTarget {
   url: string
   username: string
   shortcode: string
+}
+
+export interface WallhopTarget {
+  url: string
+  targetUrl: string
+  rawUrl: string
 }
 
 export interface TwitterTarget {
@@ -422,6 +430,70 @@ export function parseLtnTarget(url: string): string {
     throw new LoaderNotApplicableError("LTNLoader", url, "Not an LTN article URL")
   }
   return url
+}
+
+export function parseNytimesTarget(url: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new LoaderNotApplicableError("NYTimesLoader", url, "Not a New York Times article URL")
+  }
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !NYTIMES_HOSTS.includes(parsed.hostname as (typeof NYTIMES_HOSTS)[number]) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    !/^\/\d{4}\/\d{2}\/\d{2}\/(?:[^/]+\/)*[^/]+\.html$/u.test(parsed.pathname)
+  ) {
+    throw new LoaderNotApplicableError("NYTimesLoader", url, "Not a New York Times article URL")
+  }
+  return url
+}
+
+export function isNytimesUrl(url: string): boolean {
+  try {
+    parseNytimesTarget(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function isWallhopUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.replace(/\.$/u, "") === WALLHOP_HOST
+  } catch {
+    return false
+  }
+}
+
+export function parseWallhopTarget(url: string): WallhopTarget {
+  const parsed = parseHttpUrl(url)
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !isWallhopUrl(url) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    url.includes("\\")
+  ) {
+    throw new InvalidUrlError(url, "Wallhop article")
+  }
+  const embedded = parsed.pathname.replace(/^\/(?:raw\/|api\/)?/u, "") + parsed.search
+  if (!/^https?:\/\//iu.test(embedded)) throw new InvalidUrlError(url, "Wallhop article")
+  const target = parseHttpUrl(embedded)
+  if (
+    !["http:", "https:"].includes(target.protocol) ||
+    target.username ||
+    target.password ||
+    isWallhopUrl(target.toString())
+  ) {
+    throw new InvalidUrlError(url, "public Wallhop target")
+  }
+  const targetUrl = target.toString()
+  return { url, targetUrl, rawUrl: `https://${WALLHOP_HOST}/raw/${targetUrl}` }
 }
 
 export const isBbcUrl = (url: string): boolean => hostMatchesSuffix(url, BBC_DOMAIN_SUFFIX)

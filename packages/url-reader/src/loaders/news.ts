@@ -5,7 +5,12 @@ import { recordAttempt, remainingMilliseconds } from "../core/execution.js"
 import type { Loader } from "../core/loader.js"
 import type { ResourceProvider } from "../core/resources.js"
 import { AttemptStatus } from "../core/results.js"
-import { parseBbcTarget, parseCnnTarget, parseLtnTarget } from "../sources/applicability.js"
+import {
+  parseBbcTarget,
+  parseCnnTarget,
+  parseLtnTarget,
+  parseNytimesTarget,
+} from "../sources/applicability.js"
 import { fetchBrowserHtmlResponse } from "./browser.js"
 import { fetchHttpHtml, fetchImpersHtml } from "./generic.js"
 import { extractArticleBodyFromJsonLd, htmlToMarkdown } from "./utils.js"
@@ -16,7 +21,18 @@ export const DEFAULT_NEWS_ARTICLE_HEADERS = {
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
 }
 
-type NewsSource = "bbc" | "cnn" | "ltn"
+type NewsSource = "bbc" | "cnn" | "ltn" | "nytimes"
+
+const NEWS_SOURCES = {
+  bbc: { loaderName: "BBCLoader", validate: parseBbcTarget, extract: extractNewsArticleText },
+  cnn: { loaderName: "CNNLoader", validate: parseCnnTarget, extract: extractNewsArticleText },
+  ltn: { loaderName: "LTNLoader", validate: parseLtnTarget, extract: extractLtnArticleText },
+  nytimes: {
+    loaderName: "NYTimesLoader",
+    validate: parseNytimesTarget,
+    extract: extractNytimesArticleText,
+  },
+} as const
 
 export function extractNewsArticleText(html: string, url: string, loaderName: string): string {
   const jsonLdBody = extractArticleBodyFromJsonLd(html)
@@ -47,6 +63,30 @@ export function extractLtnArticleText(html: string, url: string, loaderName: str
   throw new LoaderContentError(loaderName, url, "Could not find LTN article body")
 }
 
+export function extractNytimesArticleText(html: string, url: string, loaderName: string): string {
+  const $ = cheerio.load(html)
+  const article = $(
+    'section[name="articleBody"], [data-testid="article-body"], [itemprop="articleBody"]',
+  ).first()
+  if (article.length > 0) {
+    article
+      .find(
+        "script,style,noscript,svg,nav,aside,footer,form,button,[role='complementary'],[id^='ad-'],[id^='story-ad-'],[data-testid='inline-message'],[data-testid='recirculation'],#gateway-content",
+      )
+      .remove()
+    const result = htmlToMarkdown($.html(article)).trim()
+    if (result) return result
+  }
+  const body = extractArticleBodyFromJsonLd(html)
+  if (body) return body
+  throw new LoaderContentError(
+    loaderName,
+    url,
+    "Could not find New York Times article body",
+    "Public article text is required; sign-in pages and browser challenges are not supported.",
+  )
+}
+
 export class NewsArticleLoader implements Loader {
   readonly loaderName: string
   readonly validate: (url: string) => string
@@ -57,14 +97,14 @@ export class NewsArticleLoader implements Loader {
     public readonly source: NewsSource,
     options: { resources?: ResourceProvider; headers?: Record<string, string> } = {},
   ) {
-    this.loaderName = source === "bbc" ? "BBCLoader" : source === "cnn" ? "CNNLoader" : "LTNLoader"
-    this.validate =
-      source === "bbc" ? parseBbcTarget : source === "cnn" ? parseCnnTarget : parseLtnTarget
+    this.loaderName = NEWS_SOURCES[source].loaderName
+    this.validate = NEWS_SOURCES[source].validate
     this.resources = options.resources
     this.headers = options.headers ?? DEFAULT_NEWS_ARTICLE_HEADERS
   }
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted()
     this.validate(url)
     const resources = this.resources
     const transports: readonly [string, () => Promise<{ content: string; contentType: string }>][] =
@@ -116,6 +156,7 @@ export class NewsArticleLoader implements Loader {
 
     const errors: Error[] = []
     for (const [transportId, transport] of transports) {
+      signal?.throwIfAborted()
       const started = performance.now()
       try {
         const response = await transport()
@@ -126,16 +167,15 @@ export class NewsArticleLoader implements Loader {
             `Expected HTML content, got: ${JSON.stringify(response.contentType)}`,
           )
         }
-        const result =
-          this.source === "ltn"
-            ? extractLtnArticleText(response.content, url, this.loaderName)
-            : extractNewsArticleText(response.content, url, this.loaderName)
+        signal?.throwIfAborted()
+        const result = NEWS_SOURCES[this.source].extract(response.content, url, this.loaderName)
         recordTransport(this.source, transportId, AttemptStatus.Success, started)
         return result
       } catch (error) {
         const typed = error instanceof Error ? error : new Error(String(error))
         errors.push(typed)
         recordTransport(this.source, transportId, AttemptStatus.Failed, started, typed)
+        signal?.throwIfAborted()
       }
     }
     throw new LoaderContentError(
@@ -164,7 +204,18 @@ export class LtnLoader extends NewsArticleLoader {
   }
 }
 
-export { BbcLoader as BBCLoader, CnnLoader as CNNLoader, LtnLoader as LTNLoader }
+export class NytimesLoader extends NewsArticleLoader {
+  constructor(options: { resources?: ResourceProvider; headers?: Record<string, string> } = {}) {
+    super("nytimes", options)
+  }
+}
+
+export {
+  BbcLoader as BBCLoader,
+  CnnLoader as CNNLoader,
+  LtnLoader as LTNLoader,
+  NytimesLoader as NYTimesLoader,
+}
 
 function recordTransport(
   source: string,
