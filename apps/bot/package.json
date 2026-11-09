@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.19.7",
+  "version": "0.19.8",
   "private": true,
   "type": "module",
   "engines": {
@@ -41,11 +41,11 @@
     "@narumitw/sumire-github-notifications": "0.2.2",
     "@narumitw/sumire-imagegen": "0.2.2",
     "@narumitw/sumire-pi-polymarket": "0.2.5",
-    "@narumitw/sumire-pi-url-reader": "0.7.3",
+    "@narumitw/sumire-pi-url-reader": "0.7.4",
     "@narumitw/sumire-policy": "0.5.2",
     "@narumitw/sumire-progress": "0.3.5",
     "@narumitw/sumire-runtime-config": "0.2.2",
-    "@narumitw/sumire-url-reader": "0.26.3",
+    "@narumitw/sumire-url-reader": "0.27.0",
     "@pydantic/logfire-node": "0.22.0",
     "@simplewebauthn/server": "14.1.0",
     "grammy": "1.46.0",

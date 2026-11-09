@@ -1,5 +1,15 @@
 # @narumitw/sumire-pi-url-reader
 
+## 0.7.4
+
+### Patch Changes
+
+- 7ba6a37: Preserve embedded article hosts when normalizing Wallhop URLs, redirect locations, and source metadata. Reject recognized challenge content and classify Wallhop HTTP failures as service errors while retaining target errors after off-service redirects. Keep the existing raw transport, URL aliases, public APIs, bounded cancellation, checked redirects, and New York Times support. Document the source-loader routing and external service limits.
+- Updated dependencies [f277bbe]
+- Updated dependencies [95443a6]
+- Updated dependencies [7ba6a37]
+  - @narumitw/sumire-url-reader@0.27.0
+
 ## 0.7.3
 
 ### Patch Changes

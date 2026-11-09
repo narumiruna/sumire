@@ -1,5 +1,15 @@
 # @narumitw/sumire
 
+## 0.19.8
+
+### Patch Changes
+
+- Updated dependencies [f277bbe]
+- Updated dependencies [95443a6]
+- Updated dependencies [7ba6a37]
+  - @narumitw/sumire-url-reader@0.27.0
+  - @narumitw/sumire-pi-url-reader@0.7.4
+
 ## 0.19.7
 
 ### Patch Changes
