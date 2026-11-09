@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  FailureDiagnosticError,
   LoaderContentError,
   LoaderNotApplicableError,
   LoaderTimeoutError,
@@ -82,6 +83,23 @@ describe("Wallhop targets and public registration", () => {
     })
   })
 
+  it.each(["..", "%2e%2e", ".%2e", "%2e."])(
+    "normalizes embedded %s segments without changing the article host",
+    (segment) => {
+      const targetUrl = "https://news.example.com/story?item=one%2Ftwo"
+      for (const host of ["wallhop.io", "WALLHOP.IO."]) {
+        for (const prefix of ["", "raw/", "api/"]) {
+          const url = `https://${host}/${prefix}https://news.example.com/${segment}/story?item=one%2Ftwo#reader`
+          expect(parseWallhopTarget(url)).toEqual({
+            url,
+            targetUrl,
+            rawUrl: `https://wallhop.io/raw/${targetUrl}`,
+          })
+        }
+      }
+    },
+  )
+
   it("registers a public request loader and exposes the strict plan", async () => {
     expect(availableLoaders()).toContain("wallhop")
     expect(getLoaderDef("wallhop")).toMatchObject({
@@ -147,6 +165,31 @@ describe("Wallhop extraction", () => {
   })
 
   it.each([
+    "https://wallhop.io/https://news.example.com/../story",
+    "https://wallhop.io/raw/https://news.example.com/%2e%2e/story",
+    "//wallhop.io/api/https://news.example.com/../story",
+  ])("verifies wrapped source metadata before outer path normalization: %s", (source) => {
+    for (const metadata of [
+      `<a class="source" href="${source}">Source</a>`,
+      `<link rel="canonical" href="${source}">`,
+      `<meta property="og:url" content="${source}">`,
+    ]) {
+      const html = `${metadata}<article><p>Plain prose.</p></article>`
+      expect(extractWallhopArticleText(html, wallhopUrl, "https://news.example.com/story")).toBe(
+        "Plain prose.",
+      )
+    }
+  })
+
+  it("does not verify a different source whose authority was hidden by outer dot normalization", () => {
+    const html =
+      '<a class="source" href="https://wallhop.io/https://news.example.com/../story">Source</a><article><p>Plain prose.</p></article>'
+    expect(() => extractWallhopArticleText(html, wallhopUrl, "https://story/")).toThrow(
+      "different article",
+    )
+  })
+
+  it.each([
     '<a class="source" href="https://example.com/other">Source</a>',
     '<link rel="canonical" href="https://www.nytimes.com/other.html">',
     `<meta property="og:url" content="${articleUrl}?different=1">`,
@@ -191,10 +234,47 @@ describe("Wallhop extraction", () => {
   })
 
   it.each([
+    `<form id="inputForm"><input name="inputField"></form>${articleHtml}`,
+    `<div id="challenge-form"></div>${articleHtml}`,
+    `<div id="challenge-running"></div>${articleHtml}`,
+    `<script src="/cdn-cgi/challenge-platform/test.js"></script>${articleHtml}`,
+    "<article><h1>Just a moment...</h1><p>Page verification.</p></article>",
+    '<article><h1>Article title</h1><div class="body"><p>Checking your browser</p></div></article>',
+    "<article><p>Enable JavaScript and cookies to continue</p></article>",
+    '<script type="application/ld+json">{"articleBody":"Just a moment..."}</script>',
+  ])("rejects recognized challenges even when article markup exists (%#)", (html) => {
+    expect(() => extractWallhopArticleText(html, wallhopUrl, articleUrl)).toThrow(
+      LoaderContentError,
+    )
+  })
+
+  it("keeps ordinary articles that mention a challenge in a later paragraph", () => {
+    const html =
+      "<article><p>Article about browser automation.</p><p>Checking your browser is a common challenge heading.</p></article>"
+    expect(extractWallhopArticleText(html, wallhopUrl, articleUrl)).toContain(
+      "Checking your browser",
+    )
+  })
+
+  it.each([
+    "<script>bootstrap()</script>",
+    "<style>body { color: red }</style>",
+    "<template><p>Hidden paragraph</p></template>",
+    "<svg><text>Hidden vector text</text></svg>",
+    "<noscript>Not part of the article</noscript>",
+  ])("rejects asset-only reader bodies despite a title and author (%#)", (body) => {
+    const html = `<article><h1>Article title</h1><p class="meta">By Test Writer</p><div class="body">${body}</div></article>`
+    expect(() => extractWallhopArticleText(html, wallhopUrl, articleUrl)).toThrow(
+      LoaderContentError,
+    )
+  })
+
+  it.each([
     "<main>Please enable JavaScript to continue</main>",
     "<article><h1>Headline only</h1></article>",
     `<article><p class="meta">By Test Writer</p><p class="print-source">${articleUrl}</p></article>`,
     '<article><div class="body"><script>challenge()</script></div></article>',
+    "<article><h1>Headline only</h1><template><p>Hidden paragraph</p></template></article>",
     '<script type="application/ld+json">{"articleBody":" "}</script>',
   ])("rejects HTTP-200 shells without prose: %s", (html) => {
     expect(() => extractWallhopArticleText(html, wallhopUrl, articleUrl)).toThrow(
@@ -224,13 +304,33 @@ describe("Wallhop transport bounds", () => {
     },
   )
 
-  it.each([403, 404, 429, 500])("reports HTTP %s and cancels its body", async (status) => {
+  it.each([403, 404, 429, 500])(
+    "reports Wallhop HTTP %s as a service failure and cancels its body",
+    async (status) => {
+      const cancel = vi.fn()
+      const fetch = vi.fn(async () => new Response(new ReadableStream({ cancel }), { status }))
+      await expect(loaderWithFetch(fetch).load(wallhopUrl)).rejects.toMatchObject({
+        constructor: FailureDiagnosticError,
+        diagnostic: { code: "service_http_error", phase: "loading", httpStatus: status },
+      })
+      expect(cancel).toHaveBeenCalledOnce()
+    },
+  )
+
+  it("keeps target HTTP diagnostics for an off-service redirect response", async () => {
+    const location = "https://reader.example/story"
     const cancel = vi.fn()
-    const fetch = vi.fn(async () => new Response(new ReadableStream({ cancel }), { status }))
+    const fetch = vi.fn<FetchImplementation>(async (input) => {
+      if (String(input) === rawUrl)
+        return new Response(null, { status: 302, headers: { location } })
+      expect(String(input)).toBe(location)
+      return new Response(new ReadableStream({ cancel }), { status: 403 })
+    })
     await expect(loaderWithFetch(fetch).load(wallhopUrl)).rejects.toMatchObject({
       constructor: TargetHttpError,
-      status,
+      status: 403,
     })
+    expect(fetch).toHaveBeenCalledTimes(2)
     expect(cancel).toHaveBeenCalledOnce()
   })
 
@@ -400,6 +500,8 @@ const invalidLinks = [
   "https://wallhop.io/https://wallhop.io/https://example.com/story",
   "https://wallhop.io/https://wallhop.io./raw/https://example.com/story",
   "https://wallhop.io/https://127.0.0.1/private",
+  "https://wallhop.io/https://127.0.0.1/../private",
+  "https://wallhop.io/raw/https://private.example/%2e%2e/story",
   "https://wallhop.io/raw/https://[::1]/private",
   "https://wallhop.io/api/https://169.254.169.254/metadata",
   "https://wallhop.io/https://localhost/private",
@@ -429,6 +531,22 @@ describe("Wallhop client integration and redirect safety", () => {
     expect(fetchImplementation).toHaveBeenCalledOnce()
     expect(browser).not.toHaveBeenCalled()
     expect(impers).not.toHaveBeenCalled()
+  })
+
+  it.each(["..", "%2e%2e"])("loads the original host for an embedded %s path", async (segment) => {
+    const targetUrl = "https://news.example.com/story"
+    const fetchImplementation = vi.fn<FetchImplementation>(async (input) => {
+      expect(String(input)).toBe(`https://wallhop.io/raw/${targetUrl}`)
+      return htmlResponse(`<article><p>Plain prose.</p></article>`)
+    })
+    await using client = new UrlContentClient({ fetchImplementation, resolve }).start()
+    await expect(
+      client.loadUrlDetailed(`https://wallhop.io/https://news.example.com/${segment}/story`),
+    ).resolves.toMatchObject({
+      loaderId: "wallhop",
+      content: "Plain prose.",
+    })
+    expect(fetchImplementation).toHaveBeenCalledOnce()
   })
 
   it.each(invalidLinks)(
@@ -473,7 +591,38 @@ describe("Wallhop client integration and redirect safety", () => {
   )
 
   it.each([
+    "https://wallhop.io/raw/",
+    "/api/",
+    "//wallhop.io/",
+    "https://wallhop.io./raw/",
+    "../../../../../../../../../../api/",
+  ])("normalizes a wrapped redirect without changing its alias: %s", async (prefix) => {
+    const embedded = articleUrl.replace(
+      "https://www.nytimes.com/",
+      "https://www.nytimes.com/%2e%2e/",
+    )
+    const location = `${prefix}${embedded}`
+    const redirectedUrl = `${new URL(prefix, rawUrl)}${articleUrl}`
+    let requests = 0
+    const fetchImplementation = vi.fn<FetchImplementation>(async (input) => {
+      requests += 1
+      if (requests === 1) return new Response(null, { status: 302, headers: { location } })
+      expect(String(input)).toBe(redirectedUrl)
+      return htmlResponse()
+    })
+    await using client = new UrlContentClient({ fetchImplementation, resolve }).start()
+    await expect(client.loadUrlDetailed(wallhopUrl)).resolves.toMatchObject({
+      loaderId: "wallhop",
+    })
+    expect(fetchImplementation).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
     "https://127.0.0.1/private",
+    `https://wallhop.io/raw/https://private.example/../www.nytimes.com${new URL(articleUrl).pathname}`,
+    `https://wallhop.io/raw/https://wrong.example/../www.nytimes.com${new URL(articleUrl).pathname}`,
+    "https://wallhop.io/raw/https://127.0.0.1/../private",
+    "https://wallhop.io/api/https://private.example/%2e%2e/story",
     "https://[::1]/private",
     "https://private.example/story",
     "https://user:pass@example.com/story",
@@ -511,6 +660,25 @@ describe("Wallhop client integration and redirect safety", () => {
     const fetch = vi.fn(async () => new Response(null, { status: 302 }))
     await expect(loaderWithFetch(fetch).load(wallhopUrl)).rejects.toThrow("no Location")
     expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it("retains service HTTP diagnostics in client attempt records", async () => {
+    const fetchImplementation = vi.fn(async () => new Response(null, { status: 403 }))
+    await using client = new UrlContentClient({ fetchImplementation, resolve }).start()
+    await expect(client.loadUrlDetailed(wallhopUrl)).rejects.toMatchObject({
+      attempts: [
+        {
+          loaderId: "wallhop",
+          status: "failed",
+          diagnostic: {
+            code: "service_http_error",
+            phase: "loading",
+            httpStatus: 403,
+          },
+        },
+      ],
+    })
+    expect(fetchImplementation).toHaveBeenCalledOnce()
   })
 
   it.each(["challenge", "HTTP error"])(

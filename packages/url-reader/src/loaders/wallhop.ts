@@ -1,6 +1,11 @@
 import * as cheerio from "cheerio"
 
-import { LoaderContentError, LoaderTimeoutError, TargetHttpError } from "../core/errors.js"
+import {
+  FailureDiagnosticError,
+  LoaderContentError,
+  LoaderTimeoutError,
+  TargetHttpError,
+} from "../core/errors.js"
 import { runBounded } from "../core/interruption.js"
 import type { Loader } from "../core/loader.js"
 import { assertPublicUrl, readResponseText, safeFetch } from "../core/network.js"
@@ -11,6 +16,7 @@ import {
   requireLoaderApplicability,
   type WallhopTarget,
 } from "../sources/applicability.js"
+import { ensureUsableContent } from "./content-guard.js"
 import { DEFAULT_NEWS_ARTICLE_HEADERS } from "./news.js"
 import { extractArticleBodyFromJsonLd, htmlToMarkdown } from "./utils.js"
 
@@ -19,8 +25,42 @@ export const MAX_WALLHOP_BYTES = 10 * 1024 * 1024
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const MAX_REDIRECTS = 5
 
+function resolveArticleReference(value: string, base: string | URL): string {
+  const parent = new URL(base)
+  const reference = value.trim()
+  let absolute: string
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(reference)) absolute = reference
+  else if (reference.startsWith("//")) absolute = `${parent.protocol}${reference}`
+  else if (reference.startsWith("/")) absolute = `${parent.origin}${reference}`
+  else {
+    const embedded = /(?:^|\/)https?:\/\//iu.exec(reference)
+    if (embedded) {
+      // Resolve only the outer relative path, not the embedded target's dot segments.
+      const start = embedded.index + (embedded[0].startsWith("/") ? 1 : 0)
+      absolute = `${new URL(reference.slice(0, start), parent)}${reference.slice(start)}`
+    } else absolute = new URL(reference, parent).toString()
+  }
+  if (!isWallhopUrl(absolute)) return new URL(absolute).toString()
+
+  // Canonicalize the embedded target before resolving the surrounding URL.
+  const target = parseWallhopTarget(absolute)
+  const prefix = /^https?:\/\/[^/?#]+\/(raw\/|api\/)?/iu.exec(absolute)?.[1] ?? ""
+  return new URL(`${new URL(absolute).origin}/${prefix}${target.targetUrl}`).toString()
+}
+
 export function extractWallhopArticleText(html: string, url: string, targetUrl: string): string {
   const $ = cheerio.load(html)
+  if (
+    $(
+      "form#inputForm, #challenge-form, #challenge-running, script[src*='/cdn-cgi/challenge-platform/']",
+    ).length > 0
+  ) {
+    throw new LoaderContentError(
+      "WallhopLoader",
+      url,
+      "Wallhop returned a landing or challenge page",
+    )
+  }
   const target = new URL(targetUrl)
   const sources = [
     $("a.source[href]").first().attr("href"),
@@ -31,7 +71,7 @@ export function extractWallhopArticleText(html: string, url: string, targetUrl: 
     if (!source) continue
     let matches = false
     try {
-      const sourceUrl = new URL(source, target)
+      const sourceUrl = new URL(resolveArticleReference(source, target))
       const original = isWallhopUrl(sourceUrl.toString())
         ? new URL(parseWallhopTarget(sourceUrl.toString()).targetUrl)
         : sourceUrl
@@ -53,7 +93,7 @@ export function extractWallhopArticleText(html: string, url: string, targetUrl: 
 
   const article = $("article").first()
   if (article.length > 0) {
-    article.find("script,style,noscript,svg,nav,aside,footer,form,button").remove()
+    article.find("script,style,template,noscript,svg,nav,aside,footer,form,button").remove()
     const body = article
       .find('.body, [itemprop="articleBody"], section[name="articleBody"]')
       .first()
@@ -65,10 +105,18 @@ export function extractWallhopArticleText(html: string, url: string, targetUrl: 
           .toArray()
           .map((paragraph) => $(paragraph).text())
           .join("\n")
-    if (prose.trim()) return htmlToMarkdown($.html(article))
+    if (prose.trim()) {
+      ensureUsableContent(prose, { loaderName: "WallhopLoader", url })
+      const text = htmlToMarkdown($.html(article))
+      ensureUsableContent(text, { loaderName: "WallhopLoader", url })
+      return text
+    }
   }
   const body = extractArticleBodyFromJsonLd(html)
-  if (body) return body
+  if (body) {
+    ensureUsableContent(body, { loaderName: "WallhopLoader", url })
+    return body
+  }
   throw new LoaderContentError("WallhopLoader", url, "Could not find Wallhop article body")
 }
 
@@ -138,11 +186,18 @@ export class WallhopLoader implements Loader {
             target.url,
             "Wallhop redirect has no Location header",
           )
-        requestUrl = new URL(location, requestUrl).toString()
+        requestUrl = resolveArticleReference(location, requestUrl)
         continue
       }
       if (!response.ok) {
         await response.body?.cancel()
+        if (isWallhopUrl(requestUrl)) {
+          throw new FailureDiagnosticError("WallhopLoader", target.url, {
+            code: "service_http_error",
+            phase: "loading",
+            httpStatus: response.status,
+          })
+        }
         throw new TargetHttpError("WallhopLoader", target.url, response.status)
       }
       const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase()
