@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/review.yml"
       - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
@@ -28,6 +29,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/review.yml"
       - "packages/runtime-config/**"
       - "scripts/**"
       - ".github/workflows/ci.yml"
