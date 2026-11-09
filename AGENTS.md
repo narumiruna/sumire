@@ -47,4 +47,5 @@
 
 ## Git and commits
 
-- Add a changeset to every pull request; bump every affected package, including private packages, and use an empty changeset only when no package version should change.
+- Add a changeset for package changes; include a meaningful change summary and bump every affected package, including private packages.
+- Do not add empty changesets; omit the changeset when no package version should change.
