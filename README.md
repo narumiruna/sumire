@@ -86,6 +86,10 @@ Run one workspace with `--workspace`, for example:
 npm test --workspace @narumitw/sumire-url-reader
 ```
 
+## Pull request reviews
+
+The [PR Review workflow](.github/workflows/review.yml) uses Pi with persistent OAuth credentials. See [credential setup, verification, and recovery](docs/review-workflow.md) before enabling or changing it.
+
 ## Package releases
 
 Add a Changesets file to every pull request:
