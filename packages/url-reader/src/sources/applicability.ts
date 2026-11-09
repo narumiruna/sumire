@@ -481,8 +481,9 @@ export function parseWallhopTarget(url: string): WallhopTarget {
   ) {
     throw new InvalidUrlError(url, "Wallhop article")
   }
-  const embedded = parsed.pathname.replace(/^\/(?:raw\/|api\/)?/u, "") + parsed.search
-  if (!/^https?:\/\//iu.test(embedded)) throw new InvalidUrlError(url, "Wallhop article")
+  // Unwrap before outer path normalization can consume the embedded authority.
+  const embedded = /^https?:\/\/[^/?#]+\/(?:raw\/|api\/)?(https?:\/\/[^#]*)/iu.exec(url.trim())?.[1]
+  if (!embedded) throw new InvalidUrlError(url, "Wallhop article")
   const target = parseHttpUrl(embedded)
   if (
     !["http:", "https:"].includes(target.protocol) ||

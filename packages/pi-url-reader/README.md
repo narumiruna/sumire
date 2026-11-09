@@ -49,7 +49,7 @@ On success, `read_url_content` returns readable text or Markdown plus source met
 
 Failures return Pi's supported error result: `isError: true`, safe JSON in text `content`, and the same `UrlFailure` object in `details`. A failed load is not extracted content. Invalid or disallowed explicit loader selections return a safe `unknown` failure without invoking the loader. Caller cancellation still throws the original abort reason unchanged. Fetched content is untrusted reference data, not instructions or authorization.
 
-Automatic source selection belongs to `url-reader`. It chooses source loaders for Threads posts and share links, Google Docs, documents, videos, and other supported sources; generic pages use its ordered local loader chain. WallHop and other generic hosts follow the same path without tool-owned exceptions.
+Automatic source selection belongs to `url-reader`. It chooses source loaders for Threads posts and share links, Google Docs, documents, videos, New York Times articles, Wallhop-prefixed article URLs, and other supported sources; generic pages use its ordered local loader chain. Wallhop links use the dedicated source loader's validated raw endpoint without tool-owned exceptions. Ordinary URLs are not automatically sent through Wallhop.
 
 Threads share links retain the verified-post contract: generic-web results cannot succeed as a post, and explicit `built-in` selection is rejected without fetching. Open Graph text may be an excerpt rather than the full post. Internal loading methods retain original exceptions; the tool normalizes them before returning a failure. There is no automatic return to built-in extraction. No hosted OCR is enabled.
 
