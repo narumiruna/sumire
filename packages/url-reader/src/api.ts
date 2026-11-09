@@ -4,6 +4,7 @@ import { runBounded } from "./core/interruption.js"
 import type { LoadResult } from "./core/results.js"
 import { explainLoadChain } from "./load-chain.js"
 import { listLoaderNames } from "./loader-registry.js"
+import type { PipelineOptions } from "./pipelines/catalog.js"
 
 export interface LoadUrlOptions extends FirecrawlCredentialOptions {
   allowedSchemes?: ReadonlySet<string>
@@ -51,7 +52,7 @@ export function availableLoaders(): string[] {
 
 export function explainPlan(
   url: string,
-  options: FirecrawlCredentialOptions & { firecrawlFallback?: boolean } = {},
+  options: FirecrawlCredentialOptions & PipelineOptions = {},
 ): Record<string, unknown> {
   return explainLoadChain(url, options).toObject()
 }

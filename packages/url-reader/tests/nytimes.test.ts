@@ -276,6 +276,7 @@ describe("New York Times client integration", () => {
       await using client = new UrlContentClient({
         fetchImplementation,
         resolve: publicResolver,
+        wallhopRuleset: { current: () => [], load: async () => [] },
       }).start()
       const result = await client.loadUrlDetailed(
         articleUrl,
@@ -300,6 +301,7 @@ describe("New York Times client integration", () => {
     await using client = new UrlContentClient({
       fetchImplementation,
       resolve: publicResolver,
+      wallhopRuleset: { current: () => [], load: async () => [] },
     }).start()
     vi.spyOn(client, "browser").mockRejectedValue(new Error("Browser unavailable"))
     await expect(client.loadUrlDetailed(articleUrl)).rejects.toMatchObject({
@@ -321,6 +323,7 @@ describe("New York Times client integration", () => {
       )
       await using client = new UrlContentClient({
         fetchImplementation,
+        wallhopRuleset: { current: () => [], load: async () => [] },
         resolve: async (host) =>
           host === "private.example" ? [{ address: "10.0.0.1", family: 4 }] : publicResolver(),
       }).start()

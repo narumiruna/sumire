@@ -44,6 +44,11 @@ import {
   isWallhopUrl,
   isYouTubeVideoUrl,
 } from "../sources/applicability.js"
+import {
+  matchesWallhopRuleset,
+  sharedWallhopRuleset,
+  type WallhopRuleset,
+} from "../sources/wallhop-ruleset.js"
 
 export const ContentType = {
   YouTubeVideo: "youtube_video",
@@ -158,10 +163,28 @@ export function matchPipeline(url: string): Pipeline | undefined {
   return PIPELINE_ENTRIES.find(([, matches]) => matches(url))?.[0]
 }
 
-export function planForUrl(
-  url: string,
-  options: { firecrawlFallback?: boolean } = {},
-): PipelinePlan {
+export interface PipelineOptions {
+  firecrawlFallback?: boolean
+  wallhopRules?: WallhopRuleset
+}
+
+export function planForUrl(url: string, options: PipelineOptions = {}): PipelinePlan {
+  const plan = basePlanForUrl(url, options)
+  if (
+    isWallhopUrl(url) ||
+    (plan.contentType !== ContentType.GenericWeb && plan.contentType !== ContentType.NewsArticle) ||
+    !matchesWallhopRuleset(url, options.wallhopRules ?? sharedWallhopRuleset.current())
+  ) {
+    return plan
+  }
+  return {
+    ...plan,
+    targetedLoaders: [WALLHOP, ...plan.targetedLoaders],
+    executionPlan: [WALLHOP, ...plan.executionPlan],
+  }
+}
+
+function basePlanForUrl(url: string, options: PipelineOptions): PipelinePlan {
   const pipeline = matchPipeline(url)
   if (!pipeline) {
     const loaders = options.firecrawlFallback
