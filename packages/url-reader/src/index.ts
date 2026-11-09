@@ -53,7 +53,7 @@ export {
   listLoaderDefs,
   listLoaderNames,
 } from "./loader-registry.js"
-export type { Pipeline, PipelinePlan } from "./pipelines/catalog.js"
+export type { Pipeline, PipelineOptions, PipelinePlan } from "./pipelines/catalog.js"
 export {
   ContentContract,
   ContentType,
@@ -133,3 +133,8 @@ export {
   VideoIdError,
   WALLHOP_HOST,
 } from "./sources/applicability.js"
+export type {
+  WallhopRule,
+  WallhopRuleset,
+  WallhopRulesetProvider,
+} from "./sources/wallhop-ruleset.js"

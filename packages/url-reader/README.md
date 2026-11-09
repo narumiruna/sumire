@@ -4,7 +4,7 @@ A TypeScript and Node.js package that extracts text or Markdown from URLs and au
 
 ## Features
 
-- Source-aware plans for YouTube, Twitter/X, Threads, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, New York Times, explicit Wallhop links, PDFs, OpenAI pages, and generic web pages
+- Source-aware plans for YouTube, Twitter/X, Threads, Truth Social, Reddit, Instagram Reels, PTT, GitHub, Google Docs, pi.dev sessions, BBC, CNN, LTN, New York Times, ruleset-based Wallhop article routing, PDFs, OpenAI pages, and generic web pages
 - Local AnyDoc conversion of public Office, OpenDocument, RTF, EPUB, and CSV document URLs in killable child processes
 - Ordered fallback attempts with structured status, timing, and error details
 - Browser TLS/HTTP fingerprinting through [`impers`](https://github.com/lexiforest/impers)
@@ -48,7 +48,9 @@ const explicit = await loadUrlDetailed("https://example.com/article", {
 console.log(explicit.loaderId); // httpx
 ```
 
-The TypeScript API is async-only because JavaScript has no safe synchronous equivalent. `loaderNames` supplies an exact ordered chain: only those loaders are attempted, in order, and failure does not return to automatic planning. Unknown and empty lists are rejected. Prefer automatic planning unless a trusted caller needs a controlled override.
+URL loading is async-only because JavaScript has no safe synchronous equivalent. `loaderNames` supplies an exact ordered chain: only those loaders are attempted, in order, and failure does not return to automatic planning. Unknown and empty lists are rejected. Prefer automatic planning unless a trusted caller needs a controlled override.
+
+`explainPlan`, `explainLoadChain`, and `planForUrl` remain synchronous and never fetch routing data. They use the current valid Wallhop ruleset snapshot; a cold process shows the original plan until rules are loaded. Their `wallhopRules` option accepts a normalized `WallhopRuleset` snapshot for reproducible planning. A load captures one snapshot after refreshing it and keeps that plan for the operation. `matchPipeline` still identifies the original source pipeline.
 
 The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict network targets to HTTPS. The same option is available on the `UrlContentClient` constructor. The default permits public HTTP and HTTPS; the option can restrict that set, not permit other protocols. The client copies the set and applies it to initial targets, local fetch redirects, browser requests, curl redirect validation and proxy forwarding, and reported Firecrawl final targets. Firecrawl intermediate redirects and navigation inside third-party transcript/media tools are not independently inspected by this policy.
 
@@ -72,7 +74,7 @@ const results = await Promise.all([
 ]);
 ```
 
-A deadline starts before target validation and includes loader construction and waiting for a concurrency slot. Automatic generic attempts use the smaller of their cap and remaining time divided by remaining eligible alternatives: 15 seconds for fast Playwright, 20 seconds for other local methods, and 30 seconds for Firecrawl. Missing requirements are not included in that division. Local attempt timeouts continue the chain; a shared deadline or caller cancellation stops it. Without a shared deadline, the same per-attempt caps still apply. Explicit chains and source-required plans retain their existing limits instead of using generic budget allocation.
+A deadline starts before target validation and includes loader construction and waiting for a concurrency slot. Automatic generic attempts use the smaller of their cap and remaining time divided by remaining eligible alternatives: 15 seconds for fast Playwright, 20 seconds for other local methods, and 30 seconds for Firecrawl. Missing requirements are not included in that division. Local attempt timeouts continue the chain; a shared deadline or caller cancellation stops it. Without a shared deadline, the same per-attempt caps still apply. An added automatic Wallhop attempt has a 10-second cap and the same fair-share rule, including before a source-required news loader. Explicit chains and the original source-required fallback attempts retain their existing limits.
 
 Cancellation is propagated through `AbortSignal`; waiting is bounded even if an operation ignores cancellation. Browser navigation is interrupted and its context is closed. The one-shot API allows up to five additional seconds for client cleanup; cleanup continues if that wait expires, and never replaces an original load failure. Reusable clients remain responsible for awaiting `close()`. `getInterruptedAttempts(error, url)` exposes safe attempt records for that URL while preserving the caller's original cancellation reason and identity, including concurrent URLs sharing a signal. Omitting `url` returns the most recently stored records; interruption statuses distinguish `cancelled` from `timeout`.
 
@@ -167,25 +169,33 @@ Requests retain public-target and redirect validation, 20-second HTTP transport 
 sumire-url-reader https://www.nytimes.com/2026/11/06/us/politics/chinese-spy-agency-nvidia-jensen-huang.html
 ```
 
-Live check on 2026-11-09: this direct URL returned HTTP 403 through all three transports. The explicit Wallhop link below returned article text through the public package API; this does not establish direct New York Times access.
+Live check on 2026-11-09: this original URL returned article text through the automatic `wallhop` preference, followed by a cached plan of `wallhop`, then `nytimes`. Direct publisher retrieval still returns HTTP 403; the successful result does not establish direct New York Times access. Use `--loader nytimes` or `loaderNames: ["nytimes"]` to require the original loader without automatic Wallhop routing.
 
 ### Wallhop
 
-Use an explicit Wallhop prefix to request an article through this third-party service:
+Automatic article and generic-web loads consult the published [Wallhop ruleset](https://wallhop.io/ruleset). A matching URL tries `wallhop` first. Failure returns to the original loader chain, in its original order and with the original URL and content contract. Unmatched URLs retain their original content loaders. PDF, document, code, social, and session plans are not changed.
+
+Matching uses `domain` and `domains`, with exact hostnames or dot-separated subdomains, plus optional literal `paths` prefixes. Hostnames are normalized for case, IDNA, and a trailing dot. A `www.example.com` entry does not include `example.com`. Query parameters and fragments do not affect matching. Only these routing fields are retained; upstream cookies, headers, JavaScript, regular expressions, and URL modification rules are not used locally.
+
+The process shares one in-memory ruleset cache. Valid snapshots last one hour; failed refreshes back off for one minute. The fixed HTTPS metadata request rejects redirects, has a 2-second timeout, and enforces a streamed 256 KiB limit plus parser size/count limits. Each load waits at most 2 seconds or one quarter of its remaining deadline, whichever is smaller. Missing, expired, or invalid rules leave the original plan available. Concurrent callers share refresh work; cancelling one waiter does not cancel another waiter. The separate metadata request does not occupy a content-loader request slot.
+
+Original targets are validated before metadata preparation. Explicit loader lists, explicit Wallhop links, non-article source plans, IP-address targets, and HTTP-only clients do not fetch this metadata. The catalog request does not contain the article URL. **Matching article URLs, including their query strings, are automatically sent to Wallhop.** Use an explicit original loader when the URL must not be sent to this third-party service. Trusted hosts can inject a `WallhopRulesetProvider` through the client constructor’s `wallhopRuleset` option for controlled snapshots and isolated testing.
+
+An explicit Wallhop prefix remains available:
 
 ```bash
 sumire-url-reader https://wallhop.io/https://www.nytimes.com/2026/11/06/us/politics/chinese-spy-agency-nvidia-jensen-huang.html
 ```
 
-The `wallhop` loader accepts prefix, `/raw/`, and `/api/` links on `wallhop.io` and normalizes them to HTTPS `/raw/<target-url>`. It preserves the embedded target query and drops the fragment. It does not wrap ordinary URLs or become a global fallback. Choosing a Wallhop link sends the embedded URL, including its query, to Wallhop. No API key, browser, or new runtime setting is needed.
+The `wallhop` loader accepts prefix, `/raw/`, and `/api/` links on `wallhop.io` and normalizes them to HTTPS `/raw/<target-url>`. It preserves the embedded target query and drops the fragment. Automatic planning wraps only ruleset matches; it does not make Wallhop a fallback for unrelated websites. Explicit links also send the embedded URL, including its query, to Wallhop. No API key, browser, or new runtime setting is needed.
 
 The loader parses the embedded URL before normalizing the wrapper path, including redirect locations and source metadata. Dot segments remain within the original article host. It validates the embedded target as public HTTP(S) before any service request. It rejects credentials and recursive Wallhop targets, applies the client scheme policy to both URLs, and checks every local redirect, including new embedded targets. It rejects article-target changes on Wallhop redirects. Wallhop performs remote navigation and archive lookups; their intermediate targets cannot be independently inspected by this package.
 
-Responses must be HTML with article prose or JSON-LD `articleBody`. Available source links and canonical metadata must match the requested article host and path; nonempty source queries must also match. Reader controls and non-content elements are removed before Markdown conversion. Recognized challenge DOM elements and challenge headings in article prose, rendered output, or JSON-LD are rejected. Empty readers fail without generic fallback. The loader has a 30-second total timeout and a streamed 10 MiB response limit. Caller cancellation and the client deadline apply throughout validation, requests, and body reading.
+Responses must be HTML with article prose or JSON-LD `articleBody`. Available source links and canonical metadata must match the requested article host and path; nonempty source queries must also match. Reader controls and non-content elements are removed before Markdown conversion. Recognized challenge DOM elements and challenge headings in article prose, rendered output, or JSON-LD are rejected. Empty readers fail. Explicit Wallhop links do not gain generic fallback; an automatic preference failure continues through the original chain. The loader has a 30-second total timeout and a streamed 10 MiB response limit. Caller cancellation and the client deadline apply throughout validation, requests, and body reading.
 
 HTTP failures from Wallhop use `service_http_error` diagnostics. Failures after a redirect to another public host retain `target_http_error`. A Wallhop HTTP status does not independently establish the original publisher's status.
 
-The request preserves encoded target query text, but identical upstream forwarding, service availability, final publisher URLs, and article completeness are not guaranteed. For an operational smoke check when Wallhop is available, run the prefixed-URL CLI example above and verify that it returns article prose rather than reader controls or a challenge. This check does not establish subscription access or complete extraction.
+The request preserves encoded target query text, but identical upstream forwarding, service availability, final publisher URLs, and article completeness are not guaranteed. For an operational smoke check when Wallhop is available, run the original NYTimes URL above to test ruleset preparation and automatic preference, or the prefixed-URL CLI example to test explicit loading, and verify that it returns article prose rather than reader controls or a challenge. This check does not establish subscription access or complete extraction.
 
 ### Firecrawl
 

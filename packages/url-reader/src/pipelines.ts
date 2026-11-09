@@ -1,4 +1,4 @@
-export type { Pipeline, PipelinePlan } from "./pipelines/catalog.js"
+export type { Pipeline, PipelineOptions, PipelinePlan } from "./pipelines/catalog.js"
 export {
   ContentContract,
   ContentType,

@@ -22,15 +22,22 @@ import {
 import { retainInterruptedAttempts, runBounded } from "./core/interruption.js"
 import type { LoaderFactory } from "./core/loader.js"
 import { type AttemptRecord, AttemptStatus, type LoadResult } from "./core/results.js"
-import { getLoaderContentType, getLoaderFactory, getLoaderRequirements } from "./loader-registry.js"
+import {
+  getLoaderContentType,
+  getLoaderFactory,
+  getLoaderRequirements,
+  WALLHOP,
+} from "./loader-registry.js"
 import {
   ContentContract,
   type ContentContract as ContentContractValue,
   ContentType,
   type ContentType as ContentTypeValue,
   GENERIC_HTML_LOADERS,
+  type PipelineOptions,
   planForUrl,
 } from "./pipelines/catalog.js"
+import { isWallhopUrl, WALLHOP_HOST } from "./sources/applicability.js"
 
 export type Admission = (
   loaderName: string,
@@ -80,6 +87,7 @@ interface LoadChainOptions extends FirecrawlCredentialOptions {
   getContentType: ContentTypeLookup
   admit?: Admission
   automaticGeneric?: boolean
+  automaticWallhop?: boolean
 }
 
 export class LoadChain {
@@ -89,6 +97,7 @@ export class LoadChain {
   readonly getContentType: ContentTypeLookup
   readonly admit?: Admission
   readonly automaticGeneric: boolean
+  readonly automaticWallhop: boolean
   private readonly firecrawlApiKey: string | null
 
   constructor(options: LoadChainOptions) {
@@ -99,6 +108,7 @@ export class LoadChain {
     this.getContentType = options.getContentType
     this.admit = options.admit
     this.automaticGeneric = options.automaticGeneric ?? false
+    this.automaticWallhop = options.automaticWallhop ?? false
   }
 
   async loadDetailed(signal?: AbortSignal): Promise<LoadResult> {
@@ -171,12 +181,13 @@ export class LoadChain {
           (name) =>
             missingRequirements(this.getRequirements(name), this.firecrawlApiKey).length === 0,
         ).length
-      const budget = this.automaticGeneric
-        ? Math.min(
-            genericAttemptLimit(plannedLoaderName),
-            remaining === undefined ? Infinity : remaining / alternatives,
-          )
-        : remaining
+      const budget =
+        this.automaticGeneric || (this.automaticWallhop && plannedLoaderName === WALLHOP)
+          ? Math.min(
+              genericAttemptLimit(plannedLoaderName),
+              remaining === undefined ? Infinity : remaining / alternatives,
+            )
+          : remaining
       const localTimeout = budget !== undefined && (remaining === undefined || budget < remaining)
       const started = performance.now()
       try {
@@ -348,6 +359,7 @@ function classifyFailure(error: Error): string | undefined {
 }
 
 function genericAttemptLimit(name: string): number {
+  if (name === WALLHOP) return 10_000
   if (name === "playwright-fast") return 15_000
   if (name === "firecrawl") return 30_000
   return 20_000
@@ -413,10 +425,10 @@ function ensureAnyEligible(explanation: LoadChainExplanation): void {
 
 export function explainLoadChain(
   url: string,
-  options: FirecrawlCredentialOptions & {
-    firecrawlFallback?: boolean
-    getRequirements?: RequirementsLookup
-  } = {},
+  options: FirecrawlCredentialOptions &
+    PipelineOptions & {
+      getRequirements?: RequirementsLookup
+    } = {},
 ): LoadChainExplanation {
   const plan = planForUrl(url, options)
   return buildExplanation({
@@ -434,8 +446,7 @@ export function explainLoadChain(
 
 export function resolveLoadChain(
   url: string,
-  options: {
-    firecrawlFallback?: boolean
+  options: PipelineOptions & {
     firecrawlApiKey?: string | null
     getFactory?: (name: string) => LoaderFactory
     getRequirements?: RequirementsLookup
@@ -447,12 +458,25 @@ export function resolveLoadChain(
   const getRequirements = options.getRequirements ?? getLoaderRequirements
   const explanation = explainLoadChain(url, { ...options, firecrawlApiKey })
   ensureAnyEligible(explanation)
+  const automaticWallhop = explanation.executionPlan[0] === WALLHOP && !isWallhopUrl(url)
+  const getFactory =
+    options.getFactory ?? ((name: string) => getLoaderFactory(name, undefined, { firecrawlApiKey }))
   return new LoadChain({
     firecrawlApiKey,
-    getFactory:
-      options.getFactory ?? ((name) => getLoaderFactory(name, undefined, { firecrawlApiKey })),
+    getFactory: (name) => {
+      const factory = getFactory(name)
+      if (!automaticWallhop || name !== WALLHOP) return factory
+      return async () => {
+        const loader = await factory()
+        return {
+          load: (target, signal) =>
+            loader.load(`https://${WALLHOP_HOST}/${new URL(target)}`, signal),
+        }
+      }
+    },
     explanation,
     automaticGeneric: explanation.pipeline === undefined,
+    automaticWallhop,
     getRequirements,
     getContentType: options.getContentType ?? getLoaderContentType,
     ...(options.admit ? { admit: options.admit } : {}),

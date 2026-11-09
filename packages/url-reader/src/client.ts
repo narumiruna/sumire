@@ -1,3 +1,4 @@
+import { isIP } from "node:net"
 import type { Browser } from "playwright"
 
 import { remainingMilliseconds, withDeadline } from "./core/execution.js"
@@ -5,6 +6,7 @@ import {
   type FirecrawlCredentialOptions,
   resolveFirecrawlApiKey,
 } from "./core/firecrawl-credentials.js"
+import { runBounded } from "./core/interruption.js"
 import {
   assertPublicUrl,
   type FetchImplementation,
@@ -21,7 +23,15 @@ import {
   getLoaderDef,
   getLoaderRequirements,
 } from "./loader-registry.js"
-import { isPdfTarget } from "./sources/applicability.js"
+import { ContentType, planForUrl } from "./pipelines/catalog.js"
+import { isPdfTarget, isWallhopUrl } from "./sources/applicability.js"
+import {
+  DEFAULT_WALLHOP_RULESET_TIMEOUT_MS,
+  fetchWallhopRuleset,
+  sharedWallhopRuleset,
+  type WallhopRuleset,
+  type WallhopRulesetProvider,
+} from "./sources/wallhop-ruleset.js"
 
 const CLIENT_CONTEXT_REQUIRED = "Call UrlContentClient.start() before loading URLs"
 const INVALID_TARGET = "Target must be an HTTP(S) URL or a local PDF path"
@@ -91,6 +101,7 @@ export interface UrlContentClientOptions extends FirecrawlCredentialOptions {
   workerLimit?: number
   fetchImplementation?: FetchImplementation
   resolve?: PublicUrlResolver
+  wallhopRuleset?: WallhopRulesetProvider
 }
 
 export interface UrlContentLoadOptions extends FirecrawlCredentialOptions {
@@ -108,6 +119,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
   private readonly resolve?: PublicUrlResolver
   private readonly allowedSchemes: ReadonlySet<string>
   private readonly firecrawlApiKey?: string | null
+  private readonly wallhopRuleset: WallhopRulesetProvider
   private active = false
   private impersPromise?: Promise<ImpersSession>
   private proxyPromise?: Promise<PublicProxy>
@@ -124,6 +136,7 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
       throw new RangeError("concurrency limits must be positive")
     }
     this.firecrawlApiKey = options.firecrawlApiKey
+    this.wallhopRuleset = options.wallhopRuleset ?? sharedWallhopRuleset
     this.deadlineSeconds = options.deadlineSeconds
     this.requestSlots = new Semaphore(requestLimit)
     this.browserSlots = new Semaphore(browserLimit)
@@ -269,11 +282,54 @@ export class UrlContentClient implements ResourceProvider, AsyncDisposable {
           ? AbortSignal.any([options.signal, timeoutSignal])
           : (options.signal ?? timeoutSignal)
       await validateTarget(url, this.allowedSchemes, this.resolve, validationSignal)
+      validationSignal?.throwIfAborted()
+      const wallhopRules = explicitChain
+        ? []
+        : await this.prepareWallhopRules(url, validationSignal)
       const chain =
         explicitChain ??
-        resolveLoadChain(url, { ...chainOptions, firecrawlFallback: options.firecrawlFallback })
+        resolveLoadChain(url, {
+          ...chainOptions,
+          firecrawlFallback: options.firecrawlFallback,
+          wallhopRules,
+        })
       return chain.loadDetailed(options.signal)
     })
+  }
+
+  private async prepareWallhopRules(url: string, signal?: AbortSignal): Promise<WallhopRuleset> {
+    const base = planForUrl(url, { wallhopRules: [] })
+    if (
+      !this.allowedSchemes.has("https") ||
+      isWallhopUrl(url) ||
+      (base.contentType !== ContentType.GenericWeb &&
+        base.contentType !== ContentType.NewsArticle) ||
+      isIP(new URL(url).hostname.replace(/^\[|\]$/gu, "")) !== 0
+    ) {
+      return []
+    }
+    const remaining = remainingMilliseconds()
+    const waitMs = Math.min(
+      DEFAULT_WALLHOP_RULESET_TIMEOUT_MS,
+      remaining === undefined ? Infinity : remaining / 4,
+    )
+    if (waitMs <= 0) return []
+    try {
+      return await runBounded(
+        () =>
+          this.wallhopRuleset.load(
+            // The shared metadata request must not hold a content-loader slot.
+            (activeSignal) => fetchWallhopRuleset(this.fetch.bind(this), activeSignal),
+            signal,
+            waitMs,
+          ),
+        waitMs,
+        signal,
+      )
+    } catch {
+      signal?.throwIfAborted()
+      return []
+    }
   }
 
   async close(): Promise<void> {
