@@ -18,6 +18,8 @@ export const GOOGLE_DOCS = "google-docs"
 export const BBC = "bbc"
 export const CNN = "cnn"
 export const LTN = "ltn"
+export const NYTIMES = "nytimes"
+export const WALLHOP = "wallhop"
 export const PLAYWRIGHT_NETWORKIDLE = "playwright-networkidle"
 export const PLAYWRIGHT_FAST = "playwright-fast"
 export const PLAYWRIGHT = "playwright"
@@ -80,6 +82,8 @@ export const LOADER_DEFS: readonly LoaderDef[] = [
   definition(BBC, "BBC article extraction with article-aware parsing", "news_article"),
   definition(CNN, "CNN article extraction with article-aware parsing", "news_article"),
   definition(LTN, "Liberty Times Net article extraction", "news_article"),
+  definition(NYTIMES, "New York Times article extraction", "news_article"),
+  definition(WALLHOP, "Article extraction through explicit Wallhop links", "news_article"),
   definition(
     PLAYWRIGHT_NETWORKIDLE,
     "Browser-based scraping with networkidle wait",
@@ -226,9 +230,14 @@ export async function createLoader(
     }
     case BBC:
     case CNN:
-    case LTN: {
+    case LTN:
+    case NYTIMES: {
       const { NewsArticleLoader } = await import("./loaders/news.js")
-      return new NewsArticleLoader(name as "bbc" | "cnn" | "ltn", { resources })
+      return new NewsArticleLoader(name, { resources })
+    }
+    case WALLHOP: {
+      const { WallhopLoader } = await import("./loaders/wallhop.js")
+      return new WallhopLoader({ resources })
     }
     case FIRECRAWL: {
       const { FirecrawlLoader } = await import("./loaders/firecrawl.js")

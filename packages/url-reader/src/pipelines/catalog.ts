@@ -8,6 +8,7 @@ import {
   GOOGLE_DOCS,
   HTTPX,
   LTN,
+  NYTIMES,
   PDF,
   PI_SESSION,
   PLAYWRIGHT_FAST,
@@ -18,6 +19,7 @@ import {
   THREADS,
   TRUTHSOCIAL,
   TWITTER,
+  WALLHOP,
   YOUTUBE,
   YOUTUBE_YTDLP,
 } from "../loader-registry.js"
@@ -28,6 +30,7 @@ import {
   isGitHubUrl,
   isGoogleDocsUrl,
   isLtnUrl,
+  isNytimesUrl,
   isOpenAiWebUrl,
   isPdfTarget,
   isPiSessionUrl,
@@ -38,6 +41,7 @@ import {
   isThreadsShareUrl,
   isTruthSocialUrl,
   isTwitterStatusUrl,
+  isWallhopUrl,
   isYouTubeVideoUrl,
 } from "../sources/applicability.js"
 
@@ -86,6 +90,10 @@ export const GENERIC_HTML_LOADERS = [
 type PipelineEntry = readonly [Pipeline, (url: string) => boolean]
 
 const PIPELINE_ENTRIES: readonly PipelineEntry[] = [
+  [
+    { name: WALLHOP, contentType: ContentType.NewsArticle, targetedLoaders: [WALLHOP] },
+    isWallhopUrl,
+  ],
   [{ name: PTT, contentType: ContentType.SocialPost, targetedLoaders: [PTT] }, isPttUrl],
   [
     { name: THREADS, contentType: ContentType.SocialPost, targetedLoaders: [THREADS] },
@@ -129,6 +137,10 @@ const PIPELINE_ENTRIES: readonly PipelineEntry[] = [
   [{ name: BBC, contentType: ContentType.NewsArticle, targetedLoaders: [BBC] }, isBbcUrl],
   [{ name: CNN, contentType: ContentType.NewsArticle, targetedLoaders: [CNN] }, isCnnUrl],
   [{ name: LTN, contentType: ContentType.NewsArticle, targetedLoaders: [LTN] }, isLtnUrl],
+  [
+    { name: NYTIMES, contentType: ContentType.NewsArticle, targetedLoaders: [NYTIMES] },
+    isNytimesUrl,
+  ],
   [
     {
       name: "openai_web",

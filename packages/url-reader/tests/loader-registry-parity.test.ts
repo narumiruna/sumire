@@ -25,7 +25,7 @@ const KABIGON_0_19_6_LOADERS = [
   "ytdlp",
 ] as const
 
-const SUMIRE_ONLY_LOADERS = ["anydoc", "threads", "google-docs"] as const
+const SUMIRE_ONLY_LOADERS = ["anydoc", "threads", "google-docs", "nytimes", "wallhop"] as const
 
 describe("Kabigon loader registry parity", () => {
   it("retains every Kabigon 0.19.6 loader ID and documents Sumire-only loaders separately", () => {

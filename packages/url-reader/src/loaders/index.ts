@@ -50,8 +50,10 @@ export {
   DEFAULT_NEWS_ARTICLE_HEADERS,
   extractLtnArticleText,
   extractNewsArticleText,
+  extractNytimesArticleText,
   LtnLoader,
   NewsArticleLoader,
+  NytimesLoader,
 } from "./news.js"
 export { DEFAULT_PDF_TIMEOUT_MS, MAX_PDF_BYTES, PdfLoader, readPdfContent } from "./pdf.js"
 export {
@@ -90,6 +92,12 @@ export {
   htmlToMarkdown,
   normalizeWhitespace,
 } from "./utils.js"
+export {
+  DEFAULT_WALLHOP_TIMEOUT_MS,
+  extractWallhopArticleText,
+  MAX_WALLHOP_BYTES,
+  WallhopLoader,
+} from "./wallhop.js"
 export { DEFAULT_LANGUAGES, parseVideoId, YouTubeLoader } from "./youtube.js"
 export {
   DEFAULT_MAX_MEDIA_BYTES,

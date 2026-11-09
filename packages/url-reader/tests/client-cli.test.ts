@@ -216,6 +216,8 @@ describe("CLI", () => {
     log.mockRestore()
     expect(output).toContain("anydoc -")
     expect(output).toContain("google-docs -")
+    expect(output).toContain("nytimes -")
+    expect(output).toContain("wallhop -")
     expect(output).toContain("pi-session -")
     expect(output).toContain("threads -")
     expect(output).toContain("curl-cffi -")
