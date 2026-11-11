@@ -3201,6 +3201,214 @@ describe("Telegram bot update routing", () => {
     await firstHandling
   })
 
+  describe("Telegram image download retry", () => {
+    const downloadError = "無法下載 Telegram 圖片，請稍後再試。"
+    const connectionReset = () =>
+      new TypeError("fetch failed", {
+        cause: Object.assign(new Error("Connection reset"), { code: "ECONNRESET" }),
+      })
+
+    function groupMessage(updateId: number, text: string): Update {
+      const update = privateMessage(updateId, text)
+      if (update.message) {
+        update.message.chat = { id: -100, type: "supergroup", title: "Group" }
+      }
+      return update
+    }
+
+    function replyPhoto(updateId: number, text = "請看圖"): Update {
+      const update = groupMessage(updateId, `@test_bot ${text}`)
+      if (update.message) {
+        update.message.reply_to_message = {
+          message_id: 50,
+          date: 1_700_000_000,
+          chat: update.message.chat,
+          from: { id: 8, is_bot: false, first_name: "Bob" },
+          photo: [
+            {
+              file_id: "replied-photo",
+              file_unique_id: "replied-photo",
+              width: 100,
+              height: 100,
+              file_size: 5,
+            },
+          ],
+          reply_to_message: undefined,
+        }
+      }
+      return update
+    }
+
+    it("submits one decoded replied image after a native connection reset", async () => {
+      const sessions = createSessions()
+      const imageFetchImplementation = vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(connectionReset())
+        .mockResolvedValueOnce(new Response("image"))
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
+      )
+      const calls = installApiMock(telegram.bot)
+
+      await telegram.bot.handleUpdate(replyPhoto(600))
+
+      expect(imageFetchImplementation).toHaveBeenCalledTimes(2)
+      expect(calls.filter((call) => call.method === "getFile")).toHaveLength(2)
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      const [chatId, prompt, options] = vi.mocked(sessions.submit).mock.calls[0] ?? []
+      expect(chatId).toBe(-100)
+      expect(prompt).toContain("Type: photo")
+      expect(prompt).toContain("Current user message:\n請看圖")
+      expect(options?.images).toEqual([
+        { type: "image", mimeType: "image/jpeg", data: Buffer.from("image").toString("base64") },
+      ])
+      expect(Buffer.from(options?.images?.[0]?.data ?? "", "base64").toString()).toBe("image")
+      expect(calls.map((call) => telegramPayloadText(call.payload))).not.toContain(downloadError)
+    })
+
+    it("replies once without submitting when both attempts reset", async () => {
+      const sessions = createSessions()
+      const imageFetchImplementation = vi.fn<typeof fetch>().mockRejectedValue(connectionReset())
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
+      )
+      const calls = installApiMock(telegram.bot)
+
+      await telegram.bot.handleUpdate(replyPhoto(600))
+
+      expect(imageFetchImplementation).toHaveBeenCalledTimes(2)
+      expect(calls.filter((call) => call.method === "getFile")).toHaveLength(2)
+      expect(sessions.submit).not.toHaveBeenCalled()
+      const replies = calls.filter((call) => call.method === "sendRichMessage")
+      expect(replies).toHaveLength(1)
+      expect(telegramPayloadText(replies[0]?.payload)).toBe(downloadError)
+    })
+
+    it("keeps same-chat queued submissions behind the recovering replied image", async () => {
+      let finishImageDownload: ((response: Response) => void) | undefined
+      const pendingImageDownload = new Promise<Response>((resolve) => {
+        finishImageDownload = resolve
+      })
+      const sessions = createSessions()
+      const imageFetchImplementation = vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(connectionReset())
+        .mockImplementationOnce(async () => pendingImageDownload)
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
+      )
+      const calls = installApiMock(telegram.bot)
+      const imageHandling = telegram.bot.handleUpdate(replyPhoto(600, "第一張"))
+      let queuedHandling: Promise<void> | undefined
+      try {
+        await vi.waitFor(() => expect(imageFetchImplementation).toHaveBeenCalledTimes(2))
+        queuedHandling = telegram.bot.handleUpdate(groupMessage(601, "@test_bot 第二則"))
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(sessions.submit).not.toHaveBeenCalled()
+      } finally {
+        finishImageDownload?.(new Response("image"))
+        await Promise.all([imageHandling, queuedHandling])
+      }
+
+      expect(imageFetchImplementation).toHaveBeenCalledTimes(2)
+      expect(sessions.submit).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(sessions.submit).mock.calls.map(([chatId]) => chatId)).toEqual([-100, -100])
+      expect(vi.mocked(sessions.submit).mock.calls.map(([, prompt]) => prompt)).toEqual([
+        expect.stringContaining("Current user message:\n第一張"),
+        adminPrompt("第二則"),
+      ])
+      expect(
+        vi.mocked(sessions.submit).mock.calls.map(([, , options]) => options?.images?.length),
+      ).toEqual([1, 0])
+      expect(calls.map((call) => telegramPayloadText(call.payload))).not.toContain(downloadError)
+    })
+
+    it.each([
+      ["reset", "success"],
+      ["reset", "error"],
+      ["cancel", "success"],
+      ["cancel", "error"],
+    ] as const)(
+      "invalidates pending and queued input on /%s during recovery with late %s",
+      async (command, outcome) => {
+        let finishImageDownload: ((response: Response) => void) | undefined
+        let failImageDownload: ((error: Error) => void) | undefined
+        const pendingImageDownload = new Promise<Response>((resolve, reject) => {
+          finishImageDownload = resolve
+          failImageDownload = reject
+        })
+        const sessions = createSessions()
+        const imageFetchImplementation = vi
+          .fn<typeof fetch>()
+          .mockRejectedValueOnce(connectionReset())
+          .mockImplementationOnce(async () => pendingImageDownload)
+        const telegram = createTelegramAgentBot(
+          loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+          sessions,
+          logger,
+          { control: approvedStore([7, -100]), botInfo, imageFetchImplementation },
+        )
+        const calls = installApiMock(telegram.bot)
+        let imageFinished = false
+        const imageHandling = telegram.bot.handleUpdate(replyPhoto(600)).then(() => {
+          imageFinished = true
+        })
+        let queuedHandling: Promise<void> | undefined
+        let deliveredTexts: Array<string | undefined> = []
+        try {
+          await vi.waitFor(() => expect(imageFetchImplementation).toHaveBeenCalledTimes(2))
+          queuedHandling = telegram.bot.handleUpdate(groupMessage(601, "@test_bot 指令前排隊"))
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          expect(sessions.submit).not.toHaveBeenCalled()
+
+          const control = groupMessage(602, `/${command}`)
+          if (control.message) {
+            control.message.entities = [
+              { offset: 0, length: command.length + 1, type: "bot_command" },
+            ]
+          }
+          await telegram.bot.handleUpdate(control)
+          expect(sessions[command]).toHaveBeenCalledExactlyOnceWith(-100)
+          expect(sessions[command === "reset" ? "cancel" : "reset"]).not.toHaveBeenCalled()
+          expect(calls.map((call) => telegramPayloadText(call.payload))).toContain(
+            command === "reset" ? "已清除這個對話的 Pi session。" : "已取消目前任務。",
+          )
+          // Image callers invalidate input without aborting the shared download transport.
+          expect(imageFinished).toBe(false)
+          expect(imageFetchImplementation.mock.calls[1]?.[1]?.signal?.aborted).toBe(false)
+
+          await telegram.bot.handleUpdate(groupMessage(603, "@test_bot 指令後"))
+          expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(
+            -100,
+            adminPrompt("指令後"),
+            expect.any(Object),
+          )
+          deliveredTexts = calls.map((call) => telegramPayloadText(call.payload))
+        } finally {
+          if (outcome === "success") finishImageDownload?.(new Response("image"))
+          else failImageDownload?.(connectionReset())
+          await Promise.all([imageHandling, queuedHandling])
+        }
+
+        expect(imageFinished).toBe(true)
+        expect(imageFetchImplementation).toHaveBeenCalledTimes(2)
+        expect(calls.filter((call) => call.method === "getFile")).toHaveLength(2)
+        expect(sessions.submit).toHaveBeenCalledOnce()
+        expect(calls.map((call) => telegramPayloadText(call.payload))).toEqual(deliveredTexts)
+        expect(deliveredTexts).not.toContain(downloadError)
+      },
+    )
+  })
+
   it("invalidates queued pre-reset work without blocking post-reset submissions", async () => {
     let finishImageDownload: ((response: Response) => void) | undefined
     const pendingImageDownload = new Promise<Response>((resolve) => {
