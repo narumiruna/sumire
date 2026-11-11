@@ -1,5 +1,11 @@
 # @narumitw/sumire-admin
 
+## 0.12.2
+
+### Patch Changes
+
+- 143960b: Update the Pi packages to 1.5.2, Logfire Node to 0.23.0, Vite to 8.3.7, and the Polymarket client to 0.18.0. Move Chord type imports to their supported subpaths. Refresh the Polymarket API catalogs, including the new wallet-scoped order actions, and retain TypeScript 6 for the catalog generator compiler API.
+
 ## 0.12.1
 
 ### Patch Changes

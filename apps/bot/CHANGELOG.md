@@ -1,5 +1,17 @@
 # @narumitw/sumire
 
+## 0.19.9
+
+### Patch Changes
+
+- 9e5ca03: Retry Telegram attachment downloads once after a structured connection-reset error, with a 250 ms delay inside the existing total deadline. Preserve streamed size limits, cancellation, submission order, and existing failure responses without repeating model or delivery work.
+- f7acd70: Use privacy-safe structured Logfire events, preserve approved correlation metadata, and report real error outcomes. Cover attachment downloads, media delivery, recovery, startup failures, and bounded local exporter diagnostics without repeating model or transport side effects.
+- 143960b: Update the Pi packages to 1.5.2, Logfire Node to 0.23.0, Vite to 8.3.7, and the Polymarket client to 0.18.0. Move Chord type imports to their supported subpaths. Refresh the Polymarket API catalogs, including the new wallet-scoped order actions, and retain TypeScript 6 for the catalog generator compiler API.
+- Updated dependencies [143960b]
+  - @narumitw/sumire-pi-polymarket@0.2.6
+  - @narumitw/sumire-pi-url-reader@0.7.5
+  - @narumitw/sumire-progress@0.3.6
+
 ## 0.19.8
 
 ### Patch Changes
