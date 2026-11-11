@@ -80,6 +80,7 @@ export function createReadImageExtension(
             settings.botImageMaxBytes,
             fetchImplementation,
             signal,
+            logger,
           )
           if (!store.allows(chatId)) throw new Error("Channel access was revoked")
           return {
@@ -93,7 +94,12 @@ export function createReadImageExtension(
             details: undefined,
           }
         } catch (error) {
-          logger.warn(`Channel image download failed for chat_id=${chatId}`, error)
+          logger.warn("Channel image download failed", {
+            "event.name": "telegram.channel_image.download_failed",
+            "telegram.chat_id": chatId,
+            "telegram.message_id": messageId,
+            error,
+          })
           throw new Error(
             error instanceof TelegramDownloadTooLargeError
               ? "Channel image exceeds the configured byte limit"

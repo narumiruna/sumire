@@ -37,15 +37,15 @@ describe("durable bot runtime", () => {
       store.applied(state.revision + 1, true)
       const info = vi.spyOn(fixture.logger, "info")
       const session = await fixture.createSession()
-      expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
-        imagegen: {
-          available: false,
-          permitted: false,
-          installed: false,
-          reason: "Requires compatible openai-codex OAuth. Check Model providers.",
-        },
-        tools,
-        codemodeTools: [],
+      expect(info).toHaveBeenCalledWith("Pi chat tool access", {
+        "event.name": "pi.tools.configured",
+        "telegram.chat_id": 123,
+        "pi.session_id": session.sessionId,
+        "pi.imagegen_available": false,
+        "pi.imagegen_permitted": false,
+        "pi.imagegen_installed": false,
+        "pi.tools": tools,
+        "pi.codemode_tools": [],
       })
       fixture.enqueueAnswer("Tool access checked")
       await session.prompt("list tools")
@@ -433,6 +433,139 @@ describe("durable bot runtime", () => {
     }
   })
 
+  it("logs a failed native compaction as failed rather than successful removal", async () => {
+    const fixture = await setup()
+    const info = vi.spyOn(fixture.logger, "info")
+    const warn = vi.spyOn(fixture.logger, "warn")
+    const session = await fixture.createSession()
+    fixture.enqueueAnswer("Saved answer")
+    await session.prompt("Saved history")
+    const conversation = await currentConversation(session)
+    await conversation.configure({ compaction: { keepRecentTokens: 0 } }, context)
+    fixture.enqueueFailure()
+    const taskId = await conversation.compact(undefined, context)
+    const task = await session.harness.waitForTask(taskId, context)
+    expect(task.state.outcome.status).toBe("failed")
+    await vi.waitFor(() =>
+      expect(info).toHaveBeenCalledWith(
+        "Durable compaction settled",
+        expect.objectContaining({
+          "event.name": "pi.compaction.end",
+          "pi.task_id": taskId,
+          "pi.outcome": "failed",
+          "telegram.chat_id": 123,
+          "pi.session_id": session.sessionId,
+        }),
+      ),
+    )
+    expect(warn).toHaveBeenCalledWith(
+      "Durable compaction failed",
+      expect.objectContaining({ "pi.task_id": taskId, "pi.outcome": "failed" }),
+    )
+    expect(JSON.stringify(info.mock.calls)).not.toContain("Offline provider failure")
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("Offline provider failure")
+    expect(fixture.requests).toHaveLength(2)
+  })
+
+  it("logs recovered lifecycle once through foreground adoption and new conversation attachment", async () => {
+    const fixture = await setup()
+    const info = vi.spyOn(fixture.logger, "info")
+    const original = await fixture.createSession()
+    const firstRelease = fixture.pauseNextRequest()
+    fixture.enqueue("update_progress", {
+      steps: [{ text: "private progress", status: "in_progress" }],
+    })
+    const pending = original
+      .prompt("private recovered input", {
+        delivery: { sourceMessageId: 21, mode: "default" },
+      })
+      .catch(() => undefined)
+    let releaseRecovery = () => {}
+    let registry: ChatSessionRegistry | undefined
+    try {
+      await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
+      await original.dispose()
+      await pending
+      await vi.waitFor(() => expect(fixture.disconnectedRequests).toBe(1))
+      firstRelease()
+      info.mockClear()
+      releaseRecovery = fixture.pauseNextRequest()
+      const reopened = await fixture.createSession()
+      const create = vi.fn(async () => reopened)
+      registry = new ChatSessionRegistry(
+        create,
+        fixture.settings.botSessionLogDir,
+        fixture.logger,
+        {
+          control: fixture.factory.control,
+        },
+      )
+      const deliver = vi.fn(async () => true)
+      await registry.recover([123], deliver)
+      await vi.waitFor(() => expect(fixture.requests).toHaveLength(2))
+      expect(await registry.submit(123, "private foreground steer")).toMatchObject({
+        kind: "steered",
+      })
+      releaseRecovery()
+      await vi.waitFor(() => expect(deliver).toHaveBeenCalledOnce())
+      await reopened.waitForIdle()
+      const logs = () => info.mock.calls.map(([, details]) => details as Record<string, unknown>)
+      const models = () => logs().filter((record) => record?.["event.name"] === "pi.model.response")
+      const tools = () => logs().filter((record) => record?.["event.name"] === "pi.tool.end")
+      await vi.waitFor(() => expect(models()).toHaveLength(2))
+      expect(logs().filter((record) => record?.["event.name"] === "pi.tool.start")).toHaveLength(1)
+      expect(tools()).toHaveLength(1)
+      expect(tools()[0]).toMatchObject({
+        "telegram.chat_id": 123,
+        "pi.session_id": reopened.sessionId,
+        "pi.tool_name": "update_progress",
+        "pi.success": true,
+      })
+      expect(logs().filter((record) => record?.["event.name"] === "pi.submission.settled")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            "pi.settled_status": "done",
+            "pi.request_id": expect.any(String),
+          }),
+        ]),
+      )
+      const priorConversation = models()[0]?.["pi.conversation_id"]
+      const checkpoint = reopened.getCheckpoint()
+      if (!checkpoint) throw new Error("Missing recovered checkpoint")
+      await reopened.restoreBranch(checkpoint)
+      fixture.enqueueAnswer("private next answer")
+      await registry.submit(123, "private next input")
+      expect(create).toHaveBeenCalledOnce()
+      expect(models()).toHaveLength(3)
+      const last = models().at(-1)
+      expect(last).toMatchObject({
+        "telegram.chat_id": 123,
+        "pi.session_id": reopened.sessionId,
+        "pi.outcome": "completed",
+      })
+      expect(last?.["pi.conversation_id"]).not.toBe(priorConversation)
+      expect(last).not.toHaveProperty("telegram.message_id")
+      expect(last).not.toHaveProperty("pi.request_id")
+      for (const payload of [
+        "private progress",
+        "private recovered input",
+        "private foreground steer",
+        "private next answer",
+        "private next input",
+      ])
+        expect(JSON.stringify(info.mock.calls)).not.toContain(payload)
+      await registry.dispose()
+      const count = models().length
+      const final = await fixture.createSession()
+      expect(models()).toHaveLength(count)
+      await final.dispose()
+    } finally {
+      firstRelease()
+      releaseRecovery()
+      await registry?.dispose()
+    }
+  })
+
   it.each([1, 2])(
     "settles killed input within a %i-attempt budget",
     async (maxAttempts) => {
@@ -685,6 +818,8 @@ describe("durable bot runtime", () => {
     "keeps a failed turn pending and recovers its %s delivery without retrying the model",
     async (mode) => {
       const fixture = await setup()
+      const info = vi.spyOn(fixture.logger, "info")
+      const error = vi.spyOn(fixture.logger, "error")
       const session = await fixture.createSession()
       const registry = new ChatSessionRegistry(
         async () => session,
@@ -697,7 +832,28 @@ describe("durable bot runtime", () => {
         const result = await registry.submit(123, "failing question", {
           delivery: { sourceMessageId: 105, statusMessageId: 106, mode },
         })
-        expect(result.kind).toBe("no_response")
+        expect(result).toMatchObject({
+          kind: "no_response",
+          settlement: { status: "unanswered", reason: "model_error" },
+        })
+        expect(error).toHaveBeenCalledWith(
+          "Pi model response",
+          expect.objectContaining({
+            "event.name": "pi.model.response",
+            "pi.stop_reason": "error",
+            "pi.outcome": "failed",
+            "telegram.chat_id": 123,
+            "pi.session_id": session.sessionId,
+          }),
+        )
+        expect(info).toHaveBeenCalledWith(
+          "Durable submission settled",
+          expect.objectContaining({
+            "event.name": "pi.submission.settled",
+            "pi.settled_status": "unanswered",
+            "pi.reason": "model_error",
+          }),
+        )
         expect(session.messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "error" })
         const pending = (await session.harness.snapshot(OutboxDoc, context))?.pending
         expect(pending).toHaveLength(1)
@@ -721,6 +877,9 @@ describe("durable bot runtime", () => {
           { sourceMessageId: 105, statusMessageId: 106, mode: "default" },
         )
         expect(fixture.requests).toHaveLength(1)
+        expect(
+          error.mock.calls.filter(([message]) => message === "Pi model response"),
+        ).toHaveLength(1)
         expect(reopened.messages.filter((message) => message.role === "user")).toHaveLength(1)
         expect((await reopened.harness.snapshot(OutboxDoc, context))?.pending).toHaveLength(1)
         const requestId = deliver.mock.calls[0]?.[0].requestId

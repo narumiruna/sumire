@@ -7,6 +7,7 @@ import { Bot, Context, InputFile } from "grammy"
 import { afterEach, expect, it, vi } from "vitest"
 import { PNG } from "../../../packages/imagegen/tests/fixtures.js"
 import { type GeneratedMedia, GeneratedMediaFiles } from "../src/agent/durable/media.js"
+import type { Logger, SpanAttributes } from "../src/logging.js"
 import { createTelegramDelivery } from "../src/telegram/delivery.js"
 import { deliverGeneratedResponse, telegramImageMethod } from "../src/telegram/media-delivery.js"
 
@@ -407,6 +408,236 @@ it.each([false, true])(
     else expect(f.sessions.recordDelivery).toHaveBeenCalledWith(123, checkpoint, [21, 22])
   },
 )
+function deliveryTrace() {
+  const spans: Array<{ name: string; attributes: SpanAttributes }> = []
+  const telemetry: Logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    async span(name, attributes, callback) {
+      const record = { name, attributes: { ...attributes } }
+      spans.push(record)
+      return callback({
+        setAttribute: (key, value) => {
+          record.attributes[key] = value
+        },
+      })
+    },
+  }
+  return { telemetry, spans }
+}
+
+it.each(["image/png", "image/webp"])(
+  "records the selected transport and confirmed output without content (%s)",
+  async (mimeType) => {
+    const f = setup()
+    const trace = deliveryTrace()
+    expect(
+      await deliverGeneratedResponse(
+        f.ctx,
+        f.sessions,
+        delivery,
+        { text: "private answer", textMessageIds: [50], media: [{ ...image, mimeType }] },
+        checkpoint,
+        { sourceMessageId: 10, mode: "default" },
+        () => true,
+        trace.telemetry,
+      ),
+    ).toBe("delivered")
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "operation.outcome": "delivered",
+      "delivery.outcome": "delivered",
+      "telegram.message_id": 10,
+      "delivery.confirmed_components": 2,
+    })
+    expect(trace.spans[1]?.attributes).toMatchObject({
+      "delivery.outcome": "delivered",
+      "delivery.method": mimeType === "image/png" ? "sendPhoto" : "sendDocument",
+      "delivery.message_id": 21,
+      "delivery.bytes": PNG.length,
+    })
+    expect(f.methods).toHaveLength(1)
+    expect(JSON.stringify(trace.spans)).not.toMatch(/private answer|file_id/)
+  },
+)
+
+it("records component receipts before the next upload and reports partial upload failure", async () => {
+  const f = setup()
+  const trace = deliveryTrace()
+  const second = { ...image, id: randomUUID() }
+  const failure = new Error("private response text and /private/local/file")
+  f.bot.api.config.use(async (previous, method, payload, signal) => {
+    if (f.methods.length === 1) {
+      expect(f.sessions.recordResponseComponent).toHaveBeenCalledExactlyOnceWith(
+        123,
+        checkpoint,
+        image.id,
+        21,
+      )
+      f.methods.push({ method, payload })
+      throw failure
+    }
+    return previous(method, payload, signal)
+  })
+  await expect(
+    deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      delivery,
+      { text: "private answer", media: [image, second] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => true,
+      trace.telemetry,
+    ),
+  ).rejects.toBe(failure)
+  expect(f.methods.map(({ method }) => method)).toEqual(["sendPhoto", "sendPhoto"])
+  expect(f.sessions.recordResponseComponent).toHaveBeenCalledOnce()
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+  expect(trace.spans.map(({ attributes }) => attributes["operation.outcome"])).toEqual([
+    "error",
+    "delivered",
+    "error",
+  ])
+  expect(trace.spans[0]?.attributes).toMatchObject({
+    "delivery.stage": "upload",
+    "delivery.outcome": "error",
+    "delivery.confirmed_components": 1,
+    "delivery.bytes": PNG.length * 2,
+    "telegram.chat_id": 123,
+    "telegram.message_id": 10,
+    "pi.session_id": "session",
+    "pi.request_id": "fixture-request",
+  })
+  expect(trace.spans[1]?.attributes).toMatchObject({
+    "delivery.component_id": image.id,
+    "delivery.component_kind": "image",
+    "delivery.method": "sendPhoto",
+    "delivery.message_id": 21,
+    "delivery.bytes": PNG.length,
+  })
+  expect(JSON.stringify(trace.spans)).not.toMatch(
+    /private answer|private response|private\/local|file_id/,
+  )
+})
+
+it.each(["read", "receipt", "text", "ack"])(
+  "records %s failures without repeating uploads or replacing the error",
+  async (stage) => {
+    const f = setup()
+    const trace = deliveryTrace()
+    const failure = new Error("private failure payload")
+    if (stage === "read") f.sessions.readResponseImage.mockRejectedValueOnce(failure)
+    if (stage === "receipt") f.sessions.recordResponseComponent.mockRejectedValueOnce(failure)
+    if (stage === "text") vi.spyOn(delivery, "guardedReply").mockRejectedValueOnce(failure)
+    if (stage === "ack") f.sessions.recordDelivery.mockRejectedValueOnce(failure)
+    await expect(
+      deliverGeneratedResponse(
+        f.ctx,
+        f.sessions,
+        delivery,
+        { text: "private answer", media: [image] },
+        checkpoint,
+        { sourceMessageId: 10, mode: "default" },
+        () => true,
+        trace.telemetry,
+      ),
+    ).rejects.toBe(failure)
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "operation.outcome": "error",
+      "delivery.outcome": "error",
+      "delivery.stage": stage,
+    })
+    const component = trace.spans.at(-1)?.attributes
+    if (stage !== "ack")
+      expect(component).toMatchObject({
+        "operation.outcome": "error",
+        "delivery.stage": stage,
+      })
+    if (stage === "receipt") {
+      expect(component?.["delivery.message_id"]).toBe(21)
+      expect(f.methods.map(({ method }) => method)).toEqual(["sendPhoto"])
+    }
+    expect(f.methods.filter(({ method }) => method === "sendPhoto")).toHaveLength(
+      stage === "read" ? 0 : 1,
+    )
+    expect(JSON.stringify(trace.spans)).not.toContain("private failure")
+  },
+)
+
+it("records cancellation after upload without storing a receipt, retrying or acknowledging", async () => {
+  const f = setup()
+  const trace = deliveryTrace()
+  let current = true
+  f.bot.api.config.use(async (previous, method, payload, signal) => {
+    const result = await previous(method, payload, signal)
+    current = false
+    return result
+  })
+  expect(
+    await deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      delivery,
+      { text: "private answer", media: [image] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => current,
+      trace.telemetry,
+    ),
+  ).toBe("stale")
+  expect(trace.spans.map(({ attributes }) => attributes["operation.outcome"])).toEqual([
+    "cancelled",
+    "cancelled",
+  ])
+  expect(trace.spans[1]?.attributes).toMatchObject({
+    "delivery.message_id": 21,
+    "delivery.outcome": "cancelled",
+    "delivery.stage": "upload",
+  })
+  expect(f.methods.map(({ method }) => method)).toEqual(["sendPhoto"])
+  expect(f.sessions.recordResponseComponent).not.toHaveBeenCalled()
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+})
+
+it("records incomplete text delivery after confirmed image delivery", async () => {
+  const f = setup()
+  const trace = deliveryTrace()
+  vi.spyOn(delivery, "guardedReply").mockResolvedValueOnce({
+    result: "unavailable",
+    message: {
+      message_id: 99,
+      date: 0,
+      chat: { id: 123, type: "private", first_name: "Fixture" },
+      rich_message: { blocks: [] },
+    },
+  })
+  expect(
+    await deliverGeneratedResponse(
+      f.ctx,
+      f.sessions,
+      delivery,
+      { text: "private answer", media: [image] },
+      checkpoint,
+      { sourceMessageId: 10, mode: "default" },
+      () => true,
+      trace.telemetry,
+    ),
+  ).toBe("unavailable")
+  expect(trace.spans.map(({ attributes }) => attributes["operation.outcome"])).toEqual([
+    "incomplete",
+    "delivered",
+    "incomplete",
+  ])
+  expect(trace.spans[0]?.attributes).toMatchObject({
+    "delivery.stage": "text",
+    "delivery.outcome": "incomplete",
+    "delivery.confirmed_components": 1,
+  })
+  expect(f.sessions.recordDelivery).not.toHaveBeenCalled()
+})
+
 async function files() {
   const root = await mkdtemp(path.join(tmpdir(), "sumire-media-files-"))
   roots.push(root)

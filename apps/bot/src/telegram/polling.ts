@@ -26,7 +26,10 @@ export function runTelegramPolling(
           try {
             const updates = await bot.api.getUpdates(args, signal)
             if (failures > 0 && !signal.aborted) {
-              logger.info("Telegram polling recovered", { failures })
+              logger.info("Telegram polling recovered", {
+                "event.name": "telegram.polling.recovered",
+                failures,
+              })
             }
             failures = 0
             return updates
@@ -45,8 +48,9 @@ export function runTelegramPolling(
               lastWarningAt = now
               const cause = error instanceof HttpError ? error.error : error
               logger.warn("Telegram polling failed; retrying automatically", {
+                "event.name": "telegram.polling.failed",
                 failures,
-                error: cause instanceof Error ? cause.message : cause,
+                error: cause,
               })
             }
             throw error

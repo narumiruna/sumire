@@ -1,40 +1,36 @@
-import { inspect } from "node:util"
-
+import { SpanStatusCode } from "@opentelemetry/api"
 import * as logfire from "@pydantic/logfire-node"
 
-const telegramBotTokenPattern = /\/bot\d+:[A-Za-z0-9_-]+/g
-const firecrawlMcpPattern = /https:\/\/mcp\.firecrawl\.dev\/[^/\s]+\/v2\/mcp/gi
-const sensitiveQuotedValuePattern =
-  /\b(token|api[_-]?key|authorization|cookie|set-cookie|password|secret)(\s*[:=]\s*)(['"])(.*?)\3/gi
-const sensitiveBareValuePattern =
-  /\b(token|api[_-]?key|authorization|cookie|set-cookie|password|secret)(\s*[:=]\s*)((?!['"])[^\s;,}]+)/gi
-const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi
-const httpUrlPattern = /https?:\/\/[^\s"<>]+/giu
+import {
+  errorAttributes,
+  isCancellation,
+  type LogAttributes,
+  projectAttribute,
+  projectAttributes,
+  projectLogAttributes,
+  redactLogMessage,
+  safeLogfireKeys,
+} from "./logging-attributes.js"
+import { createLocalDiagnostics, ownSdkRuntime } from "./logging-runtime.js"
 
-// Logfire's Node auto-instrumentation records full HTTP URLs before our log
-// redactor runs. Telegram embeds its bot token in the API URL; other outbound
-// requests can carry secrets in query strings. Keep our safe manual spans.
+export { errorAttributes, isCancellation, redactLogMessage }
+
+// HTTP instrumentation records full URLs before application redaction. Keep
+// manual spans; Telegram embeds credentials in API paths as well as queries.
 export const safeNodeAutoInstrumentations = {
+  "@opentelemetry/instrumentation-fs": { enabled: false },
   "@opentelemetry/instrumentation-http": { enabled: false },
   "@opentelemetry/instrumentation-undici": { enabled: false },
 } as const
-
-export function redactLogMessage(message: string): string {
-  return message
-    .replace(firecrawlMcpPattern, "https://mcp.firecrawl.dev/[redacted]/v2/mcp")
-    .replace(telegramBotTokenPattern, "/bot[redacted]")
-    .replace(bearerPattern, "Bearer [redacted]")
-    .replace(sensitiveQuotedValuePattern, "$1$2$3[redacted]$3")
-    .replace(sensitiveBareValuePattern, "$1$2[redacted]")
-}
 
 export type SpanAttributes = Record<string, string | number | boolean>
 
 export interface TraceSpan {
   setAttribute(key: string, value: string | number | boolean): void
+  setStatus?(status: { code: SpanStatusCode; message?: string }): void
 }
 
-const noOpSpan: TraceSpan = { setAttribute: () => {} }
+const noOpSpan: TraceSpan = { setAttribute() {}, setStatus() {} }
 
 export interface Logger {
   span?<T>(
@@ -55,11 +51,13 @@ export interface LogfireClient {
     serviceName: string
     console: false
     nodeAutoInstrumentations: typeof safeNodeAutoInstrumentations
+    scrubbing: { safeKeys: string[] }
   }): void
   debug(message: string, attributes?: Record<string, unknown>): void
   info(message: string, attributes?: Record<string, unknown>): void
   warning(message: string, attributes?: Record<string, unknown>): void
   error(message: string, attributes?: Record<string, unknown>): void
+  forceFlush?(options?: { timeoutMillis?: number }): Promise<void>
   shutdown(options?: { timeoutMillis?: number }): Promise<void>
   span?: <T>(
     name: string,
@@ -68,12 +66,46 @@ export interface LogfireClient {
 }
 
 export function withLogSpan<T>(
-  logger: Logger,
+  logger: Logger | undefined,
   name: string,
   attributes: SpanAttributes,
   callback: (span: TraceSpan) => Promise<T>,
 ): Promise<T> {
-  return logger.span ? logger.span(name, attributes, callback) : callback(noOpSpan)
+  return logger?.span ? logger.span(name, attributes, callback) : callback(noOpSpan)
+}
+
+/** Set a real error outcome without recording an unsafe exception event. */
+export function setSpanError(span: TraceSpan, error?: unknown): void {
+  const cancelled = isCancellation(error)
+  const attributes = cancelled
+    ? { "operation.outcome": "cancelled" }
+    : {
+        "operation.outcome": "error",
+        ...errorAttributes(error),
+        "logfire.level_num": logfire.Level.Error,
+      }
+  for (const [key, value] of Object.entries(attributes)) {
+    try {
+      span.setAttribute(key, value)
+    } catch {
+      // Optional telemetry must not replace the operation's original error.
+    }
+  }
+  if (!cancelled) {
+    try {
+      span.setStatus?.({ code: SpanStatusCode.ERROR })
+    } catch {
+      // Older test spans need only setAttribute; SDK failures are not business failures.
+    }
+  }
+}
+
+function eventName(value: unknown, fallback: string): string {
+  return typeof value === "string" &&
+    /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/u.test(value) &&
+    value.length <= 120
+    ? value
+    : fallback
 }
 
 export function createLogger(
@@ -82,49 +114,73 @@ export function createLogger(
   logfireClient: LogfireClient = logfire,
 ): Logger {
   const redact = (message: string) => {
-    const redacted = redactLogMessage(message).replace(httpUrlPattern, "[redacted-url]")
+    const redacted = redactLogMessage(message)
     return logfireToken ? redacted.replaceAll(logfireToken, "[redacted]") : redacted
   }
-  const writeLocal = (level: string, message: string, details?: unknown) => {
-    const suffix =
-      details === undefined ? "" : ` ${inspect(details, { depth: 5, breakLength: 120 })}`
-    process.stderr.write(`${new Date().toISOString()} | ${level} | ${redact(message + suffix)}\n`)
-  }
-
-  let logfireEnabled = false
-  if (logfireToken) {
+  const writeLocal = (level: string, message: string, attributes: LogAttributes) => {
     try {
-      logfireClient.configure({
-        token: logfireToken,
-        serviceName: "sumire",
-        console: false,
-        nodeAutoInstrumentations: safeNodeAutoInstrumentations,
-      })
-      logfireEnabled = true
-    } catch (error) {
-      writeLocal("WARN", "Logfire configuration failed; using stderr only", error)
+      process.stderr.write(
+        `${new Date().toISOString()} | ${level} | ${message} ${JSON.stringify(attributes)}\n`,
+      )
+    } catch {
+      // Logging to a closed pipe must not repeat or fail business work.
     }
   }
+  const diagnose = createLocalDiagnostics((event, attributes) =>
+    writeLocal("WARN", event, attributes),
+  )
+  let logfireEnabled = false
+  let configured = false
+  let releaseRuntime: (() => void) | undefined
+  let shutdownPromise: Promise<void> | undefined
 
   const write = (
     level: "DEBUG" | "INFO" | "WARN" | "ERROR",
     message: string,
     details?: unknown,
   ) => {
-    const suffix =
-      details === undefined ? "" : ` ${inspect(details, { depth: 5, breakLength: 120 })}`
-    const redacted = redact(message + suffix)
-    process.stderr.write(`${new Date().toISOString()} | ${level} | ${redacted}\n`)
+    const attributes = projectLogAttributes(details, redact)
+    attributes["event.name"] = eventName(attributes["event.name"], `app.log.${level.toLowerCase()}`)
+    // Messages are application summaries, never containers for startup bodies
+    // or inspected errors. New callers supply structured facts separately.
+    attributes.sumire_message = redact(message.split(/[\r\n]/u, 1)[0] ?? "").slice(0, 1_024)
+    writeLocal(level, attributes.sumire_message, attributes)
     if (!logfireEnabled) return
     try {
-      // Keep inspected braces and external text out of the SDK's message template.
-      const attributes = { message: redacted }
-      if (level === "DEBUG") logfireClient.debug("{message}", attributes)
-      else if (level === "INFO") logfireClient.info("{message}", attributes)
-      else if (level === "WARN") logfireClient.warning("{message}", attributes)
-      else logfireClient.error("{message}", attributes)
+      // A constant template tolerates literal braces in application messages.
+      if (level === "DEBUG") logfireClient.debug("{sumire_message}", attributes)
+      else if (level === "INFO") logfireClient.info("{sumire_message}", attributes)
+      else if (level === "WARN") logfireClient.warning("{sumire_message}", attributes)
+      else logfireClient.error("{sumire_message}", attributes)
     } catch (error) {
-      writeLocal("WARN", "Logfire write failed", error)
+      logfireEnabled = false
+      diagnose("telemetry.write.failed", error)
+    }
+  }
+
+  if (logfireToken) {
+    try {
+      releaseRuntime = ownSdkRuntime({
+        configure: () =>
+          logfireClient.configure({
+            token: logfireToken,
+            serviceName: "sumire",
+            console: false,
+            nodeAutoInstrumentations: safeNodeAutoInstrumentations,
+            scrubbing: { safeKeys: safeLogfireKeys },
+          }),
+        diagnose,
+        reportProcessError: (event, error) => write("ERROR", event, { "event.name": event, error }),
+        flush: () => logfireClient.forceFlush?.({ timeoutMillis: 1_000 }) ?? Promise.resolve(),
+        deactivate: () => {
+          logfireEnabled = false
+          configured = false
+        },
+      })
+      configured = true
+      logfireEnabled = true
+    } catch (error) {
+      diagnose("telemetry.configure.failed", error)
     }
   }
 
@@ -135,43 +191,68 @@ export function createLogger(
       callback: (span: TraceSpan) => Promise<T>,
     ): Promise<T> => {
       if (!logfireEnabled || !logfireClient.span) return callback(noOpSpan)
-
       let operation: Promise<T> | undefined
+      let explicitOutcome: string | undefined
       try {
-        await logfireClient.span(name, {
-          attributes,
+        await logfireClient.span(eventName(name, "app.operation"), {
+          attributes: projectAttributes(attributes, redact),
           callback: (span) => {
             const safeSpan: TraceSpan = {
               setAttribute: (key, value) => {
                 try {
-                  span.setAttribute(key, value)
+                  for (const [safeKey, safeValue] of Object.entries(
+                    projectAttribute(key, value, redact),
+                  )) {
+                    if (safeKey === "operation.outcome" && typeof safeValue === "string") {
+                      explicitOutcome = safeValue
+                    }
+                    span.setAttribute(safeKey, safeValue)
+                  }
                 } catch (error) {
-                  writeLocal("WARN", "Logfire span attribute failed", error)
+                  diagnose("telemetry.span.attribute.failed", error)
+                }
+              },
+              setStatus: (status) => {
+                try {
+                  // Status descriptions can contain upstream payloads too.
+                  if (
+                    [SpanStatusCode.UNSET, SpanStatusCode.OK, SpanStatusCode.ERROR].includes(
+                      status.code,
+                    )
+                  ) {
+                    span.setStatus?.({ code: status.code })
+                  }
+                } catch (error) {
+                  diagnose("telemetry.span.status.failed", error)
                 }
               },
             }
             operation ??= Promise.resolve().then(() => callback(safeSpan))
-            // The SDK records rejected callbacks as exception events, including the
-            // raw error message. Some upstream errors contain credential-bearing
-            // URLs. Let the span finish with safe metadata and rethrow the original
-            // error to the caller only after the SDK has finished.
+            // The SDK must not see a raw rejected callback: it records exception
+            // messages/stacks and payload-bearing names before our boundary.
             return operation.then(
               (result) => result,
-              () => {
-                safeSpan.setAttribute("operation.outcome", "error")
+              (error) => {
+                if (
+                  explicitOutcome &&
+                  ["cancelled", "rejected", "rejected_input"].includes(explicitOutcome)
+                ) {
+                  for (const [key, value] of Object.entries(errorAttributes(error)))
+                    safeSpan.setAttribute(key, value)
+                } else {
+                  setSpanError(safeSpan, error)
+                }
                 return undefined as T
               },
             )
           },
         })
       } catch (error) {
-        if (operation) {
-          const result = await operation
-          writeLocal("WARN", "Logfire span failed; continuing without trace", error)
-          return result
-        }
-        writeLocal("WARN", "Logfire span failed; continuing without trace", error)
+        logfireEnabled = false
+        diagnose("telemetry.span.failed", error)
       }
+      // One shared promise covers SDK failure, early completion and late or
+      // repeated SDK callbacks. Never repeat model work or ambiguous uploads.
       operation ??= Promise.resolve().then(() => callback(noOpSpan))
       return operation
     },
@@ -181,13 +262,18 @@ export function createLogger(
     info: (message, details) => write("INFO", message, details),
     warn: (message, details) => write("WARN", message, details),
     error: (message, details) => write("ERROR", message, details),
-    async shutdown() {
-      if (!logfireEnabled) return
-      try {
-        await logfireClient.shutdown({ timeoutMillis: 5_000 })
-      } catch (error) {
-        writeLocal("WARN", "Logfire shutdown failed", error)
-      }
+    shutdown() {
+      shutdownPromise ??= (async () => {
+        if (!configured) return
+        try {
+          await logfireClient.shutdown({ timeoutMillis: 5_000 })
+        } catch (error) {
+          diagnose("telemetry.shutdown.failed", error)
+        } finally {
+          releaseRuntime?.()
+        }
+      })()
+      return shutdownPromise
     },
   }
 }

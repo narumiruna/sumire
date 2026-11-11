@@ -6,6 +6,8 @@ const f = vi.hoisted(() => ({
   closeFailure: false,
   authCloseFailure: false,
   factoryFailure: false,
+  transportFailure: true,
+  error: vi.fn((_message: string, _details?: unknown) => {}),
   githubAuth: {
     close: vi.fn(async () => {
       f.events.push("github-auth-close")
@@ -28,6 +30,7 @@ vi.mock("../src/logging.js", () => ({
   createLogger: () => ({
     info() {},
     warn() {},
+    error: f.error,
     shutdown() {
       f.events.push("logger-close")
     },
@@ -98,7 +101,7 @@ vi.mock("../src/telegram/bot.js", () => ({
   createTelegramAgentBot: () => ({
     async start() {
       f.events.push("telegram-start")
-      throw new Error("fixture transport failure")
+      if (f.transportFailure) throw new Error("fixture transport failure")
     },
     async stop() {
       f.events.push("telegram-close")
@@ -113,6 +116,8 @@ afterEach(() => {
   f.closeFailure = false
   f.authCloseFailure = false
   f.factoryFailure = false
+  f.transportFailure = true
+  f.error.mockClear()
   f.close.mockClear()
   f.githubAuth.close.mockClear()
 })
@@ -138,6 +143,7 @@ it("starts GitHub after applied provider setup and closes it before sessions and
 })
 
 it("closes transport, sessions, and stores even if the GitHub worker close fails", async () => {
+  f.transportFailure = false
   f.closeFailure = true
   await expect(startApplication()).rejects.toThrow("Application cleanup failed")
   expect(f.events).toContain("telegram-close")
@@ -145,6 +151,27 @@ it("closes transport, sessions, and stores even if the GitHub worker close fails
   expect(f.events).toContain("github-auth-close")
   expect(f.events).toContain("mcp-close")
   expect(f.events).toContain("store-close")
+  expect(f.close).toHaveBeenCalledOnce()
+  expect(f.error).toHaveBeenCalledWith("Application resource cleanup failed", {
+    "event.name": "application.resource.failed",
+    "application.resource": "github_worker",
+    error: expect.any(Error),
+  })
+})
+
+it("preserves the transport failure when GitHub cleanup also fails", async () => {
+  f.closeFailure = true
+  await expect(startApplication()).rejects.toThrow("fixture transport failure")
+  expect(f.error).toHaveBeenNthCalledWith(1, "Application failed", {
+    "event.name": "application.failed",
+    error: expect.objectContaining({ message: "fixture transport failure" }),
+  })
+  expect(f.error).toHaveBeenCalledWith("Application cleanup failed", {
+    "event.name": "application.cleanup.failed",
+    error: expect.any(AggregateError),
+  })
+  expect(f.events.at(-1)).toBe("logger-close")
+  expect(f.close).toHaveBeenCalledOnce()
 })
 
 it("closes GitHub authentication when startup fails before the mention worker starts", async () => {
@@ -162,6 +189,7 @@ it("closes GitHub authentication when startup fails before the mention worker st
 })
 
 it("closes stores and logging even if GitHub authentication close fails", async () => {
+  f.transportFailure = false
   f.authCloseFailure = true
   await expect(startApplication()).rejects.toThrow("Application cleanup failed")
   expect(f.events.slice(-4)).toEqual([

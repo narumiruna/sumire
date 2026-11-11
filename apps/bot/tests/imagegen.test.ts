@@ -1,4 +1,3 @@
-import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { readdir, readFile, stat, writeFile } from "node:fs/promises"
@@ -21,6 +20,7 @@ import { deliverGeneratedResponse } from "../src/telegram/media-delivery.js"
 import { recoverTelegramResponses } from "../src/telegram/recovery.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 import { createTestSessionFactory } from "./helpers/session-factory.js"
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -119,9 +119,13 @@ it.each([false, true])(
       generate_image: { available: true },
     })
     expect(logger).toHaveBeenCalledWith(
-      "Pi chat tool access chat_id=123",
+      "Pi chat tool access",
       expect.objectContaining({
-        imagegen: expect.objectContaining({ available: true, permitted: true, installed: true }),
+        "event.name": "pi.tools.configured",
+        "telegram.chat_id": 123,
+        "pi.imagegen_available": true,
+        "pi.imagegen_permitted": true,
+        "pi.imagegen_installed": true,
       }),
     )
     const originalFetch = globalThis.fetch
@@ -171,9 +175,13 @@ it("gates availability on compatible Codex OAuth, not the text model provider", 
   const next = await fixture.createSession(456)
   expect(next.getActiveToolNames()).not.toContain("generate_image")
   expect(logger).toHaveBeenCalledWith(
-    "Pi chat tool access chat_id=456",
+    "Pi chat tool access",
     expect.objectContaining({
-      imagegen: expect.objectContaining({ available: false, permitted: true, installed: false }),
+      "event.name": "pi.tools.configured",
+      "telegram.chat_id": 456,
+      "pi.imagegen_available": false,
+      "pi.imagegen_permitted": true,
+      "pi.imagegen_installed": false,
     }),
   )
   expect(fixture.imageFetch).not.toHaveBeenCalled()
@@ -254,9 +262,13 @@ it("remembers imagegen without enabling it on upgrade and obeys explicit policy"
   cleanups.push(() => session.dispose())
   expect(session.getActiveToolNames()).not.toContain("generate_image")
   expect(logger).toHaveBeenCalledWith(
-    "Pi chat tool access chat_id=123",
+    "Pi chat tool access",
     expect.objectContaining({
-      imagegen: expect.objectContaining({ available: true, permitted: false, installed: false }),
+      "event.name": "pi.tools.configured",
+      "telegram.chat_id": 123,
+      "pi.imagegen_available": true,
+      "pi.imagegen_permitted": false,
+      "pi.imagegen_installed": false,
     }),
   )
   expect(fixture.imageFetch).not.toHaveBeenCalled()

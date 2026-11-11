@@ -1,10 +1,8 @@
-import { createLogger } from "./logging.js"
 import { startApplication } from "./startup.js"
 
 try {
   await startApplication()
-} catch (error) {
-  // Do not let Node print raw errors with credential-bearing request URLs.
-  createLogger().error("Application failed", error)
+} catch {
+  // Startup records the failure with the configured logger before its final shutdown.
   process.exitCode = 1
 }

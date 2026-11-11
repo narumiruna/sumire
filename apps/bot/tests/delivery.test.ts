@@ -1,6 +1,7 @@
-import type { Context } from "grammy"
+import { type Context, GrammyError } from "grammy"
 import { describe, expect, it, vi } from "vitest"
 
+import { createLogger } from "../src/logging.js"
 import { formatMarketResults } from "../src/market-data/format.js"
 import { createTelegramDelivery } from "../src/telegram/delivery.js"
 
@@ -136,6 +137,43 @@ describe("mandatory Morsel delivery", () => {
     expect(editMessageText).toHaveBeenCalledWith(7, 100, { markdown: "<回答>" })
     expect(reply).toHaveBeenCalledExactlyOnceWith({ markdown: "<回答>" }, options)
     expect(publisher.publish).not.toHaveBeenCalled()
+  })
+
+  it("logs edit failure metadata without exporting the original Telegram payload", async () => {
+    const { context, editMessageText, publisher, reply } = setup()
+    const body = "private-response-body"
+    const token = "123456:private-edit-token"
+    editMessageText.mockRejectedValue(
+      new GrammyError(
+        `request to https://api.telegram.org/bot${token}/editMessageText failed`,
+        { ok: false, error_code: 400, description: "private-response-description" },
+        "editMessageText",
+        { chat_id: 7, message_id: 100, markdown: body },
+      ),
+    )
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    try {
+      const delivery = createTelegramDelivery(publisher, createLogger())
+      await expect(
+        delivery.editOrReply(context, 7, 100, body, undefined, () => true),
+      ).resolves.toMatchObject({ result: "delivered" })
+      expect(reply).toHaveBeenCalledOnce()
+      const output = stderr.mock.calls.flat().join(" ")
+      expect(output).toContain('"event.name":"telegram.edit.failed"')
+      expect(output).toContain('"delivery.message_id":100')
+      expect(output).toContain('"http.response.status_code":400')
+      expect(output).toContain('"http.request.method":"editMessageText"')
+      for (const value of [
+        body,
+        token,
+        "private-response-description",
+        "api.telegram.org",
+        "markdown",
+      ])
+        expect(output).not.toContain(value)
+    } finally {
+      stderr.mockRestore()
+    }
   })
 
   it("clears the old pending status after a transient edit failure", async () => {

@@ -92,13 +92,11 @@ export async function createPiSessionFactory(
     }),
   })
   await loader.reload()
-  for (const diagnostic of loader.getSkills().diagnostics)
-    logger.warn(`Pi skill diagnostic: ${diagnostic.message}`)
+  for (const _diagnostic of loader.getSkills().diagnostics)
+    logger.warn("Pi skill diagnostic", { "event.name": "pi.skill.diagnostic" })
   const loadedSkills = loader.getSkills().skills.filter((skill) => {
     if (policySchema.shape.skills.safeParse([skill.name]).success) return true
-    logger.warn("Pi skill skipped: name is outside administration policy limits", {
-      path: skill.filePath,
-    })
+    logger.warn("Pi skill skipped", { "event.name": "pi.skill.skipped" })
     return false
   })
   const skills = loadedSkills.map(({ name, description }) => ({ name, description }))
@@ -134,10 +132,11 @@ export async function createPiSessionFactory(
   ]
   control.store.registerTools([IMAGEGEN_TOOL, "read_variable", "publish_markdown_to_morsel"], false)
   control.store.registerTools(toolNames)
-  logger.info(`Bot instructions loaded\n${appendSystemPrompt}`, {
-    sha256: createHash("sha256").update(appendSystemPrompt).digest("hex"),
-    chars: appendSystemPrompt.length,
-    tools: toolNames,
+  logger.info("Bot instructions loaded", {
+    "event.name": "pi.instructions.loaded",
+    "pi.instructions_sha256": createHash("sha256").update(appendSystemPrompt).digest("hex"),
+    "pi.instructions_chars": appendSystemPrompt.length,
+    "pi.tools": toolNames,
   })
 
   return {
@@ -339,7 +338,13 @@ export async function createPiSessionFactory(
             )
           : undefined
       const cleanup = async () => {
-        await Promise.all([mcp?.close(), polymarket.dispose()])
+        const results = await Promise.allSettled([
+          Promise.resolve().then(() => mcp?.close()),
+          Promise.resolve().then(() => polymarket.dispose()),
+        ])
+        for (const result of results) {
+          if (result.status === "rejected") throw result.reason
+        }
       }
       registry.install(
         defineExtension({
@@ -424,7 +429,20 @@ export async function createPiSessionFactory(
               followUpMode: "one-at-a-time",
               steeringMode: "one-at-a-time",
             },
-            onReport: (error) => logger.warn(`Durable runtime error for chat_id=${chatId}`, error),
+            onReport: (report) =>
+              logger.warn("Durable runtime report", {
+                "event.name": "pi.runtime.report",
+                "telegram.chat_id": chatId,
+                "pi.report_kind": report.kind,
+                ...("task" in report && report.task
+                  ? {
+                      "pi.task_id": report.task.id,
+                      "pi.task_kind": report.task.kind,
+                      "pi.conversation_id": report.task.conversationId,
+                    }
+                  : {}),
+                error: report.error,
+              }),
           },
           context,
         )
@@ -457,6 +475,7 @@ export async function createPiSessionFactory(
         session = await DurableSession.open({
           harness,
           inspection,
+          chatId,
           sessionFile,
           cwd: settings.botWorkdir,
           model: selectedModel,
@@ -472,14 +491,15 @@ export async function createPiSessionFactory(
         await session.setModel(selectedModel)
         await session.setThinkingLevel(policy.thinking)
         admissionReady = true
-        logger.info(`Pi chat tool access chat_id=${chatId}`, {
-          imagegen: {
-            ...imagegenStatus,
-            permitted: control.store.allowsTool(chatId, IMAGEGEN_TOOL),
-            installed: session.getActiveToolNames().includes(IMAGEGEN_TOOL),
-          },
-          tools: session.getActiveToolNames(),
-          codemodeTools: control.store.allowsTool(chatId, "codemode")
+        logger.info("Pi chat tool access", {
+          "event.name": "pi.tools.configured",
+          "telegram.chat_id": chatId,
+          "pi.session_id": session.sessionId,
+          "pi.imagegen_available": imagegenStatus.available,
+          "pi.imagegen_permitted": control.store.allowsTool(chatId, IMAGEGEN_TOOL),
+          "pi.imagegen_installed": session.getActiveToolNames().includes(IMAGEGEN_TOOL),
+          "pi.tools": session.getActiveToolNames(),
+          "pi.codemode_tools": control.store.allowsTool(chatId, "codemode")
             ? [
                 ...chatCoding.map((tool) => tool.name),
                 ...nativeTools.filter(isCodemodeCallable).map((tool) => tool.name),
@@ -488,13 +508,32 @@ export async function createPiSessionFactory(
         })
         return session
       } catch (error) {
+        logger.error("Durable session initialization failed", {
+          "event.name": "pi.session.initialization_failed",
+          "telegram.chat_id": chatId,
+          error,
+        })
         try {
           if (harness) await harness.close(context)
           else await storage?.close(context)
-        } finally {
-          await cleanup()
+        } catch (cleanupError) {
+          logger.error("Durable session cleanup failed", {
+            "event.name": "pi.session.cleanup_failed",
+            "telegram.chat_id": chatId,
+            "pi.phase": "storage",
+            error: cleanupError,
+          })
         }
-        logger.error(`Durable session initialization failed for chat_id=${chatId}`, error)
+        try {
+          await cleanup()
+        } catch (cleanupError) {
+          logger.error("Durable session cleanup failed", {
+            "event.name": "pi.session.cleanup_failed",
+            "telegram.chat_id": chatId,
+            "pi.phase": "capabilities",
+            error: cleanupError,
+          })
+        }
         throw error
       }
     },

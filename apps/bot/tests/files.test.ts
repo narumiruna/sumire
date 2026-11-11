@@ -1,6 +1,7 @@
 import { Api, GrammyError, HttpError } from "grammy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { Logger, SpanAttributes } from "../src/logging.js"
 import {
   downloadTelegramFile,
   downloadTelegramImage,
@@ -20,6 +21,26 @@ function apiWithFile(file: { file_path?: string; file_size?: number } = {}): Api
 
 function connectionReset(): Error {
   return Object.assign(new Error("connection reset"), { code: "ECONNRESET" })
+}
+
+function downloadTrace() {
+  const spans: Array<{ name: string; attributes: SpanAttributes }> = []
+  const logger: Logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    async span(name, attributes, callback) {
+      const record = { name, attributes: { ...attributes } }
+      spans.push(record)
+      return callback({
+        setAttribute: (key, value) => {
+          record.attributes[key] = value
+        },
+      })
+    },
+  }
+  return { logger, spans }
 }
 
 describe("Telegram download connection-reset retry", () => {
@@ -396,6 +417,194 @@ describe("Telegram download retry deadline and cancellation", () => {
       expect(mediaFetch).toHaveBeenCalledTimes(attempts)
     },
   )
+})
+
+describe("Telegram download telemetry", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], fakeNodeBuiltins: true })
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(new DOMException("timeout", "TimeoutError")), ms)
+      return controller.signal
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it("records both attempts and all streamed bytes after a recovered partial reset", async () => {
+    const trace = downloadTrace()
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulls++ === 0) controller.enqueue(Buffer.from("lost"))
+        else controller.error(connectionReset())
+      },
+    })
+    const api = apiWithFile()
+    const mediaFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(body))
+      .mockResolvedValueOnce(new Response("complete"))
+    const pending = downloadTelegramFile(
+      api,
+      "private-token",
+      { fileId: "private-file" },
+      100,
+      mediaFetch,
+      1_000,
+      undefined,
+      trace.logger,
+    )
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(pending).resolves.toEqual(Buffer.from("complete"))
+    expect(trace.spans).toEqual([
+      {
+        name: "telegram.download",
+        attributes: {
+          "download.max_bytes": 100,
+          "download.attempts": 2,
+          "download.bytes": 12,
+          "download.phase": "stream",
+          "download.outcome": "success",
+          "operation.outcome": "success",
+        },
+      },
+    ])
+    expect(body.locked).toBe(false)
+    expect(api.getFile).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(trace.spans)).not.toMatch(
+      /private-token|private-file|documents\/file.bin|complete/,
+    )
+  })
+
+  it("records exhausted retries without replacing the final error or repeating work", async () => {
+    const trace = downloadTrace()
+    const finalError = connectionReset()
+    const api = apiWithFile()
+    const mediaFetch = vi.fn<typeof fetch>().mockRejectedValue(finalError)
+    const pending = downloadTelegramFile(
+      api,
+      "token",
+      { fileId: "file" },
+      100,
+      mediaFetch,
+      1_000,
+      undefined,
+      trace.logger,
+    )
+    const rejected = expect(pending).rejects.toBe(finalError)
+    await vi.advanceTimersByTimeAsync(250)
+    await rejected
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "download.attempts": 2,
+      "download.bytes": 0,
+      "download.phase": "fetch",
+      "operation.outcome": "error",
+    })
+    expect(api.getFile).toHaveBeenCalledTimes(2)
+    expect(mediaFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it("records cancellation during backoff with only one attempt", async () => {
+    const trace = downloadTrace()
+    const controller = new AbortController()
+    const api = apiWithFile()
+    const mediaFetch = vi.fn<typeof fetch>().mockRejectedValue(connectionReset())
+    const pending = downloadTelegramFile(
+      api,
+      "token",
+      { fileId: "file" },
+      100,
+      mediaFetch,
+      1_000,
+      controller.signal,
+      trace.logger,
+    )
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    await vi.advanceTimersByTimeAsync(100)
+    controller.abort()
+    await rejected
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "download.attempts": 1,
+      "download.bytes": 0,
+      "download.phase": "retry_wait",
+      "operation.outcome": "cancelled",
+    })
+    expect(api.getFile).toHaveBeenCalledOnce()
+  })
+
+  it("keeps one deadline across the first attempt, retry delay and second stream", async () => {
+    const trace = downloadTrace()
+    const api = apiWithFile()
+    const cancel = vi.fn()
+    const mediaFetch = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 600))
+        throw connectionReset()
+      })
+      .mockImplementationOnce(
+        async (_input, init) =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(Buffer.from("part"))
+                init?.signal?.addEventListener("abort", () => controller.close(), { once: true })
+              },
+              cancel,
+            }),
+          ),
+      )
+    const pending = downloadTelegramFile(
+      api,
+      "token",
+      { fileId: "file" },
+      100,
+      mediaFetch,
+      1_000,
+      undefined,
+      trace.logger,
+    )
+    const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" })
+    await vi.advanceTimersByTimeAsync(999)
+    expect(api.getFile).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    await rejected
+    expect(AbortSignal.timeout).toHaveBeenCalledExactlyOnceWith(1_000)
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "download.attempts": 2,
+      "download.bytes": 4,
+      "download.phase": "stream",
+      "operation.outcome": "error",
+    })
+    expect(mediaFetch.mock.calls[0]?.[1]?.signal).toBe(mediaFetch.mock.calls[1]?.[1]?.signal)
+  })
+
+  it.each(["metadata", "stream"])("records %s byte rejection", async (phase) => {
+    const trace = downloadTrace()
+    const api = apiWithFile()
+    const mediaFetch = vi.fn<typeof fetch>(async () => new Response("123456"))
+    await expect(
+      downloadTelegramFile(
+        api,
+        "token",
+        { fileId: "file", ...(phase === "metadata" ? { fileSize: 6 } : {}) },
+        5,
+        mediaFetch,
+        1_000,
+        undefined,
+        trace.logger,
+      ),
+    ).rejects.toBeInstanceOf(TelegramDownloadTooLargeError)
+    expect(trace.spans[0]?.attributes).toMatchObject({
+      "download.attempts": phase === "metadata" ? 0 : 1,
+      "download.bytes": phase === "metadata" ? 0 : 6,
+      "download.phase": phase,
+      "operation.outcome": "rejected",
+    })
+  })
 })
 
 describe("bounded Telegram file downloads", () => {
