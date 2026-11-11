@@ -63,7 +63,7 @@ describe("client-backed tools", () => {
       [...new Set(polymarketApi.filter((item) => !item.secure).map((item) => item.method))].sort(),
     ).toEqual(Object.keys(client).sort())
     await client.closeSubscriptions()
-    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(122)
+    expect(new Set(polymarketApi.map((item) => item.method)).size).toBe(125)
   })
 
   it("registers the public-only extension and shutdown cleanup", () => {
@@ -125,6 +125,24 @@ describe("client-backed tools", () => {
     expect(downloadAccountingSnapshot).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ["cancelWalletOrders", "execute"],
+    ["cancelAllWalletOrders", "execute"],
+    ["listWalletOpenOrders", "query"],
+  ])("exposes %s only with an authenticated client", async (method, operation) => {
+    const publicTools = setup()
+    expect(await publicTools.value("polymarket_api", { method })).toEqual([])
+    const { value } = setup({}, {})
+    const methods = await value("polymarket_api", { method })
+    expect(methods).toHaveLength(1)
+    expect(methods[0]).toMatchObject({
+      group: "orders",
+      secure: true,
+      readOnly: operation === "query",
+      tool: `polymarket_orders_${operation}`,
+    })
+  })
+
   it("discovers SDK 0.17.0 activity types for both clients", async () => {
     const { value } = setup({}, {})
     const methods = await value("polymarket_api", { method: "listActivity" })
@@ -154,15 +172,16 @@ describe("client-backed tools", () => {
   })
 
   it.each([
-    ["convert", "wallet"],
-    ["horizontalSplit", "wallet"],
-    ["horizontalMerge", "wallet"],
-    ["sendOrderHeartbeat", "orders"],
-  ])("requires confirmation for %s before SDK dispatch", async (action, group) => {
+    ["convert", "wallet", [{}]],
+    ["horizontalSplit", "wallet", [{}]],
+    ["horizontalMerge", "wallet", [{}]],
+    ["sendOrderHeartbeat", "orders", []],
+    ["cancelWalletOrders", "orders", [{ orderIds: ["order-1"] }]],
+    ["cancelAllWalletOrders", "orders", []],
+  ])("requires confirmation for %s before SDK dispatch", async (action, group, args) => {
     const method = vi.fn(async () => ({ ok: true }))
     const { runtime, call, value } = setup({}, { [action]: method })
     const name = `polymarket_${group}_execute`
-    const args = action === "sendOrderHeartbeat" ? [] : [{}]
     expect(polymarketApi.find((spec) => spec.method === action)).toMatchObject({
       group,
       secure: true,
@@ -186,6 +205,7 @@ describe("client-backed tools", () => {
     ["prepareHorizontalMerge", "wallet"],
     ["planCollateralReturn", "wallet"],
     ["waitForOrderFillSettlement", "orders"],
+    ["listWalletOpenOrders", "orders"],
   ])("keeps %s read-only", async (action, group) => {
     const method = vi.fn(async () => ({ ok: true }))
     const { runtime, value } = setup({}, { [action]: method })
