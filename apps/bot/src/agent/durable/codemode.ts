@@ -1,5 +1,4 @@
-import type { Context } from "@earendil-works/chord"
-import { withAbortSignal } from "@earendil-works/chord/context"
+import { type Context, withAbortSignal } from "@earendil-works/chord/context"
 import { getCurrentTools } from "@earendil-works/pi-ai/utils/transcript"
 import {
   type CodemodeResult,

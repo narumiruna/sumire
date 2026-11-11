@@ -213,7 +213,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -263,7 +263,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -412,7 +412,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -462,7 +462,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -623,7 +623,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -673,7 +673,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -1033,7 +1033,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1083,7 +1083,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -1232,7 +1232,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1282,7 +1282,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -1431,7 +1431,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1481,7 +1481,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -1630,7 +1630,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -1680,7 +1680,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -2464,7 +2464,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2514,7 +2514,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -2663,7 +2663,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -2713,7 +2713,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -3026,7 +3026,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3076,7 +3076,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -3225,7 +3225,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -3275,7 +3275,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -8218,7 +8218,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8268,7 +8268,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -8417,7 +8417,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8467,7 +8467,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -8653,7 +8653,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -8703,7 +8703,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -10876,7 +10876,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2230": {
+                    "__@toPrimitive@2232": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -10926,7 +10926,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2230"
+                    "__@toPrimitive@2232"
                   ],
                   "additionalProperties": true
                 }
@@ -11075,7 +11075,7 @@
                     "toTemporalInstant": {
                       "description": "() => Instant"
                     },
-                    "__@toPrimitive@2230": {
+                    "__@toPrimitive@2232": {
                       "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                     }
                   },
@@ -11125,7 +11125,7 @@
                     "toJSON",
                     "getVarDate",
                     "toTemporalInstant",
-                    "__@toPrimitive@2230"
+                    "__@toPrimitive@2232"
                   ],
                   "additionalProperties": true
                 }
@@ -13136,7 +13136,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13186,7 +13186,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -13335,7 +13335,7 @@
                         "toTemporalInstant": {
                           "description": "() => Instant"
                         },
-                        "__@toPrimitive@2230": {
+                        "__@toPrimitive@2232": {
                           "description": "{ (hint: \"default\"): string; (hint: \"string\"): string; (hint: \"number\"): number; (hint: string): string | number; }"
                         }
                       },
@@ -13385,7 +13385,7 @@
                         "toJSON",
                         "getVarDate",
                         "toTemporalInstant",
-                        "__@toPrimitive@2230"
+                        "__@toPrimitive@2232"
                       ],
                       "additionalProperties": true
                     }
@@ -19274,7 +19274,7 @@
     "secure": true,
     "readOnly": false,
     "signature": "(request: CancelOrderRequest): Promise<CancelOrdersResponse>",
-    "description": "Cancels a single open order for the authenticated account.",
+    "description": "Cancels a single open order placed with this client's credentials.\nOn a Deposit Wallet, the owner can use `cancelWalletOrders` for orders\nplaced by session keys.",
     "args": [
       {
         "name": "request",
@@ -19299,7 +19299,7 @@
     "secure": true,
     "readOnly": false,
     "signature": "(request: CancelOrdersRequest): Promise<CancelOrdersResponse>",
-    "description": "Cancels multiple open orders for the authenticated account.",
+    "description": "Cancels multiple open orders placed with this client's credentials.\nOn a Deposit Wallet, the owner can use `cancelWalletOrders` for orders\nplaced by session keys.",
     "args": [
       {
         "name": "request",
@@ -19323,11 +19323,48 @@
   },
   {
     "group": "orders",
+    "method": "cancelWalletOrders",
+    "secure": true,
+    "readOnly": false,
+    "signature": "(request: CancelWalletOrdersRequest): Promise<CancelOrdersResponse>",
+    "description": "Cancels selected orders across the Deposit Wallet.\nOnly the wallet owner can call this method. Partial failures are returned\nin `notCanceled`. Requests are not split into batches or retried automatically.",
+    "args": [
+      {
+        "name": "request",
+        "optional": false,
+        "type": "CancelWalletOrdersRequest",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "orderIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["orderIds"],
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  {
+    "group": "orders",
+    "method": "cancelAllWalletOrders",
+    "secure": true,
+    "readOnly": false,
+    "signature": "(): Promise<CancelOrdersResponse>",
+    "description": "Cancels all open orders across the Deposit Wallet, whichever signer placed them.\nOnly the wallet owner can call this method. Partial failures are returned\nin `notCanceled`. The request is not retried automatically.",
+    "args": []
+  },
+  {
+    "group": "orders",
     "method": "cancelAll",
     "secure": true,
     "readOnly": false,
     "signature": "(): Promise<CancelOrdersResponse>",
-    "description": "Cancels all open orders for the authenticated account.",
+    "description": "Cancels all open orders placed with this client's credentials.\nOn a Deposit Wallet, the owner can use `cancelAllWalletOrders` to include\norders placed by session keys.",
     "args": []
   },
   {
@@ -19403,7 +19440,7 @@
     "secure": true,
     "readOnly": true,
     "signature": "(request?: ListOpenOrdersRequest, options?: RequestOptions): Paginated<OpenOrder[]>",
-    "description": "Lists open orders for the authenticated account across all pages.",
+    "description": "Lists open orders placed with this client's credentials across all pages.\nOn a Deposit Wallet, use `listWalletOpenOrders` to include orders placed\nby the owner and its session keys.",
     "args": [
       {
         "name": "request",
@@ -19477,6 +19514,144 @@
                   ]
                 },
                 "market": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "options",
+        "optional": true,
+        "type": "RequestOptions | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "aborted": {
+                          "type": "boolean"
+                        },
+                        "onabort": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "description": "(this: AbortSignal, ev: Event) => any"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "description": "any"
+                        },
+                        "throwIfAborted": {
+                          "description": "() => void"
+                        },
+                        "addEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | AddEventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "removeEventListener": {
+                          "description": "{ <K extends keyof AbortSignalEventMap>(type: K, listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any, options?: boolean | EventListenerOptions | undefined): void; (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | ... 1 more ... | undefined): void; }"
+                        },
+                        "dispatchEvent": {
+                          "description": "(event: Event) => boolean"
+                        }
+                      },
+                      "required": [
+                        "aborted",
+                        "onabort",
+                        "reason",
+                        "throwIfAborted",
+                        "addEventListener",
+                        "removeEventListener",
+                        "dispatchEvent"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "timeout": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "retries": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "group": "orders",
+    "method": "listWalletOpenOrders",
+    "secure": true,
+    "readOnly": true,
+    "signature": "(request?: ListWalletOpenOrdersRequest, options?: RequestOptions): Paginated<WalletOpenOrder[]>",
+    "description": "Lists open orders across the Deposit Wallet, including other signers' orders.\nOwners and non-revoked session signers can read this collection. An empty page\ncan still have a continuation cursor; iteration follows every continuation.",
+    "args": [
+      {
+        "name": "request",
+        "optional": true,
+        "type": "ListWalletOpenOrdersRequest | undefined",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "market": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "signerAddresses": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "cursor": {
                   "anyOf": [
                     {
                       "type": "string"
@@ -22896,7 +23071,7 @@
     "secure": true,
     "readOnly": false,
     "signature": "(request: AuthorizeSessionKeyRequest): Promise<AuthorizeSessionKeyResult>",
-    "description": "Authorizes an externally managed signer for selected venues.\n\nThe SDK receives only the public address. The application remains\nresponsible for generating, storing, and protecting the private key.\nWhen scopes are omitted, authorization defaults to `ALL`.\nThe authorization expires 180 days after it is created.\nRequires builder API-key authentication.",
+    "description": "Authorizes an externally managed signer for selected venues.\n\nThe SDK receives only the public address. The application remains\nresponsible for generating, storing, and protecting the private key.\nWhen scopes are omitted, authorization defaults to `ALL`.\nThe authorization expires 180 days after it is created.\nRequires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or\n`remoteBuilderSigning(...)`. Account credentials alone are not enough.",
     "args": [
       {
         "name": "request",
@@ -23045,7 +23220,7 @@
     "secure": true,
     "readOnly": false,
     "signature": "(request: RevokeSessionKeyRequest): Promise<void>",
-    "description": "Revokes a session key authorized for the Deposit Wallet.\n\nReturns once the session key is removed from the active-key registry and can\nno longer be used. The on-chain transaction may still be pending.\nRequires API-key authentication that supports gasless transactions.",
+    "description": "Revokes a session key authorized for the Deposit Wallet.\n\nReturns once the session key is removed from the active-key registry and can\nno longer be used. The on-chain transaction may still be pending.\nRequires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or\n`remoteBuilderSigning(...)`. Account credentials alone are not enough.",
     "args": [
       {
         "name": "request",

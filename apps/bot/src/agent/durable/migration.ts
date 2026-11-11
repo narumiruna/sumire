@@ -1,4 +1,5 @@
-import type { Context, JsonValue } from "@earendil-works/chord"
+import type { Context } from "@earendil-works/chord/context"
+import type { JsonValue } from "@earendil-works/chord/json"
 import type { AgentToolCallOutcome } from "@earendil-works/pi-agent-core"
 import {
   type Conversation,

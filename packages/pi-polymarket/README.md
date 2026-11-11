@@ -1,8 +1,8 @@
 # Pi Polymarket
 
-Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.17.0**. Requires Node.js 26 or newer.
+Pi tools backed by [`@polymarket/client`](https://github.com/Polymarket/ts-sdk/tree/main/packages/client) **0.18.0**. Requires Node.js 26 or newer.
 
-The package exposes all **122 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
+The package exposes all **125 action methods** of the published default client. It does not execute model-supplied code. Public queries work without a wallet. Trading requires an authenticated client supplied by the host.
 
 ## Load the public extension
 
@@ -29,8 +29,8 @@ This private workspace is not published to npm. Sumire bundles the public tools 
 | `polymarket_rewards_query` | Market rewards, earnings, and order scoring. |
 | `polymarket_wallet_query` | Trading approval state, collateral return plans, and conversion or horizontal split/merge preparation. |
 | `polymarket_wallet_execute` | Approvals, asset transfers, position split/merge/redemption, conversion, horizontal split/merge, and collateral return execution. |
-| `polymarket_orders_query` | Open orders, order details, and settlement status. |
-| `polymarket_orders_execute` | Create/sign orders, submit orders, cancel orders, and send an order heartbeat. |
+| `polymarket_orders_query` | Signer- and wallet-scoped open orders, order details, and settlement status. |
+| `polymarket_orders_execute` | Create/sign orders, submit orders, cancel signer or Deposit Wallet orders, and send an order heartbeat. |
 | `polymarket_subscriptions_query` | Open public or authenticated SDK subscriptions. |
 | `polymarket_perps_query` | Instruments, tickers, order books, candles, funding, trades, and registration. |
 | `polymarket_perps_execute` | Open trading sessions, deposit, withdraw, transfer collateral, and revoke credentials. |
