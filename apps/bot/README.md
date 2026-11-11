@@ -275,6 +275,26 @@ Telegram polling retries transient failures such as `ECONNRESET` every five seco
 
 If polling warnings continue, check the container's outbound HTTPS connection to `api.telegram.org`, including any VPN, proxy, or firewall. Retries cannot fix a blocked network. If a token has appeared in old logs, revoke it via @BotFather, replace `BOT_TOKEN` in `.env`, and rebuild/recreate the service with `docker compose up -d --build sumire`.
 
+## Telegram attachment download retries
+
+Current and replied images, on-demand channel images (`read_image`), documents, and audio use the same bounded download helper. If a transport error has a structured `code` of `ECONNRESET`, the helper waits **250 ms** and retries once. Each attempt includes Telegram `getFile`, media fetch, and body reading; these phases share a maximum of **two complete attempts**. Native `cause` and grammY `HttpError.error` wrappers are inspected without matching error text. Cyclic or excessively deep wrappers are not retried.
+
+Both attempts and the retry wait share the original **60-second total deadline** and caller abort signal. The deadline does not restart. Each attempt checks metadata, Content-Length, and actual streamed bytes against the existing file-size limit. Partial bytes are discarded and response readers are released before another attempt. A retry can transfer the file again, but it cannot join bytes from different attempts or bypass a size limit. Redirects remain disabled.
+
+Aborts, timeouts, other network codes, Telegram API errors, HTTP responses (including `429` and `5xx`), missing paths, empty bodies, and oversized files are not retried. Exhaustion uses the existing error response. No model request, image-generation call, transcription/conversion, or outgoing Telegram message is repeated by this download policy. No new runtime setting or retry telemetry is added; existing error logs remain redacted.
+
+A caller abort signal stops the retry wait and download. Ordinary message `/cancel` and `/reset` retain their existing behavior: they invalidate input and suppress late errors/results rather than immediately aborting active attachment transport. Invalidated input cannot reach Pi, and same-chat submission order remains unchanged.
+
+### Rollout and verification
+
+The deployment operator must obtain deployment authorization, retain the previous container image, and use the existing Compose rollout procedure after required checks pass. Keep all state volumes and admitted durable work. This change needs no database migration or runtime configuration change. Restore the previous image if the retry causes a regression; do not use `/reset` or `docker compose down -v` for rollback.
+
+In an approved test group, reply to a harmless photo with a request to describe it. Verify one image in the Pi input, one response, and a healthy service. Do not request image generation, inject network faults into a production group, or replay an earlier generation request. Record the deployment date and check result in this section without tokens, file IDs, download URLs, image bytes, or conversation payloads.
+
+Local verification on 2026-11-11 used Node.js 26.11.1 and npm 11.20.0. The focused file, bot, channel-image, document, and audio checks passed 247 tests across six files. All five root gates passed: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (3,715 tests across 214 files), and `npm run build`. The new recovery tests failed against the original helper before implementation.
+
+Live verification is pending and is not part of this pull request. Automated tests establish recovery, attempt bounds, deadlines, cleanup, cancellation, and submission behavior; they do not establish live Telegram connectivity or the source of a historical TLS reset. Do not report production recovery until the live check passes.
+
 ## Image generation
 
 `generate_image` generates one new image from a text prompt and sends it to the originating Telegram chat. Pi selects the tool from ordinary intent; there is no required command or keyword route.
