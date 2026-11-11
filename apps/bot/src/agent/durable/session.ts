@@ -35,9 +35,15 @@ import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
 import type { DurableInspectionReader } from "../../admin/durable-inspector.js"
 import { AdminError } from "../../admin/store.js"
 import type { Logger } from "../../logging.js"
-import type { SessionHandle } from "../session-registry.js"
+import type { SessionAnswer, SessionHandle, SessionSettlement } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
-import { forwardDurableView, recordMessageEntries, recordNestedResults } from "./events.js"
+import {
+  durableCommitEvents,
+  durableReason,
+  forwardDurableView,
+  recordMessageEntries,
+  recordNestedResults,
+} from "./events.js"
 import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
@@ -76,6 +82,7 @@ export class DurableSession implements SessionHandle {
     private readonly logger: Logger,
     private readonly cleanup: () => Promise<void>,
     private readonly inspection?: DurableInspectionReader,
+    private readonly chatId?: number,
     private readonly authorizeMedia: () => void | Promise<void> = () => {
       throw new Error("Image delivery is unavailable")
     },
@@ -99,6 +106,7 @@ export class DurableSession implements SessionHandle {
     cleanup?: () => Promise<void>
     inspection?: DurableInspectionReader
     authorizeMedia?: () => void | Promise<void>
+    chatId?: number
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
     const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
@@ -117,7 +125,10 @@ export class DurableSession implements SessionHandle {
       await options.harness.commit(async (tx) => {
         ;(await tx.doc(OutboxDoc)).pending = []
       }, context)
-      options.logger.warn("Durable pending work cancelled because authorization changed")
+      options.logger.warn("Durable pending work cancelled because authorization changed", {
+        "event.name": "pi.authorization.pending_cancelled",
+        ...(options.chatId === undefined ? {} : { "telegram.chat_id": options.chatId }),
+      })
     }
     await options.harness.commit(async (tx) => {
       ;(await tx.doc(BotSessionDoc)).trustKey = options.trustKey
@@ -148,6 +159,7 @@ export class DurableSession implements SessionHandle {
       options.logger,
       options.cleanup ?? (() => Promise.resolve()),
       options.inspection,
+      options.chatId,
       options.authorizeMedia,
     )
     session.sessionId = saved.sessionId
@@ -240,7 +252,11 @@ export class DurableSession implements SessionHandle {
       try {
         listener(event)
       } catch (error) {
-        this.logger.warn("Durable event listener failed", error)
+        this.logger.warn("Durable event listener failed", {
+          "event.name": "pi.event.listener_failed",
+          "pi.session_id": this.sessionId,
+          error,
+        })
       }
     }
   }
@@ -252,7 +268,7 @@ export class DurableSession implements SessionHandle {
       onAccepted?: () => void
       delivery?: ResponseDelivery
     } = {},
-  ): Promise<DurableAnswer> {
+  ): Promise<SessionAnswer> {
     const epoch = this.#epoch
     const requestId = randomUUID()
     const content = options.images?.length
@@ -273,7 +289,7 @@ export class DurableSession implements SessionHandle {
       if (pending) await this.#outbox.record(pending)
       if (epoch !== this.#epoch || this.#closing) {
         await this.acknowledge(requestId)
-        return { text: "" }
+        return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       }
       const submission = await this.#conversation.submit(
         { type: "input", content, requestId },
@@ -281,13 +297,18 @@ export class DurableSession implements SessionHandle {
       )
       if (epoch !== this.#epoch) {
         await this.#conversation.abort(context)
-        return { text: "" }
+        return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       }
       options.onAccepted?.()
       const settled = await submission.wait(context)
-      if (this.#closing) return { text: "" }
+      const settlement: SessionSettlement = {
+        status: settled.status,
+        ...(settled.status === "unanswered" ? { reason: durableReason(settled.reason) } : {}),
+      }
+      if (this.#closing) return { text: "", settlement }
       await this.#conversation.waitForIdle(context)
       await this.refresh()
+      await this.#updates
       const done = settled.status === "done" && settled.type === "input"
       const answer = this.#lastEntries.findLast((entry) =>
         entry.model?.some((message) => message.role === "assistant"),
@@ -297,9 +318,12 @@ export class DurableSession implements SessionHandle {
         const result = await this.#outbox.answer(requestId, text, answer)
         if (answer && (done || result.media?.length))
           await this.#outbox.captureAnswer(requestId, answer.id)
-        return done || result.media?.length ? result : { text: "", requestId }
+        return {
+          ...(done || result.media?.length ? result : { text: "", requestId }),
+          settlement,
+        }
       }
-      return { text, ...(done && answer ? { entryId: checkpointId(answer) } : {}) }
+      return { text, settlement, ...(done && answer ? { entryId: checkpointId(answer) } : {}) }
     } finally {
       this.#prompting--
     }
@@ -465,7 +489,7 @@ export class DurableSession implements SessionHandle {
     const requestId = randomUUID()
     await this.#outbox.relateInput(this.#conversation.id, requestId)
     if (epoch !== this.#epoch || this.#closing) return
-    await this.#conversation.submit(
+    const submission = await this.#conversation.submit(
       {
         type: "input",
         requestId,
@@ -474,6 +498,15 @@ export class DurableSession implements SessionHandle {
       },
       context,
     )
+    this.logger.info("Durable input queued", {
+      "event.name": "pi.input.queued",
+      "pi.session_id": this.sessionId,
+      "pi.conversation_id": this.#conversation.id,
+      "pi.request_id": requestId,
+      "pi.submission_id": submission.id,
+      "pi.intent": whenBusy,
+      ...(this.chatId === undefined ? {} : { "telegram.chat_id": this.chatId }),
+    })
     if (epoch !== this.#epoch && !this.#closing) await this.#conversation.abort(context)
   }
 
@@ -486,8 +519,8 @@ export class DurableSession implements SessionHandle {
 
   private async detach(): Promise<void> {
     this.#observation?.detach()
-    await this.#updates
     this.#commits?.detach()
+    await this.#updates
     this.#nestedResults.clear()
     this.#messageEntries.clear()
   }
@@ -498,6 +531,12 @@ export class DurableSession implements SessionHandle {
       advance: (publication) => {
         recordNestedResults(publication, conversationId, this.#nestedResults)
         recordMessageEntries(publication, conversationId, this.#messageEntries)
+        const events = durableCommitEvents(publication, conversationId, this.sessionId, this.chatId)
+        if (events.length) {
+          this.#updates = this.#updates.then(() => {
+            for (const event of events) this.logger.info(event.message, event.attributes)
+          })
+        }
       },
       end: () => {},
     })
@@ -525,9 +564,17 @@ export class DurableSession implements SessionHandle {
             this.sessionId,
             this.#nestedResults,
             this.#messageEntries,
+            this.chatId,
           )
         })
-        .catch((error) => this.logger.warn("Durable conversation update failed", error))
+        .catch((error) =>
+          this.logger.warn("Durable conversation update failed", {
+            "event.name": "pi.conversation.update_failed",
+            "pi.session_id": this.sessionId,
+            "pi.conversation_id": conversationId,
+            error,
+          }),
+        )
     }
     this.#observation = await this.harness.observeConversation(
       this.#conversation.id,

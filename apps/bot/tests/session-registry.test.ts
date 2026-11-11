@@ -680,7 +680,7 @@ describe("ChatSessionRegistry", () => {
     expect(session.listeners.size).toBe(0)
   })
 
-  it("logs Pi session, tool outcome, model usage, retry and compaction without tool inputs", async () => {
+  it("logs submission metadata without duplicating session-owned lifecycle events", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-ts-"))
     const session = new FakeSession()
     const prompt = session.prompt.bind(session)
@@ -722,29 +722,17 @@ describe("ChatSessionRegistry", () => {
 
     await registry.submit(1, "request")
 
-    const messages = vi.mocked(logger.info).mock.calls.map(([message]) => message)
-    expect(messages).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("session_id=fake-session reply_branch_restored=false"),
-        expect.stringContaining(
-          "Pi tool started chat_id=1 session_id=fake-session tool=read_url_content call_id=call-1",
-        ),
-        expect.stringContaining(
-          "Pi tool finished chat_id=1 session_id=fake-session tool=read_url_content call_id=call-1 success=true",
-        ),
-        expect.stringContaining(
-          "Pi model response chat_id=1 session_id=fake-session model=test stop_reason=stop input_tokens=0",
-        ),
-        expect.stringContaining(
-          "Pi retry chat_id=1 session_id=fake-session attempt=1 max_attempts=2",
-        ),
-        expect.stringContaining(
-          "Pi compaction chat_id=1 session_id=fake-session reason=threshold aborted=false",
-        ),
-      ]),
-    )
-    expect(messages.join(" ")).not.toContain("private content")
-    expect(messages.join(" ")).not.toContain("key=private")
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith("Pi submission", {
+      "event.name": "pi.submission",
+      "telegram.chat_id": 1,
+      "pi.session_id": "fake-session",
+      "pi.reply_branch_restored": false,
+      "pi.intent": "automatic",
+    })
+    const logs = JSON.stringify(vi.mocked(logger.info).mock.calls)
+    expect(logs).not.toContain("private content")
+    expect(logs).not.toContain("key=private")
+    expect(logs).not.toContain("private failure")
     expect(session.listeners.size).toBe(0)
   })
 
@@ -1146,7 +1134,10 @@ describe("ChatSessionRegistry", () => {
         })
       }
       if (outcome === "reset") {
-        expect(branchResult).toEqual(new Error("Pi session access was invalidated by reset"))
+        expect(branchResult).toMatchObject({
+          name: "AbortError",
+          message: "Pi session access was invalidated by reset",
+        })
       } else {
         expect(branchResult).toMatchObject({ kind: "completed", text: "AI: branch" })
       }
@@ -1191,10 +1182,12 @@ describe("ChatSessionRegistry", () => {
         [100],
       ),
     ).resolves.toBeUndefined()
-    expect(localLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Could not persist Telegram reply mapping"),
-      expect.any(Error),
-    )
+    expect(localLogger.warn).toHaveBeenCalledWith("Could not persist Telegram reply mapping", {
+      "event.name": "pi.reply_mapping.failed",
+      "telegram.chat_id": 1,
+      "pi.session_id": session.sessionId,
+      error: expect.any(Error),
+    })
   })
 
   it("ignores stale session IDs, missing entries, undefined checkpoints, and reset mappings", async () => {

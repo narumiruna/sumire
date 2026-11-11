@@ -9,7 +9,8 @@ import {
   parseProgressDetails,
 } from "@narumitw/sumire-progress"
 import { AdminError, type AdminStore } from "../admin/store.js"
-import type { Logger } from "../logging.js"
+import { isCancellation, type Logger, setSpanError, withLogSpan } from "../logging.js"
+import type { durableReason } from "./durable/events.js"
 import type { GeneratedMedia } from "./durable/media.js"
 import { type DurableAnswer, NO_RESPONSE_TEXT } from "./durable/outbox.js"
 import type { ResponseDelivery } from "./durable/state.js"
@@ -20,6 +21,13 @@ export interface SubmissionCheckpoint extends PiReplyCheckpoint {
   requestId?: string
 }
 
+export interface SessionSettlement {
+  status: "done" | "unanswered"
+  reason?: ReturnType<typeof durableReason>
+}
+
+export type SessionAnswer = DurableAnswer & { settlement?: SessionSettlement }
+
 export type SubmissionResult =
   | {
       kind: "completed"
@@ -27,8 +35,14 @@ export type SubmissionResult =
       checkpoint?: SubmissionCheckpoint
       media?: GeneratedMedia[]
       textMessageIds?: number[]
+      settlement?: SessionSettlement
     }
-  | { kind: "no_response"; text: string; checkpoint?: SubmissionCheckpoint }
+  | {
+      kind: "no_response"
+      text: string
+      checkpoint?: SubmissionCheckpoint
+      settlement?: SessionSettlement
+    }
   | { kind: "steered"; text: string }
   | { kind: "followed_up"; text: string }
 
@@ -46,7 +60,7 @@ export interface SessionHandle {
   prompt(
     text: string,
     options?: { images?: ImageContent[]; onAccepted?: () => void; delivery?: ResponseDelivery },
-  ): Promise<DurableAnswer>
+  ): Promise<SessionAnswer>
   steer(text: string, images?: ImageContent[]): Promise<"queued">
   followUp(text: string, images?: ImageContent[]): Promise<"queued">
   appendPassiveContext(text: string): Promise<void>
@@ -197,7 +211,10 @@ export class ChatSessionRegistry {
     const assertCurrent = () => {
       this.#assertCurrentGeneration(chatId, generation)
       if (options.isCurrent?.() === false) {
-        throw new Error("Pi session submission was cancelled before acceptance")
+        throw new DOMException(
+          "Pi session submission was cancelled before acceptance",
+          "AbortError",
+        )
       }
     }
     const session = await this.#getOrCreate(chatId)
@@ -210,9 +227,13 @@ export class ChatSessionRegistry {
       assertCurrent,
     )
     assertCurrent()
-    this.logger.info(
-      `Pi submission chat_id=${chatId} session_id=${session.sessionId} reply_branch_restored=${restoredBranch} intent=${options.intent ?? "automatic"}`,
-    )
+    this.logger.info("Pi submission", {
+      "event.name": "pi.submission",
+      "telegram.chat_id": chatId,
+      "pi.session_id": session.sessionId,
+      "pi.reply_branch_restored": restoredBranch,
+      "pi.intent": options.intent ?? "automatic",
+    })
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
@@ -245,11 +266,15 @@ export class ChatSessionRegistry {
           try {
             options.onActivity(activity, "toolName" in event ? event.toolName : undefined)
           } catch (error) {
-            this.logger.warn("Activity listener failed", error)
+            this.logger.warn("Activity listener failed", {
+              "event.name": "pi.activity.listener_failed",
+              "telegram.chat_id": chatId,
+              "pi.session_id": session.sessionId,
+              error,
+            })
           }
         }
       }
-      logPiEvent(event, chatId, session.sessionId, this.logger)
     })
     let finishCapture = () => {}
     const capture = {
@@ -270,6 +295,7 @@ export class ChatSessionRegistry {
       return {
         kind: text || answer.media?.length ? "completed" : "no_response",
         text: text || (answer.media?.length ? "" : NO_RESPONSE_TEXT),
+        ...(answer.settlement ? { settlement: answer.settlement } : {}),
         ...(answer.media?.length
           ? { media: answer.media, textMessageIds: answer.textMessageIds ?? [] }
           : {}),
@@ -342,19 +368,75 @@ export class ChatSessionRegistry {
         if (await session.hasCheckpoint(checkpoint.entryId))
           await this.#replyIndex.record(chatId, telegramMessageIds, checkpoint)
       } catch (error) {
-        this.logger.warn(
-          `Could not persist Telegram reply mapping for chat_id=${chatId}; branch restoration is unavailable for this reply`,
+        this.logger.warn("Could not persist Telegram reply mapping", {
+          "event.name": "pi.reply_mapping.failed",
+          "telegram.chat_id": chatId,
+          "pi.session_id": session.sessionId,
           error,
-        )
+        })
       }
     }
     if (acknowledge && checkpoint.requestId) {
       try {
-        await session.acknowledge(checkpoint.requestId)
+        await this.#acknowledgeDelivery(
+          chatId,
+          session,
+          checkpoint.requestId,
+          checkpoint.generation,
+        )
       } catch (error) {
-        this.logger.warn(`Could not acknowledge durable delivery for chat_id=${chatId}`, error)
+        this.logger.warn("Could not acknowledge durable delivery", {
+          "event.name": "pi.delivery.acknowledge_failed",
+          "telegram.chat_id": chatId,
+          "pi.session_id": session.sessionId,
+          "pi.request_id": checkpoint.requestId,
+          error,
+        })
       }
     }
+  }
+
+  async #acknowledgeDelivery(
+    chatId: number,
+    session: SessionHandle,
+    requestId: string,
+    generation: number,
+    sourceMessageId?: number,
+  ): Promise<void> {
+    const isCurrent = () =>
+      !this.#closed &&
+      (this.#generations.get(chatId) ?? 0) === generation &&
+      this.#sessions.get(chatId) === session
+    await withLogSpan(
+      this.logger,
+      "telegram.acknowledge",
+      {
+        "telegram.chat_id": chatId,
+        "pi.session_id": session.sessionId,
+        "pi.request_id": requestId,
+        "delivery.stage": "ack",
+        ...(sourceMessageId === undefined ? {} : { "telegram.message_id": sourceMessageId }),
+      },
+      async (span) => {
+        try {
+          await session.acknowledge(requestId)
+          // A closing session can resolve acknowledge without changing its outbox.
+          const current = isCurrent()
+          span.setAttribute("delivery.outcome", current ? "acknowledged" : "cancelled")
+          span.setAttribute("operation.outcome", current ? "success" : "cancelled")
+        } catch (error) {
+          const cancelled = !isCurrent() || isCancellation(error)
+          if (cancelled) {
+            span.setAttribute("delivery.outcome", "cancelled")
+            span.setAttribute("operation.outcome", "cancelled")
+          } else {
+            setSpanError(span, error)
+            span.setAttribute("delivery.outcome", "pending")
+          }
+          throw error
+        }
+      },
+    )
   }
 
   #deliverySession(chatId: number, checkpoint: SubmissionCheckpoint) {
@@ -419,7 +501,11 @@ export class ChatSessionRegistry {
         // Close idle historical databases before opening the next one.
         if (await this.#releaseRecoverySession(chatId, session)) continue
       } catch (error) {
-        this.logger.warn(`Durable recovery could not open chat_id=${chatId}`, error)
+        this.logger.warn("Durable recovery could not open chat", {
+          "event.name": "pi.recovery.open_failed",
+          "telegram.chat_id": chatId,
+          error,
+        })
         continue
       }
       if (this.#closed) break
@@ -439,12 +525,25 @@ export class ChatSessionRegistry {
               }
             : undefined
           if (await deliver(chatId, answer, delivery, checkpoint, isCurrent)) {
-            if (answer.requestId && isCurrent()) await session.acknowledge(answer.requestId)
+            if (answer.requestId && isCurrent())
+              await this.#acknowledgeDelivery(
+                chatId,
+                session,
+                answer.requestId,
+                generation,
+                delivery.sourceMessageId,
+              )
           }
         })
         .finally(() => this.#releaseRecoverySession(chatId, session))
         .catch((error) => {
-          if (isCurrent()) this.logger.warn(`Durable recovery failed for chat_id=${chatId}`, error)
+          if (isCurrent())
+            this.logger.warn("Durable recovery failed", {
+              "event.name": "pi.recovery.failed",
+              "telegram.chat_id": chatId,
+              "pi.session_id": session.sessionId,
+              error,
+            })
         })
       this.#recoveries.add(recovery)
       void recovery.finally(() => this.#recoveries.delete(recovery))
@@ -603,7 +702,7 @@ export class ChatSessionRegistry {
 
   #assertCurrentGeneration(chatId: number, generation: number): void {
     if ((this.#generations.get(chatId) ?? 0) !== generation) {
-      throw new Error("Pi session access was invalidated by reset")
+      throw new DOMException("Pi session access was invalidated by reset", "AbortError")
     }
   }
 
@@ -699,7 +798,7 @@ export class ChatSessionRegistry {
     const creation = this.createSession(chatId).then(async (session) => {
       try {
         if (this.#closed || (this.#generations.get(chatId) ?? 0) !== generation)
-          throw new Error("Pi session creation was invalidated by reset")
+          throw new DOMException("Pi session creation was invalidated by reset", "AbortError")
         this.options.control.assertChat(chatId)
       } catch (error) {
         await session.dispose()
@@ -707,7 +806,11 @@ export class ChatSessionRegistry {
       }
       this.#sessions.set(chatId, session)
       if (forRecovery) this.#recoveryOnly.add(session)
-      this.logger.debug(`Created Pi session for chat_id=${chatId}`)
+      this.logger.debug("Created Pi session", {
+        "event.name": "pi.session.created",
+        "telegram.chat_id": chatId,
+        "pi.session_id": session.sessionId,
+      })
       return session
     })
     this.#creating.set(chatId, creation)
@@ -716,33 +819,6 @@ export class ChatSessionRegistry {
     } finally {
       if (this.#creating.get(chatId) === creation) this.#creating.delete(chatId)
     }
-  }
-}
-
-function logPiEvent(
-  event: AgentSessionEvent,
-  chatId: number,
-  sessionId: string,
-  logger: Logger,
-): void {
-  const prefix = `chat_id=${chatId} session_id=${sessionId}`
-  if (event.type === "tool_execution_start") {
-    logger.info(`Pi tool started ${prefix} tool=${event.toolName} call_id=${event.toolCallId}`)
-  } else if (event.type === "tool_execution_end") {
-    logger.info(
-      `Pi tool finished ${prefix} tool=${event.toolName} call_id=${event.toolCallId} success=${!event.isError}`,
-    )
-  } else if (event.type === "message_end" && event.message.role === "assistant") {
-    const message = event.message
-    logger.info(
-      `Pi model response ${prefix} model=${message.model} stop_reason=${message.stopReason} input_tokens=${message.usage.input} output_tokens=${message.usage.output} total_tokens=${message.usage.totalTokens}`,
-    )
-  } else if (event.type === "auto_retry_start") {
-    logger.info(`Pi retry ${prefix} attempt=${event.attempt} max_attempts=${event.maxAttempts}`)
-  } else if (event.type === "compaction_end") {
-    logger.info(
-      `Pi compaction ${prefix} reason=${event.reason} aborted=${event.aborted} will_retry=${event.willRetry}`,
-    )
   }
 }
 
@@ -777,7 +853,10 @@ function progressListener(
     try {
       onProgress(details.steps)
     } catch (error) {
-      logger.warn("Progress listener failed", error)
+      logger.warn("Progress listener failed", {
+        "event.name": "pi.progress.listener_failed",
+        error,
+      })
     }
   }
 }

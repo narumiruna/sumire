@@ -58,11 +58,12 @@ it("stops before creating sessions or polling when administration storage is una
   writeFileSync(path.join(root, ".telegramagent"), "not a directory")
   vi.mocked(loadSettings).mockReturnValueOnce(settings)
   const shutdown = vi.fn(async () => {})
+  const error = vi.fn()
   vi.mocked(createLogger).mockReturnValueOnce({
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error,
     shutdown,
   })
   try {
@@ -70,7 +71,38 @@ it("stops before creating sessions or polling when administration storage is una
     expect(createPiSessionFactory).not.toHaveBeenCalled()
     expect(createTelegramAgentBot).not.toHaveBeenCalled()
     expect(shutdown).toHaveBeenCalledOnce()
+    expect(error).toHaveBeenCalledWith("Application failed", {
+      "event.name": "application.failed",
+      error: expect.any(Error),
+    })
+    expect(error.mock.invocationCallOrder[0]).toBeLessThan(
+      shutdown.mock.invocationCallOrder[0] ?? 0,
+    )
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+it("reports settings validation failure through the configured logger before shutdown", async () => {
+  const failure = new Error("settings fixture")
+  vi.mocked(loadSettings).mockImplementationOnce(() => {
+    throw failure
+  })
+  const error = vi.fn()
+  const shutdown = vi.fn(async () => {})
+  vi.mocked(createLogger).mockReturnValueOnce({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error,
+    shutdown,
+  })
+
+  await expect(startApplication()).rejects.toBe(failure)
+  expect(error).toHaveBeenCalledExactlyOnceWith("Application failed", {
+    "event.name": "application.failed",
+    error: failure,
+  })
+  expect(shutdown).toHaveBeenCalledOnce()
+  expect(error.mock.invocationCallOrder[0]).toBeLessThan(shutdown.mock.invocationCallOrder[0] ?? 0)
 })

@@ -34,15 +34,15 @@ describe("codemode through Bot Pi sessions", () => {
     )
     const info = vi.spyOn(fixture.logger, "info")
     const session = await fixture.createSession()
-    expect(info).toHaveBeenCalledWith("Pi chat tool access chat_id=123", {
-      imagegen: {
-        available: false,
-        permitted: true,
-        installed: false,
-        reason: "Requires compatible openai-codex OAuth. Check Model providers.",
-      },
-      tools: expect.arrayContaining(["codemode", "read_image", "update_progress"]),
-      codemodeTools: [
+    expect(info).toHaveBeenCalledWith("Pi chat tool access", {
+      "event.name": "pi.tools.configured",
+      "telegram.chat_id": 123,
+      "pi.session_id": expect.any(String),
+      "pi.imagegen_available": false,
+      "pi.imagegen_permitted": true,
+      "pi.imagegen_installed": false,
+      "pi.tools": expect.arrayContaining(["codemode", "read_image", "update_progress"]),
+      "pi.codemode_tools": [
         "read",
         "bash",
         "edit",

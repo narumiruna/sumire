@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 describe("application entrypoint", () => {
-  it("logs fatal errors with redaction and sets a failing exit code", async () => {
+  it("sets a failing exit code without logging a second startup exception", async () => {
     const token = "123456:fake-test-token"
     vi.mocked(startApplication).mockRejectedValueOnce(
       new HttpError(
@@ -30,10 +30,7 @@ describe("application entrypoint", () => {
     await import("../src/index.js")
 
     expect(process.exitCode).toBe(1)
-    const output = stderr.mock.calls.flat().join(" ")
-    expect(output).toContain("ERROR | Application failed")
-    expect(output).toContain("request to [redacted-url] failed")
-    expect(output).not.toContain(token)
+    expect(stderr).not.toHaveBeenCalled()
   })
 
   it("preserves the exit code on a clean shutdown", async () => {

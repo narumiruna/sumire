@@ -150,7 +150,7 @@ it.each([256, 257])("keeps startup available with a %i-character skill name", as
   const session = await factory.create(123)
   cleanups.push(() => session.dispose())
   expect(session.systemPrompt).toContain("<name>valid</name>")
-  const diagnostic = "Pi skill skipped: name is outside administration policy limits"
+  const diagnostic = "Pi skill skipped"
   if (length === 256) {
     expect(factory.skills?.map((skill) => skill.name)).toContain(longName)
     expect(store.snapshot().policy.skills).toContain(longName)
@@ -160,9 +160,9 @@ it.each([256, 257])("keeps startup available with a %i-character skill name", as
     expect(factory.skills?.map((skill) => skill.name)).not.toContain(longName)
     expect(store.snapshot().policy.skills).not.toContain(longName)
     expect(session.systemPrompt).not.toContain(longName)
-    expect(warn).toHaveBeenCalledWith(diagnostic, {
-      path: path.join(fixture.settings.botSkillsDir, "long-name/SKILL.md"),
-    })
+    expect(warn).toHaveBeenCalledWith(diagnostic, { "event.name": "pi.skill.skipped" })
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("long-name/SKILL.md")
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(longName)
   }
 })
 

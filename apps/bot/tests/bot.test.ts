@@ -8,7 +8,11 @@ import type { Transformer } from "grammy"
 import type { RichBlock, Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
 import { loadPublicUrl } from "../../../packages/pi-url-reader/src/public-url.js"
-import type { ChatSessionRegistry, SubmissionActivity } from "../src/agent/session-registry.js"
+import type {
+  ChatSessionRegistry,
+  SubmissionActivity,
+  SubmissionResult,
+} from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import { AnyDocConverter, DocumentConversionError } from "../src/documents/converter.js"
 import type { Logger, SpanAttributes } from "../src/logging.js"
@@ -50,6 +54,30 @@ const logger: Logger = {
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
+}
+
+function requestTracing() {
+  const spans: Array<{ name: string; attributes: SpanAttributes; status?: number }> = []
+  const tracedLogger: Logger = {
+    ...logger,
+    span: async (name, attributes, callback) => {
+      const record: (typeof spans)[number] = { name, attributes: { ...attributes } }
+      spans.push(record)
+      return callback({
+        setAttribute: (key, value) => {
+          record.attributes[key] = value
+        },
+        setStatus: ({ code }) => {
+          record.status = code
+        },
+      })
+    },
+  }
+  return {
+    spans,
+    logger: tracedLogger,
+    root: () => spans.find((span) => span.name === "telegram.request"),
+  }
 }
 
 function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessionRegistry {
@@ -5164,6 +5192,290 @@ describe("Telegram bot update routing", () => {
     expect(telegramPayloadText(calls.at(-1)?.payload)).toBe("AI 回覆")
   })
 
+  it.each([
+    {
+      kind: "no_response" as const,
+      settlement: { status: "unanswered" as const, reason: "model_error" },
+      outcome: "failed",
+      error: true,
+    },
+    {
+      kind: "no_response" as const,
+      settlement: { status: "done" as const },
+      outcome: "unavailable",
+      error: true,
+    },
+    {
+      kind: "no_response" as const,
+      settlement: { status: "unanswered" as const, reason: "aborted" },
+      outcome: "cancelled",
+      error: false,
+    },
+    { kind: "steered" as const, outcome: "steered", error: false },
+    { kind: "followed_up" as const, outcome: "followed_up", error: false },
+  ])(
+    "records $outcome rather than request completion for $kind",
+    async ({ kind, settlement, outcome, error }) => {
+      const trace = requestTracing()
+      const sessions = createSessions({
+        submit: vi.fn(async (_chatId, _prompt, options) => {
+          options.onAccepted?.()
+          return {
+            kind,
+            text: "private fallback",
+            ...(settlement ? { settlement } : {}),
+          } as SubmissionResult
+        }),
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        trace.logger,
+        { control: approvedStore([7, -100]), botInfo },
+      )
+      installApiMock(telegram.bot)
+      await telegram.bot.handleUpdate(privateMessage(27, "private input"))
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      expect(trace.root()?.attributes["telegram.outcome"]).toBe(outcome)
+      expect(trace.root()?.status).toBe(error ? 2 : undefined)
+      expect(trace.spans.find((span) => span.name === "pi.submit")?.status).toBe(
+        error ? 2 : undefined,
+      )
+      for (const payload of ["private fallback", "private input"])
+        expect(JSON.stringify(trace.spans)).not.toContain(payload)
+    },
+  )
+
+  it.each(["rejected", "download_failed", "cancelled"] as const)(
+    "records image input %s without model work",
+    async (scenario) => {
+      const trace = requestTracing()
+      let finishDownload = () => {}
+      const gate = new Promise<void>((resolve) => {
+        finishDownload = resolve
+      })
+      const fetchImage = vi.fn<typeof fetch>(async () => {
+        if (scenario === "cancelled") await gate
+        throw new Error("private download failure")
+      })
+      const sessions = createSessions()
+      const telegram = createTelegramAgentBot(
+        {
+          ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+          botImageInputEnabled: scenario !== "rejected",
+        },
+        sessions,
+        trace.logger,
+        { control: approvedStore([7, -100]), botInfo, imageFetchImplementation: fetchImage },
+      )
+      installApiMock(telegram.bot)
+      const update = privateMessage(27, "private image input")
+      if (update.message)
+        update.message.photo = [
+          { file_id: "private-file", file_unique_id: "private-unique", width: 10, height: 10 },
+        ]
+      const handling = telegram.bot.handleUpdate(update)
+      try {
+        if (scenario === "cancelled") {
+          await vi.waitFor(() => expect(fetchImage).toHaveBeenCalledOnce())
+          await telegram.bot.handleUpdate(commandMessage(28, "/cancel"))
+        }
+      } finally {
+        finishDownload()
+        await handling
+      }
+      expect(sessions.submit).not.toHaveBeenCalled()
+      expect(fetchImage).toHaveBeenCalledTimes(scenario === "rejected" ? 0 : 1)
+      expect(trace.root()?.attributes["telegram.outcome"]).toBe(
+        scenario === "rejected"
+          ? "rejected_input"
+          : scenario === "cancelled"
+            ? "cancelled"
+            : "failed",
+      )
+      expect(trace.root()?.status).toBe(scenario === "download_failed" ? 2 : undefined)
+      for (const payload of [
+        "private image input",
+        "private-file",
+        "private-unique",
+        "private download failure",
+      ])
+        expect(JSON.stringify(trace.spans)).not.toContain(payload)
+    },
+  )
+
+  it.each(["model", "delivery", "cancelled"] as const)(
+    "records thrown %s outcome without submitting twice",
+    async (scenario) => {
+      const trace = requestTracing()
+      let finish = () => {}
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const sessions = createSessions({
+        submit: vi.fn(async (_chatId, _prompt, options) => {
+          options.onAccepted?.()
+          if (scenario === "cancelled") {
+            await gate
+            throw new DOMException("private cancellation", "AbortError")
+          }
+          if (scenario === "model") throw new Error("private model failure")
+          return { kind: "completed" as const, text: "private answer" }
+        }),
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        trace.logger,
+        { control: approvedStore([7, -100]), botInfo },
+      )
+      const calls = installApiMock(telegram.bot, (_method, payload) => {
+        if (scenario === "delivery" && telegramPayloadText(payload) === "private answer")
+          throw new Error("private delivery failure")
+      })
+      const handling = telegram.bot.handleUpdate(privateMessage(27, "private input"))
+      try {
+        if (scenario === "cancelled") {
+          await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+          await telegram.bot.handleUpdate(commandMessage(28, "/cancel"))
+        }
+      } finally {
+        finish()
+        await handling
+      }
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      expect(trace.root()?.attributes["telegram.outcome"]).toBe(
+        scenario === "cancelled" ? "cancelled" : "failed",
+      )
+      expect(trace.root()?.status).toBe(scenario === "cancelled" ? undefined : 2)
+      if (scenario !== "cancelled")
+        expect(trace.root()?.attributes["telegram.failure_stage"]).toBe(scenario)
+      expect(
+        calls.filter((call) => telegramPayloadText(call.payload) === "private answer"),
+      ).toHaveLength(scenario === "delivery" ? 2 : 0)
+      for (const payload of [
+        "private answer",
+        "private input",
+        "private model failure",
+        "private delivery failure",
+        "private cancellation",
+      ])
+        expect(JSON.stringify(trace.spans)).not.toContain(payload)
+    },
+  )
+
+  it.each(["shutdown", "cancel_cleanup_failed"] as const)(
+    "records $scenario without repeating admitted work",
+    async (scenario) => {
+      const trace = requestTracing()
+      let finish = () => {}
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const sessions = createSessions({
+        submit: vi.fn(async (_chatId, _prompt, options) => {
+          options.onAccepted?.()
+          await gate
+          if (scenario === "cancel_cleanup_failed")
+            throw new DOMException("private abort", "AbortError")
+          return { kind: "completed" as const, text: "private answer" }
+        }),
+      })
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        trace.logger,
+        { control: approvedStore([7, -100]), botInfo },
+      )
+      const calls = installApiMock(telegram.bot, (_method, payload) => {
+        if (
+          scenario === "cancel_cleanup_failed" &&
+          telegramPayloadText(payload)?.includes("此請求已")
+        )
+          throw new Error("private cleanup failure")
+      })
+      const handling = telegram.bot.handleUpdate(privateMessage(27, "private input"))
+      try {
+        await vi.waitFor(() => expect(sessions.submit).toHaveBeenCalledOnce())
+        if (scenario === "shutdown") await telegram.stop()
+      } finally {
+        finish()
+        await handling
+      }
+      expect(sessions.submit).toHaveBeenCalledOnce()
+      expect(trace.root()?.attributes["telegram.outcome"]).toBe(
+        scenario === "shutdown" ? "queued" : "cancelled",
+      )
+      expect(trace.root()?.status).toBeUndefined()
+      expect(
+        calls.filter((call) => telegramPayloadText(call.payload) === "private answer"),
+      ).toHaveLength(0)
+      for (const payload of [
+        "private answer",
+        "private input",
+        "private abort",
+        "private cleanup failure",
+      ])
+        expect(JSON.stringify(trace.spans)).not.toContain(payload)
+    },
+  )
+
+  it("records generated image delivery failure without repeating model or upload work", async () => {
+    const trace = requestTracing()
+    const sessions = createSessions({
+      submit: vi.fn(async (_chatId, _prompt, options) => {
+        options.onAccepted?.()
+        return {
+          kind: "completed" as const,
+          text: "",
+          checkpoint: {
+            sessionId: "session",
+            entryId: "entry",
+            generation: 0,
+            requestId: "request",
+          },
+          media: [
+            {
+              id: "image",
+              extension: "png" as const,
+              mimeType: "image/png",
+              width: 10,
+              height: 10,
+              byteLength: 5,
+              sha256: "digest",
+              taskId: 12,
+              callId: "call",
+            },
+          ],
+        }
+      }),
+      assertResponseMediaAccess: vi.fn(async () => {}),
+      readResponseImage: vi.fn(async () => Buffer.from("image")),
+      recordResponseComponent: vi.fn(async () => {}),
+    })
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+      sessions,
+      trace.logger,
+      { control: approvedStore([7, -100]), botInfo },
+    )
+    const calls = installApiMock(telegram.bot, (method) => {
+      if (method === "sendPhoto") throw new Error("private upload failure")
+    })
+    await telegram.bot.handleUpdate(privateMessage(27, "private image request"))
+    expect(sessions.submit).toHaveBeenCalledOnce()
+    expect(sessions.readResponseImage).toHaveBeenCalledOnce()
+    expect(sessions.recordDelivery).not.toHaveBeenCalled()
+    expect(sessions.recordResponseComponent).not.toHaveBeenCalled()
+    expect(calls.filter((call) => call.method === "sendPhoto")).toHaveLength(1)
+    expect(trace.root()).toMatchObject({
+      status: 2,
+      attributes: { "telegram.outcome": "failed", "telegram.failure_stage": "delivery" },
+    })
+    for (const payload of ["private image request", "private upload failure"])
+      expect(JSON.stringify(trace.spans)).not.toContain(payload)
+  })
+
   it("correlates a URL-only Telegram request, Pi turn, delivery and Morsel publication", async () => {
     const spans: Array<{ name: string; attributes: SpanAttributes }> = []
     const tracedLogger: Logger = {
@@ -5209,7 +5521,7 @@ describe("Telegram bot update routing", () => {
       "telegram.chat_id": 7,
       "telegram.message_id": 27,
       "telegram.input_url_fingerprint": urlFingerprint(url),
-      "telegram.outcome": "finished",
+      "telegram.outcome": "delivered",
     })
     expect(spans[1]?.attributes).toMatchObject({
       "telegram.message_id": 27,

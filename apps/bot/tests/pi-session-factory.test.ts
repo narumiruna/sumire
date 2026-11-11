@@ -1,27 +1,30 @@
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import { SessionManager } from "@earendil-works/pi-coding-agent"
-import { publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
+import { Harness } from "@earendil-works/pi-durable"
+import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
 import { createPublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { DurableSession } from "../src/agent/durable/session.js"
+import { McpCapability } from "../src/agent/mcp-capability.js"
 import { createPiSessionFactory as createProductionFactory } from "../src/agent/pi-session-factory.js"
 import { asSessionCreator, ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
-import type { Logger, SpanAttributes } from "../src/logging.js"
+import { createLogger, type Logger, type SpanAttributes } from "../src/logging.js"
 import { urlFingerprint } from "../src/url-telemetry.js"
 import { appendMessage, callDurableTool, currentConversation } from "./helpers/durable-session.js"
 import { createTestSessionFactory as createPiSessionFactory } from "./helpers/session-factory.js"
 
 vi.mock("@narumitw/sumire-pi-url-reader", { spy: true })
+vi.mock("@narumitw/sumire-pi-polymarket", { spy: true })
 
 const logger: Logger = {
   debug: vi.fn(),
@@ -314,16 +317,149 @@ describe("createPiSessionFactory", () => {
       .mockRejectedValueOnce(new Error("startup fixture failed"))
     try {
       await expect(factory.create(123)).rejects.toThrow("startup fixture failed")
-      expect(logger.error).toHaveBeenCalledWith(
-        "Durable session initialization failed for chat_id=123",
-        expect.any(Error),
-      )
+      expect(logger.error).toHaveBeenCalledWith("Durable session initialization failed", {
+        "event.name": "pi.session.initialization_failed",
+        "telegram.chat_id": 123,
+        error: expect.any(Error),
+      })
       const reopened = await factory.create(123)
       await reopened.dispose()
     } finally {
       open.mockRestore()
     }
   })
+
+  it.each([
+    { owner: "storage", nonError: false },
+    { owner: "storage", nonError: true },
+    { owner: "harness", nonError: false },
+    { owner: "harness", nonError: true },
+  ] as const)(
+    "preserves initialization failure with rejecting $owner and capability cleanup (non-Error: $nonError)",
+    async ({ owner, nonError }) => {
+      const root = await mkdtemp(path.join(tmpdir(), "sumire-durable-cleanup-"))
+      await installInstructions(root)
+      await writeFile(
+        path.join(root, "mcp.json"),
+        JSON.stringify({ mcpServers: { fixture: { command: "unused-fixture-command" } } }),
+      )
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+      const safeLogger = createLogger()
+      const order: string[] = []
+      const errorLog = vi.fn((message: string, details: unknown) => {
+        order.push((details as { "event.name": string })["event.name"])
+        safeLogger.error(message, details)
+      })
+      const factory = await createPiSessionFactory(loadSettings({ BOT_ADMIN_ID: "7" }, root), {
+        ...logger,
+        error: errorLog,
+      })
+      const original = nonError ? "startup-private-payload" : new Error("startup-private-payload")
+      const storageFailure = Object.assign(new Error("storage-private-payload"), {
+        code: "E_STORAGE",
+      })
+      const capabilityFailure = Object.assign(new Error("mcp-private-payload"), {
+        code: "E_CAPABILITY",
+      })
+      const release: Array<() => Promise<void>> = []
+      const closeStorage = vi.fn(async () => {
+        order.push("storage.close")
+        throw storageFailure
+      })
+      const originalOpen = Harness.open
+      const originalMcpClose = McpCapability.prototype.close
+      const actualPolymarket = await vi.importActual<
+        typeof import("@narumitw/sumire-pi-polymarket")
+      >("@narumitw/sumire-pi-polymarket")
+      const disposePolymarket = vi.fn(async () => {
+        order.push("polymarket.dispose")
+        throw new Error("polymarket-private-payload")
+      })
+      try {
+        vi.spyOn(McpCapability.prototype, "ready").mockResolvedValue(undefined)
+        const closeMcp = vi
+          .spyOn(McpCapability.prototype, "close")
+          .mockImplementationOnce(function (this: McpCapability) {
+            order.push("mcp.close")
+            release.push(() => originalMcpClose.call(this))
+            throw capabilityFailure
+          })
+        vi.mocked(createPolymarketTools).mockImplementationOnce((options) => {
+          const capability = actualPolymarket.createPolymarketTools(options)
+          release.push(() => capability.dispose())
+          return { ...capability, dispose: disposePolymarket }
+        })
+        vi.spyOn(Harness, "open").mockImplementationOnce(async (...args) => {
+          if (owner === "storage") {
+            const storage = args[0]
+            const close = storage.close.bind(storage)
+            release.push(() => close(context))
+            vi.spyOn(storage, "close").mockImplementationOnce(closeStorage)
+            throw original
+          }
+          const harness = await originalOpen(...args)
+          const close = harness.close.bind(harness)
+          release.push(() => close(context))
+          vi.spyOn(harness, "close").mockImplementationOnce(closeStorage)
+          return harness
+        })
+        vi.spyOn(DurableSession, "open").mockRejectedValueOnce(original)
+
+        await expect(factory.create(123)).rejects.toBe(original)
+        expect(closeStorage).toHaveBeenCalledOnce()
+        expect(closeMcp).toHaveBeenCalledOnce()
+        expect(disposePolymarket).toHaveBeenCalledOnce()
+        expect(order).toEqual([
+          "pi.session.initialization_failed",
+          "storage.close",
+          "pi.session.cleanup_failed",
+          "mcp.close",
+          "polymarket.dispose",
+          "pi.session.cleanup_failed",
+        ])
+        expect(errorLog.mock.calls).toEqual([
+          [
+            "Durable session initialization failed",
+            {
+              "event.name": "pi.session.initialization_failed",
+              "telegram.chat_id": 123,
+              error: original,
+            },
+          ],
+          [
+            "Durable session cleanup failed",
+            {
+              "event.name": "pi.session.cleanup_failed",
+              "telegram.chat_id": 123,
+              "pi.phase": "storage",
+              error: storageFailure,
+            },
+          ],
+          [
+            "Durable session cleanup failed",
+            {
+              "event.name": "pi.session.cleanup_failed",
+              "telegram.chat_id": 123,
+              "pi.phase": "capabilities",
+              error: capabilityFailure,
+            },
+          ],
+        ])
+        const output = stderr.mock.calls.map(([text]) => String(text)).join("")
+        expect(output).toContain('"error.code":"E_STORAGE"')
+        expect(output).toContain('"error.code":"E_CAPABILITY"')
+        expect(output).toContain('"pi.phase":"storage"')
+        expect(output).toContain('"pi.phase":"capabilities"')
+        expect(output).not.toContain("private-payload")
+      } finally {
+        vi.restoreAllMocks()
+        await Promise.allSettled(release.map((close) => close()))
+        await safeLogger.shutdown?.()
+        factory.control.close()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   it("creates isolated persistent Durable sessions with native tools by default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "telegramagent-pi-"))
@@ -417,16 +553,21 @@ describe("createPiSessionFactory", () => {
       ).toBe("unsafe")
       const instructionsLog = vi
         .mocked(logger.info)
-        .mock.calls.findLast(([message]) => message.startsWith("Bot instructions loaded\n"))
-      const basePrompt = instructionsLog?.[0].slice("Bot instructions loaded\n".length) ?? ""
+        .mock.calls.findLast(([message]) => message === "Bot instructions loaded")
+      const template = await readFile(settings.botSystemPromptPath, "utf8")
+      const soul = (await readFile(settings.botSoulPath, "utf8")).slice(0, settings.botSoulMaxChars)
+      const basePrompt = template.replace("{{SOUL_SECTION}}", `## SOUL.md\n\n${soul}`).trim()
       expect(basePrompt).toContain("Telegram 機器人助理")
       expect(basePrompt).not.toContain("<available_skills>")
       expect(session.systemPrompt).toContain(basePrompt)
       expect(instructionsLog?.[1]).toEqual({
-        sha256: createHash("sha256").update(basePrompt).digest("hex"),
-        chars: basePrompt.length,
-        tools: factory.toolNames,
+        "event.name": "pi.instructions.loaded",
+        "pi.instructions_sha256": createHash("sha256").update(basePrompt).digest("hex"),
+        "pi.instructions_chars": basePrompt.length,
+        "pi.tools": factory.toolNames,
       })
+      expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain(basePrompt)
+      expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain(

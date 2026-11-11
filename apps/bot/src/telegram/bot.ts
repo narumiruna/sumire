@@ -7,7 +7,11 @@ import type { UserFromGetMe } from "grammy/types"
 import { ChatAccess } from "../admin/access.js"
 import { createPasskeySetup } from "../admin/auth.js"
 import { AdminError } from "../admin/store.js"
-import type { ChatSessionRegistry, SubmissionIntent } from "../agent/session-registry.js"
+import type {
+  ChatSessionRegistry,
+  SubmissionIntent,
+  SubmissionResult,
+} from "../agent/session-registry.js"
 import { buildBlogPostPrompt } from "../blog-post/prompt.js"
 import {
   ArticleSourceUrlError,
@@ -20,7 +24,12 @@ import { formatArticleSourceFailure } from "../blog-post/source-failure.js"
 import type { Settings } from "../config/settings.js"
 import { DocumentConversionError, type DocumentConverter } from "../documents/converter.js"
 import { promptWithDocumentContext } from "../documents/prompt.js"
-import { type Logger, withLogSpan } from "../logging.js"
+import {
+  type Logger,
+  isCancellation as requestCancelled,
+  setSpanError,
+  withLogSpan,
+} from "../logging.js"
 import { MarketDataOutputError } from "../market-data/format.js"
 import { MarketDataInputError, queryMarketDataMessages } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
@@ -78,6 +87,64 @@ interface TelegramBotDependencies {
   audioTranscriber?: AudioTranscriber
   articleUrlLoader?: PublicUrlLoader
   channelImages?: ChannelImageIndex
+}
+
+type RequestOutcome = {
+  outcome:
+    | "delivered"
+    | "rejected_input"
+    | "unavailable"
+    | "failed"
+    | "cancelled"
+    | "steered"
+    | "followed_up"
+    | "queued"
+  stage?: "input" | "model" | "delivery" | "request"
+  failure?: boolean
+  reason?: string
+  error?: unknown
+}
+
+function inputFailureOutcome(error: unknown): RequestOutcome {
+  if (requestCancelled(error)) return { outcome: "cancelled", stage: "input" }
+  if (
+    error instanceof TelegramDownloadTooLargeError ||
+    error instanceof TooManyArticleUrlsError ||
+    error instanceof ArticleUrlBudgetError ||
+    (error instanceof DocumentConversionError && error.kind !== "timeout")
+  )
+    return { outcome: "rejected_input", stage: "input" }
+  if (error instanceof ArticleSourceUrlError) {
+    switch (error.failure.code) {
+      case "cancelled":
+        return { outcome: "cancelled", stage: "input" }
+      case "invalid_url":
+      case "unsafe_url":
+      case "unsupported_content_type":
+      case "response_size_limit":
+      case "redirect_limit":
+      case "media_duration_limit":
+      case "media_size_limit":
+        return { outcome: "rejected_input", stage: "input" }
+      case "configuration_missing":
+      case "dependency_missing":
+        return { outcome: "unavailable", stage: "input", failure: true, error }
+    }
+  }
+  return { outcome: "failed", stage: "input", failure: true, error }
+}
+
+function modelRequestOutcome(result: SubmissionResult): RequestOutcome | undefined {
+  if (result.kind !== "completed" && result.kind !== "no_response") return undefined
+  if (result.settlement?.status === "unanswered") {
+    const reason = result.settlement.reason
+    return reason === "aborted" || reason === "reset" || reason === "withdrawn"
+      ? { outcome: "cancelled", stage: "model", reason }
+      : { outcome: "failed", stage: "model", failure: true, reason }
+  }
+  return result.kind === "no_response"
+    ? { outcome: "unavailable", stage: "model", failure: true }
+    : undefined
 }
 
 interface InputSubmissionOptions {
@@ -499,8 +566,39 @@ export function createTelegramAgentBot(
         ...(fingerprint ? { "telegram.input_url_fingerprint": fingerprint } : {}),
       },
       async (span) => {
-        await processInput(context, message, strippedText, release, isCurrent, submissionOptions)
-        span.setAttribute("telegram.outcome", isCurrent() ? "finished" : "cancelled")
+        try {
+          const result = await processInput(
+            context,
+            message,
+            strippedText,
+            release,
+            isCurrent,
+            submissionOptions,
+          )
+          const cancelled = !isCurrent() && result.outcome !== "queued"
+          span.setAttribute("telegram.outcome", cancelled ? "cancelled" : result.outcome)
+          if (cancelled || result.outcome === "cancelled")
+            span.setAttribute("operation.outcome", "cancelled")
+          if (result.stage) span.setAttribute("telegram.failure_stage", result.stage)
+          if (result.reason) span.setAttribute("pi.reason", result.reason)
+          if (result.failure && !cancelled) setSpanError(span, result.error)
+        } catch (error) {
+          const cancelled = !isCurrent() || requestCancelled(error)
+          span.setAttribute("telegram.outcome", cancelled ? "cancelled" : "failed")
+          if (cancelled) {
+            span.setAttribute("operation.outcome", "cancelled")
+            if (!requestCancelled(error))
+              logger.warn("Cancelled request cleanup failed", {
+                "event.name": "telegram.request.cancel_cleanup_failed",
+                "telegram.chat_id": context.chat?.id,
+                "telegram.message_id": message.message_id,
+                error,
+              })
+            return
+          }
+          setSpanError(span, error)
+          throw error
+        }
       },
     )
   }
@@ -512,29 +610,29 @@ export function createTelegramAgentBot(
     release: () => void,
     isCurrent: () => boolean,
     submissionOptions: InputSubmissionOptions,
-  ): Promise<void> {
+  ): Promise<RequestOutcome> {
     const imageRefs = imageReferences(message)
     const documentRefs = documentReferences(message)
     const audioRefs = audioReferences(message)
     if (audioRefs.length > 0 && !settings.botAudioInputEnabled) {
       await delivery.reply(context, "目前未啟用音訊輸入。", replyOptions(context))
-      return
+      return { outcome: "rejected_input", stage: "input" }
     }
     if (audioRefs.some((reference) => reference.duration > settings.botAudioMaxDurationSeconds)) {
       await delivery.reply(context, "音訊長度超過允許的限制。", replyOptions(context))
-      return
+      return { outcome: "rejected_input", stage: "input" }
     }
     if (imageRefs.length > 0 && !settings.botImageInputEnabled) {
       await delivery.reply(context, "目前未啟用圖片輸入。", replyOptions(context))
-      return
+      return { outcome: "rejected_input", stage: "input" }
     }
     if (documentRefs.length > 0 && !settings.botDocumentInputEnabled) {
       await delivery.reply(context, "目前未啟用文件輸入。", replyOptions(context))
-      return
+      return { outcome: "rejected_input", stage: "input" }
     }
     if (documentRefs.length > 0 && !dependencies.documentConverter) {
       await delivery.reply(context, "文件轉換服務目前無法使用。", replyOptions(context))
-      return
+      return { outcome: "unavailable", stage: "input", failure: true }
     }
 
     let images: Array<{ type: "image"; data: string; mimeType: string }>
@@ -547,21 +645,28 @@ export function createTelegramAgentBot(
             reference,
             settings.botImageMaxBytes,
             dependencies.imageFetchImplementation,
+            undefined,
+            logger,
           ),
         ),
       )
     } catch (error) {
-      if (!isCurrent()) return
+      if (!isCurrent()) return { outcome: "cancelled" }
       const response =
         error instanceof TelegramDownloadTooLargeError
           ? "圖片超過允許的大小，無法處理。"
           : "無法下載 Telegram 圖片，請稍後再試。"
-      logger.warn(`Telegram image input failed for chat_id=${context.chat?.id}`, error)
+      logger.warn("Telegram image input failed", {
+        "event.name": "telegram.input.failed",
+        "telegram.chat_id": context.chat?.id,
+        "telegram.media_kind": "image",
+        error,
+      })
       await delivery.reply(context, response, replyOptions(context))
-      return
+      return inputFailureOutcome(error)
     }
 
-    if (!isCurrent()) return
+    if (!isCurrent()) return { outcome: "cancelled" }
     const transcripts: Array<{
       source: "current" | "replied"
       kind: "voice" | "audio"
@@ -577,14 +682,22 @@ export function createTelegramAgentBot(
             reference,
             settings.botAudioMaxBytes,
             dependencies.imageFetchImplementation,
+            60_000,
+            undefined,
+            logger,
           )
         }, isCurrent)
-        if (!isCurrent()) return
+        if (!isCurrent()) return { outcome: "cancelled" }
         transcripts.push({ source: reference.source, kind: reference.kind, text })
       }
     } catch (error) {
-      if (!isCurrent()) return
-      logger.warn(`Telegram audio input failed for chat_id=${context.chat?.id}`, error)
+      if (!isCurrent()) return { outcome: "cancelled" }
+      logger.warn("Telegram audio input failed", {
+        "event.name": "telegram.input.failed",
+        "telegram.chat_id": context.chat?.id,
+        "telegram.media_kind": "audio",
+        error,
+      })
       await delivery.reply(
         context,
         error instanceof TelegramDownloadTooLargeError
@@ -592,10 +705,10 @@ export function createTelegramAgentBot(
           : "無法下載或轉錄音訊，請稍後再試。",
         replyOptions(context),
       )
-      return
+      return inputFailureOutcome(error)
     }
 
-    if (!isCurrent()) return
+    if (!isCurrent()) return { outcome: "cancelled" }
     let documentInputs: Array<{
       reference: (typeof documentRefs)[number]
       converted: Awaited<ReturnType<DocumentConverter["convert"]>>
@@ -611,6 +724,9 @@ export function createTelegramAgentBot(
               reference,
               settings.botDocumentMaxBytes,
               dependencies.imageFetchImplementation,
+              60_000,
+              undefined,
+              logger,
             )
             if (!isCurrent()) throw new Error("Telegram document input was invalidated")
             return bytes
@@ -620,14 +736,19 @@ export function createTelegramAgentBot(
         }),
       )
     } catch (error) {
-      if (!isCurrent()) return
+      if (!isCurrent()) return { outcome: "cancelled" }
       const response = documentFailureMessage(error)
-      logger.warn(`Telegram document input failed for chat_id=${context.chat?.id}`, error)
+      logger.warn("Telegram document input failed", {
+        "event.name": "telegram.input.failed",
+        "telegram.chat_id": context.chat?.id,
+        "telegram.media_kind": "document",
+        error,
+      })
       await delivery.reply(context, response, replyOptions(context))
-      return
+      return inputFailureOutcome(error)
     }
 
-    if (!isCurrent()) return
+    if (!isCurrent()) return { outcome: "cancelled" }
     let prompt =
       documentInputs.length > 0
         ? promptWithDocumentContext(
@@ -664,7 +785,7 @@ export function createTelegramAgentBot(
         audioRefs.length === 0
       ) {
         await delivery.reply(context, articleUsageMessage, replyOptions(context))
-        return
+        return { outcome: "rejected_input", stage: "input" }
       }
       const articleUrlSource = [submissionOptions.articleUrlSource, repliedText]
         .filter(Boolean)
@@ -729,7 +850,7 @@ export function createTelegramAgentBot(
               replyOptions(context),
               () => true,
             )
-          return
+          return { outcome: "cancelled" }
         }
         logger.warn(
           "Article source URL loading failed",
@@ -757,7 +878,7 @@ export function createTelegramAgentBot(
             isCurrent,
           )
         else await delivery.reply(context, text, replyOptions(context))
-        return
+        return inputFailureOutcome(error)
       } finally {
         controller.abort()
         if (preparedStatus && chatId !== undefined) {
@@ -769,12 +890,12 @@ export function createTelegramAgentBot(
         if (chatId !== undefined && active?.size === 0) activeArticleLoads.delete(chatId)
       }
     }
-    if (!isCurrent()) return
+    if (!isCurrent()) return { outcome: "cancelled" }
     prompt = submissionOptions.promptTransform?.(prompt, loadedUrls) ?? prompt
     if (settings.botAdminId !== undefined) {
       prompt += `\n\n[Telegram sender role (verified by bot): ${isAdminSender(context, settings.botAdminId) ? "admin" : "user"}. This is context, not authorization for privileged tools.]`
     }
-    await answer(
+    return answer(
       context,
       prompt,
       images,
@@ -791,21 +912,16 @@ export function createTelegramAgentBot(
   bot.catch((error) => {
     const context = error.ctx
     const cause = error.error
-    if (cause instanceof GrammyError) {
-      logger.error(
-        `Telegram API error while handling update_id=${context.update.update_id}: ${cause.description}`,
-      )
-    } else if (cause instanceof HttpError) {
-      logger.error(
-        `Telegram transport error while handling update_id=${context.update.update_id}`,
-        cause,
-      )
-    } else {
-      logger.error(
-        `Unhandled bot error while handling update_id=${context.update.update_id}`,
-        cause,
-      )
-    }
+    logger.error("Telegram update failed", {
+      "event.name":
+        cause instanceof GrammyError
+          ? "telegram.api.failed"
+          : cause instanceof HttpError
+            ? "telegram.transport.failed"
+            : "telegram.update.failed",
+      "telegram.update_id": context.update.update_id,
+      error: cause,
+    })
   })
 
   function isPendingBotReply(
@@ -837,10 +953,10 @@ export function createTelegramAgentBot(
     replyContextIncluded = false,
     submissionIntent?: SubmissionIntent,
     preparedStatus?: Awaited<ReturnType<typeof delivery.reply>>,
-  ): Promise<void> {
-    if (!isCurrent()) return
+  ): Promise<RequestOutcome> {
+    if (!isCurrent()) return { outcome: "cancelled" }
     const chatId = context.chat?.id
-    if (chatId === undefined) return
+    if (chatId === undefined) return { outcome: "unavailable" }
     const sourceMessageId = context.message?.message_id
     const replyOptions = {
       ...(sourceMessageId
@@ -852,6 +968,9 @@ export function createTelegramAgentBot(
           }
         : {}),
     }
+    let admitted = false
+    let cancelled = false
+    let failureStage: RequestOutcome["stage"] = "delivery"
     let status: Awaited<ReturnType<typeof delivery.reply>> | undefined = preparedStatus
     let hasProgressSnapshot = false
     let progressSnapshot: string | undefined
@@ -952,7 +1071,7 @@ export function createTelegramAgentBot(
     }
     if (!isCurrent()) {
       await cancelStatus()
-      return
+      return { outcome: "cancelled" }
     }
     try {
       const pendingReply = preparedStatus
@@ -964,7 +1083,7 @@ export function createTelegramAgentBot(
         pendingReply.result === "delivered" ? delivery.directPayload(initialPendingText) : undefined
       if (pendingReply.result === "stale") {
         await cancelStatus()
-        return
+        return { outcome: "cancelled" }
       }
       if (status) {
         pendingMessageId = status.message_id
@@ -982,6 +1101,7 @@ export function createTelegramAgentBot(
                 true,
               )
           : undefined
+      failureStage = "model"
       const result = await withLogSpan(
         logger,
         "pi.submit",
@@ -1008,7 +1128,10 @@ export function createTelegramAgentBot(
             ...(submissionIntent ? { intent: submissionIntent } : {}),
             ...(replyToBotMessageId !== undefined ? { replyToBotMessageId } : {}),
             ...(unresolvedReplyPrompt ? { unresolvedReplyPrompt } : {}),
-            onAccepted: releaseSubmissionTurn,
+            onAccepted: () => {
+              admitted = true
+              releaseSubmissionTurn()
+            },
             isCurrent,
             onActivity: (activity, toolName) => {
               const latestActivity = renderActivityStatus(activity, toolName)
@@ -1028,17 +1151,34 @@ export function createTelegramAgentBot(
             },
           })
           span.setAttribute("pi.outcome", submission.kind)
-          if (submission.kind === "completed" && submission.checkpoint) {
+          if (submission.kind === "completed" || submission.kind === "no_response") {
+            if (submission.settlement) {
+              span.setAttribute("pi.settled_status", submission.settlement.status)
+              if (submission.settlement.reason)
+                span.setAttribute("pi.reason", submission.settlement.reason)
+            }
+            const outcome = modelRequestOutcome(submission)
+            if (outcome?.failure) setSpanError(span)
+          }
+          if (
+            (submission.kind === "completed" || submission.kind === "no_response") &&
+            submission.checkpoint
+          ) {
             span.setAttribute("pi.session_id", submission.checkpoint.sessionId)
             span.setAttribute("pi.entry_id", submission.checkpoint.entryId)
+            if (submission.checkpoint.requestId)
+              span.setAttribute("pi.request_id", submission.checkpoint.requestId)
           }
           return submission
         },
       )
       if (!isCurrent()) {
         await cancelStatus()
-        return
+        return { outcome: stopping && admitted ? "queued" : "cancelled" }
       }
+      failureStage = "delivery"
+      const modelOutcome = modelRequestOutcome(result)
+      cancelled = modelOutcome?.outcome === "cancelled"
       if (result.kind === "completed" && reportedProgress) await progressStatus.flush()
       const lastProgress = lastDeliveredProgress
       let archiveText: string | undefined
@@ -1109,12 +1249,16 @@ export function createTelegramAgentBot(
               mode: resultDeliveryMode,
             },
             isCurrent,
+            logger,
           )
           if (outcome === "stale") await cancelStatus()
-        } catch {
-          logger.warn(
-            `Generated image delivery failed for chat_id=${chatId}; pending components retained`,
-          )
+          clearPendingReply()
+          return outcome === "stale"
+            ? { outcome: "cancelled", stage: "delivery" }
+            : outcome === "unavailable"
+              ? { outcome: "unavailable", stage: "delivery", failure: true }
+              : (modelOutcome ?? { outcome: "delivered" })
+        } catch (error) {
           if (isCurrent())
             await delivery.guardedReply(
               context,
@@ -1122,9 +1266,11 @@ export function createTelegramAgentBot(
               replyOptions,
               isCurrent,
             )
+          clearPendingReply()
+          return !isCurrent() || requestCancelled(error)
+            ? { outcome: "cancelled", stage: "delivery" }
+            : { outcome: "failed", stage: "delivery", failure: true, error }
         }
-        clearPendingReply()
-        return
       }
       let previousStatusId: number | undefined
       const deliveryResult = await withLogSpan(
@@ -1183,6 +1329,7 @@ export function createTelegramAgentBot(
             outcome = finalReply.result
           }
           span.setAttribute("delivery.outcome", outcome)
+          if (outcome === "unavailable") setSpanError(span)
           if (status) span.setAttribute("delivery.message_id", status.message_id)
           return outcome
         },
@@ -1200,7 +1347,7 @@ export function createTelegramAgentBot(
             logger.warn(`Could not clear stale progress for chat_id=${chatId}`, error)
           }
         }
-        return
+        return { outcome: "cancelled", stage: "delivery" }
       }
       clearPendingReply()
       if (
@@ -1218,13 +1365,35 @@ export function createTelegramAgentBot(
               : [previousStatusId, status.message_id],
         )
       }
+      if (deliveryResult === "unavailable")
+        return { outcome: "unavailable", stage: "delivery", failure: true }
+      return (
+        modelOutcome ?? {
+          outcome:
+            result.kind === "steered" || result.kind === "followed_up" ? result.kind : "delivered",
+        }
+      )
     } catch (error) {
-      if (stopping) return
-      if (!isCurrent()) {
-        await cancelStatus()
-        return
+      if (stopping) return { outcome: admitted ? "queued" : "cancelled" }
+      if (!isCurrent() || cancelled || requestCancelled(error)) {
+        try {
+          await cancelStatus()
+        } catch (cleanupError) {
+          logger.warn("Cancelled request cleanup failed", {
+            "event.name": "telegram.request.cancel_cleanup_failed",
+            "telegram.chat_id": chatId,
+            "telegram.message_id": sourceMessageId,
+            error: cleanupError,
+          })
+        }
+        return { outcome: "cancelled" }
       }
-      logger.error(`Pi agent request failed for chat_id=${chatId}`, error)
+      logger.error("Telegram request processing failed", {
+        "event.name": "telegram.request.failed",
+        "telegram.chat_id": chatId,
+        "telegram.failure_stage": failureStage,
+        error,
+      })
       await progressStatus.close()
       if (status) {
         const replacement = await delivery.editOrReply(
@@ -1247,6 +1416,7 @@ export function createTelegramAgentBot(
         status = errorReply.message
         if (errorReply.result === "stale") await cancelStatus()
       }
+      return { outcome: "failed", stage: failureStage, failure: true, error }
     } finally {
       releaseReplyCheckpoint()
       clearPendingReply()
@@ -1333,13 +1503,14 @@ export function createTelegramAgentBot(
       } catch (error) {
         logger.warn("Could not register Telegram command menu", error)
       }
-      logger.info(`Telegram bot started as @${bot.botInfo.username}`)
+      logger.info("Telegram bot started", { "event.name": "telegram.bot.started" })
       if (dependencies.recoverChats)
         await recoverTelegramResponses(
           bot,
           sessions,
           delivery,
           (await dependencies.recoverChats()).filter((id) => dependencies.control.allows(id)),
+          logger,
         )
       if (stopping) return
       const polling = runTelegramPolling(

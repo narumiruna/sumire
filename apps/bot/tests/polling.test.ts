@@ -97,6 +97,7 @@ describe("Telegram polling", () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(handleUpdate).toHaveBeenCalledExactlyOnceWith({ update_id: 42 })
     expect(logger.info).toHaveBeenCalledExactlyOnceWith("Telegram polling recovered", {
+      "event.name": "telegram.polling.recovered",
       failures: 2,
     })
     expect(logger.warn).toHaveBeenCalledTimes(2)
@@ -108,7 +109,10 @@ describe("Telegram polling", () => {
 
     await vi.advanceTimersByTimeAsync(5_000)
     expect(logger.info).toHaveBeenCalledTimes(2)
-    expect(logger.info).toHaveBeenLastCalledWith("Telegram polling recovered", { failures: 1 })
+    expect(logger.info).toHaveBeenLastCalledWith("Telegram polling recovered", {
+      "event.name": "telegram.polling.recovered",
+      failures: 1,
+    })
     expect(handleUpdate).toHaveBeenCalledOnce()
   })
 
@@ -198,8 +202,10 @@ describe("Telegram polling", () => {
 
     const output = stderr.mock.calls.flat().join(" ")
     expect(output).toContain("WARN | Telegram polling failed; retrying automatically")
-    expect(output).toContain("request to [redacted-url] failed")
-    expect(output).toContain("socket hang up")
+    expect(output).toContain('"event.name":"telegram.polling.failed"')
+    expect(output).toContain('"error.code":"ECONNRESET"')
+    expect(output).not.toContain("request to")
+    expect(output).not.toContain("socket hang up")
     expect(output).not.toContain(testToken)
     expect(output).not.toContain("    at ")
     expect(console.error).not.toHaveBeenCalled()

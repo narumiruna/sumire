@@ -7,13 +7,13 @@ import type { Api } from "grammy"
 import { describe, expect, it, vi } from "vitest"
 import { createReadImageExtension } from "../src/agent/read-image.js"
 import { loadSettings, type Settings } from "../src/config/settings.js"
-import type { Logger } from "../src/logging.js"
+import type { Logger, SpanAttributes } from "../src/logging.js"
 import { ChannelImageIndex } from "../src/telegram/channel-images.js"
 import { approvedStore } from "./helpers/admin-store.js"
 
 const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
-async function setup(overrides: Partial<Settings> = {}) {
+async function setup(overrides: Partial<Settings> = {}, telemetry: Logger = logger) {
   const root = await mkdtemp(path.join(tmpdir(), "read-image-"))
   const settings = {
     ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }, root),
@@ -46,7 +46,7 @@ async function setup(overrides: Partial<Settings> = {}) {
   createReadImageExtension(
     settings,
     index,
-    logger,
+    telemetry,
     store,
     { getFile } as unknown as Api,
     fetchImplementation,
@@ -60,6 +60,46 @@ async function setup(overrides: Partial<Settings> = {}) {
 }
 
 describe("read_image Pi tool", () => {
+  it("passes the logger to shared download telemetry without exporting image content", async () => {
+    const spans: Array<{ name: string; attributes: SpanAttributes }> = []
+    const telemetry: Logger = {
+      ...logger,
+      async span(name, attributes, callback) {
+        const record = { name, attributes: { ...attributes } }
+        spans.push(record)
+        return callback({
+          setAttribute: (key, value) => {
+            record.attributes[key] = value
+          },
+        })
+      },
+    }
+    const { tool } = await setup({}, telemetry)
+    await tool.execute(
+      "read",
+      { channel_chat_id: -100, message_id: 1 },
+      undefined,
+      undefined,
+      undefined as never,
+    )
+    expect(spans).toEqual([
+      {
+        name: "telegram.download",
+        attributes: {
+          "download.max_bytes": expect.any(Number),
+          "download.attempts": 1,
+          "download.bytes": 5,
+          "download.phase": "stream",
+          "download.outcome": "success",
+          "operation.outcome": "success",
+        },
+      },
+    ])
+    expect(JSON.stringify(spans)).not.toMatch(
+      /hello|aGVsbG8=|photo.jpg|test-token|image--100|untrusted caption/,
+    )
+  })
+
   it("rechecks database source-chat access after index reads and streamed downloads", async () => {
     const first = await setup()
     const find = first.index.find.bind(first.index)

@@ -12,12 +12,15 @@ import type {
   NestedToolExecutionResult,
   NestedToolSlot,
   Seq,
+  SubmissionId,
   TaskId,
   ToolSlot,
 } from "@earendil-works/pi-durable"
 import { NestedCallDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it, vi } from "vitest"
 import {
+  durableCommitEvents,
+  durableReason,
   forwardDurableView,
   recordMessageEntries,
   recordNestedResults,
@@ -486,13 +489,29 @@ describe("durable view translation", () => {
     forward(first, view({ generation: { attempt: 2 } }))
     forward(view({ generation: { attempt: 2 } }), second)
     expect(logger.info.mock.calls).toEqual([
-      ["Durable retry session_id=session attempt=2"],
-      ["Durable retry session_id=session attempt=3"],
+      [
+        "Durable retry",
+        {
+          "event.name": "pi.retry",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "pi.attempt": 2,
+        },
+      ],
+      [
+        "Durable retry",
+        {
+          "event.name": "pi.retry",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "pi.attempt": 3,
+        },
+      ],
     ])
     expect(emit).not.toHaveBeenCalled()
   })
 
-  it("logs compaction starts and ends with trigger, including failure", () => {
+  it("logs native compaction starts and failures without assuming removal is success", () => {
     const { emit, logger, forward } = setup()
     const first = view({
       compactions: [
@@ -518,11 +537,145 @@ describe("durable view translation", () => {
     forward(first, next)
     forward(next, view())
     expect(logger.info.mock.calls).toEqual([
-      ["Durable compaction_start session_id=session task_id=40 trigger=threshold"],
-      ["Durable compaction_start session_id=session task_id=41 trigger=manual"],
-      ["Durable compaction_end session_id=session task_id=40 trigger=threshold"],
-      ["Durable compaction_end session_id=session task_id=41 trigger=manual"],
+      [
+        "Durable compaction started",
+        {
+          "event.name": "pi.compaction.start",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "pi.task_id": 40,
+          "pi.trigger": "threshold",
+          "pi.blocking": true,
+          "pi.attempt": 1,
+        },
+      ],
+      [
+        "Durable compaction started",
+        {
+          "event.name": "pi.compaction.start",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "pi.task_id": 41,
+          "pi.trigger": "manual",
+          "pi.blocking": false,
+          "pi.attempt": 1,
+        },
+      ],
     ])
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith("Durable compaction failed", {
+      "event.name": "pi.compaction.failed",
+      "pi.session_id": "session",
+      "pi.conversation_id": 1,
+      "pi.task_id": 40,
+      "pi.trigger": "threshold",
+      "pi.outcome": "failed",
+    })
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("fault")
     expect(emit).not.toHaveBeenCalled()
+  })
+
+  it("projects native settled status and compaction outcome without error text", () => {
+    const events = durableCommitEvents(
+      {
+        seq: 1 as Seq,
+        changes: [
+          {
+            type: "submission",
+            value: {
+              id: 4 as SubmissionId,
+              conversationId: 1 as ConversationId,
+              requestId: "request-1",
+              type: "input",
+              status: "unanswered",
+              reason: "model_error",
+              detail: "private model failure",
+            },
+          },
+          {
+            type: "task",
+            value: {
+              id: 40 as TaskId<null>,
+              conversationId: 1 as ConversationId,
+              kind: "pi.compaction",
+              version: 1,
+              input: {},
+              background: false,
+              abortRequested: false,
+              state: {
+                status: "terminal",
+                outcome: { status: "faulted", error: { message: "private compaction failure" } },
+              },
+            },
+          },
+        ],
+      },
+      1 as ConversationId,
+      "session",
+      7,
+    )
+    expect(events).toEqual([
+      {
+        message: "Durable submission settled",
+        attributes: {
+          "event.name": "pi.submission.settled",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "telegram.chat_id": 7,
+          "pi.request_id": "request-1",
+          "pi.submission_id": 4,
+          "pi.submission_type": "input",
+          "pi.settled_status": "unanswered",
+          "pi.reason": "model_error",
+        },
+      },
+      {
+        message: "Durable compaction settled",
+        attributes: {
+          "event.name": "pi.compaction.end",
+          "pi.session_id": "session",
+          "pi.conversation_id": 1,
+          "telegram.chat_id": 7,
+          "pi.task_id": 40,
+          "pi.outcome": "faulted",
+        },
+      },
+    ])
+    expect(JSON.stringify(events)).not.toContain("private")
+    expect(durableReason("private custom reason")).toBe("unknown")
+  })
+
+  it("logs structured model and tool lifecycle once without arguments or response text", () => {
+    const { logger, forward } = setup()
+    const first = view({ run, tools: [tool()] }, [entry(2, [assistant("secret-path")])])
+    const next = view({ run, tools: [tool({ status: "done", entry: 3 as EntryId })] }, [
+      entry(2, [assistant("secret-path")]),
+      entry(3, [toolResult]),
+    ])
+    forward(view(), first)
+    forward(first, next)
+    forward(next, structuredClone(next))
+    const events = logger.info.mock.calls.map(([, attributes]) => attributes)
+    expect(events).toEqual([
+      expect.objectContaining({
+        "event.name": "pi.model.response",
+        "pi.session_id": "session",
+        "pi.conversation_id": 1,
+        "pi.entry_id": 2,
+        "pi.stop_reason": "toolUse",
+        "pi.total_tokens": 0,
+      }),
+      expect.objectContaining({
+        "event.name": "pi.tool.start",
+        "pi.task_id": 20,
+        "pi.tool_name": "read",
+        "pi.tool_call_id": "call",
+      }),
+      expect.objectContaining({
+        "event.name": "pi.tool.end",
+        "pi.task_id": 20,
+        "pi.success": true,
+      }),
+    ])
+    expect(JSON.stringify(events)).not.toContain("secret-path")
   })
 })

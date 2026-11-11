@@ -41,7 +41,7 @@ export function createTelegramDelivery(
         mode === "publish"
           ? "Required Morsel article publication failed; withholding generated article"
           : "Required Morsel publication failed; withholding long Telegram message",
-        error,
+        { "event.name": "morsel.publication.failed", error },
       )
       return { text: morselPublicationFailure(error, mode), delivered: false }
     }
@@ -89,7 +89,14 @@ export function createTelegramDelivery(
       await context.api.editMessageText(chatId, messageId, { markdown: "已改以新訊息回覆。" })
       previousMessageUpdated = true
     } catch (cleanupError) {
-      logger.warn(`Could not clear previous Telegram status in chat_id=${chatId}`, cleanupError)
+      logger.warn("Could not clear previous Telegram status", {
+        "event.name": "telegram.status.clear.failed",
+        "telegram.chat_id": chatId,
+        "delivery.message_id": messageId,
+        "delivery.method": "editMessageText",
+        "delivery.stage": "clear_status",
+        error: cleanupError,
+      })
     }
     if (authorize && !(await authorize())) return { message, result: "stale" as const }
     if (!isCurrent()) return { message, result: "stale" as const }
@@ -168,7 +175,14 @@ export function createTelegramDelivery(
           message: undefined,
         }
       } catch (error) {
-        logger.warn(`Telegram edit failed for chat_id=${chatId}; sending a new reply`, error)
+        logger.warn("Telegram edit failed; sending a new reply", {
+          "event.name": "telegram.edit.failed",
+          "telegram.chat_id": chatId,
+          "delivery.message_id": messageId,
+          "delivery.method": "editMessageText",
+          "delivery.stage": "edit",
+          error,
+        })
         return sendPreparedAndClearPrevious(
           context,
           chatId,
