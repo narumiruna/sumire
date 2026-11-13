@@ -374,7 +374,7 @@ export class DurableSession implements SessionHandle {
     // Retained runs must free their reserved slots before new admission can proceed.
     this.harness.resume()
     this.#prompting++
-    const release = await this.rootOwner.#admission.acquire()
+    let release: (() => void) | undefined
     try {
       if (epoch !== this.rootOwner.#epoch || this.closing)
         return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
@@ -384,6 +384,9 @@ export class DurableSession implements SessionHandle {
       )
       if (hasOlderInput && epoch === owner.#epoch && !this.closing)
         await this.#conversation.waitForIdle(context)
+      if (epoch !== owner.#epoch || this.closing)
+        return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
+      release = await owner.#admission.acquire()
       if (epoch !== owner.#epoch || this.closing)
         return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       await this.configureInput()
@@ -437,8 +440,10 @@ export class DurableSession implements SessionHandle {
         ...(done && answer ? { entryId: checkpointId(answer) } : {}),
       }
     } finally {
-      if (this.closing) release()
-      else void this.#conversation.waitForIdle(context).then(release, release)
+      if (release) {
+        if (this.closing) release()
+        else void this.#conversation.waitForIdle(context).then(release, release)
+      }
       this.#prompting--
       if (this.#prompting === 0) {
         for (const finish of this.#promptWaiters) finish()

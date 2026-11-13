@@ -178,9 +178,18 @@ describe("cold unsent outbox admission", () => {
             ).toMatchObject({ status: "done" })
           })
           expect(accepted).not.toHaveBeenCalled()
+          await expect(
+            bounded(
+              registry.submit(-100, "Independent article while saved main waits", {
+                routing: "article",
+                delivery: { sourceMessageId: 80, statusMessageId: 1080, mode: "publish" },
+              }),
+            ),
+          ).resolves.toMatchObject({ text: "Offline unsent answer 5" })
+          expect(accepted).not.toHaveBeenCalled()
           gates[0]?.()
           await expect(bounded(foreground)).resolves.toMatchObject({
-            text: "Offline unsent answer 5",
+            text: "Offline unsent answer 6",
           })
           await expect(
             bounded(
@@ -189,8 +198,8 @@ describe("cold unsent outbox admission", () => {
                 delivery: { sourceMessageId: 70, statusMessageId: 1070, mode: "default" },
               }),
             ),
-          ).resolves.toMatchObject({ text: "Offline unsent answer 6" })
-          expect(pi.requests).toHaveLength(6)
+          ).resolves.toMatchObject({ text: "Offline unsent answer 7" })
+          expect(pi.requests).toHaveLength(7)
           expect(accepted).toHaveBeenCalledOnce()
           return
         }
