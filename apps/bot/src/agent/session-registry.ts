@@ -354,7 +354,10 @@ export class ChatSessionRegistry {
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
-    if (!options.routing && !restoredBranch && options.intent === "newTurn") {
+    if (options.routing === "main") {
+      if (session.isMainStreaming ?? session.isStreaming) await session.waitForIdle()
+      assertCurrent()
+    } else if (!options.routing && !restoredBranch && options.intent === "newTurn") {
       const activeCapture = this.#activePromptCaptures.get(chatId)
       if (activeCapture?.generation === generation) await activeCapture.done
       if (!session.isIdle) await session.waitForIdle()

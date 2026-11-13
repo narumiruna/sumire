@@ -1315,6 +1315,138 @@ describe("real registry session routing", () => {
     expect(f.pi.pendingReplies).toBe(0)
   }, 15_000)
 
+  it("registers passive input behind main preprocessing and forks only after its native write checkpoint", async () => {
+    const f = await setup()
+    await f.answer("Main seed before preprocessing", 1)
+    let openConversion = () => {}
+    const conversion = new Promise<void>((resolve) => {
+      openConversion = resolve
+    })
+    let openCheckpoint = () => {}
+    const checkpointGate = new Promise<void>((resolve) => {
+      openCheckpoint = resolve
+    })
+    let passiveCheckpoint: string | undefined
+    const owner = f.owner()
+    const append = owner.appendPassiveContext.bind(owner)
+    const appendSpy = vi
+      .spyOn(owner, "appendPassiveContext")
+      .mockImplementation(async (text, onEntry, messageId, onSettled) => {
+        await append(
+          text,
+          async (entryId) => {
+            passiveCheckpoint = entryId
+            await checkpointGate
+            await onEntry?.(entryId)
+          },
+          messageId,
+          onSettled,
+        )
+      })
+    const track = vi.spyOn(f.registry, "trackPendingInput")
+    const submit = vi.spyOn(f.registry, "submit")
+    const convert = vi.fn(async () => {
+      await conversion
+      return {
+        markdown: "Prepared main document",
+        format: "txt",
+        originalChars: 22,
+        truncated: false,
+      }
+    })
+    const telegram = createTelegramAgentBot(
+      { ...f.pi.settings, botToken: "offline-test-token" },
+      f.registry,
+      f.pi.logger,
+      {
+        control: f.pi.factory.control,
+        botInfo,
+        documentConverter: { convert },
+      },
+    )
+    let messageId = 500
+    const transport: Transformer = async (_previous, method, payload) => {
+      const data = payload as Record<string, unknown>
+      return {
+        ok: true,
+        result: {
+          message_id: method === "sendRichMessage" ? messageId++ : Number(data.message_id),
+          date: 1_700_000_000,
+          chat: { id: -100, type: "supergroup", title: "Offline routing" },
+          rich_message: {
+            blocks: [{ type: "paragraph", text: telegramPayloadText(payload) ?? "" }],
+          },
+        },
+      } as never
+    }
+    telegram.bot.api.config.use(transport)
+    const mainUpdate = update(10, "@test_bot Prepare document")
+    if (!mainUpdate.message) throw new Error("Missing main fixture")
+    mainUpdate.message.document = {
+      file_id: "document",
+      file_unique_id: "document",
+      file_name: "main.txt",
+    }
+    const releaseMain = f.pause()
+    const main = telegram.bot.handleUpdate(mainUpdate)
+    let passive: Promise<void> | undefined
+    let reply: Promise<void> | undefined
+    try {
+      await vi.waitFor(() => expect(convert).toHaveBeenCalledOnce())
+      passive = telegram.bot.handleUpdate(update(20, "Passive P native source"))
+      reply = telegram.bot.handleUpdate(
+        update(30, "@test_bot Reply to P", { id: 20, text: "Passive P quoted fallback" }),
+      )
+      await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce())
+      expect(submit.mock.calls[0]?.[2]).toMatchObject({ routing: "reply", replyToMessageId: 20 })
+      expect(appendSpy).not.toHaveBeenCalled()
+      expect(track).toHaveBeenCalledWith(-100, 20)
+      expect(f.pi.requests).toHaveLength(1)
+
+      openConversion()
+      await requests(f.pi, 2)
+      await passive
+      expect(appendSpy).toHaveBeenCalledOnce()
+      expect(passiveCheckpoint).toBeUndefined()
+      f.pi.enqueueAnswer("Prepared main answer")
+      releaseMain()
+      await main
+      await vi.waitFor(() => expect(passiveCheckpoint).toBeDefined())
+      expect(f.pi.requests).toHaveLength(2)
+
+      f.pi.enqueueAnswer("Reply from passive native history")
+      openCheckpoint()
+      await within(reply, "reply after passive write checkpoint")
+      expect(f.pi.requests).toHaveLength(3)
+      const index = new TelegramReplyIndex(
+        f.pi.settings.botSessionLogDir,
+        1_000,
+        1_000_000,
+        f.pi.logger,
+      )
+      const replyPoint = await index.resolve(-100, 30)
+      if (!replyPoint) throw new Error("Missing reply input checkpoint")
+      const [replyConversation] = replyPoint.entryId.split(":").map(Number)
+      const [conversationId, at] = (passiveCheckpoint ?? "").split(":").map(Number)
+      if (replyConversation === undefined) throw new Error("Missing reply conversation")
+      expect(await parent(owner, replyConversation)).toEqual({ conversationId, at })
+      expect(requestText(f.pi, 2)).toContain("Passive P native source")
+      expect(requestText(f.pi, 2)).toContain("Main seed before preprocessing")
+    } finally {
+      await telegram.bot.handleUpdate(update(99, "/cancel"))
+      if (f.pi.requests.length > 1 && passiveCheckpoint === undefined)
+        await vi.waitFor(() => expect(f.pi.disconnectedRequests).toBeGreaterThanOrEqual(1))
+      openConversion()
+      openCheckpoint()
+      releaseMain()
+      await Promise.allSettled([main, passive, reply])
+      appendSpy.mockRestore()
+      track.mockRestore()
+      submit.mockRestore()
+      await telegram.stop()
+    }
+  })
+
   it("recovers a passive native checkpoint after index loss without using a later main head", async () => {
     const f = await setup()
     const seed = await f.answer("Passive recovery seed", 10)

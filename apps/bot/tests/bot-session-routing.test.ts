@@ -4,6 +4,7 @@ import type { Message, Update, UserFromGetMe } from "grammy/types"
 import { describe, expect, it, vi } from "vitest"
 import type { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
+import type { DocumentConverter } from "../src/documents/converter.js"
 import type { Logger } from "../src/logging.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { approvedStore } from "./helpers/admin-store.js"
@@ -38,6 +39,8 @@ function setup(
   options: {
     submit?: Submit
     articleUrlLoader?: PublicUrlLoader
+    documentConverter?: DocumentConverter
+    publisherConfigured?: boolean
     beforeResponse?: (method: string, payload: Record<string, unknown>) => Promise<void> | void
   } = {},
 ) {
@@ -69,6 +72,7 @@ function setup(
     cancel: vi.fn(async () => false),
     reset: vi.fn(async () => undefined),
   }
+  const publish = vi.fn(async () => "https://morsel.example/s/article")
   const telegram = createTelegramAgentBot(
     loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
     sessions as unknown as ChatSessionRegistry,
@@ -77,9 +81,10 @@ function setup(
       control: approvedStore([7, -100]),
       botInfo,
       articleUrlLoader: options.articleUrlLoader,
+      documentConverter: options.documentConverter,
       morselPublisher: {
-        isConfigured: true,
-        publish: vi.fn(async () => "https://morsel.example/s/article"),
+        isConfigured: options.publisherConfigured ?? true,
+        publish,
       },
     },
   )
@@ -103,7 +108,7 @@ function setup(
     } as never
   }
   telegram.bot.api.config.use(transformer)
-  return { ...telegram, sessions, pendingRefs, deliveries }
+  return { ...telegram, sessions, pendingRefs, deliveries, publish }
 }
 
 function submission(sessions: ReturnType<typeof setup>["sessions"], index = 0) {
@@ -558,6 +563,190 @@ describe("Telegram session routing", () => {
     expect(pendingRefs).toHaveLength(2)
     expect(pendingRefs.every((ref) => ref.cleanup.mock.calls.length === 1)).toBe(true)
   })
+
+  it.each([
+    ["confirmed", "Explain"],
+    ["confirmed", "/f"],
+    ["finalizing", "Explain"],
+    ["finalizing", "/f"],
+  ] as const)(
+    "completes a %s final %s before an unrelated status acknowledgement",
+    async (phase, text) => {
+      const status = deferred()
+      const final = deferred()
+      let blocked = false
+      let finalizing = false
+      const f = setup({
+        beforeResponse: async (method, payload) => {
+          if (
+            phase === "finalizing" &&
+            Number(payload.message_id) === 100 &&
+            telegramPayloadText(payload) === "Answer"
+          ) {
+            finalizing = true
+            await final.promise
+          }
+          const reply = payload.reply_parameters as { message_id?: number } | undefined
+          if (method === "sendRichMessage" && reply?.message_id === 91) {
+            blocked = true
+            await status.promise
+          }
+        },
+      })
+      const first = f.bot.handleUpdate(message(90, "@test_bot Final A"))
+      if (phase === "confirmed") await first
+      else await vi.waitFor(() => expect(finalizing).toBe(true))
+      const unrelated = f.bot.handleUpdate(message(91, "@test_bot Status B"))
+      await vi.waitFor(() => expect(blocked).toBe(true))
+      let reply: Promise<void> | undefined
+      try {
+        vi.useFakeTimers()
+        let completed = false
+        reply = f.bot
+          .handleUpdate(message(92, text, { reply: { id: 100, text: "Answer", bot: true } }))
+          .then(() => {
+            completed = true
+          })
+        await vi.advanceTimersByTimeAsync(1)
+        expect(completed).toBe(true)
+        expect(submission(f.sessions, 1).input.routing).toBe(text === "/f" ? "article" : "reply")
+        expect(f.publish).toHaveBeenCalledTimes(text === "/f" ? 1 : 0)
+        expect(
+          f.deliveries.some(({ payload }) =>
+            telegramPayloadText(payload)?.includes("無法確認被回覆訊息的狀態"),
+          ),
+        ).toBe(false)
+      } finally {
+        status.resolve()
+        final.resolve()
+        await vi.advanceTimersByTimeAsync(1)
+        vi.useRealTimers()
+        await Promise.all([first, unrelated, reply])
+      }
+    },
+  )
+
+  it("tracks passive input before blocked main preprocessing opens", async () => {
+    const conversion = deferred()
+    const convert = vi.fn(async () => {
+      await conversion.promise
+      return { markdown: "Main document", format: "txt", originalChars: 13, truncated: false }
+    })
+    const f = setup({ documentConverter: { convert } })
+    const mainUpdate = message(93, "@test_bot Main document")
+    if (!mainUpdate.message) throw new Error("Missing main message")
+    mainUpdate.message.document = {
+      file_id: "document",
+      file_unique_id: "document",
+      file_name: "main.txt",
+    }
+    const main = f.bot.handleUpdate(mainUpdate)
+    await vi.waitFor(() => expect(convert).toHaveBeenCalledOnce())
+    const passive = f.bot.handleUpdate(message(94, "Passive P"))
+    const reply = f.bot.handleUpdate(
+      message(95, "@test_bot Reply P", { reply: { id: 94, text: "Passive P" } }),
+    )
+    try {
+      await vi.waitFor(() => expect(f.sessions.submit).toHaveBeenCalledOnce())
+      expect(submission(f.sessions).input).toMatchObject({ routing: "reply", replyToMessageId: 94 })
+      expect(f.sessions.appendPassiveContext).not.toHaveBeenCalled()
+      const passiveTrack = f.sessions.trackPendingInput.mock.calls.findIndex(
+        (call) => call[1] === 94,
+      )
+      expect(passiveTrack).toBeGreaterThanOrEqual(0)
+      const trackOrder = f.sessions.trackPendingInput.mock.invocationCallOrder[passiveTrack]
+      expect(trackOrder).toBeLessThan(f.sessions.submit.mock.invocationCallOrder[0] ?? 0)
+      expect(
+        f.pendingRefs.find((ref) => ref.sourceMessageId === 94)?.cleanup,
+      ).not.toHaveBeenCalled()
+    } finally {
+      conversion.resolve()
+      await Promise.all([main, passive, reply])
+    }
+    expect(f.sessions.appendPassiveContext).toHaveBeenCalledWith(
+      -100,
+      expect.stringContaining("Passive P"),
+      94,
+    )
+    expect(f.pendingRefs.every((ref) => ref.cleanup.mock.calls.length === 1)).toBe(true)
+  })
+
+  it.each(["cancel", "reset"] as const)(
+    "%s invalidates an article before its pending-status lookup returns",
+    async (command) => {
+      const lookup = deferred<boolean>()
+      const load = vi.fn(async () => loaded())
+      const f = setup({ articleUrlLoader: { load } })
+      f.sessions.isPendingStatus.mockImplementation(() => lookup.promise)
+      const article = f.bot.handleUpdate(
+        message(96, "/f", {
+          reply: { id: 40, text: "https://example.com/article", bot: true },
+        }),
+      )
+      try {
+        await vi.waitFor(() => expect(f.sessions.isPendingStatus).toHaveBeenCalledOnce())
+        await f.bot.handleUpdate(message(97, `/${command}`))
+      } finally {
+        lookup.resolve(false)
+        await article
+      }
+      expect(f.sessions[command]).toHaveBeenCalledWith(-100)
+      expect(load).not.toHaveBeenCalled()
+      expect(f.sessions.submit).not.toHaveBeenCalled()
+      expect(f.publish).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(["usage", "publisher"] as const)(
+    "does not send a stale article %s notice after cancel during status lookup",
+    async (notice) => {
+      const lookup = deferred<boolean>()
+      const f = setup({ publisherConfigured: notice !== "publisher" })
+      f.sessions.isPendingStatus.mockImplementation(() => lookup.promise)
+      const article = f.bot.handleUpdate(
+        message(98, "/f", { reply: { id: 40, text: "Source", bot: true } }),
+      )
+      let deliveryCount = 0
+      try {
+        await vi.waitFor(() => expect(f.sessions.isPendingStatus).toHaveBeenCalledOnce())
+        await f.bot.handleUpdate(message(99, "/cancel"))
+        deliveryCount = f.deliveries.length
+      } finally {
+        lookup.resolve(notice === "usage")
+        await article
+      }
+      expect(f.deliveries).toHaveLength(deliveryCount)
+      expect(f.sessions.submit).not.toHaveBeenCalled()
+      expect(f.publish).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(["cancel", "reset"] as const)(
+    "ignores a failed article status lookup after %s",
+    async (command) => {
+      let failLookup = (_error: Error) => {}
+      const lookup = new Promise<boolean>((_resolve, reject) => {
+        failLookup = reject
+      })
+      const f = setup()
+      f.sessions.isPendingStatus.mockImplementation(() => lookup)
+      const article = f.bot.handleUpdate(
+        message(101, "/f Source", { reply: { id: 40, text: "Source", bot: true } }),
+      )
+      let deliveryCount = 0
+      try {
+        await vi.waitFor(() => expect(f.sessions.isPendingStatus).toHaveBeenCalledOnce())
+        await f.bot.handleUpdate(message(102, `/${command}`))
+        deliveryCount = f.deliveries.length
+      } finally {
+        failLookup(new Error("Offline status lookup failure"))
+        await article
+      }
+      expect(f.deliveries).toHaveLength(deliveryCount)
+      expect(f.sessions.submit).not.toHaveBeenCalled()
+      expect(f.publish).not.toHaveBeenCalled()
+    },
+  )
 
   it("indexes passive group input without changing addressing rules", async () => {
     const { bot, sessions } = setup()

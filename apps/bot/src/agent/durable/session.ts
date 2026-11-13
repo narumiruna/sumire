@@ -342,6 +342,7 @@ export class DurableSession implements SessionHandle {
       delivery?: ResponseDelivery
     } = {},
   ): Promise<SessionAnswer> {
+    if (this.closing) return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
     const epoch = this.rootOwner.#epoch
     const requestId = randomUUID()
     const content = options.images?.length
@@ -355,6 +356,8 @@ export class DurableSession implements SessionHandle {
           delivery: jsonValue(options.delivery),
         }
       : undefined
+    // Retained runs must free their reserved slots before new admission can proceed.
+    this.harness.resume()
     this.#prompting++
     const release = await this.rootOwner.#admission.acquire()
     try {

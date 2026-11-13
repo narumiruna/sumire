@@ -487,13 +487,18 @@ export function createTelegramAgentBot(
     const addressed = privateChat || isBotAddressed(message, context.me.id, context.me.username)
     if (!addressed) {
       if (settings.botGroupPassiveContextEnabled) {
-        await inSubmissionOrder(context.chat.id, async () => {
-          await sessions.appendPassiveContext(
-            context.chat.id,
-            passiveGroupContext(message),
-            message.message_id,
-          )
-        })
+        await inSubmissionOrder(
+          context.chat.id,
+          async () => {
+            await sessions.appendPassiveContext(
+              context.chat.id,
+              passiveGroupContext(message),
+              message.message_id,
+            )
+          },
+          "main",
+          message.message_id,
+        )
       }
       return
     }
@@ -525,36 +530,49 @@ export function createTelegramAgentBot(
     const chat = context.chat
     if (!rawMessage || !chat) return
     const message = rawMessage as unknown as TelegramMessageLike
-    const replyToPendingStatus = await isPendingReply(chat.id, message, context.me.id)
-    const repliedText =
-      message.reply_to_message && !replyToPendingStatus
-        ? messageText(message.reply_to_message).trim()
-        : ""
-    if (
-      !source &&
-      !repliedText &&
-      imageReferences(message).length === 0 &&
-      documentReferences(message).length === 0 &&
-      audioReferences(message).length === 0
-    ) {
-      await delivery.reply(context, articleUsageMessage, replyOptions(context))
-      return
-    }
-    if (!morselPublisher.isConfigured) {
-      await delivery.reply(
-        context,
-        morselPublicationFailure(
-          new MorselPublishError("MORSEL_API_KEY is not configured"),
-          "publish",
-        ),
-        replyOptions(context),
-      )
-      return
-    }
     await inSubmissionOrder(
       chat.id,
-      (release, isCurrent) =>
-        submitInput(context, message, source, release, isCurrent, {
+      async (release, isCurrent) => {
+        let replyToPendingStatus: boolean
+        try {
+          replyToPendingStatus = await isPendingReply(chat.id, message, context.me.id)
+        } catch (error) {
+          if (!isCurrent()) return
+          throw error
+        }
+        if (!isCurrent()) return
+        const repliedText =
+          message.reply_to_message && !replyToPendingStatus
+            ? messageText(message.reply_to_message).trim()
+            : ""
+        if (
+          !source &&
+          !repliedText &&
+          imageReferences(message).length === 0 &&
+          documentReferences(message).length === 0 &&
+          audioReferences(message).length === 0
+        ) {
+          await delivery.guardedReply(
+            context,
+            articleUsageMessage,
+            replyOptions(context),
+            isCurrent,
+          )
+          return
+        }
+        if (!morselPublisher.isConfigured) {
+          await delivery.guardedReply(
+            context,
+            morselPublicationFailure(
+              new MorselPublishError("MORSEL_API_KEY is not configured"),
+              "publish",
+            ),
+            replyOptions(context),
+            isCurrent,
+          )
+          return
+        }
+        await submitInput(context, message, source, release, isCurrent, {
           promptTransform: buildBlogPostPrompt,
           articleUrlSource: source,
           deliveryMode: "publish",
@@ -562,7 +580,8 @@ export function createTelegramAgentBot(
           submissionIntent: "newTurn",
           replyToPendingStatus,
           routing: "article",
-        }),
+        })
+      },
       "article",
       message.message_id,
     )
@@ -651,9 +670,16 @@ export function createTelegramAgentBot(
   ): Promise<RequestOutcome> {
     const chatId = context.chat?.id
     const replyId = repliedBotMessageId(message, context.me.id)
+    const knownFinalReply =
+      chatId !== undefined &&
+      replyId !== undefined &&
+      (confirmedFinalReplies.get(chatId)?.has(replyId) === true ||
+        (finalizingBotReplies.get(chatId)?.has(replyId) === true &&
+          !isPendingBotReply(chatId, message, context.me.id)))
     if (
       chatId !== undefined &&
       replyId !== undefined &&
+      !knownFinalReply &&
       !pendingBotReplies.get(chatId)?.has(replyId)
     ) {
       // Correlate an already visible status while Telegram acknowledges its send.
