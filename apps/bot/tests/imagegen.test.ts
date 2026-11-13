@@ -679,6 +679,7 @@ it("does not attach a queued follow-up image to an unrelated completed answer", 
   await session.followUp("Generate a fox")
   release()
   const answer = await current
+  expect(answer.text).toBe("Intermediate reply.")
   expect(answer.media).toHaveLength(1)
   const recovered: Array<{ requestId?: string; media?: unknown }> = []
   await session.recoverPending(async (value) => {

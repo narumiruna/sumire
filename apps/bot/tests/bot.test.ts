@@ -98,6 +98,8 @@ function createSessions(overrides: Partial<ChatSessionRegistry> = {}): ChatSessi
       },
     ),
     recordDelivery: vi.fn(async () => undefined),
+    trackPendingInput: vi.fn(() => () => undefined),
+    isPendingStatus: vi.fn(async () => false),
     holdReplyCheckpoint: vi.fn(() => () => undefined),
     appendPassiveContext: vi.fn(async () => undefined),
     cancel: vi.fn(async () => false),
@@ -267,6 +269,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.appendPassiveContext).toHaveBeenCalledWith(
       -100,
       expect.stringContaining("@test_bot example"),
+      2,
     )
   })
 
@@ -1126,7 +1129,7 @@ describe("Telegram bot update routing", () => {
     expect(telegramPayloadText(calls.at(-1)?.payload)).toContain("https://morsel.example/s/article")
   })
 
-  it("includes a replied bot answer in /f source and reply-tree fallback context", async () => {
+  it("includes a replied bot answer in /f source without restoring a branch", async () => {
     const sessions = createSessions()
     const publish = vi.fn(async () => "https://morsel.example/s/article")
     const telegram = createTelegramAgentBot(
@@ -1156,8 +1159,9 @@ describe("Telegram bot update routing", () => {
 
     const [, prompt, options] = vi.mocked(sessions.submit).mock.calls[0] ?? []
     expect(prompt).toContain("Content: 較早的 bot 回覆")
-    expect(options?.replyToBotMessageId).toBe(50)
-    expect(options?.unresolvedReplyPrompt).toBe(prompt)
+    expect(options?.routing).toBe("article")
+    expect(options).not.toHaveProperty("replyToBotMessageId")
+    expect(options).not.toHaveProperty("unresolvedReplyPrompt")
   })
 
   it("excludes an in-flight pending reply from /f article context", async () => {
@@ -3133,6 +3137,7 @@ describe("Telegram bot update routing", () => {
     expect(sessions.appendPassiveContext).toHaveBeenCalledWith(
       -100,
       "[群組旁聽訊息 from 公告頻道] 頻道公告",
+      3,
     )
     expect(sessions.submit).not.toHaveBeenCalled()
   })
@@ -3318,7 +3323,7 @@ describe("Telegram bot update routing", () => {
       expect(telegramPayloadText(replies[0]?.payload)).toBe(downloadError)
     })
 
-    it("keeps same-chat queued submissions behind the recovering replied image", async () => {
+    it("admits group main independently of the recovering replied image", async () => {
       let finishImageDownload: ((response: Response) => void) | undefined
       const pendingImageDownload = new Promise<Response>((resolve) => {
         finishImageDownload = resolve
@@ -3340,8 +3345,8 @@ describe("Telegram bot update routing", () => {
       try {
         await vi.waitFor(() => expect(imageFetchImplementation).toHaveBeenCalledTimes(2))
         queuedHandling = telegram.bot.handleUpdate(groupMessage(601, "@test_bot 第二則"))
-        await new Promise<void>((resolve) => setImmediate(resolve))
-        expect(sessions.submit).not.toHaveBeenCalled()
+        await queuedHandling
+        expect(sessions.submit).toHaveBeenCalledOnce()
       } finally {
         finishImageDownload?.(new Response("image"))
         await Promise.all([imageHandling, queuedHandling])
@@ -3351,12 +3356,12 @@ describe("Telegram bot update routing", () => {
       expect(sessions.submit).toHaveBeenCalledTimes(2)
       expect(vi.mocked(sessions.submit).mock.calls.map(([chatId]) => chatId)).toEqual([-100, -100])
       expect(vi.mocked(sessions.submit).mock.calls.map(([, prompt]) => prompt)).toEqual([
-        expect.stringContaining("Current user message:\n第一張"),
         adminPrompt("第二則"),
+        expect.stringContaining("Current user message:\n第一張"),
       ])
       expect(
         vi.mocked(sessions.submit).mock.calls.map(([, , options]) => options?.images?.length),
-      ).toEqual([1, 0])
+      ).toEqual([0, 1])
       expect(calls.map((call) => telegramPayloadText(call.payload))).not.toContain(downloadError)
     })
 
@@ -3366,7 +3371,7 @@ describe("Telegram bot update routing", () => {
       ["cancel", "success"],
       ["cancel", "error"],
     ] as const)(
-      "invalidates pending and queued input on /%s during recovery with late %s",
+      "invalidates pending reply input but preserves independent main on /%s during recovery with late %s",
       async (command, outcome) => {
         let finishImageDownload: ((response: Response) => void) | undefined
         let failImageDownload: ((error: Error) => void) | undefined
@@ -3395,8 +3400,8 @@ describe("Telegram bot update routing", () => {
         try {
           await vi.waitFor(() => expect(imageFetchImplementation).toHaveBeenCalledTimes(2))
           queuedHandling = telegram.bot.handleUpdate(groupMessage(601, "@test_bot 指令前排隊"))
-          await new Promise<void>((resolve) => setImmediate(resolve))
-          expect(sessions.submit).not.toHaveBeenCalled()
+          await queuedHandling
+          expect(sessions.submit).toHaveBeenCalledOnce()
 
           const control = groupMessage(602, `/${command}`)
           if (control.message) {
@@ -3415,7 +3420,8 @@ describe("Telegram bot update routing", () => {
           expect(imageFetchImplementation.mock.calls[1]?.[1]?.signal?.aborted).toBe(false)
 
           await telegram.bot.handleUpdate(groupMessage(603, "@test_bot 指令後"))
-          expect(sessions.submit).toHaveBeenCalledExactlyOnceWith(
+          expect(sessions.submit).toHaveBeenCalledTimes(2)
+          expect(sessions.submit).toHaveBeenLastCalledWith(
             -100,
             adminPrompt("指令後"),
             expect.any(Object),
@@ -3430,7 +3436,7 @@ describe("Telegram bot update routing", () => {
         expect(imageFinished).toBe(true)
         expect(imageFetchImplementation).toHaveBeenCalledTimes(2)
         expect(calls.filter((call) => call.method === "getFile")).toHaveLength(2)
-        expect(sessions.submit).toHaveBeenCalledOnce()
+        expect(sessions.submit).toHaveBeenCalledTimes(2)
         expect(calls.map((call) => telegramPayloadText(call.payload))).toEqual(deliveredTexts)
         expect(deliveredTexts).not.toContain(downloadError)
       },

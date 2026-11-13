@@ -28,6 +28,28 @@ export interface SessionSettlement {
 
 export type SessionAnswer = DurableAnswer & { settlement?: SessionSettlement }
 
+export interface SubmissionOptions {
+  images?: ImageContent[]
+  delivery?: ResponseDelivery
+  intent?: SubmissionIntent
+  routing?: "main" | "reply" | "article"
+  replyToMessageId?: number
+  replyToBotMessageId?: number
+  unresolvedReplyPrompt?: string
+  onAccepted?: () => void
+  onProgress?: (steps: readonly ProgressStep[]) => void
+  onActivity?: (activity: SubmissionActivity, toolName?: string) => void
+  isCurrent?: () => boolean
+}
+
+interface PendingInput {
+  sourceMessageId: number
+  refs: number
+  settled: boolean
+  done: Promise<{ input?: SubmissionCheckpoint; answer?: SubmissionCheckpoint } | undefined>
+  resolve(value: { input?: SubmissionCheckpoint; answer?: SubmissionCheckpoint } | undefined): void
+}
+
 export type SubmissionResult =
   | {
       kind: "completed"
@@ -53,6 +75,11 @@ export interface SessionHandle {
   readonly isStreaming: boolean
   readonly isIdle: boolean
   readonly sessionId: string
+  readonly isMainStreaming?: boolean
+  readonly conversationId?: number
+  createConversation?(checkpoint?: string, purpose?: "article" | "reply"): Promise<SessionHandle>
+  resolvePendingReply?(messageId: number): Promise<string | undefined>
+  hasPendingStatus?(messageId: number): Promise<boolean>
   getCheckpoint(): string | null
   hasCheckpoint(id: string): Promise<boolean>
   recentPassiveContext(): string[]
@@ -63,7 +90,12 @@ export interface SessionHandle {
   ): Promise<SessionAnswer>
   steer(text: string, images?: ImageContent[]): Promise<"queued">
   followUp(text: string, images?: ImageContent[]): Promise<"queued">
-  appendPassiveContext(text: string): Promise<void>
+  appendPassiveContext(
+    text: string,
+    onEntry?: (checkpoint: string) => void | Promise<void>,
+    messageId?: number,
+    onSettled?: () => void,
+  ): Promise<void>
   restoreBranch(targetId: string): Promise<void>
   waitForIdle(): Promise<void>
   abort(): Promise<void>
@@ -112,6 +144,8 @@ export class ChatSessionRegistry {
   readonly #pendingReplyCheckpoints = new Map<number, Map<number, SubmissionCheckpoint>>()
   readonly #replyTreeEnabled: boolean
   readonly #replyIndex: TelegramReplyIndex
+  readonly #mainTails = new Map<number, Promise<void>>()
+  readonly #pendingInputs = new Map<number, Map<number, PendingInput>>()
 
   constructor(
     private readonly createSession: SessionCreator,
@@ -192,20 +226,88 @@ export class ChatSessionRegistry {
     await lease?.done
   }
 
+  async isPendingStatus(chatId: number, messageId: number): Promise<boolean> {
+    const aliases = this.#pendingInputs.get(chatId)?.get(messageId)
+    if (aliases && aliases.sourceMessageId !== messageId) return true
+    const owner = await this.#getOrCreate(chatId)
+    return (await owner.hasPendingStatus?.(messageId)) ?? false
+  }
+
+  trackPendingInput(chatId: number, sourceMessageId: number, statusMessageId?: number): () => void {
+    const aliases = this.#pendingInputs.get(chatId) ?? new Map<number, PendingInput>()
+    this.#pendingInputs.set(chatId, aliases)
+    let pending = aliases.get(sourceMessageId)
+    if (!pending) {
+      let resolve!: PendingInput["resolve"]
+      const done = new Promise<Awaited<PendingInput["done"]>>((finish) => {
+        resolve = finish
+      })
+      pending = {
+        sourceMessageId,
+        refs: 0,
+        settled: false,
+        done,
+        resolve(value) {
+          if (this.settled) return
+          this.settled = true
+          resolve(value)
+        },
+      }
+      aliases.set(sourceMessageId, pending)
+    }
+    pending.refs++
+    if (statusMessageId !== undefined) aliases.set(statusMessageId, pending)
+    const held = pending
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      if (--held.refs > 0) return
+      held.resolve(undefined)
+      for (const [id, value] of aliases) if (value === held) aliases.delete(id)
+      if (aliases.size === 0 && this.#pendingInputs.get(chatId) === aliases)
+        this.#pendingInputs.delete(chatId)
+    }
+  }
+
   async submit(
     chatId: number,
     prompt: string,
-    options: {
-      images?: ImageContent[]
-      delivery?: ResponseDelivery
-      intent?: SubmissionIntent
-      replyToBotMessageId?: number
-      unresolvedReplyPrompt?: string
-      onAccepted?: () => void
-      onProgress?: (steps: readonly ProgressStep[]) => void
-      onActivity?: (activity: SubmissionActivity, toolName?: string) => void
-      isCurrent?: () => boolean
-    } = {},
+    options: SubmissionOptions = {},
+  ): Promise<SubmissionResult> {
+    const generation = this.#generations.get(chatId) ?? 0
+    const source = options.delivery?.sourceMessageId
+    const releaseInput =
+      source === undefined
+        ? () => {}
+        : this.trackPendingInput(chatId, source, options.delivery?.statusMessageId)
+    const pending = source === undefined ? undefined : this.#pendingInputs.get(chatId)?.get(source)
+    const previous = options.routing === "main" ? this.#mainTails.get(chatId) : undefined
+    let finish = () => {}
+    let tail: Promise<void> | undefined
+    if (options.routing === "main") {
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      tail = (previous ?? Promise.resolve()).then(() => gate)
+      this.#mainTails.set(chatId, tail)
+    }
+    try {
+      await previous
+      this.#assertCurrentGeneration(chatId, generation)
+      return await this.#submit(chatId, prompt, options)
+    } finally {
+      pending?.resolve(undefined)
+      releaseInput()
+      finish()
+      if (tail && this.#mainTails.get(chatId) === tail) this.#mainTails.delete(chatId)
+    }
+  }
+
+  async #submit(
+    chatId: number,
+    prompt: string,
+    options: SubmissionOptions,
   ): Promise<SubmissionResult> {
     const generation = this.#generations.get(chatId) ?? 0
     const assertCurrent = () => {
@@ -217,32 +319,54 @@ export class ChatSessionRegistry {
         )
       }
     }
-    const session = await this.#getOrCreate(chatId)
+    const owner = await this.#getOrCreate(chatId)
     assertCurrent()
-    const restoredBranch = await this.#restoreReplyBranch(
-      chatId,
-      session,
-      options.replyToBotMessageId,
-      generation,
-      assertCurrent,
-    )
+    let session = owner
+    let restoredBranch = false
+    if (options.routing === "article" || options.routing === "reply") {
+      if (!owner.createConversation) throw new Error("Independent conversations are unavailable")
+      const target =
+        options.routing === "reply"
+          ? await this.#resolveReplyTarget(chatId, owner, options.replyToMessageId, assertCurrent)
+          : undefined
+      assertCurrent()
+      session = await owner.createConversation(target?.entryId, options.routing)
+      restoredBranch = target !== undefined
+    } else if (!options.routing) {
+      restoredBranch = await this.#restoreReplyBranch(
+        chatId,
+        session,
+        options.replyToBotMessageId,
+        generation,
+        assertCurrent,
+      )
+    }
     assertCurrent()
     this.logger.info("Pi submission", {
       "event.name": "pi.submission",
       "telegram.chat_id": chatId,
       "pi.session_id": session.sessionId,
+      "pi.conversation_id": session.conversationId,
       "pi.reply_branch_restored": restoredBranch,
       "pi.intent": options.intent ?? "automatic",
+      "pi.routing": options.routing,
     })
     const images = options.images ?? []
     const submissionPrompt =
       !restoredBranch && options.unresolvedReplyPrompt ? options.unresolvedReplyPrompt : prompt
-    if (!restoredBranch && options.intent === "newTurn") {
+    if (options.routing === "main") {
+      if (session.isMainStreaming ?? session.isStreaming) await session.waitForIdle()
+      assertCurrent()
+    } else if (!options.routing && !restoredBranch && options.intent === "newTurn") {
       const activeCapture = this.#activePromptCaptures.get(chatId)
       if (activeCapture?.generation === generation) await activeCapture.done
       if (!session.isIdle) await session.waitForIdle()
       assertCurrent()
-    } else if (!restoredBranch && session.isStreaming) {
+    } else if (
+      !options.routing &&
+      !restoredBranch &&
+      (session.isMainStreaming ?? session.isStreaming)
+    ) {
       assertCurrent()
       if (options.intent === "followUp") {
         await session.followUp(submissionPrompt, images)
@@ -283,7 +407,8 @@ export class ChatSessionRegistry {
         finishCapture = resolve
       }),
     }
-    this.#activePromptCaptures.set(chatId, capture)
+    const independent = options.routing === "article" || options.routing === "reply"
+    if (!independent) this.#activePromptCaptures.set(chatId, capture)
     try {
       const answer = await session.prompt(submissionPrompt, {
         ...(images.length > 0 ? { images } : {}),
@@ -291,7 +416,60 @@ export class ChatSessionRegistry {
         onAccepted: options.onAccepted,
       })
       const text = answer.text
-      const entryId = answer.entryId ?? session.getCheckpoint()
+      const entryId = answer.entryId ?? answer.inputEntryId
+      const checkpoint = (id: string): SubmissionCheckpoint => ({
+        sessionId: session.sessionId,
+        entryId: id,
+        generation,
+        ...(answer.requestId ? { requestId: answer.requestId } : {}),
+      })
+      const source = options.delivery?.sourceMessageId
+      if (source !== undefined) {
+        if (
+          answer.inputEntryId &&
+          this.#replyTreeEnabled &&
+          (this.#generations.get(chatId) ?? 0) === generation &&
+          this.#sessions.get(chatId) === owner &&
+          options.isCurrent?.() !== false
+        ) {
+          try {
+            await this.#replyIndex.record(chatId, [source], checkpoint(answer.inputEntryId))
+          } catch (error) {
+            this.logger.warn("Could not persist Telegram input mapping", {
+              "event.name": "pi.reply_mapping.failed",
+              "telegram.chat_id": chatId,
+              error,
+            })
+          }
+        }
+        if (
+          answer.entryId &&
+          options.delivery?.statusMessageId !== undefined &&
+          this.#replyTreeEnabled &&
+          (this.#generations.get(chatId) ?? 0) === generation
+        ) {
+          try {
+            await this.#replyIndex.record(
+              chatId,
+              [options.delivery.statusMessageId],
+              checkpoint(answer.entryId),
+            )
+          } catch (error) {
+            this.logger.warn("Could not persist Telegram status mapping", {
+              "event.name": "pi.reply_mapping.failed",
+              "telegram.chat_id": chatId,
+              error,
+            })
+          }
+        }
+        this.#pendingInputs
+          .get(chatId)
+          ?.get(source)
+          ?.resolve({
+            ...(answer.inputEntryId ? { input: checkpoint(answer.inputEntryId) } : {}),
+            ...(answer.entryId ? { answer: checkpoint(answer.entryId) } : {}),
+          })
+      }
       return {
         kind: text || answer.media?.length ? "completed" : "no_response",
         text: text || (answer.media?.length ? "" : NO_RESPONSE_TEXT),
@@ -516,10 +694,39 @@ export class ChatSessionRegistry {
       const recovery = session
         .recoverPending(async (answer, delivery) => {
           if (!isCurrent()) return
-          const checkpoint = answer.entryId
-            ? {
+          if (answer.inputEntryId && this.#replyTreeEnabled) {
+            try {
+              await this.#replyIndex.record(chatId, [delivery.sourceMessageId], {
+                sessionId: session.sessionId,
+                entryId: answer.inputEntryId,
+              })
+            } catch (error) {
+              this.logger.warn("Could not persist recovered input mapping", {
+                "event.name": "pi.reply_mapping.failed",
+                "telegram.chat_id": chatId,
+                error,
+              })
+            }
+          }
+          if (answer.entryId && delivery.statusMessageId !== undefined && this.#replyTreeEnabled) {
+            try {
+              await this.#replyIndex.record(chatId, [delivery.statusMessageId], {
                 sessionId: session.sessionId,
                 entryId: answer.entryId,
+              })
+            } catch (error) {
+              this.logger.warn("Could not persist recovered status mapping", {
+                "event.name": "pi.reply_mapping.failed",
+                "telegram.chat_id": chatId,
+                error,
+              })
+            }
+          }
+          const entryId = answer.entryId ?? (answer.media?.length ? answer.inputEntryId : undefined)
+          const checkpoint = entryId
+            ? {
+                sessionId: session.sessionId,
+                entryId,
                 generation,
                 requestId: answer.requestId,
               }
@@ -576,15 +783,40 @@ export class ChatSessionRegistry {
     return true
   }
 
-  async appendPassiveContext(chatId: number, text: string): Promise<void> {
+  async appendPassiveContext(chatId: number, text: string, messageId?: number): Promise<void> {
     if (!text) return
     const generation = this.#generations.get(chatId) ?? 0
     const session = await this.#getOrCreate(chatId)
     this.#assertCurrentGeneration(chatId, generation)
-    await session.appendPassiveContext(text)
+    if (messageId === undefined || !this.#replyTreeEnabled) {
+      await session.appendPassiveContext(text)
+      return
+    }
+    const release = this.trackPendingInput(chatId, messageId)
+    try {
+      await session.appendPassiveContext(
+        text,
+        async (entryId) => {
+          try {
+            if ((this.#generations.get(chatId) ?? 0) !== generation) return
+            const checkpoint = { sessionId: session.sessionId, entryId, generation }
+            await this.#replyIndex.record(chatId, [messageId], checkpoint)
+            this.#pendingInputs.get(chatId)?.get(messageId)?.resolve({ input: checkpoint })
+          } finally {
+            release()
+          }
+        },
+        messageId,
+        release,
+      )
+    } catch (error) {
+      release()
+      throw error
+    }
   }
 
   async cancel(chatId: number): Promise<boolean> {
+    this.#clearPendingInputs(chatId)
     const branchNavigation = this.#branchNavigations.get(chatId)
     if (branchNavigation) await branchNavigation
     const session = this.#sessions.get(chatId)
@@ -615,6 +847,7 @@ export class ChatSessionRegistry {
   async #resetChat(chatId: number): Promise<void> {
     this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     this.#pendingReplyCheckpoints.delete(chatId)
+    this.#clearPendingInputs(chatId)
     await this.#cancelInspection(chatId)
     await this.#evicting.get(chatId)
     await this.#creating.get(chatId)?.catch(() => undefined)
@@ -638,6 +871,7 @@ export class ChatSessionRegistry {
   /** Invalidate policy snapshots without removing transcripts or reply indexes. */
   async invalidatePolicies(): Promise<void> {
     this.#inspectionBlocked++
+    for (const chatId of this.#pendingInputs.keys()) this.#clearPendingInputs(chatId)
     try {
       const ids = new Set([...this.#sessions.keys(), ...this.#creating.keys()])
       for (const chatId of ids)
@@ -680,6 +914,7 @@ export class ChatSessionRegistry {
     this.#closed = true
     await Promise.all([...this.#inspectionReads.keys()].map((id) => this.#cancelInspection(id)))
     this.#pendingReplyCheckpoints.clear()
+    for (const chatId of this.#pendingInputs.keys()) this.#clearPendingInputs(chatId)
     for (const chatId of new Set([...this.#creating.keys(), ...this.#sessions.keys()])) {
       this.#generations.set(chatId, (this.#generations.get(chatId) ?? 0) + 1)
     }
@@ -704,6 +939,39 @@ export class ChatSessionRegistry {
     if ((this.#generations.get(chatId) ?? 0) !== generation) {
       throw new DOMException("Pi session access was invalidated by reset", "AbortError")
     }
+  }
+
+  #clearPendingInputs(chatId: number): void {
+    const entries = this.#pendingInputs.get(chatId)
+    this.#pendingInputs.delete(chatId)
+    for (const entry of entries?.values() ?? []) entry.resolve(undefined)
+  }
+
+  async #resolveReplyTarget(
+    chatId: number,
+    owner: SessionHandle,
+    messageId: number | undefined,
+    assertCurrent: () => void,
+  ): Promise<PiReplyCheckpoint | undefined> {
+    if (!this.#replyTreeEnabled || messageId === undefined) return undefined
+    const pending = this.#pendingInputs.get(chatId)?.get(messageId)
+    let target: PiReplyCheckpoint | undefined
+    if (pending) {
+      const result = await pending.done
+      target = pending.sourceMessageId === messageId ? result?.input : result?.answer
+    } else {
+      target =
+        this.#pendingReplyCheckpoints.get(chatId)?.get(messageId) ??
+        (await this.#replyIndex.resolve(chatId, messageId))
+      if (!target) {
+        const entryId = await owner.resolvePendingReply?.(messageId)
+        if (entryId) target = { sessionId: owner.sessionId, entryId }
+      }
+    }
+    assertCurrent()
+    return target?.sessionId === owner.sessionId && (await owner.hasCheckpoint(target.entryId))
+      ? target
+      : undefined
   }
 
   async #restoreReplyBranch(

@@ -3,6 +3,25 @@ import { describe, expect, it, vi } from "vitest"
 import { Semaphore } from "../src/semaphore.js"
 
 describe("Semaphore", () => {
+  it("counts recovered durable reservations before accepting new work", async () => {
+    const semaphore = new Semaphore(2)
+    const releases = [semaphore.reserve(), semaphore.reserve(), semaphore.reserve()]
+    const admitted = vi.fn()
+    const waiting = semaphore.acquire().then((release) => {
+      admitted()
+      return release
+    })
+    releases[0]?.()
+    releases[0]?.()
+    await Promise.resolve()
+    expect(admitted).not.toHaveBeenCalled()
+    releases[1]?.()
+    const release = await waiting
+    expect(admitted).toHaveBeenCalledOnce()
+    release()
+    releases[2]?.()
+  })
+
   it("keeps each instance's capacity separate", async () => {
     const audio = new Semaphore(1)
     const documents = new Semaphore(2)

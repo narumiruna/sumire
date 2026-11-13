@@ -1,5 +1,6 @@
 import { type Bot, Context } from "grammy"
 
+import { checkpointAttributes } from "../agent/durable/entries.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import {
   errorAttributes,
@@ -34,7 +35,7 @@ export async function recoverTelegramResponses(
             {
               "telegram.chat_id": chatId,
               "telegram.message_id": saved.sourceMessageId,
-              ...(checkpoint ? { "pi.session_id": checkpoint.sessionId } : {}),
+              ...(checkpoint ? checkpointAttributes(checkpoint) : {}),
               ...((checkpoint?.requestId ?? answer.requestId) === undefined
                 ? {}
                 : { "pi.request_id": (checkpoint?.requestId ?? answer.requestId) as string }),

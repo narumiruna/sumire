@@ -1,4 +1,5 @@
 import { type Context, InputFile } from "grammy"
+import { checkpointAttributes } from "../agent/durable/entries.js"
 import type { GeneratedMedia } from "../agent/durable/media.js"
 import type { DurableAnswer } from "../agent/durable/outbox.js"
 import type { ResponseDelivery } from "../agent/durable/state.js"
@@ -49,9 +50,8 @@ export async function deliverGeneratedResponse(
   const chatId = context.chat?.id
   const attributes = {
     "telegram.message_id": saved.sourceMessageId,
-    "pi.session_id": checkpoint.sessionId,
+    ...checkpointAttributes(checkpoint),
     ...(chatId === undefined ? {} : { "telegram.chat_id": chatId }),
-    ...(checkpoint.requestId === undefined ? {} : { "pi.request_id": checkpoint.requestId }),
   }
   return withLogSpan(logger, "telegram.deliver", attributes, async (span) => {
     let stage = "authorization"

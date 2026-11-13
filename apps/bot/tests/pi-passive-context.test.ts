@@ -102,6 +102,7 @@ describe("durable passive-context behavior", () => {
         await registry.submit(123, "question about the group context", { intent })
         release()
         await running
+        await session.waitForIdle()
         expect(fixture.requests).toHaveLength(2)
         const context = JSON.stringify(fixture.requests[1]?.messages)
         expect(context).toContain("intervening group context")

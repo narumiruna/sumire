@@ -73,6 +73,7 @@ const identifierKeys = [
   "pi.tool_name",
   "pi.outcome",
   "pi.intent",
+  "pi.routing",
   "pi.phase",
   "pi.model",
   "pi.provider",

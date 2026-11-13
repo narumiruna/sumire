@@ -19,6 +19,20 @@ export function parseCheckpoint(
     : undefined
 }
 
+export function checkpointAttributes(checkpoint: {
+  sessionId: string
+  entryId: string
+  requestId?: string
+}) {
+  const target = parseCheckpoint(checkpoint.entryId)
+  return {
+    "pi.session_id": checkpoint.sessionId,
+    "pi.entry_id": checkpoint.entryId,
+    ...(target ? { "pi.conversation_id": target.conversationId } : {}),
+    ...(checkpoint.requestId ? { "pi.request_id": checkpoint.requestId } : {}),
+  }
+}
+
 export function assistantText(entry: EntryRecord | undefined): string {
   const message = entry?.model?.find((message) => message.role === "assistant")
   return message?.role === "assistant"
