@@ -69,7 +69,7 @@ async function setup() {
     get registry() {
       return registry
     },
-    async restoreMain() {
+    async restoreMain(resume = true) {
       const releaseOld = pause()
       const old = submit("Main before restart", 10)
       await requests(pi, 1)
@@ -84,8 +84,10 @@ async function setup() {
       expect(owner.isMainStreaming).toBe(true)
       expect(pi.requests).toHaveLength(1)
       const releaseRestored = pause()
-      owner.harness.resume()
-      await requests(pi, 2)
+      if (resume) {
+        owner.harness.resume()
+        await requests(pi, 2)
+      }
       const native = await owner.harness.commit(
         (tx) => tx.submissionByRequest(pending.conversationId, pending.requestId),
         context,
@@ -173,6 +175,38 @@ describe("restored main routing", () => {
     await vi.waitFor(() => expect(f.pi.disconnectedRequests).toBe(2))
     restored.releaseRestored()
     expect(f.pi.requests).toHaveLength(2)
+  })
+
+  it("resumes a cold retained main through its native idle wait without explicit recovery", async () => {
+    const f = await setup()
+    const restored = await f.restoreMain(false)
+    const wait = vi.spyOn(f.owner, "waitForIdle")
+    const resume = vi.spyOn(f.owner.harness, "resume")
+    const accepted = vi.fn()
+    try {
+      expect(f.pi.requests).toHaveLength(1)
+      const next = f.submit("New main from cold owner", 20, { onAccepted: accepted })
+      await requests(f.pi, 2)
+      expect(wait).toHaveBeenCalledOnce()
+      expect(resume).not.toHaveBeenCalled()
+      expect(accepted).not.toHaveBeenCalled()
+      expect(JSON.stringify(f.pi.requests[1]?.messages)).toContain("Main before restart")
+      expect(JSON.stringify(f.pi.requests[1]?.messages)).not.toContain("New main from cold owner")
+
+      const releaseNext = f.pause()
+      f.pi.enqueueAnswer("Retained main answer")
+      restored.releaseRestored()
+      await requests(f.pi, 3)
+      expect(resume).toHaveBeenCalledOnce()
+      expect(accepted).toHaveBeenCalledOnce()
+      f.pi.enqueueAnswer("New cold main answer")
+      releaseNext()
+      expect(await next).toMatchObject({ kind: "completed", text: "New cold main answer" })
+      expect(f.pi.pendingReplies).toBe(0)
+    } finally {
+      wait.mockRestore()
+      resume.mockRestore()
+    }
   })
 
   it("does not wait for a blocked article when main is idle", async () => {
