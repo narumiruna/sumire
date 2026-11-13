@@ -171,6 +171,62 @@ function loaded(url = "https://example.com/article") {
 }
 
 describe("Telegram session routing", () => {
+  it("rejects a bare /f on an unacknowledged status without loading its URL", async () => {
+    const status = deferred()
+    const model = deferred()
+    let blocked = false
+    const load = vi.fn(async () => loaded())
+    const f = setup({
+      articleUrlLoader: { load },
+      submit: async (_chatId, _prompt, input = {}) => {
+        input.onAccepted?.()
+        await model.promise
+        return { kind: "completed", text: "Answer" }
+      },
+      beforeResponse: async (method, payload) => {
+        if (
+          method === "sendRichMessage" &&
+          !blocked &&
+          telegramPayloadText(payload) === "處理中…"
+        ) {
+          blocked = true
+          await status.promise
+        }
+      },
+    })
+    const first = f.bot.handleUpdate(message(1, "@test_bot first"))
+    await vi.waitFor(() => expect(blocked).toBe(true))
+    let reply: Promise<void> | undefined
+    try {
+      reply = f.bot.handleUpdate(
+        message(2, "/f", {
+          reply: { id: 100, text: "處理中… https://example.com/status", bot: true },
+        }),
+      )
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      status.resolve()
+      await vi.waitFor(() =>
+        expect(
+          f.deliveries.some(({ payload }) =>
+            telegramPayloadText(payload)?.includes("請使用 /f <內容>"),
+          ),
+        ).toBe(true),
+      )
+      await reply
+      expect(f.sessions.submit).toHaveBeenCalledOnce()
+      expect(load).not.toHaveBeenCalled()
+      expect(
+        f.deliveries.some(({ payload }) =>
+          telegramPayloadText(payload)?.includes("請使用 /f <內容>"),
+        ),
+      ).toBe(true)
+    } finally {
+      status.resolve()
+      model.resolve()
+      await Promise.all([first, reply])
+    }
+  })
+
   it("bounds unknown pending-status correlation without using it as article source", async () => {
     const gate = deferred()
     let blocked = false

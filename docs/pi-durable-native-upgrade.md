@@ -72,7 +72,7 @@ Run from the repository root with Node.js 26 or newer. Use disposable storage; d
 3. Run the affected session-routing suites, including native conversation/migration, exact-answer ownership, registry/bot routing, reply index, recovery, policy, lifecycle, passive-context, media, and offline telemetry tests.
 4. Run `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` from the root.
 
-Session-routing verification on 2026-11-14: clean `npm ci` and all five root gates passed with Node.js 26.11.1 and npm 11.20.0. The test gate passed 3,863 tests across 222 files, including 2,100 bot tests. The existing headless Admin session-field/link check also passed. Native conversation, migration, real bot/registry routing, cached-answer, restored-admission, observer-cleanup, private related-media, and telemetry cases use offline fixtures. No required gate was waived. Unchanged non-failing template-literal information and the Admin `localStorage` warning remain.
+Session-routing verification on 2026-11-14: clean `npm ci` and all five root gates passed with Node.js 26.11.1 and npm 11.20.0. The test gate passed 3,864 tests across 222 files, including 2,101 bot tests. The existing headless Admin session-field/link check also passed. Native conversation, migration, real bot/registry routing, cached-answer, restored-admission, observer-cleanup, private related-media, and telemetry cases use offline fixtures. No required gate was waived. Unchanged non-failing template-literal information and the Admin `localStorage` warning remain.
 
 Deployment, live A/B/C routing, actual Logfire receipt, and controlled production-image restart remain separately authorized and unverified.
 
