@@ -26,6 +26,8 @@ export const MAX_CONCURRENT_DELIVERIES = 4
 
 /** Persist response components. Only the transport can acknowledge complete delivery. */
 export class DurableOutbox {
+  readonly #admissions = new Map<string, Promise<void>>()
+
   constructor(
     private readonly harness: Harness,
     private readonly files?: GeneratedMediaFiles,
@@ -140,6 +142,27 @@ export class DurableOutbox {
       unfinished &&
       Boolean((await this.harness.snapshot(LiveDoc, pending.conversationId, context))?.run)
     )
+  }
+
+  async admitPendingConversation(
+    conversationId: ConversationId,
+    isClosing: () => boolean,
+  ): Promise<boolean> {
+    const pending =
+      (await this.harness.snapshot(OutboxDoc, context))?.pending.filter(
+        (item) => item.conversationId === conversationId,
+      ) ?? []
+    await Promise.all(
+      pending.map(async (item) => {
+        if (isClosing() || item.answerEntryId !== undefined) return
+        const native = await this.harness.commit(
+          (tx) => tx.submissionByRequest(item.conversationId, item.requestId),
+          context,
+        )
+        if (!native && !isClosing()) await this.admitPending(item, isClosing)
+      }),
+    )
+    return pending.length > 0
   }
 
   async recoverPending(
@@ -266,7 +289,17 @@ export class DurableOutbox {
     }
     if (errors.length) throw new AggregateError(errors, "Durable outbox recovery failed")
   }
-  private async admitPending(pending: PendingResponse, isClosing: () => boolean): Promise<void> {
+  private admitPending(pending: PendingResponse, isClosing: () => boolean): Promise<void> {
+    const existing = this.#admissions.get(pending.requestId)
+    if (existing) return existing
+    const admission = this.admit(pending, isClosing).finally(() => {
+      this.#admissions.delete(pending.requestId)
+    })
+    this.#admissions.set(pending.requestId, admission)
+    return admission
+  }
+
+  private async admit(pending: PendingResponse, isClosing: () => boolean): Promise<void> {
     const release = await this.beforeSubmit?.(pending)
     let admitted = false
     try {

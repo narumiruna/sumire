@@ -356,12 +356,35 @@ export class DurableSession implements SessionHandle {
           delivery: jsonValue(options.delivery),
         }
       : undefined
+    const owner = this.rootOwner
+    if (owner.#unsentAdmissions.size > 0 && owner.#recovering === 0) {
+      // Start saved intents; leave delivery and acknowledgement to the transport.
+      void owner
+        .recoverPending(async () => {})
+        .catch((error: unknown) => {
+          if (!owner.closing)
+            owner.logger.warn("Durable admission recovery failed", {
+              "event.name": "pi.recovery.failed",
+              "telegram.chat_id": owner.chatId,
+              "pi.session_id": owner.sessionId,
+              error,
+            })
+        })
+    }
     // Retained runs must free their reserved slots before new admission can proceed.
     this.harness.resume()
     this.#prompting++
     const release = await this.rootOwner.#admission.acquire()
     try {
       if (epoch !== this.rootOwner.#epoch || this.closing)
+        return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
+      const hasOlderInput = await owner.#outbox.admitPendingConversation(
+        this.#conversation.id,
+        () => epoch !== owner.#epoch || this.closing,
+      )
+      if (hasOlderInput && epoch === owner.#epoch && !this.closing)
+        await this.#conversation.waitForIdle(context)
+      if (epoch !== owner.#epoch || this.closing)
         return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       await this.configureInput()
       // Write recovery intent first. submit's request ID closes the crash window between the two commits.
