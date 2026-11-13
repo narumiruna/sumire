@@ -556,8 +556,12 @@ export function createDurableInspector(
             } else {
               item.version = integer(stored.version, true)
               try {
-                // Only the known definition version is approved. No arbitrary object recursion.
-                if (stored.version !== 1) throw new ProjectionError("invalid-value")
+                // Only known definition versions are approved. No arbitrary object recursion.
+                if (
+                  stored.version !== 1 &&
+                  !(doc.kind === "sumire.session" && stored.version === 2)
+                )
+                  throw new ProjectionError("invalid-value")
                 item.value = project(doc.kind, stored.value)
                 item.valueState = "available"
               } catch (error) {

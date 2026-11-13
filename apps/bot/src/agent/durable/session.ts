@@ -16,25 +16,27 @@ import type {
   AgentSessionEventListener,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
-import type {
-  CommitObservation,
-  Conversation,
-  ConversationId,
-  ConversationView,
-  EntryId,
-  EntryRecord,
-  Harness,
-  LiveState,
-  NestedToolExecutionResult,
-  Observation,
-  Registry,
-  TaskId,
+import {
+  AssistantEntry,
+  type CommitObservation,
+  type Conversation,
+  type ConversationId,
+  type ConversationView,
+  type EntryId,
+  type EntryRecord,
+  type Harness,
+  type LiveState,
+  type NestedToolExecutionResult,
+  type Observation,
+  type Registry,
+  type TaskId,
 } from "@earendil-works/pi-durable"
 
 import type { DurableInspectionQuery } from "@narumitw/sumire-contracts"
 import type { DurableInspectionReader } from "../../admin/durable-inspector.js"
 import { AdminError } from "../../admin/store.js"
 import type { Logger } from "../../logging.js"
+import { Semaphore } from "../../semaphore.js"
 import type { SessionAnswer, SessionHandle, SessionSettlement } from "../session-registry.js"
 import { assistantText, checkpointId, parseCheckpoint } from "./entries.js"
 import {
@@ -47,7 +49,14 @@ import {
 import { GeneratedMediaFiles } from "./media.js"
 import { forkCodemodeConversation } from "./migration.js"
 import { type DurableAnswer, DurableOutbox } from "./outbox.js"
-import { BotSessionDoc, OutboxDoc, type PendingResponse, type ResponseDelivery } from "./state.js"
+import {
+  BotSessionDoc,
+  ConversationPurposeDoc,
+  OutboxDoc,
+  type PendingResponse,
+  type ResponseDelivery,
+  validateBotSessionState,
+} from "./state.js"
 import { jsonValue, type NativeTool } from "./tools.js"
 
 /** Transport adapter only: Harness owns every model turn and tool task. */
@@ -63,11 +72,17 @@ export class DurableSession implements SessionHandle {
   #updates: Promise<void> = Promise.resolve()
   #closing?: Promise<void>
   #prompting = 0
+  readonly #promptWaiters = new Set<() => void>()
   #epoch = 0
   #lastEntries: readonly EntryRecord[] = []
   sessionId = ""
   #model: Model<Api>
   #thinkingLevel: ModelThinkingLevel = "off"
+  readonly #children = new Set<DurableSession>()
+  readonly #admission = new Semaphore(4)
+  readonly #resumedAdmissions = new Map<number, () => void>()
+  readonly #unsentAdmissions = new Map<string, Promise<() => void>>()
+  #recovering = 0
 
   private constructor(
     readonly harness: Harness,
@@ -86,10 +101,20 @@ export class DurableSession implements SessionHandle {
     private readonly authorizeMedia: () => void | Promise<void> = () => {
       throw new Error("Image delivery is unavailable")
     },
+    private readonly owner?: DurableSession,
   ) {
     this.#conversation = conversation
     this.#model = model
-    this.#outbox = new DurableOutbox(harness, new GeneratedMediaFiles(path.dirname(sessionFile)))
+    this.#outbox = new DurableOutbox(
+      harness,
+      new GeneratedMediaFiles(path.dirname(sessionFile)),
+      async (pending) => {
+        const root = this.rootOwner
+        const reserved = root.#unsentAdmissions.get(pending.requestId)
+        root.#unsentAdmissions.delete(pending.requestId)
+        return reserved ?? root.#admission.acquire()
+      },
+    )
   }
 
   static async open(options: {
@@ -109,7 +134,9 @@ export class DurableSession implements SessionHandle {
     chatId?: number
   }): Promise<DurableSession> {
     const root = await options.harness.root(context)
-    const saved = await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context)
+    const saved = validateBotSessionState(
+      await root.commit(async (tx) => ({ ...(await tx.doc(BotSessionDoc)) }), context),
+    )
     if (saved.trustKey && saved.trustKey !== options.trustKey) {
       // Fail closed after an authorization-policy change, before any pending task resumes.
       let cursor: import("@earendil-works/pi-durable").Cursor | undefined
@@ -137,7 +164,11 @@ export class DurableSession implements SessionHandle {
       saved.activeConversation as ConversationId,
       context,
     )
-    if (!conversation) throw new Error("Durable active conversation is missing")
+    if (
+      !conversation ||
+      !(await options.harness.conversation(saved.mainConversation as ConversationId, context))
+    )
+      throw new Error("Durable main or active conversation is missing")
     const agent = await conversation.agent(context)
     const restored = agent.model
       ? options.modelRuntime.getModel(agent.model.provider, agent.model.modelId)
@@ -174,7 +205,32 @@ export class DurableSession implements SessionHandle {
     )
     await session.#outbox.prepareFiles()
     await session.attach()
+    const pending = await options.harness.snapshot(OutboxDoc, context)
+    for (const id of new Set(pending?.pending.map((item) => item.conversationId))) {
+      if (id === conversation.id) continue
+      const retained = await options.harness.conversation(id, context)
+      if (!retained) throw new Error("Durable pending conversation is missing")
+      await session.attachChild(retained)
+    }
+    // Count live runs first. Queue unsent crash-window intents before admitting
+    // new foreground input, without starting scheduling during initialization.
+    for (const retained of [session, ...session.#children]) {
+      if (retained.isMainStreaming)
+        session.#resumedAdmissions.set(retained.#conversation.id, session.#admission.reserve())
+    }
+    for (const item of pending?.pending ?? []) {
+      const native = await options.harness.commit(
+        (tx) => tx.submissionByRequest(item.conversationId, item.requestId),
+        context,
+      )
+      if (!native && item.answerEntryId === undefined)
+        session.#unsentAdmissions.set(item.requestId, session.#admission.acquire())
+    }
     return session
+  }
+
+  get conversationId(): number {
+    return this.#conversation.id
   }
 
   async inspectDurable(query: DurableInspectionQuery, signal: AbortSignal) {
@@ -226,8 +282,25 @@ export class DurableSession implements SessionHandle {
     return this.entries.flatMap((entry) => entry.model ?? [])
   }
 
-  get isStreaming(): boolean {
+  private get rootOwner(): DurableSession {
+    return this.owner ?? this
+  }
+
+  private get closing(): boolean {
+    if (this.#closing) return true
+    return this.owner ? Boolean(this.owner.#closing) : false
+  }
+
+  get isMainStreaming(): boolean {
     return this.#prompting > 0 || this.#live?.run !== undefined
+  }
+
+  get isStreaming(): boolean {
+    return (
+      this.isMainStreaming ||
+      this.#recovering > 0 ||
+      [...this.#children].some((child) => child.isStreaming)
+    )
   }
 
   get isIdle(): boolean {
@@ -269,7 +342,7 @@ export class DurableSession implements SessionHandle {
       delivery?: ResponseDelivery
     } = {},
   ): Promise<SessionAnswer> {
-    const epoch = this.#epoch
+    const epoch = this.rootOwner.#epoch
     const requestId = randomUUID()
     const content = options.images?.length
       ? [{ type: "text" as const, text }, ...options.images]
@@ -283,11 +356,14 @@ export class DurableSession implements SessionHandle {
         }
       : undefined
     this.#prompting++
+    const release = await this.rootOwner.#admission.acquire()
     try {
+      if (epoch !== this.rootOwner.#epoch || this.closing)
+        return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       await this.configureInput()
       // Write recovery intent first. submit's request ID closes the crash window between the two commits.
       if (pending) await this.#outbox.record(pending)
-      if (epoch !== this.#epoch || this.#closing) {
+      if (epoch !== this.rootOwner.#epoch || this.closing) {
         await this.acknowledge(requestId)
         return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       }
@@ -295,7 +371,7 @@ export class DurableSession implements SessionHandle {
         { type: "input", content, requestId },
         context,
       )
-      if (epoch !== this.#epoch) {
+      if (epoch !== this.rootOwner.#epoch) {
         await this.#conversation.abort(context)
         return { text: "", settlement: { status: "unanswered", reason: "aborted" } }
       }
@@ -305,15 +381,19 @@ export class DurableSession implements SessionHandle {
         status: settled.status,
         ...(settled.status === "unanswered" ? { reason: durableReason(settled.reason) } : {}),
       }
-      if (this.#closing) return { text: "", settlement }
-      await this.#conversation.waitForIdle(context)
+      if (pending) await this.#outbox.waitForRelated(requestId)
+      if (this.closing) return { text: "", settlement }
       await this.refresh()
       await this.#updates
       const done = settled.status === "done" && settled.type === "input"
-      const answer = this.#lastEntries.findLast((entry) =>
-        entry.model?.some((message) => message.role === "assistant"),
-      )
-      const text = done ? assistantText(answer) : ""
+      const answer = done
+        ? await this.harness.commit((tx) => tx.entry(AssistantEntry, settled.answer), context)
+        : undefined
+      if (answer && answer.conversationId !== this.#conversation.id)
+        throw new Error("Durable answer belongs to another conversation")
+      const inputEntryId =
+        settled.entry === undefined ? undefined : `${this.#conversation.id}:${settled.entry}`
+      const text = assistantText(answer)
       if (pending) {
         const result = await this.#outbox.answer(requestId, text, answer)
         if (answer && (done || result.media?.length))
@@ -321,12 +401,28 @@ export class DurableSession implements SessionHandle {
         return {
           ...(done || result.media?.length ? result : { text: "", requestId }),
           settlement,
+          inputEntryId,
         }
       }
-      return { text, settlement, ...(done && answer ? { entryId: checkpointId(answer) } : {}) }
+      return {
+        text,
+        settlement,
+        inputEntryId,
+        ...(done && answer ? { entryId: checkpointId(answer) } : {}),
+      }
     } finally {
+      if (this.closing) release()
+      else void this.#conversation.waitForIdle(context).then(release, release)
       this.#prompting--
+      if (this.#prompting === 0) {
+        for (const finish of this.#promptWaiters) finish()
+        this.#promptWaiters.clear()
+      }
     }
+  }
+
+  private async waitForPrompts(): Promise<void> {
+    if (this.#prompting > 0) await new Promise<void>((resolve) => this.#promptWaiters.add(resolve))
   }
 
   async steer(text: string, images: ImageContent[] = []): Promise<"queued"> {
@@ -339,16 +435,37 @@ export class DurableSession implements SessionHandle {
     return "queued"
   }
 
-  async appendPassiveContext(text: string): Promise<void> {
+  async appendPassiveContext(
+    text: string,
+    onEntry?: (checkpoint: string) => void | Promise<void>,
+    messageId?: number,
+    onSettled?: () => void,
+  ): Promise<void> {
     const entry = {
       kind: "telegram-passive-context",
-      data: { content: text },
+      data: { content: text, ...(messageId === undefined ? {} : { telegramMessageId: messageId }) },
       model: [{ role: "user" as const, content: text, timestamp: Date.now() }],
     }
     // Writes are durably queued while busy, without starting or steering a turn.
     // Harness places them at the next boundary before subsequent addressed inputs.
     await this.configureInput()
-    await this.#conversation.submit({ type: "write", entry }, context)
+    const submission = await this.#conversation.submit({ type: "write", entry }, context)
+    if (onEntry || onSettled) {
+      void submission
+        .wait(context)
+        .then(async (settled) => {
+          if (settled.status === "done" && settled.type === "write" && !this.closing)
+            await onEntry?.(`${this.#conversation.id}:${settled.entry}`)
+        })
+        .catch((error) => {
+          if (!this.closing)
+            this.logger.warn("Passive checkpoint capture failed", {
+              "event.name": "pi.reply_mapping.failed",
+              error,
+            })
+        })
+        .finally(onSettled)
+    }
     await this.refresh()
   }
 
@@ -400,26 +517,58 @@ export class DurableSession implements SessionHandle {
   }
 
   async abort(): Promise<void> {
-    if (this.#closing) return
-    this.#epoch++
-    // Invalidate delivery intents before cancellation can settle any waiting recovery handler.
-    await this.#outbox.clear()
-    await this.#conversation.abort(context)
-    await this.refresh()
+    const owner = this.rootOwner
+    if (owner.closing) return
+    owner.#epoch++
+    const children = [...owner.#children]
+    // Invalidate all delivery intents before any abort can settle a recovery waiter.
+    await owner.#outbox.clear()
+    owner.releaseUnsentAdmissions()
+    let cursor: import("@earendil-works/pi-durable").Cursor | undefined
+    do {
+      const page = await this.harness.commit((tx) => tx.scanConversations({}, 100, cursor), context)
+      await Promise.all(
+        page.items.map(async (record) => {
+          await (await this.harness.conversation(record.id, context))?.abort(context, {
+            background: true,
+          })
+        }),
+      )
+      cursor = page.next
+    } while (cursor)
+    await Promise.all(children.map((child) => child.waitForPrompts()))
+    await Promise.all(children.map((child) => child.dispose()))
+    await owner.refresh()
   }
 
   dispose(): Promise<void> {
     this.#closing ??= (async () => {
+      const children = [...this.#children]
+      if (!this.owner) {
+        for (const release of this.#resumedAdmissions.values()) release()
+        this.#resumedAdmissions.clear()
+        this.releaseUnsentAdmissions()
+      }
       try {
         await this.detach()
+        await Promise.all(children.map((child) => child.dispose()))
       } finally {
-        try {
-          await this.harness.close(context)
-        } finally {
+        if (this.owner) {
+          this.owner.#children.delete(this)
+          this.#listeners.clear()
+        } else {
           try {
-            await this.cleanup()
+            await this.harness.close(context)
           } finally {
-            this.#listeners.clear()
+            try {
+              await Promise.all([
+                this.waitForPrompts(),
+                ...children.map((child) => child.waitForPrompts()),
+              ])
+              await this.cleanup()
+            } finally {
+              this.#listeners.clear()
+            }
           }
         }
       }
@@ -428,8 +577,30 @@ export class DurableSession implements SessionHandle {
   }
 
   async acknowledge(requestId: string): Promise<void> {
-    if (this.#closing) return
+    if (this.closing) return
+    const response = (await this.harness.snapshot(OutboxDoc, context))?.pending.find(
+      (item) => item.requestId === requestId,
+    )
     await this.#outbox.acknowledge(requestId)
+    const owner = this.rootOwner
+    const child = [...owner.#children].find(
+      (item) => item.conversationId === response?.conversationId,
+    )
+    if (!child) return
+    // Only this response may release its handle; unrelated acknowledgements must
+    // not dispose a child that is being created or is waiting for admission.
+    void child.#conversation
+      .waitForIdle(context)
+      .then(async () => {
+        const pending = await this.harness.snapshot(OutboxDoc, context)
+        if (
+          !owner.closing &&
+          !child.isStreaming &&
+          !pending?.pending.some((item) => item.conversationId === child.conversationId)
+        )
+          await child.dispose()
+      })
+      .catch(() => {})
   }
 
   async hasPendingResponses(): Promise<boolean> {
@@ -461,13 +632,146 @@ export class DurableSession implements SessionHandle {
   async recoverPending(
     deliver: (answer: DurableAnswer, delivery: ResponseDelivery) => Promise<void>,
   ): Promise<void> {
-    await this.#outbox.recoverPending(
-      async (answer, delivery) => {
-        await this.refresh()
-        await deliver(answer, delivery)
+    this.#recovering++
+    try {
+      await this.#outbox.recoverPending(
+        async (answer, delivery) => {
+          await this.refresh()
+          await deliver(answer, delivery)
+        },
+        () => this.closing,
+      )
+    } finally {
+      this.#recovering--
+    }
+  }
+
+  async createConversation(
+    checkpoint?: string,
+    purpose: "article" | "reply" = checkpoint ? "reply" : "article",
+  ): Promise<SessionHandle> {
+    const owner = this.rootOwner
+    if (owner.closing) throw new Error("Durable owner is closing")
+    let conversation: Conversation
+    if (checkpoint) {
+      const target = parseCheckpoint(checkpoint)
+      const source = target && (await this.harness.conversation(target.conversationId, context))
+      if (!target || !source || !(await this.findEntry(checkpoint)))
+        throw new Error("Durable checkpoint is missing")
+      conversation = await forkCodemodeConversation(this.harness, source, target.entryId, context)
+    } else {
+      conversation = await this.harness.createConversation(
+        {
+          ownership: { kind: "ownerless" },
+          agent: {
+            model: { provider: owner.model.provider, modelId: owner.model.id },
+            thinkingLevel: owner.thinkingLevel,
+            cwd: owner.cwd,
+          },
+        },
+        context,
+      )
+    }
+    await conversation.configure(
+      {
+        model: { provider: owner.model.provider, modelId: owner.model.id },
+        thinkingLevel: owner.thinkingLevel,
+        cwd: owner.cwd,
       },
-      () => Boolean(this.#closing),
+      context,
     )
+    await conversation.commit(async (tx) => {
+      ;(await tx.doc(ConversationPurposeDoc, conversation.id)).purpose = purpose
+    }, context)
+    return owner.attachChild(conversation)
+  }
+
+  private async attachChild(conversation: Conversation): Promise<DurableSession> {
+    const owner = this.rootOwner
+    const existing = [...owner.#children].find(
+      (child) => child.#conversation.id === conversation.id,
+    )
+    if (existing) return existing
+    const child = new DurableSession(
+      this.harness,
+      conversation,
+      this.sessionFile,
+      this.cwd,
+      this.model,
+      this.modelRuntime,
+      this.registry,
+      this.systemPrompt,
+      this.nativeTools,
+      this.logger,
+      async () => {},
+      undefined,
+      this.chatId,
+      this.authorizeMedia,
+      owner,
+    )
+    child.sessionId = owner.sessionId
+    child.#thinkingLevel = owner.thinkingLevel
+    owner.#children.add(child)
+    try {
+      await child.attach()
+      if (owner.closing) throw new Error("Durable owner is closing")
+      return child
+    } catch (error) {
+      await child.dispose()
+      throw error
+    }
+  }
+
+  async hasPendingStatus(messageId: number): Promise<boolean> {
+    return Boolean(
+      (await this.harness.snapshot(OutboxDoc, context))?.pending.some(
+        (item) => item.delivery.statusMessageId === messageId,
+      ),
+    )
+  }
+
+  async resolvePendingReply(messageId: number): Promise<string | undefined> {
+    const pending = (await this.harness.snapshot(OutboxDoc, context))?.pending.find(
+      (item) =>
+        item.delivery.sourceMessageId === messageId || item.delivery.statusMessageId === messageId,
+    )
+    if (!pending) {
+      const history = await this.#conversation.entries(
+        { order: "descending" },
+        1_000,
+        undefined,
+        context,
+      )
+      const passive = history.items.find(
+        (entry) =>
+          entry.kind === "telegram-passive-context" &&
+          (entry.data as { telegramMessageId?: number } | undefined)?.telegramMessageId ===
+            messageId,
+      )
+      return passive ? checkpointId(passive) : undefined
+    }
+    const record = await this.harness.commit(
+      (tx) => tx.submissionByRequest(pending.conversationId, pending.requestId),
+      context,
+    )
+    if (!record) return undefined
+    const submission = await this.harness.submission(record.id, context)
+    const settled = await submission?.wait(context)
+    if (this.closing) return undefined
+    const entryId =
+      pending.delivery.sourceMessageId === messageId
+        ? settled?.entry
+        : settled?.status === "done" && settled.type === "input"
+          ? settled.answer
+          : undefined
+    if (entryId === undefined) return undefined
+    const entry = await this.harness.commit((tx) => tx.entry(entryId), context)
+    return entry?.conversationId === pending.conversationId ? checkpointId(entry) : undefined
+  }
+
+  private releaseUnsentAdmissions(): void {
+    for (const permit of this.#unsentAdmissions.values()) void permit.then((release) => release())
+    this.#unsentAdmissions.clear()
   }
 
   private async configureInput(): Promise<void> {
@@ -544,6 +848,10 @@ export class DurableSession implements SessionHandle {
     const pending: ConversationView[] = []
     const receive = (value: ConversationView): void => {
       this.#live = value.docs["pi.live"] as LiveState | undefined
+      if (!this.#live?.run) {
+        this.rootOwner.#resumedAdmissions.get(conversationId)?.()
+        this.rootOwner.#resumedAdmissions.delete(conversationId)
+      }
       if (!previous) {
         // An observation can advance before its attachment promise resolves.
         pending.push(value)

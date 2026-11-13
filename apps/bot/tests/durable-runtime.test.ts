@@ -752,7 +752,7 @@ describe("durable bot runtime", () => {
   })
 
   it.each(["steer", "followUp"] as const)(
-    "delivers the final idle response after queued %s input",
+    "keeps its native answer when later %s input produces another answer",
     async (intent) => {
       const fixture = await setup()
       const session = await fixture.createSession()
@@ -766,13 +766,16 @@ describe("durable bot runtime", () => {
         await vi.waitFor(() => expect(fixture.requests).toHaveLength(1))
         await session[intent]("queued input")
         release()
-        expect(await pending).toMatchObject({ text: "Final queued answer" })
+        const answered = await pending
+        expect(answered).toMatchObject({ text: "Intermediate answer" })
+        await session.waitForIdle()
+        expect(answered.entryId).not.toBe(session.getCheckpoint())
         await session.dispose()
         const reopened = await fixture.createSession()
         const deliver = vi.fn(async () => {})
         await reopened.recoverPending(deliver)
         expect(deliver).toHaveBeenCalledWith(
-          expect.objectContaining({ text: "Final queued answer" }),
+          expect.objectContaining({ text: "Intermediate answer" }),
           expect.anything(),
         )
         expect(fixture.requests).toHaveLength(2)
