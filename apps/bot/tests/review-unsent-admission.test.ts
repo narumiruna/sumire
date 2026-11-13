@@ -31,6 +31,9 @@ describe("cold unsent outbox admission", () => {
     { routing: "article", startupFailure: false, action: "overlap recovery" },
     { routing: "main", startupFailure: false, action: "cancel" },
     { routing: "main", startupFailure: false, action: "main failure" },
+    { routing: "reply", startupFailure: false, action: "reply status" },
+    { routing: "reply", startupFailure: false, action: "reply input" },
+    { routing: "reply", startupFailure: false, action: "cancel" },
   ] as const)(
     "starts older intents before fresh $routing work (startup failure: $startupFailure, $action)",
     async ({ routing, startupFailure, action }) => {
@@ -139,6 +142,12 @@ describe("cold unsent outbox admission", () => {
           routing,
           delivery: { sourceMessageId: 60, statusMessageId: 1060, mode: "default" },
           onAccepted: accepted,
+          ...(routing === "reply"
+            ? {
+                replyToMessageId: action === "reply input" ? 10 : 1010,
+                unresolvedReplyPrompt: "NO-HISTORY FALLBACK",
+              }
+            : {}),
         })
         void foreground.catch(() => {})
         // No explicit recover or Harness.resume: foreground must start the older inputs.
@@ -227,6 +236,30 @@ describe("cold unsent outbox admission", () => {
         expect(accepted).toHaveBeenCalledOnce()
         expect(gates).toHaveLength(5)
         expect(pi.requests).toHaveLength(5)
+        if (routing === "reply") {
+          const replyPoint = await owner().harness.commit(async (tx) => {
+            const item = (await tx.doc(OutboxDoc)).pending.find(
+              (item) => item.delivery.sourceMessageId === 60,
+            )
+            const source = pending[0]
+            if (!item || !source) throw new Error("Missing reply or source fixture")
+            return {
+              fork: await tx.conversation(item.conversationId),
+              source: await tx.submissionByRequest(source.conversationId, source.requestId),
+            }
+          }, context)
+          const source = replyPoint.source
+          if (source?.type !== "input" || source.status !== "done")
+            throw new Error("Missing settled reply source")
+          expect(replyPoint.fork?.parent).toEqual({
+            conversationId: pending[0]?.conversationId,
+            at: action === "reply input" ? source.entry : source.answer,
+          })
+          const replyText = JSON.stringify(pi.requests[4]?.messages)
+          expect(replyText).toContain("Older unsent article 0")
+          expect(replyText).not.toContain("NO-HISTORY FALLBACK")
+          if (action === "reply input") expect(replyText).not.toContain("Offline unsent answer 1")
+        }
         const native = await owner().harness.commit(
           (tx) =>
             Promise.all(

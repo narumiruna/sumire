@@ -357,22 +357,7 @@ export class DurableSession implements SessionHandle {
         }
       : undefined
     const owner = this.rootOwner
-    if (owner.#unsentAdmissions.size > 0 && owner.#recovering === 0) {
-      // Start saved intents; leave delivery and acknowledgement to the transport.
-      void owner
-        .recoverPending(async () => {})
-        .catch((error: unknown) => {
-          if (!owner.closing)
-            owner.logger.warn("Durable admission recovery failed", {
-              "event.name": "pi.recovery.failed",
-              "telegram.chat_id": owner.chatId,
-              "pi.session_id": owner.sessionId,
-              error,
-            })
-        })
-    }
-    // Retained runs must free their reserved slots before new admission can proceed.
-    this.harness.resume()
+    this.resumePendingAdmissions()
     this.#prompting++
     let release: (() => void) | undefined
     try {
@@ -762,10 +747,14 @@ export class DurableSession implements SessionHandle {
   }
 
   async resolvePendingReply(messageId: number): Promise<string | undefined> {
+    const owner = this.rootOwner
+    const epoch = owner.#epoch
+    const isStale = () => this.closing || epoch !== owner.#epoch
     const pending = (await this.harness.snapshot(OutboxDoc, context))?.pending.find(
       (item) =>
         item.delivery.sourceMessageId === messageId || item.delivery.statusMessageId === messageId,
     )
+    if (isStale()) return undefined
     if (!pending) {
       const history = await this.#conversation.entries(
         { order: "descending" },
@@ -781,14 +770,23 @@ export class DurableSession implements SessionHandle {
       )
       return passive ? checkpointId(passive) : undefined
     }
-    const record = await this.harness.commit(
-      (tx) => tx.submissionByRequest(pending.conversationId, pending.requestId),
-      context,
-    )
+    const readSubmission = () =>
+      this.harness.commit(
+        (tx) => tx.submissionByRequest(pending.conversationId, pending.requestId),
+        context,
+      )
+    let record = await readSubmission()
+    if (isStale()) return undefined
+    if (!record && pending.answerEntryId === undefined) {
+      this.resumePendingAdmissions()
+      await owner.#outbox.admitPendingConversation(pending.conversationId, isStale)
+      if (isStale()) return undefined
+      record = await readSubmission()
+    }
     if (!record) return undefined
     const submission = await this.harness.submission(record.id, context)
     const settled = await submission?.wait(context)
-    if (this.closing) return undefined
+    if (isStale()) return undefined
     const entryId =
       pending.delivery.sourceMessageId === messageId
         ? settled?.entry
@@ -798,6 +796,26 @@ export class DurableSession implements SessionHandle {
     if (entryId === undefined) return undefined
     const entry = await this.harness.commit((tx) => tx.entry(entryId), context)
     return entry?.conversationId === pending.conversationId ? checkpointId(entry) : undefined
+  }
+
+  private resumePendingAdmissions(): void {
+    const owner = this.rootOwner
+    if (owner.#unsentAdmissions.size > 0 && owner.#recovering === 0) {
+      // Start saved intents; leave delivery and acknowledgement to the transport.
+      void owner
+        .recoverPending(async () => {})
+        .catch((error: unknown) => {
+          if (!owner.closing)
+            owner.logger.warn("Durable admission recovery failed", {
+              "event.name": "pi.recovery.failed",
+              "telegram.chat_id": owner.chatId,
+              "pi.session_id": owner.sessionId,
+              error,
+            })
+        })
+    }
+    // Retained runs must free their reserved slots before new admission can proceed.
+    this.harness.resume()
   }
 
   private releaseUnsentAdmissions(): void {
