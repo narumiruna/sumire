@@ -26,6 +26,52 @@ import { extractTruthSocialPost } from "../src/loaders/truthsocial.js"
 import { renderFxTwitterPayload, TwitterLoader, toFxTwitterApiUrl } from "../src/loaders/twitter.js"
 
 describe("source loaders", () => {
+  it.each([
+    { name: "HTTP", LoaderClass: HttpLoader },
+    { name: "curl", LoaderClass: CurlCffiLoader },
+  ])(
+    "keeps semantic article content ahead of the source budget with $name",
+    async ({ LoaderClass }) => {
+      const html = `<nav>${"Site navigation ".repeat(1_000)}</nav>
+        <main><button>Copy page</button><header><h1>Persistent agents</h1></header>
+        <nav>Article navigation</nav><article><p>Opening body.</p>
+        <h2>Boundaries</h2><p>Closing body.</p></article></main><footer>Site footer</footer>`
+      let content: Buffer = Buffer.from(html)
+      const fetch = vi.fn(
+        async () => new Response(html, { headers: { "content-type": "text/html" } }),
+      )
+      const get = vi.fn(async (_url: string, options: Record<string, unknown>) => {
+        ;(options.contentCallback as (chunk: Buffer) => void)(content)
+        return {
+          status: 200,
+          get text() {
+            return content.toString()
+          },
+          headers: new Headers({ "content-type": "text/html" }),
+          setContent: (value: Buffer) => {
+            content = value
+          },
+          close: async () => undefined,
+        }
+      })
+      const resources = {
+        fetch,
+        validateUrl: async (input: string | URL) => new URL(input),
+        impersProxy: async () => "http://127.0.0.1:8080",
+        impersSession: async () => ({ get }),
+      } as unknown as ResourceProvider
+
+      const result = await new LoaderClass({ resources }).load("https://example.com/article")
+
+      expect(result).toBe("# Persistent agents\nOpening body.\n## Boundaries\nClosing body.")
+      expect(result.length).toBeLessThan(12_000)
+      expect(LoaderClass === HttpLoader ? fetch : get).toHaveBeenCalledExactlyOnceWith(
+        "https://example.com/article",
+        expect.any(Object),
+      )
+    },
+  )
+
   it("normalizes GitHub blob URLs and preserves raw content", async () => {
     const resources = {
       fetch: async (input: string | URL) => {
@@ -217,17 +263,19 @@ describe("source loaders", () => {
     ).rejects.toThrow("3 byte limit")
   })
 
-  it("preserves literal HTML tags in non-HTML textual HTTP responses", async () => {
-    const text = "<script>const demo = 1;</script>\n<style>body { color: red; }</style>"
-    const resources = {
-      fetch: async () =>
-        new Response(text, { headers: { "content-type": "text/plain; charset=utf-8" } }),
-    } as unknown as ResourceProvider
+  it.each(["text/plain; charset=utf-8", "text/markdown", "application/json", "application/xml"])(
+    "preserves literal HTML tags in non-HTML textual HTTP responses: %s",
+    async (contentType) => {
+      const text = "<script>const demo = 1;</script>\n<style>body { color: red; }</style>"
+      const resources = {
+        fetch: async () => new Response(text, { headers: { "content-type": contentType } }),
+      } as unknown as ResourceProvider
 
-    await expect(
-      new HttpLoader({ resources }).load("https://example.com/example.txt"),
-    ).resolves.toBe(text)
-  })
+      await expect(
+        new HttpLoader({ resources }).load("https://example.com/example.txt"),
+      ).resolves.toBe(text)
+    },
+  )
 
   it("converts XHTML responses as HTML instead of returning raw markup", async () => {
     const resources = {
@@ -243,38 +291,41 @@ describe("source loaders", () => {
     )
   })
 
-  it("preserves literal HTML tags in non-HTML textual impers responses", async () => {
-    const text = "<template>literal snippet</template>"
-    let content: Buffer = Buffer.from(text)
-    const session = {
-      get: async (_url: string, options: Record<string, unknown>) => {
-        ;(options.contentCallback as (chunk: Buffer) => void)(content)
-        return {
-          status: 200,
-          get text() {
-            return content.toString()
-          },
-          headers: {
-            get: (name: string) => (name === "content-type" ? "text/plain" : null),
-          },
-          setContent: (value: Buffer) => {
-            content = value
-          },
-          close: async () => undefined,
-        }
-      },
-      close: async () => undefined,
-    } as unknown as ImpersSession
-    const resources = {
-      validateUrl: async (input: string | URL) => new URL(input),
-      impersProxy: async () => "http://127.0.0.1:8080",
-      impersSession: async () => session,
-    } as unknown as ResourceProvider
+  it.each(["text/plain", "text/markdown", "application/json", "application/xml"])(
+    "preserves literal HTML tags in non-HTML textual impers responses: %s",
+    async (contentType) => {
+      const text = "<template>literal snippet</template>"
+      let content: Buffer = Buffer.from(text)
+      const session = {
+        get: async (_url: string, options: Record<string, unknown>) => {
+          ;(options.contentCallback as (chunk: Buffer) => void)(content)
+          return {
+            status: 200,
+            get text() {
+              return content.toString()
+            },
+            headers: {
+              get: (name: string) => (name === "content-type" ? contentType : null),
+            },
+            setContent: (value: Buffer) => {
+              content = value
+            },
+            close: async () => undefined,
+          }
+        },
+        close: async () => undefined,
+      } as unknown as ImpersSession
+      const resources = {
+        validateUrl: async (input: string | URL) => new URL(input),
+        impersProxy: async () => "http://127.0.0.1:8080",
+        impersSession: async () => session,
+      } as unknown as ResourceProvider
 
-    await expect(
-      new CurlCffiLoader({ resources }).load("https://example.com/example.txt"),
-    ).resolves.toBe(text)
-  })
+      await expect(
+        new CurlCffiLoader({ resources }).load("https://example.com/example.txt"),
+      ).resolves.toBe(text)
+    },
+  )
 
   it("loads an HTML article provided entirely through noscript", async () => {
     const resources = {
@@ -298,6 +349,19 @@ describe("source loaders", () => {
             headers: { "content-type": "text/html" },
           },
         ),
+    } as unknown as ResourceProvider
+
+    await expect(new HttpLoader({ resources }).load("https://example.com/page")).rejects.toThrow(
+      LoaderContentError,
+    )
+  })
+
+  it.each([
+    "<main><script>noise()</script><style>noise</style></main>",
+    "<nav>Site menu</nav><main><button>Copy</button><h1>Just a moment...</h1>Checking your browser</main>",
+  ])("rejects empty or challenge content after semantic selection: %s", async (html) => {
+    const resources = {
+      fetch: async () => new Response(html, { headers: { "content-type": "text/html" } }),
     } as unknown as ResourceProvider
 
     await expect(new HttpLoader({ resources }).load("https://example.com/page")).rejects.toThrow(

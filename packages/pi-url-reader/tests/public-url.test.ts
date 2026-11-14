@@ -13,6 +13,8 @@ import {
 } from "../src/public-url.js"
 import { createUrlTool } from "../src/url-tool.js"
 
+type SourceLoad = NonNullable<Parameters<typeof loadPublicUrl>[1]["urlContentLoadImplementation"]>
+
 const options = {
   allowedSchemes: new Set(["http", "https"]),
   maxChars: 100,
@@ -516,6 +518,113 @@ describe("public URL loading", () => {
       loaderNames: ["httpx"],
       signal: expect.any(AbortSignal),
     })
+  })
+
+  it("keeps a complete short article when preceding navigation exceeds the 12,000-character budget", async () => {
+    const url = "https://8.8.8.8/generic-article"
+    const navigation = "Navigation fixture link ".repeat(700)
+    const article = `<header><h1>Generic article fixture</h1></header>
+      <article><header><h2>Article section fixture</h2></header>
+      <p>Opening paragraph of the short article.</p>
+      <p>Closing paragraph of the short article.</p></article>`
+    const transport = vi.fn(
+      async () =>
+        new Response(
+          `<html><body><nav>${navigation}</nav><main>${article}
+          <nav>Article navigation control</nav><button>Copy article control</button>
+        </main></body></html>`,
+          { headers: { "content-type": "text/html; charset=utf-8" } },
+        ),
+    )
+    const source = vi.fn<SourceLoad>(async (target, sourceOptions) => {
+      await using client = new UrlContentClient({
+        allowedSchemes: sourceOptions.allowedSchemes,
+        deadlineSeconds: sourceOptions.deadlineSeconds,
+        fetchImplementation: transport,
+      }).start()
+      return await client.loadUrlDetailed(target, {
+        loaderNames: ["httpx"],
+        signal: sourceOptions.signal,
+      })
+    })
+
+    const result = await loadPublicUrl(url, {
+      ...options,
+      maxChars: 12_000,
+      urlContentTimeoutSeconds: 12,
+      urlContentLoadImplementation: source,
+    })
+
+    expect(navigation.length).toBeGreaterThan(12_000)
+    expect(result).toMatchObject({
+      url,
+      finalUrl: url,
+      source: "url-content",
+      loaderId: "httpx",
+      text: htmlToMarkdown(article),
+      truncated: false,
+    })
+    expect(result.text).toContain("# Generic article fixture")
+    expect(result.text).toContain("## Article section fixture")
+    expect(result.text).toContain("Opening paragraph of the short article.")
+    expect(result.text).toContain("Closing paragraph of the short article.")
+    expect(result.text.length).toBeLessThan(12_000)
+    expect(result.text).not.toContain("Navigation fixture link")
+    expect(result.text).not.toContain("Article navigation control")
+    expect(result.text).not.toContain("Copy article control")
+    expect(source).toHaveBeenCalledOnce()
+    expect(source).toHaveBeenCalledWith(url, expect.any(Object))
+    expect(transport).toHaveBeenCalledExactlyOnceWith(new URL(url), expect.any(Object))
+  })
+
+  it("preserves the existing truncation marker for an oversized selected article", async () => {
+    const url = "https://8.8.8.8/oversized-generic-article"
+    const article = `<article><header><h1>Oversized article fixture</h1></header>
+      <p>Opening paragraph of the oversized article.</p>
+      <p>${"Article fixture body text. ".repeat(700)}</p>
+      <p>Closing paragraph of the oversized article.</p></article>`
+    const content = htmlToMarkdown(article)
+    const transport = vi.fn(
+      async () =>
+        new Response(
+          `<html><body><nav>${"Navigation fixture link ".repeat(700)}</nav>${article}</body></html>`,
+          { headers: { "content-type": "text/html" } },
+        ),
+    )
+    const source = vi.fn<SourceLoad>(async (target, sourceOptions) => {
+      await using client = new UrlContentClient({
+        allowedSchemes: sourceOptions.allowedSchemes,
+        deadlineSeconds: sourceOptions.deadlineSeconds,
+        fetchImplementation: transport,
+      }).start()
+      return await client.loadUrlDetailed(target, {
+        loaderNames: ["httpx"],
+        signal: sourceOptions.signal,
+      })
+    })
+
+    const result = await loadPublicUrl(url, {
+      ...options,
+      maxChars: 12_000,
+      urlContentTimeoutSeconds: 12,
+      urlContentLoadImplementation: source,
+    })
+
+    expect(content.length).toBeGreaterThan(12_000)
+    expect(result).toMatchObject({
+      url,
+      finalUrl: url,
+      source: "url-content",
+      loaderId: "httpx",
+      text: `${content.slice(0, 12_000)}\n\n[truncated by telegramagent: ${content.length} -> 12000 chars]`,
+      truncated: true,
+    })
+    expect(result.text).toContain("# Oversized article fixture")
+    expect(result.text).toContain("Opening paragraph of the oversized article.")
+    expect(result.text).not.toContain("Closing paragraph of the oversized article.")
+    expect(result.text).not.toContain("Navigation fixture link")
+    expect(source).toHaveBeenCalledOnce()
+    expect(transport).toHaveBeenCalledExactlyOnceWith(new URL(url), expect.any(Object))
   })
 
   it("keeps the document heading in bounded source-aware output after removing page assets", async () => {

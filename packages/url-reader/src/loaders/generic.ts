@@ -7,7 +7,7 @@ import type { ImpersSession, ResourceProvider } from "../core/resources.js"
 import type { RetrievedHtml } from "../core/retrieval.js"
 import { DEFAULT_BROWSER_TIMEOUT_MS, fetchBrowserHtml } from "./browser.js"
 import { ensureUsableContent } from "./content-guard.js"
-import { htmlToMarkdown } from "./utils.js"
+import { genericHtmlToMarkdown } from "./utils.js"
 
 export const DEFAULT_HTTP_TIMEOUT_MS = 20_000
 export const DEFAULT_PLAYWRIGHT_TIMEOUT_MS = DEFAULT_BROWSER_TIMEOUT_MS
@@ -27,7 +27,7 @@ export const DEFAULT_HTTP_HEADERS = {
 function readableText(response: RetrievedHtml): string {
   const mediaType = response.contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
   return !mediaType || mediaType === "text/html" || mediaType === "application/xhtml+xml"
-    ? htmlToMarkdown(response.content)
+    ? genericHtmlToMarkdown(response.content)
     : response.content.trim()
 }
 
@@ -352,7 +352,7 @@ export class PlaywrightLoader implements Loader {
         : {}),
       signal,
     })
-    const result = htmlToMarkdown(content)
+    const result = genericHtmlToMarkdown(content)
     ensureUsableContent(result, { loaderName: "PlaywrightLoader", url })
     return result
   }

@@ -54,6 +54,22 @@ URL loading is async-only because JavaScript has no safe synchronous equivalent.
 
 The one-shot API accepts `allowedSchemes: new Set(["https"])` to restrict network targets to HTTPS. The same option is available on the `UrlContentClient` constructor. The default permits public HTTP and HTTPS; the option can restrict that set, not permit other protocols. The client copies the set and applies it to initial targets, local fetch redirects, browser requests, curl redirect validation and proxy forwarding, and reported Firecrawl final targets. Firecrawl intermediate redirects and navigation inside third-party transcript/media tools are not independently inspected by this policy.
 
+## Generic HTML extraction
+
+HTTP, curl, and Playwright use the same content selection before Markdown conversion:
+
+- Ignore scripts, styles, and templates when selecting a region.
+- Prefer outermost `main` regions. This keeps titles and summaries outside a nested `article`.
+- If the selected `main` regions produce no readable Markdown, use outermost `article` regions instead.
+- Combine regions of the selected type in document order. Do not select only the first article card or repeat nested regions.
+- Exclude regions inside `nav` or `button` elements. Remove `nav` and `button` descendants from selected regions.
+- Keep content headers, footers, and asides within selected regions, including article headings, attribution, and qualifications.
+- If neither region type produces readable Markdown, retain the existing whole-document conversion.
+
+Readable `noscript` fallbacks and encoded code examples remain supported. HTTP and curl preserve non-HTML text, including Markdown, JSON, and XML, without HTML conversion. Source-specific converters and the exported `htmlToMarkdown` and `extractFirstTagSubtree` helpers keep their existing behavior.
+
+Callers apply their output limits after extraction. The bot's `/f` source loader and `read_url_content` therefore share this selection without increasing their 12,000-character limit. Genuinely oversized selected content is still truncated. Selection does not change URLs, fetch a Markdown alternative, or bypass network safety checks.
+
 ## Reusable client
 
 A client must be started before use and closed when finished. It lazily owns one `impers` session and one Playwright browser.

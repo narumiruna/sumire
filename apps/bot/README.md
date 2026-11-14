@@ -440,6 +440,20 @@ Both the tool and `/f` enable a final generic Firecrawl fallback (30-second cap)
 
 Telegram sends URL-only messages, summary requests, and short follow-ups through the normal Pi conversation path. The agent decides when to call `read_url_content`; the Telegram router does not prefetch URLs or retain pending URL state. For URL-only messages, the system prompt instructs the agent to read the URL in the current message first and not substitute an older or unrelated page. Tool results and follow-up context use Pi Durable's conversation lifecycle.
 
+### Generic article extraction
+
+HTTP, curl, and Playwright select readable outer `main` regions before applying the output limit. If these regions are empty, they select outer `article` regions. Selected regions retain headings and article-local headers, footers, and asides. Navigation and buttons are removed. Multiple regions of the selected type stay in document order. Pages without usable semantic regions retain whole-document conversion. `/f` and `read_url_content` use the same extraction; truly oversized articles still report truncation.
+
+### Article extraction deployment check
+
+The operator owns deployment and the live Telegram check. Run this check only after the required repository checks pass and deployment plus model/publication costs are authorized:
+
+1. From the repository root, deploy with `docker compose up -d --build sumire`.
+2. Send `/f https://developers.openai.com/blog/securing-persistent-agents-like-openclaw-at-openai` through an approved Telegram chat.
+3. Confirm that the published article covers the source body rather than site navigation. Check URL-loading telemetry for the selected loader, content length, and truncation state.
+
+Local regression tests use mocked transports. They do not verify the production deployment, live model output, Morsel publication, or Telegram delivery. These paths remain unverified until the operator records this check. Do not treat local test success as deployment evidence. If extraction regresses, restore the previous approved image; no database migration or transcript rewrite is needed. The source URL with `.md` appended is a temporary workaround for this article.
+
 ### URL failure messages
 
 `/f` reports the failed source by its position in the input. It uses the same safe failure facts as `read_url_content` and diagnostic logs. A failure does not submit an incomplete article to Pi or publish it. Ordinary URL tool failures return `isError: true` with structured details; Pi uses those details to answer the user.
