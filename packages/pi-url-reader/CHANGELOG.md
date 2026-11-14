@@ -1,5 +1,13 @@
 # @narumitw/sumire-pi-url-reader
 
+## 0.7.6
+
+### Patch Changes
+
+- d8b0eac: Select semantic article content before generic HTML output is truncated. Share the same extraction across HTTP, curl, and Playwright so `/f` and `read_url_content` keep article titles and body text instead of spending their source budget on site navigation. Preserve existing limits, network safeguards, non-HTML text, and whole-document fallback.
+- Updated dependencies [d8b0eac]
+  - @narumitw/sumire-url-reader@0.27.1
+
 ## 0.7.5
 
 ### Patch Changes
