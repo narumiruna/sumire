@@ -1,4 +1,5 @@
 import { createUrlTool } from "@narumitw/sumire-pi-url-reader"
+import { UrlContentClient } from "@narumitw/sumire-url-reader"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { loadArticleSourceUrls } from "../src/blog-post/source.js"
 import { loadSettings } from "../src/config/settings.js"
@@ -28,6 +29,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.cleanup()
+  vi.restoreAllMocks()
   vi.clearAllMocks()
 })
 
@@ -62,6 +64,95 @@ describe("shared bot URL loading", () => {
       expect(mocks.fetchTranscript).toHaveBeenCalledWith("TDkH3EbWTYc", { lang: "zh-TW" })
     },
   )
+
+  it("loads the same complete generic article once per entry point despite navigation exceeding the source budget", async () => {
+    const target =
+      "https://developers.openai.com/blog/securing-persistent-agents-like-openclaw-at-openai"
+    const navigation = "Navigation fixture link ".repeat(700)
+    const html = `<html><body><nav>${navigation}</nav>
+      <main><header><h1>Generic article fixture</h1></header>
+      <article><header><h2>Article section fixture</h2></header>
+        <p>Opening paragraph of the short article.</p>
+        <p>Closing paragraph of the short article.</p>
+      </article><nav>Article navigation control</nav><button>Copy article control</button></main>
+    </body></html>`
+    const get = vi.fn(
+      async (_target: string, requestOptions: { contentCallback?: (chunk: Buffer) => void }) => {
+        let content: Buffer = Buffer.from(html)
+        requestOptions.contentCallback?.(content)
+        return {
+          status: 200,
+          headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+          get text() {
+            return content.toString()
+          },
+          setContent: (value: Buffer) => {
+            content = value
+          },
+          close: async () => undefined,
+        }
+      },
+    )
+    vi.spyOn(UrlContentClient.prototype, "impersSession").mockResolvedValue({
+      get,
+    } as unknown as Awaited<ReturnType<UrlContentClient["impersSession"]>>)
+    vi.spyOn(UrlContentClient.prototype, "impersProxy").mockResolvedValue("http://127.0.0.1:8080")
+    const metadataFetch = vi
+      .spyOn(UrlContentClient.prototype, "fetch")
+      .mockImplementation(async (input) => {
+        expect(String(input)).toBe("https://wallhop.io/ruleset")
+        return new Response("[]", { headers: { "content-type": "text/yaml" } })
+      })
+    const browser = vi
+      .spyOn(UrlContentClient.prototype, "browser")
+      .mockRejectedValue(new Error("Unexpected browser fallback"))
+    const settings = loadSettings({ BOT_ADMIN_ID: "7" })
+    const loader = createBotUrlLoader(settings)
+    const load = vi.spyOn(loader, "load")
+    const result = await createUrlTool(loader).execute(
+      "article-call",
+      { url: target },
+      undefined,
+      undefined,
+      undefined as never,
+    )
+
+    expect(settings.botUrlMaxExtractedChars).toBe(12_000)
+    expect(navigation.length).toBeGreaterThan(12_000)
+    expect(result.isError).not.toBe(true)
+    expect(result.details).toMatchObject({
+      url: target,
+      finalUrl: target,
+      source: "url-content",
+      loaderId: "curl-cffi",
+      truncated: false,
+    })
+    const toolContent = JSON.parse(toolResultText(result))
+    expect(toolContent.text).toContain("# Generic article fixture")
+    expect(toolContent.text).toContain("## Article section fixture")
+    expect(toolContent.text).toContain("Opening paragraph of the short article.")
+    expect(toolContent.text).toContain("Closing paragraph of the short article.")
+    expect(toolContent.text.length).toBeLessThan(12_000)
+    expect(toolContent.text).not.toContain("Navigation fixture link")
+    expect(toolContent.text).not.toContain("Article navigation control")
+    expect(toolContent.text).not.toContain("Copy article control")
+    expect(load).toHaveBeenCalledExactlyOnceWith(target, {})
+    expect(get).toHaveBeenCalledExactlyOnceWith(target, expect.any(Object))
+
+    await expect(
+      loadArticleSourceUrls(target, loader, { maxChars: 12_000, timeoutMs: 5_000 }),
+    ).resolves.toEqual([{ url: target, text: toolContent.text, truncated: false }])
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(load).toHaveBeenNthCalledWith(2, target, { signal: expect.any(AbortSignal) })
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(get).toHaveBeenNthCalledWith(2, target, expect.any(Object))
+    expect(metadataFetch).toHaveBeenCalledExactlyOnceWith(
+      "https://wallhop.io/ruleset",
+      expect.objectContaining({ redirect: "error", signal: expect.any(AbortSignal) }),
+    )
+    expect(browser).not.toHaveBeenCalled()
+    expect(mocks.fetchTranscript).not.toHaveBeenCalled()
+  })
 
   it("preserves cancellation in both entry points without attempting captions", async () => {
     const loader = createBotUrlLoader(loadSettings({ BOT_ADMIN_ID: "7" }))

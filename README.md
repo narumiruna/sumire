@@ -88,7 +88,7 @@ npm test --workspace @narumitw/sumire-url-reader
 
 ## Pull request reviews
 
-The [PR Review workflow](.github/workflows/review.yml) uses Pi with persistent OAuth credentials. See [credential setup, verification, and recovery](docs/review-workflow.md) before enabling or changing it.
+The Pi-based PR Review workflow was removed in [#285](https://github.com/narumiruna/sumire/pull/285). Its workflow-specific tests and CI path filters are retired. See the [retirement and credential note](docs/review-workflow.md).
 
 ## Package releases
 

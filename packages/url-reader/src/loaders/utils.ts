@@ -28,6 +28,42 @@ export function htmlToMarkdown(content: string): string {
   return normalizeWhitespace(turndown.turndown($.html()))
 }
 
+/** Select semantic document content only for the generic loaders. */
+export function genericHtmlToMarkdown(content: string): string {
+  const $ = cheerio.load(content)
+  $("script,style,template").remove()
+  const pending = $.root().children().toArray().reverse()
+  const mains: typeof pending = []
+  const articles: typeof pending = []
+  // Stop at outer regions to avoid repeated ancestor scans on nested input.
+  while (pending.length > 0) {
+    const element = pending.pop()
+    if (!element) break
+    if (element.tagName === "nav" || element.tagName === "button") continue
+    if (element.tagName === "main") {
+      mains.push(element)
+      continue
+    }
+    if (element.tagName === "article") {
+      articles.push(element)
+      continue
+    }
+    for (const child of $(element).children().toArray().reverse()) pending.push(child)
+  }
+  for (const elements of [mains, articles]) {
+    const regions = $(elements).clone()
+    regions.find("nav,button").remove()
+    const markdown = htmlToMarkdown(
+      regions
+        .toArray()
+        .map((element) => $.html(element))
+        .join("\n"),
+    )
+    if (markdown) return markdown
+  }
+  return htmlToMarkdown(content)
+}
+
 export function extractFirstTagSubtree(
   html: string,
   tags: readonly string[],

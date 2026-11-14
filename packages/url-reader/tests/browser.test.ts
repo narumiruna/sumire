@@ -67,6 +67,27 @@ function browserHarness(content: string, evaluate = async () => Buffer.byteLengt
 }
 
 describe("browser transport safety", () => {
+  it("keeps semantic article content ahead of the source budget with Playwright", async () => {
+    const html = `<nav>${"Site navigation ".repeat(1_000)}</nav>
+      <main><button>Copy page</button><header><h1>Persistent agents</h1></header>
+      <nav>Article navigation</nav><article><p>Opening body.</p>
+      <h2>Boundaries</h2><p>Closing body.</p></article></main><footer>Site footer</footer>`
+    const harness = browserHarness(html)
+    const fetch = vi.fn(async () => new Response(html))
+    const resources = {
+      browser: async () => harness.browser,
+      fetch,
+      validateUrl: async (value: string | URL) => new URL(value),
+    } as unknown as ResourceProvider
+
+    const result = await new PlaywrightLoader({ resources }).load("https://example.com/page")
+
+    expect(result).toBe("# Persistent agents\nOpening body.\n## Boundaries\nClosing body.")
+    expect(result.length).toBeLessThan(12_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(harness.closeContext).toHaveBeenCalledOnce()
+  })
+
   it("proxies HTTP requests through the validated fetch transport", async () => {
     const harness = browserHarness("<main>rendered</main>")
     const fetchUrl = vi.fn(async () => new Response("<main>network</main>", { status: 200 }))
