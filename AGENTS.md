@@ -17,7 +17,8 @@
 - For bot debugging or log requests, first run `docker ps --filter label=com.docker.compose.service=sumire` to find running Sumire containers; use the returned container ID instead of assuming a container name.
   - If none are running, check stopped containers with `docker ps -a --filter label=com.docker.compose.service=sumire`.
   - Read a matching container's recent logs with `docker logs --since 30m --tail 200 --timestamps <container-id>`; adjust the time window to the reported incident and avoid unbounded output or `--follow`.
-- For an additional or alternative source, check `command -v logfire`; if available, read `logfire --help` and run `logfire --non-interactive whoami`.
+- For an additional or alternative source, check `command -v logfire` and `test -x node_modules/.bin/logfire`; use an available executable for all Logfire commands.
+  - Read the selected CLI's `--help` before running `whoami </dev/null`; add `--non-interactive` only if that CLI supports it.
   - Do not use the `whoami` exit code alone to infer login status; missing local project credentials can cause failure after successful authentication.
   - Confirm authentication, the intended project, and read access separately before querying logs and traces for service `sumire`; use an existing read-only interface with an incident time window and a result limit.
   - Check the installed CLI's subcommand help before use; if it has no query command, use an already available Logfire query interface or report the limitation instead of inventing commands.
