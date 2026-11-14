@@ -18,8 +18,12 @@ The original plan records passing installation, formatting, lint, typecheck, tes
 
 ## External Handoff
 
-- **Logfire owner:** with authorized incident access, establish the exposure window and account/read-access scope. Contain unsafe export, inspect sanitized exported fields, and record the decision and result for access restriction, retention, or deletion of historical sensitive records. Expected result: no new credential export and an explicit historical-data disposition. Actual production export and historical cleanup remain unverified.
-- **Telegram account owner:** after the patched deployment is verified safe, rotate the bot token through BotFather and revoke the old token. Expected result: the old credential is unusable and the replacement is not exported. Rotation and revocation remain unverified.
+- **Logfire owner:** stop unsafe Logfire export under operator control before any token replacement or accepted revocation delay. Verify that export has stopped. With authorized incident access, establish the exposure window and account/read-access scope. Inspect sanitized exported fields. Record the decision and result for access restriction, retention, or deletion of historical sensitive records. Expected result: no new credential export and an explicit historical-data disposition. Actual production export and historical cleanup remain unverified.
+- **Telegram account owner:** a replacement token on the unpatched service could enter the same telemetry path. Do not deploy a replacement until unsafe export has stopped and the patched path is verified safe. Record any existing proof that the old token is revoked. Otherwise, use one of these paths:
+  1. Revoke the exposed token through BotFather at once. Accept bot downtime until a safe replacement is deployed.
+  2. If the account owner explicitly accepts a delay, first confirm that unsafe export has stopped. Record the risk approval, reason, named revocation owner, and a UTC revocation deadline. A copied token remains usable until revocation. Revoke it by that deadline even if rollout is delayed.
+
+  Expected result: the old credential is unusable and the replacement is not exported. Containment, rotation, and revocation remain unverified.
 - **Deployment operator:** create a protected consistent state backup before authorized rollout. In an approved test group, verify passive-context isolation, an addressed public-URL request, Telegram delivery, reply-tree behavior, and session continuity. Expected result: correct routing and safe telemetry with no credential-bearing fields. Production behavior remains unverified.
 
 The existing guidance is under [Operator verification and historical data](../../apps/bot/README.md#operator-verification-and-historical-data). No login, credential rotation, telemetry deletion, deployment, or live request is authorized by documentation cleanup. Do not copy secrets or raw traces into the repository or issue records.

@@ -36,4 +36,8 @@ No successful live generation/delivery is recorded. Stop after one clear entitle
 
 Before rollout, take a consistent backup of the admin database, per-chat durable databases, and pending image artifacts. Disable `generate_image` through existing tool policy to stop new generation.
 
-Prefer draining pending media with a compatible fixed build. An older binary may not safely acknowledge media-bearing records; review compatibility or restore the matching pre-rollout snapshot. Preserve pending files. Do not regenerate an image to repair delivery. A lost Telegram response before a local receipt can cause a duplicate; local cancellation does not guarantee remote cancellation or a quota refund.
+Prefer draining pending media with a compatible fixed build. An older binary may not safely acknowledge media-bearing records.
+
+Restoring a pre-rollout snapshot discards all records created or changed after it. This includes later chat state, access changes, and delivery receipts. First stop the sole database owner. Preserve the current admin database, per-chat durable databases, and pending image artifacts as one consistent backup. Review the state loss, access revocations, and confirmed external effects before approving restoration.
+
+Only after that review, restore the matching pre-rollout snapshot with a compatible image if required. Reconcile access revocations and confirmed deliveries before reopening the service. Preserve pending files. Do not regenerate an image to repair delivery. A lost Telegram response before a local receipt can cause a duplicate. Local cancellation does not guarantee remote cancellation or a quota refund.
