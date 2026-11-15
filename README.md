@@ -77,11 +77,13 @@ If it is `.husky/_`, run `git config --local --unset core.hooksPath` before
 
 The hooks preserve the original repository-wide sequence:
 `biome migrate --write`, `biome format --write`, then `biome check --write`.
-Migration uses the root npm dependency because Biome does not provide a migrate
-hook. Formatting and checks use the official
-[Biome hooks](https://biomejs.dev/recipes/git-hooks/#pre-commit), which prek
-installs in an isolated environment on the first run. Keep the Biome versions
-in `prek.toml` aligned with the root `package.json`.
+All three steps use the official
+[Biome hook repository](https://biomejs.dev/recipes/git-hooks/#pre-commit), which
+prek installs in an isolated environment on the first run. The repository has
+no migrate hook, so the first step overrides `biome-ci` to run
+`biome migrate --write`, with the alias `biome-migrate`. Formatting and checks
+use `biome-format` and `biome-check` without command overrides. Keep the Biome
+versions in `prek.toml` aligned with the root `package.json`.
 
 All three hooks run even when no staged files match. The run stops if a hook
 fails or changes files. Review and stage any fixes, then retry the commit.
