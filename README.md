@@ -66,10 +66,37 @@ Use Node.js 26 or newer for local commands. CI, release workflows, and Docker im
 
 The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/bot`.
 
-The root `biome.json` defines formatting and lint rules for all TypeScript workspaces. `npm ci` installs the root tools and configures Husky. The pre-commit hook runs the repository-local Biome on staged files, applies safe fixes, and updates those staged files.
+The root `biome.json` defines formatting and lint rules for all TypeScript
+workspaces. `npm ci` installs the root tools. Install
+[prek](https://prek.j178.dev/installation/) and run `prek install` to enable the
+pre-commit hooks defined in `prek.toml`.
+
+For an existing Husky checkout, check `git config --local --get core.hooksPath`.
+If it is `.husky/_`, run `git config --local --unset core.hooksPath` before
+`prek install`.
+
+The hooks preserve the original repository-wide sequence:
+`biome migrate --write`, `biome format --write`, then `biome check --write`.
+All three steps use the official
+[Biome hook repository](https://biomejs.dev/recipes/git-hooks/#pre-commit), which
+prek installs in an isolated environment on the first run. The repository has
+no migrate hook, so the first step overrides `biome-ci` to run
+`biome migrate --write`, with the alias `biome-migrate`. Formatting and checks
+use `biome-format` and `biome-check` without command overrides. Keep the Biome
+versions in `prek.toml` aligned with the root `package.json`.
+
+All three Biome hooks run even when no staged files match. The run stops if a
+hook fails or changes files. Review and stage any fixes, then retry the commit.
+
+After Biome, the official
+[zizmor hook](https://github.com/zizmorcore/zizmor-pre-commit) checks supported
+staged YAML files for security issues in GitHub Actions, Dependabot, and
+pre-commit configuration. It uses upstream defaults without automatic fixes.
+Run `prek run zizmor --all-files` to check all tracked supported configurations.
 
 ```bash
 npm ci
+prek install
 npm run build
 npm run format
 npm run format:check
@@ -78,7 +105,10 @@ npm run typecheck
 npm test
 ```
 
-Run `npm run precommit` to check staged files manually.
+Run `npm run precommit` (or `prek run`) to run the configured hooks manually:
+Biome checks the whole repository, while zizmor checks matching staged files.
+Use `prek run --all-files` to include all tracked supported files or test a new
+or unstaged `prek.toml`.
 
 Run one workspace with `--workspace`, for example:
 
