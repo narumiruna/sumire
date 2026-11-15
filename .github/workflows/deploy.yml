@@ -15,25 +15,36 @@ concurrency:
 
 jobs:
   deploy:
+    name: Deploy bot
     runs-on: self-hosted
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Prepare environment file
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          BOT_ADMIN_ID: ${{ vars.BOT_ADMIN_ID }}
+          ADMIN_ORIGIN: ${{ vars.ADMIN_ORIGIN }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
+          MORSEL_API_KEY: ${{ secrets.MORSEL_API_KEY }}
+          OTTER_TOKEN: ${{ secrets.OTTER_TOKEN }}
         run: |
           install -m 600 /dev/null .env
-          {
-            echo "BOT_TOKEN=${{secrets.BOT_TOKEN}}"
-            echo "ENCRYPTION_KEY=${{secrets.ENCRYPTION_KEY}}"
-            echo "BOT_ADMIN_ID=${{vars.BOT_ADMIN_ID}}"
-            echo "ADMIN_ORIGIN=${{vars.ADMIN_ORIGIN}}"
-            echo "FIRECRAWL_API_KEY=${{secrets.FIRECRAWL_API_KEY}}"
-            echo "LOGFIRE_TOKEN=${{secrets.LOGFIRE_TOKEN}}"
-            echo "MORSEL_API_KEY=${{secrets.MORSEL_API_KEY}}"
-            echo "OTTER_TOKEN=${{secrets.OTTER_TOKEN}}"
-          } >> .env
+          printf '%s\n' \
+            "BOT_TOKEN=${BOT_TOKEN}" \
+            "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
+            "BOT_ADMIN_ID=${BOT_ADMIN_ID}" \
+            "ADMIN_ORIGIN=${ADMIN_ORIGIN}" \
+            "FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}" \
+            "LOGFIRE_TOKEN=${LOGFIRE_TOKEN}" \
+            "MORSEL_API_KEY=${MORSEL_API_KEY}" \
+            "OTTER_TOKEN=${OTTER_TOKEN}" >> .env
 
       - name: Deploy TypeScript bot with Docker Compose
         run: |
