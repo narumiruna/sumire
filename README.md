@@ -75,12 +75,16 @@ For an existing Husky checkout, check `git config --local --get core.hooksPath`.
 If it is `.husky/_`, run `git config --local --unset core.hooksPath` before
 `prek install`.
 
-The official [Biome hook](https://biomejs.dev/recipes/git-hooks/#pre-commit)
-runs `biome check --write` on supported staged files to format, organize imports,
-lint, and apply safe fixes. Keep the Biome versions in `prek.toml` aligned with
-the root `package.json`. prek installs the hook in an isolated environment on
-its first run. If the hook changes files, review and stage the fixes, then retry
-the commit.
+The hooks preserve the original repository-wide sequence:
+`biome migrate --write`, `biome format --write`, then `biome check --write`.
+Migration uses the root npm dependency because Biome does not provide a migrate
+hook. Formatting and checks use the official
+[Biome hooks](https://biomejs.dev/recipes/git-hooks/#pre-commit), which prek
+installs in an isolated environment on the first run. Keep the Biome versions
+in `prek.toml` aligned with the root `package.json`.
+
+All three hooks run even when no staged files match. The run stops if a hook
+fails or changes files. Review and stage any fixes, then retry the commit.
 
 ```bash
 npm ci
@@ -93,9 +97,8 @@ npm run typecheck
 npm test
 ```
 
-Run `npm run precommit` (or `prek run`) to check staged files manually. Use
-`prek run --all-files` to check all tracked files or test a new or unstaged
-`prek.toml`.
+Run `npm run precommit` (or `prek run`) to run the repository-wide sequence
+manually. To test a new or unstaged `prek.toml`, use `prek run --all-files`.
 
 Run one workspace with `--workspace`, for example:
 

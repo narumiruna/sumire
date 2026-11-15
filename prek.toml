@@ -1,7 +1,28 @@
+fail_fast = true
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "biome-migrate"
+name = "Biome migrate"
+language = "system"
+entry = "npm exec --no -- biome migrate --write"
+pass_filenames = false
+always_run = true
+
 [[repos]]
 repo = "https://github.com/biomejs/pre-commit"
 rev = "v2.6.6"
 
 [[repos.hooks]]
+id = "biome-format"
+additional_dependencies = ["@biomejs/biome@2.6.6"]
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
 id = "biome-check"
 additional_dependencies = ["@biomejs/biome@2.6.6"]
+pass_filenames = false
+always_run = true
