@@ -1,4 +1,3 @@
-import { telegramPayloadText } from "./helpers/telegram-payload.js"
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context"
 import type { UserFromGetMe } from "grammy/types"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -11,6 +10,7 @@ import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { runTelegramPolling } from "../src/telegram/polling.js"
 import { approvedStore } from "./helpers/admin-store.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
+import { telegramPayloadText } from "./helpers/telegram-payload.js"
 
 vi.mock("../src/telegram/polling.js", () => ({
   runTelegramPolling: vi.fn(() => ({ task: async () => {}, stop: async () => {} })),
