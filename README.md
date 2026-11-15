@@ -66,10 +66,22 @@ Use Node.js 26 or newer for local commands. CI, release workflows, and Docker im
 
 The root `package.json` manages `apps/*` and `packages/*` npm workspaces. GitHub CI, container publishing, and deployment target `apps/bot`.
 
-The root `biome.json` defines formatting and lint rules for all TypeScript workspaces. `npm ci` installs the root tools and configures Husky. The pre-commit hook runs the repository-local Biome on staged files, applies safe fixes, and updates those staged files.
+The root `biome.json` defines formatting and lint rules for all TypeScript
+workspaces. `npm ci` installs the root tools. Install
+[prek](https://prek.j178.dev/installation/) and run `prek install` to enable the
+pre-commit hooks defined in `prek.toml`.
+
+For an existing Husky checkout, check `git config --local --get core.hooksPath`.
+If it is `.husky/_`, run `git config --local --unset core.hooksPath` before
+`prek install`.
+
+The hooks run the repository-local Biome migration, formatting, and safe-fix
+checks in order across the whole repository. If a hook changes files, review and
+stage the fixes, then retry the commit.
 
 ```bash
 npm ci
+prek install
 npm run build
 npm run format
 npm run format:check
@@ -78,7 +90,8 @@ npm run typecheck
 npm test
 ```
 
-Run `npm run precommit` to check staged files manually.
+Run `npm run precommit` (or `prek run`) to run the same repository-wide checks
+manually. To check a new or unstaged `prek.toml`, use `prek run --all-files`.
 
 Run one workspace with `--workspace`, for example:
 
