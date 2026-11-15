@@ -113,7 +113,7 @@ describe("container application packaging", () => {
     for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])
       expect(workflow.split(`- "${input}"`)).toHaveLength(3)
     const container = workflow.split("\n  container:\n")[1]
-    expect(container).toContain("uses: docker/build-push-action@v7")
+    expect(container).toMatch(/uses: docker\/build-push-action@[a-f0-9]{40}\b/)
     expect(container).toContain("push: false")
     expect(container).toContain("target: runtime-application")
   })
