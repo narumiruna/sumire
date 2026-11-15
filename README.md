@@ -85,8 +85,14 @@ no migrate hook, so the first step overrides `biome-ci` to run
 use `biome-format` and `biome-check` without command overrides. Keep the Biome
 versions in `prek.toml` aligned with the root `package.json`.
 
-All three hooks run even when no staged files match. The run stops if a hook
-fails or changes files. Review and stage any fixes, then retry the commit.
+All three Biome hooks run even when no staged files match. The run stops if a
+hook fails or changes files. Review and stage any fixes, then retry the commit.
+
+After Biome, the official
+[zizmor hook](https://github.com/zizmorcore/zizmor-pre-commit) checks supported
+staged YAML files for security issues in GitHub Actions, Dependabot, and
+pre-commit configuration. It uses upstream defaults without automatic fixes.
+Run `prek run zizmor --all-files` to check all tracked supported configurations.
 
 ```bash
 npm ci
@@ -99,8 +105,10 @@ npm run typecheck
 npm test
 ```
 
-Run `npm run precommit` (or `prek run`) to run the repository-wide sequence
-manually. To test a new or unstaged `prek.toml`, use `prek run --all-files`.
+Run `npm run precommit` (or `prek run`) to run the configured hooks manually:
+Biome checks the whole repository, while zizmor checks matching staged files.
+Use `prek run --all-files` to include all tracked supported files or test a new
+or unstaged `prek.toml`.
 
 Run one workspace with `--workspace`, for example:
 
