@@ -159,6 +159,8 @@ This is a breaking bootstrap change: `BOT_ADMIN_ID` is now required, and the Web
 
 The upgrade retains the existing schema version 3, database path, policy revisions, Passkeys, sessions, audit records, and `access_reviews`. The versioned migration from older supported schemas still runs, but never reads environment access IDs. Reconciliation GET/POST entry points and UI confirmation controls are removed. Historical reviews are read-only on **Audit → Import reports** and authenticated `GET /api/imports`; the API returns the latest 10 access review records.
 
+Historical Stage 1 acceptance was recorded on 2026-10-15: the administrator confirmed real Passkey access, private/group `/allow`, and continued access after restart. The migration record also documented reviewed environment access, a protected backup, and unchanged policy after restart. This evidence supported Stage 2 implementation; it does not establish Stage 2 post-upgrade Telegram acceptance. The retained record before commit `13e6c71` still required operator confirmation of Passkey sign-in, approved/denied chats, `/admin`, and `/allow` after that upgrade. These checks remain unverified here. Do not recreate the removed reconciliation workflow in the current UI.
+
 ## Policy behavior
 
 To change inherited settings, use **Defaults**, **Tool permissions**, **Skills**, or **Model providers** for the relevant category. Existing chat overrides take priority within the global ceiling. In **Shared defaults → Advanced actions**, select **Reset all chats to inherit defaults** and confirm to clear all tool, MCP server, skill, allowed-model, model, and thinking overrides, including overrides outside the current chat page. This also replaces explicit empty lists with inheritance. Access approvals and chat enabled switches do not change. Review the defaults before you select **Review and save changes**. Future chats inherit the same defaults unless given overrides.
@@ -472,4 +474,14 @@ Inspector-specific evidence and read-boundary limits are recorded in [Pi Durable
 
 The browser suite uses API fixtures and a strict-port development server. It includes a Chromium virtual-authenticator registration and sign-in flow. It does not prove real device enrollment, real provider OAuth, or public TLS. For a local authenticated session, use the production build at the default localhost origin. For remote access, use the configured HTTPS origin. Keep Secure cookies and all authentication checks enabled.
 
-Before production acceptance, verify real device registration and passkey sign-in on the configured domain, rejection of unauthorized setup and login, provider authentication with the selected providers, revocation during active work, restart persistence, backup restoration, and HTTPS ingress behavior. Real device and provider tests require the administrator and deployment access; do not substitute fixtures for this evidence.
+### External acceptance handoff
+
+The original WebUI, Passkey, and chat-approval implementation plans are retired. Their unresolved production checks remain below. Historical Stage 1 confirmation does not establish device-enrollment details, recovery, matching image/state rollback, or acceptance of later deployments. Documentation cleanup does not perform or authorize these operations.
+
+| Responsible role | Prerequisite and action | Expected result and unverified behavior |
+| --- | --- | --- |
+| Administrator | After an approved deployment on the configured HTTPS domain, test real device registration/sign-in, denied setup/login, lost-Passkey recovery, approved/denied chats, `/admin`, and `/allow`. | Authorized access works and unauthorized access remains denied. Complete device/recovery and Stage 2 post-upgrade transport acceptance are not recorded here. |
+| Provider account owner | With separate authorization and approved credentials, verify the selected providers. | Authentication and intended provider use succeed. Local configuration and fixtures do not establish live provider acceptance. |
+| Deployment operator | In an approved maintenance window, retain the compatible image and protected consistent state backup; verify ingress, revocation during active work, restart persistence, backup restoration, and matching image/state rollback. | HTTPS and access enforcement remain intact, with recoverable state and no restored revoked grants. Full production ingress/recovery/rollback acceptance remains unverified here. |
+
+Record sanitized outcomes and administrator acceptance before claiming production readiness. Keep credentials, backup contents, private URLs, and conversation content out of repository records. Do not substitute fixture results or plan deletion for these checks.

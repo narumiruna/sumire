@@ -1,22 +1,32 @@
 # Local Whisper for URL and Telegram audio
 
 ## Goal
-Enable the existing YouTube/Reel yt-dlp + local Whisper fallback in production and accept bounded Telegram voice/audio input as untrusted transcription context for Pi.
+
+Support bounded local transcription for Telegram voice/audio and the existing YouTube/Reel fallback.
+
+## Status and evidence
+
+Implementation is present in `apps/bot/src/telegram/audio.ts`, the URL-reader media loaders, `Dockerfile`, and `compose.yaml`. Focused tests cover bounds, ordering, cancellation, cleanup, and transport integration.
+
+The original plan records passing root checks on Node.js 24.15.0. Later image-build evidence is recorded in [runtime configuration](../runtime-config.md); it supersedes the original build-timeout-only status. CLI help checks do not prove transcription, FFmpeg operation, or mounted-cache permissions. No checks were rerun during documentation cleanup.
 
 ## Plan
-- [ ] Provide a reproducible Docker runtime with yt-dlp, FFmpeg, and local openai-whisper CLI, plus a writable model cache; verify the image setup with available build checks. `Dockerfile` and `compose.yaml` are updated; `docker build --target audio-dependencies -f Dockerfile .` was attempted twice but timed out after 300 s downloading PyPI wheels (the first run also exposed and resolved an old pip/index issue). Full image verification remains open. Compose cannot run without the ignored `.env`.
-- [x] Add bounded Telegram voice/audio references, conversion and prompt assembly with per-chat ordering, cancellation, limits, and clear errors; verified by focused `apps/bot/tests/audio.test.ts`, `apps/bot/tests/bot.test.ts`, and `packages/url-content/tests/ytdlp.test.ts` and `loaders.test.ts`.
-- [x] Document deployment/configuration, add a changeset for affected packages, and run root TypeScript quality gates; root checks passed with Node 24.15.0.
 
-## Non-Goals
-- OpenAI hosted transcription API, video/sticker transcription, or bypassing Pi's model-turn loop.
-- Guarantee transcription of sources requiring login, unavailable captions, or unsupported formats.
+- [x] Implement bounded Telegram audio handling and local URL-media transcription; add tests, documentation, and package changes.
+- [ ] Verify the final production image in an isolated offline runtime: check Whisper, yt-dlp, FFmpeg operation, non-root cache permissions, and available model loading/transcription. Record actual results and any missing model prerequisite; do not substitute CLI help for operation.
+- [ ] Record the runtime/cache evidence and any required operator handoff before closing this plan.
 
-## Risks / Recovery
-- Python Whisper models are large and downloaded on first use; provide a persistent, writable cache, enforce bounds and fail closed when dependencies are unavailable. Existing deployments can roll back the image and turn off Telegram audio input.
-- yt-dlp follows media URLs; retain public-target validation in the existing URL tool and avoid exposing raw arbitrary URL overrides through Telegram.
+## External Handoff
+
+The deployment operator must provide an isolated image/cache environment and approve any model download or live media request before use. Expected result: the runtime user can write the persistent cache and transcribe an approved sample within configured bounds. Model downloads, live Telegram delivery, and remote YouTube/Reel availability remain unverified by fixture tests. Do not claim production transcription acceptance from a successful image build alone.
+
+Setup and limits are in [Local audio transcription](../../apps/bot/README.md#local-audio-transcription).
 
 ## Completion Checklist
-- [x] Focused bot and URL loader tests pass.
-- [x] Root `format:check`, `lint`, `typecheck`, `test`, and `build` pass (Node 24.15.0).
-- [ ] Build the production Docker image and verify `whisper`, `yt-dlp`, FFmpeg, and cache permissions; check only intended paths are modified and remove this plan on completion.
+
+- [ ] Record passing production-runtime executable, transcription, and cache-permission checks.
+- [ ] Preserve unresolved external limits and remove this plan only after its required verification has evidence.
+
+## Rollback / Recovery
+
+Use a compatible image and preserve the state and Whisper-cache volumes. Do not use removed environment switches to disable audio. Keep streamed byte limits, public-target validation, cancellation, and temporary-file cleanup intact.

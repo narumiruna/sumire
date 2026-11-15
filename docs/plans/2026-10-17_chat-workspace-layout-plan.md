@@ -2,33 +2,29 @@
 
 ## Goal
 
-Correct administration chat layout and readiness presentation without changing policy, APIs, permissions, or configuration semantics. Investigate selected-chat tabs independently before changing their behavior.
+Correct chat layout and readiness presentation without changing policy, APIs, permissions, or configuration semantics. Investigate Access and History tab behavior before changing tab handlers.
 
-## Context
+## Status and evidence
 
-- `apps/admin/src/chats.tsx` owns directory, readiness, header, and controlled Radix tabs.
-- `apps/admin/src/styles.css` previously made the directory a shrinking flex column with outer scrolling; the list had no dedicated scroll region. The header wrapped its action according to title width.
-- Fixture-based browser coverage does not contact production.
-- Existing unrelated plans and `.changeset/chat-access-migration-plans.md` remain untouched.
+Implementation and automated checks are recorded in [Chat workspace validation](../admin-chat-workspace-validation.md). The final recorded run passed 136 browser tests, 1,475 root tests, and all five root checks. These are historical results, not checks rerun during documentation cleanup.
+
+Automated tests did not reproduce the reported tab failure. Tab handlers and state logic were not changed. Manual verification remains open; later UI changes do not establish that this check passed.
 
 ## Plan
 
-- [x] Capture baseline desktop/narrow screenshots with long CJK/emoji, short, and duplicate-name group fixtures; test Access/History clicks before changing source. Evidence: four baseline tests passed; screenshots in `/tmp/sumire-chat-before/`.
-- [ ] Reproduce Access/History clicks manually before considering a tab fix. Blocked: Chrome DevTools cannot start its configured Chromium executable. Automated reproduction did not fail, so tab handlers and state remain unchanged. Requires a working manual browser or explicit user acceptance of this limit.
-- [x] Separate directory header, scrolling list, and footer; stabilize header and row titles. Evidence: geometry for all 100 rows, expanded footer, selection by ID, desktop/narrow scroll retention, overflow, focus, disabled controls, and short-screen scrolling pass in `chat-workspace.spec.ts`.
-- [x] Present readiness blockers and actions first; move secondary status and caveats into a disclosure while preserving existing blocker conditions. Evidence: 1440/390/320-pixel tests check missing authentication, approval plus authentication, actions, and separate status fields.
-- [x] Add regression coverage, capture matching after screenshots, and document tab investigation evidence and limitations. Evidence: 15 new tests; initial screenshots in `/tmp/sumire-chat-after/`, review-run screenshots in `/tmp/sumire-pr126-browser/`; `docs/admin-chat-workspace-validation.md`.
-- [x] Fix the later P2 unobserved-chat review finding. Two tests failed before the fix and now preserve scroll at 390 and 850 pixels for two return visits without a current directory row.
-- [x] Fix both initial P2 review findings with regression evidence. Tall API-error layout and both mobile footer actions failed in five new cases before source changes. All five now pass; the review ledger records each outcome.
-- [x] Add an admin patch changeset and run repository checks. Evidence: `.changeset/chat-workspace-layout.md`; final root checks pass, with the initial MCP timeout failures and successful reruns documented.
+- [x] Implement directory scrolling, stable titles, readiness details, and scroll-restoration fixes with regression coverage. Evidence: the validation record and `apps/admin/tests/chat-workspace.spec.ts`.
+- [x] Record automated results, screenshot locations, review findings, and verification limits in the validation record.
+- [ ] Record manual Access/History verification or explicit user acceptance of the unavailable check. Blocked on the review described below.
+
+## External Handoff
+
+The administrator or browser reviewer must use an available manual browser and an isolated fixture to repeat Access and History clicks, keyboard navigation, and chat switching. Expected result: the matching panel opens and the selected tab remains consistent. The original Chrome DevTools executable was unavailable; headless results do not verify manual behavior. No live setting change or production deployment is authorized by this plan.
 
 ## Completion Checklist
 
-- [x] Fixture browser tests pass at desktop and narrow widths, including navigation without writes or remote verification. Final suite: 136 passed.
-- [x] Root `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass; `git diff --check` passes. Final root test rerun: 1,475 passed.
-- [ ] Complete manual browser tab verification or obtain explicit acceptance of the unavailable check.
-- [x] Prepare changed paths, actual test results, screenshot locations, and remaining limitations for handoff in `docs/admin-chat-workspace-validation.md`.
+- [ ] Manual tab verification has evidence, or the user explicitly accepts its absence.
+- [ ] Record the result and resolve any findings in the validation document before deleting this plan.
 
-## Risks
+## Rollback / Recovery
 
-Narrow and short viewports use natural document scrolling. Screenshots are local test artifacts, not committed binary files. Fixture evidence does not establish remote authentication or runtime availability. Manual verification is the only remaining acceptance gap; keep this plan until it is resolved or explicitly accepted.
+Revert the frontend layout change if required. Do not restore an older policy database for a display change.
