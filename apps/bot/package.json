@@ -46,7 +46,7 @@
     "@narumitw/sumire-progress": "0.3.6",
     "@narumitw/sumire-runtime-config": "0.2.2",
     "@narumitw/sumire-url-reader": "0.27.1",
-    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/api": "1.10.0",
     "@pydantic/logfire-node": "0.23.0",
     "@simplewebauthn/server": "14.1.0",
     "grammy": "1.46.0",
