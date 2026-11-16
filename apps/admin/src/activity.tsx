@@ -57,7 +57,7 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
                   t("audit.skippedCount", { count: countText(report.skippedServers, "server") })}
                 {typeof report.unscannedEntries === "number" &&
                   t("audit.unscannedCount", {
-                    count: countText(report.unscannedEntries, "entry", "entries"),
+                    count: countText(report.unscannedEntries, "entry"),
                   })}
                 {Array.isArray(report.decisions) &&
                   t("audit.decisionCount", {

@@ -51,6 +51,7 @@ describe("admin locale selection", () => {
     ["invalid", ["en-GB", "ja"], "en"],
     ["ja-JP", ["zh"], "zh-TW"],
     [null, ["de-DE"], "en"],
+    [null, ["JA-jp"], "ja"],
     [null, [], "en"],
   ])("resolves saved %s and browser %j to %s", (saved, languages, expected) => {
     expect(resolveLocale(saved, languages)).toBe(expected)
@@ -97,6 +98,25 @@ describe("admin locale selection", () => {
     expect(getLocale()).toBe("zh-TW")
   })
 
+  it("updates metadata when browser preferences are initialized again", () => {
+    const { document } = browser(null, ["en"])
+    initializeLocale()
+    vi.stubGlobal("navigator", { languages: ["ja-JP"], language: "ja-JP" })
+    initializeLocale()
+    expect(getLocale()).toBe("ja")
+    expect(document.title).toBe("Sumire 管理画面")
+    expect(t("app.language")).toBe("言語")
+  })
+
+  it("ignores unsupported choices without changing storage or document metadata", () => {
+    const { storage, document } = browser("ja")
+    initializeLocale()
+    setLocale("fr" as (typeof locales)[number])
+    expect(getLocale()).toBe("ja")
+    expect(storage.setItem).not.toHaveBeenCalled()
+    expect(document.documentElement.lang).toBe("ja")
+  })
+
   it("renders native language names and a localized accessible label", () => {
     setLocale("ja")
     const html = renderToStaticMarkup(createElement(LanguageSelector))
@@ -123,27 +143,45 @@ describe("admin message catalogs", () => {
 
   it("provides complete translations with identical interpolation fields", () => {
     const fields = (value: string) =>
-      [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
-    const keys = Object.keys(messages.en) as MessageKey[]
+      [...value.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort()
+    const keys = Object.keys(messages.en)
     for (const locale of locales) {
       const catalog = messages[locale]
-      expect(Object.keys(catalog).sort(), locale).toEqual([...keys].sort())
-      for (const key of keys) {
-        const value = catalog[key]
+      const expectedKeys = locale === "en" ? keys : keys.filter((key) => !key.endsWith("_one"))
+      expect(Object.keys(catalog).sort(), locale).toEqual([...expectedKeys].sort())
+      for (const [key, value] of Object.entries(catalog)) {
         const context = `${locale}:${key}`
         expect(value.trim().length, context).toBeGreaterThan(0)
-        expect(fields(value), context).toEqual(fields(messages.en[key]))
-        expect(translate(locale, key), context).toBe(value)
+        expect(fields(value), context).toEqual(fields(messages.en[key as keyof typeof messages.en]))
+        expect(translate(locale, key as MessageKey), context).toBe(value)
       }
     }
   })
 
   it("inserts values literally without reinterpreting data as message keys or placeholders", () => {
-    const actor = "<script>$& {actor} 日本語</script>"
+    const actor = "<script>$& {{actor}} $t(app.title) 日本語</script>"
     expect(translate("en", "app.actor", { actor })).toBe(`Administrator: ${actor}`)
     expect(translate("zh-TW", "app.actor", { actor })).toBe(`管理員：${actor}`)
     expect(translate("ja", "app.actor", { actor })).toBe(`管理者: ${actor}`)
-    expect(translate("en", "app.actor")).toBe("Administrator: {actor}")
+    expect(translate("en", "app.actor")).toBe("Administrator: {{actor}}")
+    const html = renderToStaticMarkup(createElement("p", null, t("app.actor", { actor })))
+    expect(html).toContain("&lt;script&gt;")
+    expect(html).not.toContain("<script>")
+  })
+
+  it("keeps interpolation data separate from i18next options and string counts", () => {
+    expect(translate("ja", "app.actor", { actor: "Alice", lng: "en" })).toBe("管理者: Alice")
+    expect(translate("en", "app.resetHelp", { count: "1 chat has" })).toMatch(
+      /^1 chat has explicit overrides/,
+    )
+    expect(getLocale()).toBe("en")
+  })
+
+  it("translates in another language without changing the active locale", () => {
+    setLocale("ja")
+    expect(translate("zh-TW", "app.language")).toBe("語言")
+    expect(t("app.language")).toBe("言語")
+    expect(getLocale()).toBe("ja")
   })
 
   it("updates existing local errors but keeps external diagnostics literal", () => {
@@ -165,11 +203,11 @@ describe("admin message catalogs", () => {
     setLocale("en")
     expect(countText(1, "chat")).toBe("1 chat")
     expect(countText(2, "chat")).toBe("2 chats")
-    expect(
-      translate("en", "app.resetHelp", { count: countText(1, "chat has", "chats have") }),
-    ).toMatch(/^1 chat has explicit overrides/)
-    expect(
-      translate("en", "app.resetHelp", { count: countText(3, "chat has", "chats have") }),
-    ).toMatch(/^3 chats have explicit overrides/)
+    expect(translate("en", "app.resetHelp", { count: countText(1, "chat has") })).toMatch(
+      /^1 chat has explicit overrides/,
+    )
+    expect(translate("en", "app.resetHelp", { count: countText(3, "chat has") })).toMatch(
+      /^3 chats have explicit overrides/,
+    )
   })
 })

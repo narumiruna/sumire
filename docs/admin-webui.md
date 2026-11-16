@@ -10,11 +10,13 @@ The WebUI stores an explicit choice in this browser as `sumire.admin.locale`. On
 
 Chat names, messages, tool output, provider metadata, skill descriptions, server diagnostics, and raw JSON remain in their original language. Technical IDs, API values, URLs, and saved policies do not change. Telegram bot messages are not part of this setting.
 
+The WebUI uses i18next for translation and plural selection, with react-i18next subscriptions for language changes. Catalogs are bundled and initialized before the first render; changing language does not fetch resources or remount editors.
+
 Translation catalogs are grouped by language in `apps/admin/src/locales/`. The entry modules `en.ts`, `zh-tw.ts`, and `ja.ts` combine the feature modules in their matching language directories. Each feature module contains text for one language only; a message key maps directly to a string, not a multilingual tuple.
 
-English defines the message keys. Mapped types require each translated feature module to have the same keys as its English source. Catalog tests check complete key sets, nonempty text, matching interpolation fields, and lookup in every language. When adding a label, update the matching feature module in all three language directories.
+English defines the typed message keys. Mapped types require each translated feature module to have the same shared keys as its English source. English count messages use i18next `_one` and `_other` forms; Traditional Chinese and Japanese require only `_other`. Catalog tests check complete key sets, nonempty text, matching interpolation fields, and lookup in every language. When adding a label, update the matching feature module in all three language directories.
 
-Add presentation text through `t()` in `apps/admin/src/i18n.ts`; keep protocol and policy identifiers outside the catalogs. Resolve translated labels when rendering or calling a presentation helper, not at module initialization.
+Add presentation text through the typed `t()` helper in `apps/admin/src/i18n.ts`; keep protocol and policy identifiers outside the catalogs. Keys remain flat dotted strings, such as `app.actor`. Use `{{name}}` placeholders in catalog strings and pass values with `t("app.actor", { actor: name })`. Use `countText(count, "chat")` for count labels; it passes a numeric `count` to i18next. Interpolation values remain literal data, not nested translation keys or HTML; React escapes rendered text. Resolve translated labels when rendering or calling a presentation helper, not at module initialization.
 
 ## Workspace layout
 
