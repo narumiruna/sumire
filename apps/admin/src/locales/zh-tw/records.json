@@ -1,7 +1,4 @@
-import type { recordsMessages as sourceMessages } from "../en/records.js"
-import type { Catalog } from "../types.js"
-
-export const recordsMessages = {
+{
   "record.readingMode": "對話閱讀",
   "record.eventsMode": "事件檢查",
   "record.historyMode": "歷程顯示方式",
@@ -70,8 +67,7 @@ export const recordsMessages = {
   "record.noMatches": "已載入頁面中沒有符合項目。請變更篩選條件或開啟其他頁面。",
   "record.earlierContext": "此頁較早的上下文",
   "record.precedingTurn": "上一個使用者回合不在此頁，或這些記錄早於使用者回合。",
-  "record.historyTruncated":
-    "歷程已截斷 · 已達內容或頁面上限。請使用事件詳細資料或較舊記錄查看可用的已儲存資料。",
+  "record.historyTruncated": "歷程已截斷 · 已達內容或頁面上限。請使用事件詳細資料或較舊記錄查看可用的已儲存資料。",
   "record.newerRecords": "較新記錄",
   "record.olderRecords": "較舊記錄",
   "record.eventDetails": "事件詳細資料",
@@ -127,8 +123,7 @@ export const recordsMessages = {
   "record.records": "記錄",
   "record.aboutRecords": "關於這些記錄",
   "record.sessionDocuments": "工作階段文件",
-  "record.treeScope":
-    "展開對話以讀取一頁任務與一頁項目。文件集合需另行展開。僅分組已載入的記錄；缺少父節點或循環的項目顯示於根節點。不顯示已載入頁面範圍外的對話分支。重新整理會清除樹狀頁面。",
+  "record.treeScope": "展開對話以讀取一頁任務與一頁項目。文件集合需另行展開。僅分組已載入的記錄；缺少父節點或循環的項目顯示於根節點。不顯示已載入頁面範圍外的對話分支。重新整理會清除樹狀頁面。",
   "record.history": "歷程",
   "record.conversations": "對話",
   "record.tasks": "任務",
@@ -272,8 +267,7 @@ export const recordsMessages = {
   "record.dataScope": "資料範圍與上限",
   "record.readOnlyNotLive": "唯讀持久化資料；非即時執行狀態",
   "audit.noImportHistory": "沒有匯入歷程。",
-  "audit.importScope":
-    "匯入歷程為唯讀，不會核准 ID 或還原已撤銷的存取權。環境審查歷程僅保留最近 10 次審查。",
+  "audit.importScope": "匯入歷程為唯讀，不會核准 ID 或還原已撤銷的存取權。環境審查歷程僅保留最近 10 次審查。",
   "audit.importFailures": "匯入失敗 — 請檢閱詳細資料",
   "audit.incompleteImport": "匯入不完整",
   "audit.reviewAtImport": "匯入時需審查",
@@ -326,8 +320,7 @@ export const recordsMessages = {
   "audit.clearFilters": "清除稽核篩選條件",
   "audit.retry": "重試稽核查詢",
   "audit.historyScope": "歷程範圍與上限",
-  "audit.scopeNotice":
-    "可能有較舊記錄；伺服器最多保留 10,000 筆記錄。篩選涵蓋所有保留記錄。分組僅涵蓋此頁，並可能延續至相鄰頁面；篩選檢視可能省略相關事件。無法取得欄位層級的變更詳細資料。",
+  "audit.scopeNotice": "可能有較舊記錄；伺服器最多保留 10,000 筆記錄。篩選涵蓋所有保留記錄。分組僅涵蓋此頁，並可能延續至相鄰頁面；篩選檢視可能省略相關事件。無法取得欄位層級的變更詳細資料。",
   "audit.loading": "正在載入稽核記錄…",
   "audit.pagination": "稽核分頁",
   "audit.newer": "較新",
@@ -344,10 +337,8 @@ export const recordsMessages = {
   "record.inspectEntry": "檢視項目 {{id}}",
   "record.inherited": "繼承自對話 {{id}}",
   "record.historyHeading": "歷程 · 對話 {{id}}",
-  "record.historyDescriptionOldest":
-    "已儲存的模型訊息，非 Telegram 封存或擷取的請求。此頁項目依最舊優先順序讀取。篩選僅搜尋此頁。",
-  "record.historyDescriptionNewest":
-    "已儲存的模型訊息，非 Telegram 封存或擷取的請求。此頁項目依最新優先順序讀取。篩選僅搜尋此頁。",
+  "record.historyDescriptionOldest": "已儲存的模型訊息，非 Telegram 封存或擷取的請求。此頁項目依最舊優先順序讀取。篩選僅搜尋此頁。",
+  "record.historyDescriptionNewest": "已儲存的模型訊息，非 Telegram 封存或擷取的請求。此頁項目依最新優先順序讀取。篩選僅搜尋此頁。",
   "record.latestPage": "第 {{page}} 頁 · 最新記錄",
   "record.olderPage": "第 {{page}} 頁 · 較舊記錄",
   "record.page": "第 {{page}} 頁",
@@ -420,8 +411,7 @@ export const recordsMessages = {
   "audit.outcomeExact": "稽核結果完全相符值",
   "audit.activeFilters": "使用中的篩選條件：{{filters}}",
   "audit.recordsRange": "顯示第 {{from}}–{{to}} 筆記錄。",
-  "record.scopeNotice":
-    "檢視為唯讀，不會載入聊天或啟動工作。重新整理需手動執行，不會輪詢。每次記錄上下文或重新整理會依序讀取最多一頁對話、一頁選取對話的任務與一頁要求的檢視資料。樹狀集合在展開時讀取一頁，每次「載入更多」也讀取一頁。每頁最多 25 筆記錄。各次讀取獨立，並非單一不可分割快照。啟用標記表示持久化選取，而非工作正在執行。任務狀態與結果是歷史觀察值，並非即時排程狀態。已退役的任務文件可能無法取得。歷程包含有上限的已儲存模型訊息；原始項目清單僅包含中繼資料。歷程從最新記錄開始分頁，並在每頁中依建立順序顯示。篩選僅搜尋已載入頁面。事件詳細資料會額外讀取一次指定範圍的項目。已儲存歷程不會重建上下文編輯或供應商請求，也不是 Telegram 封存。內容可能截斷。絕不傳送圖片位元組。",
+  "record.scopeNotice": "檢視為唯讀，不會載入聊天或啟動工作。重新整理需手動執行，不會輪詢。每次記錄上下文或重新整理會依序讀取最多一頁對話、一頁選取對話的任務與一頁要求的檢視資料。樹狀集合在展開時讀取一頁，每次「載入更多」也讀取一頁。每頁最多 25 筆記錄。各次讀取獨立，並非單一不可分割快照。啟用標記表示持久化選取，而非工作正在執行。任務狀態與結果是歷史觀察值，並非即時排程狀態。已退役的任務文件可能無法取得。歷程包含有上限的已儲存模型訊息；原始項目清單僅包含中繼資料。歷程從最新記錄開始分頁，並在每頁中依建立順序顯示。篩選僅搜尋已載入頁面。事件詳細資料會額外讀取一次指定範圍的項目。已儲存歷程不會重建上下文編輯或供應商請求，也不是 Telegram 封存。內容可能截斷。絕不傳送圖片位元組。",
   "record.branchedLinks": "從{{conversation}}的{{entry}}分支。",
-  "record.ownedLinks": "由{{owner}}擁有。",
-} as const satisfies Catalog<typeof sourceMessages>
+  "record.ownedLinks": "由{{owner}}擁有。"
+}

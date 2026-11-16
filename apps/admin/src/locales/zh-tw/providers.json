@@ -1,7 +1,4 @@
-import type { providersMessages as sourceMessages } from "../en/providers.js"
-import type { Catalog } from "../types.js"
-
-export const providersMessages = {
+{
   "provider.editConfiguration": "編輯供應商設定",
   "provider.addConfiguration": "新增供應商設定",
   "provider.id": "供應商 ID",
@@ -21,8 +18,7 @@ export const providersMessages = {
   "model.update": "新增／更新模型",
   "provider.setConfiguration": "設定供應商組態",
   "provider.discardEndpoint": "捨棄自訂端點草稿",
-  "provider.stageHelp":
-    "這只會暫存設定。請先檢閱並儲存變更，再進行驗證。這會取代自訂模型清單。自訂模型費用未知，並未確認為免費。",
+  "provider.stageHelp": "這只會暫存設定。請先檢閱並儲存變更，再進行驗證。這會取代自訂模型清單。自訂模型費用未知，並未確認為免費。",
   "model.contextValue": "上下文 {{count}}",
   "model.outputValue": "輸出 {{count}}",
   "model.editNamed": "編輯模型 {{id}}",
@@ -38,8 +34,7 @@ export const providersMessages = {
   "model.inheritUseHelp": "清除此聊天的模型、思考程度及允許模型覆寫。其他聊天設定維持不變。",
   "selection.cancel": "取消",
   "model.reviewUse": "檢閱模型用途",
-  "model.useDescription":
-    "使用 {{model}}。取消不會撤銷先前已儲存的憑證與可用性設定。此步驟只會暫存政策變更。檢閱範圍包含其他待儲存的政策編輯。",
+  "model.useDescription": "使用 {{model}}。取消不會撤銷先前已儲存的憑證與可用性設定。此步驟只會暫存政策變更。檢閱範圍包含其他待儲存的政策編輯。",
   "model.chatOverride": "聊天 {{chat}} 覆寫",
   "model.chatInherits": "聊天 {{chat}} 繼承共用模型",
   "model.notConfigured": "未設定",
@@ -50,8 +45,7 @@ export const providersMessages = {
   "model.sharedDefaultModel": "共用預設模型",
   "selection.changed": "已變更",
   "model.sharedThinking": "共用預設思考程度",
-  "model.savedUnavailable":
-    "已儲存或草稿中的模型不在已載入的目錄中。請選擇已核准的模型或檢閱模型可用性。系統不會自動選擇替代模型。",
+  "model.savedUnavailable": "已儲存或草稿中的模型不在已載入的目錄中。請選擇已核准的模型或檢閱模型可用性。系統不會自動選擇替代模型。",
   "model.chooseThinking": "儲存前請選擇支援的思考程度。",
   "model.defaultSetup": "共用預設模型設定",
   "model.noProvider": "未選擇供應商",
@@ -61,8 +55,7 @@ export const providersMessages = {
   "model.manageAvailability": "管理模型可用性",
   "model.clearDefault": "清除共用預設模型",
   "model.clearDefaultTitle": "要清除共用預設模型嗎？",
-  "model.clearDefaultDescription":
-    "將預設模型與思考程度暫存為未設定。允許模型、驗證及聊天覆寫維持不變。請檢閱並儲存設定以套用此變更。",
+  "model.clearDefaultDescription": "將預設模型與思考程度暫存為未設定。允許模型、驗證及聊天覆寫維持不變。請檢閱並儲存設定以套用此變更。",
   "model.clearDraftDefault": "在草稿中清除預設",
   "model.unavailableNamed": "{{model}}（無法使用）",
   "model.unsupportedThinking": "{{level}}（不支援）",
@@ -99,8 +92,7 @@ export const providersMessages = {
   "skill.intro": "技能會加入模型指令，不會授予工具權限或限制檔案存取。",
   "skill.installation": "安裝說明",
   "skill.installationDescription": "技能檔案需要在受信任的主機上維護。此頁面僅管理政策選項。",
-  "skill.installationHelp":
-    "在主機上安裝、更新或移除技能檔案，再重新啟動機器人以更新此清單。載入的技能首次註冊時會在全域及預設選項中啟用。手動移除及明確聊天選項在重新啟動後維持不變。",
+  "skill.installationHelp": "在主機上安裝、更新或移除技能檔案，再重新啟動機器人以更新此清單。載入的技能首次註冊時會在全域及預設選項中啟用。手動移除及明確聊天選項在重新啟動後維持不變。",
   "selection.close": "關閉",
   "skill.search": "搜尋技能",
   "skill.inventoryUnknown": "無法取得技能清單。目前顯示保留的政策選項；載入狀態未知。",
@@ -128,8 +120,7 @@ export const providersMessages = {
   "skill.retainedHelp": "儲存前請清除保留的預設與聊天選項，或恢復全域可用性。",
   "skill.count": "顯示 {{visible}} 個，共 {{total}} 個技能",
   "skill.named": "技能 {{name}}",
-  "skill.inheritanceHelp":
-    "{{inherited}} 個已設定的聊天覆寫會繼承預設技能選項。{{explicit}} 個使用明確清單，包含空清單。預設值變更時，明確聊天選項維持不變。選擇技能不會授予工具存取權限。",
+  "skill.inheritanceHelp": "{{inherited}} 個已設定的聊天覆寫會繼承預設技能選項。{{explicit}} 個使用明確清單，包含空清單。預設值變更時，明確聊天選項維持不變。選擇技能不會授予工具存取權限。",
   "skill.enableNamed": "全域啟用技能 {{name}}",
   "skill.defaultNamed": "技能 {{name}} 的預設聊天選項",
   "skill.explicitChats": "明確聊天選項（{{count}}）",
@@ -182,8 +173,7 @@ export const providersMessages = {
   "provider.notChecked": "尚未檢查",
   "provider.remoteAcceptance": "遠端接受狀態",
   "provider.remoteVerificationHelp": "遠端驗證：尚未檢查。本機憑證檢查不會驗證遠端是否接受憑證。",
-  "provider.availabilityHelp":
-    "模型可用性尚未驗證。檢查驗證只會解析憑證，不會產生模型輸出。您可以在驗證前選擇並儲存模型。",
+  "provider.availabilityHelp": "模型可用性尚未驗證。檢查驗證只會解析憑證，不會產生模型輸出。您可以在驗證前選擇並儲存模型。",
   "model.title": "模型",
   "model.availabilityDescription": "將模型加入全域可用性。共用預設與聊天覆寫維持不變。",
   "model.label": "模型",
@@ -199,15 +189,13 @@ export const providersMessages = {
   "model.selectionSaved": "模型選項已儲存。請檢查上方的套用狀態。",
   "model.selectionMatches": "選項與目前設定相同。",
   "model.discovery": "模型探索",
-  "model.discoveryHelp":
-    "僅適用於 OpenAI 相容端點。探索會傳回 ID，不代表已驗證模型能力。請在自訂端點中加入其中繼資料。",
+  "model.discoveryHelp": "僅適用於 OpenAI 相容端點。探索會傳回 ID，不代表已驗證模型能力。請在自訂端點中加入其中繼資料。",
   "model.discoveryVerified": "已驗證 — 僅限有界的模型清單請求，並非模型執行",
   "model.discover": "探索自訂模型",
   "model.chooseProviderHelp": "選擇供應商以查看其模型。系統不會自動選擇模型。",
   "model.savedSelection": "使用已儲存的選項",
   "provider.policyReferences": "使用政策引用",
-  "provider.policyReferencesHelp":
-    "這些是已儲存的政策引用，不代表已驗證的執行中聊天。繼承設定的聊天不計入。",
+  "provider.policyReferencesHelp": "這些是已儲存的政策引用，不代表已驗證的執行中聊天。繼承設定的聊天不計入。",
   "provider.noReference": "沒有引用此供應商",
   "provider.explicitChatReferences": "明確聊天政策引用",
   "selection.inherit": "繼承",
@@ -236,19 +224,14 @@ export const providersMessages = {
   "provider.referenceCount": "{{count}} 處",
   "provider.manageNamed": "管理供應商 {{id}}",
   "provider.setupNamed": "設定供應商 {{id}}",
-  "provider.catalogMissing":
-    "所選供應商 {{provider}} 不在已載入的目錄中。其政策引用已保留。請檢閱端點設定或返回供應商清單；系統不會自動選擇替代供應商。",
+  "provider.catalogMissing": "所選供應商 {{provider}} 不在已載入的目錄中。其政策引用已保留。請檢閱端點設定或返回供應商清單；系統不會自動選擇替代供應商。",
   "provider.idValue": "供應商 ID：{{id}}",
   "provider.localCheck": "本機憑證檢查：{{status}}",
-  "model.saveSelectionHelp":
-    "將 {{model}} 加入可用性。保留目前的機器人預設值。執行中的工作將會取消。",
+  "model.saveSelectionHelp": "將 {{model}} 加入可用性。保留目前的機器人預設值。執行中的工作將會取消。",
   "model.listCheck": "模型清單檢查：{{status}}",
-  "provider.referenceSummary":
-    "共用模型：{{model}}。共用允許模型引用：{{allowed}}。明確聊天政策引用：{{chats}}（包含已停用項目）。",
-  "provider.chatReference":
-    "聊天 {{id}}：模型 {{model}}；允許模型 {{models}}；思考程度 {{thinking}}",
-  "provider.disabledChatReference":
-    "聊天 {{id}}（已停用）：模型 {{model}}；允許模型 {{models}}；思考程度 {{thinking}}",
+  "provider.referenceSummary": "共用模型：{{model}}。共用允許模型引用：{{allowed}}。明確聊天政策引用：{{chats}}（包含已停用項目）。",
+  "provider.chatReference": "聊天 {{id}}：模型 {{model}}；允許模型 {{models}}；思考程度 {{thinking}}",
+  "provider.disabledChatReference": "聊天 {{id}}（已停用）：模型 {{model}}；允許模型 {{models}}；思考程度 {{thinking}}",
   "provider.backChat": "返回聊天 {{chat}}",
   "provider.connectNamed": "連線至 {{name}}",
   "provider.loginStatus": "供應商登入：{{status}}",
@@ -279,8 +262,7 @@ export const providersMessages = {
   "model.offDefault": "關閉（預設）",
   "model.resetDefault": "將模型與思考程度重設為預設",
   "selection.chatAuthorization": "聊天授權規則",
-  "selection.authorizationHelp":
-    "Shell 與檔案工具不受沙箱限制，能存取程序可讀取的憑證。每個繼承控制項會重設整個類別。空的自訂清單會拒絕該類別。有效清單顯示套用全域限制後的各類別；MCP 工具也需要其伺服器閘門。技能不會授予工具權限。",
+  "selection.authorizationHelp": "Shell 與檔案工具不受沙箱限制，能存取程序可讀取的憑證。每個繼承控制項會重設整個類別。空的自訂清單會拒絕該類別。有效清單顯示套用全域限制後的各類別；MCP 工具也需要其伺服器閘門。技能不會授予工具權限。",
   "selection.chatToolResults": "聊天工具權限結果",
   "selection.noChatTools": "此聊天未選擇任何工具名稱。",
   "selection.authorizedTools": "已授權工具",
@@ -302,22 +284,17 @@ export const providersMessages = {
   "selection.configuredAllow": "設定：允許 {{names}}；拒絕此類別中的其他名稱。",
   "selection.configuredDeny": "設定：拒絕此類別中的所有名稱。",
   "selection.noLongerAvailable": "{{name}}（已無法使用）",
-  "selection.blockedRetained":
-    "已選擇但受全域可用性封鎖：{{names}}。儲存前必須清除保留的選項，或在全域核准。",
+  "selection.blockedRetained": "已選擇但受全域可用性封鎖：{{names}}。儲存前必須清除保留的選項，或在全域核准。",
   "selection.effective": "有效選項：{{names}}",
   "selection.reset": "將{{label}}重設為預設",
   "model.notAllowedNamed": "{{model}}（不允許）",
   "model.noAllowed": "沒有允許的模型",
-  "model.inheritedSource":
-    "來自共用預設 · 此聊天未設定覆寫。有效模型：{{model}}。此選項受全域可用性與允許模型限制。",
-  "model.overrideSource":
-    "此聊天覆寫。共用預設維持不變。有效模型：{{model}}。此選項受全域可用性與允許模型限制。",
+  "model.inheritedSource": "來自共用預設 · 此聊天未設定覆寫。有效模型：{{model}}。此選項受全域可用性與允許模型限制。",
+  "model.overrideSource": "此聊天覆寫。共用預設維持不變。有效模型：{{model}}。此選項受全域可用性與允許模型限制。",
   "model.inheritedThinking": "來自共用預設 · 此聊天未設定覆寫。有效思考程度：{{level}}。",
   "model.overrideThinking": "此聊天覆寫。共用預設維持不變。有效思考程度：{{level}}。",
-  "model.defaultConflict":
-    "模型「{{model}}」不在允許模型中。請檢閱允許模型，或變更上方的預設模型。",
-  "model.inheritedConflict":
-    "模型「{{model}}」不在繼承自預設的允許模型中。請編輯預設或取消繼承預設以檢閱允許模型，或變更聊天模型覆寫。",
+  "model.defaultConflict": "模型「{{model}}」不在允許模型中。請檢閱允許模型，或變更上方的預設模型。",
+  "model.inheritedConflict": "模型「{{model}}」不在繼承自預設的允許模型中。請編輯預設或取消繼承預設以檢閱允許模型，或變更聊天模型覆寫。",
   "model.chatConflict": "模型「{{model}}」不在允許模型中。請檢閱允許模型，或變更聊天模型覆寫。",
   "selection.toolInherited": "設定的工具選項：繼承共用預設。全域政策為上限。",
   "selection.toolOverride": "設定的工具選項：此聊天覆寫。全域政策為上限。",
@@ -343,13 +320,10 @@ export const providersMessages = {
   "model.effectiveTransition": "有效模型：{{before}} → {{after}}。",
   "model.resultInherits": "結果會繼承共用模型，但仍受此聊天的允許模型限制。",
   "model.thinkingTransition": "有效思考程度：{{before}} → {{after}}。",
-  "model.impactPopulation":
-    "包含所有受影響的明確政策項目，包括已停用的聊天。其他繼承設定的聊天不計入；此處無法得知其完整數量。",
-  "model.restorationHelp":
-    "恢復可用性不會恢復已移除的允許模型選項、模型選擇或思考程度。若要復原尚未儲存的移除，請捨棄政策草稿。",
-  "model.githubImpact":
-    "GitHub 回覆使用共用模型。共用有效模型：{{before}} → {{after}}。對 worker 與待處理 outbox 的影響未知；未檢查任何工作。",
+  "model.impactPopulation": "包含所有受影響的明確政策項目，包括已停用的聊天。其他繼承設定的聊天不計入；此處無法得知其完整數量。",
+  "model.restorationHelp": "恢復可用性不會恢復已移除的允許模型選項、模型選擇或思考程度。若要復原尚未儲存的移除，請捨棄政策草稿。",
+  "model.githubImpact": "GitHub 回覆使用共用模型。共用有效模型：{{before}} → {{after}}。對 worker 與待處理 outbox 的影響未知；未檢查任何工作。",
   "provider.countOne": "{{count}} 個供應商",
   "provider.modelCountOne": "{{count}} 個",
-  "provider.referenceCountOne": "{{count}} 處",
-} as const satisfies Catalog<typeof sourceMessages>
+  "provider.referenceCountOne": "{{count}} 處"
+}

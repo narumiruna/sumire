@@ -1,6 +1,6 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import {
   errorMessage,
   getLocale,
@@ -17,13 +17,12 @@ import {
   translate,
 } from "./i18n.js"
 import { LanguageSelector } from "./language-selector.js"
-import { chatsMessages } from "./locales/en/chats.js"
-import { commonMessages } from "./locales/en/common.js"
-import { policyMessages } from "./locales/en/policy.js"
-import { providersMessages } from "./locales/en/providers.js"
-import { recordsMessages } from "./locales/en/records.js"
-import { settingsMessages } from "./locales/en/settings.js"
 import { countText } from "./status-text.js"
+
+const featureCatalogs = import.meta.glob<Record<string, string>>("./locales/*/*.json", {
+  eager: true,
+  import: "default",
+})
 
 afterEach(() => {
   setLocale("en")
@@ -128,18 +127,36 @@ describe("admin locale selection", () => {
 })
 
 describe("admin message catalogs", () => {
-  it("has unique keys across UI responsibilities", () => {
-    const catalogs = [
-      commonMessages,
-      chatsMessages,
-      recordsMessages,
-      providersMessages,
-      settingsMessages,
-      policyMessages,
-    ]
+  it("preserves typed message keys from JSON resources", () => {
+    expectTypeOf<"app.title">().toExtend<MessageKey>()
+    expectTypeOf<"count.chat">().toExtend<MessageKey>()
+    expectTypeOf<"missing.message">().not.toExtend<MessageKey>()
+    expectTypeOf<string>().not.toExtend<MessageKey>()
+  })
+
+  it.each(locales)("has unique keys across UI responsibilities in %s", (locale) => {
+    const directory = locale === "zh-TW" ? "zh-tw" : locale
+    const catalogs = Object.entries(featureCatalogs)
+      .filter(([path]) => path.startsWith(`./locales/${directory}/`))
+      .map(([, catalog]) => catalog)
+    expect(catalogs.length).toBeGreaterThan(0)
+    expect(catalogs).toHaveLength(Object.keys(featureCatalogs).length / locales.length)
     const keys = catalogs.flatMap((catalog) => Object.keys(catalog))
     expect(new Set(keys).size).toBe(keys.length)
   })
+
+  it.each(Object.entries(featureCatalogs))(
+    "keeps %s aligned with its English feature catalog",
+    (path, catalog) => {
+      const source = featureCatalogs[`./locales/en/${path.split("/").at(-1)}`]
+      expect(source, path).toBeDefined()
+      const keys = Object.keys(source ?? {})
+      const expectedKeys = path.startsWith("./locales/en/")
+        ? keys
+        : keys.filter((key) => !key.endsWith("_one"))
+      expect(Object.keys(catalog).sort(), path).toEqual(expectedKeys.sort())
+    },
+  )
 
   it("provides complete translations with identical interpolation fields", () => {
     const fields = (value: string) =>

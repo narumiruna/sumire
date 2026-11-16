@@ -1,6 +1,4 @@
-import type { Catalog } from "../types.js"
-
-export const providersMessages = {
+{
   "provider.editConfiguration": "Edit provider configuration",
   "provider.addConfiguration": "Add provider configuration",
   "provider.id": "Provider ID",
@@ -20,8 +18,7 @@ export const providersMessages = {
   "model.update": "Add / update model",
   "provider.setConfiguration": "Set provider configuration",
   "provider.discardEndpoint": "Discard custom endpoint draft",
-  "provider.stageHelp":
-    "This stages settings only. Review and save changes before authentication. This replaces the custom model list. Custom model costs are unknown, not verified zero-cost.",
+  "provider.stageHelp": "This stages settings only. Review and save changes before authentication. This replaces the custom model list. Custom model costs are unknown, not verified zero-cost.",
   "model.contextValue": "Context {{count}}",
   "model.outputValue": "Output {{count}}",
   "model.editNamed": "Edit model {{id}}",
@@ -33,14 +30,11 @@ export const providersMessages = {
   "model.usePending": "Policy changes pending",
   "model.useSaved": "Model use saved",
   "model.useIncomplete": "Model use incomplete",
-  "model.inheritRequiresDefault":
-    "The shared default does not use this model. Choose Shared default first, or use a chat override.",
-  "model.inheritUseHelp":
-    "Clear this chat’s model, thinking, and allowed-model overrides. Other chat settings stay unchanged.",
+  "model.inheritRequiresDefault": "The shared default does not use this model. Choose Shared default first, or use a chat override.",
+  "model.inheritUseHelp": "Clear this chat’s model, thinking, and allowed-model overrides. Other chat settings stay unchanged.",
   "selection.cancel": "Cancel",
   "model.reviewUse": "Review model use",
-  "model.useDescription":
-    "Use {{model}}. Earlier credential and availability saves remain saved if you cancel. This step stages policy changes only. The review includes other pending policy edits.",
+  "model.useDescription": "Use {{model}}. Earlier credential and availability saves remain saved if you cancel. This step stages policy changes only. The review includes other pending policy edits.",
   "model.chatOverride": "Chat {{chat}} override",
   "model.chatInherits": "Chat {{chat}} inherits shared model",
   "model.notConfigured": "Not configured",
@@ -51,8 +45,7 @@ export const providersMessages = {
   "model.sharedDefaultModel": "Shared default model",
   "selection.changed": "Changed",
   "model.sharedThinking": "Shared default thinking",
-  "model.savedUnavailable":
-    "The saved or draft model is not available in the loaded catalog. Choose an approved model or review model availability. No replacement is selected automatically.",
+  "model.savedUnavailable": "The saved or draft model is not available in the loaded catalog. Choose an approved model or review model availability. No replacement is selected automatically.",
   "model.chooseThinking": "Choose a supported thinking level before saving.",
   "model.defaultSetup": "Shared default model setup",
   "model.noProvider": "No provider selected",
@@ -62,8 +55,7 @@ export const providersMessages = {
   "model.manageAvailability": "Manage model availability",
   "model.clearDefault": "Clear shared default model",
   "model.clearDefaultTitle": "Clear the shared default model?",
-  "model.clearDefaultDescription":
-    "Stage an unconfigured model and thinking default. Allowed models, authentication, and chat overrides stay unchanged. Review and save settings to apply this change.",
+  "model.clearDefaultDescription": "Stage an unconfigured model and thinking default. Allowed models, authentication, and chat overrides stay unchanged. Review and save settings to apply this change.",
   "model.clearDraftDefault": "Clear default in draft",
   "model.unavailableNamed": "{{model}} (unavailable)",
   "model.unsupportedThinking": "{{level}} (unsupported)",
@@ -78,8 +70,7 @@ export const providersMessages = {
   "model.thinkingTitle": "Model and thinking",
   "model.defaultDescription": "Choose the default model and thinking level",
   "model.reviewAllowed": "Review allowed models",
-  "model.defaultSelectionHelp":
-    "Selecting a default model also adds it to this shared selection. Global availability still limits the selection.",
+  "model.defaultSelectionHelp": "Selecting a default model also adds it to this shared selection. Global availability still limits the selection.",
   "selection.allowedModels": "Allowed models",
   "selection.toolsTitle": "Tool permissions",
   "selection.globalLimits": "Shared defaults remain subject to global limits",
@@ -93,22 +84,18 @@ export const providersMessages = {
   "selection.serverGateHelp": "Allowing a server does not grant tool execution permission",
   "selection.manageDefaultGates": "Manage default server gates",
   "selection.manageServers": "Manage MCP servers",
-  "model.defaultNotAllowed":
-    'Model "{{model}}" is not in Allowed models. Restore its selection or choose another default.',
+  "model.defaultNotAllowed": "Model \"{{model}}\" is not in Allowed models. Restore its selection or choose another default.",
   "selection.allowedEffective": "Allowed models · {{count}} effective",
   "selection.toolCounts": "{{tools}} · {{sources}} · {{servers}}",
   "skill.selectedCount": "{{count}} selected",
   "selection.defaultGatesCount": "{{count}} allowed by default",
   "skill.intro": "Skills add model instructions, not tool permissions or file restrictions.",
   "skill.installation": "Installation instructions",
-  "skill.installationDescription":
-    "Skill files require trusted host maintenance. This page manages policy selections only.",
-  "skill.installationHelp":
-    "Install, update, or remove skill files on the host, then restart the bot to refresh this inventory. Loaded skills are enabled globally and by default when first registered. Manual removals and explicit chat selections stay unchanged after restart.",
+  "skill.installationDescription": "Skill files require trusted host maintenance. This page manages policy selections only.",
+  "skill.installationHelp": "Install, update, or remove skill files on the host, then restart the bot to refresh this inventory. Loaded skills are enabled globally and by default when first registered. Manual removals and explicit chat selections stay unchanged after restart.",
   "selection.close": "Close",
   "skill.search": "Search skills",
-  "skill.inventoryUnknown":
-    "Skill inventory unavailable. Retained policy selections are shown; loaded state is unknown.",
+  "skill.inventoryUnknown": "Skill inventory unavailable. Retained policy selections are shown; loaded state is unknown.",
   "skill.column": "Skill",
   "skill.globalEnablement": "Global enablement",
   "skill.defaultSelection": "Default selection",
@@ -130,26 +117,21 @@ export const providersMessages = {
   "skill.notLoaded": "Not loaded",
   "skill.inventoryUnavailable": "Inventory unavailable",
   "selection.pendingChange": "Pending change",
-  "skill.retainedHelp":
-    "Clear retained default and chat selections, or restore global availability before saving.",
+  "skill.retainedHelp": "Clear retained default and chat selections, or restore global availability before saving.",
   "skill.count": "{{visible}} of {{total}} skills",
   "skill.named": "Skill {{name}}",
-  "skill.inheritanceHelp":
-    "{{inherited}} configured chat overrides inherit the default skill selection. {{explicit}} use explicit lists, including empty lists. Explicit chat selections remain unchanged when the default changes. Skill selection does not grant tool access.",
+  "skill.inheritanceHelp": "{{inherited}} configured chat overrides inherit the default skill selection. {{explicit}} use explicit lists, including empty lists. Explicit chat selections remain unchanged when the default changes. Skill selection does not grant tool access.",
   "skill.enableNamed": "Globally enable skill {{name}}",
   "skill.defaultNamed": "Default chat selection for skill {{name}}",
   "skill.explicitChats": "Explicit chat selections ({{count}})",
   "selection.chatNamed": "Chat {{id}}",
   "selection.noMatches": "No matches.",
-  "provider.finishOperation":
-    "Finish or cancel the current operation before switching authentication.",
+  "provider.finishOperation": "Finish or cancel the current operation before switching authentication.",
   "provider.replacePending": "Replace the pending provider selection and authentication input?",
   "provider.authenticated": "Provider authenticated. Your model selection is retained.",
-  "provider.authenticatedDirty":
-    "Provider authenticated. Save or discard your policy edits before reloading the new revision.",
+  "provider.authenticatedDirty": "Provider authenticated. Save or discard your policy edits before reloading the new revision.",
   "provider.loginReadFailed": "Could not read provider login. Retry or cancel the interaction.",
-  "provider.dirtyHelp":
-    "Save or discard pending settings before changing provider credentials or saving model availability.",
+  "provider.dirtyHelp": "Save or discard pending settings before changing provider credentials or saving model availability.",
   "provider.configuredList": "Configured providers",
   "provider.search": "Search providers",
   "provider.add": "Add provider",
@@ -168,48 +150,38 @@ export const providersMessages = {
   "provider.manage": "Manage settings →",
   "provider.identifiers": "Technical identifiers",
   "provider.back": "Back to providers",
-  "provider.setupHelp":
-    "Open supported provider setup. Choosing a provider does not grant models, change defaults, or save credentials.",
+  "provider.setupHelp": "Open supported provider setup. Choosing a provider does not grant models, change defaults, or save credentials.",
   "provider.setup": "Set up",
   "provider.noMatches": "No matching providers.",
   "provider.addEndpoint": "Add custom endpoint",
   "provider.customEndpoint": "Custom endpoint",
   "provider.connection": "Connection",
-  "provider.connectionHelp":
-    "Credentials and endpoint configuration are separate from model availability and policy use.",
+  "provider.connectionHelp": "Credentials and endpoint configuration are separate from model availability and policy use.",
   "provider.remoteUnchecked": "Remote acceptance is not checked.",
   "provider.authentication": "Authentication",
   "provider.configureAuthentication": "Configure authentication",
-  "provider.hostCredentials":
-    "This provider uses host credentials. Configure them on the trusted host.",
-  "provider.localCheckPassed":
-    "Credentials are configured locally. Remote acceptance was not checked; no model output was generated.",
+  "provider.hostCredentials": "This provider uses host credentials. Configure them on the trusted host.",
+  "provider.localCheckPassed": "Credentials are configured locally. Remote acceptance was not checked; no model output was generated.",
   "provider.localCheckMissing": "Credentials are not available locally. Check provider setup.",
   "provider.checkFailed": "Check failed",
   "provider.checkAuthentication": "Check authentication",
   "provider.removeCredential": "Remove credential",
   "provider.removeCredentialTitle": "Remove provider credential?",
-  "provider.removeCredentialHelp":
-    "Replace model references first. Ambient environment credentials are not removed.",
+  "provider.removeCredentialHelp": "Replace model references first. Ambient environment credentials are not removed.",
   "provider.credentialChecks": "Credential checks",
   "provider.credentialResolution": "Credential resolution",
   "provider.notChecked": "Not checked",
   "provider.remoteAcceptance": "Remote acceptance",
-  "provider.remoteVerificationHelp":
-    "Remote verification: Not checked. Local credential checks do not verify remote acceptance.",
-  "provider.availabilityHelp":
-    "Model availability is unverified. Check authentication resolves credentials without generating model output. You can select and save a model before authentication.",
+  "provider.remoteVerificationHelp": "Remote verification: Not checked. Local credential checks do not verify remote acceptance.",
+  "provider.availabilityHelp": "Model availability is unverified. Check authentication resolves credentials without generating model output. You can select and save a model before authentication.",
   "model.title": "Models",
-  "model.availabilityDescription":
-    "Add models to global availability. Shared defaults and chat overrides do not change.",
+  "model.availabilityDescription": "Add models to global availability. Shared defaults and chat overrides do not change.",
   "model.label": "Model",
-  "model.catalogRemoved":
-    "The selected model is no longer in the catalog. Choose another model before saving.",
+  "model.catalogRemoved": "The selected model is no longer in the catalog. Choose another model before saving.",
   "model.noReasoning": "No reasoning",
   "model.textInput": "Text input",
   "model.thinkingLevel": "Thinking level",
-  "model.thinkingUnavailable":
-    "The selected thinking level is unavailable. Choose a supported level.",
+  "model.thinkingUnavailable": "The selected thinking level is unavailable. Choose a supported level.",
   "model.saveAvailability": "Save model availability",
   "model.saveSelectionTitle": "Save model selection?",
   "selection.saveChanges": "Save changes",
@@ -217,31 +189,25 @@ export const providersMessages = {
   "model.selectionSaved": "Model selection saved. Check application status above.",
   "model.selectionMatches": "Selection matches current settings.",
   "model.discovery": "Model discovery",
-  "model.discoveryHelp":
-    "OpenAI-compatible endpoints only. Discovery returns IDs, not verified model capabilities. Add their metadata under Custom endpoint.",
+  "model.discoveryHelp": "OpenAI-compatible endpoints only. Discovery returns IDs, not verified model capabilities. Add their metadata under Custom endpoint.",
   "model.discoveryVerified": "Verified — bounded model-list request only, not model execution",
   "model.discover": "Discover custom models",
-  "model.chooseProviderHelp":
-    "Choose a provider to see its models. No model is selected automatically.",
+  "model.chooseProviderHelp": "Choose a provider to see its models. No model is selected automatically.",
   "model.savedSelection": "Use saved selection",
   "provider.policyReferences": "Usage policy references",
-  "provider.policyReferencesHelp":
-    "Saved policy references, not verified running chats. Inheriting chats are not counted.",
+  "provider.policyReferencesHelp": "Saved policy references, not verified running chats. Inheriting chats are not counted.",
   "provider.noReference": "No reference to this provider",
   "provider.explicitChatReferences": "Explicit chat policy references",
   "selection.inherit": "Inherit",
   "selection.none": "None",
   "model.editShared": "Edit shared default",
-  "model.policyUseHelp":
-    "Set model use in Shared defaults or the chat editor. Adding availability does not change either selection.",
-  "provider.credentialsHelp":
-    "Credentials are stored by Pi on the server. Existing secrets are never displayed.",
+  "model.policyUseHelp": "Set model use in Shared defaults or the chat editor. Adding availability does not change either selection.",
+  "provider.credentialsHelp": "Credentials are stored by Pi on the server. Existing secrets are never displayed.",
   "provider.accountSignIn": "Sign in with account",
   "provider.useApiKey": "Use API key",
   "provider.apiKey": "API key",
   "provider.saveApiKey": "Save API key",
-  "provider.authenticationSaved":
-    "Provider authentication saved. Your model selection is retained.",
+  "provider.authenticationSaved": "Provider authentication saved. Your model selection is retained.",
   "provider.retrySignIn": "Retry account sign-in",
   "provider.openSignIn": "Open provider sign-in",
   "provider.loginOption": "Login option",
@@ -258,19 +224,14 @@ export const providersMessages = {
   "provider.referenceCount": "{{count}} references",
   "provider.manageNamed": "Manage provider {{id}}",
   "provider.setupNamed": "Set up provider {{id}}",
-  "provider.catalogMissing":
-    "The selected provider {{provider}} is not in the loaded catalog. Its policy references are retained. Review its endpoint configuration or return to the provider list; no replacement is selected automatically.",
+  "provider.catalogMissing": "The selected provider {{provider}} is not in the loaded catalog. Its policy references are retained. Review its endpoint configuration or return to the provider list; no replacement is selected automatically.",
   "provider.idValue": "Provider ID: {{id}}",
   "provider.localCheck": "Local credential check: {{status}}",
-  "model.saveSelectionHelp":
-    "Add {{model}} to availability. Keep the current bot default. Active work will be cancelled.",
+  "model.saveSelectionHelp": "Add {{model}} to availability. Keep the current bot default. Active work will be cancelled.",
   "model.listCheck": "Model-list check: {{status}}",
-  "provider.referenceSummary":
-    "Shared model: {{model}}. Shared allowed-model references: {{allowed}}. Explicit chat policy references: {{chats}} (including disabled entries).",
-  "provider.chatReference":
-    "Chat {{id}}: model {{model}}; allowed models {{models}}; thinking {{thinking}}",
-  "provider.disabledChatReference":
-    "Chat {{id}} (disabled): model {{model}}; allowed models {{models}}; thinking {{thinking}}",
+  "provider.referenceSummary": "Shared model: {{model}}. Shared allowed-model references: {{allowed}}. Explicit chat policy references: {{chats}} (including disabled entries).",
+  "provider.chatReference": "Chat {{id}}: model {{model}}; allowed models {{models}}; thinking {{thinking}}",
+  "provider.disabledChatReference": "Chat {{id}} (disabled): model {{model}}; allowed models {{models}}; thinking {{thinking}}",
   "provider.backChat": "Back to chat {{chat}}",
   "provider.connectNamed": "Connect {{name}}",
   "provider.loginStatus": "Provider login: {{status}}",
@@ -284,17 +245,13 @@ export const providersMessages = {
   "selection.shared": "Shared defaults",
   "selection.fromShared": "From shared defaults",
   "selection.chatOverride": "This chat override",
-  "selection.globalHelp":
-    "Limits shared defaults and all chat overrides. Availability alone does not select an option for a chat.",
-  "selection.sharedHelp":
-    "Used by chats without an override. Global availability still limits this selection.",
+  "selection.globalHelp": "Limits shared defaults and all chat overrides. Availability alone does not select an option for a chat.",
+  "selection.sharedHelp": "Used by chats without an override. Global availability still limits this selection.",
   "selection.inheritedHelp": "Uses shared defaults. Global availability still limits this chat.",
-  "selection.overrideHelp":
-    "Applies only to this chat. Shared defaults do not change. Global availability still limits this selection.",
+  "selection.overrideHelp": "Applies only to this chat. Shared defaults do not change. Global availability still limits this selection.",
   "selection.inheritDefault": "Inherit default",
   "selection.noApproved": "No approved options.",
-  "selection.noDefaultSelection":
-    "None selected. Global availability does not select default options.",
+  "selection.noDefaultSelection": "None selected. Global availability does not select default options.",
   "selection.noGlobalOptions": "No options available globally.",
   "selection.noInheritedOptions": "No options allowed for chats that inherit shared defaults.",
   "selection.denyNoInherit": "No options allowed. This does not inherit shared defaults.",
@@ -305,8 +262,7 @@ export const providersMessages = {
   "model.offDefault": "Off (default)",
   "model.resetDefault": "Reset model and thinking to default",
   "selection.chatAuthorization": "Chat authorization rules",
-  "selection.authorizationHelp":
-    "Shell and file tools are not sandboxed. They can access process-readable credentials. Each Inherit control resets a whole category. An empty custom list denies the category. Effective lists show each category after global limits; MCP tools also require their server gate. Skills do not grant tool permission.",
+  "selection.authorizationHelp": "Shell and file tools are not sandboxed. They can access process-readable credentials. Each Inherit control resets a whole category. An empty custom list denies the category. Effective lists show each category after global limits; MCP tools also require their server gate. Skills do not grant tool permission.",
   "selection.chatToolResults": "Chat tool permission results",
   "selection.noChatTools": "No tool names selected for this chat.",
   "selection.authorizedTools": "Authorized tools",
@@ -328,30 +284,20 @@ export const providersMessages = {
   "selection.configuredAllow": "Configured: Allow {{names}}; deny other names in this category.",
   "selection.configuredDeny": "Configured: Deny all names in this category.",
   "selection.noLongerAvailable": "{{name}} (no longer available)",
-  "selection.blockedRetained":
-    "Selected but blocked by Global availability: {{names}}. Retained selections must be cleared or globally approved before saving.",
+  "selection.blockedRetained": "Selected but blocked by Global availability: {{names}}. Retained selections must be cleared or globally approved before saving.",
   "selection.effective": "Effective: {{names}}",
   "selection.reset": "Reset {{label}} to default",
   "model.notAllowedNamed": "{{model}} (not allowed)",
   "model.noAllowed": "No allowed model",
-  "model.inheritedSource":
-    "From shared defaults · No override for this chat. Effective model: {{model}}. Global availability and Allowed models limit this choice.",
-  "model.overrideSource":
-    "This chat override. Shared defaults do not change. Effective model: {{model}}. Global availability and Allowed models limit this choice.",
-  "model.inheritedThinking":
-    "From shared defaults · No override for this chat. Effective thinking: {{level}}.",
-  "model.overrideThinking":
-    "This chat override. Shared defaults do not change. Effective thinking: {{level}}.",
-  "model.defaultConflict":
-    'Model "{{model}}" is not in Allowed models. Review Allowed models, or change the default model above.',
-  "model.inheritedConflict":
-    'Model "{{model}}" is not in Allowed models inherited from Defaults. Review Allowed models by editing Defaults or clearing Inherit default, or change the chat model override.',
-  "model.chatConflict":
-    'Model "{{model}}" is not in Allowed models. Review Allowed models, or change the chat model override.',
-  "selection.toolInherited":
-    "Configured tool selection: Inherit from shared defaults. Global policy is the ceiling.",
-  "selection.toolOverride":
-    "Configured tool selection: This chat override. Global policy is the ceiling.",
+  "model.inheritedSource": "From shared defaults · No override for this chat. Effective model: {{model}}. Global availability and Allowed models limit this choice.",
+  "model.overrideSource": "This chat override. Shared defaults do not change. Effective model: {{model}}. Global availability and Allowed models limit this choice.",
+  "model.inheritedThinking": "From shared defaults · No override for this chat. Effective thinking: {{level}}.",
+  "model.overrideThinking": "This chat override. Shared defaults do not change. Effective thinking: {{level}}.",
+  "model.defaultConflict": "Model \"{{model}}\" is not in Allowed models. Review Allowed models, or change the default model above.",
+  "model.inheritedConflict": "Model \"{{model}}\" is not in Allowed models inherited from Defaults. Review Allowed models by editing Defaults or clearing Inherit default, or change the chat model override.",
+  "model.chatConflict": "Model \"{{model}}\" is not in Allowed models. Review Allowed models, or change the chat model override.",
+  "selection.toolInherited": "Configured tool selection: Inherit from shared defaults. Global policy is the ceiling.",
+  "selection.toolOverride": "Configured tool selection: This chat override. Global policy is the ceiling.",
   "selection.toolResult": "Configured: Allow · {{source}} · Effective permission: {{status}}",
   "selection.blockingSource": "Blocking source: {{source}}",
   "selection.reviewBlocking": "Review blocking permission for {{name}}",
@@ -372,16 +318,12 @@ export const providersMessages = {
   "model.afterSelection": "After — {{selection}}",
   "model.allowedTransition": "Effective allowed models: {{before}} → {{after}}",
   "model.effectiveTransition": "Effective model: {{before}} → {{after}}.",
-  "model.resultInherits":
-    "Result inherits the shared model, subject to this chat's allowed models.",
+  "model.resultInherits": "Result inherits the shared model, subject to this chat's allowed models.",
   "model.thinkingTransition": "Effective thinking: {{before}} → {{after}}.",
-  "model.impactPopulation":
-    "All affected explicit policy entries are included, including disabled chats. Other inheriting chats are not counted; their complete population is not known here.",
-  "model.restorationHelp":
-    "Restoring availability does not restore removed allowed-model selections, model choices, or thinking levels. Discard the policy draft to undo an unsaved removal.",
-  "model.githubImpact":
-    "GitHub replies use the shared model. Shared effective model: {{before}} → {{after}}. Worker and pending outbox effects are unknown; no jobs were inspected.",
+  "model.impactPopulation": "All affected explicit policy entries are included, including disabled chats. Other inheriting chats are not counted; their complete population is not known here.",
+  "model.restorationHelp": "Restoring availability does not restore removed allowed-model selections, model choices, or thinking levels. Discard the policy draft to undo an unsaved removal.",
+  "model.githubImpact": "GitHub replies use the shared model. Shared effective model: {{before}} → {{after}}. Worker and pending outbox effects are unknown; no jobs were inspected.",
   "provider.countOne": "{{count}} provider",
   "provider.modelCountOne": "{{count}} model",
-  "provider.referenceCountOne": "{{count}} reference",
-} as const satisfies Catalog
+  "provider.referenceCountOne": "{{count}} reference"
+}

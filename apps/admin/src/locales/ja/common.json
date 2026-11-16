@@ -1,7 +1,4 @@
-import type { commonMessages as sourceMessages } from "../en/common.js"
-import type { Catalog } from "../types.js"
-
-export const commonMessages = {
+{
   "nav.expand": "ナビゲーションを展開",
   "nav.collapse": "ナビゲーションを折りたたむ",
   "app.title": "Sumire 管理画面",
@@ -10,8 +7,7 @@ export const commonMessages = {
   "app.checkingSession": "管理者セッションを確認しています。",
   "app.registerHelp": "お使いの端末で管理者の Passkey を登録してください。",
   "app.signInHelp": "管理者の Passkey でサインインしてください。",
-  "app.firstVisit":
-    "初めてご利用ですか？Sumire との個別チャットで /admin を送信し、設定リンクを取得してください。",
+  "app.firstVisit": "初めてご利用ですか？Sumire との個別チャットで /admin を送信し、設定リンクを取得してください。",
   "app.register": "Passkey を登録",
   "app.signIn": "Passkey でサインイン",
   "app.loadHelp": "保存済みのポリシーと接続サービスを読み込みます。",
@@ -24,17 +20,13 @@ export const commonMessages = {
   "app.failed": "操作に失敗しました",
   "app.loadFailed": "管理者セッションを読み込めませんでした",
   "app.discardLeave": "保留中の変更を破棄して移動しますか？",
-  "app.retainedDraft":
-    "設定の下書きは保持されています。再度保存する前に、最新の設定を読み込んで確認してください。",
-  "app.retryHelp":
-    "入力内容を確認して再試行してください。保存操作を繰り返す前に、適用状態を確認してください。",
+  "app.retainedDraft": "設定の下書きは保持されています。再度保存する前に、最新の設定を読み込んで確認してください。",
+  "app.retryHelp": "入力内容を確認して再試行してください。保存操作を繰り返す前に、適用状態を確認してください。",
   "app.reviewBeforeSave": "再度保存する前に、最新の設定を読み込んで下書きを確認してください。",
   "app.unknownSaveHelp": "保存結果が不明です。再度保存する前に最新の設定を読み込んでください。",
   "app.unknownSave": "保存結果が不明です",
-  "app.refreshFailed":
-    "設定は保存されましたが、関連データを更新できませんでした。適用状態を確認してから再読み込みしてください。保存を繰り返す必要はありません。",
-  "app.discardUnknown":
-    "ローカルのポリシー編集を破棄しますか？保存結果の確認はまだ必要です。保存は取り消されません。最新の設定を読み込んで確認してください。",
+  "app.refreshFailed": "設定は保存されましたが、関連データを更新できませんでした。適用状態を確認してから再読み込みしてください。保存を繰り返す必要はありません。",
+  "app.discardUnknown": "ローカルのポリシー編集を破棄しますか？保存結果の確認はまだ必要です。保存は取り消されません。最新の設定を読み込んで確認してください。",
   "app.discardPolicy": "保留中のポリシー編集を破棄しますか？他の編集画面の下書きは変更されません。",
   "app.editors": "設定エディター",
   "app.chatSettings": "チャット設定",
@@ -42,13 +34,11 @@ export const commonMessages = {
   "app.chatEnabled": "チャットを有効化",
   "app.accessManagement": "アクセス管理",
   "app.chatAccess": "チャットアクセス",
-  "app.accessReview":
-    "以下のアクセス項目を確認してください。未承認の場合は、この ID を対応する一覧に追加してください。",
+  "app.accessReview": "以下のアクセス項目を確認してください。未承認の場合は、この ID を対応する一覧に追加してください。",
   "app.backChat": "チャットの詳細に戻る",
   "app.allAccess": "すべてのアクセス項目を表示",
   "app.importHistory": "インポート済み ID と確認履歴",
-  "app.importHelp":
-    "インポート履歴によってアクセスが許可されたり、取り消しが元に戻ったりすることはありません。インポートされた ID は自動承認されません。",
+  "app.importHelp": "インポート履歴によってアクセスが許可されたり、取り消しが元に戻ったりすることはありません。インポートされた ID は自動承認されません。",
   "app.openImports": "監査でインポート履歴を開く",
   "app.inspector": "Durable インスペクター",
   "app.defaults": "共通の既定値",
@@ -65,27 +55,22 @@ export const commonMessages = {
   "app.additionalTool": "追加で承認するツール名",
   "app.addTool": "ツールを承認待ちに追加",
   "app.clearTool": "ツール入力を消去",
-  "app.exactToolHelp":
-    "検出できない場合でも、正確なツール名を入力できます。全体の承認のみを準備します。既定値とチャットの権限は変更されません。",
+  "app.exactToolHelp": "検出できない場合でも、正確なツール名を入力できます。全体の承認のみを準備します。既定値とチャットの権限は変更されません。",
   "app.manageMcp": "MCP サーバーを管理",
   "app.providers": "モデルプロバイダー",
   "app.discardEndpoint": "未完了のカスタムエンドポイントの編集を破棄しますか？",
   "app.endpoint": "カスタムエンドポイント",
-  "app.endpointHelp":
-    "プロバイダー一覧にない互換エンドポイントにのみ使用してください。認証の前に上の設定を保存してください。料金は不明であり、無料と確認されたわけではありません。",
+  "app.endpointHelp": "プロバイダー一覧にない互換エンドポイントにのみ使用してください。認証の前に上の設定を保存してください。料金は不明であり、無料と確認されたわけではありません。",
   "app.removeConfig": "設定を削除",
   "app.availability": "モデルの利用可否を管理",
-  "app.removeModelsHelp":
-    "モデルを削除すると、共通とチャットの許可リストからも削除されます。一致する共通のモデルと思考の既定値は消去され、チャットの個別設定は継承に戻ります。確認して保存した後にのみ適用されます。",
-  "app.restoreModelsHelp":
-    "モデルを再選択しても、利用可否のみが戻り、以前の選択は復元されません。削除を元に戻すには設定の変更を破棄してください。プロバイダーを切り替えても一覧全体が許可されるわけではありません。",
+  "app.removeModelsHelp": "モデルを削除すると、共通とチャットの許可リストからも削除されます。一致する共通のモデルと思考の既定値は消去され、チャットの個別設定は継承に戻ります。確認して保存した後にのみ適用されます。",
+  "app.restoreModelsHelp": "モデルを再選択しても、利用可否のみが戻り、以前の選択は復元されません。削除を元に戻すには設定の変更を破棄してください。プロバイダーを切り替えても一覧全体が許可されるわけではありません。",
   "app.github": "GitHub メンション",
   "app.secrets": "シークレットと変数",
   "app.audit": "監査履歴",
   "app.configOperations": "設定操作",
   "app.configActivity": "設定アクティビティ",
-  "app.activityHelp":
-    "最近の設定操作です。フィールド単位の変更は記録されていません。シークレットの値と会話の内容は含まれません。",
+  "app.activityHelp": "最近の設定操作です。フィールド単位の変更は記録されていません。シークレットの値と会話の内容は含まれません。",
   "app.importReports": "インポートレポート",
   "app.operation": "操作中",
   "app.operationError": "操作に失敗しました。エラーを確認して再試行してください。",
@@ -95,15 +80,13 @@ export const commonMessages = {
   "app.chatAccessFor": "チャット {{id}} のアクセス",
   "app.providerEnabled": "{{provider}} を有効化",
   "app.editConfig": "{{provider}} の設定を編集",
-  "app.resetHelp":
-    "ポリシーの下書きでは、{{count}} に明示的な個別設定があります。現在のページにないチャットを含め、すべてのチャットのツール、MCP サーバー、スキル、許可モデル、モデル、思考の個別設定を消去します。明示的な空リストも既定値を継承します。チャットのアクセス権と有効化スイッチは変更されません。新しいチャットは既定値を継承します。この操作は編集を準備するだけです。「変更を確認して保存」から適用してください。",
+  "app.resetHelp": "ポリシーの下書きでは、{{count}} に明示的な個別設定があります。現在のページにないチャットを含め、すべてのチャットのツール、MCP サーバー、スキル、許可モデル、モデル、思考の個別設定を消去します。明示的な空リストも既定値を継承します。チャットのアクセス権と有効化スイッチは変更されません。新しいチャットは既定値を継承します。この操作は編集を準備するだけです。「変更を確認して保存」から適用してください。",
   "description.defaults": "個別設定のないチャットは、これらの設定を継承します。",
   "description.tools": "全体の上限、共通の既定値、チャットの権限を個別に管理します。",
   "description.skills": "指示セットの管理は、ツール権限の付与とは別です。",
   "description.mcp": "サーバー接続と保護された設定を管理します。",
   "description.providers": "認証情報とモデルの利用可否を個別に管理します。",
-  "description.secrets":
-    "シークレットは書き込み専用です。通常の変数に認証情報を保存しないでください。",
+  "description.secrets": "シークレットは書き込み専用です。通常の変数に認証情報を保存しないでください。",
   "description.github": "GitHub の自動返信を開始できる投稿者を管理します。",
   "description.audit": "設定の変更とインポート履歴を確認します。",
   "nav.chats": "チャット",
@@ -131,8 +114,7 @@ export const commonMessages = {
   "nav.administrator": "管理者",
   "save.scopeChat": "チャット {{id}}",
   "save.configuration": "保存済みの設定",
-  "save.reviewNeeded":
-    "保存の試行を確認する必要があります。最後に確認されたリビジョンを表示しています。",
+  "save.reviewNeeded": "保存の試行を確認する必要があります。最後に確認されたリビジョンを表示しています。",
   "save.applyFailed": "保存されましたが、適用に失敗しました。再度適用してください。",
   "save.applyPending": "保存された変更は適用待ちです。",
   "save.applied": "設定は保存され、適用されました。",
@@ -147,8 +129,7 @@ export const commonMessages = {
   "save.outcomeReview": "保存結果の確認が必要です",
   "save.unsubmitted": "未送信の編集画面の下書き",
   "save.draft": "設定の下書き",
-  "save.scopes":
-    "ポリシートランザクション: {{scopes}}。準備されたポリシーの編集はまとめて保存されます。他の編集画面の下書きは個別に保存します。",
+  "save.scopes": "ポリシートランザクション: {{scopes}}。準備されたポリシーの編集はまとめて保存されます。他の編集画面の下書きは個別に保存します。",
   "save.settings": "設定",
   "save.mcp": "MCP: 未保存の設定",
   "save.provider": "プロバイダー: 未保存の選択または認証",
@@ -158,8 +139,7 @@ export const commonMessages = {
   "save.discard": "設定の変更を破棄",
   "save.review": "変更を確認して保存",
   "save.confirm": "設定の変更を保存しますか？",
-  "save.confirmHelp":
-    "以下のチャット（アクセスを含む）、共通の既定値、ツール、スキル、GitHub メンション投稿者、カスタムエンドポイントの変更を保存します。接続の下書き、プロバイダーモデルの追加、認証には個別の保存操作があります。実行中の作業はキャンセルされます。権限を取り消しても、完了した外部操作は元に戻せません。",
+  "save.confirmHelp": "以下のチャット（アクセスを含む）、共通の既定値、ツール、スキル、GitHub メンション投稿者、カスタムエンドポイントの変更を保存します。接続の下書き、プロバイダーモデルの追加、認証には個別の保存操作があります。実行中の作業はキャンセルされます。権限を取り消しても、完了した外部操作は元に戻せません。",
   "save.modelChange": "共通モデルの変更",
   "save.modelBeforeAfter": "モデル: {{before}} → {{after}}",
   "save.notConfigured": "未設定",
@@ -173,17 +153,14 @@ export const commonMessages = {
   "error.section": "{{label}} を表示できませんでした。他のセクションは引き続き利用できます。",
   "error.retry": "{{label}} を再試行",
   "error.request": "リクエストに失敗しました",
-  "error.snapshot":
-    "保存済みの設定を検証できませんでした。再度保存する前に最新の設定を読み込んでください。",
+  "error.snapshot": "保存済みの設定を検証できませんでした。再度保存する前に最新の設定を読み込んでください。",
   "error.ids": "有効な Telegram ID を入力してください",
   "error.passkey": "Passkey でのサインインに失敗しました",
   "recovery.noEntry": "項目なし",
   "recovery.title": "復元された設定の下書きを確認",
-  "recovery.description":
-    "保持された下書きと保存済みリビジョン {{revision}} を比較します。この手順では何も保存されません。復元された下書きを確定してから、残りの変更を確認して保存してください。",
+  "recovery.description": "保持された下書きと保存済みリビジョン {{revision}} を比較します。この手順では何も保存されません。復元された下書きを確定してから、残りの変更を確認して保存してください。",
   "recovery.failed": "保存済みリビジョンは変わっていません。保存に失敗しました: {{failure}}",
-  "recovery.help":
-    "未編集の設定は最新の保存値を保持します。下書きの値を選ぶと、リスト、プロバイダー設定、各チャットの記録は全体が置き換えられます。結合はされません。選択値の null は継承または共通の選択なし、[] は明示的な空リストを示します。",
+  "recovery.help": "未編集の設定は最新の保存値を保持します。下書きの値を選ぶと、リスト、プロバイダー設定、各チャットの記録は全体が置き換えられます。結合はされません。選択値の null は継承または共通の選択なし、[] は明示的な空リストを示します。",
   "recovery.changes": "復元された設定の変更",
   "recovery.saved": "保存済み",
   "recovery.draft": "下書きを保持",
@@ -225,5 +202,5 @@ export const commonMessages = {
   "count.matchingServer_other": "{{count}} 台の一致するサーバー",
   "count.toolName_other": "{{count}} 件のツール名",
   "count.sourceGroup_other": "{{count}} 件のソースグループ",
-  "count.approvedTool_other": "{{count}} 件の全体で承認された公開ツール名",
-} as const satisfies Catalog<typeof sourceMessages>
+  "count.approvedTool_other": "{{count}} 件の全体で承認された公開ツール名"
+}

@@ -1,7 +1,4 @@
-import type { commonMessages as sourceMessages } from "../en/common.js"
-import type { Catalog } from "../types.js"
-
-export const commonMessages = {
+{
   "nav.expand": "展開導覽",
   "nav.collapse": "收合導覽",
   "app.title": "Sumire 管理介面",
@@ -28,10 +25,8 @@ export const commonMessages = {
   "app.reviewBeforeSave": "再次儲存前，請載入最新設定並審閱草稿。",
   "app.unknownSaveHelp": "儲存結果不明。再次儲存前，請先載入最新設定。",
   "app.unknownSave": "儲存結果不明",
-  "app.refreshFailed":
-    "設定已儲存，但無法重新整理相關資料。請先檢查套用狀態，再重新載入資料，避免重複儲存。",
-  "app.discardUnknown":
-    "要捨棄本機政策編輯嗎？儲存結果仍需審閱。此操作不會撤銷儲存，請載入最新設定以確認。",
+  "app.refreshFailed": "設定已儲存，但無法重新整理相關資料。請先檢查套用狀態，再重新載入資料，避免重複儲存。",
+  "app.discardUnknown": "要捨棄本機政策編輯嗎？儲存結果仍需審閱。此操作不會撤銷儲存，請載入最新設定以確認。",
   "app.discardPolicy": "要捨棄待處理的政策編輯嗎？其他編輯器的草稿不會變更。",
   "app.editors": "設定編輯器",
   "app.chatSettings": "聊天設定",
@@ -60,20 +55,16 @@ export const commonMessages = {
   "app.additionalTool": "額外核准的工具名稱",
   "app.addTool": "將工具加入待核准清單",
   "app.clearTool": "清除工具輸入",
-  "app.exactToolHelp":
-    "即使無法探索工具，也可輸入完整工具名稱。這只會暫存全域核准，預設與聊天權限不會變更。",
+  "app.exactToolHelp": "即使無法探索工具，也可輸入完整工具名稱。這只會暫存全域核准，預設與聊天權限不會變更。",
   "app.manageMcp": "管理 MCP 伺服器",
   "app.providers": "模型供應商",
   "app.discardEndpoint": "要捨棄未完成的自訂端點編輯嗎？",
   "app.endpoint": "自訂端點",
-  "app.endpointHelp":
-    "僅用於供應商目錄中未列出的相容端點。驗證前，請先儲存上方的設定。費用不明，不代表已確認免費。",
+  "app.endpointHelp": "僅用於供應商目錄中未列出的相容端點。驗證前，請先儲存上方的設定。費用不明，不代表已確認免費。",
   "app.removeConfig": "移除設定",
   "app.availability": "管理模型開放狀態",
-  "app.removeModelsHelp":
-    "移除模型會同步移出共用與聊天的允許清單；相符的共用模型與思考預設將清除，聊天覆寫則恢復繼承。審閱並儲存後才會套用。",
-  "app.restoreModelsHelp":
-    "再次勾選只恢復模型開放，不會還原先前選用。要撤回移除，請捨棄設定變更；切換供應商不會開放整份目錄。",
+  "app.removeModelsHelp": "移除模型會同步移出共用與聊天的允許清單；相符的共用模型與思考預設將清除，聊天覆寫則恢復繼承。審閱並儲存後才會套用。",
+  "app.restoreModelsHelp": "再次勾選只恢復模型開放，不會還原先前選用。要撤回移除，請捨棄設定變更；切換供應商不會開放整份目錄。",
   "app.github": "GitHub 提及",
   "app.secrets": "密鑰與變數",
   "app.audit": "稽核紀錄",
@@ -89,8 +80,7 @@ export const commonMessages = {
   "app.chatAccessFor": "聊天 {{id}} 的存取權限",
   "app.providerEnabled": "啟用 {{provider}}",
   "app.editConfig": "編輯 {{provider}} 的設定",
-  "app.resetHelp":
-    "政策草稿中，{{count}}設有明確覆寫。清除所有聊天的工具、MCP 伺服器、技能、允許模型、模型與思考覆寫，包括目前頁面外的聊天。明確指定的空清單也將繼承預設值。聊天存取權限與啟用開關不變。新聊天原本就繼承預設值。此操作只暫存編輯，請使用「審閱並儲存變更」套用。",
+  "app.resetHelp": "政策草稿中，{{count}}設有明確覆寫。清除所有聊天的工具、MCP 伺服器、技能、允許模型、模型與思考覆寫，包括目前頁面外的聊天。明確指定的空清單也將繼承預設值。聊天存取權限與啟用開關不變。新聊天原本就繼承預設值。此操作只暫存編輯，請使用「審閱並儲存變更」套用。",
   "description.defaults": "未個別設定的聊天將沿用這些選項",
   "description.tools": "全域上限、共用預設與聊天授權分開管理",
   "description.skills": "管理指令集，不代表授予工具權限",
@@ -139,8 +129,7 @@ export const commonMessages = {
   "save.outcomeReview": "儲存結果需要審閱",
   "save.unsubmitted": "尚未提交的編輯器草稿",
   "save.draft": "設定草稿",
-  "save.scopes":
-    "政策交易：{{scopes}}。所有暫存的政策編輯會一起儲存；其他編輯器草稿有各自的儲存操作。",
+  "save.scopes": "政策交易：{{scopes}}。所有暫存的政策編輯會一起儲存；其他編輯器草稿有各自的儲存操作。",
   "save.settings": "設定",
   "save.mcp": "MCP：尚未儲存的設定",
   "save.provider": "供應商：尚未儲存的選擇或驗證",
@@ -150,8 +139,7 @@ export const commonMessages = {
   "save.discard": "捨棄設定變更",
   "save.review": "審閱並儲存變更",
   "save.confirm": "要儲存設定變更嗎？",
-  "save.confirmHelp":
-    "儲存下列聊天（包括存取權限）、共用設定、工具、技能、GitHub 提及作者與自訂端點的變更。連線草稿、供應商模型新增與驗證有各自的儲存操作。進行中的工作將取消。撤銷權限無法復原已完成的外部操作。",
+  "save.confirmHelp": "儲存下列聊天（包括存取權限）、共用設定、工具、技能、GitHub 提及作者與自訂端點的變更。連線草稿、供應商模型新增與驗證有各自的儲存操作。進行中的工作將取消。撤銷權限無法復原已完成的外部操作。",
   "save.modelChange": "共用模型變更",
   "save.modelBeforeAfter": "模型：{{before}} → {{after}}",
   "save.notConfigured": "尚未設定",
@@ -170,11 +158,9 @@ export const commonMessages = {
   "error.passkey": "Passkey 登入失敗",
   "recovery.noEntry": "沒有項目",
   "recovery.title": "審閱復原的設定草稿",
-  "recovery.description":
-    "比較保留的草稿與已儲存的版本 {{revision}}。此步驟不會儲存任何內容。確認復原的草稿後，再審閱並儲存其餘變更。",
+  "recovery.description": "比較保留的草稿與已儲存的版本 {{revision}}。此步驟不會儲存任何內容。確認復原的草稿後，再審閱並儲存其餘變更。",
   "recovery.failed": "已儲存的版本沒有變更。儲存失敗：{{failure}}",
-  "recovery.help":
-    "未編輯的設定會保留最新儲存值。選擇草稿值時，清單、供應商設定與每筆聊天紀錄會整筆取代，不會合併。選項中的 null 表示繼承或沒有共用選擇；[] 表示明確指定的空清單。",
+  "recovery.help": "未編輯的設定會保留最新儲存值。選擇草稿值時，清單、供應商設定與每筆聊天紀錄會整筆取代，不會合併。選項中的 null 表示繼承或沒有共用選擇；[] 表示明確指定的空清單。",
   "recovery.changes": "復原的設定變更",
   "recovery.saved": "已儲存",
   "recovery.draft": "已保留草稿",
@@ -216,5 +202,5 @@ export const commonMessages = {
   "count.matchingServer_other": "{{count}} 台相符伺服器",
   "count.toolName_other": "{{count}} 個工具名稱",
   "count.sourceGroup_other": "{{count}} 個來源群組",
-  "count.approvedTool_other": "{{count}} 個已全域核准的已發布工具名稱",
-} as const satisfies Catalog<typeof sourceMessages>
+  "count.approvedTool_other": "{{count}} 個已全域核准的已發布工具名稱"
+}

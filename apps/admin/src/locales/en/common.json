@@ -1,6 +1,4 @@
-import type { Catalog } from "../types.js"
-
-export const commonMessages = {
+{
   "nav.expand": "Expand navigation",
   "nav.collapse": "Collapse navigation",
   "app.title": "Sumire administration",
@@ -22,17 +20,13 @@ export const commonMessages = {
   "app.failed": "Operation failed",
   "app.loadFailed": "Could not load administrator session",
   "app.discardLeave": "Discard pending changes and leave?",
-  "app.retainedDraft":
-    "Your settings draft is retained. Load the latest settings and review it before saving again.",
-  "app.retryHelp":
-    "Review the input and retry. Check application status before repeating a saved operation.",
+  "app.retainedDraft": "Your settings draft is retained. Load the latest settings and review it before saving again.",
+  "app.retryHelp": "Review the input and retry. Check application status before repeating a saved operation.",
   "app.reviewBeforeSave": "Load latest and review draft before another save.",
   "app.unknownSaveHelp": "Save outcome is unknown. Load the latest settings before another save.",
   "app.unknownSave": "Save outcome is unknown",
-  "app.refreshFailed":
-    "Settings were saved, but related data could not be refreshed. Check application status, then Reload to refresh related data without repeating the save.",
-  "app.discardUnknown":
-    "Discard local policy edits? The save outcome still needs review. This does not undo a save. Load the latest settings to check it.",
+  "app.refreshFailed": "Settings were saved, but related data could not be refreshed. Check application status, then Reload to refresh related data without repeating the save.",
+  "app.discardUnknown": "Discard local policy edits? The save outcome still needs review. This does not undo a save. Load the latest settings to check it.",
   "app.discardPolicy": "Discard pending policy edits? Other editor drafts stay unchanged.",
   "app.editors": "Configuration editors",
   "app.chatSettings": "Chat settings",
@@ -40,13 +34,11 @@ export const commonMessages = {
   "app.chatEnabled": "Chat enabled",
   "app.accessManagement": "Access management",
   "app.chatAccess": "Chat access",
-  "app.accessReview":
-    "Review its access entry below. If approval is missing, add this ID to the appropriate list.",
+  "app.accessReview": "Review its access entry below. If approval is missing, add this ID to the appropriate list.",
   "app.backChat": "Back to chat details",
   "app.allAccess": "Show all access entries",
   "app.importHistory": "Imported IDs and review history",
-  "app.importHelp":
-    "Import history never grants access or reverses a revocation. No imported ID is approved automatically.",
+  "app.importHelp": "Import history never grants access or reverses a revocation. No imported ID is approved automatically.",
   "app.openImports": "Open import history in Audit",
   "app.inspector": "Durable inspector",
   "app.defaults": "Shared defaults",
@@ -63,27 +55,22 @@ export const commonMessages = {
   "app.additionalTool": "Additional approved tool name",
   "app.addTool": "Add tool to pending approval",
   "app.clearTool": "Clear tool input",
-  "app.exactToolHelp":
-    "Enter an exact tool name even if discovery is unavailable. This stages global approval only; default and chat permissions remain unchanged.",
+  "app.exactToolHelp": "Enter an exact tool name even if discovery is unavailable. This stages global approval only; default and chat permissions remain unchanged.",
   "app.manageMcp": "Manage MCP servers",
   "app.providers": "Model providers",
   "app.discardEndpoint": "Discard unfinished custom endpoint edits?",
   "app.endpoint": "Custom endpoint",
-  "app.endpointHelp":
-    "Use this only for a compatible endpoint that is not in the provider catalog. Save its configuration above before authentication. Costs are unknown, not verified zero-cost.",
+  "app.endpointHelp": "Use this only for a compatible endpoint that is not in the provider catalog. Save its configuration above before authentication. Costs are unknown, not verified zero-cost.",
   "app.removeConfig": "Remove configuration",
   "app.availability": "Manage model availability",
-  "app.removeModelsHelp":
-    "Removal deletes the model from all allowlists. Matching shared model and thinking defaults are cleared. Chat overrides inherit defaults. Review and save to apply.",
-  "app.restoreModelsHelp":
-    "Selecting again restores availability, not past selections. Discard settings changes to undo removal. Provider changes do not approve the catalog.",
+  "app.removeModelsHelp": "Removal deletes the model from all allowlists. Matching shared model and thinking defaults are cleared. Chat overrides inherit defaults. Review and save to apply.",
+  "app.restoreModelsHelp": "Selecting again restores availability, not past selections. Discard settings changes to undo removal. Provider changes do not approve the catalog.",
   "app.github": "GitHub mentions",
   "app.secrets": "Secrets & variables",
   "app.audit": "Audit history",
   "app.configOperations": "Configuration operations",
   "app.configActivity": "Configuration activity",
-  "app.activityHelp":
-    "Latest configuration operations. Field-level changes were not recorded. Secret values and conversation contents are excluded.",
+  "app.activityHelp": "Latest configuration operations. Field-level changes were not recorded. Secret values and conversation contents are excluded.",
   "app.importReports": "Import reports",
   "app.operation": "Operation in progress",
   "app.operationError": "Operation failed. Review the error and retry.",
@@ -93,8 +80,7 @@ export const commonMessages = {
   "app.chatAccessFor": "Access for chat {{id}}",
   "app.providerEnabled": "{{provider}} enabled",
   "app.editConfig": "Edit configuration {{provider}}",
-  "app.resetHelp":
-    "{{count}} explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed model, model, and thinking overrides for all chats, including chats outside the current page. Explicit empty lists will also inherit Defaults. Chat access and enabled switches stay unchanged. Future chats already inherit Defaults. This stages edits only; use Review and save changes to apply them.",
+  "app.resetHelp": "{{count}} explicit overrides in the policy draft. Clear tool, MCP server, skill, allowed model, model, and thinking overrides for all chats, including chats outside the current page. Explicit empty lists will also inherit Defaults. Chat access and enabled switches stay unchanged. Future chats already inherit Defaults. This stages edits only; use Review and save changes to apply them.",
   "description.defaults": "Chats without individual settings inherit these options.",
   "description.tools": "Global, default, and chat permissions.",
   "description.skills": "Manage instruction sets separately from tool permissions.",
@@ -143,8 +129,7 @@ export const commonMessages = {
   "save.outcomeReview": "Save outcome needs review",
   "save.unsubmitted": "Unsubmitted editor draft",
   "save.draft": "Settings draft",
-  "save.scopes":
-    "Policy transaction: {{scopes}}. All staged policy edits are saved together; other editor drafts have separate save actions.",
+  "save.scopes": "Policy transaction: {{scopes}}. All staged policy edits are saved together; other editor drafts have separate save actions.",
   "save.settings": "Settings",
   "save.mcp": "MCP: Unsaved configuration",
   "save.provider": "Provider: Unsaved selection or authentication",
@@ -154,8 +139,7 @@ export const commonMessages = {
   "save.discard": "Discard settings changes",
   "save.review": "Review and save changes",
   "save.confirm": "Save settings changes?",
-  "save.confirmHelp":
-    "Save the changes below across Chats (including Chat access), Shared defaults, tools, skills, GitHub mention authors, and custom endpoints. Connection drafts, provider model additions, and authentication have separate save actions. Active work will be cancelled. Revoked permissions cannot undo completed external actions.",
+  "save.confirmHelp": "Save the changes below across Chats (including Chat access), Shared defaults, tools, skills, GitHub mention authors, and custom endpoints. Connection drafts, provider model additions, and authentication have separate save actions. Active work will be cancelled. Revoked permissions cannot undo completed external actions.",
   "save.modelChange": "Shared model change",
   "save.modelBeforeAfter": "Model: {{before}} → {{after}}",
   "save.notConfigured": "Not configured",
@@ -169,17 +153,14 @@ export const commonMessages = {
   "error.section": "{{label}} could not be displayed. Other sections remain available.",
   "error.retry": "Retry {{label}}",
   "error.request": "Request failed",
-  "error.snapshot":
-    "Could not verify saved settings. Load the latest settings before another save.",
+  "error.snapshot": "Could not verify saved settings. Load the latest settings before another save.",
   "error.ids": "Enter valid Telegram IDs",
   "error.passkey": "Passkey sign-in failed",
   "recovery.noEntry": "No entry",
   "recovery.title": "Review recovered settings draft",
-  "recovery.description":
-    "Compare your retained draft with saved revision {{revision}}. Nothing is saved by this step. Confirm the recovered draft, then review and save any remaining changes.",
+  "recovery.description": "Compare your retained draft with saved revision {{revision}}. Nothing is saved by this step. Confirm the recovered draft, then review and save any remaining changes.",
   "recovery.failed": "The saved revision has not changed. The save failed: {{failure}}",
-  "recovery.help":
-    "Unedited settings keep their latest saved values. Lists, provider configuration, and each chat record are replaced as a whole when you choose a draft value. They are not combined. In selections, null means inheritance or no shared selection; [] means an explicit empty list.",
+  "recovery.help": "Unedited settings keep their latest saved values. Lists, provider configuration, and each chat record are replaced as a whole when you choose a draft value. They are not combined. In selections, null means inheritance or no shared selection; [] means an explicit empty list.",
   "recovery.changes": "Recovered settings changes",
   "recovery.saved": "Already saved",
   "recovery.draft": "Draft retained",
@@ -250,5 +231,5 @@ export const commonMessages = {
   "count.sourceGroup_one": "{{count}} source group",
   "count.sourceGroup_other": "{{count}} source groups",
   "count.approvedTool_one": "{{count}} globally approved published tool name",
-  "count.approvedTool_other": "{{count}} globally approved published tool names",
-} as const satisfies Catalog
+  "count.approvedTool_other": "{{count}} globally approved published tool names"
+}

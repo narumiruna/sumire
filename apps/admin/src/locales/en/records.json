@@ -1,6 +1,4 @@
-import type { Catalog } from "../types.js"
-
-export const recordsMessages = {
+{
   "record.readingMode": "Conversation reading",
   "record.eventsMode": "Event inspection",
   "record.historyMode": "History display",
@@ -20,8 +18,7 @@ export const recordsMessages = {
   "record.toolResult": "Tool result",
   "record.entryContent": "Entry content",
   "record.contentTruncated": "Content truncated · inspection limits were reached.",
-  "record.contentTruncatedDetails":
-    "Content truncated · inspection limits were reached. Messages, blocks, or text may be incomplete.",
+  "record.contentTruncatedDetails": "Content truncated · inspection limits were reached. Messages, blocks, or text may be incomplete.",
   "record.noMessagesIncluded": "No message content included in this response.",
   "record.noMessages": "No message content recorded.",
   "record.output": "Output",
@@ -49,8 +46,7 @@ export const recordsMessages = {
   "record.sessionRefresh": "Session not loaded. Refresh records after the chat is loaded.",
   "record.sessionChanged": "Session or inspection changed. Refresh records to retry.",
   "record.loadingEntry": "Loading entry…",
-  "record.entryUnavailable":
-    "Entry unavailable in this conversation. It may have retired or the session may have closed.",
+  "record.entryUnavailable": "Entry unavailable in this conversation. It may have retired or the session may have closed.",
   "record.outsidePage": "Selected entry is outside the loaded page.",
   "record.filteredEntry": "Selected entry does not match the loaded-page filters.",
   "record.conversationHistory": "Conversation history",
@@ -70,10 +66,8 @@ export const recordsMessages = {
   "record.noEntries": "No saved entries on this page.",
   "record.noMatches": "No matches on the loaded page. Change the filters or open another page.",
   "record.earlierContext": "Earlier context on this page",
-  "record.precedingTurn":
-    "The preceding user turn is not on this page, or these records precede a user turn.",
-  "record.historyTruncated":
-    "History truncated · content or page limits were reached. Use Event details or Older records for available saved data.",
+  "record.precedingTurn": "The preceding user turn is not on this page, or these records precede a user turn.",
+  "record.historyTruncated": "History truncated · content or page limits were reached. Use Event details or Older records for available saved data.",
   "record.newerRecords": "Newer records",
   "record.olderRecords": "Older records",
   "record.eventDetails": "Event details",
@@ -103,19 +97,16 @@ export const recordsMessages = {
   "record.completing": "Completing",
   "record.terminal": "Terminal",
   "record.noParentRelationship": "No parent relationship recorded.",
-  "record.entryMetadataOnly":
-    "Only metadata is included. Inspect this entry to read message content.",
+  "record.entryMetadataOnly": "Only metadata is included. Inspect this entry to read message content.",
   "record.messageTruncated": "Message content is truncated.",
   "record.messageAvailable": "Message content is available.",
   "record.toolError": "Recorded tool error.",
   "record.toolSuccess": "Recorded tool result (not an error).",
-  "record.documentMetadataOnly":
-    "Only metadata is included. Inspect this document to read approved fields.",
+  "record.documentMetadataOnly": "Only metadata is included. Inspect this document to read approved fields.",
   "record.fieldsAvailable": "Approved document fields are available.",
   "record.valueUnavailable": "The document value is unavailable.",
   "record.unknownDocument": "This document is not approved for value inspection.",
-  "record.invalidDocument":
-    "The document value is withheld because it does not match the approved format.",
+  "record.invalidDocument": "The document value is withheld because it does not match the approved format.",
   "record.limitedDocument": "The document value is withheld because it exceeds inspection limits.",
   "record.withheldDocument": "The document value is withheld. No reason is recorded.",
   "record.notRecorded": "Not recorded",
@@ -132,8 +123,7 @@ export const recordsMessages = {
   "record.records": "Records",
   "record.aboutRecords": "About these records",
   "record.sessionDocuments": "Session documents",
-  "record.treeScope":
-    "Expand a conversation to read one task page and one entry page. Expand document collections separately. Only loaded records are grouped; missing parents and cycles appear at the root. Conversation branches outside the loaded pages are not shown. Refresh clears the tree pages.",
+  "record.treeScope": "Expand a conversation to read one task page and one entry page. Expand document collections separately. Only loaded records are grouped; missing parents and cycles appear at the root. Conversation branches outside the loaded pages are not shown. Refresh clears the tree pages.",
   "record.history": "History",
   "record.conversations": "Conversations",
   "record.tasks": "Tasks",
@@ -209,12 +199,9 @@ export const recordsMessages = {
   "record.chooseConversationInspect": "Choose a conversation to inspect",
   "record.noSessionWork": "Inspection will not load a session or start work.",
   "record.sessionDocumentsScope": "These documents apply to the session, not one conversation.",
-  "record.selectedNotice":
-    "This is the persisted selected conversation. Selection does not mean work is running.",
-  "record.selectionUnconfirmed":
-    "Persisted selection cannot be confirmed from the available metadata.",
-  "record.useConversationList":
-    "Use the conversation list or a related-record link. Inspect an entry to read message content.",
+  "record.selectedNotice": "This is the persisted selected conversation. Selection does not mean work is running.",
+  "record.selectionUnconfirmed": "Persisted selection cannot be confirmed from the available metadata.",
+  "record.useConversationList": "Use the conversation list or a related-record link. Inspect an entry to read message content.",
   "record.durableOverview": "Durable overview",
   "record.persistedSessionContext": "Persisted session context",
   "record.selectionDetails": "Persisted selection details",
@@ -251,23 +238,18 @@ export const recordsMessages = {
   "record.currentTarget": "Current inspection target",
   "record.chooseConversation": "Choose a conversation",
   "record.chooseChatForConversation": "Choose a conversation chat",
-  "record.searchChatsNotice":
-    "Search stored chats to read saved messages, tool results, and conversation branches.",
-  "record.noChatSelected":
-    "No chat is selected. Viewing records does not load a session or start work.",
+  "record.searchChatsNotice": "Search stored chats to read saved messages, tool results, and conversation branches.",
+  "record.noChatSelected": "No chat is selected. Viewing records does not load a session or start work.",
   "record.notLoaded": "Not loaded",
-  "record.noLoadedChat":
-    "This chat has no loaded session. Inspection will not open its database or start a session.",
-  "record.noPersistedConversation":
-    "No persisted conversation is available. Use Branch view to choose a stored conversation.",
+  "record.noLoadedChat": "This chat has no loaded session. Inspection will not open its database or start a session.",
+  "record.noPersistedConversation": "No persisted conversation is available. Use Branch view to choose a stored conversation.",
   "record.browseRecords": "Browse records",
   "record.selectedRecord": "Selected record",
   "record.loadingDurable": "Loading Durable…",
   "record.retiredScope": "Retired or unavailable. The object is no longer available in this scope.",
   "record.retiredUnavailable": "Retired or unavailable",
   "record.emptyView": "Empty · no records in this view.",
-  "record.serverTruncated":
-    "Truncated · the server read limit was reached. Some records are not shown.",
+  "record.serverTruncated": "Truncated · the server read limit was reached. Some records are not shown.",
   "record.rawCollections": "Raw collections",
   "record.objectViews": "Durable object views",
   "record.documentScope": "Document scope",
@@ -285,8 +267,7 @@ export const recordsMessages = {
   "record.dataScope": "Data scope and limits",
   "record.readOnlyNotLive": "Read-only persisted data; not live execution state",
   "audit.noImportHistory": "No import history.",
-  "audit.importScope":
-    "Import history is read-only. It does not approve IDs or restore revoked access. Environment review history is limited to the latest 10 reviews.",
+  "audit.importScope": "Import history is read-only. It does not approve IDs or restore revoked access. Environment review history is limited to the latest 10 reviews.",
   "audit.importFailures": "Import failures — review details",
   "audit.incompleteImport": "Incomplete import",
   "audit.reviewAtImport": "Review required at import",
@@ -339,8 +320,7 @@ export const recordsMessages = {
   "audit.clearFilters": "Clear audit filters",
   "audit.retry": "Retry audit",
   "audit.historyScope": "History scope and limits",
-  "audit.scopeNotice":
-    "Older records may be available; the server retains up to 10,000 records. Filters cover all retained records. Groups cover this page only and can continue on adjacent pages; filtered views can omit related events. Field-level change details are unavailable.",
+  "audit.scopeNotice": "Older records may be available; the server retains up to 10,000 records. Filters cover all retained records. Groups cover this page only and can continue on adjacent pages; filtered views can omit related events. Field-level change details are unavailable.",
   "audit.loading": "Loading audit records…",
   "audit.pagination": "Audit pagination",
   "audit.newer": "Newer",
@@ -357,16 +337,13 @@ export const recordsMessages = {
   "record.inspectEntry": "Inspect entry {{id}}",
   "record.inherited": "Inherited from conversation {{id}}",
   "record.historyHeading": "History · conversation {{id}}",
-  "record.historyDescriptionOldest":
-    "Saved model-facing messages, not a Telegram archive or captured request. Entries read in oldest-first order within this page. Filters search this page only.",
-  "record.historyDescriptionNewest":
-    "Saved model-facing messages, not a Telegram archive or captured request. Entries read in newest-first order within this page. Filters search this page only.",
+  "record.historyDescriptionOldest": "Saved model-facing messages, not a Telegram archive or captured request. Entries read in oldest-first order within this page. Filters search this page only.",
+  "record.historyDescriptionNewest": "Saved model-facing messages, not a Telegram archive or captured request. Entries read in newest-first order within this page. Filters search this page only.",
   "record.latestPage": "Page {{page}} · latest records",
   "record.olderPage": "Page {{page}} · older records",
   "record.page": "Page {{page}}",
   "record.historyReadTime": "History read time: {{time}}",
-  "record.dialogDescription":
-    "Saved entry in inspected conversation {{id}}. Viewing does not change the persisted selection.",
+  "record.dialogDescription": "Saved entry in inspected conversation {{id}}. Viewing does not change the persisted selection.",
   "record.recordedOutcome": "Recorded outcome: {{outcome}}",
   "record.recordedStatus": "Recorded status: {{status}}",
   "record.statusWithoutOutcome": "Recorded status: {{status}} · no outcome recorded",
@@ -407,13 +384,11 @@ export const recordsMessages = {
   "record.valueJson": "Approved value JSON for document {{id}}",
   "record.inspectingConversation": "Inspecting conversation {{id}}",
   "record.inspectingConversationCapital": "Inspecting Conversation {{id}}",
-  "record.notPersistedSelection":
-    "This is not the persisted selected conversation (conversation {{id}}). Inspecting it does not change selection.",
+  "record.notPersistedSelection": "This is not the persisted selected conversation (conversation {{id}}). Inspecting it does not change selection.",
   "record.parent": "Parent",
   "record.fork": "fork",
   "record.owner": "Owner",
-  "record.inspectionTarget":
-    "Inspection target: conversation {{id}}. This does not change persisted selection.",
+  "record.inspectionTarget": "Inspection target: conversation {{id}}. This does not change persisted selection.",
   "record.taskPageCount": "{{count}} on the loaded page.",
   "record.taskPageCountMore": "{{count}} on the loaded page · more may exist.",
   "record.objectNumber": "Object #{{id}} ·",
@@ -436,8 +411,7 @@ export const recordsMessages = {
   "audit.outcomeExact": "Audit outcome exact value",
   "audit.activeFilters": "Active filters: {{filters}}",
   "audit.recordsRange": "Showing records {{from}}–{{to}}.",
-  "record.scopeNotice":
-    "Inspection does not load chats or start work. Refresh is manual; there is no polling. Each record context or refresh reads at most one conversation page, one selected-conversation task page, and one requested inspection page, in sequence. Tree collections read one page on expansion and one page per Load more action. Pages contain at most 25 records. Reads are separate, not one atomic snapshot. Active marks persisted selection, not running work. Task status and outcome are historical observations, not live scheduling state. Retired task documents can be unavailable. History includes bounded saved model-facing content; raw entry lists include metadata only. History pages start with the latest records and display each page in creation order. Filters search only the loaded page. Event details makes one additional scoped entry read. Saved history does not reconstruct context edits or a provider request, and is not a Telegram archive. Content can be truncated. Image bytes are never sent.",
+  "record.scopeNotice": "Inspection does not load chats or start work. Refresh is manual; there is no polling. Each record context or refresh reads at most one conversation page, one selected-conversation task page, and one requested inspection page, in sequence. Tree collections read one page on expansion and one page per Load more action. Pages contain at most 25 records. Reads are separate, not one atomic snapshot. Active marks persisted selection, not running work. Task status and outcome are historical observations, not live scheduling state. Retired task documents can be unavailable. History includes bounded saved model-facing content; raw entry lists include metadata only. History pages start with the latest records and display each page in creation order. Filters search only the loaded page. Event details makes one additional scoped entry read. Saved history does not reconstruct context edits or a provider request, and is not a Telegram archive. Content can be truncated. Image bytes are never sent.",
   "record.branchedLinks": "Branched from {{conversation}} at {{entry}}.",
-  "record.ownedLinks": "Owned by {{owner}}.",
-} as const satisfies Catalog
+  "record.ownedLinks": "Owned by {{owner}}."
+}
