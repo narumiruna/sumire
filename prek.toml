@@ -2,7 +2,7 @@ fail_fast = true
 
 [[repos]]
 repo = "https://github.com/biomejs/pre-commit"
-rev = "v2.6.6"
+rev = "v2.6.8"
 
 # The official repo has no migrate hook; reuse its Node environment.
 [[repos.hooks]]
@@ -10,19 +10,19 @@ id = "biome-ci"
 alias = "biome-migrate"
 name = "biome migrate"
 entry = "biome migrate --write"
-additional_dependencies = ["@biomejs/biome@2.6.6"]
+additional_dependencies = ["@biomejs/biome@2.6.8"]
 pass_filenames = false
 always_run = true
 
 [[repos.hooks]]
 id = "biome-format"
-additional_dependencies = ["@biomejs/biome@2.6.6"]
+additional_dependencies = ["@biomejs/biome@2.6.8"]
 pass_filenames = false
 always_run = true
 
 [[repos.hooks]]
 id = "biome-check"
-additional_dependencies = ["@biomejs/biome@2.6.6"]
+additional_dependencies = ["@biomejs/biome@2.6.8"]
 pass_filenames = false
 always_run = true
 
