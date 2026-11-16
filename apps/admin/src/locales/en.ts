@@ -1,9 +1,9 @@
-import { chatsMessages } from "./en/chats.js"
-import { commonMessages } from "./en/common.js"
-import { policyMessages } from "./en/policy.js"
-import { providersMessages } from "./en/providers.js"
-import { recordsMessages } from "./en/records.js"
-import { settingsMessages } from "./en/settings.js"
+import chatsMessages from "./en/chats.json"
+import commonMessages from "./en/common.json"
+import policyMessages from "./en/policy.json"
+import providersMessages from "./en/providers.json"
+import recordsMessages from "./en/records.json"
+import settingsMessages from "./en/settings.json"
 
 export const en = {
   ...commonMessages,

@@ -5,9 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory, Snapshot } from "./api.js"
 import { setLocale } from "./i18n.js"
-import { providersMessages as enMessages } from "./locales/en/providers.js"
-import { providersMessages as jaMessages } from "./locales/ja/providers.js"
-import { providersMessages as zhTWMessages } from "./locales/zh-tw/providers.js"
+import enMessages from "./locales/en/providers.json"
+import jaMessages from "./locales/ja/providers.json"
+import zhTWMessages from "./locales/zh-tw/providers.json"
 import { ModelRemovalImpact } from "./model-removal-impact.js"
 import { ModelSetup } from "./model-setup.js"
 import { ProviderEditor } from "./provider-editor.js"
@@ -46,7 +46,7 @@ afterEach(() => {
 describe("provider and model workflow presentation", () => {
   it("provides all three translations with the same interpolation fields", () => {
     const fields = (message: string) =>
-      [...message.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
+      [...message.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort()
     const keys = Object.keys(enMessages) as (keyof typeof enMessages)[]
     for (const catalog of [enMessages, zhTWMessages, jaMessages]) {
       expect(Object.keys(catalog).sort()).toEqual([...keys].sort())

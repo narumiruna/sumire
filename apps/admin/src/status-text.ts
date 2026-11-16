@@ -1,4 +1,4 @@
-import { getLocale, type MessageKey, t } from "./i18n.js"
+import { type MessageKey, t } from "./i18n.js"
 
 export const countNouns = {
   chat: "count.chat",
@@ -32,12 +32,7 @@ export const countNouns = {
   "source group": "count.sourceGroup",
 } as const satisfies Record<string, MessageKey>
 
-/** English has singular and plural forms; Chinese and Japanese use one count form. */
-export function countText(
-  count: number,
-  singular: keyof typeof countNouns,
-  plural = `${singular}s`,
-) {
-  if (getLocale() === "en") return `${count} ${count === 1 ? singular : plural}`
+/** i18next selects the language-specific count form. */
+export function countText(count: number, singular: keyof typeof countNouns) {
   return t(countNouns[singular], { count })
 }

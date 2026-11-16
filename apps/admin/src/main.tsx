@@ -831,7 +831,6 @@ function App() {
                             ),
                           ).length,
                           "chat has",
-                          "chats have",
                         ),
                       })}
                     </AlertDialog.Description>

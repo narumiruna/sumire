@@ -1,6 +1,6 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import {
   errorMessage,
   getLocale,
@@ -17,13 +17,12 @@ import {
   translate,
 } from "./i18n.js"
 import { LanguageSelector } from "./language-selector.js"
-import { chatsMessages } from "./locales/en/chats.js"
-import { commonMessages } from "./locales/en/common.js"
-import { policyMessages } from "./locales/en/policy.js"
-import { providersMessages } from "./locales/en/providers.js"
-import { recordsMessages } from "./locales/en/records.js"
-import { settingsMessages } from "./locales/en/settings.js"
 import { countText } from "./status-text.js"
+
+const featureCatalogs = import.meta.glob<Record<string, string>>("./locales/*/*.json", {
+  eager: true,
+  import: "default",
+})
 
 afterEach(() => {
   setLocale("en")
@@ -51,6 +50,7 @@ describe("admin locale selection", () => {
     ["invalid", ["en-GB", "ja"], "en"],
     ["ja-JP", ["zh"], "zh-TW"],
     [null, ["de-DE"], "en"],
+    [null, ["JA-jp"], "ja"],
     [null, [], "en"],
   ])("resolves saved %s and browser %j to %s", (saved, languages, expected) => {
     expect(resolveLocale(saved, languages)).toBe(expected)
@@ -97,6 +97,25 @@ describe("admin locale selection", () => {
     expect(getLocale()).toBe("zh-TW")
   })
 
+  it("updates metadata when browser preferences are initialized again", () => {
+    const { document } = browser(null, ["en"])
+    initializeLocale()
+    vi.stubGlobal("navigator", { languages: ["ja-JP"], language: "ja-JP" })
+    initializeLocale()
+    expect(getLocale()).toBe("ja")
+    expect(document.title).toBe("Sumire 管理画面")
+    expect(t("app.language")).toBe("言語")
+  })
+
+  it("ignores unsupported choices without changing storage or document metadata", () => {
+    const { storage, document } = browser("ja")
+    initializeLocale()
+    setLocale("fr" as (typeof locales)[number])
+    expect(getLocale()).toBe("ja")
+    expect(storage.setItem).not.toHaveBeenCalled()
+    expect(document.documentElement.lang).toBe("ja")
+  })
+
   it("renders native language names and a localized accessible label", () => {
     setLocale("ja")
     const html = renderToStaticMarkup(createElement(LanguageSelector))
@@ -108,42 +127,78 @@ describe("admin locale selection", () => {
 })
 
 describe("admin message catalogs", () => {
-  it("has unique keys across UI responsibilities", () => {
-    const catalogs = [
-      commonMessages,
-      chatsMessages,
-      recordsMessages,
-      providersMessages,
-      settingsMessages,
-      policyMessages,
-    ]
+  it("preserves typed message keys from JSON resources", () => {
+    expectTypeOf<"app.title">().toExtend<MessageKey>()
+    expectTypeOf<"count.chat">().toExtend<MessageKey>()
+    expectTypeOf<"missing.message">().not.toExtend<MessageKey>()
+    expectTypeOf<string>().not.toExtend<MessageKey>()
+  })
+
+  it.each(locales)("has unique keys across UI responsibilities in %s", (locale) => {
+    const directory = locale === "zh-TW" ? "zh-tw" : locale
+    const catalogs = Object.entries(featureCatalogs)
+      .filter(([path]) => path.startsWith(`./locales/${directory}/`))
+      .map(([, catalog]) => catalog)
+    expect(catalogs.length).toBeGreaterThan(0)
+    expect(catalogs).toHaveLength(Object.keys(featureCatalogs).length / locales.length)
     const keys = catalogs.flatMap((catalog) => Object.keys(catalog))
     expect(new Set(keys).size).toBe(keys.length)
   })
 
+  it.each(Object.entries(featureCatalogs))(
+    "keeps %s aligned with its English feature catalog",
+    (path, catalog) => {
+      const source = featureCatalogs[`./locales/en/${path.split("/").at(-1)}`]
+      expect(source, path).toBeDefined()
+      const keys = Object.keys(source ?? {})
+      const expectedKeys = path.startsWith("./locales/en/")
+        ? keys
+        : keys.filter((key) => !key.endsWith("_one"))
+      expect(Object.keys(catalog).sort(), path).toEqual(expectedKeys.sort())
+    },
+  )
+
   it("provides complete translations with identical interpolation fields", () => {
     const fields = (value: string) =>
-      [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
-    const keys = Object.keys(messages.en) as MessageKey[]
+      [...value.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort()
+    const keys = Object.keys(messages.en)
     for (const locale of locales) {
       const catalog = messages[locale]
-      expect(Object.keys(catalog).sort(), locale).toEqual([...keys].sort())
-      for (const key of keys) {
-        const value = catalog[key]
+      const expectedKeys = locale === "en" ? keys : keys.filter((key) => !key.endsWith("_one"))
+      expect(Object.keys(catalog).sort(), locale).toEqual([...expectedKeys].sort())
+      for (const [key, value] of Object.entries(catalog)) {
         const context = `${locale}:${key}`
         expect(value.trim().length, context).toBeGreaterThan(0)
-        expect(fields(value), context).toEqual(fields(messages.en[key]))
-        expect(translate(locale, key), context).toBe(value)
+        expect(fields(value), context).toEqual(fields(messages.en[key as keyof typeof messages.en]))
+        expect(translate(locale, key as MessageKey), context).toBe(value)
       }
     }
   })
 
   it("inserts values literally without reinterpreting data as message keys or placeholders", () => {
-    const actor = "<script>$& {actor} 日本語</script>"
+    const actor = "<script>$& {{actor}} $t(app.title) 日本語</script>"
     expect(translate("en", "app.actor", { actor })).toBe(`Administrator: ${actor}`)
     expect(translate("zh-TW", "app.actor", { actor })).toBe(`管理員：${actor}`)
     expect(translate("ja", "app.actor", { actor })).toBe(`管理者: ${actor}`)
-    expect(translate("en", "app.actor")).toBe("Administrator: {actor}")
+    expect(translate("en", "app.actor")).toBe("Administrator: {{actor}}")
+    const html = renderToStaticMarkup(createElement("p", null, t("app.actor", { actor })))
+    expect(html).toContain("&lt;script&gt;")
+    expect(html).not.toContain("<script>")
+  })
+
+  it("keeps interpolation data separate from i18next options and string counts", () => {
+    expect(translate("ja", "app.actor", { actor: "Alice", lng: "en" })).toBe("管理者: Alice")
+    expect(translate("en", "app.resetHelp", { count: "1 chat has" })).toMatch(
+      /^1 chat has explicit overrides/,
+    )
+    expect(getLocale()).toBe("en")
+  })
+
+  it("translates in another language without changing the active locale", () => {
+    setLocale("ja")
+    expect(translate("zh-TW", "app.language")).toBe("語言")
+    expect(t("app.language")).toBe("言語")
+    expect(getLocale()).toBe("ja")
   })
 
   it("updates existing local errors but keeps external diagnostics literal", () => {
@@ -165,11 +220,11 @@ describe("admin message catalogs", () => {
     setLocale("en")
     expect(countText(1, "chat")).toBe("1 chat")
     expect(countText(2, "chat")).toBe("2 chats")
-    expect(
-      translate("en", "app.resetHelp", { count: countText(1, "chat has", "chats have") }),
-    ).toMatch(/^1 chat has explicit overrides/)
-    expect(
-      translate("en", "app.resetHelp", { count: countText(3, "chat has", "chats have") }),
-    ).toMatch(/^3 chats have explicit overrides/)
+    expect(translate("en", "app.resetHelp", { count: countText(1, "chat has") })).toMatch(
+      /^1 chat has explicit overrides/,
+    )
+    expect(translate("en", "app.resetHelp", { count: countText(3, "chat has") })).toMatch(
+      /^3 chats have explicit overrides/,
+    )
   })
 })
