@@ -420,11 +420,143 @@ The production image currently qualifies the AnyDoc native adapter on Linux x86_
 
 ## Local audio transcription
 
-The production image installs `yt-dlp[default,deno]`, FFmpeg, and the Python `openai-whisper` CLI with a CPU PyTorch runtime. The yt-dlp extras include matching `yt-dlp-ejs` scripts and Deno, the default JavaScript runtime for YouTube challenges. The YouTube loader tries captions first, then downloads audio and transcribes it with the local `tiny` model; Instagram Reels use the same local audio transcription path. URL media remains subject to the public URL validation and the URL content timeout. It does not call OpenAI's hosted audio API.
+The production image uses Transformers.js 4.3.2 with native `onnxruntime-node`
+for local CPU transcription. It does not install `openai-whisper` or PyTorch and
+does not call a hosted audio API. Python remains for
+`yt-dlp[default,deno]==2026.8.19`, including matching EJS scripts and Deno for
+YouTube challenges; FFmpeg remains installed. Keep npm optional dependencies
+for bundled ONNX and `sharp` binaries. The production native target is Linux
+x86_64 with glibc and Node.js 26; other platforms are not release-qualified.
 
-Voice notes and audio attachments sent to Sumire (or replied to with an addressed message) are downloaded only when their conversion slot is free. The streamed download is bounded to 20,000,000 bytes; Telegram's reported duration is checked against a fixed 600-second limit. This metadata check does not verify the actual audio duration: the transcription also has a 180-second deadline and a 12,000-character transcript limit. Only one Telegram audio input transcribes at once; each request uses a private temporary file removed after success or failure. Transcripts are passed to Pi as explicitly untrusted reference text alongside the caption or question. Audio input is enabled by default with no environment disable switch. Unsupported/corrupt audio, download errors, and missing local tools produce a direct error rather than an invented transcript. Cancellation skips queued work and suppresses late results; an already running transcription finishes or times out before freeing its slot.
+YouTube tries captions first. URL audio fallback and Telegram voice/audio share
+one process-local admission slot and one lazily started, persistent Node.js
+inference child. The child keeps native work outside the bot event loop and
+reuses the selected model for warm requests. Admission precedes download, so
+queued Telegram work retains a lazy loader rather than an audio buffer.
+Instagram Reels use the same backend. URL validation and source routing are
+unchanged.
 
-The first use of the local `tiny` model downloads model weights. Compose keeps the cache in the `whisper-cache` volume, so later restarts do not repeat that download; the container needs network access for the first transcription. Local development requires `yt-dlp[default,deno]`, `whisper` from `openai-whisper`, and FFmpeg on `PATH`. This CPU-only stack increases image size and may take time to build or transcribe.
+The default is multilingual `Xenova/whisper-tiny`, revision
+`5332fcc35e32a33b86612b9a57a89be7906102b1`, CPU `q8`, with two inference threads.
+Transformers.js 4.3.2 otherwise defaults to English; the backend derives the
+language token from model logits and uses `task: "transcribe"`, not warning-text
+parsing or forced English. Model, tokenizer, and feature extractor files use the
+same revision. The backend constructs Whisper components directly because the
+4.3.2 factory's file discovery ignores revision options. Tokenizer JSON uses a
+bounded, atomic cache write; a populated pinned cache needs no remote discovery.
+Long audio uses 30-second chunks with a 5-second stride, not disk-streamed or
+resumable inference. In the library,
+`model: "tiny"` remains the default alias; overrides use full Hugging Face Hub
+IDs. The default revision is not applied to other models. `whisperPath` is
+removed; `commandRunner` remains for yt-dlp, not an ASR CLI.
+
+First transcription needs network access to download model files into
+`/app/.cache/transformers` under `XDG_CACHE_HOME`. Compose persists this path in
+`transformers-cache`, owned by the non-root app user. Imports and caption-only
+requests do not load weights. Keep the old `whisper-cache` declaration and mount
+for matching-image rollback; its Python weights cannot be reused as ONNX files.
+No runtime variable or backend switch is added. Local development needs the npm
+native dependencies, FFmpeg, and the pinned yt-dlp extras, not a Whisper CLI.
+
+Telegram downloads enforce 20,000,000 bytes while streaming. Both reported
+metadata and actual decoded samples enforce 600 seconds; over-limit audio fails
+instead of being silently truncated. FFmpeg decodes local input to bounded mono
+16 kHz float32 PCM. Decode, model loading, and inference share the existing
+180-second Telegram transcription deadline. Transcript text stays limited to
+12,000 characters with explicit truncation and is supplied to Pi as untrusted
+reference data. Unsupported media and backend failures produce direct errors,
+not invented transcripts. Audio remains enabled by default.
+
+`/cancel`, `/reset`, timeout, and shutdown stop active audio, not only late
+replies. Queued cancellation skips download. Active cancellation stops FFmpeg
+and kills the inference child, with forced termination when needed. Temporary
+files and the shared slot are retained until child processes close; the next
+request starts inference lazily. Shutdown closes audio resources. Standalone
+CLI processes have separate admission slots and dispose of their own children.
+
+URL limits are unchanged: 3,600 seconds, 100 MiB, a shared 120-second metadata
+and download budget, and at most 300 seconds for decode, model loading, and
+inference together. The 180-second total URL deadline includes admission and
+can expire sooner; a stage transition never restarts a budget. Output remains
+12,000 characters. This is not a long-job system or SRT/VTT delivery feature.
+It does not guarantee completion of the original long video or better latency
+or memory use.
+
+### Audio benchmark record
+
+Local measurements on 2026-11-17 used Apple M4, Node.js 26.11.1,
+Transformers.js 4.3.2, ONNX Runtime 1.30.0, and the pinned CPU q8 model with
+2/1 intra/inter-operation threads. Test-only Japanese speech was generated with
+macOS `say -v Kyoko -r 150`, then decoded through the production backend.
+No recording or model binary is committed. Values below are single runs, not
+latency guarantees or comparisons with Python Whisper.
+
+| Measurement | Short Japanese clip | Long Japanese clip |
+| --- | --- | --- |
+| Actual decoded duration | 11.673 s | 54.154 s |
+| Empty-cache total / model load / inference | 15.527 / 14.675 / 0.777 s | 16.487 / 14.365 / 2.067 s |
+| New process with populated cache: total / model load | 0.979 / 0.207 s | Uses the same model cache |
+| In-process warm total / inference | 0.675 / 0.650 s | 1.945 / 1.916 s |
+| Model assets cached after a cold run | 43,622,127 bytes | Same assets |
+| Sampled peak RSS, parent plus descendants | 1.50 GB cold | 1.56 GB cold |
+| Normalized reference-text CER | 10.9% | 40.5% |
+| Reference phrases on both sides of 30 s | Not applicable | Tokyo before, Osaka after |
+
+RSS was sampled every 50 ms. The inference child's OS-reported high-water mark
+for a complete short/warm/long run was 1,439,136 KiB; this excludes the parent.
+CER uses Unicode NFKC normalization and removes punctuation/spacing before
+character edit distance. Reference data for repeat measurements:
+
+```text
+Short: こんにちは。今日は東京の天気について話します。朝は晴れていましたが、午後から雨が降りました。明日は電車で京都に行きます。
+Long: こんにちは。今日は東京の天気について話します。朝は晴れていましたが、午後から雨が降りました。駅の前には新しい図書館ができました。学生たちはそこで本を読んだり、勉強したりしています。私は毎朝、温かいお茶を飲んでから仕事を始めます。昼休みには近くの公園を散歩して、季節の花を楽しみます。今週の会議では、来月の計画についてみんなで相談しました。週末は家族と一緒に旅行に行く予定です。明日は電車で京都に行きます。古いお寺を見て、川の近くを歩きたいと思います。最後に大阪のお店で、おいしい料理を食べます。これで今日のお話を終わります。
+```
+
+The long sample contains omitted middle sentences. Inspection confirmed all
+three input windows (0–30, 20–50, and 40–54.154 s) reached generation; the second
+window ended after 23 tokens, below its 448-token limit. This is a tiny-q8
+recognition/early-EOS limitation, not proof of complete transcription. A separate
+42.950-second repeated-speech probe had 63.8% CER; model output and upstream
+chunk merging can collapse repetitions. Do not present this backend as reliable
+complete subtitles without independent quality review.
+
+Real decode and inference cancellation returned the original abort reason,
+left no child processes or request PCM directories, and allowed a successful
+next job. Measured cancellation runs took 18/136 ms in total; forced-termination
+and preparation/shutdown cases also have offline regression tests.
+
+The Linux x86_64 production image also completed the short Japanese fixture as
+UID 999, Node.js 26.13.1, with networking disabled and a read-only populated cache
+(3.020 s under emulation, not a target-host performance result). Offline image
+checks verify cache write access, caption-only operation, native imports,
+yt-dlp/EJS/Deno/FFmpeg, and absence of openai-whisper/torch.
+
+No Python-backend baseline is available. These results do not establish a speed
+or accuracy improvement, production Telegram delivery, live YouTube extraction,
+or completion of the original video.
+
+### Audio operator handoff and rollback
+
+Deployment, production model downloads, and live Telegram checks require
+separate operator authorization. Before rollout, retain the previous approved
+image and all state/cache volumes. After required root checks and an image
+build pass, run credential-free disposable image checks as `app` with
+`--network=none`, without production state mounts or starting the bot. Verify
+FFmpeg, native ONNX and Transformers.js imports, caption-only operation without
+weights, and absence of Python ASR packages. Record the image ID and outcomes.
+
+After authorized rollout, verify a Japanese Telegram voice note, a caption-only
+URL, audio fallback, `/cancel`, `/reset`, and a subsequent successful audio job.
+Inspect safe stage/timing facts only; do not record transcripts, credentials, or
+raw conversation content. Production Telegram and the original video remain
+unverified until separately checked. Do not infer long-video acceptance from a
+short fixture.
+
+If audio regresses, restore the previous approved image with its matching
+configuration and state compatibility procedure. Preserve both cache volumes
+and durable state; never use `docker compose down -v` or reset chats as rollback.
+The retained Python cache is for the old image only. There is no runtime
+Python-backend selector and no database migration for this audio change.
 
 ## URL content loading
 
@@ -466,7 +598,7 @@ For example, when no captions were obtained and metadata confirms a 5,198-second
 
 User messages and URL failure diagnostics exclude raw upstream errors, command stderr, local paths, source URLs, and credentials. Logs retain allowlisted loader IDs, phase codes, elapsed time, numeric facts, and keyed URL fingerprints. Skipped optional fallbacks do not change the displayed reason or next action. Cancellation and reset keep their existing responses. Logfire receives redacted text through a fixed message template, so braces in structured details cannot be interpreted as template fields.
 
-The production image build runs `apps/bot/scripts/check-url-failures.mjs` with networking disabled. This checks caption success, unavailable captions, the installed yt-dlp JSON template against local metadata, confirmed duration rejection, the Telegram message, the Pi error result, and the installed Whisper CLI. It also checks that `yt-dlp-ejs` is installed and runs JavaScript with Deno as the bot user. It does not start the bot, contact Telegram, download model weights, or verify live YouTube extraction.
+The production image build runs `apps/bot/scripts/check-url-failures.mjs` with networking disabled. This checks caption success, unavailable captions, the installed yt-dlp JSON template against local metadata, confirmed duration rejection, the Telegram message, the Pi error result, FFmpeg availability, native ONNX and Transformers.js imports, and absence of Python ASR packages. It also checks that `yt-dlp-ejs` is installed and runs JavaScript with Deno as the bot user. It does not start the bot, contact Telegram, download model weights, or verify live YouTube extraction.
 
 ## Docker
 
@@ -512,7 +644,7 @@ Runtime limits below remain fixed while the database owns authorization and capa
 | Codemode host deadline | 300 seconds per script. |
 | Telegram documents | 20,000,000 bytes, 50,000 Markdown characters, 30-second conversion, two concurrent inputs. |
 | Telegram images | 8,000,000 bytes. |
-| Telegram audio | 20,000,000 bytes, 600 seconds reported duration, 180-second transcription, 12,000 transcript characters. |
+| Telegram audio | 20,000,000 bytes, 600 seconds reported and decoded duration, 180-second transcription, 12,000 transcript characters. |
 | Reply index | 1,000 records and 1,000,000 bytes per chat. |
 | URL loading | 15-second built-in/DNS phase, 180-second total deadline, 12,000 output characters; public HTTP(S) only. |
 

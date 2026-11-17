@@ -15,6 +15,7 @@ export {
   type FailureCode,
   type FailureDiagnostic,
   FailureDiagnosticError,
+  type FailurePhase,
   FirecrawlApiHttpError,
   FirecrawlApiKeyNotSetError,
   FirecrawlApiKeyNotSetError as FirecrawlAPIKeyNotSetError,

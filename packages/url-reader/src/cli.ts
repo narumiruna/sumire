@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 import { loadUrl } from "./api.js"
+import { closeAudioTranscriber } from "./audio.js"
 import { getLoaderDef, listLoaderDefs } from "./loader-registry.js"
 
 interface CliOptions {
@@ -73,8 +74,10 @@ function isEntrypoint(): boolean {
 }
 
 if (isEntrypoint()) {
-  main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
-  })
+  main()
+    .finally(closeAudioTranscriber)
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
+    })
 }

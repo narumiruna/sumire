@@ -50,7 +50,12 @@ describe("URL telemetry", () => {
         elapsedSeconds: 1,
         diagnostic: { code: "captions_unavailable" as const, phase: "captions" as const },
       },
-      { loaderId: "youtube-ytdlp", status: "success" as const, elapsedSeconds: 2 },
+      {
+        loaderId: "youtube-ytdlp",
+        status: "success" as const,
+        elapsedSeconds: 2,
+        phaseTimingsMs: { metadata: 10, download: 20, decode: 30, model_load: 40, inference: 50 },
+      },
     ]
     await traceUrlLoad(logger, url, undefined, "call-1", async () => ({
       url,
@@ -86,6 +91,7 @@ describe("URL telemetry", () => {
           loaderId: "youtube-ytdlp",
           status: "failed",
           elapsedSeconds: 2,
+          phaseTimingsMs: { metadata: 15 },
           diagnostic: {
             code: "media_duration_limit",
             phase: "metadata",
@@ -116,6 +122,16 @@ describe("URL telemetry", () => {
     })
     expect(JSON.stringify(spans)).toContain("media_duration_limit")
     expect(JSON.stringify(spans)).toContain("5198")
+    expect(JSON.parse(String(spans[0]?.["url.attempts"]))[1].phaseTimingsMs).toEqual({
+      metadata: 10,
+      download: 20,
+      decode: 30,
+      model_load: 40,
+      inference: 50,
+    })
+    expect(JSON.parse(String(spans[1]?.["url.attempts"]))[1].phaseTimingsMs).toEqual({
+      metadata: 15,
+    })
     expect(JSON.stringify(spans)).not.toMatch(
       /sensitive details|private text|invalid-private-id|secret/u,
     )

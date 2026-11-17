@@ -16,6 +16,34 @@ The Pi manifest loads `dist/index.js` and both skills under `skills/`. Pi core l
 
 Pi packages execute with the current user's permissions. Review source before installation.
 
+## Audio fallback
+
+YouTube uses captions first. When audio fallback is needed, the underlying
+URL reader uses Transformers.js 4.3.2 in a shared, serial, killable Node.js child.
+It needs native CPU ONNX dependencies, FFmpeg, and Python with pinned
+`yt-dlp[default,deno]` (including EJS and Deno), not `openai-whisper` or PyTorch.
+The production native target is Linux x86_64 with glibc and Node.js 26.
+
+The default is multilingual `Xenova/whisper-tiny`, revision
+`5332fcc35e32a33b86612b9a57a89be7906102b1`, CPU `q8`, with two inference threads.
+The backend derives a language token from model logits because Transformers.js
+4.3.2 otherwise defaults to English; it does not parse warning text. First use
+downloads weights into `XDG_CACHE_HOME/transformers`; Compose persists
+`/app/.cache/transformers` in `transformers-cache`. Registration, imports, and
+caption-only requests do not load weights. No runtime variable is added.
+
+Admission, download, decode, model loading, and inference remain within the
+180-second total URL deadline. Metadata and download share 120 seconds; the
+transcription budget is at most 300 seconds and cannot extend the total deadline.
+The 12,000-character text limit is unchanged. Cancellation stops active decode
+and inference before shared capacity is released. In the bot, Telegram audio
+uses the same slot. Separate CLI processes have their own slots. This is not a
+long-job or subtitle-delivery system and does not guarantee long-video completion
+or faster inference. See the
+[URL reader audio contract](../url-reader/README.md#yt-dlp-and-transformersjs-audio)
+for native setup, lifecycle, `model: "tiny"` and full Hub model IDs, and removal
+of the `whisperPath` constructor option.
+
 ## Bundled skills
 
 - `load-public-url` explains tool use, source attribution, and untrusted content handling.

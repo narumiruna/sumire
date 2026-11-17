@@ -10,6 +10,8 @@ import {
   TargetHttpError,
 } from "./core/errors.js"
 import {
+  type AttemptSnapshot,
+  createAttemptExecution,
   recordAttempt,
   remainingMilliseconds,
   withAttemptSink,
@@ -167,6 +169,7 @@ export class LoadChain {
         remaining < 1_000
       ) {
         appendAttempt(
+          {},
           plannedLoaderName,
           AttemptStatus.Skipped,
           performance.now(),
@@ -190,31 +193,51 @@ export class LoadChain {
           : remaining
       const localTimeout = budget !== undefined && (remaining === undefined || budget < remaining)
       const started = performance.now()
+      const attemptExecution = createAttemptExecution()
+      let stopTracking: (() => void) | undefined
       try {
-        const result = await runBounded(
-          async (activeSignal) => {
-            const operation = async () => {
-              activeSignal.throwIfAborted()
-              const loader = await this.getFactory(plannedLoaderName)()
-              activeSignal.throwIfAborted()
-              return loader.load(this.explanation.url, activeSignal)
-            }
-            return withDeadline(budget === undefined ? undefined : started + budget, () =>
-              this.admit ? this.admit(plannedLoaderName, operation, activeSignal) : operation(),
-            )
-          },
-          budget,
-          signal,
-          localTimeout
-            ? new LoaderTimeoutError(plannedLoaderName, this.explanation.url, (budget ?? 0) / 1_000)
-            : new DOMException("Deadline expired", "TimeoutError"),
+        const result = await attemptExecution.run(() =>
+          runBounded(
+            async (activeSignal) => {
+              const freezeAttempt = () => {
+                attemptExecution.finish()
+              }
+              activeSignal.addEventListener("abort", freezeAttempt, { once: true })
+              stopTracking = () => activeSignal.removeEventListener("abort", freezeAttempt)
+              const operation = async () => {
+                activeSignal.throwIfAborted()
+                const loader = await this.getFactory(plannedLoaderName)()
+                activeSignal.throwIfAborted()
+                return loader.load(this.explanation.url, activeSignal)
+              }
+              return withDeadline(budget === undefined ? undefined : started + budget, () =>
+                this.admit ? this.admit(plannedLoaderName, operation, activeSignal) : operation(),
+              )
+            },
+            budget,
+            signal,
+            localTimeout
+              ? new LoaderTimeoutError(
+                  plannedLoaderName,
+                  this.explanation.url,
+                  (budget ?? 0) / 1_000,
+                )
+              : new DOMException("Deadline expired", "TimeoutError"),
+          ),
         )
         signal?.throwIfAborted()
         if (remainingMilliseconds() === 0)
           throw new DOMException("Deadline expired", "TimeoutError")
         if (!result.trim()) {
           errors.push(`${plannedLoaderName}: Empty result`)
-          appendAttempt(plannedLoaderName, AttemptStatus.Empty, started, undefined, "Empty result")
+          appendAttempt(
+            attemptExecution.finish(),
+            plannedLoaderName,
+            AttemptStatus.Empty,
+            started,
+            undefined,
+            "Empty result",
+          )
           continue
         }
 
@@ -225,6 +248,7 @@ export class LoadChain {
         ) {
           errors.push(`${plannedLoaderName}: Rejected content type ${actualType}`)
           appendAttempt(
+            attemptExecution.finish(),
             plannedLoaderName,
             AttemptStatus.Rejected,
             started,
@@ -234,7 +258,7 @@ export class LoadChain {
           continue
         }
 
-        appendAttempt(plannedLoaderName, AttemptStatus.Success, started)
+        appendAttempt(attemptExecution.finish(), plannedLoaderName, AttemptStatus.Success, started)
         return {
           content: result,
           loaderId: plannedLoaderName,
@@ -247,6 +271,7 @@ export class LoadChain {
       } catch (error) {
         if (signal?.aborted) {
           appendAttempt(
+            attemptExecution.finish(),
             plannedLoaderName,
             signal.reason instanceof DOMException && signal.reason.name === "TimeoutError"
               ? AttemptStatus.Timeout
@@ -267,12 +292,20 @@ export class LoadChain {
         if (error instanceof LoaderNotApplicableError) {
           const message = error.reason ?? "not applicable"
           errors.push(`${plannedLoaderName}: Not applicable (${message})`)
-          appendAttempt(plannedLoaderName, AttemptStatus.NotApplicable, started, error, message)
+          appendAttempt(
+            attemptExecution.finish(),
+            plannedLoaderName,
+            AttemptStatus.NotApplicable,
+            started,
+            error,
+            message,
+          )
           continue
         }
         if (error instanceof LoaderTimeoutError) {
           errors.push(`${plannedLoaderName}: Timeout after ${error.timeoutSeconds}s`)
           appendAttempt(
+            attemptExecution.finish(),
             plannedLoaderName,
             AttemptStatus.Timeout,
             started,
@@ -284,6 +317,7 @@ export class LoadChain {
         if (isDeadlineError(error)) {
           errors.push(`${plannedLoaderName}: Shared deadline expired`)
           appendAttempt(
+            attemptExecution.finish(),
             plannedLoaderName,
             AttemptStatus.Timeout,
             started,
@@ -295,6 +329,7 @@ export class LoadChain {
         if (error instanceof LoaderContentError) {
           errors.push(`${plannedLoaderName}: Content extraction failed - ${error.reason}`)
           appendAttempt(
+            attemptExecution.finish(),
             plannedLoaderName,
             AttemptStatus.Failed,
             started,
@@ -305,7 +340,17 @@ export class LoadChain {
         }
         const typed = error instanceof Error ? error : new Error(String(error))
         errors.push(`${plannedLoaderName}: ${typed.name}: ${typed.message}`)
-        appendAttempt(plannedLoaderName, AttemptStatus.Failed, started, typed, "Loader failed")
+        appendAttempt(
+          attemptExecution.finish(),
+          plannedLoaderName,
+          AttemptStatus.Failed,
+          started,
+          typed,
+          "Loader failed",
+        )
+      } finally {
+        stopTracking?.()
+        attemptExecution.finish()
       }
     }
     throw new LoaderError(this.explanation.url, errors, [...attempts])
@@ -317,6 +362,7 @@ export class LoadChain {
 }
 
 function appendAttempt(
+  execution: AttemptSnapshot,
   loaderId: string,
   status: AttemptRecord["status"],
   started: number,
@@ -336,7 +382,10 @@ function appendAttempt(
     elapsedSeconds: Math.round(Math.max(0, performance.now() - started) * 1_000) / 1_000_000,
     ...(error ? { errorType: error.name } : {}),
     ...(errorCode ? { errorCode } : {}),
-    ...(diagnostic ? { diagnostic } : {}),
+    ...(diagnostic
+      ? { diagnostic: { ...diagnostic, ...(execution.phase ? { phase: execution.phase } : {}) } }
+      : {}),
+    ...(execution.phaseTimingsMs ? { phaseTimingsMs: execution.phaseTimingsMs } : {}),
     ...(message ? { message } : {}),
   })
 }

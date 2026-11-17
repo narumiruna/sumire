@@ -152,12 +152,10 @@ RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=
     && apt-get install -y --no-install-recommends python3 python3-venv
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m venv /opt/audio \
-    && /opt/audio/bin/pip install --upgrade pip \
-    && /opt/audio/bin/pip install torch==2.8.0 --extra-index-url https://download.pytorch.org/whl/cpu
-# Keep the heavyweight torch layer reusable when audio tool versions change.
+    && /opt/audio/bin/pip install --upgrade pip
 # YouTube extraction needs EJS scripts and Deno, yt-dlp's default JavaScript runtime.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /opt/audio/bin/pip install openai-whisper==20250625 "yt-dlp[default,deno]==2026.8.19"
+    /opt/audio/bin/pip install "yt-dlp[default,deno]==2026.8.19"
 
 FROM dependencies AS browser-download
 
@@ -193,7 +191,7 @@ WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /app/.telegramagent /app/.events /app/.cache/whisper /app/instructions /app/skills \
+    && mkdir -p /app/.telegramagent /app/.events /app/.cache/whisper /app/.cache/transformers /app/instructions /app/skills \
     && chown -R app:app /app /workdir
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright

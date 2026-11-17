@@ -33,10 +33,13 @@ services:
       - ./mcp.docker.json:/app/mcp.json:ro
       - events:/app/.events
       - state:/app/.telegramagent
+      # Retain the old cache for matching-image rollback; ONNX weights use a new volume.
       - whisper-cache:/app/.cache/whisper
+      - transformers-cache:/app/.cache/transformers
 
 volumes:
   workdir:
   events:
   state:
   whisper-cache:
+  transformers-cache:

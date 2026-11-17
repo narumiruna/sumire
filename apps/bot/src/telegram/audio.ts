@@ -1,10 +1,8 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { runCommand } from "@narumitw/sumire-url-reader/loaders"
-
-import { Semaphore } from "../semaphore.js"
+import { type TranscribeAudioFile, withAudioTranscriber } from "@narumitw/sumire-url-reader/audio"
 
 export function promptWithAudioContext(
   instruction: string,
@@ -23,65 +21,58 @@ export function promptWithAudioContext(
 
 export interface AudioTranscriber {
   // Download only after admission so queued audio does not retain file bytes.
-  transcribe(loadBytes: () => Promise<Uint8Array>, isCurrent: () => boolean): Promise<string>
+  transcribe(
+    loadBytes: (signal?: AbortSignal) => Promise<Uint8Array>,
+    isCurrent: () => boolean,
+    signal?: AbortSignal,
+  ): Promise<string>
 }
 
 export class TelegramAudioTranscriber implements AudioTranscriber {
-  readonly #semaphore: Semaphore
-
   constructor(
     private readonly options: {
-      maxConcurrency: number
       timeoutMs: number
       maxChars: number
+      maxDurationSeconds: number
       model?: string
-      run?: typeof runCommand
+      transcribe?: TranscribeAudioFile
     },
-  ) {
-    this.#semaphore = new Semaphore(options.maxConcurrency)
-  }
+  ) {}
 
   async transcribe(
-    loadBytes: () => Promise<Uint8Array>,
+    loadBytes: (signal?: AbortSignal) => Promise<Uint8Array>,
     isCurrent: () => boolean,
+    signal?: AbortSignal,
   ): Promise<string> {
-    const release = await this.#semaphore.acquire()
-    try {
+    return withAudioTranscriber(async (transcribe, admittedSignal) => {
       if (!isCurrent()) return ""
-      const bytes = await loadBytes()
+      admittedSignal.throwIfAborted()
+      const bytes = await loadBytes(admittedSignal)
       if (!isCurrent()) return ""
+      admittedSignal.throwIfAborted()
       const directory = await mkdtemp(join(tmpdir(), "sumire-telegram-audio-"))
       try {
         const audioPath = join(directory, "input.audio")
         await writeFile(audioPath, bytes)
         if (!isCurrent()) return ""
         const timeout = AbortSignal.timeout(this.options.timeoutMs)
-        await (this.options.run ?? runCommand)(
-          "whisper",
-          [
-            audioPath,
-            "--model",
-            this.options.model ?? "tiny",
-            "--fp16",
-            "False",
-            "--output_dir",
-            directory,
-            "--output_format",
-            "txt",
-          ],
-          timeout,
-        )
+        const active = AbortSignal.any([admittedSignal, timeout])
+        const text = (
+          await (this.options.transcribe ?? transcribe)(audioPath, {
+            signal: active,
+            maxDurationSeconds: this.options.maxDurationSeconds,
+            model: this.options.model,
+          })
+        ).trim()
+        active.throwIfAborted()
         if (!isCurrent()) return ""
-        const text = (await readFile(join(directory, "input.txt"), "utf8")).trim()
-        if (!text) throw new Error("Whisper returned an empty transcript")
+        if (!text) throw new Error("Audio transcription returned empty text")
         return text.length > this.options.maxChars
           ? `${text.slice(0, this.options.maxChars)}\n[音訊逐字稿已截斷]`
           : text
       } finally {
         await rm(directory, { force: true, recursive: true })
       }
-    } finally {
-      release()
-    }
+    }, signal)
   }
 }

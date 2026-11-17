@@ -99,6 +99,40 @@ describe("article source failure messages", () => {
     expect(text).not.toContain("音訊轉錄逾時")
   })
 
+  it.each([
+    ["metadata", "影片資訊讀取"],
+    ["download", "音訊下載"],
+    ["decode", "音訊解碼"],
+    ["model_load", "模型載入"],
+    ["inference", "語音辨識"],
+  ] as const)(
+    "states the last confirmed %s stage without inventing a local timeout",
+    (phase, label) => {
+      for (const code of ["deadline_exceeded", "cancelled", "transcription_failed"] as const) {
+        const text = formatArticleSourceFailure(
+          failed({ code: "captions_unavailable", phase: "captions" }, { code, phase }),
+        )
+        expect(text).toContain(`最後確認步驟：${label}`)
+        expect(text).toContain("未取得可用字幕")
+        expect(text).not.toMatch(/作者關閉|音訊轉錄逾時|辨識逾時/u)
+        if (code === "deadline_exceeded") expect(text).toContain("整體時間上限")
+        if (code === "cancelled") expect(text).not.toContain("請稍後再試")
+        if (code === "transcription_failed") expect(text).toContain("音訊轉錄失敗")
+      }
+    },
+  )
+
+  it.each(["decode", "model_load", "inference"] as const)(
+    "describes missing %s dependencies as audio tools",
+    (phase) => {
+      const text = formatArticleSourceFailure(
+        failed({ code: "dependency_missing", phase, dependency: "@huggingface/transformers" }),
+      )
+      expect(text).toContain("音訊轉錄目前無法使用")
+      expect(text).not.toContain("請稍後再試")
+    },
+  )
+
   it("does not interpret a target 403 as a private video or absent captions", () => {
     const text = formatArticleSourceFailure(
       normalizeUrlFailure(new TargetHttpError("HttpxLoader", "https://example.com/secret", 403)),
