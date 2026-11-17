@@ -56,4 +56,20 @@ node "<skill-directory>/scripts/read-url.mjs" --loader ytdlp 'https://example.co
 - A loader that cannot handle the input lets the chain continue.
 - Extraction, timeout, and configuration failures appear in the final chain error.
 - `FIRECRAWL_API_KEY` is required only for the `firecrawl` loader.
-- `yt-dlp`, Whisper, and FFmpeg are required for audio transcription loaders.
+- Audio fallback needs FFmpeg, Python with `yt-dlp[default,deno]` (EJS and Deno),
+  and native CPU Transformers.js 4.3.2 dependencies, not a Whisper CLI or PyTorch.
+- The default is multilingual `Xenova/whisper-tiny` at revision
+  `5332fcc35e32a33b86612b9a57a89be7906102b1`, CPU `q8`, two inference threads.
+  Language selection uses model logits, not the library's English default or
+  warning-text parsing.
+- First transcription downloads weights into `XDG_CACHE_HOME/transformers`
+  (`/app/.cache/transformers` with Compose's `transformers-cache`). Imports and
+  captions do not need weights. The production target is Linux x86_64/glibc.
+- Audio jobs share one serial, killable Node.js inference child per process.
+  Cancellation stops active audio before the slot is released. Independent CLI
+  processes have independent slots.
+- The host tool keeps its 3,600-second total URL deadline and 12,000-character text limit.
+  Metadata/download share 300 seconds; decode, model loading, and inference share at most 3,000 seconds and cannot extend the total deadline.
+- Do not promise long-video completion, faster inference, background jobs, or
+  SRT/VTT delivery. Use full Hub model IDs for library model overrides;
+  `tiny` is the default alias and `whisperPath` is no longer supported.

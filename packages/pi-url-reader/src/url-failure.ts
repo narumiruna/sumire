@@ -25,6 +25,7 @@ export interface SafeFailureAttempt {
   loaderId: string
   status: AttemptRecord["status"]
   elapsedSeconds?: number
+  phaseTimingsMs?: AttemptRecord["phaseTimingsMs"]
   diagnostic?: SafeFailureDiagnostic
 }
 
@@ -67,11 +68,21 @@ const phases = new Set([
   "captions",
   "metadata",
   "download",
+  "decode",
+  "model_load",
+  "inference",
   "transcription",
   "loading",
   "validation",
 ])
-const dependencies = new Set(["yt-dlp", "whisper", "ffmpeg"])
+const timedPhases = ["metadata", "download", "decode", "model_load", "inference"] as const
+const dependencies = new Set([
+  "yt-dlp",
+  "whisper",
+  "ffmpeg",
+  "@huggingface/transformers",
+  "onnxruntime-node",
+])
 const statuses = new Set<string>([
   "success",
   "failed",
@@ -110,6 +121,7 @@ export function sanitizeUrlAttempts(attempts: unknown): readonly SafeFailureAtte
     const loaderId = field(attempt, "loaderId")
     const elapsedSeconds = field(attempt, "elapsedSeconds")
     const diagnostic = field(attempt, "diagnostic")
+    const phaseTimingsMs = sanitizePhaseTimings(field(attempt, "phaseTimingsMs"))
     const facts =
       diagnostic !== undefined
         ? sanitizeDiagnostic(diagnostic)
@@ -118,6 +130,7 @@ export function sanitizeUrlAttempts(attempts: unknown): readonly SafeFailureAtte
       loaderId: typeof loaderId === "string" && loaderIds.has(loaderId) ? loaderId : "unknown",
       status: status as AttemptRecord["status"],
       ...(safeNumber(elapsedSeconds) ? { elapsedSeconds } : {}),
+      ...(phaseTimingsMs ? { phaseTimingsMs } : {}),
       ...(facts ? { diagnostic: facts } : {}),
     })
   }
@@ -148,11 +161,16 @@ export function normalizeUrlFailure(error: unknown, url?: string): UrlFailure {
       const diagnostic = sanitizeDiagnostic(field(value, "diagnostic"))
       diagnostics.push({ ...diagnostic, code: safeCode(field(value, "code")) })
     } else {
-      const diagnostic = classifySafely(value)
+      const interruption = retained.findLast(
+        (attempt) =>
+          attempt.diagnostic?.code === "deadline_exceeded" ||
+          attempt.diagnostic?.code === "cancelled",
+      )?.diagnostic
       diagnostics.push(
-        retained.some((attempt) => attempt.status === "cancelled") && diagnostic.code === "unknown"
-          ? { ...diagnostic, code: "cancelled" }
-          : diagnostic,
+        interruption ??
+          (retained.some((attempt) => attempt.status === "cancelled")
+            ? { code: "cancelled" }
+            : classifySafely(value)),
       )
     }
     if (current.depth >= maxDepth) continue
@@ -179,8 +197,14 @@ export function normalizeUrlFailure(error: unknown, url?: string): UrlFailure {
       attempt.diagnostic !== undefined &&
       !["unknown", "configuration_missing", "cancelled"].includes(attempt.diagnostic.code),
   )
+  const interruptedPhase = interruption
+    ? boundedAttempts.findLast((attempt) => attempt.diagnostic?.code === interruption.code)
+        ?.diagnostic?.phase
+    : undefined
   const diagnostic =
-    interruption ??
+    (interruption
+      ? { ...interruption, ...(interruptedPhase ? { phase: interruptedPhase } : {}) }
+      : undefined) ??
     usefulAttempt?.diagnostic ??
     diagnostics.find(({ code }) => code !== "unknown") ??
     failedAttempts.findLast((attempt) => attempt.diagnostic)?.diagnostic
@@ -189,6 +213,15 @@ export function normalizeUrlFailure(error: unknown, url?: string): UrlFailure {
     attempts: boundedAttempts,
     ...(diagnostic ? { diagnostic } : {}),
   }
+}
+
+function sanitizePhaseTimings(value: unknown): AttemptRecord["phaseTimingsMs"] {
+  const timings: NonNullable<AttemptRecord["phaseTimingsMs"]> = {}
+  for (const phase of timedPhases) {
+    const elapsed = field(value, phase)
+    if (safeNumber(elapsed)) timings[phase] = Math.round(elapsed)
+  }
+  return Object.keys(timings).length > 0 ? timings : undefined
 }
 
 function classifySafely(error: unknown): SafeFailureDiagnostic {

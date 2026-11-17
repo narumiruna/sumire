@@ -3083,6 +3083,89 @@ describe("Telegram bot update routing", () => {
     ).toBe("無法下載或轉錄音訊，請稍後再試。")
   })
 
+  it.each(["cancel", "reset", "stop"] as const)(
+    "aborts active audio on %s without submitting a stale transcript",
+    async (action) => {
+      const sessions = createSessions()
+      let activeSignal: AbortSignal | undefined
+      const transcribe = vi.fn(
+        async (
+          _loadBytes: () => Promise<Uint8Array>,
+          _isCurrent: () => boolean,
+          signal?: AbortSignal,
+        ) => {
+          activeSignal = signal
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true })
+          })
+          return "stale transcript"
+        },
+      )
+      const telegram = createTelegramAgentBot(
+        loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+        sessions,
+        logger,
+        { control: approvedStore([7, -100]), botInfo, audioTranscriber: { transcribe } },
+      )
+      const calls = installApiMock(telegram.bot)
+      const update = privateMessage(94, "")
+      if (update.message) {
+        delete update.message.text
+        update.message.voice = { file_id: "voice-id", file_unique_id: "voice-unique", duration: 1 }
+      }
+      const running = telegram.bot.handleUpdate(update)
+      await vi.waitFor(() => expect(transcribe).toHaveBeenCalledOnce())
+      if (action === "stop") await telegram.stop()
+      else {
+        const command = privateMessage(95, `/${action}`)
+        if (command.message)
+          command.message.entities = [{ type: "bot_command", offset: 0, length: action.length + 1 }]
+        await telegram.bot.handleUpdate(command)
+      }
+      await running
+      expect(activeSignal?.aborted).toBe(true)
+      expect(sessions.submit).not.toHaveBeenCalled()
+      expect(calls.filter((call) => call.method === "sendRichMessage")).toHaveLength(
+        action === "stop" ? 0 : 1,
+      )
+    },
+  )
+
+  it("excludes raw audio backend errors from logs and replies", async () => {
+    const sessions = createSessions()
+    const safeLogger = { ...logger, warn: vi.fn() }
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+      sessions,
+      safeLogger,
+      {
+        control: approvedStore([7, -100]),
+        botInfo,
+        audioTranscriber: {
+          transcribe: async () => {
+            throw new Error(
+              "https://user:password@example.com/private?token=secret /private/model/path raw transcript",
+            )
+          },
+        },
+      },
+    )
+    const calls = installApiMock(telegram.bot)
+    const update = privateMessage(96, "")
+    if (update.message) {
+      delete update.message.text
+      update.message.voice = { file_id: "voice-id", file_unique_id: "voice-unique", duration: 1 }
+    }
+    await telegram.bot.handleUpdate(update)
+    const failures = safeLogger.warn.mock.calls.filter(
+      ([message]) => message === "Telegram audio input failed",
+    )
+    expect(failures).toHaveLength(1)
+    expect(JSON.stringify(failures)).not.toMatch(/password|secret|private\/model|raw transcript/)
+    expect(JSON.stringify(calls)).not.toMatch(/password|secret|private\/model|raw transcript/)
+    expect(sessions.submit).not.toHaveBeenCalled()
+  })
+
   it("rejects disabled, over-duration, and oversized Telegram audio without invoking Pi", async () => {
     for (const [settings, voice, expected] of [
       [{ botAudioInputEnabled: false }, { duration: 1 }, "目前未啟用音訊輸入。"],

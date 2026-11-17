@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   FailureDiagnosticError,
+  type FailurePhase,
   FirecrawlApiHttpError,
   LoaderContentError,
   LoaderError,
@@ -10,7 +11,7 @@ import {
   MissingRequirementError,
   TargetHttpError,
 } from "../src/core/errors.js"
-import { withDeadline } from "../src/core/execution.js"
+import { reportPhase, withDeadline } from "../src/core/execution.js"
 import { getInterruptedAttempts } from "../src/core/interruption.js"
 import type { Loader } from "../src/core/loader.js"
 import { AttemptStatus } from "../src/core/results.js"
@@ -24,6 +25,7 @@ import { ContentContract, ContentType } from "../src/pipelines/catalog.js"
 
 const originalKey = process.env.FIRECRAWL_API_KEY
 afterEach(() => {
+  vi.useRealTimers()
   if (originalKey === undefined) delete process.env.FIRECRAWL_API_KEY
   else process.env.FIRECRAWL_API_KEY = originalKey
 })
@@ -249,6 +251,232 @@ describe("load chain", () => {
         },
       ])
       expect(JSON.stringify(attempts)).not.toContain("private")
+    },
+  )
+
+  it.each([
+    ["transcription_failed", "model_load", "model_load"],
+    ["transcription_timeout", "decode", "decode"],
+    ["unknown", "loading", "transcription"],
+    ["configuration_missing", undefined, "transcription"],
+    ["deadline_exceeded", "model_load", "transcription"],
+    ["cancelled", "model_load", "transcription"],
+  ] as const)("records %s with typed phase %s as %s", async (code, phase, expectedPhase) => {
+    const url = "https://example.com/video"
+    const chain = resolveExplicitLoadChain(url, ["ytdlp"], {
+      getFactory: () => () => ({
+        load: async () => {
+          reportPhase("transcription")
+          throw new FailureDiagnosticError("ytdlp", url, { code, ...(phase ? { phase } : {}) })
+        },
+      }),
+    })
+    const error = await chain.loadDetailed().catch((caught: unknown) => caught as LoaderError)
+    expect(error).toBeInstanceOf(LoaderError)
+    expect(error.attempts[0]?.diagnostic).toEqual({ code, phase: expectedPhase })
+  })
+
+  it.each(["metadata", "download", "decode", "model_load", "inference"] as const)(
+    "snapshots %s when the total budget expires before cleanup",
+    async (phase) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] })
+      const phases: FailurePhase[] = ["metadata", "download", "decode", "model_load", "inference"]
+      const url = "https://user:password@example.com/private?token=secret"
+      let cleanup: (() => void) | undefined
+      const chain = resolveExplicitLoadChain(url, ["youtube", "youtube-ytdlp", "unused"], {
+        getFactory: (name) => () => ({
+          load: async (target, signal) => {
+            if (name === "youtube")
+              throw new FailureDiagnosticError(name, target, {
+                code: "captions_unavailable",
+                phase: "captions",
+              })
+            for (const stage of phases) {
+              reportPhase(stage)
+              if (stage === phase) break
+              await new Promise((resolve) => setTimeout(resolve, 1))
+            }
+            // Cleanup can report another stage synchronously during abort or finish much later.
+            signal?.addEventListener("abort", () => reportPhase("validation"), { once: true })
+            await new Promise<void>((resolve) => {
+              cleanup = resolve
+            })
+            reportPhase("loading")
+            return "private transcript /tmp/private-file"
+          },
+        }),
+      })
+      let settled = false
+      const loading = withDeadline(performance.now() + 50, () => chain.loadDetailed()).catch(
+        (caught: unknown) => {
+          settled = true
+          return caught as LoaderError
+        },
+      )
+      const phaseTime = phases.indexOf(phase)
+      await vi.advanceTimersByTimeAsync(phaseTime)
+      expect(cleanup).toBeTypeOf("function")
+      await vi.advanceTimersByTimeAsync(49 - phaseTime)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      const error = await loading
+      expect(settled).toBe(true)
+      expect(error).toBeInstanceOf(LoaderError)
+      expect(error.attempts).toHaveLength(2)
+      expect(error.attempts).toMatchObject([
+        { loaderId: "youtube", diagnostic: { code: "captions_unavailable", phase: "captions" } },
+        {
+          loaderId: "youtube-ytdlp",
+          status: "timeout",
+          diagnostic: { code: "deadline_exceeded", phase },
+        },
+      ])
+      const last = error.attempts[1]
+      expect(Object.keys(last?.phaseTimingsMs ?? {})).toEqual(
+        phases.slice(0, phases.indexOf(phase) + 1),
+      )
+      for (const elapsed of Object.values(last?.phaseTimingsMs ?? {})) {
+        expect(Number.isFinite(elapsed)).toBe(true)
+        expect(elapsed).toBeGreaterThanOrEqual(0)
+      }
+      const snapshot = JSON.stringify(error.attempts)
+      cleanup?.()
+      await vi.advanceTimersByTimeAsync(5)
+      expect(JSON.stringify(error.attempts)).toBe(snapshot)
+      expect(snapshot).not.toMatch(/password|secret|private|transcript/u)
+    },
+  )
+
+  it.each(["metadata", "download", "decode", "model_load", "inference"] as const)(
+    "retains captions and %s on caller deadline or cancellation with the original identity",
+    async (phase) => {
+      for (const deadline of [false, true]) {
+        const url = "https://example.com/video"
+        const controller = new AbortController()
+        const reason = deadline
+          ? new DOMException("private deadline", "TimeoutError")
+          : new Error("private cancellation")
+        let entered = false
+        const chain = resolveExplicitLoadChain(url, ["youtube", "youtube-ytdlp", "unused"], {
+          getFactory: (name) => () => ({
+            load: async (target) => {
+              if (name === "youtube")
+                throw new FailureDiagnosticError(name, target, {
+                  code: "captions_unavailable",
+                  phase: "captions",
+                })
+              reportPhase(phase)
+              entered = true
+              return new Promise<string>(() => {})
+            },
+          }),
+        })
+        const loading = chain.loadDetailed(controller.signal).catch((error: unknown) => error)
+        await vi.waitFor(() => expect(entered).toBe(true), { interval: 1 })
+        controller.abort(reason)
+        expect(await loading).toBe(reason)
+        expect(getInterruptedAttempts(reason, url)).toMatchObject([
+          { loaderId: "youtube", diagnostic: { code: "captions_unavailable", phase: "captions" } },
+          {
+            loaderId: "youtube-ytdlp",
+            status: deadline ? "timeout" : "cancelled",
+            diagnostic: { code: deadline ? "deadline_exceeded" : "cancelled", phase },
+            phaseTimingsMs: { [phase]: expect.any(Number) },
+          },
+        ])
+        expect(getInterruptedAttempts(reason, url)).toHaveLength(2)
+      }
+    },
+  )
+
+  it("isolates concurrent URL stages, preserves a shared abort identity and ignores late work", async () => {
+    const controller = new AbortController()
+    const reason = new Error(
+      "private /tmp/path https://user:password@example.com secret transcript",
+    )
+    const targets = [
+      ["https://example.com/one", "decode"],
+      ["https://example.com/two", "inference"],
+    ] as const
+    const cleanups: Array<() => void> = []
+    let entered = 0
+    const loads = targets.map(([url, phase]) =>
+      resolveExplicitLoadChain(url, ["youtube-ytdlp"], {
+        getFactory: () => () => ({
+          load: async (_url, signal) => {
+            reportPhase(phase)
+            entered += 1
+            signal?.addEventListener("abort", () => reportPhase("metadata"), { once: true })
+            await new Promise<void>((resolve) => cleanups.push(resolve))
+            reportPhase("download")
+            throw reason
+          },
+        }),
+      })
+        .loadDetailed(controller.signal)
+        .catch((error: unknown) => error),
+    )
+    await vi.waitFor(() => expect(entered).toBe(2))
+    controller.abort(reason)
+    expect(await Promise.all(loads)).toEqual([reason, reason])
+    for (const [url, phase] of targets) {
+      const attempts = getInterruptedAttempts(reason, url)
+      expect(attempts).toHaveLength(1)
+      expect(attempts?.[0]).toMatchObject({
+        status: "cancelled",
+        diagnostic: { code: "cancelled", phase },
+      })
+      expect(Object.keys(attempts?.[0]?.phaseTimingsMs ?? {})).toEqual([phase])
+    }
+    const snapshots = targets.map(([url]) => JSON.stringify(getInterruptedAttempts(reason, url)))
+    for (const cleanup of cleanups) cleanup()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(targets.map(([url]) => JSON.stringify(getInterruptedAttempts(reason, url)))).toEqual(
+      snapshots,
+    )
+    expect(getInterruptedAttempts(reason, "https://example.com/missing")).toBeUndefined()
+    expect(snapshots.join()).not.toMatch(/private|password|secret|transcript/u)
+  })
+
+  it.each([false, true])(
+    "records stage timings on success and failure (failure: %s)",
+    async (failed) => {
+      const chain = resolveExplicitLoadChain("https://example.com", ["youtube-ytdlp"], {
+        getFactory: () => () => ({
+          load: async (url) => {
+            for (const phase of [
+              "metadata",
+              "download",
+              "decode",
+              "model_load",
+              "inference",
+            ] as const) {
+              reportPhase(phase)
+              await new Promise((resolve) => setTimeout(resolve, 1))
+            }
+            if (failed)
+              throw new FailureDiagnosticError("YtdlpLoader", url, {
+                code: "transcription_failed",
+                phase: "inference",
+              })
+            return "transcript"
+          },
+        }),
+      })
+      const result = await chain.loadDetailed().catch((error: unknown) => error as LoaderError)
+      expect(result.attempts[0]?.phaseTimingsMs).toEqual({
+        metadata: expect.any(Number),
+        download: expect.any(Number),
+        decode: expect.any(Number),
+        model_load: expect.any(Number),
+        inference: expect.any(Number),
+      })
+      expect(result.attempts[0]?.status).toBe(failed ? "failed" : "success")
+      if (failed)
+        expect(result.attempts[0]?.diagnostic).toEqual({
+          code: "transcription_failed",
+          phase: "inference",
+        })
     },
   )
 

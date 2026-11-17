@@ -60,6 +60,37 @@ describe("failure diagnostic contract", () => {
     ).toEqual({ code: "dependency_missing" })
   })
 
+  it.each(["@huggingface/transformers", "onnxruntime-node", "ffmpeg"] as const)(
+    "preserves structured missing dependency %s but does not infer it from model errors",
+    (dependency) => {
+      expect(
+        getFailureDiagnostic(new MissingDependencyError("ASR", dependency, "Install dependency")),
+      ).toEqual({ code: "dependency_missing", dependency })
+      expect(
+        getFailureDiagnostic(new Error(`Failed to load ${dependency} model /tmp/private-file`)),
+      ).toEqual({ code: "unknown", phase: "loading" })
+      expect(
+        getFailureDiagnostic(
+          new FailureDiagnosticError("ASR", url, {
+            code: "transcription_failed",
+            phase: "model_load",
+          }),
+        ),
+      ).toEqual({ code: "transcription_failed", phase: "model_load" })
+    },
+  )
+
+  it("serializes stage timings without changing records that have none", () => {
+    expect(
+      attemptRecordToObject({
+        loaderId: "ytdlp",
+        status: "success",
+        elapsedSeconds: 1,
+        phaseTimingsMs: { metadata: 5, decode: 20, model_load: 30, inference: 40 },
+      }).phase_timings_ms,
+    ).toEqual({ metadata: 5, decode: 20, model_load: 30, inference: 40 })
+  })
+
   it("does not confuse API HTTP errors with target HTTP errors", () => {
     expect(getFailureDiagnostic(new TargetHttpError("HttpLoader", url, 403))).toEqual({
       code: "target_http_error",

@@ -1,6 +1,7 @@
 import type { RunnerHandle } from "@grammyjs/runner"
 import type { PublicUrlLoader } from "@narumitw/sumire-pi-url-reader"
 import type { RuntimeConfigReader } from "@narumitw/sumire-runtime-config"
+import { AudioTranscriptionError } from "@narumitw/sumire-url-reader/audio"
 import { Bot, type Context, GrammyError, HttpError } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 
@@ -110,6 +111,7 @@ function inputFailureOutcome(error: unknown): RequestOutcome {
   if (requestCancelled(error)) return { outcome: "cancelled", stage: "input" }
   if (
     error instanceof TelegramDownloadTooLargeError ||
+    (error instanceof AudioTranscriptionError && error.kind === "media_duration_limit") ||
     error instanceof TooManyArticleUrlsError ||
     error instanceof ArticleUrlBudgetError ||
     (error instanceof DocumentConversionError && error.kind !== "timeout")
@@ -187,6 +189,7 @@ export function createTelegramAgentBot(
   const finalizingBotReplies = new Map<number, Map<number, string>>()
   const articleUsageMessage = "請使用 /f <內容>，或回覆要整理的訊息、圖片或文件後傳送 /f。"
   const activeArticleLoads = new Map<number, Set<AbortController>>()
+  const activeAudioLoads = new Map<number, Set<AbortController>>()
   const submissionGenerations = new Map<
     number,
     { generation: number; reason: "reset" | "cancel" }
@@ -214,9 +217,9 @@ export function createTelegramAgentBot(
   const audioTranscriber =
     dependencies.audioTranscriber ??
     new TelegramAudioTranscriber({
-      maxConcurrency: 1,
       timeoutMs: settings.botAudioTranscriptionTimeoutSeconds * 1_000,
       maxChars: settings.botAudioMaxTranscriptChars,
+      maxDurationSeconds: settings.botAudioMaxDurationSeconds,
     })
   const delivery = createTelegramDelivery(
     morselPublisher,
@@ -778,21 +781,31 @@ export function createTelegramAgentBot(
       kind: "voice" | "audio"
       text: string
     }> = []
+    const audioController = audioRefs.length > 0 ? new AbortController() : undefined
+    if (audioController && chatId !== undefined) {
+      const controllers = activeAudioLoads.get(chatId) ?? new Set<AbortController>()
+      controllers.add(audioController)
+      activeAudioLoads.set(chatId, controllers)
+    }
     try {
       for (const reference of audioRefs) {
-        const text = await audioTranscriber.transcribe(async () => {
-          if (!isCurrent()) throw new Error("Telegram audio input was invalidated")
-          return downloadTelegramFile(
-            context.api,
-            settings.botToken,
-            reference,
-            settings.botAudioMaxBytes,
-            dependencies.imageFetchImplementation,
-            60_000,
-            undefined,
-            logger,
-          )
-        }, isCurrent)
+        const text = await audioTranscriber.transcribe(
+          async (admittedSignal) => {
+            if (!isCurrent()) throw new Error("Telegram audio input was invalidated")
+            return downloadTelegramFile(
+              context.api,
+              settings.botToken,
+              reference,
+              settings.botAudioMaxBytes,
+              dependencies.imageFetchImplementation,
+              60_000,
+              admittedSignal ?? audioController?.signal,
+              logger,
+            )
+          },
+          isCurrent,
+          audioController?.signal,
+        )
         if (!isCurrent()) return { outcome: "cancelled" }
         transcripts.push({ source: reference.source, kind: reference.kind, text })
       }
@@ -802,16 +815,25 @@ export function createTelegramAgentBot(
         "event.name": "telegram.input.failed",
         "telegram.chat_id": context.chat?.id,
         "telegram.media_kind": "audio",
-        error,
+        "audio.code": error instanceof AudioTranscriptionError ? error.kind : "unknown",
+        ...(error instanceof AudioTranscriptionError ? { "audio.phase": error.phase } : {}),
       })
       await delivery.reply(
         context,
         error instanceof TelegramDownloadTooLargeError
           ? "音訊超過允許的大小，無法處理。"
-          : "無法下載或轉錄音訊，請稍後再試。",
+          : error instanceof AudioTranscriptionError && error.kind === "media_duration_limit"
+            ? "音訊長度超過允許的限制。"
+            : "無法下載或轉錄音訊，請稍後再試。",
         replyOptions(context),
       )
       return inputFailureOutcome(error)
+    } finally {
+      if (audioController && chatId !== undefined) {
+        const controllers = activeAudioLoads.get(chatId)
+        controllers?.delete(audioController)
+        if (controllers?.size === 0) activeAudioLoads.delete(chatId)
+      }
     }
 
     if (!isCurrent()) return { outcome: "cancelled" }
@@ -1652,6 +1674,7 @@ export function createTelegramAgentBot(
       reason,
     })
     for (const controller of activeArticleLoads.get(chatId) ?? []) controller.abort()
+    for (const controller of activeAudioLoads.get(chatId) ?? []) controller.abort()
     const { gate, release } = submissionGate(chatId, Promise.resolve())
     submissionTails.set(chatId, gate)
     submissionBarriers.set(chatId, gate)
@@ -1728,6 +1751,9 @@ export function createTelegramAgentBot(
     async stop() {
       if (stopPromise) return stopPromise
       stopping = true
+      for (const controllers of activeAudioLoads.values()) {
+        for (const controller of controllers) controller.abort()
+      }
       const polling = runner
       if (!polling) return
       stopPromise = (async () => {

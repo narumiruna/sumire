@@ -214,6 +214,128 @@ describe("safe URL failure normalization", () => {
     ).toEqual([{ loaderId: "youtube", status: "failed", diagnostic: { code: "unknown" } }])
   })
 
+  it("copies only allowlisted finite stage timings on successes and failures", () => {
+    const phaseTimingsMs = Object.defineProperty(
+      {
+        metadata: 1.4,
+        download: 0,
+        decode: 20,
+        model_load: Infinity,
+        inference: NaN,
+        captions: 30,
+        transcription: 40,
+        loading: 50,
+        [secret]: 60,
+        transcript: secret,
+        path: "/tmp/private-audio",
+        stderr: secret,
+      },
+      "validation",
+      {
+        get() {
+          throw new Error(secret)
+        },
+      },
+    )
+    const attempts = sanitizeUrlAttempts([
+      { ...captions, status: "success", phaseTimingsMs },
+      { ...duration, phaseTimingsMs: { metadata: -1, download: Number.MAX_VALUE, decode: secret } },
+      { ...duration, phaseTimingsMs: { decode: 2, model_load: 3, inference: 4 } },
+    ])
+    expect(attempts[0]?.phaseTimingsMs).toEqual({ metadata: 1, download: 0, decode: 20 })
+    expect(attempts[1]).not.toHaveProperty("phaseTimingsMs")
+    expect(attempts[2]?.phaseTimingsMs).toEqual({ decode: 2, model_load: 3, inference: 4 })
+    expect(JSON.stringify(attempts)).not.toMatch(/secret|private|transcript|stderr|Infinity|NaN/u)
+    const inaccessible = Object.defineProperty({}, "decode", {
+      get() {
+        throw new Error(secret)
+      },
+    })
+    expect(
+      sanitizeUrlAttempts([{ ...captions, phaseTimingsMs: inaccessible }])[0],
+    ).not.toHaveProperty("phaseTimingsMs")
+  })
+
+  it.each(["decode", "model_load", "inference"] as const)(
+    "preserves %s without reclassifying total expiry as an ASR timeout",
+    (phase) => {
+      const normalized = normalizeUrlFailure(
+        new LoaderError(
+          url,
+          [secret],
+          [
+            captions,
+            {
+              loaderId: "youtube-ytdlp",
+              status: "timeout",
+              elapsedSeconds: 180,
+              diagnostic: { code: "deadline_exceeded", phase },
+              phaseTimingsMs: { [phase]: 10 },
+              message: secret,
+            },
+          ],
+        ),
+      )
+      expect(normalized).toMatchObject({
+        code: "deadline_exceeded",
+        diagnostic: { code: "deadline_exceeded", phase },
+        attempts: [captions, { diagnostic: { phase }, phaseTimingsMs: { [phase]: 10 } }],
+      })
+      expect(JSON.stringify(normalized)).not.toContain("secret")
+      for (const [name, code] of [
+        ["TimeoutError", "deadline_exceeded"],
+        ["AbortError", "cancelled"],
+      ] as const) {
+        const recorded = new LoaderError(
+          url,
+          [secret],
+          [
+            captions,
+            {
+              loaderId: "youtube-ytdlp",
+              status: name === "TimeoutError" ? "timeout" : "cancelled",
+              elapsedSeconds: 10,
+              diagnostic: { code, phase },
+              phaseTimingsMs: { [phase]: 10 },
+            },
+          ],
+        )
+        const aggregate = new AggregateError(
+          [new DOMException(secret, name), recorded, recorded],
+          secret,
+        )
+        const interrupted = normalizeUrlFailure(aggregate, url)
+        expect(interrupted.code).toBe(code)
+        expect(interrupted.diagnostic).toEqual({ code, phase })
+        expect(interrupted.attempts).toHaveLength(2)
+        expect(normalizeUrlFailure(aggregate, "https://example.com/other").diagnostic?.phase).toBe(
+          "loading",
+        )
+      }
+    },
+  )
+
+  it.each(["@huggingface/transformers", "onnxruntime-node", "ffmpeg"] as const)(
+    "retains structured missing dependency evidence for %s only",
+    (dependency) => {
+      const diagnostic = { code: "dependency_missing", phase: "model_load", dependency } as const
+      expect(
+        normalizeUrlFailure(new FailureDiagnosticError("YtdlpLoader", secret, diagnostic))
+          .diagnostic,
+      ).toEqual(diagnostic)
+      expect(normalizeUrlFailure(new Error(`Cannot find ${dependency} ${secret}`)).code).toBe(
+        "unknown",
+      )
+      const failure = normalizeUrlFailure(
+        new FailureDiagnosticError("YtdlpLoader", secret, {
+          code: "transcription_failed",
+          phase: "model_load",
+        }),
+      )
+      expect(failure.diagnostic).toEqual({ code: "transcription_failed", phase: "model_load" })
+    },
+  )
+
   it("retains allowlisted legacy code facts while new diagnostics remain authoritative", () => {
     const attempts = [
       "target_http_403",
@@ -282,37 +404,45 @@ describe("safe URL failure normalization", () => {
     expect(sanitizeUrlAttempts(Array(10_000).fill(captions))).toHaveLength(32)
   })
 
-  it("uses URL-specific retained interruption attempts without changing the shared reason", async () => {
-    const reason = new Error(secret)
-    for (const [target, loaderId] of [
-      [url, "httpx"],
-      ["https://example.com/other", "youtube"],
-    ] as const) {
-      const controller = new AbortController()
-      const chain = resolveExplicitLoadChain(target, [loaderId], {
-        getFactory: () => () => ({
-          load: async () => {
-            controller.abort(reason)
-            throw reason
-          },
-        }),
+  it.each([undefined, "ECONNRESET", "CERT_HAS_EXPIRED"])(
+    "uses URL-specific interruption evidence instead of classifying shared reason %s",
+    async (code) => {
+      const reason = Object.assign(new Error(secret), { code })
+      for (const [target, loaderId] of [
+        [url, "httpx"],
+        ["https://example.com/other", "youtube"],
+      ] as const) {
+        const controller = new AbortController()
+        const chain = resolveExplicitLoadChain(target, [loaderId], {
+          getFactory: () => () => ({
+            load: async () => {
+              controller.abort(reason)
+              throw reason
+            },
+          }),
+        })
+        await expect(chain.loadDetailed(controller.signal)).rejects.toBe(reason)
+      }
+      expect(normalizeUrlFailure(reason, url)).toMatchObject({
+        code: "cancelled",
+        attempts: [{ loaderId: "httpx", status: "cancelled" }],
       })
-      await expect(chain.loadDetailed(controller.signal)).rejects.toBe(reason)
-    }
-    expect(normalizeUrlFailure(reason, url)).toMatchObject({
-      code: "cancelled",
-      attempts: [{ loaderId: "httpx", status: "cancelled" }],
-    })
-    expect(normalizeUrlFailure(reason, "https://example.com/other")).toMatchObject({
-      code: "cancelled",
-      attempts: [{ loaderId: "youtube", status: "cancelled" }],
-    })
-    expect(normalizeUrlFailure(reason, "https://example.com/missing")).toEqual({
-      code: "unknown",
-      attempts: [],
-    })
-    expect(reason.message).toBe(secret)
-  })
+      expect(normalizeUrlFailure(reason, "https://example.com/other")).toMatchObject({
+        code: "cancelled",
+        attempts: [{ loaderId: "youtube", status: "cancelled" }],
+      })
+      const missing = normalizeUrlFailure(reason, "https://example.com/missing")
+      expect(missing.attempts).toEqual([])
+      expect(missing.code).toBe(
+        code === "ECONNRESET"
+          ? "transport_failure"
+          : code === "CERT_HAS_EXPIRED"
+            ? "tls_certificate"
+            : "unknown",
+      )
+      expect(reason.message).toBe(secret)
+    },
+  )
 
   it("distinguishes whole-operation expiry from caller cancellation and per-phase timeouts", () => {
     expect(normalizeUrlFailure(new DOMException(secret, "TimeoutError"))).toMatchObject({

@@ -1,5 +1,6 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { closeAudioTranscriber } from "@narumitw/sumire-url-reader/audio"
 import { startAdmin } from "./admin/application.js"
 import { GitHubAuth } from "./admin/github-auth.js"
 import { McpAdmin } from "./admin/mcp.js"
@@ -123,6 +124,7 @@ export async function startApplication(): Promise<void> {
                 { name: "admin_server", close: () => adminServer?.stop() },
                 { name: "sessions", close: () => sessions?.dispose() },
               ]),
+          { name: "audio", close: closeAudioTranscriber },
           { name: "github_auth", close: () => githubAuth?.close() },
           { name: "mcp", close: () => mcp?.close() },
           { name: "admin_store", close: () => adminStore?.close() },

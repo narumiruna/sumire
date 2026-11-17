@@ -24,12 +24,23 @@ export type FailureCode =
   | "configuration_missing"
   | "unknown"
 
+export type FailurePhase =
+  | "captions"
+  | "metadata"
+  | "download"
+  | "decode"
+  | "model_load"
+  | "inference"
+  | "transcription"
+  | "loading"
+  | "validation"
+
 export interface FailureDiagnostic {
   code: FailureCode
-  phase?: "captions" | "metadata" | "download" | "transcription" | "loading" | "validation"
+  phase?: FailurePhase
   limit?: number
   observed?: number
-  dependency?: "yt-dlp" | "whisper" | "ffmpeg"
+  dependency?: "yt-dlp" | "whisper" | "ffmpeg" | "@huggingface/transformers" | "onnxruntime-node"
   httpStatus?: number
 }
 
@@ -190,7 +201,11 @@ export function getFailureDiagnostic(error: unknown): FailureDiagnostic {
     const dependency = error.dependency
     return {
       code: "dependency_missing",
-      ...(dependency === "yt-dlp" || dependency === "whisper" || dependency === "ffmpeg"
+      ...(dependency === "yt-dlp" ||
+      dependency === "whisper" ||
+      dependency === "ffmpeg" ||
+      dependency === "@huggingface/transformers" ||
+      dependency === "onnxruntime-node"
         ? { dependency }
         : {}),
     }

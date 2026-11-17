@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 
 import { createUrlTool, normalizeUrlFailure } from "@narumitw/sumire-pi-url-reader"
 import { resolveExplicitLoadChain } from "@narumitw/sumire-url-reader"
@@ -93,9 +95,20 @@ try {
   await runCommand("pip", ["show", "yt-dlp-ejs"])
   const javascript = await runCommand("deno", ["eval", "--no-config", "console.log(1 + 1)"])
   assert.equal(javascript.stdout.trim(), "2")
-  await runCommand("whisper", ["--help"])
+  await runCommand("ffmpeg", ["-version"])
+  // Resolve from the owning workspace, including workspace-local native dependencies.
+  // Import only: never construct a pipeline, load weights, or start the inference child.
+  const require = createRequire(import.meta.resolve("@narumitw/sumire-url-reader"))
+  const onnx = require("onnxruntime-node")
+  assert.equal(typeof onnx.InferenceSession.create, "function")
+  const transformers = await import(pathToFileURL(require.resolve("@huggingface/transformers")))
+  assert.equal(typeof transformers.pipeline, "function")
+  const installed = await runCommand("pip", ["list", "--format=json"])
+  const pythonPackages = JSON.parse(installed.stdout).map((entry) => entry.name.toLowerCase())
+  assert.ok(!pythonPackages.includes("torch"))
+  assert.ok(!pythonPackages.includes("openai-whisper"))
   console.log(
-    "Offline URL checks passed: captions, real yt-dlp metadata, duration rejection, Telegram message, Pi error result, YouTube EJS, Deno, Whisper CLI",
+    "Offline URL checks passed: captions, real yt-dlp metadata, duration rejection, Telegram message, Pi error result, YouTube EJS, Deno, FFmpeg, ONNX native and Transformers.js imports; no Python ASR",
   )
 } finally {
   globalThis.fetch = originalFetch

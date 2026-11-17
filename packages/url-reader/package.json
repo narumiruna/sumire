@@ -33,6 +33,10 @@
       "types": "./dist/core/anydoc.d.ts",
       "import": "./dist/core/anydoc.js"
     },
+    "./audio": {
+      "types": "./dist/audio.d.ts",
+      "import": "./dist/audio.js"
+    },
     "./loaders": {
       "types": "./dist/loaders/index.d.ts",
       "import": "./dist/loaders/index.js"
@@ -64,6 +68,7 @@
   },
   "dependencies": {
     "@firecrawl/anydoc": "0.2.4",
+    "@huggingface/transformers": "4.3.2",
     "cheerio": "1.2.0",
     "fast-xml-parser": "5.12.0",
     "impers": "0.1.3",

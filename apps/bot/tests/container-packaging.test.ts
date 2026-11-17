@@ -66,6 +66,7 @@ describe("container application packaging", () => {
       "/app/.telegramagent",
       "/app/.events",
       "/app/.cache/whisper",
+      "/app/.cache/transformers",
       "/app/instructions",
       "/app/skills",
     ])
@@ -106,6 +107,37 @@ describe("container application packaging", () => {
     expect(check).toContain(
       'await runCommand("deno", ["eval", "--no-config", "console.log(1 + 1)"])',
     )
+  })
+
+  it("uses native Node ASR with separate persistent weights and retains the rollback cache", async () => {
+    const dockerfile = await readFile(dockerfileUrl, "utf8")
+    expect(dockerfile).not.toMatch(/pip install[^\n]*(?:torch|openai-whisper)/)
+    expect(dockerfile).toContain('"yt-dlp[default,deno]==2026.8.19"')
+    const dependencies = dockerfile
+      .split("FROM node:26-bookworm-slim AS runtime-dependencies\n")[1]
+      ?.split("\nFROM ")[0]
+    expect(dependencies).toMatch(/apt-get install[^\n]*\bpython3\b[^\n]*\bffmpeg\b/)
+    const compose = await readFile(new URL("../../../compose.yaml", import.meta.url), "utf8")
+    expect(compose).toContain("- transformers-cache:/app/.cache/transformers")
+    expect(compose).toContain("- whisper-cache:/app/.cache/whisper")
+    expect(compose).toMatch(/^  transformers-cache:$/m)
+    expect(compose).toMatch(/^  whisper-cache:$/m)
+    const runtimeUser = dockerfile.split("\nUSER app\n")[1]
+    expect(runtimeUser).toContain(
+      "RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs",
+    )
+    const check = await readFile(
+      new URL("../scripts/check-url-failures.mjs", import.meta.url),
+      "utf8",
+    )
+    expect(check).toContain('await runCommand("ffmpeg", ["-version"])')
+    expect(check).toContain('require("onnxruntime-node")')
+    expect(check).toContain('require.resolve("@huggingface/transformers")')
+    expect(check).toContain('typeof transformers.pipeline, "function"')
+    expect(check).toContain('!pythonPackages.includes("torch")')
+    expect(check).toContain('!pythonPackages.includes("openai-whisper")')
+    expect(check).not.toContain('runCommand("whisper"')
+    expect(check).not.toMatch(/await\s+(?:transformers\.)?pipeline\(/)
   })
 
   it("builds the same application target in CI when Docker inputs change", async () => {

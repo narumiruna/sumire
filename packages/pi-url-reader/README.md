@@ -16,6 +16,34 @@ The Pi manifest loads `dist/index.js` and both skills under `skills/`. Pi core l
 
 Pi packages execute with the current user's permissions. Review source before installation.
 
+## Audio fallback
+
+YouTube uses captions first. When audio fallback is needed, the underlying
+URL reader uses Transformers.js 4.3.2 in a shared, serial, killable Node.js child.
+It needs native CPU ONNX dependencies, FFmpeg, and Python with pinned
+`yt-dlp[default,deno]` (including EJS and Deno), not `openai-whisper` or PyTorch.
+The production native target is Linux x86_64 with glibc and Node.js 26.
+
+The default is multilingual `Xenova/whisper-tiny`, revision
+`5332fcc35e32a33b86612b9a57a89be7906102b1`, CPU `q8`, with two inference threads.
+The backend derives a language token from model logits because Transformers.js
+4.3.2 otherwise defaults to English; it does not parse warning text. First use
+downloads weights into `XDG_CACHE_HOME/transformers`; Compose persists
+`/app/.cache/transformers` in `transformers-cache`. Registration, imports, and
+caption-only requests do not load weights. No runtime variable is added.
+
+Admission, download, decode, model loading, and inference remain within the
+3,600-second total URL deadline. Metadata and download share 300 seconds; the
+transcription budget is at most 3,000 seconds and cannot extend the total deadline.
+The 12,000-character text limit is unchanged. Cancellation stops active decode
+and inference before shared capacity is released. In the bot, Telegram audio
+uses the same slot. Separate CLI processes have their own slots. This is not a
+long-job or subtitle-delivery system and does not guarantee long-video completion
+or faster inference. See the
+[URL reader audio contract](../url-reader/README.md#yt-dlp-and-transformersjs-audio)
+for native setup, lifecycle, `model: "tiny"` and full Hub model IDs, and removal
+of the `whisperPath` constructor option.
+
 ## Bundled skills
 
 - `load-public-url` explains tool use, source attribution, and untrusted content handling.
@@ -95,7 +123,7 @@ Safe results exclude exception messages, stderr, stack traces, URLs, local paths
 
 ## Bounds and safety
 
-- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 3,600-second total URL deadline starting before validation, and 12,000 extracted characters plus a truncation marker. Validation time is deducted from the source-aware budget; one-shot source resource cleanup may take up to five additional seconds. yt-dlp metadata/download and Whisper retain separate 300-second and 3,000-second caps. The Sumire bot uses a 3,660-second Codemode host cap so nested URL loads have time to finish and clean up; explicitly shorter script timeouts and caller cancellation still apply.
+- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 3,600-second total URL deadline starting before validation, and 12,000 extracted characters plus a truncation marker. Validation time is deducted from the source-aware budget; one-shot source resource cleanup may take up to five additional seconds. yt-dlp metadata/download and transcription retain separate 300-second and 3,000-second caps. The Sumire bot uses a 3,660-second Codemode host cap so nested URL loads have time to finish and clean up; explicitly shorter script timeouts and caller cancellation still apply.
 - Automatic generic loading tries curl, fast browser, standard HTTP, then network-idle browser. Each attempt receives at most its cap (15 seconds for fast browser, 20 seconds for other local methods) and a fair share of remaining time for eligible alternatives. A local timeout continues fallback; total expiry or caller cancellation stops it.
 - `firecrawlFallback: true` opts into a final generic Firecrawl attempt (at most 30 seconds, skipped without a key or with less than one second remaining). It is off by default, sends the target URL to an external service, and may incur charges. Existing explicit Firecrawl and source-specific selection remain unchanged. Remote Firecrawl intermediate redirects cannot be inspected locally; reported final URLs are checked.
 - Passes `allowedSchemes` to source-aware loading as well as initial validation. An HTTPS-only policy rejects public HTTP redirects before local fetch, browser, or curl transports issue the downgraded request. Firecrawl's reported final targets use the same policy; its remote intermediate redirects cannot be inspected locally.

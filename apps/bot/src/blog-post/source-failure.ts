@@ -10,7 +10,12 @@ export function formatArticleSourceFailure(failure: UrlFailure, sourceIndex?: nu
         attempt.status !== "skipped",
     )
     .flatMap((attempt) => (attempt.diagnostic ? [attempt.diagnostic] : []))
-  if (failure.diagnostic && (diagnostics.length === 0 || failure.code === "deadline_exceeded"))
+  if (
+    failure.diagnostic &&
+    (diagnostics.length === 0 ||
+      failure.code === "deadline_exceeded" ||
+      failure.code === "cancelled")
+  )
     diagnostics.push(failure.diagnostic)
   const reasons = [...new Set(diagnostics.map(describeDiagnostic))]
   if (reasons.length === 0) reasons.push(describeCode(failure.code))
@@ -65,17 +70,44 @@ function describeDiagnostic(diagnostic: SafeFailureDiagnostic): string {
         ? "來源網站拒絕這次存取（HTTP 403）"
         : `來源網站回傳 HTTP 錯誤${httpStatus ? `（${httpStatus}）` : ""}`
     case "dependency_missing":
-      return phase === "transcription" || phase === "download" || phase === "metadata"
+      return phase === "transcription" ||
+        phase === "download" ||
+        phase === "metadata" ||
+        phase === "decode" ||
+        phase === "model_load" ||
+        phase === "inference"
         ? "伺服器缺少必要工具，音訊轉錄目前無法使用"
         : "伺服器缺少此載入方式所需的工具"
     case "service_http_error":
       return `外部載入服務回傳 HTTP 錯誤${httpStatus ? `（${httpStatus}）` : ""}`
+    case "transcription_failed":
+    case "transcription_timeout":
+    case "deadline_exceeded":
+    case "cancelled":
+      return `${describeCode(code)}${describeLastPhase(phase)}`
     case "loader_timeout":
       return "內容載入方法逾時"
     case "empty_content":
       return phase === "transcription" ? "音訊轉錄結果為空" : "未擷取到可用內容"
     default:
       return describeCode(code)
+  }
+}
+
+function describeLastPhase(phase: SafeFailureDiagnostic["phase"]): string {
+  switch (phase) {
+    case "metadata":
+      return "（最後確認步驟：影片資訊讀取）"
+    case "download":
+      return "（最後確認步驟：音訊下載）"
+    case "decode":
+      return "（最後確認步驟：音訊解碼）"
+    case "model_load":
+      return "（最後確認步驟：模型載入）"
+    case "inference":
+      return "（最後確認步驟：語音辨識）"
+    default:
+      return ""
   }
 }
 

@@ -1,14 +1,21 @@
 import { spawn } from "node:child_process"
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  AudioTranscriptionError,
+  type TranscribeAudioFile,
+  withAudioTranscriber,
+} from "../audio.js"
+import {
   FailureDiagnosticError,
+  type FailurePhase,
   LoaderContentError,
   LoaderTimeoutError,
   MissingDependencyError,
 } from "../core/errors.js"
+import { reportPhase } from "../core/execution.js"
 import type { Loader } from "../core/loader.js"
 import { parseYouTubeVideoTarget, requireLoaderApplicability } from "../sources/applicability.js"
 
@@ -120,7 +127,7 @@ export class YtdlpLoader implements Loader {
     private readonly options: {
       model?: string
       ytdlpPath?: string
-      whisperPath?: string
+      transcribe?: TranscribeAudioFile
       downloadTimeoutMs?: number
       transcriptionTimeoutMs?: number
       maxMediaBytes?: number
@@ -145,165 +152,179 @@ export class YtdlpLoader implements Loader {
 
   async load(url: string, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted()
-    const maxMediaBytes = this.options.maxMediaBytes ?? DEFAULT_MAX_MEDIA_BYTES
-    const maxDurationSeconds = this.options.maxDurationSeconds ?? DEFAULT_MAX_MEDIA_DURATION_SECONDS
-    const downloadTimeoutMs = this.options.downloadTimeoutMs ?? DEFAULT_YTDLP_DOWNLOAD_TIMEOUT_MS
-    const transcriptionTimeoutMs = this.options.transcriptionTimeoutMs ?? DEFAULT_WHISPER_TIMEOUT_MS
-    const downloadTimeout = AbortSignal.timeout(downloadTimeoutMs)
-    const downloadSignal = signal ? AbortSignal.any([signal, downloadTimeout]) : downloadTimeout
-    const directory = await mkdtemp(join(tmpdir(), "sumire-url-reader-audio-"))
-    const audioPath = join(directory, "audio.mp3")
-    let transcriptionTimeout: AbortSignal | undefined
-    let phase: "metadata" | "download" | "transcription" = "metadata"
-    const commandRunner = this.options.commandRunner ?? runCommand
-    const run = async (
-      command: string,
-      args: readonly string[],
-      activeSignal: AbortSignal,
-      dependency: "yt-dlp" | "whisper",
-    ) => {
-      activeSignal.throwIfAborted()
-      try {
-        const result = await commandRunner(command, args, activeSignal)
+    return withAudioTranscriber(async (backendTranscribeAudioFile, signal) => {
+      signal.throwIfAborted()
+      const maxMediaBytes = this.options.maxMediaBytes ?? DEFAULT_MAX_MEDIA_BYTES
+      const maxDurationSeconds =
+        this.options.maxDurationSeconds ?? DEFAULT_MAX_MEDIA_DURATION_SECONDS
+      const downloadTimeoutMs = this.options.downloadTimeoutMs ?? DEFAULT_YTDLP_DOWNLOAD_TIMEOUT_MS
+      const transcriptionTimeoutMs =
+        this.options.transcriptionTimeoutMs ?? DEFAULT_WHISPER_TIMEOUT_MS
+      const downloadTimeout = AbortSignal.timeout(downloadTimeoutMs)
+      const downloadSignal = signal ? AbortSignal.any([signal, downloadTimeout]) : downloadTimeout
+      const directory = await mkdtemp(join(tmpdir(), "sumire-url-reader-audio-"))
+      const audioPath = join(directory, "audio.mp3")
+      let transcriptionTimeout: AbortSignal | undefined
+      let phase: FailurePhase = "metadata"
+      const commandRunner = this.options.commandRunner ?? runCommand
+      const run = async (
+        command: string,
+        args: readonly string[],
+        activeSignal: AbortSignal,
+        dependency: "yt-dlp",
+      ) => {
         activeSignal.throwIfAborted()
-        return result
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-          throw new MissingDependencyError("ytdlp", dependency, "Install the required tool.", {
-            code: "dependency_missing",
+        try {
+          const result = await commandRunner(command, args, activeSignal)
+          activeSignal.throwIfAborted()
+          return result
+        } catch (error) {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            throw new MissingDependencyError("ytdlp", dependency, "Install the required tool.", {
+              code: "dependency_missing",
+              phase,
+              dependency,
+            })
+          }
+          throw error
+        }
+      }
+      try {
+        reportPhase(phase)
+        const ytdlp = this.options.ytdlpPath ?? "yt-dlp"
+        const commonArgs = ["--no-config", "--no-playlist", "--format", "bestaudio/best"]
+        // Emit only the duration field as JSON, not the full upstream metadata object.
+        // Metadata and download share one deadline and the caller's cancellation scope.
+        const metadata = await run(
+          ytdlp,
+          [...commonArgs, "--skip-download", "--print", "%(.{duration})j", url],
+          downloadSignal,
+          "yt-dlp",
+        )
+        if (Buffer.byteLength(metadata.stdout) > MAX_COMMAND_OUTPUT_BYTES) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, {
+            code: "metadata_failed",
             phase,
-            dependency,
           })
         }
-        throw error
-      }
-    }
-    try {
-      const ytdlp = this.options.ytdlpPath ?? "yt-dlp"
-      const commonArgs = ["--no-config", "--no-playlist", "--format", "bestaudio/best"]
-      // Emit only the duration field as JSON, not the full upstream metadata object.
-      // Metadata and download share one deadline and the caller's cancellation scope.
-      const metadata = await run(
-        ytdlp,
-        [...commonArgs, "--skip-download", "--print", "%(.{duration})j", url],
-        downloadSignal,
-        "yt-dlp",
-      )
-      if (Buffer.byteLength(metadata.stdout) > MAX_COMMAND_OUTPUT_BYTES) {
-        throw new FailureDiagnosticError("YtdlpLoader", url, {
-          code: "metadata_failed",
-          phase,
-        })
-      }
-      const parsed: unknown = JSON.parse(metadata.stdout)
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        throw new FailureDiagnosticError("YtdlpLoader", url, {
-          code: "metadata_failed",
-          phase,
-        })
-      }
-      const duration = "duration" in parsed ? parsed.duration : undefined
-      if (
-        typeof duration === "number" &&
-        Number.isFinite(duration) &&
-        duration <= Number.MAX_SAFE_INTEGER &&
-        duration >= 0 &&
-        duration > maxDurationSeconds
-      ) {
-        throw new FailureDiagnosticError("YtdlpLoader", url, {
-          code: "media_duration_limit",
-          phase,
-          limit: maxDurationSeconds,
-          observed: duration,
-        })
-      }
-
-      phase = "download"
-      await run(
-        ytdlp,
-        [
-          ...commonArgs,
-          "--extract-audio",
-          "--audio-format",
-          "mp3",
-          "--audio-quality",
-          "192K",
-          "--max-filesize",
-          String(maxMediaBytes),
-          "--match-filter",
-          `duration <= ${maxDurationSeconds}`,
-          "--output",
-          join(directory, "audio.%(ext)s"),
-          url,
-        ],
-        downloadSignal,
-        "yt-dlp",
-      )
-      const size = (await stat(audioPath)).size
-      downloadSignal.throwIfAborted()
-      if (size > maxMediaBytes) {
-        throw new FailureDiagnosticError("YtdlpLoader", url, {
-          code: "media_size_limit",
-          phase,
-          limit: maxMediaBytes,
-          observed: size,
-        })
-      }
-
-      phase = "transcription"
-      transcriptionTimeout = AbortSignal.timeout(transcriptionTimeoutMs)
-      const transcriptionSignal = signal
-        ? AbortSignal.any([signal, transcriptionTimeout])
-        : transcriptionTimeout
-      await run(
-        this.options.whisperPath ?? "whisper",
-        [
-          audioPath,
-          "--model",
-          this.options.model ?? "tiny",
-          "--output_dir",
-          directory,
-          "--output_format",
-          "txt",
-        ],
-        transcriptionSignal,
-        "whisper",
-      )
-      const content = (await readFile(join(directory, "audio.txt"), "utf8")).trim()
-      transcriptionSignal.throwIfAborted()
-      if (!content) {
-        throw new FailureDiagnosticError("YtdlpLoader", url, { code: "empty_content", phase })
-      }
-      return content
-    } catch (error) {
-      if (signal?.aborted) throw signal.reason
-      if (phase === "transcription" ? transcriptionTimeout?.aborted : downloadTimeout.aborted) {
-        throw new LoaderTimeoutError(
-          "YtdlpLoader",
-          url,
-          (phase === "transcription" ? transcriptionTimeoutMs : downloadTimeoutMs) / 1_000,
-          "The media operation timed out.",
-          {
-            code: phase === "transcription" ? "transcription_timeout" : "download_timeout",
+        const parsed: unknown = JSON.parse(metadata.stdout)
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, {
+            code: "metadata_failed",
             phase,
-          },
+          })
+        }
+        const duration = "duration" in parsed ? parsed.duration : undefined
+        if (
+          typeof duration === "number" &&
+          Number.isFinite(duration) &&
+          duration <= Number.MAX_SAFE_INTEGER &&
+          duration >= 0 &&
+          duration > maxDurationSeconds
+        ) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, {
+            code: "media_duration_limit",
+            phase,
+            limit: maxDurationSeconds,
+            observed: duration,
+          })
+        }
+
+        phase = "download"
+        reportPhase(phase)
+        await run(
+          ytdlp,
+          [
+            ...commonArgs,
+            "--extract-audio",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "192K",
+            "--max-filesize",
+            String(maxMediaBytes),
+            "--match-filter",
+            `duration <= ${maxDurationSeconds}`,
+            "--output",
+            join(directory, "audio.%(ext)s"),
+            url,
+          ],
+          downloadSignal,
+          "yt-dlp",
         )
+        const size = (await stat(audioPath)).size
+        downloadSignal.throwIfAborted()
+        if (size > maxMediaBytes) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, {
+            code: "media_size_limit",
+            phase,
+            limit: maxMediaBytes,
+            observed: size,
+          })
+        }
+
+        phase = "transcription"
+        reportPhase(phase)
+        transcriptionTimeout = AbortSignal.timeout(transcriptionTimeoutMs)
+        const transcriptionSignal = signal
+          ? AbortSignal.any([signal, transcriptionTimeout])
+          : transcriptionTimeout
+        const transcribe = this.options.transcribe ?? backendTranscribeAudioFile
+        const content = (
+          await transcribe(audioPath, {
+            signal: transcriptionSignal,
+            maxDurationSeconds,
+            model: this.options.model ?? "tiny",
+            onPhase: (nextPhase) => {
+              phase = nextPhase
+              reportPhase(phase)
+            },
+          })
+        ).trim()
+        transcriptionSignal.throwIfAborted()
+        if (!content) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, { code: "empty_content", phase })
+        }
+        return content
+      } catch (error) {
+        if (signal?.aborted) throw signal.reason
+        if (transcriptionTimeout ? transcriptionTimeout.aborted : downloadTimeout.aborted) {
+          throw new LoaderTimeoutError(
+            "YtdlpLoader",
+            url,
+            (transcriptionTimeout ? transcriptionTimeoutMs : downloadTimeoutMs) / 1_000,
+            "The media operation timed out.",
+            {
+              code: transcriptionTimeout ? "transcription_timeout" : "download_timeout",
+              phase,
+            },
+          )
+        }
+        if (error instanceof AudioTranscriptionError) {
+          throw new FailureDiagnosticError("YtdlpLoader", url, {
+            code: error.kind,
+            phase: error.phase,
+            ...(error.dependency ? { dependency: error.dependency } : {}),
+            ...(error.limit !== undefined ? { limit: error.limit } : {}),
+            ...(error.observed !== undefined ? { observed: error.observed } : {}),
+          })
+        }
+        if (error instanceof MissingDependencyError || error instanceof FailureDiagnosticError) {
+          throw error
+        }
+        throw new FailureDiagnosticError("YtdlpLoader", url, {
+          code:
+            phase === "metadata"
+              ? "metadata_failed"
+              : phase === "download"
+                ? "download_failed"
+                : "transcription_failed",
+          phase,
+        })
+      } finally {
+        await rm(directory, { recursive: true, force: true })
       }
-      if (error instanceof MissingDependencyError || error instanceof FailureDiagnosticError) {
-        throw error
-      }
-      throw new FailureDiagnosticError("YtdlpLoader", url, {
-        code:
-          phase === "metadata"
-            ? "metadata_failed"
-            : phase === "download"
-              ? "download_failed"
-              : "transcription_failed",
-        phase,
-      })
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
+    }, signal)
   }
 }
 

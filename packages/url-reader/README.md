@@ -101,9 +101,9 @@ Cancellation is propagated through `AbortSignal`; waiting is bounded even if an 
 `FailureDiagnostic` contains only these facts:
 
 - `code: FailureCode`: a stable category from the table below.
-- `phase?`: `captions`, `metadata`, `download`, `transcription`, `loading`, or `validation`.
+- `phase?`: `captions`, `metadata`, `download`, `decode`, `model_load`, `inference`, `transcription`, `loading`, or `validation`.
 - `limit?` and `observed?`: finite, nonnegative numeric facts. Duration uses seconds; media size uses bytes.
-- `dependency?`: `yt-dlp`, `whisper`, or `ffmpeg`, when established by structured evidence.
+- `dependency?`: `yt-dlp`, `ffmpeg`, `@huggingface/transformers`, or `onnxruntime-node`, when established by structured invocation or resolution evidence. Legacy `whisper` remains valid for old records.
 - `httpStatus?`: the HTTP status, when known. The code distinguishes a service API status from a target status.
 
 | Code | Evidence |
@@ -112,15 +112,15 @@ Cancellation is propagated through `AbortSignal`; waiting is bounded even if an 
 | `caption_language_unavailable` | The caption library reported that the requested language was unavailable. |
 | `captions_empty` | Caption extraction returned no non-whitespace text. |
 | `caption_extraction_failed` | Caption extraction failed without a more specific established cause. |
-| `media_duration_limit` | Valid numeric metadata exceeded the configured duration limit. |
+| `media_duration_limit` | Valid numeric metadata or decoded samples exceeded the configured duration limit. |
 | `media_size_limit` | The downloaded audio file exceeded the configured byte limit. |
-| `dependency_missing` | A required executable was missing, as reported by a structured system error. |
+| `dependency_missing` | A required executable or package was missing, as reported by structured invocation or resolution evidence. |
 | `metadata_failed`, `download_failed`, `transcription_failed` | The corresponding phase failed; no source restriction or limit rejection is implied. |
 | `download_timeout`, `transcription_timeout` | The corresponding local budget expired. The download budget includes metadata. |
 | `loader_timeout` | A local loader budget expired. `limit` uses seconds; this is not a shared deadline. |
 | `target_http_error`, `service_http_error` | A typed HTTP failure from the target website or service API, respectively. |
 | `transport_failure`, `tls_certificate` | A structured transport or certificate failure. |
-| `deadline_exceeded`, `cancelled` | A shared deadline or caller cancellation, respectively. Neither establishes missing captions or a Whisper timeout. |
+| `deadline_exceeded`, `cancelled` | A shared deadline or caller cancellation, respectively. Neither establishes missing captions or a local transcription timeout. |
 | `empty_content`, `configuration_missing`, `unknown` | Empty output, missing configuration, or no established specific cause. |
 
 `FailureDiagnosticError extends LoaderContentError` accepts `(loaderName, url, diagnostic)` and exposes `.diagnostic`. `getFailureDiagnostic(error)` classifies typed facts; use aggregate attempts rather than classifying a `LoaderError` as one cause. `LoaderTimeoutError` and `MissingDependencyError` accept an optional final diagnostic argument and retain their existing class identities.
@@ -249,19 +249,65 @@ Downloads and redirects use public-address validation. The loader rejects HTML/l
 
 Automatic PDF parsing still uses `pdf-parse`. Remote targets must return `application/pdf`; local `.pdf` paths are also supported. Explicit `anydoc` loading supports remote PDF URLs only.
 
-### yt-dlp and Whisper
+### yt-dlp and Transformers.js audio
 
-YouTube captions use `youtube-transcript`. The `youtube-ytdlp`, `ytdlp`, and `reel` loaders need external commands:
+YouTube captions use `youtube-transcript` first. Audio fallback uses
+`@huggingface/transformers` 4.3.2 and native `onnxruntime-node` on CPU, not the
+Python Whisper CLI or a hosted audio API. Keep npm optional dependencies enabled
+for native ONNX and `sharp` binaries. The production target is Linux x86_64 with
+glibc and Node.js 26. Local use also needs FFmpeg and Python with
+`yt-dlp[default,deno]==2026.8.19`; the extras provide EJS scripts and Deno for
+YouTube challenges. PyTorch and `openai-whisper` are not required.
 
-- `yt-dlp`
-- OpenAI Whisper's `whisper` CLI
-- FFmpeg
+The default model is multilingual `Xenova/whisper-tiny`, revision
+`5332fcc35e32a33b86612b9a57a89be7906102b1`, CPU `q8`, with two inference threads.
+The first transcription downloads model files. The cache is under
+`XDG_CACHE_HOME/transformers` (`/app/.cache/transformers` in the container),
+persisted by Compose's `transformers-cache`. Imports and caption-only loads do
+not fetch weights. Python Whisper weights in the retained `whisper-cache` cannot
+be reused. Transformers.js 4.3.2 otherwise defaults to English; the backend
+selects the language token from model logits and uses `task: "transcribe"`,
+not warning-text parsing or forced English. Long audio uses 30-second chunks
+with a 5-second stride; this is not resumable or disk-streamed inference.
 
-The transcription loader writes only to an isolated temporary directory and removes it after each attempt. YouTube and Reel audio downloads strip arbitrary URL query parameters and use canonical video URLs; the CLI is launched without user-level yt-dlp configuration.
+One process-local admission slot is shared with Telegram audio through
+`@narumitw/sumire-url-reader/audio`. Admission precedes download. FFmpeg decodes
+local input to bounded mono 16 kHz float32 PCM. A persistent, lazily started
+Node.js child owns native inference and reuses only the selected model. Timeout
+or cancellation stops decode and kills active inference, then waits for process
+closure before removing temporary files and releasing capacity. Hosts must
+close audio resources on shutdown with `closeAudioTranscriber`; the `./audio`
+export also provides `withAudioTranscriber` for shared admission. Its callback
+receives `(transcribe, signal)`; pass that signal to preparation and download I/O
+so shutdown can stop them before inference. Standalone CLI processes have
+separate slots and clean up their own resources.
 
-Before download, yt-dlp emits only a JSON duration field. Metadata and download share a 300-second download budget and cancellation signal. Valid finite duration metadata above 3,600 seconds rejects the media before download. Missing, negative, nonnumeric, or unsafe duration values do not establish a duration rejection; download filters remain enabled. Malformed metadata or a failed metadata command reports `metadata_failed`. An absent filtered audio file reports `download_failed`, not a duration or size rejection. Metadata does not provide a reliable final MP3 byte size; the loader retains the 100 MiB download filter and checks the actual audio file before Whisper starts.
+`YtdlpLoader` no longer accepts `whisperPath`; remove CLI-path configuration.
+`commandRunner` remains for yt-dlp. `model: "tiny"` remains an alias for the
+default model; use a full Hugging Face Hub model ID for another model. The pinned
+default revision does not apply to other IDs. English-only Whisper overrides
+skip language detection and multilingual generation options when the model's
+`is_multilingual` field is false. Tests must inject ASR fixtures instead of a
+fake Whisper executable.
 
-Every external command has a combined 1 MiB stdout/stderr cap; exceeding it terminates the process group. Whisper has a separate 3,000-second budget. A caller-supplied shared deadline or cancellation can still end either stage earlier; the Pi URL reader defaults to a 3,600-second total deadline. Missing executables are identified only from `ENOENT` at command invocation; stderr does not establish a missing FFmpeg dependency or a source restriction. The existing limitation on independent inspection of third-party media redirects also applies to metadata.
+YouTube and Reel downloads use canonical video URLs without arbitrary query
+parameters or user-level yt-dlp configuration. Metadata and download share a
+300-second budget. Valid finite metadata above 3,600 seconds rejects before
+download; missing or invalid metadata does not establish a duration rejection.
+Decoded samples also enforce the duration limit without silent truncation. The
+100 MiB download limit and actual downloaded-file check remain. Malformed
+metadata reports `metadata_failed`; an absent filtered audio file reports
+`download_failed`, not a proven size or duration rejection.
+
+Decode, model loading, and inference share the maximum 3,000-second transcription
+budget; phase changes do not restart it. The bot's 3,600-second total URL deadline
+includes admission and can expire sooner. Its 12,000-character output limit and
+explicit truncation marker are unchanged. Text-command stdout/stderr remains
+bounded to 1 MiB; PCM uses a separate bounded channel. Missing executables require
+structured invocation evidence; upstream stderr does not prove a missing FFmpeg
+or source restriction. Third-party media redirects still cannot be independently
+inspected. These limits do not guarantee completion of a long video. No durable
+long-job system, SRT/VTT delivery, or performance improvement is provided.
 
 ## Extraction policy
 
@@ -283,7 +329,7 @@ All 20 loader IDs from Kabigon `0.19.6` remain registered. This is name and cont
 - Names use TypeScript camelCase (`loadUrl`, `explainPlan`, `loaderId`). `toObject()` helpers expose snake_case diagnostic objects.
 - HTML-to-Markdown conversion uses Turndown, so whitespace and Markdown punctuation may differ while preserving extracted content.
 - Browser-like HTTP requests use `impers`.
-- Audio transcription invokes the Python-installed Whisper CLI instead of embedding a Whisper runtime in Node.js.
+- Audio transcription runs native Transformers.js inference in a shared, killable Node.js child, outside the caller's event loop.
 - YouTube language preference is attempted in order through `youtube-transcript`.
 
 ## Development
