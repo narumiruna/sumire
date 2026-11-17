@@ -285,8 +285,10 @@ separate slots and clean up their own resources.
 `YtdlpLoader` no longer accepts `whisperPath`; remove CLI-path configuration.
 `commandRunner` remains for yt-dlp. `model: "tiny"` remains an alias for the
 default model; use a full Hugging Face Hub model ID for another model. The pinned
-default revision does not apply to other IDs. Tests must inject ASR fixtures
-instead of a fake Whisper executable.
+default revision does not apply to other IDs. English-only Whisper overrides
+skip language detection and multilingual generation options when the model's
+`is_multilingual` field is false. Tests must inject ASR fixtures instead of a
+fake Whisper executable.
 
 YouTube and Reel downloads use canonical video URLs without arbitrary query
 parameters or user-level yt-dlp configuration. Metadata and download share a
