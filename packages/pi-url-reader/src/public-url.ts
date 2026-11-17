@@ -53,7 +53,7 @@ export function createPublicUrlLoader(options: PublicUrlLoaderOptions = {}): Pub
     allowedSchemes: options.allowedSchemes ?? new Set(["http", "https"]),
     maxChars: options.maxChars ?? 12_000,
     timeoutMs: options.timeoutMs ?? 15_000,
-    urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 180,
+    urlContentTimeoutSeconds: options.urlContentTimeoutSeconds ?? 3_600,
     firecrawlFallback: options.firecrawlFallback ?? false,
     firecrawlApiKey: options.firecrawlApiKey,
   }

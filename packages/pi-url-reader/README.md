@@ -33,8 +33,8 @@ downloads weights into `XDG_CACHE_HOME/transformers`; Compose persists
 caption-only requests do not load weights. No runtime variable is added.
 
 Admission, download, decode, model loading, and inference remain within the
-180-second total URL deadline. Metadata and download share 120 seconds; the
-transcription budget is at most 300 seconds and cannot extend the total deadline.
+3,600-second total URL deadline. Metadata and download share 300 seconds; the
+transcription budget is at most 3,000 seconds and cannot extend the total deadline.
 The 12,000-character text limit is unchanged. Cancellation stops active decode
 and inference before shared capacity is released. In the bot, Telegram audio
 uses the same slot. Separate CLI processes have their own slots. This is not a
@@ -123,7 +123,7 @@ Safe results exclude exception messages, stderr, stack traces, URLs, local paths
 
 ## Bounds and safety
 
-- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 180-second total URL deadline starting before validation, and 12,000 extracted characters plus a truncation marker. Validation time is deducted from the source-aware budget; one-shot source resource cleanup may take up to five additional seconds.
+- Defaults: HTTP and HTTPS, 15-second built-in/DNS phase timeout, 3,600-second total URL deadline starting before validation, and 12,000 extracted characters plus a truncation marker. Validation time is deducted from the source-aware budget; one-shot source resource cleanup may take up to five additional seconds. yt-dlp metadata/download and transcription retain separate 300-second and 3,000-second caps. The Sumire bot uses a 3,660-second Codemode host cap so nested URL loads have time to finish and clean up; explicitly shorter script timeouts and caller cancellation still apply.
 - Automatic generic loading tries curl, fast browser, standard HTTP, then network-idle browser. Each attempt receives at most its cap (15 seconds for fast browser, 20 seconds for other local methods) and a fair share of remaining time for eligible alternatives. A local timeout continues fallback; total expiry or caller cancellation stops it.
 - `firecrawlFallback: true` opts into a final generic Firecrawl attempt (at most 30 seconds, skipped without a key or with less than one second remaining). It is off by default, sends the target URL to an external service, and may incur charges. Existing explicit Firecrawl and source-specific selection remain unchanged. Remote Firecrawl intermediate redirects cannot be inspected locally; reported final URLs are checked.
 - Passes `allowedSchemes` to source-aware loading as well as initial validation. An HTTPS-only policy rejects public HTTP redirects before local fetch, browser, or curl transports issue the downgraded request. Firecrawl's reported final targets use the same policy; its remote intermediate redirects cannot be inspected locally.
@@ -141,7 +141,7 @@ const extension = createUrlExtension({
   allowedSchemes: new Set(["https"]),
   maxChars: 12_000,
   timeoutMs: 15_000,
-  urlContentTimeoutSeconds: 180,
+  urlContentTimeoutSeconds: 3_600,
   firecrawlFallback: false,
   firecrawlApiKey: null, // Explicitly disable environment fallback.
   selectableLoaders: ["built-in", "httpx", "playwright"],

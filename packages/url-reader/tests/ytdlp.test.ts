@@ -109,7 +109,19 @@ function stageFixture(
 
 describe("yt-dlp loader limits", () => {
   it("retains the public transcription timeout constant", () => {
-    expect(DEFAULT_WHISPER_TIMEOUT_MS).toBe(300_000)
+    expect(DEFAULT_WHISPER_TIMEOUT_MS).toBe(3_000_000)
+  })
+
+  it("uses five-minute download and fifty-minute transcription budgets by default", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout")
+    try {
+      await expect(
+        fixtureLoader({ commandRunner: fixtureRunner() }).load("https://example.com/video"),
+      ).resolves.toBe("transcript")
+      expect(timeout.mock.calls).toEqual([[300_000], [3_000_000]])
+    } finally {
+      timeout.mockRestore()
+    }
   })
 
   it("rejects a duration confirmed by structured metadata before downloading", async () => {

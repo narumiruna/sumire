@@ -290,15 +290,15 @@ instead of a fake Whisper executable.
 
 YouTube and Reel downloads use canonical video URLs without arbitrary query
 parameters or user-level yt-dlp configuration. Metadata and download share a
-120-second budget. Valid finite metadata above 3,600 seconds rejects before
+300-second budget. Valid finite metadata above 3,600 seconds rejects before
 download; missing or invalid metadata does not establish a duration rejection.
 Decoded samples also enforce the duration limit without silent truncation. The
 100 MiB download limit and actual downloaded-file check remain. Malformed
 metadata reports `metadata_failed`; an absent filtered audio file reports
 `download_failed`, not a proven size or duration rejection.
 
-Decode, model loading, and inference share the maximum 300-second transcription
-budget; phase changes do not restart it. The bot's 180-second total URL deadline
+Decode, model loading, and inference share the maximum 3,000-second transcription
+budget; phase changes do not restart it. The bot's 3,600-second total URL deadline
 includes admission and can expire sooner. Its 12,000-character output limit and
 explicit truncation marker are unchanged. Text-command stdout/stderr remains
 bounded to 1 MiB; PCM uses a separate bounded channel. Missing executables require

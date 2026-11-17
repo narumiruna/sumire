@@ -30,8 +30,8 @@ type CommandRunner = (
   signal?: AbortSignal,
 ) => Promise<CommandResult>
 
-export const DEFAULT_YTDLP_DOWNLOAD_TIMEOUT_MS = 120_000
-export const DEFAULT_WHISPER_TIMEOUT_MS = 300_000
+export const DEFAULT_YTDLP_DOWNLOAD_TIMEOUT_MS = 300_000
+export const DEFAULT_WHISPER_TIMEOUT_MS = 3_000_000
 export const DEFAULT_MAX_MEDIA_BYTES = 100 * 1024 * 1024
 export const DEFAULT_MAX_MEDIA_DURATION_SECONDS = 3_600
 export const MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
