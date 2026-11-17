@@ -59,6 +59,18 @@ function fixtureRunner(metadata = '{"duration":30}', transcript = "transcript") 
 }
 
 describe("yt-dlp loader limits", () => {
+  it("uses five-minute download and fifty-minute transcription budgets by default", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout")
+    try {
+      await expect(
+        new YtdlpLoader({ commandRunner: fixtureRunner() }).load("https://example.com/video"),
+      ).resolves.toBe("transcript")
+      expect(timeout.mock.calls).toEqual([[300_000], [3_000_000]])
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
   it("rejects a duration confirmed by structured metadata before downloading", async () => {
     const runner = fixtureRunner('{"duration":5198}')
     const allocation = vi.mocked(mkdtemp).mock.results.length
