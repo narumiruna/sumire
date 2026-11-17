@@ -461,8 +461,10 @@ native dependencies, FFmpeg, and the pinned yt-dlp extras, not a Whisper CLI.
 Telegram downloads enforce 20,000,000 bytes while streaming. Both reported
 metadata and actual decoded samples enforce 600 seconds; over-limit audio fails
 instead of being silently truncated. FFmpeg decodes local input to bounded mono
-16 kHz float32 PCM. Decode, model loading, and inference share the existing
-180-second Telegram transcription deadline. Transcript text stays limited to
+16 kHz float32 PCM. Admission wait, download, decode, model loading, and inference
+share one 180-second Telegram audio input deadline. The budget starts before
+waiting for the shared slot; no stage restarts it. A queued timeout skips the
+download. Transcript text stays limited to
 12,000 characters with explicit truncation and is supplied to Pi as untrusted
 reference data. Unsupported media and backend failures produce direct errors,
 not invented transcripts. Audio remains enabled by default.
@@ -644,7 +646,7 @@ Runtime limits below remain fixed while the database owns authorization and capa
 | Codemode host deadline | 3,660 seconds per script. |
 | Telegram documents | 20,000,000 bytes, 50,000 Markdown characters, 30-second conversion, two concurrent inputs. |
 | Telegram images | 8,000,000 bytes. |
-| Telegram audio | 20,000,000 bytes, 600 seconds reported and decoded duration, 180-second transcription, 12,000 transcript characters. |
+| Telegram audio | 20,000,000 bytes, 600 seconds reported and decoded duration, 180-second input deadline including admission, 12,000 transcript characters. |
 | Reply index | 1,000 records and 1,000,000 bytes per chat. |
 | URL loading | 15-second built-in/DNS phase, 3,600-second total deadline, 12,000 output characters; public HTTP(S) only. |
 

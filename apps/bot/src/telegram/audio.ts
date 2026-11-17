@@ -44,6 +44,8 @@ export class TelegramAudioTranscriber implements AudioTranscriber {
     isCurrent: () => boolean,
     signal?: AbortSignal,
   ): Promise<string> {
+    const timeout = AbortSignal.timeout(this.options.timeoutMs)
+    const active = signal ? AbortSignal.any([signal, timeout]) : timeout
     return withAudioTranscriber(async (transcribe, admittedSignal) => {
       if (!isCurrent()) return ""
       admittedSignal.throwIfAborted()
@@ -55,16 +57,15 @@ export class TelegramAudioTranscriber implements AudioTranscriber {
         const audioPath = join(directory, "input.audio")
         await writeFile(audioPath, bytes)
         if (!isCurrent()) return ""
-        const timeout = AbortSignal.timeout(this.options.timeoutMs)
-        const active = AbortSignal.any([admittedSignal, timeout])
+        admittedSignal.throwIfAborted()
         const text = (
           await (this.options.transcribe ?? transcribe)(audioPath, {
-            signal: active,
+            signal: admittedSignal,
             maxDurationSeconds: this.options.maxDurationSeconds,
             model: this.options.model,
           })
         ).trim()
-        active.throwIfAborted()
+        admittedSignal.throwIfAborted()
         if (!isCurrent()) return ""
         if (!text) throw new Error("Audio transcription returned empty text")
         return text.length > this.options.maxChars
@@ -73,6 +74,6 @@ export class TelegramAudioTranscriber implements AudioTranscriber {
       } finally {
         await rm(directory, { force: true, recursive: true })
       }
-    }, signal)
+    }, active)
   }
 }

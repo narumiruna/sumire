@@ -9,6 +9,26 @@ import { audioReferences } from "../src/telegram/messages.js"
 
 const defaults = { timeoutMs: 1_000, maxChars: 100, maxDurationSeconds: 600 }
 
+function deferred() {
+  let resolve = () => {}
+  const promise = new Promise<void>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
+function mockDeadlineClock() {
+  vi.useFakeTimers()
+  return vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+    const controller = new AbortController()
+    setTimeout(
+      () => controller.abort(new DOMException("fixture deadline", "TimeoutError")),
+      milliseconds,
+    )
+    return controller.signal
+  })
+}
+
 describe("Telegram audio input", () => {
   it("selects current and replied voice/audio without duplicate file IDs", () => {
     expect(
@@ -107,6 +127,111 @@ describe("Telegram audio input", () => {
     finish()
     await urlWork
     await expect(telegram).resolves.toBe("text")
+  })
+
+  it("expires queued Telegram audio at its input deadline without downloading", async () => {
+    const clock = mockDeadlineClock()
+    const gate = deferred()
+    const admitted = deferred()
+    const occupied = withAudioTranscriber(async () => {
+      admitted.resolve()
+      await gate.promise
+    })
+    await admitted.promise
+    const controller = new AbortController()
+    const download = vi.fn(async () => Buffer.from("audio"))
+    const transcribe = vi.fn(async () => "text")
+    const transcriber = new TelegramAudioTranscriber({ ...defaults, timeoutMs: 50, transcribe })
+    let settled = false
+    const queued = transcriber
+      .transcribe(download, () => true, controller.signal)
+      .then(
+        () => {
+          settled = true
+        },
+        (error) => {
+          settled = true
+          return error
+        },
+      )
+    try {
+      await vi.advanceTimersByTimeAsync(49)
+      expect(settled).toBe(false)
+      expect(download).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(settled).toBe(true)
+      expect(await queued).toMatchObject({ name: "TimeoutError" })
+      expect(download).not.toHaveBeenCalled()
+      expect(transcribe).not.toHaveBeenCalled()
+      expect(clock).toHaveBeenCalledExactlyOnceWith(50)
+    } finally {
+      controller.abort(new Error("fixture cleanup"))
+      gate.resolve()
+      await Promise.allSettled([occupied, queued])
+      clock.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not restart the input deadline after admission or download", async () => {
+    const clock = mockDeadlineClock()
+    const urlGate = deferred()
+    const admitted = deferred()
+    const downloading = deferred()
+    const downloadGate = deferred()
+    const inferring = deferred()
+    const occupied = withAudioTranscriber(async () => {
+      admitted.resolve()
+      await urlGate.promise
+    })
+    await admitted.promise
+    const controller = new AbortController()
+    let active: AbortSignal | undefined
+    const transcriber = new TelegramAudioTranscriber({
+      ...defaults,
+      timeoutMs: 50,
+      transcribe: async (_path, options) => {
+        active = options?.signal
+        if (!active) throw new Error("Missing input signal")
+        const signal = active
+        inferring.resolve()
+        return new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+        })
+      },
+    })
+    const running = transcriber
+      .transcribe(
+        async () => {
+          downloading.resolve()
+          await downloadGate.promise
+          return Buffer.from("audio")
+        },
+        () => true,
+        controller.signal,
+      )
+      .catch((error) => error)
+    try {
+      await vi.advanceTimersByTimeAsync(20)
+      urlGate.resolve()
+      await downloading.promise
+      await vi.advanceTimersByTimeAsync(10)
+      downloadGate.resolve()
+      await inferring.promise
+      await vi.advanceTimersByTimeAsync(19)
+      expect(active?.aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(active?.aborted).toBe(true)
+      expect(await running).toMatchObject({ name: "TimeoutError" })
+      expect(clock).toHaveBeenCalledExactlyOnceWith(50)
+    } finally {
+      controller.abort(new Error("fixture cleanup"))
+      urlGate.resolve()
+      downloadGate.resolve()
+      await Promise.allSettled([occupied, running])
+      clock.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it("does not download stale queued audio and cleans up after failure", async () => {

@@ -1,4 +1,5 @@
 ---
+"@narumitw/sumire": patch
 "@narumitw/sumire-url-reader": patch
 "@narumitw/sumire-pi-url-reader": patch
 ---
@@ -8,3 +9,5 @@ interruption diagnostics. Correct the URL-loading skill's timeout limits and
 make audio deadline tests deterministic, including child paths with spaces.
 Support English-only Whisper model overrides without multilingual language
 selection or generation options. Keep model-logit detection for multilingual models.
+Include Telegram admission wait and download in the existing audio input deadline.
+Queued timeouts must not download bytes or start inference.
