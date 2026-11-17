@@ -376,15 +376,23 @@ function appendAttempt(
     : status === AttemptStatus.Empty
       ? { code: "empty_content", phase: "loading" }
       : undefined
+  if (
+    diagnostic &&
+    execution.phase &&
+    (diagnostic.code === "deadline_exceeded" ||
+      diagnostic.code === "cancelled" ||
+      !diagnostic.phase ||
+      diagnostic.phase === "loading")
+  ) {
+    diagnostic = { ...diagnostic, phase: execution.phase }
+  }
   recordAttempt({
     loaderId,
     status,
     elapsedSeconds: Math.round(Math.max(0, performance.now() - started) * 1_000) / 1_000_000,
     ...(error ? { errorType: error.name } : {}),
     ...(errorCode ? { errorCode } : {}),
-    ...(diagnostic
-      ? { diagnostic: { ...diagnostic, ...(execution.phase ? { phase: execution.phase } : {}) } }
-      : {}),
+    ...(diagnostic ? { diagnostic } : {}),
     ...(execution.phaseTimingsMs ? { phaseTimingsMs: execution.phaseTimingsMs } : {}),
     ...(message ? { message } : {}),
   })

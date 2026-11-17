@@ -326,20 +326,53 @@ describe("yt-dlp loader limits", () => {
   })
 
   it("does not reset the transcription budget at stage changes", async () => {
-    const transcribe: TranscribeAudioFile = async (_path, options) => {
-      options.onPhase?.("decode")
-      await new Promise((resolve) => setTimeout(resolve, 30))
-      options.signal?.throwIfAborted()
-      options.onPhase?.("model_load")
-      return waitForAbort(options.signal)
-    }
-    await expect(
-      fixtureLoader({
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] })
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController()
+      setTimeout(
+        () => controller.abort(new DOMException("Timed out", "TimeoutError")),
+        milliseconds,
+      )
+      return controller.signal
+    })
+    try {
+      const started = deferred()
+      let signal: AbortSignal | undefined
+      let phase = ""
+      const transcribe: TranscribeAudioFile = async (_path, options) => {
+        signal = options.signal
+        phase = "decode"
+        options.onPhase?.("decode")
+        started.resolve()
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        options.signal?.throwIfAborted()
+        phase = "model_load"
+        options.onPhase?.("model_load")
+        return waitForAbort(options.signal)
+      }
+      const loading = fixtureLoader({
         commandRunner: fixtureRunner(),
         transcribe,
         transcriptionTimeoutMs: 60,
-      }).load("https://example.com/video"),
-    ).rejects.toMatchObject({ diagnostic: { code: "transcription_timeout", phase: "model_load" } })
+      })
+        .load("https://example.com/video")
+        .catch((error: unknown) => error)
+      await started.promise
+      const originalDeadline = performance.now() + 60
+      await vi.advanceTimersByTimeAsync(30)
+      expect(phase).toBe("model_load")
+      await vi.advanceTimersByTimeAsync(29)
+      expect(signal?.aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(performance.now()).toBe(originalDeadline)
+      expect(signal?.aborted).toBe(true)
+      expect(await loading).toMatchObject({
+        diagnostic: { code: "transcription_timeout", phase: "model_load" },
+      })
+    } finally {
+      timeout.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it("allows duration equal to the configured limit and passes the tiny model alias", async () => {

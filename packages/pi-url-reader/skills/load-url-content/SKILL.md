@@ -68,9 +68,8 @@ node "<skill-directory>/scripts/read-url.mjs" --loader ytdlp 'https://example.co
 - Audio jobs share one serial, killable Node.js inference child per process.
   Cancellation stops active audio before the slot is released. Independent CLI
   processes have independent slots.
-- The host tool keeps its 180-second total URL deadline and 12,000-character
-  text limit. Metadata/download share 120 seconds; decode, model loading, and
-  inference share at most 300 seconds and cannot extend the total deadline.
+- The host tool keeps its 3,600-second total URL deadline and 12,000-character text limit.
+  Metadata/download share 300 seconds; decode, model loading, and inference share at most 3,000 seconds and cannot extend the total deadline.
 - Do not promise long-video completion, faster inference, background jobs, or
   SRT/VTT delivery. Use full Hub model IDs for library model overrides;
   `tiny` is the default alias and `whisperPath` is no longer supported.

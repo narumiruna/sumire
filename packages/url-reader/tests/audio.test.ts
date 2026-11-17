@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs"
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AudioMessageReader,
@@ -430,7 +430,7 @@ console.log('finished');
   it("the production child exits on parent disconnect without loading models", async () => {
     const child = spawn(
       process.execPath,
-      [new URL("../dist/audio/child.js", import.meta.url).pathname],
+      [fileURLToPath(new URL("../dist/audio/child.js", import.meta.url))],
       {
         stdio: ["pipe", "pipe", "ignore", "ipc"],
       },

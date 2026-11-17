@@ -25,6 +25,7 @@ import { ContentContract, ContentType } from "../src/pipelines/catalog.js"
 
 const originalKey = process.env.FIRECRAWL_API_KEY
 afterEach(() => {
+  vi.useRealTimers()
   if (originalKey === undefined) delete process.env.FIRECRAWL_API_KEY
   else process.env.FIRECRAWL_API_KEY = originalKey
 })
@@ -253,9 +254,32 @@ describe("load chain", () => {
     },
   )
 
+  it.each([
+    ["transcription_failed", "model_load", "model_load"],
+    ["transcription_timeout", "decode", "decode"],
+    ["unknown", "loading", "transcription"],
+    ["configuration_missing", undefined, "transcription"],
+    ["deadline_exceeded", "model_load", "transcription"],
+    ["cancelled", "model_load", "transcription"],
+  ] as const)("records %s with typed phase %s as %s", async (code, phase, expectedPhase) => {
+    const url = "https://example.com/video"
+    const chain = resolveExplicitLoadChain(url, ["ytdlp"], {
+      getFactory: () => () => ({
+        load: async () => {
+          reportPhase("transcription")
+          throw new FailureDiagnosticError("ytdlp", url, { code, ...(phase ? { phase } : {}) })
+        },
+      }),
+    })
+    const error = await chain.loadDetailed().catch((caught: unknown) => caught as LoaderError)
+    expect(error).toBeInstanceOf(LoaderError)
+    expect(error.attempts[0]?.diagnostic).toEqual({ code, phase: expectedPhase })
+  })
+
   it.each(["metadata", "download", "decode", "model_load", "inference"] as const)(
     "snapshots %s when the total budget expires before cleanup",
     async (phase) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] })
       const phases: FailurePhase[] = ["metadata", "download", "decode", "model_load", "inference"]
       const url = "https://user:password@example.com/private?token=secret"
       let cleanup: (() => void) | undefined
@@ -282,9 +306,21 @@ describe("load chain", () => {
           },
         }),
       })
-      const error = await withDeadline(performance.now() + 50, () => chain.loadDetailed()).catch(
-        (caught: unknown) => caught as LoaderError,
+      let settled = false
+      const loading = withDeadline(performance.now() + 50, () => chain.loadDetailed()).catch(
+        (caught: unknown) => {
+          settled = true
+          return caught as LoaderError
+        },
       )
+      const phaseTime = phases.indexOf(phase)
+      await vi.advanceTimersByTimeAsync(phaseTime)
+      expect(cleanup).toBeTypeOf("function")
+      await vi.advanceTimersByTimeAsync(49 - phaseTime)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      const error = await loading
+      expect(settled).toBe(true)
       expect(error).toBeInstanceOf(LoaderError)
       expect(error.attempts).toHaveLength(2)
       expect(error.attempts).toMatchObject([
@@ -305,7 +341,7 @@ describe("load chain", () => {
       }
       const snapshot = JSON.stringify(error.attempts)
       cleanup?.()
-      await new Promise((resolve) => setTimeout(resolve, 5))
+      await vi.advanceTimersByTimeAsync(5)
       expect(JSON.stringify(error.attempts)).toBe(snapshot)
       expect(snapshot).not.toMatch(/password|secret|private|transcript/u)
     },
