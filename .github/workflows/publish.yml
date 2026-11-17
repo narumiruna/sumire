@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   release:
-    name: Release packages
+    name: release-packages
     runs-on: ubuntu-latest
     permissions:
       contents: read
