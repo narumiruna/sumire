@@ -108,7 +108,8 @@ export function loadSettings(
     botWorkdir: path.resolve(workdir),
     botToken: parsed.BOT_TOKEN,
     botMcpConfigPath: path.join(root, "mcp.json"),
-    botCodemodeTimeoutSeconds: 300,
+    // Leave room for a full URL load plus resource cleanup inside Codemode.
+    botCodemodeTimeoutSeconds: 3_660,
     botAdminId: parsed.BOT_ADMIN_ID,
     botMaxConsecutiveRepliesToBots: 1,
     botGroupPassiveContextEnabled: true,
@@ -127,7 +128,7 @@ export function loadSettings(
     botReplyTreeMaxRecordsPerChat: 1_000,
     botReplyTreeMaxIndexBytes: 1_000_000,
     botUrlTimeoutSeconds: 15,
-    botUrlContentTimeoutSeconds: 180,
+    botUrlContentTimeoutSeconds: 3_600,
     botUrlMaxExtractedChars: 12_000,
     botUrlAllowedSchemes: new Set(["http", "https"]),
     botSessionLogDir: path.resolve(root, ".telegramagent/sessions"),
