@@ -1,5 +1,33 @@
 # @narumitw/sumire
 
+## 0.19.12
+
+### Patch Changes
+
+- 9abf7c9: Replace Python Whisper with shared, serial CPU Transformers.js audio inference in
+  a killable Node.js child. Preserve caption-first URL loading and bounded text
+  results while stopping active audio on cancellation and timeout. Remove the
+  `whisperPath` loader option; retain `tiny` as the default model alias and use full
+  Hub IDs for model overrides.
+  
+  Remove PyTorch and openai-whisper from the production image, retain pinned
+  yt-dlp/EJS/Deno and FFmpeg, and persist ONNX weights in a separate Transformers
+  cache while keeping the old cache for rollback. Update offline native import
+  checks and document first-use downloads, fixed limits, and operator verification.
+- 0157263: Raise the default URL-loading deadline to 60 minutes, yt-dlp metadata/download budget to 5 minutes, and Whisper transcription budget to 50 minutes for longer audio. Allow 61 minutes for the bot's Codemode host deadline so nested URL loads can finish and clean up. Preserve explicit shorter timeouts, caller cancellation, media size/duration limits, and transcript truncation.
+- c6ddf47: Preserve explicit audio failure phases while using the last confirmed stage for
+  interruption diagnostics. Correct the URL-loading skill's timeout limits and
+  make audio deadline tests deterministic, including child paths with spaces.
+  Support English-only Whisper model overrides without multilingual language
+  selection or generation options. Keep model-logit detection for multilingual models.
+  Include Telegram admission wait and download in the existing audio input deadline.
+  Queued timeouts must not download bytes or start inference.
+- Updated dependencies [9abf7c9]
+- Updated dependencies [0157263]
+- Updated dependencies [c6ddf47]
+  - @narumitw/sumire-url-reader@0.28.0
+  - @narumitw/sumire-pi-url-reader@0.7.7
+
 ## 0.19.11
 
 ### Patch Changes
