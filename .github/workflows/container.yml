@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   container:
-    name: Publish container images
+    name: publish-container-images
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
