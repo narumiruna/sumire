@@ -19440,7 +19440,7 @@
     "secure": true,
     "readOnly": true,
     "signature": "(request?: ListOpenOrdersRequest, options?: RequestOptions): Paginated<OpenOrder[]>",
-    "description": "Lists open orders placed with this client's credentials across all pages.\nOn a Deposit Wallet, use `listWalletOpenOrders` to include orders placed\nby the owner and its session keys.",
+    "description": "Lists open orders placed with this client's credentials across all pages.\nOn a Deposit Wallet, use `listWalletOpenOrders` to include orders placed\nby the owner and its session keys.\nSupply the market condition ID in `market` when filtering by `assetId` or `tokenId`.",
     "args": [
       {
         "name": "request",
@@ -19452,11 +19452,7 @@
               "type": "object",
               "properties": {
                 "assetId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
+                  "description": "undefined"
                 },
                 "tokenId": {
                   "description": "undefined"
@@ -19490,14 +19486,10 @@
               "type": "object",
               "properties": {
                 "assetId": {
-                  "description": "undefined"
+                  "type": "string"
                 },
                 "tokenId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    }
-                  ]
+                  "description": "undefined"
                 },
                 "cursor": {
                   "anyOf": [
@@ -19514,14 +19506,40 @@
                   ]
                 },
                 "market": {
+                  "type": "string"
+                }
+              },
+              "required": ["assetId", "market"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "description": "undefined"
+                },
+                "tokenId": {
+                  "type": "string"
+                },
+                "cursor": {
                   "anyOf": [
                     {
                       "type": "string"
                     }
                   ]
+                },
+                "id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "market": {
+                  "type": "string"
                 }
               },
-              "required": [],
+              "required": ["tokenId", "market"],
               "additionalProperties": true
             }
           ]

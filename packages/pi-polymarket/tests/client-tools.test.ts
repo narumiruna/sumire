@@ -143,6 +143,16 @@ describe("client-backed tools", () => {
     })
   })
 
+  it("shows that open order filters by asset or token require a market", async () => {
+    const { value } = setup({}, {})
+    const [method] = await value("polymarket_api", { method: "listOpenOrders" })
+    expect(method.args[0].schema.anyOf).toMatchObject([
+      { required: [] },
+      { required: ["assetId", "market"] },
+      { required: ["tokenId", "market"] },
+    ])
+  })
+
   it("discovers SDK 0.17.0 activity types for both clients", async () => {
     const { value } = setup({}, {})
     const methods = await value("polymarket_api", { method: "listActivity" })
