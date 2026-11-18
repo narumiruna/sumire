@@ -65,6 +65,26 @@ export class AdminStore {
       CREATE TABLE IF NOT EXISTS passkey_challenges (hash TEXT PRIMARY KEY, actor TEXT NOT NULL, kind TEXT NOT NULL, challenge TEXT NOT NULL, setup_hash TEXT NOT NULL, user_handle TEXT NOT NULL, created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS chat_access_requests (hash TEXT PRIMARY KEY, chat_id INTEGER NOT NULL UNIQUE, type TEXT NOT NULL, name TEXT NOT NULL, origin TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS access_reviews (fingerprint TEXT PRIMARY KEY, revision INTEGER NOT NULL, actor TEXT NOT NULL, reviewed INTEGER NOT NULL, decisions TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS issues_oauth_clients (
+        id TEXT PRIMARY KEY, origin TEXT NOT NULL, name TEXT NOT NULL,
+        redirects TEXT NOT NULL, expires INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS issues_oauth_requests (
+        id TEXT PRIMARY KEY, browser TEXT NOT NULL,
+        client TEXT NOT NULL REFERENCES issues_oauth_clients(id) ON DELETE CASCADE,
+        actor TEXT NOT NULL, redirect TEXT NOT NULL, challenge TEXT NOT NULL,
+        scope TEXT NOT NULL, state TEXT NOT NULL, code TEXT UNIQUE, expires INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS issues_oauth_grants (
+        id TEXT PRIMARY KEY, client TEXT NOT NULL REFERENCES issues_oauth_clients(id) ON DELETE CASCADE,
+        actor TEXT NOT NULL, redirect TEXT NOT NULL, scope TEXT NOT NULL, expires INTEGER NOT NULL,
+        access TEXT UNIQUE, access_expires INTEGER, rotations INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS issues_oauth_refresh (
+        hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES issues_oauth_grants(id) ON DELETE CASCADE,
+        used INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS issues_oauth_refresh_grant_idx ON issues_oauth_refresh(grant_id);
       DROP TABLE IF EXISTS login;
       PRAGMA user_version = 5;
     `)

@@ -30,6 +30,17 @@ import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
 import { parseChatQuery } from "./chat-query.js"
 import { parseDurableInspectionQuery } from "./durable-inspector.js"
 import type { GitHubAuth } from "./github-auth.js"
+import { handleIssueMcp } from "./issue-mcp.js"
+import {
+  authorizationMetadataPath,
+  IssueMcpOAuth,
+  issueMcpPath,
+  OAuthError,
+  oauthPath,
+  opaqueId,
+  resourceMetadataPath,
+  writeScope,
+} from "./issue-mcp-oauth.js"
 import type { McpAdmin } from "./mcp.js"
 import type { ProviderAdmin } from "./providers.js"
 import type { RuntimeConfigAdmin } from "./runtime-config.js"
@@ -52,8 +63,13 @@ interface AdminServices {
     signal: AbortSignal,
   ): Promise<DurableInspectionResponse>
 }
-const cookie = (name: string, value: string, seconds: number) =>
-  `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`
+const cookie = (
+  name: string,
+  value: string,
+  seconds: number,
+  sameSite: "Strict" | "Lax" = "Strict",
+) => `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=${sameSite}; Max-Age=${seconds}`
+const oauthBrowserCookie = "__Host-sumire-issues-oauth"
 const readCookie = (req: IncomingMessage, name: string) =>
   req.headers.cookie
     ?.split(";")
@@ -68,9 +84,7 @@ const offset = (url: URL) =>
     .max(10000)
     .parse(url.searchParams.get("offset") ?? 0)
 
-async function body(req: IncomingMessage, limit = 262144) {
-  if (req.headers["content-type"]?.split(";")[0] !== "application/json")
-    throw new AdminError(415, "JSON is required")
+async function readBody(req: IncomingMessage, limit: number) {
   const chunks: Buffer[] = []
   let bytes = 0
   for await (const chunk of req.iterator({ destroyOnReturn: false })) {
@@ -78,12 +92,39 @@ async function body(req: IncomingMessage, limit = 262144) {
     if (bytes > limit) throw new AdminError(413, "Request is too large")
     chunks.push(Buffer.from(chunk))
   }
+  return Buffer.concat(chunks).toString()
+}
+
+async function body(req: IncomingMessage, limit = 262144) {
+  if (req.headers["content-type"]?.split(";")[0] !== "application/json")
+    throw new AdminError(415, "JSON is required")
+  const input = await readBody(req, limit)
   try {
-    return JSON.parse(Buffer.concat(chunks).toString()) as unknown
+    return JSON.parse(input) as unknown
   } catch {
     throw new AdminError(400, "Invalid JSON")
   }
 }
+
+function oauthParameters(params: URLSearchParams) {
+  const values = Object.create(null) as Record<string, string>
+  for (const [name, value] of params) {
+    if (Object.hasOwn(values, name)) throw new OAuthError("invalid_request")
+    values[name] = value
+  }
+  return values
+}
+
+async function oauthForm(req: IncomingMessage) {
+  if (
+    req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !==
+    "application/x-www-form-urlencoded"
+  )
+    throw new OAuthError("invalid_request")
+  if (req.headers.authorization !== undefined) throw new OAuthError("invalid_client")
+  return oauthParameters(new URLSearchParams(await readBody(req, 4096)))
+}
+
 const reply = (res: ServerResponse, status: number, value: unknown) => {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" })
   res.end(JSON.stringify(value))
@@ -99,6 +140,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     () => store.snapshot().revision,
   )
   const analyses = services.analysis?.analyses ?? new AnalysisStore(store.db)
+  const issueOAuth = new IssueMcpOAuth(store, config.origin)
   const login = new PasskeyAdminLogin(config, store)
   const access = new ChatAccess(store)
   const buckets = new Map<string, { start: number; count: number }>()
@@ -129,6 +171,10 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         .catch((error: unknown) => {
           if (res.headersSent) {
             res.destroy()
+            return
+          }
+          if (error instanceof OAuthError) {
+            reply(res, error.status, { error: error.code })
             return
           }
           const status =
@@ -173,6 +219,102 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     limited(`all:${req.socket.remoteAddress}`, 240)
     if (url.pathname === "/healthz" && method === "GET") {
       reply(res, 200, { ok: true })
+      return
+    }
+    if (url.pathname === resourceMetadataPath || url.pathname === authorizationMetadataPath) {
+      if (!issueOAuth.endpoint || url.search) throw new AdminError(404, "Not found")
+      if (method !== "GET") throw new AdminError(405, "Method not allowed")
+      const metadata =
+        url.pathname === resourceMetadataPath
+          ? issueOAuth.resourceMetadata()
+          : issueOAuth.authorizationMetadata()
+      reply(res, 200, metadata)
+      return
+    }
+    if (url.pathname.startsWith(`${oauthPath}/`)) {
+      if (!issueOAuth.endpoint) throw new AdminError(404, "Not found")
+      if (url.pathname === `${oauthPath}/authorize` && method === "GET") {
+        if (req.headers["sec-fetch-mode"] && req.headers["sec-fetch-mode"] !== "navigate")
+          throw new OAuthError("invalid_request")
+        if ((req.url?.length ?? 0) > 4096) throw new OAuthError("invalid_request")
+        limited(`issues-oauth-authorize:${req.socket.remoteAddress}`, 20)
+        const request = issueOAuth.begin(
+          oauthParameters(url.searchParams),
+          readCookie(req, oauthBrowserCookie),
+        )
+        res.setHeader(
+          "set-cookie",
+          cookie(oauthBrowserCookie, request.browser, request.seconds, "Lax"),
+        )
+        res.writeHead(303, { location: `/#issues-mcp=${request.id}` }).end()
+        return
+      }
+      if (method !== "POST" || url.search) throw new OAuthError("invalid_request")
+      if (
+        (req.headers.origin !== undefined && req.headers.origin !== config.origin) ||
+        req.headers["sec-fetch-site"] === "cross-site"
+      )
+        throw new OAuthError("invalid_request", 403)
+      if (url.pathname === `${oauthPath}/register`) {
+        limited(`issues-oauth-register:${req.socket.remoteAddress}`, 12)
+        reply(res, 201, issueOAuth.register(await body(req, 8192)))
+      } else if (url.pathname === `${oauthPath}/token`) {
+        limited(`issues-oauth-token:${req.socket.remoteAddress}`, 40)
+        res.setHeader("pragma", "no-cache")
+        reply(res, 200, issueOAuth.exchange(await oauthForm(req)))
+      } else if (url.pathname === `${oauthPath}/revoke`) {
+        limited(`issues-oauth-token:${req.socket.remoteAddress}`, 40)
+        issueOAuth.revoke(await oauthForm(req))
+        res.writeHead(200).end()
+      } else throw new AdminError(404, "Not found")
+      return
+    }
+    if (url.pathname === issueMcpPath) {
+      if (!issueOAuth.endpoint || url.search) throw new AdminError(404, "Not found")
+      if (
+        (req.headers.origin !== undefined && req.headers.origin !== config.origin) ||
+        req.headers["sec-fetch-site"] === "cross-site"
+      )
+        throw new AdminError(403, "Invalid MCP request origin")
+      const authenticate = () => issueOAuth.authenticate(req.headers.authorization)
+      const requireAccess = () => {
+        const credential = authenticate()
+        if (!credential) {
+          res.setHeader(
+            "www-authenticate",
+            issueOAuth.challenge(req.headers.authorization ? "invalid_token" : undefined),
+          )
+          throw new AdminError(401, "An Issues MCP OAuth access token is required")
+        }
+        return credential
+      }
+      requireAccess()
+      if (method !== "POST") {
+        res.setHeader("allow", "POST")
+        throw new AdminError(405, "Method not allowed")
+      }
+      const input = await body(req, 16384)
+      const credential = requireAccess()
+      limited(`issues-mcp:${credential.scope}`, 60)
+      if (Array.isArray(input)) throw new AdminError(400, "MCP batch requests are not supported")
+      const request = z
+        .object({
+          jsonrpc: z.literal("2.0"),
+          method: z.literal("tools/call"),
+          params: z.object({ name: z.enum(["update_issue", "delete_issue"]) }),
+        })
+        .safeParse(input)
+      if (request.success && credential.scope !== writeScope) {
+        res.setHeader("www-authenticate", issueOAuth.challenge("insufficient_scope"))
+        throw new AdminError(403, "Issues MCP write access is required")
+      }
+      await handleIssueMcp(req, res, input, {
+        issues,
+        scope: credential.scope,
+        authenticate,
+        changed: async (id) => services.analysis?.changed(id),
+        limitScreenshot: () => limited(`issues-mcp-screenshot:${credential.scope}`, 20),
+      })
       return
     }
     const passkeyRoute = /^\/auth\/passkey\/(register|authenticate)\/(options|verify)$/.exec(
@@ -267,6 +409,31 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       if (req.headers.origin !== config.origin || req.headers["x-csrf-token"] !== session.csrf)
         throw new AdminError(403, "Request verification failed")
       limited(`write:${owner}`, 60)
+    }
+    if (url.pathname === "/api/issues-mcp/consent") {
+      const browser = readCookie(req, oauthBrowserCookie)
+      if (method === "GET") {
+        const { requestId } = z
+          .strictObject({ requestId: opaqueId })
+          .parse(oauthParameters(url.searchParams))
+        reply(res, 200, issueOAuth.review(requestId, browser, session.actor))
+      } else if (method === "POST") {
+        const { requestId, approve } = z
+          .strictObject({ requestId: opaqueId, approve: z.boolean() })
+          .parse(await body(req, 1024))
+        assertCurrentSession()
+        reply(res, 200, issueOAuth.decide(requestId, browser, session.actor, approve))
+      } else throw new AdminError(405, "Method not allowed")
+      return
+    }
+    if (url.pathname === "/api/issues-mcp/grants") {
+      if (method === "GET") reply(res, 200, issueOAuth.grants(session.actor))
+      else if (method === "DELETE") {
+        const { id } = z.strictObject({ id: opaqueId }).parse(await body(req, 1024))
+        assertCurrentSession()
+        reply(res, 200, issueOAuth.revokeGrant(id, session.actor))
+      } else throw new AdminError(405, "Method not allowed")
+      return
     }
     if (url.pathname === "/api/issues" || url.pathname.startsWith("/api/issues/")) {
       if (url.pathname === "/api/issues") {

@@ -36,6 +36,7 @@
     "@earendil-works/pi-mcp": "1.5.2",
     "@firecrawl/anydoc": "0.2.4",
     "@grammyjs/runner": "2.0.3",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@narumitw/otter-cli": "0.5.1",
     "@narumitw/sumire-contracts": "0.10.1",
     "@narumitw/sumire-github-notifications": "0.2.3",

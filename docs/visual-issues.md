@@ -16,8 +16,9 @@
 ## Privacy and limits
 
 The current WebUI remains single-administrator, behind existing Passkey sessions. There
-is no public or Telegram-user submission endpoint. All issue and image reads require the
-same administrator session; writes also require exact Origin and CSRF checks. Images use
+is no public or Telegram-user submission endpoint. The WebUI API requires an administrator
+session; writes also require exact Origin and CSRF checks. The optional HTTPS
+[Issues MCP](issues-mcp.md) uses OAuth access tokens after explicit administrator approval. Images use
 `no-store`, a raster MIME type, and the existing defensive CSP. Lists and detail JSON never
 embed image bytes. Audit events contain operation/issue ID, not descriptions or screenshots.
 

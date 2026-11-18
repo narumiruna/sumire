@@ -76,6 +76,111 @@ async function fixture(page: Page) {
   })
   return state
 }
+test("lists Issues MCP grants and revokes only the grant explicitly confirmed", async ({
+  page,
+}) => {
+  await fixture(page)
+  const endpoint = "https://admin.example.test/mcp/issues"
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000
+  const reader = {
+    id: "a".repeat(43),
+    clientName: "Reader",
+    redirectUri: "http://127.0.0.1:8787/callback",
+    scope: "issues:read",
+    expiresAt,
+  }
+  const writer = {
+    id: "b".repeat(43),
+    clientName: "Writer <img src=x>",
+    redirectUri: "http://[::1]:8788/callback",
+    scope: "issues:write",
+    expiresAt,
+  }
+  const removed: string[] = []
+  let reads = 0
+  let configured = false
+  let signedIn = true
+  await page.route("**/api/issues-mcp/grants", async (route) => {
+    const request = route.request()
+    if (!signedIn) {
+      await route.fulfill({ status: 401, json: { error: "Session expired" } })
+      return
+    }
+    if (request.method() === "GET") reads++
+    else {
+      expect(request.method()).toBe("DELETE")
+      expect(request.headers()["x-csrf-token"]).toBe("fixture")
+      const { id } = request.postDataJSON()
+      expect([reader.id, writer.id]).toContain(id)
+      removed.push(id)
+      if (id === writer.id) {
+        // Simulate a lost response after the server applied the change.
+        await route.abort("failed")
+        return
+      }
+    }
+    await route.fulfill({
+      json: {
+        endpoint: configured ? endpoint : null,
+        grants: configured ? [reader, writer].filter(({ id }) => !removed.includes(id)) : [],
+      },
+    })
+  })
+  await navigate(page, "Issues")
+  await expect(page.getByRole("table")).toBeVisible()
+  expect(reads).toBe(0)
+  const manage = page.getByRole("button", { name: "Manage Issues MCP grants" })
+  const dialog = page.getByRole("dialog", { name: "Issues MCP grants", exact: true })
+  const close = dialog.getByRole("button", { name: "Close", exact: true })
+  await manage.click()
+  await expect(dialog.getByText(/HTTPS admin origin is not configured/)).toBeVisible()
+  await expect(dialog.getByText("No active grants.")).toBeVisible()
+  await close.click()
+  await expect(manage).toBeFocused()
+
+  configured = true
+  await manage.click()
+  await expect(dialog.getByText(endpoint, { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByText("Start authorization from the client.", { exact: false }),
+  ).toBeVisible()
+  const writerRow = dialog.getByRole("listitem").filter({ hasText: writer.clientName })
+  const writerRevoke = writerRow.getByRole("button", { name: "Revoke access", exact: true })
+  await expect(writerRow).toContainText(writer.redirectUri)
+  await expect(writerRow).toContainText("Read and write (issues:write)")
+  await expect(writerRow.locator("time")).toHaveAttribute(
+    "datetime",
+    new Date(expiresAt).toISOString(),
+  )
+  await expect(writerRow.locator("img")).toHaveCount(0)
+  await expect(dialog.getByText(/bearer token/i)).toHaveCount(0)
+  await writerRevoke.click()
+  const confirmation = page.getByRole("dialog", { name: "Revoke this grant?", exact: true })
+  await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused()
+  await expect(confirmation).toContainText(writer.clientName)
+  expect(removed).toEqual([])
+  await page.keyboard.press("Escape")
+  await expect(writerRevoke).toBeFocused()
+  expect(removed).toEqual([])
+  await writerRevoke.click()
+  await confirmation.getByRole("button", { name: "Revoke access" }).click()
+  await expect(dialog.getByRole("alert")).toContainText("Could not confirm the change")
+  await dialog.getByRole("button", { name: "Reload grants" }).click()
+  await expect(dialog.getByText("Read-only (issues:read)")).toBeVisible()
+  await expect(writerRow).toHaveCount(0)
+  expect(removed).toEqual([writer.id])
+  await dialog.getByRole("button", { name: "Revoke access" }).click()
+  await confirmation.getByRole("button", { name: "Revoke access" }).click()
+  await expect(dialog.getByRole("status")).toHaveText("Access revoked.")
+  await expect(dialog.getByText("No active grants.")).toBeVisible()
+  expect(removed).toEqual([writer.id, reader.id])
+  await close.click()
+  signedIn = false
+  await manage.click()
+  await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible()
+  await expect(dialog).toHaveCount(0)
+})
+
 async function textFeedback(page: Page, text: string) {
   await page.getByRole("button", { name: "回報問題", exact: true }).click()
   await page.getByRole("button", { name: "文字", exact: true }).click()

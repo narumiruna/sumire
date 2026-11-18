@@ -44,6 +44,8 @@ See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md)
 
 Send `/allow` in a private chat or group to request access. The administrator opens the returned link, signs in with a Passkey, and explicitly approves the displayed chat. Localhost links must open on the Sumire host. Before upgrading from environment-based access, complete the Stage 1 review and backup workflow. Existing database permissions remain unchanged; environment allowlist values no longer grant access. Historical reviews remain available on the Audit page.
 
+For coding agents, see [Issues MCP setup](docs/issues-mcp.md) to read feedback and screenshots, or manage issues with OAuth write access.
+
 ### Secrets and variables
 
 Administrators manage service credentials and non-confidential values on **Secrets & variables**. Secrets use AES-256-GCM with the host-only `ENCRYPTION_KEY`; saved values are never returned to the browser. Approved bot capabilities read current stored values after settings application, without a bot restart. See [setup, migration, trust limits, and recovery](docs/runtime-config.md).
