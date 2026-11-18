@@ -63,7 +63,7 @@
   "dependencies": {
     "@narumitw/sumire-url-reader": "0.28.0",
     "ipaddr.js": "2.5.0",
-    "typebox": "1.4.6",
+    "typebox": "1.4.7",
     "undici": "8.12.4"
   },
   "peerDependencies": {
@@ -75,6 +75,6 @@
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@types/node": "26.6.6",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }
