@@ -54,7 +54,7 @@
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@types/node": "26.6.6",
     "typescript": "7.0.2",
-    "typescript-compiler": "npm:typescript@6.0.2",
+    "typescript-compiler": "npm:typescript@6.0.3",
     "vitest": "5.1.1"
   }
 }
