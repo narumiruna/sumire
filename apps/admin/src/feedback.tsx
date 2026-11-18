@@ -408,7 +408,12 @@ export function FeedbackWidget({
                 disabled={busy || uncertain}
                 onClick={() => {
                   try {
-                    setReview(encodeFeedback(source, marks, crop))
+                    const encoded = encodeFeedback(source, marks, crop)
+                    activePointer.current = undefined
+                    start.current = undefined
+                    gesture.current = undefined
+                    setSelection(undefined)
+                    setReview(encoded)
                     setError("")
                   } catch (error) {
                     setError(error instanceof Error ? error.message : "無法處理圖片。")
