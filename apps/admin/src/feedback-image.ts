@@ -42,21 +42,26 @@ export function captureFilter(node: HTMLElement): boolean {
   }
   return true
 }
-export async function captureViewport(): Promise<HTMLCanvasElement> {
+export async function captureViewport(viewport: {
+  width: number
+  height: number
+}): Promise<HTMLCanvasElement> {
+  const scrollX = window.scrollX
+  const scrollY = window.scrollY
   const { toCanvas } = await import("html-to-image")
   const controller = new AbortController()
   let timeout: ReturnType<typeof setTimeout> | undefined
   try {
     const canvas = await Promise.race([
       toCanvas(document.body, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        pixelRatio: Math.min(1, 2000 / window.innerWidth, 2000 / window.innerHeight),
+        width: viewport.width,
+        height: viewport.height,
+        pixelRatio: Math.min(1, 2000 / viewport.width, 2000 / viewport.height),
         skipFonts: true,
         filter: captureFilter,
         fetchRequestInit: { signal: controller.signal },
         style: {
-          transform: `translate(${-window.scrollX}px, ${-window.scrollY}px)`,
+          transform: `translate(${-scrollX}px, ${-scrollY}px)`,
           transformOrigin: "top left",
         },
       }),
@@ -149,7 +154,9 @@ export function encodeFeedback(source: HTMLCanvasElement, marks: Mark[], crop?: 
   const canvas = document.createElement("canvas")
   drawFeedback(canvas, source, marks, crop)
   const data = canvas.toDataURL("image/png").split(",")[1] ?? ""
-  if (!data || data.length > 4 * Math.ceil(MAX_SCREENSHOT_BYTES / 3))
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0
+  const bytes = (data.length / 4) * 3 - padding
+  if (!data || bytes > MAX_SCREENSHOT_BYTES)
     throw new Error("圖片超過 2 MiB，請裁切成較小範圍再送出。")
   return data
 }

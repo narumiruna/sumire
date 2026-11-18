@@ -151,7 +151,7 @@ export function IssueAnalysisPanel({
         return value
       } catch (error) {
         if (alive.current) {
-          const unknown = !(error instanceof ApiError) || error.status >= 500
+          const unknown = uncertain || !(error instanceof ApiError) || error.status >= 500
           setUncertain(unknown)
           if (!unknown) pending.current = undefined
         }

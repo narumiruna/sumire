@@ -73,7 +73,7 @@ async function body(req: IncomingMessage, limit = 262144) {
     throw new AdminError(415, "JSON is required")
   const chunks: Buffer[] = []
   let bytes = 0
-  for await (const chunk of req) {
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     bytes += chunk.length
     if (bytes > limit) throw new AdminError(413, "Request is too large")
     chunks.push(Buffer.from(chunk))
@@ -136,6 +136,11 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
               ? 400
               : 500
         if (status === 429) res.setHeader("retry-after", "60")
+        if (status === 413) {
+          // With unread body bytes, flush the error then let HTTP close the socket, never reuse it.
+          res.shouldKeepAlive = false
+          res.setHeader("connection", "close")
+        }
         reply(res, status, {
           error:
             error instanceof AdminError || error instanceof IssueError
@@ -279,14 +284,11 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         let image: ReturnType<typeof decodeImage> | undefined
         if (input.screenshot) {
           try {
-            image = decodeImage(input.screenshot)
-            if (
-              image.bytes.byteLength > MAX_SCREENSHOT_BYTES ||
-              image.width > 4096 ||
-              image.height > 4096 ||
-              image.width * image.height > 4_194_304
-            )
-              throw new Error("Screenshot too large")
+            image = decodeImage(input.screenshot, {
+              maxBytes: MAX_SCREENSHOT_BYTES,
+              maxDimension: 4096,
+              maxPixels: 4_194_304,
+            })
           } catch {
             throw new AdminError(
               400,

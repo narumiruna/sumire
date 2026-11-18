@@ -13,6 +13,7 @@ import {
   MAX_ISSUES,
   MAX_SCREENSHOT_BYTES,
 } from "./index.js"
+import { transaction } from "./transaction.js"
 
 export { IssueError } from "./errors.js"
 export function initializeIssueStorage(db: DatabaseSync) {
@@ -28,7 +29,6 @@ export function initializeIssueStorage(db: DatabaseSync) {
 }
 interface Row {
   id: number
-  description: string
   source: string
   title: string
   state: IssueState
@@ -38,7 +38,7 @@ interface Row {
   revision: number
 }
 const columns =
-  "id, description, source, title, state, screenshot IS NOT NULL AS hasScreenshot, created, updated, revision"
+  "id, source, title, state, screenshot IS NOT NULL AS hasScreenshot, created, updated, revision"
 function summary(row: Row): IssueSummary {
   const source = JSON.parse(row.source) as Issue["source"]
   return {
@@ -60,15 +60,7 @@ export class IssueStore {
     private readonly analysisRevision: () => number | null = () => null,
   ) {}
   private transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN IMMEDIATE")
-    try {
-      const result = work()
-      this.db.exec("COMMIT")
-      return result
-    } catch (error) {
-      this.db.exec("ROLLBACK")
-      throw error
-    }
+    return transaction(this.db, work)
   }
   create(
     input: unknown,
@@ -88,10 +80,18 @@ export class IssueStore {
     const fingerprint = createHash("sha256").update(JSON.stringify(canonical)).digest("hex")
     return this.transaction(() => {
       const existing = this.db
-        .prepare("SELECT id, fingerprint FROM feedback_issues WHERE actor=? AND request_id=?")
-        .get(actor, feedback.requestId) as { id: number; fingerprint: string } | undefined
+        .prepare(
+          "SELECT id, request_id, fingerprint FROM feedback_issues WHERE actor=? AND request_id=? COLLATE NOCASE ORDER BY id LIMIT 1",
+        )
+        .get(actor, feedback.requestId) as
+        | { id: number; request_id: string; fingerprint: string }
+        | undefined
       if (existing) {
-        if (existing.fingerprint !== fingerprint)
+        // Preserve retry compatibility for UUIDs stored before case normalization.
+        const legacyFingerprint = createHash("sha256")
+          .update(JSON.stringify({ ...canonical, requestId: existing.request_id }))
+          .digest("hex")
+        if (existing.fingerprint !== fingerprint && existing.fingerprint !== legacyFingerprint)
           throw new IssueError(409, "This submission ID was already used for different feedback")
         return { issue: this.get(existing.id), created: false }
       }
@@ -150,9 +150,9 @@ export class IssueStore {
     return { issues: visible.map(summary), next: more ? (visible.at(-1)?.id ?? null) : null }
   }
   get(id: number): Issue {
-    const row = this.db.prepare(`SELECT ${columns} FROM feedback_issues WHERE id=?`).get(id) as
-      | Row
-      | undefined
+    const row = this.db
+      .prepare(`SELECT ${columns}, description FROM feedback_issues WHERE id=?`)
+      .get(id) as (Row & { description: string }) | undefined
     if (!row) throw new IssueError(404, "Issue not found")
     return {
       ...summary(row),

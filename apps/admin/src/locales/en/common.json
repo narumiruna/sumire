@@ -279,5 +279,6 @@
   "issues.reason.issue_closed": "Analysis stopped because this issue was closed.",
   "issues.reason.session_unavailable": "The recorded durable session is unavailable or its identity changed. Request a new analysis instead of replaying it.",
   "issues.enlarge": "View larger wireframe",
-  "issues.closePreview": "Close preview"
+  "issues.closePreview": "Close preview",
+  "issues.stopWaiting": "Stop waiting"
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { request as httpRequest } from "node:http"
-import type { AddressInfo } from "node:net"
+import { type AddressInfo, createConnection } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
@@ -892,4 +892,44 @@ describe("private visual feedback API", () => {
     )
     expect(response.status).toBe(413)
   })
+})
+
+it("flushes HTTP 413 and closes a socket even when an oversized chunked upload never finishes", async () => {
+  const socket = createConnection({
+    host: "127.0.0.1",
+    port: (server.server.address() as AddressInfo).port,
+  })
+  try {
+    const response = await new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = []
+      const timeout = setTimeout(() => {
+        socket.destroy()
+        reject(new Error("413 response did not close the unfinished upload"))
+      }, 5000)
+      socket.on("data", (chunk) =>
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk),
+      )
+      socket.on("error", (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+      socket.on("end", () => {
+        clearTimeout(timeout)
+        resolve(Buffer.concat(chunks).toString())
+      })
+      socket.once("connect", () => {
+        const data = Buffer.alloc(3 * 1024 * 1024 + 1, 65)
+        socket.write(
+          `POST /api/issues HTTP/1.1\r\nHost: admin.example.test\r\nContent-Type: application/json\r\nCookie: __Host-sumire-session=${value}\r\nOrigin: https://admin.example.test\r\nX-CSRF-Token: ${csrf}\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n${data.length.toString(16)}\r\n`,
+        )
+        socket.write(data)
+        // Deliberately omit the chunk terminator and final chunk: the server must not wait or reset.
+      })
+    })
+    expect(response).toMatch(/^HTTP\/1\.1 413 /)
+    expect(response.toLowerCase()).toContain("connection: close")
+    expect(response).toContain('"error":"Request is too large"')
+  } finally {
+    socket.destroy()
+  }
 })

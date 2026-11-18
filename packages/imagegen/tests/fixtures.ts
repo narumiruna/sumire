@@ -17,11 +17,11 @@ function chunk(type: string, data: Buffer): Buffer {
 
 // Two RGBA pixels: fully transparent red and half-transparent green.
 const PIXELS = Buffer.from([0, 255, 0, 0, 0, 0, 255, 0, 128])
-export function png(width = 2, height = 1, raster = PIXELS): Buffer {
+export function png(width = 2, height = 1, raster = PIXELS, depth = 8): Buffer {
   const header = Buffer.alloc(13)
   header.writeUInt32BE(width)
   header.writeUInt32BE(height, 4)
-  header[8] = 8
+  header[8] = depth
   header[9] = 6
   return Buffer.concat([
     Buffer.from("89504e470d0a1a0a", "hex"),

@@ -11,6 +11,7 @@ import {
   MAX_ANALYSIS_QUEUE,
 } from "./analysis.js"
 import { IssueError } from "./errors.js"
+import { transaction } from "./transaction.js"
 
 export function initializeAnalysisStorage(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS feedback_analyses (
@@ -116,15 +117,7 @@ export class AnalysisStore {
     private readonly audit: (actor: string, operation: string, id: number) => void = () => {},
   ) {}
   private transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN IMMEDIATE")
-    try {
-      const value = work()
-      this.db.exec("COMMIT")
-      return value
-    } catch (error) {
-      this.db.exec("ROLLBACK")
-      throw error
-    }
+    return transaction(this.db, work)
   }
   private row(id: string): Row {
     const row = this.db.prepare("SELECT * FROM feedback_analyses WHERE id=?").get(id) as
@@ -171,7 +164,9 @@ export class AnalysisStore {
       if (this.issue(issueId, request.revision).state !== "open")
         throw new IssueError(409, "Reopen the issue before requesting analysis")
       const existing = this.db
-        .prepare("SELECT * FROM feedback_analyses WHERE issue_id=? AND request_id=?")
+        .prepare(
+          "SELECT * FROM feedback_analyses WHERE issue_id=? AND request_id=? COLLATE NOCASE ORDER BY attempt LIMIT 1",
+        )
         .get(issueId, request.requestId) as Row | undefined
       if (existing) {
         if (existing.actor !== actor || existing.context !== request.context)

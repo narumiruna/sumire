@@ -250,5 +250,6 @@
   "issues.reason.issue_closed": "報告が終了したため分析を停止しました。",
   "issues.reason.session_unavailable": "保存したセッションが見つからないか識別情報が変わりました。自動再送せず、新しい分析を依頼してください。",
   "issues.enlarge": "ワイヤーフレームを拡大",
-  "issues.closePreview": "プレビューを閉じる"
+  "issues.closePreview": "プレビューを閉じる",
+  "issues.stopWaiting": "待機を中止"
 }

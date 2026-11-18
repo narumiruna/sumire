@@ -7,7 +7,7 @@ export const ISSUE_PAGE_SIZE = 25
 export const issueState = z.enum(["open", "closed"])
 export const feedbackSchema = z
   .object({
-    requestId: z.uuid(),
+    requestId: z.uuid().toLowerCase(),
     analyze: z.boolean().optional(),
     description: z.string().trim().max(8000).default(""),
     source: z

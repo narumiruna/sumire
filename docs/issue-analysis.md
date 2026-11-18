@@ -184,10 +184,15 @@ live deployment, provider entitlement, Safari/iOS compatibility or remote cancel
 ### Local validation results
 
 - Root `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm run build` passed.
-- All **4,155** unit/integration tests passed with
+- All **4,171** unit/integration tests passed with
   `npm test -- -- --maxWorkers=4 --testTimeout=60000 --retry=1`.
-- **121** Playwright cases passed across `tests/issues.spec.ts`, `tests/i18n.spec.ts`, and
-  `tests/admin.spec.ts`; the **11** issue cases were rerun after the final changes and passed.
+- **131** Playwright cases passed across `tests/issues.spec.ts`, `tests/i18n.spec.ts`, and
+  `tests/admin.spec.ts`; the **21** issue cases were rerun after the final changes and passed.
 - `git diff --check` and changeset status validation passed.
 - Docker is unavailable locally. Container assembly, live provider behavior and deployment
   remain unverified; no real model quota, image generation or implementation worker was used.
+
+Review regressions also cover resize-during-capture, multi-pointer ownership, exact image
+bytes, stopped/timed-out submissions, rejected uncertain retries, stale detail/mutation
+responses, independent list errors, decoded attachment retries, pre-inflation budgets,
+case-normalized UUID retries, SQLite auto-rollback errors and unfinished oversized uploads.

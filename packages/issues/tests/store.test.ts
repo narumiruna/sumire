@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -63,6 +63,31 @@ describe("issue storage", () => {
     expect(() => store.create({ ...input, description: "changed" }, "42")).toThrow("already used")
     expect(audit).toHaveBeenCalledTimes(1)
   })
+  it("normalizes UUID case before retry lookup and fingerprinting", () => {
+    const input = { ...feedback(), requestId: "a1234567-1234-4abc-8def-123456789abc" }
+    const first = store.create({ ...input, requestId: input.requestId.toUpperCase() }, "42")
+    expect(store.create(input, "42")).toEqual({ issue: first.issue, created: false })
+    expect(() => store.create({ ...input, description: "changed" }, "42")).toThrow("already used")
+    expect(store.list().issues).toHaveLength(1)
+    expect(db.prepare("SELECT request_id FROM feedback_issues").get()?.request_id).toBe(
+      input.requestId,
+    )
+  })
+  it("recognizes case-variant retries of legacy uppercase UUIDs without duplicating old rows", () => {
+    const input = { ...feedback(), requestId: "A1234567-1234-4ABC-8DEF-123456789ABC" }
+    const first = store.create(input, "42")
+    const oldHash = createHash("sha256").update(JSON.stringify(input)).digest("hex")
+    db.prepare("UPDATE feedback_issues SET request_id=?, fingerprint=? WHERE id=?").run(
+      input.requestId,
+      oldHash,
+      first.issue.id,
+    )
+    expect(
+      store.create({ ...input, requestId: input.requestId.toLowerCase() }, "42").issue.id,
+    ).toBe(first.issue.id)
+    expect(() => store.create({ ...input, description: "changed" }, "42")).toThrow("already used")
+    expect(store.list().issues).toHaveLength(1)
+  })
   it("scopes retry keys to the authenticated actor", () => {
     const input = feedback()
     expect(store.create(input, "42").issue.id).not.toBe(store.create(input, "43").issue.id)
@@ -76,6 +101,18 @@ describe("issue storage", () => {
     expect(store.list().issues[0]).not.toHaveProperty("description")
     expect(JSON.stringify(store.get(issue.id))).not.toContain(input.screenshot)
     expect(audit.mock.calls[0]).toEqual(["42", "issue.create", issue.id])
+  })
+  it("does not materialize descriptions when querying the metadata list", () => {
+    const { issue } = store.create(feedback("private description"), "42")
+    const query = vi.spyOn(db, "prepare")
+    try {
+      store.list()
+      expect(query.mock.calls[0]?.[0]).not.toContain("description")
+      expect(store.get(issue.id).description).toBe("private description")
+      expect(query.mock.calls[1]?.[0]).toContain("description")
+    } finally {
+      query.mockRestore()
+    }
   })
   it("rejects missing, mismatched and oversized attachment envelopes", () => {
     expect(() => store.create({ ...feedback(""), screenshot: "aGVsbG8=" }, "42")).toThrow(
@@ -94,10 +131,15 @@ describe("issue storage", () => {
   it("paginates newest-first without repeating rows after concurrent insertion", () => {
     for (let index = 0; index < ISSUE_PAGE_SIZE + 2; index++) store.create(feedback(), "42")
     const first = store.list()
-    store.create(feedback(), "42")
+    const inserted = store.create(feedback(), "42").issue
     const second = store.list(first.next ?? undefined)
     expect(first.issues).toHaveLength(ISSUE_PAGE_SIZE)
     expect(second.issues).toHaveLength(2)
+    expect(first.issues.map((issue) => issue.id)).toEqual(
+      Array.from({ length: ISSUE_PAGE_SIZE }, (_, index) => ISSUE_PAGE_SIZE + 2 - index),
+    )
+    expect(second.issues.map((issue) => issue.id)).toEqual([2, 1])
+    expect(second.issues.map((issue) => issue.id)).not.toContain(inserted.id)
     expect(second.next).toBe(null)
     expect(first.issues.some((issue) => second.issues.some((other) => other.id === issue.id))).toBe(
       false,
