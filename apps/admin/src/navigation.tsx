@@ -31,6 +31,7 @@ export const pages = [
   "Model Providers",
   "Secrets & variables",
   "GitHub mentions",
+  "Issues",
   "Audit",
 ] as const
 export type Page = (typeof pages)[number]
@@ -99,6 +100,7 @@ const pageIcons = {
   "Model Providers": CubeIcon,
   "Secrets & variables": LockClosedIcon,
   "GitHub mentions": GitHubLogoIcon,
+  Issues: ChatBubbleIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
 export const pageTitles = {
@@ -111,6 +113,7 @@ export const pageTitles = {
   "Model Providers": "nav.providers",
   "Secrets & variables": "nav.secrets",
   "GitHub mentions": "nav.github",
+  Issues: "nav.issues",
   Audit: "nav.audit",
 } as const satisfies Record<Page, MessageKey>
 /** Translate presentation only; URL identifiers remain stable. */
@@ -127,6 +130,7 @@ const navigationOrder: readonly Page[] = [
   "MCP connections",
   "Secrets & variables",
   "GitHub mentions",
+  "Issues",
   "Audit",
 ]
 const technicalDescriptions: Partial<Record<Page, MessageKey>> = {

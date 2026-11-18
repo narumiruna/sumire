@@ -231,5 +231,7 @@
   "count.sourceGroup_one": "{{count}} source group",
   "count.sourceGroup_other": "{{count}} source groups",
   "count.approvedTool_one": "{{count}} globally approved published tool name",
-  "count.approvedTool_other": "{{count}} globally approved published tool names"
+  "count.approvedTool_other": "{{count}} globally approved published tool names",
+  "nav.issues": "Issues",
+  "description.issues": "Report interface issues with screenshots and text."
 }

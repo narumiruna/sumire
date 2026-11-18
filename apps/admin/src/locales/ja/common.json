@@ -202,5 +202,7 @@
   "count.matchingServer_other": "{{count}} 台の一致するサーバー",
   "count.toolName_other": "{{count}} 件のツール名",
   "count.sourceGroup_other": "{{count}} 件のソースグループ",
-  "count.approvedTool_other": "{{count}} 件の全体で承認された公開ツール名"
+  "count.approvedTool_other": "{{count}} 件の全体で承認された公開ツール名",
+  "nav.issues": "問題の報告",
+  "description.issues": "画像やテキストで画面の問題を報告します。"
 }

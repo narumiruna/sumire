@@ -202,5 +202,7 @@
   "count.matchingServer_other": "{{count}} 台相符伺服器",
   "count.toolName_other": "{{count}} 個工具名稱",
   "count.sourceGroup_other": "{{count}} 個來源群組",
-  "count.approvedTool_other": "{{count}} 個已全域核准的已發布工具名稱"
+  "count.approvedTool_other": "{{count}} 個已全域核准的已發布工具名稱",
+  "nav.issues": "問題回饋",
+  "description.issues": "以圖片與文字回報介面問題"
 }

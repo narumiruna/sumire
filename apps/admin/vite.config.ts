@@ -7,6 +7,11 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
+            {
+              name: "feedback",
+              test: /[\\/]src[\\/](feedback(?:-image)?|issues)\.tsx?$/,
+              includeDependenciesRecursively: false,
+            },
             { name: "translations", test: /[\\/]src[\\/]locales[\\/]/ },
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: "radix", test: /node_modules[\\/]@radix-ui[\\/]/ },

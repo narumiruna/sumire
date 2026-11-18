@@ -1,3 +1,4 @@
+import type { Issue } from "@narumitw/sumire-issues"
 import {
   effectivePolicy,
   inherited as inherit,
@@ -29,6 +30,7 @@ import "./styles.css"
 import "./chat-cards.css"
 import "./admin-design.css"
 import "./reading-design.css"
+import "./issues.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
@@ -49,8 +51,10 @@ import { ChatAccessIcon } from "./chat-cards.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
 import { DurableInspector } from "./durable-inspector.js"
+import { FeedbackWidget } from "./feedback.js"
 import { GithubNotifications } from "./github-notifications.js"
 import { errorMessage, initializeLocale, LocalizedError, t, useLocale } from "./i18n.js"
+import { Issues } from "./issues.js"
 import { LanguageSelector } from "./language-selector.js"
 import { McpConnections } from "./mcp-connections.js"
 import { ModelRemovalImpact } from "./model-removal-impact.js"
@@ -98,11 +102,13 @@ const pageDescriptions = () => ({
   "Model Providers": t("description.providers"),
   "Secrets & variables": t("description.secrets"),
   "GitHub mentions": t("description.github"),
+  Issues: t("description.issues"),
   Audit: t("description.audit"),
 })
 
 function App() {
   useLocale()
+  const [createdIssue, setCreatedIssue] = useState<Issue>()
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [savedPolicy, setSavedPolicy] = useState<Policy>()
@@ -239,6 +245,7 @@ function App() {
     setAccessToken("")
   }, [])
   const expireSession = useCallback(() => {
+    setCreatedIssue(undefined)
     sessionVersion.current++
     setFailedPolicySave(undefined)
     setRecoveryReview(undefined)
@@ -480,7 +487,8 @@ function App() {
           title={pageTitle(page)}
           description={pageDescriptions()[page]}
           actions={
-            page !== "Durable" && (
+            page !== "Durable" &&
+            page !== "Issues" && (
               <Button
                 variant="ghost"
                 aria-label={t("app.refresh")}
@@ -672,6 +680,15 @@ function App() {
               setError(latest.revision === recoveryReview.revision ? recoveryReview.failure : "")
               if (hasChanges) setPolicyReviewOpen(true)
             }}
+          />
+        )}
+        {page === "Issues" && (
+          <Issues
+            key={session.csrf}
+            csrf={session.csrf}
+            created={createdIssue}
+            onConsumed={() => setCreatedIssue(undefined)}
+            onExpired={expireSession}
           />
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label={t("app.editors")}>
@@ -1168,6 +1185,24 @@ function App() {
           </span>
         </VisuallyHidden.Root>
       </main>
+      {createdIssue && page !== "Issues" && (
+        <div className="feedback-saved-notice" data-feedback-ui role="status">
+          回饋 #{createdIssue.id} 已儲存。
+          <Button variant="ghost" onClick={() => setPage("Issues")}>
+            查看 Issues
+          </Button>
+        </div>
+      )}
+      <FeedbackWidget
+        key={session.csrf}
+        csrf={session.csrf}
+        section={page}
+        onExpired={expireSession}
+        onCreated={(issue) => {
+          setCreatedIssue(issue)
+          setPage("Issues")
+        }}
+      />
     </div>
   )
 }

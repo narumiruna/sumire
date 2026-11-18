@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { request as httpRequest } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -6,13 +7,13 @@ import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
 import { inherited } from "@narumitw/sumire-policy"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { PNG } from "../../../packages/imagegen/tests/fixtures.js"
 import { ChatAccess } from "../src/admin/access.js"
 import { createPasskeySetup } from "../src/admin/auth.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { createAdminServer } from "../src/admin/server.js"
 import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
-
 import { createPasskeyFixture } from "./helpers/passkey-fixture.js"
 
 let directory: string
@@ -28,7 +29,13 @@ const toolAvailability = vi.fn(async () => ({
 const apply = vi.fn(async () => {
   store.applied(store.snapshot().revision, true)
 })
-function call(url: string, method = "GET", data?: unknown, headers: Record<string, string> = {}) {
+function call(
+  url: string,
+  method = "GET",
+  data?: unknown,
+  headers: Record<string, string> = {},
+  chunked = false,
+) {
   return new Promise<{ status: number; headers: Record<string, unknown>; body: string }>(
     (resolve, reject) => {
       const req = httpRequest(
@@ -39,7 +46,7 @@ function call(url: string, method = "GET", data?: unknown, headers: Record<strin
           method,
           headers: {
             host: "admin.example.test",
-            ...(data === undefined
+            ...(data === undefined || chunked
               ? {}
               : {
                   "content-length": String(
@@ -62,7 +69,13 @@ function call(url: string, method = "GET", data?: unknown, headers: Record<strin
         },
       )
       req.on("error", reject)
-      if (data !== undefined) req.write(typeof data === "string" ? data : JSON.stringify(data))
+      if (data !== undefined) {
+        const text = typeof data === "string" ? data : JSON.stringify(data)
+        if (chunked)
+          for (let index = 0; index < text.length; index += 16384)
+            req.write(text.slice(index, index + 16384))
+        else req.write(text)
+      }
       req.end()
     },
   )
@@ -778,5 +791,105 @@ describe("admin HTTP security", () => {
     expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'")
     expect(response.headers["referrer-policy"]).toBe("no-referrer")
     expect((await call("/api/session", "GET", undefined, auth())).status).toBe(401)
+  })
+})
+
+describe("private visual feedback API", () => {
+  const feedback = () => ({
+    requestId: randomUUID(),
+    description: "Improve navigation",
+    source: { section: "Chats", viewport: { width: 1280, height: 800 } },
+  })
+  it("requires administrator login and exact Origin/CSRF for writes", async () => {
+    expect((await call("/api/issues")).status).toBe(401)
+    expect((await call("/api/issues/1/screenshot")).status).toBe(401)
+    expect(
+      (await call("/api/issues", "POST", feedback(), { ...auth(), origin: "https://evil.test" }))
+        .status,
+    ).toBe(403)
+    expect(
+      (await call("/api/issues", "POST", feedback(), { ...auth(), "x-csrf-token": "wrong" }))
+        .status,
+    ).toBe(403)
+    expect((await call("/api/issues", "GET", undefined, auth())).body).toContain('"issues":[]')
+  })
+  it("persists and deduplicates submissions, with revision-checked management", async () => {
+    const input = feedback()
+    const response = await call("/api/issues", "POST", input, auth())
+    expect(response.status).toBe(201)
+    const issue = JSON.parse(response.body)
+    expect((await call("/api/issues", "POST", input, auth())).status).toBe(200)
+    expect(
+      (await call("/api/issues", "POST", { ...input, description: "changed" }, auth())).status,
+    ).toBe(409)
+    expect(
+      JSON.parse((await call("/api/issues", "GET", undefined, auth())).body).issues,
+    ).toHaveLength(1)
+    expect(
+      (await call(`/api/issues/${issue.id}`, "PUT", { revision: 1, state: "closed" }, auth()))
+        .status,
+    ).toBe(200)
+    expect((await call(`/api/issues/${issue.id}`, "DELETE", { revision: 1 }, auth())).status).toBe(
+      409,
+    )
+    expect((await call(`/api/issues/${issue.id}`, "DELETE", { revision: 2 }, auth())).status).toBe(
+      200,
+    )
+    expect((await call(`/api/issues/${issue.id}`, "GET", undefined, auth())).status).toBe(404)
+    const audit = store.db
+      .prepare("SELECT operation, target FROM audit WHERE operation LIKE 'issue.%'")
+      .all()
+    expect(audit).toEqual([
+      { operation: "issue.create", target: `issue:${issue.id}` },
+      { operation: "issue.closed", target: `issue:${issue.id}` },
+      { operation: "issue.delete", target: `issue:${issue.id}` },
+    ])
+  })
+  it("serves validated raster bytes privately and never includes image content in list/detail", async () => {
+    const input = { ...feedback(), description: "", screenshot: PNG.toString("base64") }
+    const created = await call("/api/issues", "POST", input, auth())
+    expect(created.status).toBe(201)
+    const issue = JSON.parse(created.body)
+    const image = await call(`/api/issues/${issue.id}/screenshot`, "GET", undefined, auth())
+    expect(image.status).toBe(200)
+    expect(image.headers["content-type"]).toBe("image/png")
+    expect(image.headers["cache-control"]).toBe("no-store")
+    expect(created.body).not.toContain(input.screenshot)
+    expect((await call("/api/issues", "GET", undefined, auth())).body).not.toContain(
+      input.screenshot,
+    )
+    store.revoke(value)
+    expect(
+      (await call(`/api/issues/${issue.id}/screenshot`, "GET", undefined, auth())).status,
+    ).toBe(401)
+  })
+  it("rejects empty feedback, malformed/active content, arbitrary context and invalid filters", async () => {
+    for (const input of [
+      { ...feedback(), description: " " },
+      { ...feedback(), screenshot: Buffer.from("<svg onload='alert(1)'/>").toString("base64") },
+      { ...feedback(), source: { ...feedback().source, url: "https://private.test" } },
+      { ...feedback(), requestId: "../../path" },
+    ])
+      expect((await call("/api/issues", "POST", input, auth())).status).toBe(400)
+    for (const query of [
+      "before=-1",
+      "before=9007199254740992",
+      "state=running",
+      "state=open&state=closed",
+      "path=private",
+    ])
+      expect((await call(`/api/issues?${query}`, "GET", undefined, auth())).status).toBe(400)
+    expect((await call("/api/issues/999/screenshot", "GET", undefined, auth())).status).toBe(404)
+    expect((await call("/api/issues/1/session", "POST", {}, auth())).status).toBe(404)
+  })
+  it("enforces streamed body limits without trusting Content-Length", async () => {
+    const response = await call(
+      "/api/issues",
+      "POST",
+      { ...feedback(), screenshot: "A".repeat(3 * 1024 * 1024) },
+      auth(),
+      true,
+    )
+    expect(response.status).toBe(413)
   })
 })

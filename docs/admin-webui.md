@@ -20,7 +20,7 @@ Add presentation text through the typed `t()` helper in `apps/admin/src/i18n.ts`
 
 ## Workspace layout
 
-The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults**, **Providers & models**, **Tool permissions**, **Skills**, **MCP servers**, **Secrets & variables**, **GitHub mentions**, and **Audit log**. Existing section IDs, aliases, anchors, and selected-chat URLs remain valid. There is no notification settings page in this build. Telegram lifecycle notices are a separate feature, not a polling-service dashboard.
+The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults**, **Providers & models**, **Tool permissions**, **Skills**, **MCP servers**, **Secrets & variables**, **GitHub mentions**, **Issues**, and **Audit log**. Existing section IDs, aliases, anchors, and selected-chat URLs remain valid. There is no notification settings page in this build. Telegram lifecycle notices are a separate feature, not a polling-service dashboard.
 
 Desktop navigation starts as a slim icon rail. **Expand navigation** restores the page labels; **Collapse navigation** restores the rail. Each icon keeps an accessible name and a pointer tooltip. The native language selector remains keyboard-accessible. This browser stores only the compact/expanded preference as `sumire.admin.navigation`; blocked storage does not prevent navigation. Narrow screens retain the **Sections** menu.
 
@@ -46,6 +46,10 @@ Body and input text use 16 px at the default browser size. Navigation and primar
 **Event details** restores the compact event list and desktop split inspector. The current tab remembers the reading/event preference as `sumire.admin.history-mode` in session storage; unavailable storage falls back to Reading. An entry’s inspection link opens the existing detail dialog in Reading mode without prefetching every entry. Branch view and record deep links remain available. Reading width and view preferences are presentation-only, not policy edits or backend writes.
 
 The cache stamp reports the persisted read time, not live execution health. The warm-white/green frame, rounded surfaces, and bounded editor widths apply to every administration page; authentication, authorization, save confirmations, and sensitive-editor clearing retain their existing boundaries.
+
+## Visual feedback
+
+The global lower-left feedback button collects annotated/cropped screenshots or text. **Issues** lists private administrator feedback and supports close/reopen and confirmed deletion. This initial phase does not create agent sessions, proposals, or PRs. See [scope, privacy, limits and rollout](visual-issues.md).
 
 ## Model setup save boundaries
 

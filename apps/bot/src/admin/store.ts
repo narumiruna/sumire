@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync } from "node:fs"
 import path from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import type { AuditEntry, Chat, Snapshot } from "@narumitw/sumire-contracts"
+import { initializeIssueStorage } from "@narumitw/sumire-issues/store"
 import {
   effectivePolicy,
   initialPolicy,
@@ -68,6 +69,7 @@ export class AdminStore {
       PRAGMA user_version = 5;
     `)
       initializeRuntimeConfigStorage(this.db)
+      initializeIssueStorage(this.db)
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")
