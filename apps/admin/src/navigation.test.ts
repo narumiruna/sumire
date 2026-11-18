@@ -26,6 +26,7 @@ const taskLabels = {
   "Model Providers": "Providers &amp; models",
   "Secrets & variables": "Secrets &amp; variables",
   "GitHub mentions": "GitHub mentions",
+  Issues: "Issues",
   Audit: "Audit log",
 } satisfies Record<Page, string>
 
@@ -93,6 +94,7 @@ describe("admin navigation", () => {
       "MCP connections",
       "Secrets & variables",
       "GitHub mentions",
+      "Issues",
       "Audit",
     ]
     expect(links).toHaveLength(pages.length)

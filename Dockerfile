@@ -19,6 +19,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/admin/package.json apps/admin/package.json
+COPY packages/issues/package.json packages/issues/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/runtime-config/package.json packages/runtime-config/package.json
 COPY packages/policy/package.json packages/policy/package.json
@@ -51,6 +52,12 @@ COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY packages/contracts/tsconfig*.json packages/contracts/
 COPY packages/contracts/src/ packages/contracts/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-contracts
+
+FROM dependencies AS issues-build
+
+COPY packages/issues/tsconfig*.json packages/issues/
+COPY packages/issues/src/ packages/issues/src/
+RUN npm run build --workspace @narumitw/sumire-issues
 
 FROM dependencies AS progress-build
 
@@ -96,6 +103,7 @@ FROM scratch AS compiled-packages
 COPY --from=runtime-config-build /build/packages/runtime-config/dist /packages/runtime-config/dist
 COPY --from=policy-build /build/packages/policy/dist /packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /packages/contracts/dist
+COPY --from=issues-build /build/packages/issues/dist /packages/issues/dist
 COPY --from=progress-build /build/packages/progress/dist /packages/progress/dist
 COPY --from=imagegen-build /build/packages/imagegen/dist /packages/imagegen/dist
 COPY --from=github-notifications-build /build/packages/github-notifications/dist /packages/github-notifications/dist
@@ -114,6 +122,7 @@ FROM dependencies AS admin-build
 
 COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
+COPY --from=issues-build /build/packages/issues/dist /build/packages/issues/dist
 
 COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html apps/admin/
 COPY apps/admin/src/ apps/admin/src/

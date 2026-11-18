@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "build:dependencies": "npm run build --workspace @narumitw/sumire-github-notifications && npm run build --workspace @narumitw/sumire-runtime-config && npm run build --workspace @narumitw/sumire-imagegen && npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-pi-polymarket && npm run build --workspace @narumitw/sumire-progress",
+    "build:dependencies": "npm run build --workspace @narumitw/sumire-issues && npm run build --workspace @narumitw/sumire-github-notifications && npm run build --workspace @narumitw/sumire-runtime-config && npm run build --workspace @narumitw/sumire-imagegen && npm run build --workspace @narumitw/sumire-policy && npm --ignore-scripts run build --workspace @narumitw/sumire-contracts && npm run build --workspace @narumitw/sumire-pi-url-reader && npm run build --workspace @narumitw/sumire-pi-polymarket && npm run build --workspace @narumitw/sumire-progress",
     "dev": "cd ../.. && node --env-file-if-exists=.env --import tsx apps/bot/src/index.ts",
     "start": "cd ../.. && node --env-file-if-exists=.env apps/bot/dist/index.js",
     "format": "biome format --write .",
@@ -40,6 +40,7 @@
     "@narumitw/sumire-contracts": "0.10.1",
     "@narumitw/sumire-github-notifications": "0.2.3",
     "@narumitw/sumire-imagegen": "0.2.3",
+    "@narumitw/sumire-issues": "0.1.0",
     "@narumitw/sumire-pi-polymarket": "0.2.7",
     "@narumitw/sumire-pi-url-reader": "0.7.8",
     "@narumitw/sumire-policy": "0.5.3",

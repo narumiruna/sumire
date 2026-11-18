@@ -24,6 +24,7 @@ on:
       - "packages/pi-url-reader/**"
       - "packages/pi-polymarket/**"
       - "packages/imagegen/**"
+      - "packages/issues/**"
   pull_request:
     branches:
       - main
@@ -46,6 +47,7 @@ on:
       - "packages/pi-url-reader/**"
       - "packages/pi-polymarket/**"
       - "packages/imagegen/**"
+      - "packages/issues/**"
 
 permissions:
   contents: read

@@ -14,6 +14,7 @@ describe("container application packaging", () => {
       ["runtime-config-build", "runtime-config"],
       ["policy-build", "policy"],
       ["contracts-build", "contracts"],
+      ["issues-build", "issues"],
       ["progress-build", "progress"],
       ["imagegen-build", "imagegen"],
       ["github-notifications-build", "github-notifications"],
@@ -37,6 +38,7 @@ describe("container application packaging", () => {
     expect(admin?.match(/^COPY --from=.+$/gm)).toEqual([
       "COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist",
       "COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist",
+      "COPY --from=issues-build /build/packages/issues/dist /build/packages/issues/dist",
     ])
   })
 
@@ -120,8 +122,8 @@ describe("container application packaging", () => {
     const compose = await readFile(new URL("../../../compose.yaml", import.meta.url), "utf8")
     expect(compose).toContain("- transformers-cache:/app/.cache/transformers")
     expect(compose).toContain("- whisper-cache:/app/.cache/whisper")
-    expect(compose).toMatch(/^  transformers-cache:$/m)
-    expect(compose).toMatch(/^  whisper-cache:$/m)
+    expect(compose).toMatch(/^ {2}transformers-cache:$/m)
+    expect(compose).toMatch(/^ {2}whisper-cache:$/m)
     const runtimeUser = dockerfile.split("\nUSER app\n")[1]
     expect(runtimeUser).toContain(
       "RUN --network=none node /app/apps/bot/scripts/check-url-failures.mjs",

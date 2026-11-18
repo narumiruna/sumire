@@ -1,6 +1,7 @@
 import path from "node:path"
 import type { PiSessionFactory } from "../agent/pi-session-factory.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
+import { IssueAnalysisRuntime } from "../issues/runtime.js"
 import type { AdminConfig } from "./auth.js"
 import type { GitHubAuth } from "./github-auth.js"
 import { importLegacyModels } from "./import.js"
@@ -78,7 +79,13 @@ export async function startAdmin(
   await apply().catch(() => {})
   for (const id of await factory.listChats())
     store.observe(id, id > 0 ? "private" : "group", String(id), "inferred")
+  const analysis = new IssueAnalysisRuntime({
+    store,
+    runtime: factory.modelRuntime,
+    directory: path.join(path.dirname(store.file), "issues"),
+  })
   const server = createAdminServer(config, {
+    analysis,
     store,
     mcp,
     ...(control.runtime ? { runtime: control.runtime } : {}),
