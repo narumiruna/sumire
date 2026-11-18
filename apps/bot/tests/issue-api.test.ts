@@ -8,6 +8,7 @@ import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { createAdminServer } from "../src/admin/server.js"
 import { IssueAnalysisRuntime } from "../src/issues/runtime.js"
+import { issueFixtureRuntime } from "./helpers/issue-analysis-runtime.js"
 import { report } from "./helpers/issue-report.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
@@ -78,7 +79,7 @@ beforeEach(async () => {
   session = store.createSession("7")
   worker = new IssueAnalysisRuntime({
     store,
-    runtime: f.modelRuntime,
+    runtime: issueFixtureRuntime(f),
     directory: path.join(f.root, "issue-api-sessions"),
   })
   server = createAdminServer(
@@ -238,6 +239,7 @@ it("cancels queued/blocked work, and deletion removes session artifacts as well 
   expect((await read(issue.id)).analyses[0]?.state).toBe("cancelled")
   const gc = vi.spyOn(worker.analyses, "collected")
   expect((await call(`/api/issues/${issue.id}`, "DELETE", { revision: 1 })).status).toBe(200)
+  await worker.wake()
   expect(gc).toHaveBeenCalledWith(analysis.id)
   expect((await call(`/api/issues/${issue.id}/analysis`)).status).toBe(404)
   expect(f.requests).toHaveLength(0)

@@ -1,6 +1,6 @@
 import { type DecodedImage, decodeImage, MAX_IMAGE_BYTES } from "./image.js"
 
-export { type DecodedImage, decodeImage, MAX_IMAGE_BYTES } from "./image.js"
+export { type DecodedImage, decodeImage, type ImageLimits, MAX_IMAGE_BYTES } from "./image.js"
 export const IMAGE_ENDPOINT = "https://chatgpt.com/backend-api/codex/images/generations"
 export const MAX_RESPONSE_BYTES = 4 * Math.ceil(MAX_IMAGE_BYTES / 3) + 65_536
 export const MAX_PROMPT_CHARS = 32_000

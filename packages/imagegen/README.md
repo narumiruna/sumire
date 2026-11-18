@@ -61,3 +61,11 @@ To stop new generation, disable `generate_image` through the bot's existing poli
 ## License
 
 MIT. Static image validation and fixture portions are adapted from `@narumitw/pi-codex-imagegen`; its copyright notice is retained in [LICENSE](LICENSE).
+
+### Tighter raster validation budgets
+
+`decodeImage(base64, { maxBytes, maxDimension, maxPixels })` accepts optional positive integer
+limits that can only tighten its built-in ceilings. Header dimensions and pixel count are
+checked before PNG inflation; images within those limits still receive the complete existing
+container validation. For example, feedback uses 2 MiB, 4096 pixels per side and 4 megapixels.
+Omitting the options preserves the image-generation client's existing limits.

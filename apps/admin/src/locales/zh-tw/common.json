@@ -250,5 +250,6 @@
   "issues.reason.issue_closed": "因 issue 已關閉而停止分析。",
   "issues.reason.session_unavailable": "已記錄的持久化 session 已遺失或識別資料變更，請要求新的分析，不會自動重送舊工作。",
   "issues.enlarge": "查看大尺寸線框",
-  "issues.closePreview": "關閉預覽"
+  "issues.closePreview": "關閉預覽",
+  "issues.stopWaiting": "停止等待"
 }

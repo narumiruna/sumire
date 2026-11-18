@@ -53,17 +53,27 @@ that the recorded actor is still the configured administrator.
 
 Model execution requires a successfully applied policy revision, an enabled provider, an
 allowed shared-default physical model and compatible thinking level. Image feedback requires
-an image-capable model. No fallback provider or model is selected. The policy revision is captured with the consented request. A queued request is blocked
-if that revision changes, rather than silently adopting a different provider/model. The
-physical model and thinking level are pinned when execution starts under that same revision. Credential availability is
-checked under the same persisted execution deadline; local credentials alone do not prove
-a successful provider request.
+an image-capable model, including when an analysis resumes. Issue analysis requires HTTPS.
+Custom provider requests also validate public addresses and reject redirects. The worker
+blocks a plain HTTP model endpoint as unavailable; use an HTTPS endpoint and make a fresh
+request. No fallback provider or model is selected. The policy revision is captured with the
+consented request. A queued request is blocked if that revision changes, rather than silently
+adopting a different provider or model. The physical model and thinking level are pinned when
+execution starts under that same revision. Credential availability is checked under the same
+persisted execution deadline; local credentials alone do not prove a successful provider
+request.
 
 Authorization is checked before every actual model request and report publication. A
 500 ms guard also cancels in-flight work when policy changes, the issue closes, or the
 persisted deadline expires. An unrelated policy revision change intentionally blocks replay;
 review current settings and make a fresh explicit request. Error responses contain fixed
 reason codes, not upstream bodies, credentials or private transcript paths.
+
+Only one admin process can own the issue directory. Admin startup fails if it cannot acquire
+the SQLite writer lock in `.owner.sqlite`. Shutdown releases the lock after admin shutdown
+work settles. A process exit also releases the lock; an existing lock file is not a sign of
+an active owner. Stop the old process before starting its replacement against the same
+directory. Do not remove the lock file as part of deployment.
 
 A process shutdown closes Harness storage while preserving admitted native work. Restart
 reopens the same file/root identity and submits the same request ID, so an already admitted
@@ -149,10 +159,12 @@ The model receives only the particular approved feedback/context, not other issu
 chat logs, secrets, current policy or provider credentials.
 
 Issue deletion atomically removes report/context projections and records session keys in a
-cleanup outbox. Active work is stopped before the live files and WAL/SHM sidecars are removed.
-Cleanup receipts survive crashes and resume on startup; a failed HTTP response can follow a
-committed database deletion. Refresh before asserting an outcome. Secure SQLite deletion and
-unlinking files do not erase backups, snapshots, provider-side copies or filesystem recovery.
+cleanup outbox. Only the issue worker removes the database and its WAL/SHM sidecars, after it
+closes the active session. The HTTP response does not wait for cleanup to finish. If removal
+fails, the worker retains the receipt and backs off before retrying that key. Other receipts
+and analyses can still proceed. Receipts survive crashes and the worker resumes cleanup on
+startup. Secure SQLite deletion and unlinking files do not erase backups, snapshots,
+provider-side copies or filesystem recovery.
 
 The additive `feedback_analyses` and `feedback_analysis_gc` tables and deletion trigger are
 initialized in the existing admin migration transaction. No policy schema, environment
@@ -171,23 +183,29 @@ back a display change. No implementation/PR worker exists to drain in this phase
 
 Offline tests use a local synthetic provider over real Harness SQLite submit/wait/commit APIs.
 They cover real empty initialization, persisted identity and submission reuse, shutdown and
-restart, native cancellation, policy-revocation abort, persisted deadlines including auth
-waits, unsupported image input, session loss, disk-budget failure, invalid/prose reports,
-version-bound selection, cleanup receipts, old-adapter deletion compatibility and API
-Origin/CSRF/ancestry checks. They do not spend real model quota or authorize live execution.
+restart, native cancellation and provider disconnect, policy-revocation abort, persisted
+deadlines including auth waits, unsupported image input on resume, HTTPS endpoint selection,
+session loss, disk-budget failure, invalid/prose reports, version-bound selection, serialized
+cleanup and receipt retries, old-adapter deletion compatibility and API Origin/CSRF/ancestry
+checks. They do not spend real model quota or authorize live execution.
 
 Playwright tests intercept all administration API traffic and cover desktop/mobile proposal
 comparison, inert SVGs, larger previews, explicit collection consent, idempotent analysis
 admission, cancellation and original screenshot workflows. These tests are not proof of
 live deployment, provider entitlement, Safari/iOS compatibility or remote cancellation.
 
-### Local validation results
+### Visual feedback review validation
 
 - Root `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm run build` passed.
-- All **4,155** unit/integration tests passed with
+- All **4,171** unit/integration tests passed with
   `npm test -- -- --maxWorkers=4 --testTimeout=60000 --retry=1`.
-- **121** Playwright cases passed across `tests/issues.spec.ts`, `tests/i18n.spec.ts`, and
-  `tests/admin.spec.ts`; the **11** issue cases were rerun after the final changes and passed.
+- **131** Playwright cases passed across `tests/issues.spec.ts`, `tests/i18n.spec.ts`, and
+  `tests/admin.spec.ts`; the **21** issue cases were rerun after the final changes and passed.
 - `git diff --check` and changeset status validation passed.
 - Docker is unavailable locally. Container assembly, live provider behavior and deployment
   remain unverified; no real model quota, image generation or implementation worker was used.
+
+Review regressions also cover resize-during-capture, multi-pointer ownership, exact image
+bytes, stopped/timed-out submissions, rejected uncertain retries, stale detail/mutation
+responses, independent list errors, decoded attachment retries, pre-inflation budgets,
+case-normalized UUID retries, SQLite auto-rollback errors and unfinished oversized uploads.

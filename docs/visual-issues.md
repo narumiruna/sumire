@@ -33,10 +33,11 @@ Uploaded images are decoded into canvas and re-encoded, rather than retaining fi
 Browser uploads accept PNG/JPEG/WebP up to 8 MiB, 16 megapixels and 8192 pixels per side;
 they are scaled to at most 2000 pixels per side. Final images must be at most 2 MiB. The
 server independently verifies static PNG/JPEG/WebP container bytes, dimensions (4096 per
-side, 4 megapixels) and payload bounds. It uses the existing imagegen raster validator,
+side, 4 megapixels) and payload bounds. Caller limits are enforced before PNG inflation. It uses the existing imagegen raster validator,
 which is not a complete JPEG/WebP entropy decoder. JSON requests are bounded to 3 MiB
 while streaming. Collection has a per-admin 10/minute budget in addition to general limits.
-Capture expires after 15 seconds with upload/text fallback. DOM capture can omit or differ
+Capture expires after 15 seconds with upload/text fallback. Capture and viewport metadata
+share one snapshot; resizing during preparation discards the capture. DOM capture can omit or differ
 from browser-rendered content, especially fonts, remote media, complex CSS and embedded
 content; it is not a browser-native screen capture. A page change during preparation
 rejects the local capture rather than attaching misleading source metadata.
@@ -57,7 +58,10 @@ or snapshots. The administrator must configure backup retention independently.
 - `DELETE /api/issues/:id`: `{ revision }`; hard deletion of feedback and attachment.
 
 An uncertain browser submission freezes its payload and reuses the same UUID on retry.
-Deduplication applies while that issue exists, not after it is permanently deleted. Drafts
+UUID retry keys are case-normalized, including case-variant lookups of legacy records.
+Deduplication applies while that issue exists, not after it is permanently deleted. A pending submission can be stopped and has a 30-second deadline. An earlier unknown outcome
+keeps its original payload locked even if a later retry receives a 4xx rejection such as 429.
+A known first-attempt rejection leaves the draft editable. Drafts
 are in browser memory only and clear on logout/session expiry. Cross-page navigation keeps
 an open feedback draft; reload/tab close warns but does not persist it. Issue list and detail
 reads are manual, not polling. Network failures during update/deletion require refresh to

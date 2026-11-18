@@ -168,6 +168,13 @@ test("captures a frozen page, draws, redacts, crops, previews and submits image-
   expect(redactedPixel).toEqual([17, 17, 17, 255])
   await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
   await expect(page.locator(".issue-screenshot")).toBeVisible()
+  const savedDimensions = await page
+    .locator(".issue-screenshot")
+    .evaluate(async (image: HTMLImageElement) => {
+      await image.decode()
+      return { width: image.naturalWidth, height: image.naturalHeight }
+    })
+  expect(savedDimensions).toEqual(dimensions)
   expect(state.submissions[0]?.description).toBe("")
   expect(state.submissions[0]?.screenshot).toMatch(/^iVBOR/)
   expect(state.screenshots).toBe(1)
@@ -382,6 +389,28 @@ test("analysis consent is explicit on feedback collection", async ({ page }) => 
   await expect(dialog).not.toBeVisible()
   expect(state.submissions[0]?.analyze).toBe(true)
 })
+test("analysis polling recovers from a failed metadata read", async ({ page }) => {
+  await fixture(page)
+  const analysis = analysisFixture()
+  let reads = 0
+  await page.route("**/api/issues/*/analysis", async (route) => {
+    reads++
+    if (reads === 2) {
+      await route.fulfill({ status: 503, json: { error: "Analysis temporarily unavailable" } })
+      return
+    }
+    analysis.state = reads === 1 ? "running" : "completed"
+    await route.fulfill({ json: { available: true, analyses: [analysis] } })
+  })
+  const dialog = await textFeedback(page, "Poll for analysis")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+  await expect(panel.getByText("Analyzing", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveText("Analysis temporarily unavailable")
+  await expect(panel.getByText("Report ready", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+})
+
 test("analysis admission retries the same immutable payload and supports cancellation", async ({
   page,
 }) => {
@@ -401,6 +430,10 @@ test("analysis admission retries the same immutable payload and supports cancell
           await route.abort("failed")
           return
         }
+        if (inputs.length === 2) {
+          await route.fulfill({ status: 429, json: { error: "Rate limited" } })
+          return
+        }
         analysis.state = "queued"
         analysis.revision++
       }
@@ -414,8 +447,334 @@ test("analysis admission retries the same immutable payload and supports cancell
   await panel.getByRole("button", { name: "Request analysis", exact: true }).click()
   await expect(panel.getByLabel("Additional context (optional)")).toBeDisabled()
   await panel.getByRole("button", { name: "Retry the same request", exact: true }).click()
-  expect(inputs).toHaveLength(2)
+  await expect(
+    panel.getByRole("button", { name: "Retry the same request", exact: true }),
+  ).toBeEnabled()
+  await expect(panel.getByLabel("Additional context (optional)")).toBeDisabled()
+  await panel.getByRole("button", { name: "Retry the same request", exact: true }).click()
+  await expect.poll(() => inputs.length).toBe(3)
   expect(inputs[1]).toEqual(inputs[0])
+  expect(inputs[2]).toEqual(inputs[0])
   await panel.getByRole("button", { name: "Cancel analysis", exact: true }).click()
   await expect(panel.getByText("Cancelled", { exact: true })).toBeVisible()
+})
+
+async function whiteImageFeedback(page: Page) {
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 400
+    canvas.height = 200
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("Missing context")
+    context.fillStyle = "white"
+    context.fillRect(0, 0, 400, 200)
+    return canvas.toDataURL("image/png").split(",")[1] ?? ""
+  })
+  await page.getByRole("button", { name: "回報問題", exact: true }).click()
+  await page
+    .locator('.feedback-launcher input[type="file"]')
+    .setInputFiles({ name: "white.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") })
+  const dialog = page.getByRole("dialog", { name: "回報問題", exact: true })
+  await expect(dialog.locator("canvas")).toBeVisible()
+  return dialog
+}
+test("discards a capture if the viewport changes while its first lazy import is pending", async ({
+  page,
+}) => {
+  await fixture(page)
+  let release!: () => void
+  let started!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const importStarted = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route("**/*html-to-image*", async (route) => {
+    started()
+    await gate
+    await route.continue()
+  })
+  try {
+    await page.getByRole("button", { name: "回報問題", exact: true }).click()
+    await page.getByRole("button", { name: "截圖", exact: true }).click()
+    await importStarted
+    await page.setViewportSize({ width: 1100, height: 850 })
+    release()
+    await expect(page.getByRole("alert")).toContainText("擷取期間視窗大小已變更")
+    await expect(page.getByRole("dialog", { name: "回報問題", exact: true })).not.toBeVisible()
+    await expect(page.getByRole("button", { name: "回報問題", exact: true })).toBeEnabled()
+  } finally {
+    release()
+  }
+})
+test("keeps a redaction gesture owned by one touch pointer and ignores unrelated cancellation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 })
+  await fixture(page)
+  const dialog = await whiteImageFeedback(page)
+  await dialog.getByRole("button", { name: "遮蔽", exact: true }).click()
+  const canvas = dialog.locator("canvas")
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error("Missing canvas")
+  expect(await canvas.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe("0px")
+  const client = await page.context().newCDPSession(page)
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
+  const point = (id: number, x: number, y: number) => ({
+    id,
+    x: box.x + box.width * x,
+    y: box.y + box.height * y,
+  })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [point(1, 0.1, 0.2)],
+  })
+  await canvas.evaluate((element) =>
+    element.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 9999 })),
+  )
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [point(1, 0.4, 0.6)],
+  })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [point(1, 0.4, 0.6), point(2, 0.75, 0.1)],
+  })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [point(1, 0.4, 0.6), point(2, 0.95, 0.9)],
+  })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [point(2, 0.95, 0.9)],
+  })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [point(1, 0.6, 0.8)],
+  })
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await dialog.getByRole("button", { name: "預覽送出圖片", exact: true }).click()
+  const pixels = await dialog
+    .locator(".feedback-preview")
+    .evaluate(async (image: HTMLImageElement) => {
+      await image.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      const context = canvas.getContext("2d")
+      if (!context) throw new Error("Missing context")
+      context.drawImage(image, 0, 0)
+      return [
+        [...context.getImageData(220, 140, 1, 1).data],
+        [...context.getImageData(340, 100, 1, 1).data],
+      ]
+    })
+  expect(pixels).toEqual([
+    [17, 17, 17, 255],
+    [255, 255, 255, 255],
+  ])
+})
+test("stopping a stalled submit and a rejected retry retain the original locked payload", async ({
+  page,
+}) => {
+  await fixture(page)
+  const inputs: Feedback[] = []
+  await page.route("**/api/issues", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    inputs.push(route.request().postDataJSON())
+    if (inputs.length === 1) return // Keep this request pending until the browser stops waiting.
+    if (inputs.length === 2) {
+      await route.fulfill({ status: 429, json: { error: "Slow down" } })
+      return
+    }
+    await route.fallback()
+  })
+  const dialog = await textFeedback(page, "Original payload")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await dialog.getByRole("button", { name: "Stop waiting", exact: true }).click()
+  await expect(dialog.getByRole("textbox")).toBeDisabled()
+  await dialog.getByRole("button", { name: "重試相同提交", exact: true }).click()
+  await expect(dialog.getByRole("button", { name: "重試相同提交", exact: true })).toBeEnabled()
+  await expect(dialog.getByRole("textbox")).toBeDisabled()
+  await dialog.getByRole("button", { name: "重試相同提交", exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(inputs).toHaveLength(3)
+  expect(inputs[1]).toEqual(inputs[0])
+  expect(inputs[2]).toEqual(inputs[0])
+})
+test("a first-attempt 429 does not lock the draft or reuse a rejected payload", async ({
+  page,
+}) => {
+  await fixture(page)
+  const inputs: Feedback[] = []
+  await page.route("**/api/issues", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    inputs.push(route.request().postDataJSON())
+    if (inputs.length === 1) {
+      await route.fulfill({ status: 429, json: { error: "Slow down" } })
+      return
+    }
+    await route.fallback()
+  })
+  const dialog = await textFeedback(page, "Rejected draft")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await expect(dialog.getByRole("textbox")).toBeEnabled()
+  await dialog.getByRole("textbox").fill("Edited draft")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(inputs[1]?.description).toBe("Edited draft")
+  expect(inputs[1]?.requestId).not.toBe(inputs[0]?.requestId)
+})
+test("submission timeout restores retry without discarding the immutable draft", async ({
+  page,
+}) => {
+  await fixture(page)
+  await page.clock.install()
+  const inputs: Feedback[] = []
+  await page.route("**/api/issues", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    inputs.push(route.request().postDataJSON())
+    if (inputs.length === 1) return
+    await route.fallback()
+  })
+  const dialog = await textFeedback(page, "Timeout draft")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await expect(dialog.getByRole("button", { name: "Stop waiting", exact: true })).toBeVisible()
+  await page.clock.runFor(30000)
+  await expect(dialog.getByRole("textbox")).toBeDisabled()
+  await dialog.getByRole("button", { name: "重試相同提交", exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(inputs).toHaveLength(2)
+  expect(inputs[1]).toEqual(inputs[0])
+})
+for (const operation of ["read", "update", "delete"] as const) {
+  test(`a newly saved issue stays selected after an older ${operation} finishes`, async ({
+    page,
+  }) => {
+    await fixture(page)
+    const first = await textFeedback(page, "Issue A")
+    await first.getByRole("button", { name: "送出回饋", exact: true }).click()
+    await expect(page.getByRole("heading", { name: "#1 Issue A", exact: true })).toBeVisible()
+    let release!: () => void
+    let started!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const method = operation === "read" ? "GET" : operation === "update" ? "PUT" : "DELETE"
+    await page.route("**/api/issues/1", async (route) => {
+      if (route.request().method() !== method) {
+        await route.fallback()
+        return
+      }
+      started()
+      await gate
+      await route.fallback()
+    })
+    try {
+      if (operation === "read") {
+        await page.getByRole("button", { name: "返回列表", exact: true }).click()
+        await page.getByRole("button", { name: "#1 Issue A", exact: true }).click()
+      } else if (operation === "update")
+        await page.getByRole("button", { name: "關閉回饋", exact: true }).click()
+      else {
+        page.once("dialog", (dialog) => dialog.accept())
+        await page.getByRole("button", { name: "永久刪除", exact: true }).click()
+      }
+      await pending
+      const second = await textFeedback(page, "Issue B")
+      await second.getByRole("button", { name: "送出回饋", exact: true }).click()
+      await expect(page.getByRole("heading", { name: "#2 Issue B", exact: true })).toBeVisible()
+      release()
+      await expect(page.getByRole("button", { name: "返回列表", exact: true })).toBeEnabled()
+      await expect(page.getByRole("heading", { name: "#2 Issue B", exact: true })).toBeVisible()
+      await expect(page.getByRole("button", { name: "關閉回饋", exact: true })).toBeVisible()
+    } finally {
+      release()
+    }
+  })
+}
+test("a detail refresh cannot conceal a failed background list request", async ({ page }) => {
+  await fixture(page)
+  let fail = true
+  let failures = 0
+  await page.route("**/api/issues**", async (route) => {
+    if (
+      fail &&
+      route.request().method() === "GET" &&
+      new URL(route.request().url()).pathname === "/api/issues"
+    ) {
+      failures++
+      await route.fulfill({ status: 503, json: { error: "List unavailable" } })
+      return
+    }
+    await route.fallback()
+  })
+  const dialog = await textFeedback(page, "Issue A")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await expect.poll(() => failures).toBeGreaterThan(0)
+  await page.getByRole("button", { name: "重新整理回饋", exact: true }).click()
+  await expect(page.getByRole("button", { name: "返回列表", exact: true })).toBeEnabled()
+  await page.getByRole("button", { name: "返回列表", exact: true }).click()
+  await expect(page.getByRole("alert")).toContainText("List unavailable")
+  await expect(page.getByText("尚未載入回饋。", { exact: true })).toBeVisible()
+  fail = false
+  await page.getByRole("button", { name: "重新整理列表", exact: true }).click()
+  await expect(page.getByRole("button", { name: "#1 Issue A", exact: true })).toBeVisible()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+})
+test("refresh retries a failed attachment and keeps its error until the image actually decodes", async ({
+  page,
+}) => {
+  await fixture(page)
+  let attempts = 0
+  let release!: () => void
+  let started!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const retried = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route("**/api/issues/*/screenshot*", async (route) => {
+    attempts++
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, body: "temporary image failure" })
+      return
+    }
+    started()
+    await gate
+    await route.fallback()
+  })
+  try {
+    const dialog = await whiteImageFeedback(page)
+    await dialog.getByRole("button", { name: "預覽送出圖片", exact: true }).click()
+    await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+    await expect(page.getByRole("alert")).toContainText("截圖無法載入")
+    await expect(page.locator(".issue-screenshot")).not.toBeVisible()
+    await page.getByRole("button", { name: "重新整理回饋", exact: true }).click()
+    await retried
+    await expect(page.getByRole("alert")).toContainText("截圖無法載入")
+    await expect(page.locator(".issue-screenshot")).not.toBeVisible()
+    release()
+    await expect(page.locator(".issue-screenshot")).toBeVisible()
+    await page.locator(".issue-screenshot").evaluate((image: HTMLImageElement) => image.decode())
+    await expect(page.getByRole("alert")).toHaveCount(0)
+    expect(attempts).toBe(2)
+  } finally {
+    release()
+  }
 })

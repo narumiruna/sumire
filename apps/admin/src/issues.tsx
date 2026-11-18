@@ -24,6 +24,8 @@ export function Issues({
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [listError, setListError] = useState("")
+  const [screenshotReload, setScreenshotReload] = useState(0)
   const generation = useRef(0)
   const alive = useRef(true)
   const requests = useRef(new AbortController())
@@ -42,6 +44,8 @@ export function Issues({
   )
   useEffect(() => {
     if (created) {
+      generation.current++
+      setError("")
       setNotice(created.id)
       onConsumedRef.current()
       setSelected(created)
@@ -54,7 +58,7 @@ export function Issues({
   useEffect(() => {
     const controller = new AbortController()
     setPage(undefined)
-    setError("")
+    setListError("")
     const query = new URLSearchParams()
     if (filter) query.set("state", filter)
     const before = cursors.at(-1)
@@ -66,26 +70,27 @@ export function Issues({
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         if (error instanceof ApiError && error.status === 401) onExpiredRef.current()
-        else setError(error instanceof Error ? error.message : "無法讀取回饋。")
+        else setListError(error instanceof Error ? error.message : "無法讀取回饋。")
       })
     return () => controller.abort()
   }, [filter, cursors, refresh])
-  async function operate(work: () => Promise<void>) {
+  async function operate(work: (version: number) => Promise<void>) {
     if (busy) return
     setBusy(true)
     setError("")
+    const version = ++generation.current
     try {
-      await work()
+      await work(version)
     } catch (error) {
       if (!alive.current) return
       if (error instanceof ApiError && error.status === 401) onExpiredRef.current()
-      else setError(error instanceof Error ? error.message : "操作失敗，請重新整理確認狀態。")
+      else if (version === generation.current)
+        setError(error instanceof Error ? error.message : "操作失敗，請重新整理確認狀態。")
     } finally {
       if (alive.current) setBusy(false)
     }
   }
-  async function detail(id: number) {
-    const version = ++generation.current
+  async function detail(id: number, version: number) {
     const issue = await request<Issue>(
       `issues/${id}`,
       undefined,
@@ -93,8 +98,12 @@ export function Issues({
       "GET",
       requests.current.signal,
     )
-    if (alive.current && version === generation.current) setSelected(issue)
+    if (alive.current && version === generation.current) {
+      setSelected(issue)
+      setScreenshotReload((value) => value + 1)
+    }
   }
+  const visibleError = error || (!selected ? listError : "")
   return (
     <section aria-label="Issues" className="issues-workspace">
       <Text as="p">{t("issues.pageHelp")}</Text>
@@ -103,9 +112,9 @@ export function Issues({
           回饋 #{notice} 已儲存。
         </Text>
       )}
-      {error && (
+      {visibleError && (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>{visibleError}</Callout.Text>
         </Callout.Root>
       )}
       {selected ? (
@@ -124,7 +133,7 @@ export function Issues({
             <Button
               variant="soft"
               disabled={busy}
-              onClick={() => void operate(() => detail(selected.id))}
+              onClick={() => void operate((version) => detail(selected.id, version))}
             >
               重新整理回饋
             </Button>
@@ -150,14 +159,10 @@ export function Issues({
             </Text>
           )}
           {selected.hasScreenshot && (
-            <img
-              className="issue-screenshot"
-              src={`/api/issues/${selected.id}/screenshot`}
-              alt={`回饋 #${selected.id} 的標註截圖`}
-              onError={(event) => {
-                event.currentTarget.hidden = true
-                setError("截圖無法載入，請確認登入狀態後重新整理。")
-              }}
+            <IssueScreenshot
+              key={`image:${selected.id}`}
+              id={selected.id}
+              reload={screenshotReload}
             />
           )}
           <IssueAnalysisPanel
@@ -170,7 +175,7 @@ export function Issues({
             <Button
               disabled={busy}
               onClick={() =>
-                void operate(async () => {
+                void operate(async (version) => {
                   const issue = await request<Issue>(
                     `issues/${selected.id}`,
                     csrf,
@@ -182,7 +187,7 @@ export function Issues({
                     requests.current.signal,
                   )
                   if (alive.current) {
-                    setSelected(issue)
+                    if (version === generation.current) setSelected(issue)
                     setRefresh((value) => value + 1)
                   }
                 })
@@ -201,7 +206,7 @@ export function Issues({
                   )
                 )
                   return
-                void operate(async () => {
+                void operate(async (version) => {
                   await request(
                     `issues/${selected.id}`,
                     csrf,
@@ -210,7 +215,10 @@ export function Issues({
                     requests.current.signal,
                   )
                   if (alive.current) {
-                    setSelected(undefined)
+                    if (version === generation.current) {
+                      generation.current++
+                      setSelected(undefined)
+                    }
                     setCursors([])
                     setRefresh((value) => value + 1)
                   }
@@ -246,7 +254,7 @@ export function Issues({
           </Flex>
           {!page ? (
             <Text as="p" role="status">
-              {error ? "尚未載入回饋。" : "載入中…"}
+              {listError ? "尚未載入回饋。" : "載入中…"}
             </Text>
           ) : (
             <>
@@ -266,7 +274,7 @@ export function Issues({
                         <Button
                           variant="ghost"
                           disabled={busy}
-                          onClick={() => void operate(() => detail(issue.id))}
+                          onClick={() => void operate((version) => detail(issue.id, version))}
                         >
                           #{issue.id} {issue.title}
                         </Button>
@@ -310,5 +318,39 @@ export function Issues({
         </>
       )}
     </section>
+  )
+}
+
+function IssueScreenshot({ id, reload }: { id: number; reload: number }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <>
+      {failed && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>截圖無法載入，請確認登入狀態後重新整理。</Callout.Text>
+        </Callout.Root>
+      )}
+      <img
+        key={reload}
+        className="issue-screenshot"
+        src={`/api/issues/${id}/screenshot?reload=${reload}`}
+        alt={`回饋 #${id} 的標註截圖`}
+        hidden={failed}
+        onError={(event) => {
+          if (event.currentTarget.isConnected) setFailed(true)
+        }}
+        onLoad={(event) => {
+          const image = event.currentTarget
+          void image.decode().then(
+            () => {
+              if (image.isConnected) setFailed(false)
+            },
+            () => {
+              if (image.isConnected) setFailed(true)
+            },
+          )
+        }}
+      />
+    </>
   )
 }

@@ -73,7 +73,7 @@ async function body(req: IncomingMessage, limit = 262144) {
     throw new AdminError(415, "JSON is required")
   const chunks: Buffer[] = []
   let bytes = 0
-  for await (const chunk of req) {
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     bytes += chunk.length
     if (bytes > limit) throw new AdminError(413, "Request is too large")
     chunks.push(Buffer.from(chunk))
@@ -111,6 +111,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
     buckets.set(key, bucket)
     if (bucket.count > max) throw new AdminError(429, "Too many requests")
   }
+  const handlers = new Set<Promise<void>>()
   const server = createServer(
     { maxHeaderSize: 16384, requestTimeout: 15_000, headersTimeout: 10_000 },
     (req, res) => {
@@ -124,27 +125,37 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       )
       res.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()")
-      void handle(req, res).catch((error: unknown) => {
-        if (res.headersSent) {
-          res.destroy()
-          return
-        }
-        const status =
-          error instanceof AdminError || error instanceof IssueError
-            ? error.status
-            : error instanceof z.ZodError
-              ? 400
-              : 500
-        if (status === 429) res.setHeader("retry-after", "60")
-        reply(res, status, {
-          error:
+      const handled = handle(req, res)
+        .catch((error: unknown) => {
+          if (res.headersSent) {
+            res.destroy()
+            return
+          }
+          const status =
             error instanceof AdminError || error instanceof IssueError
-              ? error.message
-              : status === 400
-                ? "Invalid request"
-                : "Operation failed",
+              ? error.status
+              : error instanceof z.ZodError
+                ? 400
+                : 500
+          if (status === 429) res.setHeader("retry-after", "60")
+          if (status === 413) {
+            // With unread body bytes, flush the error then let HTTP close the socket, never reuse it.
+            res.shouldKeepAlive = false
+            res.setHeader("connection", "close")
+          }
+          reply(res, status, {
+            error:
+              error instanceof AdminError || error instanceof IssueError
+                ? error.message
+                : status === 400
+                  ? "Invalid request"
+                  : "Operation failed",
+          })
         })
-      })
+        .finally(() => {
+          handlers.delete(handled)
+        })
+      handlers.add(handled)
     },
   )
   const inspectionShutdown = new AbortController()
@@ -279,14 +290,11 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
         let image: ReturnType<typeof decodeImage> | undefined
         if (input.screenshot) {
           try {
-            image = decodeImage(input.screenshot)
-            if (
-              image.bytes.byteLength > MAX_SCREENSHOT_BYTES ||
-              image.width > 4096 ||
-              image.height > 4096 ||
-              image.width * image.height > 4_194_304
-            )
-              throw new Error("Screenshot too large")
+            image = decodeImage(input.screenshot, {
+              maxBytes: MAX_SCREENSHOT_BYTES,
+              maxDimension: 4096,
+              maxPixels: 4_194_304,
+            })
           } catch {
             throw new AdminError(
               400,
@@ -789,13 +797,19 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           server.close((error) => (error ? reject(error) : resolve()))
           server.closeIdleConnections()
         })
-        await Promise.all([
-          providers.cancelOwner(),
-          services.github?.close(),
-          services.analysis?.close(),
-          mcp.close(),
-          drained,
-        ])
+        const tasks = [
+          () => providers.cancelOwner(),
+          () => services.github?.close(),
+          () => services.analysis?.close(),
+          () => mcp.close(),
+        ]
+        const results = await Promise.allSettled([...tasks.map(async (close) => close()), drained])
+        // An admitted handler can still use storage after its client disconnects.
+        results.push(...(await Promise.allSettled(handlers)))
+        const failures = results.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
+        )
+        if (failures.length) throw new AggregateError(failures, "Admin shutdown failed")
       })()
       return closing
     },

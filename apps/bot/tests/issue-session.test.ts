@@ -9,6 +9,7 @@ import {
   openIssueSession,
   selectIssueModel,
 } from "../src/issues/session.js"
+import { issueFixtureRuntime } from "./helpers/issue-analysis-runtime.js"
 import { report } from "./helpers/issue-report.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
@@ -32,7 +33,7 @@ async function fixture() {
   policy.providers = [{ id: "openai", enabled: true, models: [] }]
   const model = { model: "openai/gpt-6.1-sol", thinking: "off" as const, policy }
   const directory = path.join(f.root, "issue-sessions")
-  return { ...f, model, directory }
+  return { ...f, runtime: issueFixtureRuntime(f), model, directory }
 }
 it("creates a real empty session without a model call, publishes through a validated tool and dedupes reopen", async () => {
   const f = await fixture()
@@ -42,7 +43,7 @@ it("creates a real empty session without a model call, publishes through a valid
     const options = {
       directory: f.directory,
       id,
-      runtime: f.modelRuntime,
+      runtime: f.runtime,
       guard: () => f.model,
       signal: new AbortController().signal,
     }
@@ -80,37 +81,61 @@ it("creates a real empty session without a model call, publishes through a valid
     ).toEqual(report)
     expect(f.requests).toHaveLength(1)
   } finally {
-    await session?.close()
-    open.mockRestore()
-    await f.cleanup()
+    try {
+      await session?.close()
+    } finally {
+      open.mockRestore()
+      await f.cleanup()
+    }
   }
 })
 it("rejects prose-only completion rather than treating it as structured proposals", async () => {
   const f = await fixture()
-  const session = await openIssueSession({
-    directory: f.directory,
-    id,
-    runtime: f.modelRuntime,
-    guard: () => f.model,
-    signal: new AbortController().signal,
-  })
+  let session: Awaited<ReturnType<typeof openIssueSession>> | undefined
   try {
+    session = await openIssueSession({
+      directory: f.directory,
+      id,
+      runtime: f.runtime,
+      guard: () => f.model,
+      signal: new AbortController().signal,
+    })
     f.enqueueAnswer('Here is JSON: {"summary":"not a tool result"}')
     await expect(session.analyze(issue, "", f.model, () => {})).rejects.toThrow()
   } finally {
-    await session.close()
+    try {
+      await session?.close()
+    } finally {
+      await f.cleanup()
+    }
+  }
+})
+it("requires HTTPS for the configured and resolved model endpoints without dispatching a request", async () => {
+  const f = await fixture()
+  try {
+    const { policy } = f.model
+    expect(() => selectIssueModel(policy, f.modelRuntime)).toThrow("requires HTTPS")
+    const configured = {
+      ...policy,
+      providers: [
+        { id: "openai", enabled: true, models: [], baseUrl: "http://provider.example.test" },
+      ],
+    }
+    expect(() => selectIssueModel(configured, f.runtime)).toThrow("requires HTTPS")
+    expect(f.requests).toHaveLength(0)
+  } finally {
     await f.cleanup()
   }
 })
 it("guards replay/model boundaries and exposes no alternate image generation or completion capability", async () => {
   const f = await fixture()
   try {
-    expect(selectIssueModel(f.model.policy, f.modelRuntime).ref).toBe(f.model.model)
+    expect(selectIssueModel(f.model.policy, f.runtime).ref).toBe(f.model.model)
     const guard = vi.fn(() => {
       throw new Error("revoked")
     })
-    const runtime = issueModelRuntime(f.modelRuntime, guard, new AbortController().signal)
-    const selected = f.modelRuntime.getModel("openai", "gpt-6.1-sol")
+    const runtime = issueModelRuntime(f.runtime, guard, new AbortController().signal)
+    const selected = f.runtime.getModel("openai", "gpt-6.1-sol")
     if (!selected) throw new Error("Missing fixture model")
     expect(() => runtime.streamSimple(selected, { messages: [] })).toThrow("revoked")
     expect(() => runtime.completeSimple(selected, { messages: [] })).toThrow("revoked")

@@ -11,6 +11,13 @@ import { type AnalysisModel, openIssueSession, selectIssueModel } from "./sessio
 
 const MAX_SESSION_BYTES = 16 * 1024 * 1024
 const MAX_SESSION_STORAGE = 512 * 1024 * 1024
+const WAKE_INTERVAL_MS = 5000
+const CLEANUP_RETRY_MS = 5000
+
+function isMissing(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+}
+
 class Blocked extends Error {
   constructor(readonly reason: AnalysisReason) {
     super(reason)
@@ -28,6 +35,7 @@ export class IssueAnalysisRuntime {
   readonly issues: IssueStore
   private work: Promise<void> | undefined
   private timer: ReturnType<typeof setInterval> | undefined
+  private readonly cleanupRetryAt = new Map<string, number>()
   private active:
     | { id: string; issueId: number; controller: AbortController; done: Promise<void> }
     | undefined
@@ -52,7 +60,7 @@ export class IssueAnalysisRuntime {
     if (!this.timer && !this.closing) {
       this.timer = setInterval(() => {
         void this.wake()
-      }, 5000)
+      }, WAKE_INTERVAL_MS)
       this.timer.unref()
     }
     void this.wake()
@@ -94,7 +102,6 @@ export class IssueAnalysisRuntime {
       active.controller.abort("cancelled")
       await active.done
     }
-    await this.collect()
     void this.wake()
   }
   async close() {
@@ -106,8 +113,9 @@ export class IssueAnalysisRuntime {
   private guard(id: string): AnalysisModel {
     const job = this.analyses.job(id)
     if (job.actor !== String(this.options.store.adminId)) throw new Blocked("policy_changed")
-    if (job.state !== "running" || this.issues.get(job.issueId).state !== "open")
-      throw new Blocked("cancelled")
+    if (job.state !== "running") throw new Blocked("cancelled")
+    const issue = this.issues.get(job.issueId)
+    if (issue.state !== "open") throw new Blocked("cancelled")
     if (job.deadline === null || Date.now() >= job.deadline) throw new Blocked("timeout")
     const snapshot = this.options.store.snapshot()
     if (
@@ -125,6 +133,8 @@ export class IssueAnalysisRuntime {
     }
     if (selected.ref !== job.model || selected.thinking !== job.thinking)
       throw new Blocked("policy_changed")
+    if (issue.hasScreenshot && !selected.model.input.includes("image"))
+      throw new Blocked("image_unsupported")
     return {
       model: job.model,
       thinking: job.thinking as ModelThinkingLevel,
@@ -136,8 +146,7 @@ export class IssueAnalysisRuntime {
     let count = 0
     let sessionBytes = 0
     const directory = await opendir(this.options.directory).catch((error: unknown) => {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-        return undefined
+      if (isMissing(error)) return undefined
       throw error
     })
     if (!directory) return
@@ -145,28 +154,46 @@ export class IssueAnalysisRuntime {
       if (++count > 10000) throw new Blocked("storage_limit")
       if (!/^[a-f0-9-]{36}\.sqlite(?:-wal|-shm)?$/.test(entry.name)) continue
       if (!entry.isFile()) throw new Blocked("storage_limit")
-      const size = (await stat(path.join(this.options.directory, entry.name))).size
-      bytes += size
-      if (entry.name.startsWith(id)) sessionBytes += size
+      const file = await stat(path.join(this.options.directory, entry.name)).catch(
+        (error: unknown) => {
+          if (isMissing(error)) return undefined
+          throw error
+        },
+      )
+      if (!file) continue
+      bytes += file.size
+      if (entry.name.startsWith(id)) sessionBytes += file.size
       if (sessionBytes > MAX_SESSION_BYTES) throw new Blocked("storage_limit")
       if (bytes > MAX_SESSION_STORAGE) throw new Blocked("storage_limit")
     }
   }
+  // Only drain calls this, with no open session.
   private async collect() {
-    for (;;) {
-      const ids = this.analyses.garbage()
+    let after: string | undefined
+    while (!this.closing) {
+      const ids = this.analyses.garbage(after)
       if (!ids.length) return
       for (const id of ids) {
+        if (this.closing) return
+        after = id
         if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid cleanup key")
-        for (const suffix of ["", "-wal", "-shm"])
-          await rm(path.join(this.options.directory, `${id}.sqlite${suffix}`), { force: true })
+        if ((this.cleanupRetryAt.get(id) ?? 0) > Date.now()) continue
+        try {
+          for (const suffix of ["", "-wal", "-shm"])
+            await rm(path.join(this.options.directory, `${id}.sqlite${suffix}`), { force: true })
+        } catch {
+          this.cleanupRetryAt.set(id, Date.now() + CLEANUP_RETRY_MS)
+          continue
+        }
         this.analyses.collected(id)
+        this.cleanupRetryAt.delete(id)
       }
     }
   }
   private async drain() {
-    await this.collect()
     while (!this.closing) {
+      await this.collect()
+      if (this.closing) return
       const job = this.analyses.next()
       if (!job) return
       const controller = new AbortController()
@@ -302,7 +329,6 @@ export class IssueAnalysisRuntime {
           done()
         }
       }
-      await this.collect()
     }
   }
 }

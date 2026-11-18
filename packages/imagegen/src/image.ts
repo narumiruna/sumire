@@ -7,8 +7,19 @@ export const MAX_IMAGE_BYTES = 32 * 1024 * 1024
 // PNG's largest supported raster (16-bit RGBA) is therefore at most 128 MiB.
 const MAX_DIMENSION = 16_384
 const MAX_PIXELS = 16_777_216
-const MAX_BASE64_LENGTH = 4 * Math.ceil(MAX_IMAGE_BYTES / 3)
 
+/** Per-call limits may tighten, never relax, the built-in safety ceilings. */
+export interface ImageLimits {
+  maxBytes?: number
+  maxDimension?: number
+  maxPixels?: number
+}
+function limit(value: number | undefined, ceiling: number): number {
+  if (value === undefined) return ceiling
+  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling)
+    throw new Error("Invalid image limit.")
+  return value
+}
 export interface DecodedImage {
   bytes: Buffer
   mimeType: "image/png" | "image/jpeg" | "image/webp"
@@ -21,15 +32,20 @@ function invalidImage(): never {
   throw new Error("Unsupported, truncated, or malformed image.")
 }
 
-function checkDimensions(width: number, height: number): void {
+function checkDimensions(
+  width: number,
+  height: number,
+  maxDimension: number,
+  maxPixels: number,
+): void {
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
     width < 1 ||
     height < 1 ||
-    width > MAX_DIMENSION ||
-    height > MAX_DIMENSION ||
-    width * height > MAX_PIXELS
+    width > maxDimension ||
+    height > maxDimension ||
+    width * height > maxPixels
   ) {
     throw new Error("Image dimensions exceed the supported limits.")
   }
@@ -340,16 +356,19 @@ function validateWebp(bytes: Buffer, width: number, height: number): void {
   if (offset !== bytes.length || !image) invalidImage()
 }
 
-export function decodeImage(base64: string): DecodedImage {
-  if (typeof base64 !== "string" || !base64.length || base64.length > MAX_BASE64_LENGTH) {
-    throw new Error("Image data is empty or exceeds the 32 MiB limit.")
+export function decodeImage(base64: string, limits: ImageLimits = {}): DecodedImage {
+  const maxBytes = limit(limits.maxBytes, MAX_IMAGE_BYTES)
+  const maxDimension = limit(limits.maxDimension, MAX_DIMENSION)
+  const maxPixels = limit(limits.maxPixels, MAX_PIXELS)
+  if (typeof base64 !== "string" || !base64.length || base64.length > 4 * Math.ceil(maxBytes / 3)) {
+    throw new Error("Image data is empty or exceeds the configured byte limit.")
   }
   // Buffer.from() alone accepts invalid characters, missing padding, and aliases.
   if (base64.length % 4 || /[^A-Za-z0-9+/=]/.test(base64))
     throw new Error("Malformed base64 image data.")
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0
   const size = (base64.length / 4) * 3 - padding
-  if (size > MAX_IMAGE_BYTES) throw new Error("Image data exceeds the 32 MiB limit.")
+  if (size > maxBytes) throw new Error("Image data exceeds the configured byte limit.")
   const bytes = Buffer.from(base64, "base64")
   if (!size || bytes.length !== size || bytes.toString("base64") !== base64)
     throw new Error("Malformed base64 image data.")
@@ -372,7 +391,7 @@ export function decodeImage(base64: string): DecodedImage {
     invalidImage()
   }
   const { width, height } = dimensions(bytes, mimeType)
-  checkDimensions(width, height)
+  checkDimensions(width, height, maxDimension, maxPixels)
   if (mimeType === "image/png") validatePng(bytes, width, height)
   else if (mimeType === "image/jpeg") validateJpeg(bytes)
   else validateWebp(bytes, width, height)

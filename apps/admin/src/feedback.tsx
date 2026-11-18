@@ -51,6 +51,9 @@ export function FeedbackWidget({
   const canvas = useRef<HTMLCanvasElement>(null)
   const file = useRef<HTMLInputElement>(null)
   const start = useRef<Point | undefined>(undefined)
+  const activePointer = useRef<number | undefined>(undefined)
+  const submission = useRef<AbortController | undefined>(undefined)
+  const viewportVersion = useRef(0)
   const gesture = useRef<Mark | undefined>(undefined)
   const submitted = useRef<Feedback | undefined>(undefined)
   const live = useRef(true)
@@ -60,6 +63,13 @@ export function FeedbackWidget({
     pageVersion.current++
   }, [section])
   const controller = useRef(new AbortController())
+  useEffect(() => {
+    const resized = () => {
+      viewportVersion.current++
+    }
+    window.addEventListener("resize", resized)
+    return () => window.removeEventListener("resize", resized)
+  }, [])
   const blockedCapture = ["Secrets & variables", "Durable"].includes(section)
   useEffect(
     () => () => {
@@ -96,6 +106,7 @@ export function FeedbackWidget({
     submitted.current = undefined
     start.current = undefined
     gesture.current = undefined
+    activePointer.current = undefined
   }
   function close() {
     if (busy) return
@@ -119,13 +130,22 @@ export function FeedbackWidget({
       },
     }
   }
-  async function prepare(capture: () => Promise<HTMLCanvasElement>) {
+  async function prepare(
+    capture: (viewport: Feedback["source"]["viewport"]) => Promise<HTMLCanvasElement>,
+  ) {
     setBusy(true)
     setError("")
     const origin = context()
     const version = pageVersion.current
+    const viewport = viewportVersion.current
     try {
-      const image = await capture()
+      const image = await capture(origin.viewport)
+      if (
+        viewport !== viewportVersion.current ||
+        origin.viewport.width !== window.innerWidth ||
+        origin.viewport.height !== window.innerHeight
+      )
+        throw new Error("擷取期間視窗大小已變更，請重新擷取。")
       if (version !== pageVersion.current)
         throw new Error("擷取期間頁面已變更，請在目前頁面重新擷取。")
       if (live.current) {
@@ -155,6 +175,7 @@ export function FeedbackWidget({
   function down(event: PointerEvent<HTMLCanvasElement>) {
     if (
       busy ||
+      activePointer.current !== undefined ||
       uncertain ||
       !source ||
       (tool !== "crop" && marks.length >= 100) ||
@@ -163,6 +184,7 @@ export function FeedbackWidget({
       return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
+    activePointer.current = event.pointerId
     const position = point(event)
     start.current = position
     gesture.current =
@@ -175,7 +197,7 @@ export function FeedbackWidget({
     if (initial) setMarks((current) => [...current, initial])
   }
   function move(event: PointerEvent<HTMLCanvasElement>) {
-    if (!start.current) return
+    if (!start.current || activePointer.current !== event.pointerId) return
     const position = point(event)
     if (tool === "crop") setSelection(rectangle(start.current, position))
     else if (gesture.current) {
@@ -189,7 +211,7 @@ export function FeedbackWidget({
     }
   }
   function up(event: PointerEvent<HTMLCanvasElement>) {
-    if (!start.current) return
+    if (!start.current || activePointer.current !== event.pointerId) return
     move(event)
     if (tool === "crop") {
       const area = rectangle(start.current, point(event))
@@ -198,8 +220,14 @@ export function FeedbackWidget({
     }
     start.current = undefined
     gesture.current = undefined
+    activePointer.current = undefined
   }
   async function submit() {
+    if (submission.current) return
+    const attempt = new AbortController()
+    submission.current = attempt
+    const deadline = setTimeout(() => attempt.abort(), 30000)
+    const previouslyUncertain = uncertain
     setBusy(true)
     setError("")
     try {
@@ -211,7 +239,13 @@ export function FeedbackWidget({
         ...(analyzeAfterSubmit ? { analyze: true } : {}),
       }
       submitted.current = value
-      const issue = await request<Issue>("issues", csrf, value, "POST", controller.current.signal)
+      const issue = await request<Issue>(
+        "issues",
+        csrf,
+        value,
+        "POST",
+        AbortSignal.any([controller.current.signal, attempt.signal]),
+      )
       if (live.current) {
         reset()
         onCreated(issue)
@@ -223,7 +257,8 @@ export function FeedbackWidget({
         onExpired()
         return
       }
-      const unknownOutcome = !(error instanceof ApiError) || error.status >= 500
+      const unknownOutcome =
+        previouslyUncertain || !(error instanceof ApiError) || error.status >= 500
       setUncertain(unknownOutcome)
       if (!unknownOutcome) submitted.current = undefined
       setError(
@@ -234,6 +269,8 @@ export function FeedbackWidget({
             : "送出失敗。",
       )
     } finally {
+      clearTimeout(deadline)
+      if (submission.current === attempt) submission.current = undefined
       if (live.current) setBusy(false)
     }
   }
@@ -359,7 +396,9 @@ export function FeedbackWidget({
                 onPointerDown={down}
                 onPointerMove={move}
                 onPointerUp={up}
-                onPointerCancel={() => {
+                onPointerCancel={(event) => {
+                  if (activePointer.current !== event.pointerId) return
+                  activePointer.current = undefined
                   start.current = undefined
                   gesture.current = undefined
                   setSelection(undefined)
@@ -422,6 +461,11 @@ export function FeedbackWidget({
             </Callout.Root>
           )}
           <Flex justify="end" gap="3" mt="4">
+            {busy && (
+              <Button variant="soft" onClick={() => submission.current?.abort()}>
+                {t("issues.stopWaiting")}
+              </Button>
+            )}
             <Button variant="soft" disabled={busy} onClick={close}>
               取消
             </Button>

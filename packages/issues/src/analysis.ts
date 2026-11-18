@@ -99,18 +99,18 @@ export interface IssueAnalyses {
 }
 export const analysisRequestSchema = z
   .object({
-    requestId: z.uuid(),
+    requestId: z.uuid().toLowerCase(),
     revision: z.number().int().positive().safe(),
     context: z.string().trim().max(4000).default(""),
   })
   .strict()
 export const analysisSelectionSchema = z
   .object({
-    analysisId: z.uuid(),
+    analysisId: z.uuid().toLowerCase(),
     revision: z.number().int().positive().safe(),
     proposal: z.number().int().min(0).max(2).nullable(),
   })
   .strict()
 export const analysisCancelSchema = z
-  .object({ analysisId: z.uuid(), revision: z.number().int().positive().safe() })
+  .object({ analysisId: z.uuid().toLowerCase(), revision: z.number().int().positive().safe() })
   .strict()
