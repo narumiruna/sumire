@@ -3,11 +3,17 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { expect, it, vi } from "vitest"
 import { PNG } from "../../../packages/imagegen/tests/fixtures.js"
-import { IssueAnalysisRuntime } from "../src/issues/runtime.js"
+import { type IssueAnalysisOptions, IssueAnalysisRuntime } from "../src/issues/runtime.js"
+import { issueFixtureRuntime } from "./helpers/issue-analysis-runtime.js"
 import { report } from "./helpers/issue-report.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
-async function fixture() {
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>()
+  return { ...actual, rm: vi.fn(actual.rm) }
+})
+
+async function fixture(overrides: Pick<IssueAnalysisOptions, "openSession"> = {}) {
   const f = await createPiFixture()
   const store = f.factory.control
   const snapshot = store.snapshot()
@@ -16,10 +22,13 @@ async function fixture() {
   store.save(snapshot.policy, snapshot.revision, "7")
   store.applied(store.snapshot().revision, true)
   const directory = path.join(f.root, "issue-analysis")
-  const options = { store, runtime: f.modelRuntime, directory }
+  const options = { store, runtime: issueFixtureRuntime(f), directory, ...overrides }
   let worker = new IssueAnalysisRuntime(options)
   return {
     ...f,
+    get disconnectedRequests() {
+      return f.disconnectedRequests
+    },
     get pendingReplies() {
       return f.pendingReplies
     },
@@ -43,8 +52,11 @@ async function fixture() {
       ).issue
     },
     async close() {
-      await worker.close()
-      await f.cleanup()
+      try {
+        await worker.close()
+      } finally {
+        await f.cleanup()
+      }
     },
   }
 }
@@ -120,7 +132,11 @@ it("cancels in-flight native work and never publishes a late report for the canc
     const active = f.worker.analyses.list(issue.id)[0]
     if (!active) throw new Error("Missing active analysis")
     const cancelling = f.worker.cancel(issue.id, active.id, active.revision, "7")
-    release()
+    try {
+      await vi.waitFor(() => expect(f.disconnectedRequests).toBe(1))
+    } finally {
+      release()
+    }
     await cancelling
     await running
     expect(f.worker.analyses.list(issue.id)[0]).toMatchObject({ state: "cancelled", report: null })
@@ -209,6 +225,90 @@ it("deletes all private durable files after a feedback deletion, with restart-sa
     await f.close()
   }
 })
+it("retries a retained cleanup receipt without blocking admission or other cleanup", async () => {
+  const f = await fixture()
+  const unlink = vi.mocked(rm)
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")
+  const now = vi.spyOn(Date, "now")
+  try {
+    const removed = f.create()
+    const other = f.create()
+    const next = f.create()
+    await f.worker.wake()
+    const job = f.worker.analyses.list(removed.id)[0]
+    const otherJob = f.worker.analyses.list(other.id)[0]
+    if (!job || !otherJob) throw new Error("Missing analysis")
+    const sidecar = path.join(f.directory, `${job.id}.sqlite-wal`)
+    await writeFile(sidecar, "fixture sidecar")
+    unlink.mockImplementation(async (file, options) => {
+      if (file === sidecar) throw new Error("Temporary unlink failure")
+      await actual.rm(file, options)
+    })
+    const firstAttempt = Date.now()
+    now.mockReturnValue(firstAttempt)
+    f.worker.issues.delete(removed.id, removed.revision, "7")
+    f.worker.issues.delete(other.id, other.revision, "7")
+    await f.worker.wake()
+    expect(f.worker.analyses.garbage()).toEqual([job.id])
+    expect(await readdir(f.directory)).not.toContain(`${otherJob.id}.sqlite`)
+    expect(f.worker.available).toBe(true)
+
+    unlink.mockImplementation(actual.rm)
+    f.enqueue("publish_issue_proposals", report, false)
+    f.worker.request(next.id, { requestId: randomUUID(), revision: next.revision }, "7")
+    await f.worker.wake()
+    expect(f.worker.analyses.list(next.id)[0]?.state).toBe("completed")
+    expect(f.worker.analyses.garbage()).toEqual([job.id])
+
+    now.mockReturnValue(firstAttempt + 5000)
+    await f.worker.wake()
+    expect(f.worker.analyses.garbage()).toEqual([])
+    expect(await readdir(f.directory)).not.toContain(`${job.id}.sqlite-wal`)
+  } finally {
+    now.mockRestore()
+    unlink.mockImplementation(actual.rm)
+    await f.close()
+  }
+})
+
+it("leaves deleted session files in place until the worker closes their owner", async () => {
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const close = vi.fn(() => gate)
+  const f = await fixture({
+    async openSession({ directory, id }) {
+      await mkdir(directory, { recursive: true })
+      await writeFile(path.join(directory, `${id}.sqlite`), "fixture session")
+      return { sessionId: randomUUID(), conversationId: 1, analyze: async () => report, close }
+    },
+  })
+  try {
+    const issue = f.create()
+    const running = f.worker.wake()
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce())
+    const job = f.worker.analyses.list(issue.id)[0]
+    if (!job) throw new Error("Missing analysis")
+    f.worker.issues.delete(issue.id, issue.revision, "7")
+    const deleting = f.worker.changed(issue.id)
+    const other = f.create()
+    f.worker.issues.update(other.id, other.revision, "closed", "7")
+    await f.worker.changed(other.id)
+    expect(await readdir(f.directory)).toContain(`${job.id}.sqlite`)
+    expect(f.worker.analyses.garbage()).toContain(job.id)
+
+    release()
+    await deleting
+    await running
+    expect(await readdir(f.directory)).not.toContain(`${job.id}.sqlite`)
+    expect(f.worker.analyses.garbage()).not.toContain(job.id)
+  } finally {
+    release()
+    await f.close()
+  }
+})
+
 it("treats invalid prose output as a failed report, not a generated proposal", async () => {
   const f = await fixture()
   try {
@@ -262,8 +362,9 @@ it("revokes an in-flight analysis when settings change and requires a fresh expl
     await f.close()
   }
 })
-it("blocks unsupported image input before sending any screenshot to the model", async () => {
+it.each(["queued", "resumed"])("blocks unsupported image input for a %s job", async (state) => {
   const f = await fixture()
+  const auth = vi.spyOn(f.modelRuntime, "checkAuth")
   const getModel = f.modelRuntime.getModel.bind(f.modelRuntime)
   const model = vi.spyOn(f.modelRuntime, "getModel").mockImplementation((provider, id) => {
     const value = getModel(provider, id)
@@ -274,21 +375,36 @@ it("blocks unsupported image input before sending any screenshot to the model", 
       {
         requestId: randomUUID(),
         description: "",
-        analyze: true,
+        analyze: state === "queued",
         screenshot: PNG.toString("base64"),
         source: { section: "Chats", viewport: { width: 1000, height: 800 } },
       },
       "7",
       { bytes: PNG, mime: "image/png" },
     ).issue
+    if (state === "resumed") {
+      await f.worker.wake()
+      const revision = f.store.snapshot().revision
+      const job = f.worker.analyses.request(
+        issue.id,
+        { requestId: randomUUID(), revision: issue.revision },
+        "7",
+        revision,
+      )
+      f.worker.analyses.start(job.id, "openai/gpt-6.1-sol", "off", revision)
+      await f.worker.close()
+      f.restart()
+    }
     await f.worker.wake()
     expect(f.worker.analyses.list(issue.id)[0]).toMatchObject({
       state: "blocked",
       reason: "image_unsupported",
       sessionId: expect.any(String),
     })
+    expect(auth).not.toHaveBeenCalled()
     expect(f.requests).toHaveLength(0)
   } finally {
+    auth.mockRestore()
     model.mockRestore()
     await f.close()
   }

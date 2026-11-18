@@ -27,6 +27,16 @@ it("bounds decoded bytes, dimensions and total pixels before decompression", () 
   ] as const)
     expect(() => decodeImage(png(...dimensions).toString("base64"))).toThrow()
 })
+it("applies caller byte and dimension limits while accepting an image at the limit", () => {
+  const base64 = PNG.toString("base64")
+  expect(
+    decodeImage(base64, { maxBytes: PNG.length, maxDimension: 2, maxPixels: 2 }).bytes,
+  ).toEqual(PNG)
+  expect(() => decodeImage(base64, { maxBytes: PNG.length - 1 })).toThrow("byte limit")
+  expect(() => decodeImage(base64, { maxDimension: 1 })).toThrow("dimensions exceed")
+  expect(() => decodeImage(base64, { maxPixels: 1 })).toThrow("dimensions exceed")
+})
+
 it("rejects damaged, truncated, animated or mismatched containers", () => {
   const damaged = Buffer.from(PNG)
   damaged[damaged.length - 1] = damaged.readUInt8(damaged.length - 1) ^ 1

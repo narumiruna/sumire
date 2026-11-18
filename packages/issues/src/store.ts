@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite"
 import { initializeAnalysisStorage, insertInitialAnalysis } from "./analysis-store.js"
 import { IssueError } from "./errors.js"
 import {
+  type Feedback,
   feedbackSchema,
   ISSUE_PAGE_SIZE,
   type Issue,
@@ -13,6 +14,7 @@ import {
   MAX_ISSUES,
   MAX_SCREENSHOT_BYTES,
 } from "./index.js"
+import { transaction } from "./transaction.js"
 
 export { IssueError } from "./errors.js"
 export function initializeIssueStorage(db: DatabaseSync) {
@@ -26,9 +28,8 @@ export function initializeIssueStorage(db: DatabaseSync) {
   );`)
   initializeAnalysisStorage(db)
 }
-interface Row {
+interface SummaryRow {
   id: number
-  description: string
   source: string
   title: string
   state: IssueState
@@ -37,9 +38,10 @@ interface Row {
   updated: number
   revision: number
 }
-const columns =
-  "id, description, source, title, state, screenshot IS NOT NULL AS hasScreenshot, created, updated, revision"
-function summary(row: Row): IssueSummary {
+type DetailRow = SummaryRow & { description: string }
+const summaryColumns =
+  "id, source, title, state, screenshot IS NOT NULL AS hasScreenshot, created, updated, revision"
+function summary(row: SummaryRow): IssueSummary {
   const source = JSON.parse(row.source) as Issue["source"]
   return {
     id: row.id,
@@ -52,6 +54,11 @@ function summary(row: Row): IssueSummary {
     revision: row.revision,
   }
 }
+function fingerprint(feedback: Feedback, requestId = feedback.requestId): string {
+  const canonical: Partial<Feedback> = { ...feedback, requestId }
+  if (!canonical.analyze) delete canonical.analyze
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex")
+}
 /** Host owns the connection and lifecycle. All writes and audit callbacks share one transaction. */
 export class IssueStore {
   constructor(
@@ -59,17 +66,6 @@ export class IssueStore {
     private readonly audit: (actor: string, operation: string, id: number) => void = () => {},
     private readonly analysisRevision: () => number | null = () => null,
   ) {}
-  private transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN IMMEDIATE")
-    try {
-      const result = work()
-      this.db.exec("COMMIT")
-      return result
-    } catch (error) {
-      this.db.exec("ROLLBACK")
-      throw error
-    }
-  }
   create(
     input: unknown,
     actor: string,
@@ -83,17 +79,25 @@ export class IssueStore {
           !["image/png", "image/jpeg", "image/webp"].includes(image.mime)))
     )
       throw new IssueError(400, "Invalid screenshot")
-    const canonical = { ...feedback } as Partial<typeof feedback>
-    if (!canonical.analyze) delete canonical.analyze
-    const fingerprint = createHash("sha256").update(JSON.stringify(canonical)).digest("hex")
-    return this.transaction(() => {
+    const digest = fingerprint(feedback)
+    return transaction(this.db, () => {
       const existing = this.db
-        .prepare("SELECT id, fingerprint FROM feedback_issues WHERE actor=? AND request_id=?")
-        .get(actor, feedback.requestId) as { id: number; fingerprint: string } | undefined
-      if (existing) {
-        if (existing.fingerprint !== fingerprint)
+        .prepare(
+          "SELECT id, request_id, fingerprint FROM feedback_issues WHERE actor=? AND request_id=? COLLATE NOCASE ORDER BY id",
+        )
+        .all(actor, feedback.requestId) as { id: number; request_id: string; fingerprint: string }[]
+      if (existing.length) {
+        // Legacy hashes include the UUID as it was submitted. Keep old issues and hashes intact.
+        const match = existing.find(
+          (row) =>
+            row.fingerprint ===
+            (row.request_id === feedback.requestId
+              ? digest
+              : fingerprint(feedback, row.request_id)),
+        )
+        if (!match)
           throw new IssueError(409, "This submission ID was already used for different feedback")
-        return { issue: this.get(existing.id), created: false }
+        return { issue: this.get(match.id), created: false }
       }
       const usage = this.db
         .prepare(
@@ -119,7 +123,7 @@ export class IssueStore {
         .run(
           actor,
           feedback.requestId,
-          fingerprint,
+          digest,
           feedback.description,
           JSON.stringify(feedback.source),
           title,
@@ -137,22 +141,22 @@ export class IssueStore {
   list(before?: number, state?: IssueState): IssuePage {
     const rows = this.db
       .prepare(
-        `SELECT ${columns} FROM feedback_issues WHERE id < ? AND (? IS NULL OR state=?) ORDER BY id DESC LIMIT ?`,
+        `SELECT ${summaryColumns} FROM feedback_issues WHERE id < ? AND (? IS NULL OR state=?) ORDER BY id DESC LIMIT ?`,
       )
       .all(
         before ?? Number.MAX_SAFE_INTEGER,
         state ?? null,
         state ?? null,
         ISSUE_PAGE_SIZE + 1,
-      ) as unknown as Row[]
+      ) as unknown as SummaryRow[]
     const more = rows.length > ISSUE_PAGE_SIZE
     const visible = rows.slice(0, ISSUE_PAGE_SIZE)
     return { issues: visible.map(summary), next: more ? (visible.at(-1)?.id ?? null) : null }
   }
   get(id: number): Issue {
-    const row = this.db.prepare(`SELECT ${columns} FROM feedback_issues WHERE id=?`).get(id) as
-      | Row
-      | undefined
+    const row = this.db
+      .prepare(`SELECT ${summaryColumns}, description FROM feedback_issues WHERE id=?`)
+      .get(id) as DetailRow | undefined
     if (!row) throw new IssueError(404, "Issue not found")
     return {
       ...summary(row),
@@ -168,7 +172,7 @@ export class IssueStore {
     return { bytes: row.screenshot, mime: row.mime }
   }
   update(id: number, revision: number, state: IssueState, actor: string): Issue {
-    return this.transaction(() => {
+    return transaction(this.db, () => {
       const issue = this.get(id)
       if (issue.revision !== revision)
         throw new IssueError(409, "Issue changed. Refresh before trying again.")
@@ -187,7 +191,7 @@ export class IssueStore {
     })
   }
   delete(id: number, revision: number, actor: string) {
-    this.transaction(() => {
+    transaction(this.db, () => {
       const issue = this.get(id)
       if (issue.revision !== revision)
         throw new IssueError(409, "Issue changed. Refresh before trying again.")

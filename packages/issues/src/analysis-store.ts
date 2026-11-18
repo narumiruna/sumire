@@ -11,6 +11,7 @@ import {
   MAX_ANALYSIS_QUEUE,
 } from "./analysis.js"
 import { IssueError } from "./errors.js"
+import { transaction } from "./transaction.js"
 
 export function initializeAnalysisStorage(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS feedback_analyses (
@@ -115,17 +116,6 @@ export class AnalysisStore {
     private readonly db: DatabaseSync,
     private readonly audit: (actor: string, operation: string, id: number) => void = () => {},
   ) {}
-  private transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN IMMEDIATE")
-    try {
-      const value = work()
-      this.db.exec("COMMIT")
-      return value
-    } catch (error) {
-      this.db.exec("ROLLBACK")
-      throw error
-    }
-  }
   private row(id: string): Row {
     const row = this.db.prepare("SELECT * FROM feedback_analyses WHERE id=?").get(id) as
       | Row
@@ -167,16 +157,19 @@ export class AnalysisStore {
     policyRevision: number | null = null,
   ): IssueAnalysis {
     const request = analysisRequestSchema.parse(input)
-    return this.transaction(() => {
+    const requestId = request.requestId.toLowerCase()
+    return transaction(this.db, () => {
       if (this.issue(issueId, request.revision).state !== "open")
         throw new IssueError(409, "Reopen the issue before requesting analysis")
       const existing = this.db
-        .prepare("SELECT * FROM feedback_analyses WHERE issue_id=? AND request_id=?")
-        .get(issueId, request.requestId) as Row | undefined
-      if (existing) {
-        if (existing.actor !== actor || existing.context !== request.context)
-          throw new IssueError(409, "Analysis submission ID was already used")
-        return project(existing)
+        .prepare(
+          "SELECT * FROM feedback_analyses WHERE issue_id=? AND request_id=? COLLATE NOCASE ORDER BY attempt",
+        )
+        .all(issueId, requestId) as unknown as Row[]
+      if (existing.length) {
+        const match = existing.find((row) => row.actor === actor && row.context === request.context)
+        if (!match) throw new IssueError(409, "Analysis submission ID was already used")
+        return project(match)
       }
       const latest = this.db
         .prepare("SELECT * FROM feedback_analyses WHERE issue_id=? ORDER BY attempt DESC LIMIT 1")
@@ -195,7 +188,7 @@ export class AnalysisStore {
           .prepare(
             "UPDATE feedback_analyses SET state='queued', request_id=?, context=?, actor=?, updated=?, policy_revision=?, revision=revision+1 WHERE id=?",
           )
-          .run(request.requestId, request.context, actor, now, policyRevision, latest.id)
+          .run(requestId, request.context, actor, now, policyRevision, latest.id)
         this.audit(actor, "issue.analysis.request", issueId)
         return project(this.row(latest.id))
       }
@@ -210,7 +203,7 @@ export class AnalysisStore {
           issueId,
           latest.attempt + 1,
           actor,
-          request.requestId,
+          requestId,
           request.context,
           now,
           now,
@@ -251,7 +244,7 @@ export class AnalysisStore {
   }
   finish(id: string, report: unknown) {
     const parsed = analysisReportSchema.parse(report)
-    this.transaction(() => {
+    transaction(this.db, () => {
       const row = this.row(id)
       if (row.state !== "running" || this.issue(row.issue_id).state !== "open")
         throw new IssueError(409, "Analysis is no longer active")
@@ -271,7 +264,7 @@ export class AnalysisStore {
       .run(state, reason, Date.now(), id)
   }
   cancel(issueId: number, id: string, revision: number, actor: string): IssueAnalysis {
-    return this.transaction(() => {
+    return transaction(this.db, () => {
       this.issue(issueId)
       const row = this.row(id)
       if (row.issue_id !== issueId) throw new IssueError(404, "Analysis not found")
@@ -295,7 +288,7 @@ export class AnalysisStore {
     proposal: number | null,
     actor: string,
   ): IssueAnalysis {
-    return this.transaction(() => {
+    return transaction(this.db, () => {
       if (this.issue(issueId).state !== "open")
         throw new IssueError(409, "Reopen the issue before selecting a proposal")
       const row = this.row(id)
@@ -320,10 +313,11 @@ export class AnalysisStore {
       return project(this.row(id))
     })
   }
-  garbage(): string[] {
-    return (
-      this.db.prepare("SELECT id FROM feedback_analysis_gc LIMIT 32").all() as { id: string }[]
-    ).map((row) => row.id)
+  garbage(after = ""): string[] {
+    const rows = this.db
+      .prepare("SELECT id FROM feedback_analysis_gc WHERE id > ? ORDER BY id LIMIT 32")
+      .all(after) as { id: string }[]
+    return rows.map((row) => row.id)
   }
   collected(id: string) {
     this.db.prepare("DELETE FROM feedback_analysis_gc WHERE id=?").run(id)

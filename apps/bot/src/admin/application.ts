@@ -1,4 +1,6 @@
+import { mkdir } from "node:fs/promises"
 import path from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import type { PiSessionFactory } from "../agent/pi-session-factory.js"
 import type { ChatSessionRegistry } from "../agent/session-registry.js"
 import { IssueAnalysisRuntime } from "../issues/runtime.js"
@@ -46,11 +48,52 @@ export function createPolicyApplier(
   }
 }
 
+interface AdminControl {
+  store: AdminStore
+  mcp: McpAdmin
+  runtime?: RuntimeConfigAdmin
+  github?: GitHubAuth
+}
+
 export async function startAdmin(
   config: AdminConfig,
-  control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigAdmin; github?: GitHubAuth },
+  control: AdminControl,
   factory: PiSessionFactory,
   sessions: ChatSessionRegistry,
+) {
+  const directory = path.join(path.dirname(control.store.file), "issues")
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  // A separate SQLite file gives the worker a process-lifetime lock without locking AdminStore.
+  const owner = new DatabaseSync(path.join(directory, ".owner.sqlite"), { timeout: 0 })
+  try {
+    owner.exec("BEGIN IMMEDIATE")
+  } catch (cause) {
+    owner.close()
+    throw new Error("Could not acquire the issue analysis storage lock", { cause })
+  }
+
+  try {
+    const server = await startOwnedAdmin(config, control, factory, sessions, directory)
+    let stopping: Promise<void> | undefined
+    return {
+      ...server,
+      stop() {
+        stopping ??= server.stop().finally(() => owner.close())
+        return stopping
+      },
+    }
+  } catch (error) {
+    owner.close()
+    throw error
+  }
+}
+
+async function startOwnedAdmin(
+  config: AdminConfig,
+  control: AdminControl,
+  factory: PiSessionFactory,
+  sessions: ChatSessionRegistry,
+  directory: string,
 ) {
   if (!factory.modelRuntime) throw new Error("Admin requires a model runtime")
   const { store, mcp } = control
@@ -82,7 +125,7 @@ export async function startAdmin(
   const analysis = new IssueAnalysisRuntime({
     store,
     runtime: factory.modelRuntime,
-    directory: path.join(path.dirname(store.file), "issues"),
+    directory,
   })
   const server = createAdminServer(config, {
     analysis,

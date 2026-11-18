@@ -23,6 +23,18 @@ import {
 import { t } from "./i18n.js"
 
 type Tool = "pen" | "box" | "redact" | "crop"
+interface Gesture {
+  pointerId: number
+  start: Point
+  tool: Tool
+  mark?: Mark
+}
+const SUBMISSION_TIMEOUT_MS = 15_000
+
+function viewportSize() {
+  return { width: window.innerWidth, height: window.innerHeight }
+}
+
 export function FeedbackWidget({
   csrf,
   section,
@@ -50,8 +62,7 @@ export function FeedbackWidget({
   const [uncertain, setUncertain] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const file = useRef<HTMLInputElement>(null)
-  const start = useRef<Point | undefined>(undefined)
-  const gesture = useRef<Mark | undefined>(undefined)
+  const gesture = useRef<Gesture | undefined>(undefined)
   const submitted = useRef<Feedback | undefined>(undefined)
   const live = useRef(true)
   const pageVersion = useRef(0)
@@ -59,12 +70,12 @@ export function FeedbackWidget({
   useEffect(() => {
     pageVersion.current++
   }, [section])
-  const controller = useRef(new AbortController())
+  const controller = useRef<AbortController | undefined>(undefined)
   const blockedCapture = ["Secrets & variables", "Durable"].includes(section)
   useEffect(
     () => () => {
       live.current = false
-      controller.current.abort()
+      controller.current?.abort()
     },
     [],
   )
@@ -94,7 +105,6 @@ export function FeedbackWidget({
     setError("")
     setUncertain(false)
     submitted.current = undefined
-    start.current = undefined
     gesture.current = undefined
   }
   function close() {
@@ -110,24 +120,35 @@ export function FeedbackWidget({
       return
     reset()
   }
-  function context() {
+  function context(viewport = viewportSize()) {
     return {
       section,
       viewport: {
-        width: Math.min(10000, window.innerWidth),
-        height: Math.min(10000, window.innerHeight),
+        width: Math.min(10000, viewport.width),
+        height: Math.min(10000, viewport.height),
       },
     }
   }
-  async function prepare(capture: () => Promise<HTMLCanvasElement>) {
+  async function prepare(upload?: File) {
     setBusy(true)
     setError("")
-    const origin = context()
+    const viewport = viewportSize()
+    const origin = context(viewport)
     const version = pageVersion.current
+    let resized = false
+    const onResize = () => {
+      resized = true
+    }
+    if (!upload) window.addEventListener("resize", onResize)
     try {
-      const image = await capture()
+      const image = upload ? await loadScreenshot(upload) : await captureViewport(viewport)
       if (version !== pageVersion.current)
         throw new Error("擷取期間頁面已變更，請在目前頁面重新擷取。")
+      if (
+        !upload &&
+        (resized || window.innerWidth !== viewport.width || window.innerHeight !== viewport.height)
+      )
+        throw new Error("擷取期間視窗大小已變更，請重新擷取。")
       if (live.current) {
         setSource(image)
         setMetadata(origin)
@@ -140,6 +161,7 @@ export function FeedbackWidget({
           error instanceof Error ? error.message : "無法擷取畫面，請改用上傳圖片或文字回饋。",
         )
     } finally {
+      if (!upload) window.removeEventListener("resize", onResize)
       if (live.current) setBusy(false)
     }
   }
@@ -157,49 +179,57 @@ export function FeedbackWidget({
       busy ||
       uncertain ||
       !source ||
+      gesture.current ||
       (tool !== "crop" && marks.length >= 100) ||
       (event.pointerType === "mouse" && event.button !== 0)
     )
       return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
-    const position = point(event)
-    start.current = position
-    gesture.current =
+    const start = point(event)
+    const mark: Mark | undefined =
       tool === "pen"
-        ? { kind: "pen", points: [position] }
+        ? { kind: "pen", points: [start] }
         : tool === "crop"
           ? undefined
-          : { kind: tool, from: position, to: position }
-    const initial = gesture.current
-    if (initial) setMarks((current) => [...current, initial])
+          : { kind: tool, from: start, to: start }
+    gesture.current = { pointerId: event.pointerId, start, tool, mark }
+    if (mark) setMarks((current) => [...current, mark])
   }
   function move(event: PointerEvent<HTMLCanvasElement>) {
-    if (!start.current) return
+    const active = gesture.current
+    if (active?.pointerId !== event.pointerId) return
     const position = point(event)
-    if (tool === "crop") setSelection(rectangle(start.current, position))
-    else if (gesture.current) {
-      const mark = gesture.current
-      gesture.current =
+    if (active.tool === "crop") setSelection(rectangle(active.start, position))
+    else if (active.mark) {
+      const mark = active.mark
+      const next =
         mark.kind === "pen"
           ? { ...mark, points: [...mark.points.slice(-4999), position] }
           : { ...mark, to: position }
-      const next = gesture.current
-      setMarks((current) => [...current.slice(0, -1), next])
+      active.mark = next
+      setMarks((current) => current.map((item) => (item === mark ? next : item)))
     }
+  }
+  function endGesture(event: PointerEvent<HTMLCanvasElement>) {
+    if (gesture.current?.pointerId !== event.pointerId) return
+    gesture.current = undefined
+    setSelection(undefined)
   }
   function up(event: PointerEvent<HTMLCanvasElement>) {
-    if (!start.current) return
-    move(event)
-    if (tool === "crop") {
-      const area = rectangle(start.current, point(event))
+    const active = gesture.current
+    if (active?.pointerId !== event.pointerId) return
+    if (active.tool === "crop") {
+      const area = rectangle(active.start, point(event))
       if (area.width >= 2 && area.height >= 2) setCrop(area)
-      setSelection(undefined)
-    }
-    start.current = undefined
-    gesture.current = undefined
+    } else move(event)
+    endGesture(event)
   }
   async function submit() {
+    if (controller.current) return
+    const attempt = new AbortController()
+    controller.current = attempt
+    let timeout: number | undefined
     setBusy(true)
     setError("")
     try {
@@ -211,7 +241,11 @@ export function FeedbackWidget({
         ...(analyzeAfterSubmit ? { analyze: true } : {}),
       }
       submitted.current = value
-      const issue = await request<Issue>("issues", csrf, value, "POST", controller.current.signal)
+      let signal = attempt.signal
+      if (typeof AbortSignal.any === "function" && typeof AbortSignal.timeout === "function")
+        signal = AbortSignal.any([signal, AbortSignal.timeout(SUBMISSION_TIMEOUT_MS)])
+      else timeout = window.setTimeout(() => attempt.abort(), SUBMISSION_TIMEOUT_MS)
+      const issue = await request<Issue>("issues", csrf, value, "POST", signal)
       if (live.current) {
         reset()
         onCreated(issue)
@@ -223,17 +257,20 @@ export function FeedbackWidget({
         onExpired()
         return
       }
-      const unknownOutcome = !(error instanceof ApiError) || error.status >= 500
-      setUncertain(unknownOutcome)
-      if (!unknownOutcome) submitted.current = undefined
+      // A rejected retry cannot determine whether an earlier attempt saved the issue.
+      const stillUncertain = uncertain || !(error instanceof ApiError) || error.status >= 500
+      setUncertain(stillUncertain)
+      if (!stillUncertain) submitted.current = undefined
       setError(
-        unknownOutcome
+        stillUncertain
           ? "提交結果尚未確認。請重試相同內容；重試不會重複新增。也可以先至 Issues 確認。"
           : error instanceof Error
             ? error.message
             : "送出失敗。",
       )
     } finally {
+      window.clearTimeout(timeout)
+      controller.current = undefined
       if (live.current) setBusy(false)
     }
   }
@@ -247,7 +284,7 @@ export function FeedbackWidget({
               title={
                 blockedCapture ? "此頁包含敏感內容，請使用文字或經遮蔽的圖片。" : "截取目前畫面"
               }
-              onClick={() => void prepare(captureViewport)}
+              onClick={() => void prepare()}
             >
               <CameraIcon />
               截圖
@@ -298,7 +335,7 @@ export function FeedbackWidget({
           onChange={(event) => {
             const value = event.target.files?.[0]
             event.target.value = ""
-            if (value) void prepare(() => loadScreenshot(value))
+            if (value) void prepare(value)
           }}
         />
       </div>
@@ -359,17 +396,16 @@ export function FeedbackWidget({
                 onPointerDown={down}
                 onPointerMove={move}
                 onPointerUp={up}
-                onPointerCancel={() => {
-                  start.current = undefined
-                  gesture.current = undefined
-                  setSelection(undefined)
-                }}
+                onPointerCancel={endGesture}
+                onLostPointerCapture={endGesture}
               />
               <Button
                 disabled={busy || uncertain}
                 onClick={() => {
                   try {
                     setReview(encodeFeedback(source, marks, crop))
+                    gesture.current = undefined
+                    setSelection(undefined)
                     setError("")
                   } catch (error) {
                     setError(error instanceof Error ? error.message : "無法處理圖片。")

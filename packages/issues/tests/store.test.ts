@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -17,6 +17,7 @@ let directory: string
 let db: DatabaseSync
 let store: IssueStore
 const audit = vi.fn()
+const requestId = "a1234567-1234-4abc-8def-123456789abc"
 const feedback = (description = "改善這個按鈕") => ({
   requestId: randomUUID(),
   description,
@@ -56,12 +57,66 @@ describe("issue storage", () => {
     initializeIssueStorage(db)
     expect(new IssueStore(db).get(issue.id)).toEqual(issue)
   })
-  it("deduplicates identical submissions and rejects changed retry payloads", () => {
-    const input = feedback()
-    const first = store.create(input, "42")
+  it("deduplicates case-variant submissions and rejects changed retry payloads", () => {
+    const input = { ...feedback(), requestId }
+    const first = store.create({ ...input, requestId: requestId.toUpperCase() }, "42")
+    expect(db.prepare("SELECT request_id FROM feedback_issues").get()).toEqual({
+      request_id: requestId,
+    })
     expect(store.create(input, "42")).toEqual({ issue: first.issue, created: false })
-    expect(() => store.create({ ...input, description: "changed" }, "42")).toThrow("already used")
+    expect(() => store.create({ ...input, description: "changed" }, "42")).toThrow(
+      expect.objectContaining({ status: 409 }),
+    )
     expect(audit).toHaveBeenCalledTimes(1)
+  })
+  it("matches legacy UUID spellings against their original fingerprints", () => {
+    const input = { ...feedback(""), requestId, screenshot: "aGVsbG8=" }
+    const image = { bytes: Buffer.from("hello"), mime: "image/png" }
+    const { issue } = store.create(input, "42", image)
+    const legacy = { ...input, requestId: requestId.toUpperCase() }
+    const legacyHash = createHash("sha256").update(JSON.stringify(legacy)).digest("hex")
+    db.prepare("UPDATE feedback_issues SET request_id=?, fingerprint=? WHERE id=?").run(
+      legacy.requestId,
+      legacyHash,
+      issue.id,
+    )
+
+    expect(store.create(input, "42", image)).toEqual({ issue, created: false })
+    expect(store.create(legacy, "42", image)).toEqual({ issue, created: false })
+    expect(() => store.create({ ...input, analyze: true }, "42", image)).toThrow(
+      expect.objectContaining({ status: 409 }),
+    )
+    expect(db.prepare("SELECT request_id, fingerprint FROM feedback_issues").get()).toEqual({
+      request_id: legacy.requestId,
+      fingerprint: legacyHash,
+    })
+    expect(audit).toHaveBeenCalledTimes(1)
+  })
+  it("preserves matching historical submissions when UUID spellings already coexist", () => {
+    const first = { ...feedback(), requestId: requestId.toUpperCase() }
+    const second = { ...feedback("other feedback"), requestId }
+    const { issue: oldIssue } = store.create(first, "42")
+    db.prepare("UPDATE feedback_issues SET request_id=?, fingerprint=? WHERE id=?").run(
+      first.requestId,
+      createHash("sha256").update(JSON.stringify(first)).digest("hex"),
+      oldIssue.id,
+    )
+    const { issue: otherIssue } = store.create({ ...second, requestId: randomUUID() }, "42")
+    db.prepare("UPDATE feedback_issues SET request_id=?, fingerprint=? WHERE id=?").run(
+      second.requestId,
+      createHash("sha256").update(JSON.stringify(second)).digest("hex"),
+      otherIssue.id,
+    )
+
+    expect(store.create({ ...first, requestId }, "42")).toEqual({
+      issue: oldIssue,
+      created: false,
+    })
+    expect(store.create({ ...second, requestId: first.requestId }, "42")).toEqual({
+      issue: otherIssue,
+      created: false,
+    })
+    expect(audit).toHaveBeenCalledTimes(2)
   })
   it("scopes retry keys to the authenticated actor", () => {
     const input = feedback()
@@ -92,16 +147,19 @@ describe("issue storage", () => {
     ).toThrow("Invalid screenshot")
   })
   it("paginates newest-first without repeating rows after concurrent insertion", () => {
-    for (let index = 0; index < ISSUE_PAGE_SIZE + 2; index++) store.create(feedback(), "42")
+    const ids = Array.from(
+      { length: ISSUE_PAGE_SIZE + 2 },
+      () => store.create(feedback(), "42").issue.id,
+    ).reverse()
     const first = store.list()
-    store.create(feedback(), "42")
+    const { issue: inserted } = store.create(feedback(), "42")
     const second = store.list(first.next ?? undefined)
-    expect(first.issues).toHaveLength(ISSUE_PAGE_SIZE)
-    expect(second.issues).toHaveLength(2)
+    expect(first.issues.map((issue) => issue.id)).toEqual(ids.slice(0, ISSUE_PAGE_SIZE))
+    expect(first.next).toBe(ids[ISSUE_PAGE_SIZE - 1])
+    const secondIds = second.issues.map((issue) => issue.id)
+    expect(secondIds).toEqual(ids.slice(ISSUE_PAGE_SIZE))
+    expect(secondIds).not.toContain(inserted.id)
     expect(second.next).toBe(null)
-    expect(first.issues.some((issue) => second.issues.some((other) => other.id === issue.id))).toBe(
-      false,
-    )
   })
   it("uses optimistic revisions for close, reopen and delete", () => {
     const { issue } = store.create(feedback(), "42")
@@ -132,6 +190,32 @@ describe("issue storage", () => {
     })
     expect(() => store.update(issue.id, 1, "closed", "42")).toThrow("audit failed")
     expect(store.get(issue.id).revision).toBe(1)
+  })
+  it("preserves an audit error when SQLite has already rolled back", () => {
+    db.exec("CREATE TABLE audit_guard (id INTEGER PRIMARY KEY); INSERT INTO audit_guard VALUES (1)")
+    audit.mockImplementationOnce(() => {
+      db.exec("INSERT OR ROLLBACK INTO audit_guard VALUES (1)")
+    })
+    expect(() => store.create(feedback(), "42")).toThrow("UNIQUE constraint failed: audit_guard.id")
+    expect(db.isTransaction).toBe(false)
+    expect(store.list().issues).toEqual([])
+  })
+  it("preserves an audit error even if rollback fails", () => {
+    const exec = db.exec.bind(db)
+    const cleanup = vi.spyOn(db, "exec").mockImplementation((sql) => {
+      if (sql === "ROLLBACK") throw new Error("rollback failed")
+      exec(sql)
+    })
+    audit.mockImplementationOnce(() => {
+      throw new Error("audit failed")
+    })
+    try {
+      expect(() => store.create(feedback(), "42")).toThrow("audit failed")
+      expect(cleanup).toHaveBeenCalledWith("ROLLBACK")
+    } finally {
+      cleanup.mockRestore()
+      if (db.isTransaction) db.exec("ROLLBACK")
+    }
   })
   it("bounds total issue count while permitting existing retries", () => {
     const input = feedback()

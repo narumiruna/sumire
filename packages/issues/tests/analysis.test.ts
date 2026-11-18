@@ -71,15 +71,25 @@ describe("analysis queue and versioning", () => {
   })
   it("idempotently admits one explicit analysis and rejects changed retry context", () => {
     const issue = create()
-    const request = input()
-    const job = analyses.request(issue.id, request, "42")
+    const request = { ...input(), requestId: "a1234567-1234-4abc-8def-123456789abc" }
+    const upper = { ...request, requestId: request.requestId.toUpperCase() }
+    const job = analyses.request(issue.id, upper, "42")
     expect(job).toMatchObject({ state: "queued", attempt: 1 })
+    expect(db.prepare("SELECT request_id FROM feedback_analyses WHERE id=?").get(job.id)).toEqual({
+      request_id: request.requestId,
+    })
     expect(analyses.request(issue.id, request, "42")).toEqual(job)
     expect(() => analyses.request(issue.id, { ...request, context: "changed" }, "42")).toThrow(
       "already used",
     )
     expect(() => analyses.request(issue.id, input(), "42")).toThrow("already admitted")
     expect(() => analyses.request(issue.id, { ...input(), model: "unapproved" }, "42")).toThrow()
+
+    db.prepare("UPDATE feedback_analyses SET request_id=? WHERE id=?").run(upper.requestId, job.id)
+    analyses.stop(job.id, "failed", "generation_failed")
+    expect(analyses.request(issue.id, request, "42")).toMatchObject({ id: job.id, state: "failed" })
+    expect(() => analyses.request(issue.id, request, "43")).toThrow("already used")
+    expect(analyses.list(issue.id)).toHaveLength(1)
   })
   it("prioritizes requested work and bounds queue admission without losing feedback", () => {
     create()

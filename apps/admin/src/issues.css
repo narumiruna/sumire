@@ -27,7 +27,7 @@
   display: block;
   width: 100%;
   height: auto;
-  border: 1px solid var(--gray-7);
+  outline: 1px solid var(--gray-7);
   touch-action: none;
   cursor: crosshair;
 }

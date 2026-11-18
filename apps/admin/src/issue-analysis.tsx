@@ -35,6 +35,7 @@ export function IssueAnalysisPanel({
   const [preview, setPreview] = useState<Proposal>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [readError, setReadError] = useState("")
   const [uncertain, setUncertain] = useState(false)
   const [readAt, setReadAt] = useState<number>()
   const pending = useRef<{ requestId: string; revision: number; context: string } | undefined>(
@@ -50,13 +51,14 @@ export function IssueAnalysisPanel({
     if (alive.current) {
       reads.current++
       setData(value)
+      setReadError("")
       setReadAt(Date.now())
     }
   }, [])
-  const fail = useCallback((error: unknown) => {
+  const fail = useCallback((error: unknown, showError: (message: string) => void) => {
     if (!alive.current || controller.current.signal.aborted) return
     if (error instanceof ApiError && error.status === 401) onExpiredRef.current()
-    else setError(error instanceof Error ? error.message : t("issues.failed"))
+    else showError(error instanceof Error ? error.message : t("issues.failed"))
   }, [])
   const load = useCallback(async () => {
     const version = ++reads.current
@@ -70,7 +72,7 @@ export function IssueAnalysisPanel({
       )
       if (alive.current && reads.current === version) accept(value)
     } catch (error) {
-      fail(error)
+      if (reads.current === version) fail(error, setReadError)
     }
   }, [issue.id, accept, fail])
   useEffect(
@@ -84,34 +86,38 @@ export function IssueAnalysisPanel({
   useEffect(() => {
     void load()
   }, [load, issue.state])
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load()
-    }
-    document.addEventListener("visibilitychange", refresh)
-    return () => document.removeEventListener("visibilitychange", refresh)
-  }, [load])
   const current = data?.analyses?.[0]
   useEffect(() => {
-    if (
-      !data?.available ||
-      busy ||
-      polls.current >= 120 ||
-      !current ||
-      !(
-        current.state === "queued" ||
+    const shouldPoll =
+      data?.available &&
+      !busy &&
+      current &&
+      (current.state === "queued" ||
         current.state === "running" ||
-        (current.state === "idle" && !current.sessionId)
-      )
-    )
-      return
-    const timer = setTimeout(() => {
-      if (document.visibilityState === "visible") {
+        (current.state === "idle" && !current.sessionId))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopped = false
+    function schedule() {
+      clearTimeout(timer)
+      if (stopped || !shouldPoll || polls.current >= 120 || document.visibilityState !== "visible")
+        return
+      timer = setTimeout(() => {
+        if (document.visibilityState !== "visible") return
         polls.current++
-        void load()
-      }
-    }, 3000)
-    return () => clearTimeout(timer)
+        void load().then(schedule)
+      }, 3000)
+    }
+    function refresh() {
+      clearTimeout(timer)
+      if (document.visibilityState === "visible") void load().then(schedule)
+    }
+    schedule()
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+      document.removeEventListener("visibilitychange", refresh)
+    }
   }, [current, data?.available, busy, load])
   async function mutate(work: () => Promise<IssueAnalyses>) {
     if (busy) return
@@ -121,7 +127,7 @@ export function IssueAnalysisPanel({
     try {
       accept(await work())
     } catch (error) {
-      fail(error)
+      fail(error, setError)
     } finally {
       if (alive.current) setBusy(false)
     }
@@ -175,6 +181,7 @@ export function IssueAnalysisPanel({
     current &&
     !["queued", "running"].includes(current.state) &&
     (current.state === "idle" || current.attempt < MAX_ANALYSIS_ATTEMPTS)
+  const visibleError = error || readError
   return (
     <section className="issue-analysis" aria-label={t("issues.analysis")}>
       <Flex justify="between" gap="3" align="center" wrap="wrap">
@@ -205,9 +212,9 @@ export function IssueAnalysisPanel({
           <Callout.Text>{t("issues.unavailable")}</Callout.Text>
         </Callout.Root>
       )}
-      {error && (
+      {visibleError && (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>{visibleError}</Callout.Text>
         </Callout.Root>
       )}
       {uncertain && (

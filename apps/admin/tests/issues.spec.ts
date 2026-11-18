@@ -8,6 +8,29 @@ import type {
 import { expect, type Page, test } from "@playwright/test"
 import { adminFixture, navigate } from "./admin-fixture.js"
 
+function deferred() {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+function issueFromFeedback(input: Feedback, id: number): Issue {
+  return {
+    id,
+    title: input.description || "畫面回饋",
+    description: input.description,
+    state: "open",
+    source: input.source,
+    section: input.source.section,
+    hasScreenshot: Boolean(input.screenshot),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    revision: 1,
+  }
+}
+
 async function fixture(page: Page) {
   await adminFixture(page)
   const state: { issues: Issue[]; submissions: Feedback[]; screenshots: number } = {
@@ -51,18 +74,7 @@ async function fixture(page: Page) {
       expect(request.headers()["x-csrf-token"]).toBe("fixture")
       const input = request.postDataJSON() as Feedback
       state.submissions.push(input)
-      const issue: Issue = {
-        id: state.issues.length + 1,
-        title: input.description || "畫面回饋",
-        description: input.description,
-        state: "open",
-        source: input.source,
-        section: input.source.section,
-        hasScreenshot: Boolean(input.screenshot),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        revision: 1,
-      }
+      const issue = issueFromFeedback(input, state.issues.length + 1)
       state.issues.unshift(issue)
       await route.fulfill({ status: 201, json: issue })
     } else if (request.method() === "PUT" && issue) {
@@ -118,10 +130,102 @@ for (const width of [1440, 390]) {
   })
 }
 
+for (const method of ["GET", "PUT", "DELETE"]) {
+  test(`keeps newly saved feedback selected after an older ${method} completes`, async ({
+    page,
+  }) => {
+    await fixture(page)
+    const section = page.getByRole("region", { name: "Issues", exact: true })
+    const older = await textFeedback(page, "Older feedback")
+    await older.getByRole("button", { name: "送出回饋", exact: true }).click()
+    await expect(section.getByRole("heading", { name: "#1 Older feedback" })).toBeVisible()
+
+    let pending = false
+    const release = deferred()
+    await page.route("**/api/issues/1", async (route) => {
+      if (route.request().method() === method) {
+        pending = true
+        await release.promise
+      }
+      await route.fallback()
+    })
+    try {
+      if (method === "GET") {
+        await section.getByRole("button", { name: "返回列表" }).click()
+        await section.getByRole("button", { name: "#1 Older feedback" }).click()
+      } else if (method === "PUT") {
+        await section.getByRole("button", { name: "關閉回饋" }).click()
+      } else {
+        page.once("dialog", async (dialog) => {
+          await dialog.accept()
+        })
+        await section.getByRole("button", { name: "永久刪除" }).click()
+      }
+      await expect.poll(() => pending).toBe(true)
+
+      const newer = await textFeedback(page, "Newer feedback")
+      await newer.getByRole("button", { name: "送出回饋", exact: true }).click()
+      const current = section.getByRole("heading", { name: "#2 Newer feedback" })
+      await expect(current).toBeVisible()
+      release.resolve()
+      const back = section.getByRole("button", { name: "返回列表" })
+      await expect(back).toBeEnabled()
+      await expect(current).toBeVisible()
+      await expect(section.getByText("回饋 #2 已儲存。")).toBeVisible()
+      await back.click()
+      await expect(section.getByRole("table")).toContainText("#2 Newer feedback")
+      const row = section.getByRole("row").filter({ hasText: "#1 Older feedback" })
+      if (method === "DELETE") await expect(row).toHaveCount(0)
+      else await expect(row).toContainText(method === "PUT" ? "已關閉" : "開啟中")
+    } finally {
+      release.resolve()
+    }
+  })
+}
+
+test("refreshing a detail does not erase a background list error", async ({ page }) => {
+  await fixture(page)
+  const dialog = await textFeedback(page, "Refresh detail")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  const section = page.getByRole("region", { name: "Issues", exact: true })
+  const heading = section.getByRole("heading", { name: "#1 Refresh detail" })
+  await expect(heading).toBeVisible()
+  await section.getByRole("button", { name: "返回列表" }).click()
+  await section.getByRole("button", { name: "#1 Refresh detail" }).click()
+  await expect(heading).toBeVisible()
+  const listUrl = /\/api\/issues\?/
+  await page.route(listUrl, (route) =>
+    route.fulfill({ status: 503, json: { error: "List temporarily unavailable" } }),
+  )
+  const failed = page.waitForResponse(listUrl)
+  await section.getByRole("button", { name: "關閉回饋" }).click()
+  await (await failed).finished()
+  const refreshed = page.waitForResponse("**/api/issues/1")
+  await section.getByRole("button", { name: "重新整理回饋" }).click()
+  await (await refreshed).finished()
+  await section.getByRole("button", { name: "返回列表" }).click()
+  await expect(section.getByRole("alert")).toHaveText("List temporarily unavailable")
+  await expect(section.getByRole("status").filter({ hasText: "尚未載入回饋。" })).toBeVisible()
+  await page.unroute(listUrl)
+  await section.getByRole("button", { name: "重新整理列表" }).click()
+  await expect(section.getByRole("table")).toContainText("已關閉")
+  await expect(section.getByRole("alert")).toHaveCount(0)
+})
+
 test("captures a frozen page, draws, redacts, crops, previews and submits image-only feedback", async ({
   page,
 }) => {
   const state = await fixture(page)
+  let attachmentRequests = 0
+  const releaseRetry = deferred()
+  await page.route("**/api/issues/*/screenshot**", async (route) => {
+    if (++attachmentRequests === 1) {
+      await route.fulfill({ status: 503 })
+      return
+    }
+    await releaseRetry.promise
+    await route.fallback()
+  })
   await page.getByRole("button", { name: "回報問題", exact: true }).click()
   await page.getByRole("button", { name: "截圖", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "回報問題", exact: true })
@@ -143,10 +247,10 @@ test("captures a frozen page, draws, redacts, crops, previews and submits image-
   await dialog.getByRole("button", { name: "預覽送出圖片", exact: true }).click()
   const preview = dialog.getByRole("img", { name: "即將送出的裁切與標註圖片" })
   await expect(preview).toBeVisible()
-  const dimensions = await preview.evaluate((image: HTMLImageElement) => ({
-    width: image.naturalWidth,
-    height: image.naturalHeight,
-  }))
+  const dimensions = await preview.evaluate(async (image: HTMLImageElement) => {
+    await image.decode()
+    return { width: image.naturalWidth, height: image.naturalHeight }
+  })
   expect(dimensions.width).toBeGreaterThan(1)
   expect(dimensions.width).toBeLessThan(1000)
   const redactedPixel = await preview.evaluate((image: HTMLImageElement) => {
@@ -167,7 +271,25 @@ test("captures a frozen page, draws, redacts, crops, previews and submits image-
   })
   expect(redactedPixel).toEqual([17, 17, 17, 255])
   await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
-  await expect(page.locator(".issue-screenshot")).toBeVisible()
+  const attachmentError = page.getByRole("alert").filter({ hasText: "截圖無法載入" })
+  const attachment = page.locator(".issue-screenshot")
+  await expect(attachmentError).toBeVisible()
+  await expect(attachment).toBeHidden()
+  try {
+    await page.getByRole("button", { name: "重新整理回饋", exact: true }).click()
+    await expect.poll(() => attachmentRequests).toBe(2)
+    await expect(attachmentError).toBeVisible()
+  } finally {
+    releaseRetry.resolve()
+  }
+  expect(
+    await attachment.evaluate(async (image: HTMLImageElement) => {
+      await image.decode()
+      return { width: image.naturalWidth, height: image.naturalHeight }
+    }),
+  ).toEqual(dimensions)
+  await expect(attachment).toBeVisible()
+  await expect(attachmentError).toHaveCount(0)
   expect(state.submissions[0]?.description).toBe("")
   expect(state.submissions[0]?.screenshot).toMatch(/^iVBOR/)
   expect(state.screenshots).toBe(1)
@@ -221,6 +343,107 @@ test("an ambiguous network result retries the exact same request ID and content"
   await expect(dialog).not.toBeVisible()
   expect(submissions).toHaveLength(2)
   expect(submissions[1]).toEqual(submissions[0])
+})
+
+test("a stalled feedback submission remains locked through a rate-limited retry", async ({
+  page,
+}) => {
+  await page.clock.install()
+  await page.addInitScript(() => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    AbortSignal.timeout = (delay) => {
+      if (delay !== 15_000) return timeout(delay)
+      // Native AbortSignal timers do not use Playwright's clock.
+      const controller = new AbortController()
+      setTimeout(
+        () => controller.abort(new DOMException("Submission timed out", "TimeoutError")),
+        delay,
+      )
+      return controller.signal
+    }
+  })
+  const state = await fixture(page)
+  const submissions: Feedback[] = []
+  const release = deferred()
+  await page.route("**/api/issues", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    const input = route.request().postDataJSON() as Feedback
+    submissions.push(input)
+    if (submissions.length === 1) {
+      // The server saved the issue, but the client has not received the response.
+      const issue = issueFromFeedback(input, 1)
+      state.issues.push(issue)
+      await release.promise
+      await route.fulfill({ status: 201, json: issue })
+    } else if (submissions.length === 2) {
+      await route.fulfill({ status: 429, json: { error: "Too many requests" } })
+    } else {
+      const matchesSavedRequest = input.requestId === submissions[0]?.requestId
+      const issue = matchesSavedRequest ? state.issues[0] : issueFromFeedback(input, 2)
+      if (!matchesSavedRequest && issue) state.issues.push(issue)
+      await route.fulfill({ status: matchesSavedRequest ? 200 : 201, json: issue })
+    }
+  })
+  try {
+    const dialog = await textFeedback(page, "Feedback with a lost response")
+    const textbox = dialog.getByRole("textbox")
+    const consent = dialog.getByRole("checkbox")
+    await consent.check()
+    await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+    await expect.poll(() => state.issues.length).toBe(1)
+    await expect(dialog.getByRole("button", { name: "送出中…", exact: true })).toBeDisabled()
+    await page.clock.fastForward(15_000)
+    const retry = dialog.getByRole("button", { name: "重試相同提交", exact: true })
+    await expect(retry).toBeEnabled()
+    await expect(textbox).toBeDisabled()
+    await expect(consent).toBeDisabled()
+    await retry.click()
+    await expect.poll(() => submissions.length).toBe(2)
+    await expect(retry).toBeEnabled()
+    await expect(textbox).toBeDisabled()
+    await expect(consent).toBeDisabled()
+    await retry.click()
+    await expect(dialog).not.toBeVisible()
+    expect(submissions).toHaveLength(3)
+    expect(submissions[1]).toEqual(submissions[0])
+    expect(submissions[2]).toEqual(submissions[0])
+    expect(submissions[0]?.analyze).toBe(true)
+    expect(state.issues).toHaveLength(1)
+    await expect(
+      page.getByRole("heading", { name: "#1 Feedback with a lost response" }),
+    ).toBeVisible()
+  } finally {
+    release.resolve()
+  }
+})
+
+test("a rate limit before any uncertain submission leaves the draft editable", async ({ page }) => {
+  await fixture(page)
+  const submissions: Feedback[] = []
+  await page.route("**/api/issues", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback()
+      return
+    }
+    const input = route.request().postDataJSON() as Feedback
+    submissions.push(input)
+    if (submissions.length === 1)
+      await route.fulfill({ status: 429, json: { error: "Too many requests" } })
+    else await route.fulfill({ status: 201, json: issueFromFeedback(input, 1) })
+  })
+  const dialog = await textFeedback(page, "Draft before rate limit")
+  const send = dialog.getByRole("button", { name: "送出回饋", exact: true })
+  await send.click()
+  await expect(dialog.getByRole("alert")).toHaveText("Too many requests")
+  await dialog.getByRole("textbox").fill("Edited after rate limit")
+  await send.click()
+  await expect(dialog).not.toBeVisible()
+  expect(submissions).toHaveLength(2)
+  expect(submissions[1]?.description).toBe("Edited after rate limit")
+  expect(submissions[1]?.requestId).not.toBe(submissions[0]?.requestId)
 })
 
 test("expiry clears feedback drafts and returns to sign-in", async ({ page }) => {
@@ -382,6 +605,28 @@ test("analysis consent is explicit on feedback collection", async ({ page }) => 
   await expect(dialog).not.toBeVisible()
   expect(state.submissions[0]?.analyze).toBe(true)
 })
+test("analysis polling recovers from a failed metadata read", async ({ page }) => {
+  await fixture(page)
+  const analysis = analysisFixture()
+  let reads = 0
+  await page.route("**/api/issues/*/analysis", async (route) => {
+    reads++
+    if (reads === 2) {
+      await route.fulfill({ status: 503, json: { error: "Analysis temporarily unavailable" } })
+      return
+    }
+    analysis.state = reads === 1 ? "running" : "completed"
+    await route.fulfill({ json: { available: true, analyses: [analysis] } })
+  })
+  const dialog = await textFeedback(page, "Poll for analysis")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+  await expect(panel.getByText("Analyzing", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveText("Analysis temporarily unavailable")
+  await expect(panel.getByText("Report ready", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+})
+
 test("analysis admission retries the same immutable payload and supports cancellation", async ({
   page,
 }) => {
@@ -414,7 +659,7 @@ test("analysis admission retries the same immutable payload and supports cancell
   await panel.getByRole("button", { name: "Request analysis", exact: true }).click()
   await expect(panel.getByLabel("Additional context (optional)")).toBeDisabled()
   await panel.getByRole("button", { name: "Retry the same request", exact: true }).click()
-  expect(inputs).toHaveLength(2)
+  await expect.poll(() => inputs.length).toBe(2)
   expect(inputs[1]).toEqual(inputs[0])
   await panel.getByRole("button", { name: "Cancel analysis", exact: true }).click()
   await expect(panel.getByText("Cancelled", { exact: true })).toBeVisible()
