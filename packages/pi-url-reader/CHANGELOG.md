@@ -1,5 +1,17 @@
 # @narumitw/sumire-pi-url-reader
 
+## 0.7.8
+
+### Patch Changes
+
+- 51276a2: Update Vitest across the workspaces and refresh Playwright, localization, and
+  runtime dependencies. Update Logfire and the tracing SDK while keeping the
+  OpenTelemetry API at 1.9.1, which both support. Refresh the generated API
+  catalogs for Polymarket client 0.20.0. When filtering `listOpenOrders` by
+  asset or token, also supply the market condition ID.
+- Updated dependencies [51276a2]
+  - @narumitw/sumire-url-reader@0.28.1
+
 ## 0.7.7
 
 ### Patch Changes
