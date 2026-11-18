@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import type { DatabaseSync } from "node:sqlite"
+import { initializeAnalysisStorage, insertInitialAnalysis } from "./analysis-store.js"
+import { IssueError } from "./errors.js"
 import {
   feedbackSchema,
   ISSUE_PAGE_SIZE,
@@ -12,14 +14,7 @@ import {
   MAX_SCREENSHOT_BYTES,
 } from "./index.js"
 
-export class IssueError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
+export { IssueError } from "./errors.js"
 export function initializeIssueStorage(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS feedback_issues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +24,7 @@ export function initializeIssueStorage(db: DatabaseSync) {
     screenshot BLOB, mime TEXT, created INTEGER NOT NULL, updated INTEGER NOT NULL,
     revision INTEGER NOT NULL DEFAULT 1, UNIQUE(actor, request_id)
   );`)
+  initializeAnalysisStorage(db)
 }
 interface Row {
   id: number
@@ -61,6 +57,7 @@ export class IssueStore {
   constructor(
     private readonly db: DatabaseSync,
     private readonly audit: (actor: string, operation: string, id: number) => void = () => {},
+    private readonly analysisRevision: () => number | null = () => null,
   ) {}
   private transaction<T>(work: () => T): T {
     this.db.exec("BEGIN IMMEDIATE")
@@ -86,7 +83,9 @@ export class IssueStore {
           !["image/png", "image/jpeg", "image/webp"].includes(image.mime)))
     )
       throw new IssueError(400, "Invalid screenshot")
-    const fingerprint = createHash("sha256").update(JSON.stringify(feedback)).digest("hex")
+    const canonical = { ...feedback } as Partial<typeof feedback>
+    if (!canonical.analyze) delete canonical.analyze
+    const fingerprint = createHash("sha256").update(JSON.stringify(canonical)).digest("hex")
     return this.transaction(() => {
       const existing = this.db
         .prepare("SELECT id, fingerprint FROM feedback_issues WHERE actor=? AND request_id=?")
@@ -130,6 +129,7 @@ export class IssueStore {
           now,
         )
       const id = Number(result.lastInsertRowid)
+      insertInitialAnalysis(this.db, id, actor, Boolean(feedback.analyze), this.analysisRevision())
       this.audit(actor, "issue.create", id)
       return { issue: this.get(id), created: true }
     })
@@ -176,6 +176,12 @@ export class IssueStore {
       this.db
         .prepare("UPDATE feedback_issues SET state=?, updated=?, revision=revision+1 WHERE id=?")
         .run(state, Date.now(), id)
+      if (state === "closed")
+        this.db
+          .prepare(
+            "UPDATE feedback_analyses SET state='cancelled', reason='issue_closed', updated=?, revision=revision+1 WHERE issue_id=? AND state IN ('idle','queued','running','blocked')",
+          )
+          .run(Date.now(), id)
       this.audit(actor, `issue.${state}`, id)
       return this.get(id)
     })
@@ -187,6 +193,12 @@ export class IssueStore {
         throw new IssueError(409, "Issue changed. Refresh before trying again.")
       // Overwrite deleted SQLite pages; snapshots/backups require separate retention controls.
       this.db.exec("PRAGMA secure_delete = ON")
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO feedback_analysis_gc SELECT id FROM feedback_analyses WHERE issue_id=?",
+        )
+        .run(id)
+      this.db.prepare("DELETE FROM feedback_analyses WHERE issue_id=?").run(id)
       this.db.prepare("DELETE FROM feedback_issues WHERE id=?").run(id)
       this.audit(actor, "issue.delete", id)
     })

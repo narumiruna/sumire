@@ -2,6 +2,8 @@ import type { Issue, IssuePage, IssueState } from "@narumitw/sumire-issues"
 import { Badge, Button, Callout, Flex, Heading, Table, Text } from "@radix-ui/themes"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { t } from "./i18n.js"
+import { IssueAnalysisPanel } from "./issue-analysis.js"
 
 const date = (value: number) => new Date(value).toLocaleString("zh-TW")
 export function Issues({
@@ -95,9 +97,7 @@ export function Issues({
   }
   return (
     <section aria-label="Issues" className="issues-workspace">
-      <Text as="p">
-        此版本可收集、檢視及管理回饋。Agent session、改善方案與核准後發 PR 尚未啟用。
-      </Text>
+      <Text as="p">{t("issues.pageHelp")}</Text>
       {notice && (
         <Text as="p" role="status">
           回饋 #{notice} 已儲存。
@@ -160,6 +160,12 @@ export function Issues({
               }}
             />
           )}
+          <IssueAnalysisPanel
+            key={selected.id}
+            issue={selected}
+            csrf={csrf}
+            onExpired={onExpired}
+          />
           <Flex gap="3" wrap="wrap">
             <Button
               disabled={busy}

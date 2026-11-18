@@ -8,6 +8,7 @@ export const issueState = z.enum(["open", "closed"])
 export const feedbackSchema = z
   .object({
     requestId: z.uuid(),
+    analyze: z.boolean().optional(),
     description: z.string().trim().max(8000).default(""),
     source: z
       .object({
@@ -56,3 +57,25 @@ export const issueMutationSchema = z
 export const issueDeletionSchema = z
   .object({ revision: z.number().int().positive().safe() })
   .strict()
+
+export type {
+  AnalysisReason,
+  AnalysisReport,
+  AnalysisState,
+  IssueAnalyses,
+  IssueAnalysis,
+  Proposal,
+} from "./analysis.js"
+export {
+  ANALYSIS_TIMEOUT_MS,
+  analysisCancelSchema,
+  analysisReason,
+  analysisReportSchema,
+  analysisRequestSchema,
+  analysisSelectionSchema,
+  analysisState,
+  MAX_ANALYSIS_ATTEMPTS,
+  MAX_ANALYSIS_QUEUE,
+  proposalSchema,
+} from "./analysis.js"
+export { renderProposalSvg } from "./preview.js"

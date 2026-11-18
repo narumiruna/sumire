@@ -1,4 +1,10 @@
-import type { Feedback, Issue, IssuePage } from "@narumitw/sumire-issues"
+import type {
+  AnalysisReport,
+  Feedback,
+  Issue,
+  IssueAnalysis,
+  IssuePage,
+} from "@narumitw/sumire-issues"
 import { expect, type Page, test } from "@playwright/test"
 import { adminFixture, navigate } from "./admin-fixture.js"
 
@@ -18,6 +24,10 @@ async function fixture(page: Page) {
         body: Buffer.from(state.submissions[0]?.screenshot ?? "", "base64"),
         contentType: "image/png",
       })
+      return
+    }
+    if (url.pathname.includes("/analysis")) {
+      await route.fulfill({ json: { available: false, analyses: [] } })
       return
     }
     const id = Number(url.pathname.split("/")[3])
@@ -84,7 +94,7 @@ for (const width of [1440, 390]) {
     await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Issues", exact: true })).toBeVisible()
     await expect(
-      page.getByText("Agent session、改善方案與核准後發 PR 尚未啟用。", { exact: false }),
+      page.getByText("Implementation and automatic PRs are not enabled.", { exact: false }),
     ).toBeVisible()
     await expect(page.locator(".issue-description")).toContainText("<script>alert(1)</script>")
     expect(state.submissions).toHaveLength(1)
@@ -248,4 +258,164 @@ test("capture filtering excludes form values, private regions and external image
     return candidates.map((element) => captureFilter(element))
   })
   expect(filtered).toEqual([false, false, false, false, false, false])
+})
+
+const proposalReport: AnalysisReport = {
+  summary: "將操作集中在易辨識的位置。",
+  limitations: "概念線框；尚未檢視原始碼。",
+  questions: [],
+  proposals: [
+    {
+      title: "集中工具列",
+      rationale: "降低尋找主要操作的負擔。",
+      changes: ["主要操作固定在標題旁。"],
+      tradeoffs: "手機版需要換行。",
+      preview: {
+        title: "工具列概念",
+        layout: "stack",
+        sections: [
+          {
+            heading: "主要操作",
+            body: "<script>window.__proposalInjected = true</script>",
+            button: "儲存",
+          },
+        ],
+      },
+    },
+    {
+      title: "分組操作",
+      rationale: "把次要操作放到選單。",
+      changes: ["依任務區分主要與次要操作。"],
+      tradeoffs: "次要操作多一次點擊。",
+      preview: {
+        title: "分組概念",
+        layout: "columns",
+        sections: [
+          { heading: "主要操作", body: "快速存取", button: "儲存" },
+          { heading: "其他", body: "次要操作", button: "更多" },
+        ],
+      },
+    },
+  ],
+}
+function analysisFixture(): IssueAnalysis {
+  return {
+    id: "12345678-1234-4234-8234-123456789abc",
+    issueId: 1,
+    attempt: 1,
+    state: "idle",
+    reason: null,
+    sessionId: "87654321-4321-4321-8321-cba987654321",
+    conversationId: 1,
+    submissionId: null,
+    model: null,
+    deadline: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    report: null,
+    selectedProposal: null,
+    revision: 1,
+  }
+}
+for (const width of [1440, 390]) {
+  test(`compares inert proposals and records a choice without implementation at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await fixture(page)
+    const analysis = analysisFixture()
+    const writes: { path: string; body: Record<string, unknown> }[] = []
+    await page.route("**/api/issues/*/analysis**", async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (route.request().method() === "POST") {
+        const body = route.request().postDataJSON() as Record<string, unknown>
+        writes.push({ path, body })
+        if (path.endsWith("/select")) {
+          expect(body.analysisId).toBe(analysis.id)
+          expect(body.revision).toBe(analysis.revision)
+          analysis.selectedProposal = body.proposal as number | null
+        } else {
+          analysis.state = "completed"
+          analysis.model = "fixture/test"
+          analysis.submissionId = 3
+          analysis.report = proposalReport
+        }
+        analysis.revision++
+      }
+      await route.fulfill({ json: { available: true, analyses: [analysis] } })
+    })
+    const dialog = await textFeedback(page, "改善操作區")
+    await expect(dialog.getByRole("checkbox")).not.toBeChecked()
+    await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+    const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+    await expect(panel.getByText(analysis.sessionId ?? "", { exact: true })).toBeVisible()
+    await panel.getByLabel("Additional context (optional)").fill("請維持現有配色")
+    await panel.getByRole("button", { name: "Request analysis", exact: true }).click()
+    await expect(panel.getByRole("img")).toHaveCount(2)
+    await expect(panel.getByRole("img", { name: "工具列概念", exact: true })).toBeVisible()
+    await panel.getByRole("button", { name: "View larger wireframe", exact: true }).first().click()
+    const preview = page.getByRole("dialog", { name: "工具列概念", exact: true })
+    await expect(preview.getByRole("img")).toBeVisible()
+    await expect(preview.getByRole("img")).toHaveJSProperty("naturalWidth", 840)
+    await preview.getByRole("button", { name: "Close preview", exact: true }).click()
+    await panel.getByRole("button", { name: "Select for discussion", exact: true }).nth(1).click()
+    await expect(
+      panel.getByRole("button", { name: "Selected — click to clear", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true")
+    expect(writes).toHaveLength(2)
+    expect(writes[0]?.body.context).toBe("請維持現有配色")
+    expect(writes[1]?.path).toBe("/api/issues/1/analysis/select")
+    expect(state.submissions[0]?.analyze).toBeUndefined()
+    expect(await page.evaluate(() => Reflect.get(window, "__proposalInjected"))).toBeUndefined()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({
+      path: testInfo.outputPath(`issue-proposals-${width}.png`),
+      fullPage: true,
+    })
+  })
+}
+test("analysis consent is explicit on feedback collection", async ({ page }) => {
+  const state = await fixture(page)
+  const dialog = await textFeedback(page, "送出後分析")
+  await dialog.getByRole("checkbox").check()
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(state.submissions[0]?.analyze).toBe(true)
+})
+test("analysis admission retries the same immutable payload and supports cancellation", async ({
+  page,
+}) => {
+  await fixture(page)
+  const analysis = analysisFixture()
+  const inputs: Record<string, unknown>[] = []
+  await page.route("**/api/issues/*/analysis**", async (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (route.request().method() === "POST") {
+      if (path.endsWith("/cancel")) {
+        analysis.state = "cancelled"
+        analysis.reason = "cancelled"
+        analysis.revision++
+      } else {
+        inputs.push(route.request().postDataJSON())
+        if (inputs.length === 1) {
+          await route.abort("failed")
+          return
+        }
+        analysis.state = "queued"
+        analysis.revision++
+      }
+    }
+    await route.fulfill({ json: { available: true, analyses: [analysis] } })
+  })
+  const dialog = await textFeedback(page, "等待確認")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+  await panel.getByLabel("Additional context (optional)").fill("只需線框")
+  await panel.getByRole("button", { name: "Request analysis", exact: true }).click()
+  await expect(panel.getByLabel("Additional context (optional)")).toBeDisabled()
+  await panel.getByRole("button", { name: "Retry the same request", exact: true }).click()
+  expect(inputs).toHaveLength(2)
+  expect(inputs[1]).toEqual(inputs[0])
+  await panel.getByRole("button", { name: "Cancel analysis", exact: true }).click()
+  await expect(panel.getByText("Cancelled", { exact: true })).toBeVisible()
 })

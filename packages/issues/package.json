@@ -16,6 +16,10 @@
     "./store": {
       "types": "./dist/store.d.ts",
       "import": "./dist/store.js"
+    },
+    "./analysis-store": {
+      "types": "./dist/analysis-store.d.ts",
+      "import": "./dist/analysis-store.js"
     }
   },
   "files": [

@@ -10,15 +10,20 @@ import type {
 } from "@narumitw/sumire-contracts"
 import { decodeImage } from "@narumitw/sumire-imagegen"
 import {
+  analysisCancelSchema,
+  analysisRequestSchema,
+  analysisSelectionSchema,
   feedbackSchema,
   issueDeletionSchema,
   issueMutationSchema,
   issueState,
   MAX_SCREENSHOT_BYTES,
 } from "@narumitw/sumire-issues"
+import { AnalysisStore } from "@narumitw/sumire-issues/analysis-store"
 import { IssueError, IssueStore } from "@narumitw/sumire-issues/store"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import { z } from "zod"
+import type { IssueAnalysisRuntime } from "../issues/runtime.js"
 import { accessTokenPattern, ChatAccess } from "./access.js"
 import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
@@ -36,6 +41,7 @@ interface AdminServices {
   mcp: McpAdmin
   runtime?: RuntimeConfigAdmin
   github?: GitHubAuth
+  analysis?: IssueAnalysisRuntime
   apply(): Promise<void>
   tools(): string[]
   toolAvailability?(): Promise<Inventory["toolAvailability"]>
@@ -86,9 +92,13 @@ const reply = (res: ServerResponse, status: number, value: unknown) => {
 export function createAdminServer(config: AdminConfig, services: AdminServices) {
   const { store, providers, mcp } = services
   services.github?.configure(services.apply, () => Boolean(mcp.probes.size))
-  const issues = new IssueStore(store.db, (actor, operation, id) =>
-    store.audit(actor, operation, store.snapshot().revision, "completed", `issue:${id}`),
+  const issues = new IssueStore(
+    store.db,
+    (actor, operation, id) =>
+      store.audit(actor, operation, store.snapshot().revision, "completed", `issue:${id}`),
+    () => store.snapshot().revision,
   )
+  const analyses = services.analysis?.analyses ?? new AnalysisStore(store.db)
   const login = new PasskeyAdminLogin(config, store)
   const access = new ChatAccess(store)
   const buckets = new Map<string, { start: number; count: number }>()
@@ -290,13 +300,49 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           session.actor,
           image ? { bytes: image.bytes, mime: image.mimeType } : undefined,
         )
+        void services.analysis?.wake()
         reply(res, result.created ? 201 : 200, result.issue)
         return
       }
-      const route = /^\/api\/issues\/([1-9]\d*)(\/screenshot)?$/.exec(url.pathname)
+      const route =
+        /^\/api\/issues\/([1-9]\d*)(\/(?:screenshot|analysis(?:\/(?:cancel|select))?))?$/.exec(
+          url.pathname,
+        )
       if (!route) throw new AdminError(404, "Not found")
       const id = z.coerce.number().int().positive().safe().parse(route[1])
-      if (route[2]) {
+      if (route[2]?.startsWith("/analysis")) {
+        if (route[2] === "/analysis" && method === "GET") {
+          reply(res, 200, {
+            available: services.analysis?.available ?? false,
+            analyses: analyses.list(id),
+          })
+          return
+        }
+        if (method !== "POST") throw new AdminError(405, "Method not allowed")
+        if (route[2] === "/analysis") {
+          if (!services.analysis?.available)
+            throw new AdminError(503, "Issue analysis worker is unavailable")
+          limited(`issue-analysis:${session.actor}`, 6)
+          const input = analysisRequestSchema.parse(await body(req, 16384))
+          assertCurrentSession()
+          services.analysis.request(id, input, session.actor)
+        } else if (route[2] === "/analysis/cancel") {
+          const input = analysisCancelSchema.parse(await body(req, 4096))
+          assertCurrentSession()
+          if (services.analysis)
+            await services.analysis.cancel(id, input.analysisId, input.revision, session.actor)
+          else analyses.cancel(id, input.analysisId, input.revision, session.actor)
+          assertCurrentSession()
+        } else {
+          const input = analysisSelectionSchema.parse(await body(req, 4096))
+          assertCurrentSession()
+          analyses.select(id, input.analysisId, input.revision, input.proposal, session.actor)
+        }
+        reply(res, 200, {
+          available: services.analysis?.available ?? false,
+          analyses: analyses.list(id),
+        })
+      } else if (route[2]) {
         if (method !== "GET") throw new AdminError(405, "Method not allowed")
         const attachment = issues.attachment(id)
         res.writeHead(200, {
@@ -309,11 +355,16 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       else if (method === "PUT") {
         const input = issueMutationSchema.parse(await body(req, 4096))
         assertCurrentSession()
-        reply(res, 200, issues.update(id, input.revision, input.state, session.actor))
+        const issue = issues.update(id, input.revision, input.state, session.actor)
+        if (input.state === "closed") await services.analysis?.changed(id)
+        assertCurrentSession()
+        reply(res, 200, issue)
       } else if (method === "DELETE") {
         const input = issueDeletionSchema.parse(await body(req, 4096))
         assertCurrentSession()
         issues.delete(id, input.revision, session.actor)
+        await services.analysis?.changed(id)
+        assertCurrentSession()
         reply(res, 200, { ok: true })
       } else throw new AdminError(405, "Method not allowed")
       return
@@ -724,6 +775,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           resolve()
         })
       })
+      services.analysis?.start()
     },
     stop() {
       closing ??= (async () => {
@@ -737,7 +789,13 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           server.close((error) => (error ? reject(error) : resolve()))
           server.closeIdleConnections()
         })
-        await Promise.all([providers.cancelOwner(), services.github?.close(), mcp.close(), drained])
+        await Promise.all([
+          providers.cancelOwner(),
+          services.github?.close(),
+          services.analysis?.close(),
+          mcp.close(),
+          drained,
+        ])
       })()
       return closing
     },

@@ -49,7 +49,7 @@ The cache stamp reports the persisted read time, not live execution health. The 
 
 ## Visual feedback
 
-The global lower-left feedback button collects annotated/cropped screenshots or text. **Issues** lists private administrator feedback and supports close/reopen and confirmed deletion. This initial phase does not create agent sessions, proposals, or PRs. See [scope, privacy, limits and rollout](visual-issues.md).
+The global lower-left feedback button collects annotated/cropped screenshots or text. **Issues** lists private administrator feedback and supports close/reopen and confirmed deletion. Real Durable sessions support explicitly requested agent analysis, structured proposals, inert SVG previews and recorded choices. Choosing an option does not authorize implementation; code changes and automatic PRs remain disabled. See [collection privacy and rollout](visual-issues.md) and [analysis permissions and recovery](issue-analysis.md).
 
 ## Model setup save boundaries
 

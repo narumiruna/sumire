@@ -9,7 +9,7 @@ export default defineConfig({
           groups: [
             {
               name: "feedback",
-              test: /[\\/]src[\\/](feedback(?:-image)?|issues)\.tsx?$/,
+              test: /[\\/]src[\\/](feedback(?:-image)?|issues|issue-analysis)\.tsx?$/,
               includeDependenciesRecursively: false,
             },
             { name: "translations", test: /[\\/]src[\\/]locales[\\/]/ },

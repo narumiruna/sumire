@@ -1,6 +1,6 @@
-# Visual feedback / Issues — phase 1
+# Visual feedback / Issues — collection and analysis
 
-## Delivered scope
+## Delivered collection scope
 
 - An authenticated global lower-left feedback entry opens screenshot, upload, and text tools.
 - Screenshots are DOM-based, frozen into a local canvas, with pen, box, opaque redaction,
@@ -9,8 +9,9 @@
 - Issues appear in the sidebar, with paginated/filterable metadata, details, screenshot,
   revision-checked close/reopen, and confirmed permanent deletion.
 - `packages/issues` owns browser-safe contracts and the host-owned SQLite storage adapter.
-- This phase does not create agent sessions, proposals, implementation jobs, or GitHub PRs.
-  Both collection and Issues explain this limit; no fake agent/session status is displayed.
+- Real independent Durable sessions, explicit model-analysis consent, structured proposals
+  and version-bound choices are described in [phase 2](issue-analysis.md). Implementation
+  jobs and GitHub PR execution remain unimplemented; no fake agent/session status is shown.
 
 ## Privacy and limits
 
@@ -74,7 +75,8 @@ Do not enable request-body logging. Private screenshot data is part of the admin
 
 Rollback bot/admin together to the previous build. Older code ignores the additive table;
 collected feedback remains on disk without old-build routes. Do not restore a stale settings
-snapshot just to remove the UI. No agent tasks need draining in this phase.
+snapshot just to remove the UI. With phase-two analysis enabled, cancel admitted jobs before
+rollback and follow its separate session-file cleanup instructions.
 
 ## Verification
 
@@ -89,7 +91,7 @@ actual DOM capture → drawing/redaction → crop → final PNG submission, sens
 restriction, uncertain-submit retry and expired-session draft clearing. It is not evidence of
 live deployment, Safari/iOS compatibility, or reverse-proxy payload configuration.
 
-### Local validation results
+### Phase-one local validation results
 
 - Root `format:check`, `lint`, `typecheck`, and `build` passed.
 - All 3,297 unit/integration tests passed with
@@ -103,17 +105,15 @@ live deployment, Safari/iOS compatibility, or reverse-proxy payload configuratio
   real screenshots, real issue submissions, model calls, or GitHub workflow actions were
   exercised by the test fixtures.
 
-## Next phases (not implemented here)
+## Analysis and remaining implementation work
 
-1. Link each issue to at least one real, independently owned Pi Durable analysis session,
-   with bounded queue admission, restart recovery, cancellation, retry and model authorization.
-   Retain collected issues when model access is unavailable, clearly showing that blocker.
-2. Have a constrained tool publish 1–3 validated proposal records, not free-text JSON parsing.
-   Store proposal versions and isolated HTML/SVG preview artifacts. Do not execute model HTML
-   in the admin origin. Imagegen is optional and quota-consuming, not a required path.
-3. Explicitly approve a particular immutable proposal version for `narumiruna/sumire`.
-   Admission must be transactional and idempotent, with no action granted by screenshot text.
-4. Run implementation outside the deployed workdir, in a secret-free worker sandbox. A git
-   worktree is not a security sandbox. Use a restricted host-owned publisher for branches and
-   Draft PRs. Reconcile ambiguous GitHub results before retrying external mutations. Never
-   auto-merge, push to main, deploy, or inherit Telegram conversation/tool permissions.
+[Phase 2](issue-analysis.md) adds real Durable sessions, consented model admission,
+clarification/proposal reports, bounded inert wireframes and recorded choices. It does not
+read repository source or implement a selected proposal. Use its rollout/retention guidance
+for native session data and active work; the phase-one results above are historical.
+
+The remaining phase must explicitly approve an immutable proposal version for
+`narumiruna/sumire`, then use a secret-free isolated development worker and restricted
+publisher. A git worktree is not a security sandbox. Reconcile ambiguous GitHub results
+before retrying mutations. Never inherit Telegram tool permissions, push to main, auto-merge
+or deploy. A stored phase-two choice alone must never authorize any of these actions.

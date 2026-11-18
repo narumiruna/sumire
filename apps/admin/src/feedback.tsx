@@ -20,6 +20,7 @@ import {
   type Rectangle,
   rectangle,
 } from "./feedback-image.js"
+import { t } from "./i18n.js"
 
 type Tool = "pen" | "box" | "redact" | "crop"
 export function FeedbackWidget({
@@ -38,6 +39,7 @@ export function FeedbackWidget({
   const [source, setSource] = useState<HTMLCanvasElement>()
   const [metadata, setMetadata] = useState<Feedback["source"]>()
   const [description, setDescription] = useState("")
+  const [analyzeAfterSubmit, setAnalyzeAfterSubmit] = useState(false)
   const [marks, setMarks] = useState<Mark[]>([])
   const [tool, setTool] = useState<Tool>("pen")
   const [crop, setCrop] = useState<Rectangle>()
@@ -84,6 +86,7 @@ export function FeedbackWidget({
     setExpanded(false)
     setSource(undefined)
     setDescription("")
+    setAnalyzeAfterSubmit(false)
     setMarks([])
     setCrop(undefined)
     setSelection(undefined)
@@ -205,6 +208,7 @@ export function FeedbackWidget({
         description,
         source: metadata ?? context(),
         ...(review ? { screenshot: review } : {}),
+        ...(analyzeAfterSubmit ? { analyze: true } : {}),
       }
       submitted.current = value
       const issue = await request<Issue>("issues", csrf, value, "POST", controller.current.signal)
@@ -399,9 +403,18 @@ export function FeedbackWidget({
               placeholder="哪裡不符合預期？希望如何改善？"
             />
           </label>
+          <label htmlFor="feedback-analyze">
+            <input
+              id="feedback-analyze"
+              type="checkbox"
+              checked={analyzeAfterSubmit}
+              disabled={busy || uncertain}
+              onChange={(event) => setAnalyzeAfterSubmit(event.target.checked)}
+            />{" "}
+            {t("issues.analyzeConsent")}
+          </label>
           <Text as="p" size="2">
-            附件上限 {MAX_SCREENSHOT_BYTES / 1024 / 1024} MiB。此版本只收集回饋；尚未啟用 agent
-            提案或自動發 PR。
+            附件上限 {MAX_SCREENSHOT_BYTES / 1024 / 1024} MiB。{t("issues.feedbackHelp")}
           </Text>
           {error && (
             <Callout.Root color="red" role="alert">
