@@ -778,3 +778,48 @@ test("refresh retries a failed attachment and keeps its error until the image ac
     release()
   }
 })
+
+test("preview ends a held gesture before unmounting its canvas", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 })
+  await fixture(page)
+  const dialog = await whiteImageFeedback(page)
+  await dialog.getByRole("button", { name: "遮蔽", exact: true }).click()
+  const draw = async (from: number, to: number, held = false) => {
+    const canvas = dialog.locator("canvas")
+    await canvas.scrollIntoViewIfNeeded()
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error("Missing canvas")
+    await page.mouse.move(box.x + box.width * from, box.y + box.height * from)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * to, box.y + box.height * to)
+    if (!held) await page.mouse.up()
+  }
+  await draw(0.1, 0.25, true)
+  const preview = dialog.getByRole("button", { name: "預覽送出圖片", exact: true })
+  await preview.focus()
+  await preview.press("Enter") // Keyboard activation while the mouse still owns the old canvas.
+  await expect(dialog.locator(".feedback-preview")).toBeVisible()
+  await page.mouse.up() // The canvas has gone; it cannot receive this release.
+  await dialog.getByRole("button", { name: "返回編輯圖片", exact: true }).click()
+  await draw(0.6, 0.9)
+  await preview.click()
+  const pixels = await dialog
+    .locator(".feedback-preview")
+    .evaluate(async (image: HTMLImageElement) => {
+      await image.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      const context = canvas.getContext("2d")
+      if (!context) throw new Error("Missing context")
+      context.drawImage(image, 0, 0)
+      return [
+        [...context.getImageData(200, 100, 1, 1).data],
+        [...context.getImageData(300, 150, 1, 1).data],
+      ]
+    })
+  expect(pixels).toEqual([
+    [255, 255, 255, 255],
+    [17, 17, 17, 255],
+  ])
+})
