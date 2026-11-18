@@ -389,6 +389,28 @@ test("analysis consent is explicit on feedback collection", async ({ page }) => 
   await expect(dialog).not.toBeVisible()
   expect(state.submissions[0]?.analyze).toBe(true)
 })
+test("analysis polling recovers from a failed metadata read", async ({ page }) => {
+  await fixture(page)
+  const analysis = analysisFixture()
+  let reads = 0
+  await page.route("**/api/issues/*/analysis", async (route) => {
+    reads++
+    if (reads === 2) {
+      await route.fulfill({ status: 503, json: { error: "Analysis temporarily unavailable" } })
+      return
+    }
+    analysis.state = reads === 1 ? "running" : "completed"
+    await route.fulfill({ json: { available: true, analyses: [analysis] } })
+  })
+  const dialog = await textFeedback(page, "Poll for analysis")
+  await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
+  const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+  await expect(panel.getByText("Analyzing", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveText("Analysis temporarily unavailable")
+  await expect(panel.getByText("Report ready", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+})
+
 test("analysis admission retries the same immutable payload and supports cancellation", async ({
   page,
 }) => {
@@ -430,7 +452,7 @@ test("analysis admission retries the same immutable payload and supports cancell
   ).toBeEnabled()
   await expect(panel.getByLabel("Additional context (optional)")).toBeDisabled()
   await panel.getByRole("button", { name: "Retry the same request", exact: true }).click()
-  expect(inputs).toHaveLength(3)
+  await expect.poll(() => inputs.length).toBe(3)
   expect(inputs[1]).toEqual(inputs[0])
   expect(inputs[2]).toEqual(inputs[0])
   await panel.getByRole("button", { name: "Cancel analysis", exact: true }).click()

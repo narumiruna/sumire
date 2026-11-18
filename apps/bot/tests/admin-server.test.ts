@@ -13,6 +13,7 @@ import { createPasskeySetup } from "../src/admin/auth.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { createAdminServer } from "../src/admin/server.js"
+import { IssueAnalysisRuntime } from "../src/issues/runtime.js"
 import { TestAdminStore as AdminStore } from "./helpers/admin-store.js"
 import { createPasskeyFixture } from "./helpers/passkey-fixture.js"
 
@@ -126,6 +127,39 @@ afterEach(async () => {
   store.close()
   rmSync(directory, { recursive: true, force: true })
   vi.clearAllMocks()
+})
+
+it("waits for the issue worker even when another shutdown task rejects", async () => {
+  const mcp = new McpAdmin(store, directory)
+  const analysis = new IssueAnalysisRuntime({ store, runtime, directory })
+  const tested = createAdminServer(
+    { origin: "https://admin.example.test", host: "127.0.0.1", port: 0, assets: directory },
+    { store, mcp, analysis, providers: new ProviderAdmin(runtime, store), apply, tools: () => [] },
+  )
+  let finish!: () => void
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const close = analysis.close.bind(analysis)
+  vi.spyOn(analysis, "close").mockImplementation(async () => {
+    await finished
+    await close()
+  })
+  const cause = new Error("MCP shutdown failed")
+  vi.spyOn(mcp, "close").mockRejectedValueOnce(cause)
+  await tested.start()
+  const result = tested.stop().catch((error: unknown) => error)
+  const settled = vi.fn()
+  void result.then(settled)
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(settled).not.toHaveBeenCalled()
+  } finally {
+    finish()
+    await result
+    await mcp.close()
+  }
+  expect(await result).toMatchObject({ message: "Admin shutdown failed", errors: [cause] })
 })
 
 describe("admin HTTP security", () => {
@@ -891,6 +925,8 @@ describe("private visual feedback API", () => {
       true,
     )
     expect(response.status).toBe(413)
+    expect(response.headers.connection).toBe("close")
+    expect(JSON.parse(response.body)).toEqual({ error: "Request is too large" })
   })
 })
 

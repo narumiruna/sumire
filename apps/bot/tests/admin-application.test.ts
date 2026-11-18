@@ -67,13 +67,20 @@ it("preserves observed metadata across repeated actual administration startup", 
         fixture.modelRuntime,
         { store, mcp },
       )
-      const server = await startAdmin(
-        { origin: "https://admin.example.test", host: "127.0.0.1", port: 0, assets: fixture.root },
-        { store, mcp },
-        factory,
-        { invalidatePolicies: vi.fn(async () => {}) } as unknown as ChatSessionRegistry,
-      )
+      const config = {
+        origin: "https://admin.example.test",
+        host: "127.0.0.1",
+        port: 0,
+        assets: fixture.root,
+      }
+      const sessions = {
+        invalidatePolicies: vi.fn(async () => {}),
+      } as unknown as ChatSessionRegistry
+      const server = await startAdmin(config, { store, mcp }, factory, sessions)
       try {
+        await expect(startAdmin(config, { store, mcp }, factory, sessions)).rejects.toThrow(
+          "Could not acquire the issue analysis storage lock",
+        )
         const expectedName = restart === 0 ? "Persistent group" : "Persisted rename"
         expect(store.listChats(0)).toContainEqual({
           id: -100,

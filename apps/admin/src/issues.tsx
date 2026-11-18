@@ -159,7 +159,11 @@ export function Issues({
             </Text>
           )}
           {selected.hasScreenshot && (
-            <IssueScreenshot key={selected.id} id={selected.id} reload={screenshotReload} />
+            <IssueScreenshot
+              key={`image:${selected.id}`}
+              id={selected.id}
+              reload={screenshotReload}
+            />
           )}
           <IssueAnalysisPanel
             key={selected.id}

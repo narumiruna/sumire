@@ -40,6 +40,15 @@ export interface AnalysisModel {
   thinking: ModelThinkingLevel
   policy: Policy
 }
+function requireHttps(value: string) {
+  if (new URL(value).protocol !== "https:") throw new Error("Issue analysis requires HTTPS")
+}
+const issueProviderFetch: typeof fetch = async (input, init) => {
+  const request = new Request(input, init)
+  requireHttps(request.url)
+  // providerFetch rejects redirects and validates public addresses at connect time.
+  return providerFetch(request)
+}
 export function selectIssueModel(policy: Policy, runtime: ModelRuntime) {
   const ref = policy.defaults.model
   if (!ref || !policy.models.includes(ref) || !policy.defaults.models?.includes(ref))
@@ -47,8 +56,9 @@ export function selectIssueModel(policy: Policy, runtime: ModelRuntime) {
   const slash = ref.indexOf("/")
   const provider = ref.slice(0, slash)
   const modelId = ref.slice(slash + 1)
-  if (!policy.providers.some((value) => value.id === provider && value.enabled))
-    throw new Error("Provider unavailable")
+  const configured = policy.providers.find((value) => value.id === provider && value.enabled)
+  if (!configured) throw new Error("Provider unavailable")
+  if (configured.baseUrl) requireHttps(configured.baseUrl)
   const model = runtime.getModel(provider, modelId)
   const thinking = policy.defaults.thinking ?? "off"
   if (
@@ -57,7 +67,8 @@ export function selectIssueModel(policy: Policy, runtime: ModelRuntime) {
     !getSupportedThinkingLevels(model).includes(thinking)
   )
     throw new Error("Shared model unavailable")
-  return { model, thinking, ref }
+  requireHttps(model.baseUrl)
+  return { model, thinking, ref, custom: Boolean(configured.baseUrl) }
 }
 export function issueModelRuntime(
   runtime: ModelRuntime,
@@ -85,14 +96,11 @@ export function issueModelRuntime(
             (options?.reasoning ?? "off") !== pinned.thinking
           )
             throw new Error("Analysis model changed")
-          const custom = pinned.policy.providers.find(
-            (entry) => entry.id === model.provider,
-          )?.baseUrl
-          return target.streamSimple(model, messages, {
+          return target.streamSimple(selected.model, messages, {
             ...options,
             maxTokens: 4096,
             maxRetries: 0,
-            ...(custom ? { fetch: providerFetch, transport: "sse" as const } : {}),
+            ...(selected.custom ? { fetch: issueProviderFetch, transport: "sse" as const } : {}),
             signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
           })
         }

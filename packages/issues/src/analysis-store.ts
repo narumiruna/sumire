@@ -315,10 +315,11 @@ export class AnalysisStore {
       return project(this.row(id))
     })
   }
-  garbage(): string[] {
-    return (
-      this.db.prepare("SELECT id FROM feedback_analysis_gc LIMIT 32").all() as { id: string }[]
-    ).map((row) => row.id)
+  garbage(after = ""): string[] {
+    const rows = this.db
+      .prepare("SELECT id FROM feedback_analysis_gc WHERE id > ? ORDER BY id LIMIT 32")
+      .all(after) as { id: string }[]
+    return rows.map((row) => row.id)
   }
   collected(id: string) {
     this.db.prepare("DELETE FROM feedback_analysis_gc WHERE id=?").run(id)
