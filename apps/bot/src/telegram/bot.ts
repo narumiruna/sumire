@@ -374,24 +374,36 @@ export function createTelegramAgentBot(
     await delivery.reply(
       context,
       [
-        "在群組中 @mention 我或回覆我的訊息即可提問；私聊可直接傳送訊息。",
-        "/f <內容> — 將內容或回覆的訊息整理成台灣繁體中文文章",
-        "/t <代碼> — 查詢股票、虛擬貨幣或匯率（例如 AAPL、2330、BTCUSDT、TWDJPY）",
-        "/reset — 清除目前 chat 的對話狀態",
-        "/cancel — 取消目前任務與待處理輸入，並清除 steering/follow-up queue",
-        "/id — 顯示 chat ID 與 user ID",
-        "/allow — Request administrator approval for this chat",
+        "## 如何提問",
+        "",
+        "- 群組：@mention 我，或回覆我的訊息。",
+        "- 私聊：直接傳送訊息。",
+        ...(settings.botReplyTreeEnabled ? ["- 回覆較早的助理訊息，可從該對話分支繼續。"] : []),
+        "",
+        "## 常用指令",
+        "",
+        "- /f 內容 — 將內容或回覆的訊息整理成繁體中文文章",
+        "- /t 代碼 — 查詢股票、虛擬貨幣或匯率",
+        "- /reset — 清除目前對話狀態",
+        "- /cancel — 取消目前任務與所有待處理輸入",
+        "- /id — 顯示對話與使用者 ID",
+        "- /allow — 向管理員申請此對話的使用權限",
         ...(context.chat.type === "private" && isAdminSender(context, settings.botAdminId)
-          ? ["/admin — Open the administration WebUI"]
+          ? ["- /admin — 開啟管理介面"]
           : []),
+        "",
+        "例如：`/t AAPL`、`/t 2330`、`/t BTCUSDT`、`/t TWDJPY`。",
+        "",
+        "## 還可以做什麼",
+        "",
         ...(settings.botDocumentInputEnabled
-          ? ["可附加 Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV 或文字型 PDF。"]
+          ? ["- 附加文件提問：Word、PowerPoint、試算表、OpenDocument、RTF、EPUB、CSV、文字型 PDF。"]
           : []),
-        ...(settings.botAudioInputEnabled ? ["可傳送語音訊息或音訊檔以轉錄並提問。"] : []),
-        ...(settings.botReplyTreeEnabled ? ["回覆較早的 bot 回覆可從該對話分支繼續。"] : []),
-        "可請助理使用 read、bash、edit、write 處理執行環境中的檔案與指令。",
-        "可請助理使用 read_url_content 工具讀取公開網址。",
-        "Sumire 專案原始碼與說明：https://github.com/narumiruna/sumire",
+        ...(settings.botAudioInputEnabled ? ["- 傳送語音訊息或音訊檔，轉錄後提問。"] : []),
+        "- 處理檔案與執行指令（read、bash、edit、write）。",
+        "- 讀取公開網址（read_url_content）。",
+        "",
+        "[Sumire 原始碼與說明](https://github.com/narumiruna/sumire)",
       ].join("\n"),
     )
   })
