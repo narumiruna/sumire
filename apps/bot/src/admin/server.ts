@@ -24,6 +24,8 @@ import { IssueError, IssueStore } from "@narumitw/sumire-issues/store"
 import { effectivePolicy, policySchema } from "@narumitw/sumire-policy"
 import { z } from "zod"
 import type { IssueAnalysisRuntime } from "../issues/runtime.js"
+import { scheduleCreation, scheduleDeletion, scheduleMutation } from "../schedules/schema.js"
+import { ScheduleStore } from "../schedules/store.js"
 import { accessTokenPattern, ChatAccess } from "./access.js"
 import { auditFilters } from "./audit-query.js"
 import { type AdminConfig, PasskeyAdminLogin } from "./auth.js"
@@ -139,6 +141,7 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       store.audit(actor, operation, store.snapshot().revision, "completed", `issue:${id}`),
     () => store.snapshot().revision,
   )
+  const schedules = new ScheduleStore(store)
   const analyses = services.analysis?.analyses ?? new AnalysisStore(store.db)
   const issueOAuth = new IssueMcpOAuth(store, config.origin)
   const login = new PasskeyAdminLogin(config, store)
@@ -413,6 +416,30 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
       if (req.headers.origin !== config.origin || req.headers["x-csrf-token"] !== session.csrf)
         throw new AdminError(403, "Request verification failed")
       limited(`write:${owner}`, 60)
+    }
+    const scheduleRoute =
+      /^\/api\/schedules(?:\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}))?$/.exec(
+        url.pathname,
+      )
+    if (scheduleRoute) {
+      if (url.search) throw new AdminError(400, "Schedule query parameters are not supported")
+      const id = scheduleRoute[1]
+      if (!id && method === "GET") reply(res, 200, schedules.list())
+      else if (!id && method === "POST") {
+        const { requestId, ...input } = scheduleCreation.parse(await body(req, 65536))
+        assertCurrentSession()
+        reply(res, 201, schedules.create(input, session.actor, Date.now(), requestId))
+      } else if (id && method === "PUT") {
+        const input = scheduleMutation.parse(await body(req, 1024))
+        assertCurrentSession()
+        reply(res, 200, schedules.change(id, input.revision, input.action, session.actor))
+      } else if (id && method === "DELETE") {
+        const input = scheduleDeletion.parse(await body(req, 1024))
+        assertCurrentSession()
+        schedules.delete(id, input.revision, session.actor)
+        reply(res, 200, { deleted: true })
+      } else throw new AdminError(405, "Method not allowed")
+      return
     }
     if (url.pathname === "/api/issues-mcp/consent") {
       const browser = readCookie(req, oauthBrowserCookie)

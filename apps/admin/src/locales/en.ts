@@ -3,6 +3,7 @@ import commonMessages from "./en/common.json"
 import policyMessages from "./en/policy.json"
 import providersMessages from "./en/providers.json"
 import recordsMessages from "./en/records.json"
+import schedulesMessages from "./en/schedules.json"
 import settingsMessages from "./en/settings.json"
 
 export const en = {
@@ -12,4 +13,5 @@ export const en = {
   ...providersMessages,
   ...policyMessages,
   ...settingsMessages,
+  ...schedulesMessages,
 } as const

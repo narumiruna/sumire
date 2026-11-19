@@ -26,6 +26,7 @@ const taskLabels = {
   "Model Providers": "Providers &amp; models",
   "Secrets & variables": "Secrets &amp; variables",
   "GitHub mentions": "GitHub mentions",
+  Schedule: "Schedule",
   Issues: "Issues",
   Audit: "Audit log",
 } satisfies Record<Page, string>
@@ -94,6 +95,7 @@ describe("admin navigation", () => {
       "MCP connections",
       "Secrets & variables",
       "GitHub mentions",
+      "Schedule",
       "Issues",
       "Audit",
     ]

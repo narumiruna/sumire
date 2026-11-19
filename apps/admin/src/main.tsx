@@ -31,6 +31,7 @@ import "./chat-cards.css"
 import "./admin-design.css"
 import "./reading-design.css"
 import "./issues.css"
+import "./schedules.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
@@ -79,6 +80,7 @@ import { withModelAvailability } from "./provider-policy.js"
 import { Providers } from "./providers.js"
 import { RuntimeConfig } from "./runtime-config.js"
 import { SaveStatus } from "./save-status.js"
+import { Schedules } from "./schedules.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
 import { SharedDefaults } from "./shared-defaults.js"
@@ -109,6 +111,7 @@ const pageDescriptions = () => ({
   "Model Providers": t("description.providers"),
   "Secrets & variables": t("description.secrets"),
   "GitHub mentions": t("description.github"),
+  Schedule: t("description.schedule"),
   Issues: t("description.issues"),
   Audit: t("description.audit"),
 })
@@ -559,7 +562,8 @@ function App() {
           description={pageDescriptions()[page]}
           actions={
             page !== "Durable" &&
-            page !== "Issues" && (
+            page !== "Issues" &&
+            page !== "Schedule" && (
               <Button
                 variant="ghost"
                 aria-label={t("app.refresh")}
@@ -763,6 +767,25 @@ function App() {
           />
         )}
         <fieldset disabled={busy} className="editor-panel" aria-label={t("app.editors")}>
+          <EditorSection active={page === "Schedule"} aria-label={t("nav.schedule")}>
+            <Schedules
+              key={session.csrf}
+              active={page === "Schedule"}
+              csrf={session.csrf}
+              allowedIds={
+                savedPolicy
+                  ? [...savedPolicy.privateUsers, ...savedPolicy.groups].filter(
+                      (id) => effectivePolicy(savedPolicy, id).enabled,
+                    )
+                  : []
+              }
+              knownChats={knownChats}
+              selectedChat={chat}
+              ready={snapshot.status === "applied" && snapshot.applied === snapshot.revision}
+              onExpired={expireSession}
+              onPending={(value) => markPending("schedule", value)}
+            />
+          </EditorSection>
           <EditorSection active={page === "Chats"} aria-label={t("app.chatSettings")}>
             <ChatWorkspace
               directory={directory}

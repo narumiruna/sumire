@@ -6,6 +6,7 @@ import { OutboxDoc } from "../src/agent/durable/state.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
 import { loadSettings } from "../src/config/settings.js"
 import type { Logger } from "../src/logging.js"
+import { ScheduleStore } from "../src/schedules/store.js"
 import { createTelegramAgentBot } from "../src/telegram/bot.js"
 import { runTelegramPolling } from "../src/telegram/polling.js"
 import { approvedStore } from "./helpers/admin-store.js"
@@ -36,6 +37,72 @@ const botInfo: UserFromGetMe = {
 const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} }
 
 describe("Telegram durable recovery delivery", () => {
+  it("cancels a scheduled task waiting for its Telegram anchor", async () => {
+    const control = approvedStore([7])
+    control.observe(7, "private", "Fixture")
+    const schedules = new ScheduleStore(control)
+    const now = Date.now()
+    schedules.create(
+      { chatId: 7, task: "Fixture task", runAt: now - 1, timeZone: "UTC", repeatMinutes: null },
+      "7",
+      now - 2,
+    )
+    const submit = vi.fn(async () => {
+      throw new Error("Unexpected scheduled submission")
+    })
+    const cancel = vi.fn(async () => false)
+    const telegram = createTelegramAgentBot(
+      loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+      { submit, cancel } as unknown as ChatSessionRegistry,
+      logger,
+      { control, botInfo },
+    )
+    let releaseAnchor = () => {}
+    const anchor = new Promise<void>((resolve) => {
+      releaseAnchor = resolve
+    })
+    const anchorStarted = vi.fn()
+    const texts: Array<string | undefined> = []
+    const message = {
+      message_id: 100,
+      date: 0,
+      chat: { id: 7, type: "private" as const, first_name: "Fixture" },
+    }
+    telegram.bot.api.config.use(async (_previous, method, payload) => {
+      texts.push(telegramPayloadText(payload))
+      if (method === "sendMessage" && texts.at(-1)?.startsWith("排程任務開始執行")) {
+        anchorStarted()
+        await anchor
+      }
+      return { ok: true, result: message } as never
+    })
+
+    try {
+      await telegram.start()
+      await vi.waitFor(() => expect(anchorStarted).toHaveBeenCalledOnce())
+      await telegram.bot.handleUpdate({
+        update_id: 1,
+        message: {
+          ...message,
+          message_id: 1,
+          from: { id: 7, is_bot: false, first_name: "Fixture" },
+          text: "/cancel",
+          entities: [{ offset: 0, length: 7, type: "bot_command" }],
+        },
+      })
+      expect(cancel).toHaveBeenCalledWith(7)
+      releaseAnchor()
+      await vi.waitFor(() =>
+        expect(schedules.list().items[0]).toMatchObject({ state: "paused", lastOutcome: "failed" }),
+      )
+      expect(submit).not.toHaveBeenCalled()
+      expect(texts).toContain("已取消目前任務。")
+    } finally {
+      releaseAnchor()
+      await telegram.stop()
+    }
+  })
+
   it.each(["discovery", "recovery"] as const)(
     "does not start polling after shutdown during %s",
     async (phase) => {

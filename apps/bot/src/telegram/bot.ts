@@ -35,6 +35,8 @@ import {
 import { MarketDataOutputError } from "../market-data/format.js"
 import { MarketDataInputError, queryMarketDataMessages } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
+import { ScheduleStore } from "../schedules/store.js"
+import { ScheduleWorker } from "../schedules/worker.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
@@ -70,6 +72,7 @@ import {
   renderProgressStatus,
 } from "./progress.js"
 import { recoverTelegramResponses } from "./recovery.js"
+import { runScheduledTask } from "./scheduled-task.js"
 
 export interface TelegramAgentBot {
   bot: Bot
@@ -197,6 +200,7 @@ export function createTelegramAgentBot(
   let runner: RunnerHandle | undefined
   let stopping = false
   let stopPromise: Promise<void> | undefined
+  let activeScheduleChatId: number | undefined
 
   async function notifyAdmin(text: string): Promise<void> {
     if (settings.botAdminId === undefined) return
@@ -225,6 +229,28 @@ export function createTelegramAgentBot(
     morselPublisher,
     logger,
     settings.morselLongReplyThreshold,
+  )
+  const schedules = new ScheduleWorker(
+    new ScheduleStore(dependencies.control),
+    async (schedule, isOwned) => {
+      const generation = submissionGenerations.get(schedule.chatId)?.generation ?? 0
+      activeScheduleChatId = schedule.chatId
+      try {
+        await runScheduledTask(
+          schedule,
+          bot,
+          sessions,
+          delivery,
+          () =>
+            isOwned() &&
+            (submissionGenerations.get(schedule.chatId)?.generation ?? 0) === generation,
+          logger,
+        )
+      } finally {
+        activeScheduleChatId = undefined
+      }
+    },
+    logger,
   )
   const marketDataQuery =
     dependencies.marketDataQuery ??
@@ -424,13 +450,14 @@ export function createTelegramAgentBot(
     await delivery.reply(context, "已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
-    const pending = (activeInputs.get(context.chat.id) ?? 0) > 0
-    const finishCancel = pending ? invalidateSubmissionOrder(context.chat.id, "cancel") : undefined
+    const chatId = context.chat.id
+    const pending = (activeInputs.get(chatId) ?? 0) > 0 || activeScheduleChatId === chatId
+    const finishCancel = invalidateSubmissionOrder(chatId, "cancel")
     let cancelled: boolean
     try {
-      cancelled = await sessions.cancel(context.chat.id)
+      cancelled = await sessions.cancel(chatId)
     } finally {
-      finishCancel?.()
+      finishCancel()
     }
     await delivery.reply(
       context,
@@ -1751,6 +1778,7 @@ export function createTelegramAgentBot(
           logger,
         )
       if (stopping) return
+      schedules.start()
       const polling = runTelegramPolling(
         bot,
         logger,
@@ -1763,6 +1791,7 @@ export function createTelegramAgentBot(
     async stop() {
       if (stopPromise) return stopPromise
       stopping = true
+      schedules.stop()
       for (const controllers of activeAudioLoads.values()) {
         for (const controller of controllers) controller.abort()
       }

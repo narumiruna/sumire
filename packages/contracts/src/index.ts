@@ -31,6 +31,14 @@ export type {
   RuntimeConfigResponse,
 } from "./runtime-config.js"
 
+export type {
+  Schedule,
+  ScheduleInput,
+  ScheduleList,
+  ScheduleOutcome,
+  ScheduleState,
+} from "./schedules.js"
+
 export type Snapshot = {
   revision: number
   applied: number

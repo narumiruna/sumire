@@ -13,6 +13,7 @@ import {
 } from "@narumitw/sumire-policy"
 import { initializeRuntimeConfigStorage } from "@narumitw/sumire-runtime-config"
 import { z } from "zod"
+import { initializeScheduleStorage } from "../schedules/schema.js"
 import type { AuditFilters } from "./audit-query.js"
 import type { ChatFilters } from "./chat-query.js"
 
@@ -92,6 +93,7 @@ export class AdminStore {
     `)
       initializeRuntimeConfigStorage(this.db)
       initializeIssueStorage(this.db)
+      initializeScheduleStorage(this.db)
       if (version.user_version < 2) this.db.exec("DELETE FROM sessions")
       this.db
         .prepare("INSERT OR IGNORE INTO settings VALUES (1,1,0,'pending',?,1)")

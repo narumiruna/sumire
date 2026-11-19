@@ -46,12 +46,21 @@
   display: none;
 }
 @media (min-width: 651px) {
+  .reading-first {
+    --feedback-sidebar-offset: 244px;
+  }
   .reading-first:has(.sidebar[data-collapsed="true"]) {
+    --feedback-sidebar-offset: 76px;
     grid-template-columns: 76px minmax(0, 1fr);
   }
   .reading-first .sidebar {
     padding: 18px 12px 12px;
     background: #f8faf7;
+  }
+  /* Keep the floating feedback launcher clear of every navigation item and rail control. */
+  .reading-first .feedback-launcher {
+    left: calc(var(--feedback-sidebar-offset) + 16px);
+    max-width: calc(100vw - var(--feedback-sidebar-offset) - 32px);
   }
   .reading-first .rail-toggle {
     display: flex;
@@ -393,6 +402,11 @@
 .reading-first .durable-header-actions > button[aria-label]:not([aria-pressed]) {
   background: #fff;
   color: var(--forest);
+}
+@media (min-width: 651px) and (max-width: 1100px) {
+  .reading-first {
+    --feedback-sidebar-offset: 200px;
+  }
 }
 @media (max-width: 1099px) {
   .reading-first .directory-collapse {
