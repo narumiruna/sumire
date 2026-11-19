@@ -145,20 +145,21 @@ export class ScheduleStore {
         throw new AdminError(409, "Schedule changed; refresh before trying again")
       if (row.state !== (action === "pause" ? "active" : "paused"))
         throw new AdminError(409, "Schedule cannot perform this action")
-      if (action === "resume" && row.last_outcome === "running")
-        throw new AdminError(409, "Wait for the current execution before resuming")
-      if (action === "resume" && row.next_run_at === null)
-        throw new AdminError(409, "Inspect the previous execution before creating a replacement")
-      if (action === "resume" && row.last_outcome === "interrupted")
-        throw new AdminError(
-          409,
-          "Execution outcome is unknown; inspect the chat before creating a replacement",
-        )
-      if (action === "resume") this.control.assertChat(row.chat_id)
-      const next =
-        action === "resume" && row.repeat_minutes !== null
-          ? nextScheduleTime(row.run_at, row.repeat_minutes, now)
-          : row.next_run_at
+      let next = row.next_run_at
+      if (action === "resume") {
+        if (row.last_outcome === "running")
+          throw new AdminError(409, "Wait for the current execution before resuming")
+        if (next === null)
+          throw new AdminError(409, "Inspect the previous execution before creating a replacement")
+        if (row.last_outcome === "interrupted")
+          throw new AdminError(
+            409,
+            "Execution outcome is unknown; inspect the chat before creating a replacement",
+          )
+        this.control.assertChat(row.chat_id)
+        if (row.repeat_minutes !== null)
+          next = Math.max(next, nextScheduleTime(row.run_at, row.repeat_minutes, now))
+      }
       this.control.db
         .prepare("UPDATE scheduled_tasks SET state=?,next_run_at=?,revision=revision+1 WHERE id=?")
         .run(action === "pause" ? "paused" : "active", next, id)
@@ -200,8 +201,15 @@ export class ScheduleStore {
         .prepare("SELECT * FROM scheduled_tasks WHERE id=? AND run_id=? AND last_outcome='running'")
         .get(run.schedule.id, run.runId) as Row | undefined
       if (!row) return // Deleting a dispatched task does not cancel its admitted model turn.
+      // The claimed occurrence is in next_run_at, not the original start time.
       const next =
-        row.repeat_minutes === null ? null : nextScheduleTime(row.run_at, row.repeat_minutes, now)
+        row.repeat_minutes === null
+          ? null
+          : nextScheduleTime(
+              row.run_at,
+              row.repeat_minutes,
+              Math.max(now, row.next_run_at ?? row.run_at),
+            )
       this.control.db
         .prepare(
           "UPDATE scheduled_tasks SET state=?,last_outcome=?,next_run_at=?,revision=revision+1 WHERE id=?",

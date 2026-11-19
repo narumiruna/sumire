@@ -9,7 +9,7 @@ The page follows the shared reading-first design: one primary **Add task** actio
 Creating a task requires:
 
 - **Task (user message)**: nonblank text, at most 8,000 UTF-16 code units.
-- **Target chat**: an existing chat currently allowed by the applied policy. The selector uses saved access, not an unsaved policy draft. Creating a task does not grant chat or tool access.
+- **Target chat**: an existing chat currently allowed by the applied policy. The selector uses saved access, not an unsaved policy draft. If the selected chat loses access while the editor is open, the selector and preview switch to the first remaining allowed chat. Creating a task does not grant chat or tool access.
 - **First execution**: a future date and time in this browser's time zone. The editor previews the actual UTC offset and destination before submission.
 - **Repeat**: once, every hour, every 24 hours, or every 7 days.
 
@@ -19,12 +19,12 @@ Stored instants are Unix milliseconds. The browser's resolved time zone is saved
 
 Schedules live in the existing private `admin.sqlite` database. Initialization creates an additive `scheduled_tasks` table in the AdminStore transaction. No new environment variables or service are required. The application retains its single-process storage ownership; the dispatcher starts only after Telegram initialization and the existing durable recovery discovery.
 
-The dispatcher polls once per second and admits at most **one task at a time**. A due task may wait for other scheduled work and for the chat's current main turn, so the planned instant is not an exact execution-time guarantee. Checks use the applied chat policy again before sending a status message, admitting model work, and delivering a response. Reset/cancel generation changes also invalidate the live scheduled delivery.
+The dispatcher polls once per second and admits at most **one task at a time**. A due task may wait for other scheduled work and for the chat's current main turn, so the planned instant is not an exact execution-time guarantee. Checks use the applied chat policy again before sending a status message, admitting model work, and delivering a response. `/reset` and `/cancel` invalidate pending scheduled submissions and live scheduled delivery for that chat.
 
 A real bot-created Telegram status message anchors recovery. The submitted message contains the literal task and host-owned schedule metadata, explicitly without asserting a Telegram sender identity. It enters `ChatSessionRegistry.submit` with `routing: main`, `intent: newTurn`, and the existing durable outbox delivery descriptor. Pi Durable continues to own model turns, tools, retries, transcript storage, and recovery. Model settings, tool permissions, and tool replay-safety boundaries are unchanged. `/f` or other command-looking text is submitted as user text, not routed through Telegram command handlers.
 
 - **Once**: a successful reply completes the schedule. An overdue task not previously claimed runs once when the bot returns.
-- **Repeating**: after downtime, at most one overdue attempt is dispatched; after it finishes, the next instant is the first original-cadence instant strictly in the future. Missed intervals are never replayed in a burst. Repeating tasks do not overlap their own work.
+- **Repeating**: after downtime, at most one overdue attempt is dispatched; after it finishes, the next instant follows the original cadence and is later than both the claimed occurrence and the current clock time. A backward clock change cannot make a completed occurrence eligible again. Missed intervals are never replayed in a burst. Repeating tasks do not overlap their own work.
 - **Pause**: prevents subsequent dispatches. Already dispatched work, including a chat-queued turn, is not cancelled. If the current repeating attempt completes, the schedule remains paused.
 - **Resume**: rechecks access. An unclaimed overdue once-only task is eligible immediately, with explicit UI confirmation. A repeating task skips to its next future interval. A task still running cannot be resumed.
 - **Delete**: requires confirmation and an exact revision; it is irreversible. It removes the scheduling record but does not abort dispatched work or delete its chat transcript/outbox. Already admitted work can still send a reply. A late completion cannot recreate a deleted record.
@@ -34,6 +34,8 @@ A successful status means a model answer was delivered, **not** that every reque
 ## Failure and restart safety
 
 Each attempt is claimed durably **before** external I/O, with a unique run receipt and a revision increment. Failures pause the schedule instead of automatically re-admitting a potentially side-effecting message. A failed one-time attempt cannot be resumed: inspect the chat and external effects, then explicitly create a replacement if needed. A failed repeating schedule can be resumed for the next future interval, not to retry the old attempt.
+
+If the database cannot record a result, the dispatcher keeps the receipt and result in memory. It retries only that database write before claiming more work. It never reruns the task to record its result.
 
 Shutdown first stops the dispatcher. It does not await or abort a model from the scheduling layer; existing registry shutdown preserves admitted work. Stopped callbacks never write back to AdminStore after it may have closed.
 

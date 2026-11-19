@@ -135,6 +135,23 @@ describe("persisted schedules", () => {
     const resumed = schedules.change(first.id, paused.revision, "resume", "7", now + 24 * 3600_000)
     expect(resumed.nextRunAt).toBe(first.runAt + 24 * 3600_000)
   })
+  it("never reclaims an occurrence after the clock moves backward during a repeat", () => {
+    const hour = 3600_000
+    const first = schedules.create(input({ repeatMinutes: 60 }), "7", now)
+    schedules.finish(required(schedules.claim(first.runAt)), true, first.runAt)
+    const claimedAt = first.runAt + hour
+    const run = required(schedules.claim(claimedAt))
+    const earlier = claimedAt - 1000
+
+    schedules.finish(run, true, earlier)
+    const finished = required(schedules.list().items[0])
+    expect(finished.nextRunAt).toBe(claimedAt + hour)
+    const paused = schedules.change(finished.id, finished.revision, "pause", "7", earlier)
+    const resumed = schedules.change(paused.id, paused.revision, "resume", "7", earlier)
+    expect(resumed.nextRunAt).toBe(claimedAt + hour)
+    expect(schedules.claim(claimedAt)).toBeUndefined()
+    expect(schedules.claim(claimedAt + hour)?.schedule.nextRunAt).toBe(claimedAt + hour)
+  })
   it("does not unpause a running recurrence or cancel admitted work on deletion", () => {
     schedules.create(input({ repeatMinutes: 60 }), "7", now)
     const run = required(schedules.claim(now + 60_000))
@@ -241,6 +258,48 @@ describe("bounded schedule dispatcher", () => {
     release()
     await vi.advanceTimersByTimeAsync(0)
   })
+  it.each([true, false])(
+    "retries a rolled-back completion without executing again (succeeded=%s)",
+    async (succeeded) => {
+      const first = schedules.create(input(), "7", now)
+      const second = schedules.create(input({ runAt: first.runAt + 1000 }), "7", now)
+      const execute = vi.fn(async () => {
+        if (!succeeded) throw new Error("fixture-execution-failure")
+      })
+      const audit = control.audit.bind(control)
+      const failCompletion = vi.spyOn(control, "audit").mockImplementation((...args) => {
+        if (args[1] === "schedule.run" && args[3] !== "started")
+          throw new Error("fixture-write-failure")
+        return audit(...args)
+      })
+      const finish = vi.spyOn(schedules, "finish")
+      worker = new ScheduleWorker(schedules, execute, logger)
+      worker.start()
+
+      await vi.advanceTimersByTimeAsync(62_000)
+      expect(execute).toHaveBeenCalledOnce()
+      expect(finish).toHaveBeenCalledTimes(3)
+      const run = required(finish.mock.calls[0])[0]
+      expect(run.schedule.id).toBe(first.id)
+      expect(
+        finish.mock.calls.every(([receipt, result]) => receipt === run && result === succeeded),
+      ).toBe(true)
+      expect(schedules.list().items.find((item) => item.id === first.id)?.lastOutcome).toBe(
+        "running",
+      )
+      expect(schedules.list().items.find((item) => item.id === second.id)?.lastOutcome).toBeNull()
+
+      failCompletion.mockRestore()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(execute).toHaveBeenCalledOnce()
+      expect(schedules.list().items.find((item) => item.id === first.id)).toMatchObject({
+        state: succeeded ? "completed" : "paused",
+        lastOutcome: succeeded ? "succeeded" : "failed",
+      })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(execute).toHaveBeenCalledTimes(2)
+    },
+  )
   it("rechecks revoked permissions before any model or Telegram call", async () => {
     schedules.create(input(), "7", now)
     const execute = vi.fn(async () => {})

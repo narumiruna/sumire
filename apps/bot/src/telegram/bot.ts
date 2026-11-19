@@ -200,6 +200,7 @@ export function createTelegramAgentBot(
   let runner: RunnerHandle | undefined
   let stopping = false
   let stopPromise: Promise<void> | undefined
+  let activeScheduleChatId: number | undefined
 
   async function notifyAdmin(text: string): Promise<void> {
     if (settings.botAdminId === undefined) return
@@ -231,17 +232,23 @@ export function createTelegramAgentBot(
   )
   const schedules = new ScheduleWorker(
     new ScheduleStore(dependencies.control),
-    (schedule, isOwned) => {
+    async (schedule, isOwned) => {
       const generation = submissionGenerations.get(schedule.chatId)?.generation ?? 0
-      return runScheduledTask(
-        schedule,
-        bot,
-        sessions,
-        delivery,
-        () =>
-          isOwned() && (submissionGenerations.get(schedule.chatId)?.generation ?? 0) === generation,
-        logger,
-      )
+      activeScheduleChatId = schedule.chatId
+      try {
+        await runScheduledTask(
+          schedule,
+          bot,
+          sessions,
+          delivery,
+          () =>
+            isOwned() &&
+            (submissionGenerations.get(schedule.chatId)?.generation ?? 0) === generation,
+          logger,
+        )
+      } finally {
+        activeScheduleChatId = undefined
+      }
     },
     logger,
   )
@@ -443,13 +450,14 @@ export function createTelegramAgentBot(
     await delivery.reply(context, "已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
-    const pending = (activeInputs.get(context.chat.id) ?? 0) > 0
-    const finishCancel = pending ? invalidateSubmissionOrder(context.chat.id, "cancel") : undefined
+    const chatId = context.chat.id
+    const pending = (activeInputs.get(chatId) ?? 0) > 0 || activeScheduleChatId === chatId
+    const finishCancel = invalidateSubmissionOrder(chatId, "cancel")
     let cancelled: boolean
     try {
-      cancelled = await sessions.cancel(context.chat.id)
+      cancelled = await sessions.cancel(chatId)
     } finally {
-      finishCancel?.()
+      finishCancel()
     }
     await delivery.reply(
       context,

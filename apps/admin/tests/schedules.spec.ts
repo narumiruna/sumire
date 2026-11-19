@@ -1,6 +1,6 @@
 import type { Schedule } from "@narumitw/sumire-contracts"
 import { expect, type Page, test } from "@playwright/test"
-import { adminFixture, navigate } from "./admin-fixture.js"
+import { adminFixture, basePolicy, navigate } from "./admin-fixture.js"
 
 test.use({ timezoneId: "Asia/Taipei" })
 const future = Date.parse("2026-11-21T01:30:00Z")
@@ -168,6 +168,47 @@ test("preserves the schedule draft across navigation and supports a deep link", 
   await page.goto("/?section=Schedule&chat=42")
   await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
+})
+
+test("keeps an allowed destination and replaces it when access is revoked", async ({ page }) => {
+  const state = await fixture(page)
+  await page.getByRole("button", { name: "Add task", exact: true }).click()
+  const destination = page.getByLabel("Target chat", { exact: true })
+  await destination.selectOption("-100")
+
+  let groups = [-101, -100]
+  let revision = 1
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        revision,
+        applied: revision,
+        status: "applied",
+        policy: { ...basePolicy, privateUsers: [], groups },
+      },
+    }),
+  )
+  const refreshPolicy = async () => {
+    revision++
+    await navigate(page, "Defaults")
+    const refresh = page.getByRole("button", { name: "Refresh settings", exact: true })
+    await refresh.click()
+    await expect(refresh).toBeEnabled()
+    await navigate(page, "Schedule")
+  }
+
+  await refreshPolicy()
+  await expect(destination.locator("option")).toHaveCount(3)
+  await expect(destination).toHaveValue("-100")
+
+  groups = [-101]
+  await refreshPolicy()
+  await expect(destination).toHaveValue("-101")
+  await expect(page.locator(".schedule-preview")).toContainText("→ -101")
+  await page.getByLabel("Task (user message)", { exact: true }).fill("Fixture policy change")
+  await page.getByRole("button", { name: "Create schedule", exact: true }).click()
+  await expect(page.locator(".schedule-card")).toContainText("Fixture policy change")
+  expect(state.writes.map((entry) => entry.body.chatId)).toEqual([-101])
 })
 
 test("requires confirmation for overdue resumption and cannot resume an uncertain attempt", async ({

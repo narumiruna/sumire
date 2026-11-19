@@ -32,9 +32,13 @@ export function Schedules({
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
   const [task, setTask] = useState("")
+  const defaultChatId = String(allowedIds[0] ?? "")
   const [chatId, setChatId] = useState(() =>
-    allowedIds.includes(Number(selectedChat)) ? selectedChat : String(allowedIds[0] ?? ""),
+    allowedIds.includes(Number(selectedChat)) ? selectedChat : defaultChatId,
   )
+  if (chatId !== defaultChatId && !allowedIds.includes(Number(chatId))) {
+    setChatId(defaultChatId)
+  }
   const [runAt, setRunAt] = useState(() => localScheduleTime(new Date(Date.now() + 3600_000)))
   const [repeatMinutes, setRepeatMinutes] = useState<ScheduleInput["repeatMinutes"]>(null)
   const [notice, setNotice] = useState(false)
@@ -328,7 +332,7 @@ export function Schedules({
               <Text as="p" size="2" id="schedule-time-help">
                 {t("schedule.timeHelp", { zone: timeZone })}
               </Text>
-              {preview && (
+              {preview && chatId && (
                 <p className="schedule-preview">
                   {t("schedule.preview", { time: preview, chat: name(Number(chatId)) })}
                 </p>
