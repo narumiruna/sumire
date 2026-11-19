@@ -82,8 +82,9 @@ only clients you trust with these data.
   grant does not affect the Passkey account or other grants.
 - MCP uses stateless JSON responses. It does not open a standalone event stream or accept
   batches. Public registrations and pending requests have limits. At capacity, a new
-  registration can replace the oldest client without a live grant or approved code.
-  Retry a fresh registration if an unapproved request expires or is replaced.
+  registration can replace the oldest idle client. Pending consent requests, approved
+  codes, and live grants are not removed to make room. If every provisional slot has
+  pending consent, the client must retry registration later.
   MCP is not available on the local HTTP admin origin. No new environment variable,
   external identity provider, or migration of existing Issues is required.
 

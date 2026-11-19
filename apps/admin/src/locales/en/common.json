@@ -20,6 +20,7 @@
   "app.failed": "Operation failed",
   "app.loadFailed": "Could not load administrator session",
   "app.discardLeave": "Discard pending changes and leave?",
+  "app.discardConsentEditors": "Discard unfinished editor drafts and open OAuth consent? Policy changes and exact tool input will be kept.",
   "app.retainedDraft": "Your settings draft is retained. Load the latest settings and review it before saving again.",
   "app.retryHelp": "Review the input and retry. Check application status before repeating a saved operation.",
   "app.reviewBeforeSave": "Load latest and review draft before another save.",

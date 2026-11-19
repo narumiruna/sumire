@@ -372,6 +372,9 @@ it("gets Pi write access on fresh sign-in even when the challenge asks for read"
     })
     const tokens = store.load()?.tokens
     expect(tokens?.scope).toBe("issues:write")
+    if (!tokens?.access_token) throw new Error("Expected a Pi access token")
+    const client = await connect(tokens.access_token)
+    expect((await client.listTools()).tools.map(({ name }) => name)).toContain("update_issue")
   } finally {
     fetch.mockRestore()
   }
@@ -418,10 +421,12 @@ it("returns OAuth errors only after validating the registered callback", async (
     ["code_challenge_method", "plain", "invalid_request"],
     ["resource", origin, "invalid_target"],
     ["scope", "unknown", "invalid_scope"],
-  ]) {
-    if (!key || !value) throw new Error("Missing OAuth fixture parameter")
-    const { params, state } = authorization(client)
+    ["state", `${"a".repeat(507)}&x=ä +`, "invalid_request"],
+    ["state", "", "invalid_request"],
+  ] as const) {
+    const { params } = authorization(client)
     params.set(key, value)
+    const state = params.get("state")
     const response = await authorize(params)
     expect(response.status).toBe(303)
     expect(response.headers.has("set-cookie")).toBe(false)
@@ -431,16 +436,22 @@ it("returns OAuth errors only after validating the registered callback", async (
   }
 })
 
-it("admits a new client at the provisional limit without evicting live grants or approved codes", async () => {
+it("reclaims idle registrations without evicting pending consent, live grants, or approved codes", async () => {
   const db = fixture.factory.control.db
   const granted = await register()
   const tokens = await issueTokens(granted)
   const approved = await register()
   const code = await authorizeCode(approved)
+  const reviewing = await register()
+  const pending = await beginAuthorization(reviewing)
   const provisional = db.prepare("INSERT INTO issues_oauth_clients VALUES (?,?,?,?,?)")
   const oldest = randomBytes(32).toString("base64url")
   const now = Date.now()
-  for (let i = 0; i < 256; i++) {
+  db.prepare("UPDATE issues_oauth_clients SET expires=? WHERE id=?").run(
+    now + 60_000,
+    reviewing.clientId,
+  )
+  for (let i = 0; i < 255; i++) {
     provisional.run(
       i === 0 ? oldest : randomBytes(32).toString("base64url"),
       origin,
@@ -449,11 +460,53 @@ it("admits a new client at the provisional limit without evicting live grants or
       now + 300_000 + i,
     )
   }
+  await register()
+  await register()
   const fresh = await register()
   expect(db.prepare("SELECT id FROM issues_oauth_clients WHERE id=?").get(oldest)).toBeUndefined()
   await beginAuthorization(fresh)
+  const review = await call(
+    `${consentPath}?requestId=${pending.requestId}`,
+    "GET",
+    undefined,
+    consentHeaders(pending),
+  )
+  expect(review.status).toBe(200)
+  expect((await callback(await decide(pending, true), reviewing, pending)).has("code")).toBe(true)
   await readTokens(await form(`${oauthPath}/token`, code))
   expect((await call(mcpPath, "POST", initialize, bearer(tokens.access_token))).status).toBe(200)
+})
+
+it("rejects another registration when every provisional slot has pending consent", async () => {
+  const db = fixture.factory.control.db
+  const reviewing = await register()
+  const pending = await beginAuthorization(reviewing)
+  const expires = Date.now() + 60_000
+  const addClient = db.prepare("INSERT INTO issues_oauth_clients VALUES (?,?,?,?,?)")
+  const addPending = db.prepare(`INSERT INTO issues_oauth_requests
+    (id,browser,client,actor,redirect,challenge,scope,state,expires) VALUES (?,?,?,?,?,?,?,?,?)`)
+  for (let i = 0; i < 255; i++) {
+    const id = randomUUID()
+    addClient.run(id, origin, "Pending fixture", JSON.stringify([loopbackCallback]), expires)
+    addPending.run(
+      randomUUID(),
+      "browser-fixture",
+      id,
+      "7",
+      loopbackCallback,
+      "challenge-fixture",
+      "issues:read",
+      "state-fixture",
+      expires,
+    )
+  }
+  const response = await call(`${oauthPath}/register`, "POST", registration)
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({ error: "temporarily_unavailable" })
+  expect((await callback(await decide(pending, false), reviewing, pending)).get("error")).toBe(
+    "access_denied",
+  )
+  await register()
 })
 
 it("limits pending consent per client without using or deleting an approved code", async () => {

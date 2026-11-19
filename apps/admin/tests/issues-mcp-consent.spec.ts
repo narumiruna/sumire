@@ -1,6 +1,12 @@
 import { generateKeyPairSync } from "node:crypto"
 import { expect, type Page, test } from "@playwright/test"
-import { adminFixture, openChatAccess, openDisclosure } from "./admin-fixture.js"
+import {
+  adminFixture,
+  navigate,
+  openChatAccess,
+  openDisclosure,
+  openProviderDetail,
+} from "./admin-fixture.js"
 
 const requestId = `${"R_-".repeat(14)}R`
 const clientName = "Client <img src=x onerror=alert(1)>"
@@ -185,6 +191,112 @@ for (const dirty of [true, false]) {
     }
   })
 }
+
+test("canceling same-tab consent keeps the endpoint and staged policy drafts", async ({ page }) => {
+  await adminFixture(page)
+  let consentReads = 0
+  await page.route("**/api/issues-mcp/consent?*", (route) => {
+    consentReads++
+    return route.fulfill({ json: { clientName, redirectUri: callback, scope: "issues:write" } })
+  })
+  await openChatAccess(page)
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  const chatsUrl = page.url()
+  await navigate(page, "Model Providers")
+  await openProviderDetail(page)
+  await openDisclosure(page, "Custom endpoint")
+  const endpoint = page.getByLabel("Provider ID", { exact: true })
+  await endpoint.fill("unfinished-endpoint")
+  await page.getByLabel("API base URL", { exact: true }).fill("https://endpoint.example.test/v1")
+  const settingsUrl = await page.evaluate(() => {
+    window.history.replaceState(window.history.state, "", "#model-availability")
+    return window.location.href
+  })
+  const historyLength = await page.evaluate(() => window.history.length)
+  const dialogs: string[] = []
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message())
+    return dialog.dismiss()
+  })
+
+  await page.evaluate((id) => {
+    window.location.hash = `issues-mcp=${id}`
+  }, requestId)
+
+  await expect.poll(() => dialogs).toEqual(["Discard unfinished custom endpoint edits?"])
+  await expect(page).toHaveURL(settingsUrl)
+  await expect(endpoint).toHaveValue("unfinished-endpoint")
+  await expect(page.getByLabel("API base URL", { exact: true })).toHaveValue(
+    "https://endpoint.example.test/v1",
+  )
+  await expect(
+    page.getByRole("button", { name: "Continue editing: Providers & models — Custom endpoint" }),
+  ).toBeVisible()
+  expect(consentReads).toBe(0)
+  // Restoring the URL must not push another entry or remove the earlier workspace entries.
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength + 1)
+  await page.evaluate(() => window.history.go(-2))
+  await expect(page).toHaveURL(chatsUrl)
+  await expect(page.getByRole("button", { name: "Undo revocation for 42" })).toBeVisible()
+})
+
+test("confirming same-tab consent clears discarded local flags only", async ({ page }) => {
+  const requests = await adminFixture(page)
+  await page.route("**/api/issues-mcp/consent?*", (route) =>
+    route.fulfill({ json: { clientName, redirectUri: callback, scope: "issues:write" } }),
+  )
+  await openChatAccess(page)
+  await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+  await page.getByLabel("Telegram ID to approve", { exact: true }).fill("8001")
+  await navigate(page, "Tool permissions")
+  await openDisclosure(page, "Approve an exact tool name")
+  await page.getByLabel("Additional approved tool name", { exact: true }).fill("unfinished_tool")
+  await navigate(page, "Model Providers")
+  await openProviderDetail(page)
+  await openDisclosure(page, "Custom endpoint")
+  await page.getByLabel("Provider ID", { exact: true }).fill("unfinished-endpoint")
+  const settingsUrl = page.url()
+  const resumeEndpoint = page.getByRole("button", {
+    name: "Continue editing: Providers & models — Custom endpoint",
+  })
+  const resumeAccess = page.getByRole("button", {
+    name: "Continue editing: Chat access — Telegram ID to approve",
+  })
+  await expect(resumeEndpoint).toBeVisible()
+  await expect(resumeAccess).toBeVisible()
+  const dialogs: string[] = []
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message())
+    return dialog.accept()
+  })
+
+  await page.evaluate((id) => {
+    window.location.hash = `issues-mcp=${id}`
+  }, requestId)
+  await expect(page.getByRole("button", { name: "Approve access" })).toBeEnabled()
+  expect(dialogs).toEqual([
+    "Discard unfinished editor drafts and open OAuth consent? Policy changes and exact tool input will be kept.",
+  ])
+  await page.goBack()
+  await expect(page).toHaveURL(settingsUrl)
+  await openProviderDetail(page)
+  await openDisclosure(page, "Custom endpoint")
+  await expect(page.getByLabel("Provider ID", { exact: true })).toHaveValue("")
+  await expect(resumeEndpoint).toHaveCount(0)
+  await expect(resumeAccess).toHaveCount(0)
+  await page
+    .getByRole("button", {
+      name: "Continue editing: Tool permissions — Additional approved tool name",
+    })
+    .click()
+  await expect(page.getByLabel("Additional approved tool name", { exact: true })).toHaveValue(
+    "unfinished_tool",
+  )
+  await openChatAccess(page)
+  await expect(page.getByLabel("Telegram ID to approve", { exact: true })).toHaveValue("")
+  await expect(page.getByRole("button", { name: "Undo revocation for 42" })).toBeVisible()
+  expect(requests.filter((request) => request === "GET /api/settings")).toHaveLength(1)
+})
 
 test("explicitly denies access and returns an OAuth denial to the local client", async ({
   page,

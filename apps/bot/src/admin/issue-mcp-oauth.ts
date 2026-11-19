@@ -161,15 +161,7 @@ export class IssueMcpOAuth {
     const redirects = JSON.stringify(input.redirect_uris)
     return this.transaction(() => {
       this.prune(now)
-      // Reclaim the oldest provisional slots without evicting live grants or approved codes.
-      this.store.db
-        .prepare(`DELETE FROM issues_oauth_clients WHERE id IN (
-        SELECT c.id FROM issues_oauth_clients c
-        WHERE NOT EXISTS (SELECT 1 FROM issues_oauth_grants WHERE client=c.id)
-          AND NOT EXISTS (SELECT 1 FROM issues_oauth_requests WHERE client=c.id AND code IS NOT NULL)
-        ORDER BY c.expires DESC, c.rowid DESC LIMIT -1 OFFSET ?
-      )`)
-        .run(maxProvisionalClients - 1)
+      this.makeRegistrationSlot()
       this.store.db
         .prepare("INSERT INTO issues_oauth_clients VALUES (?,?,?,?,?)")
         .run(id, this.origin, input.client_name, redirects, now + 20 * minute)
@@ -402,8 +394,9 @@ export class IssueMcpOAuth {
 
   private callback(redirect: string, state: string | undefined) {
     const url = new URL(redirect)
-    const validatedState = authorizationState.safeParse(state)
-    if (validatedState.success) url.searchParams.set("state", validatedState.data)
+    // Authorization errors echo the supplied state on a validated callback. The request
+    // URL limit bounds that value; the stricter schema still controls consent storage.
+    if (state !== undefined) url.searchParams.set("state", state)
     url.searchParams.set("iss", this.origin)
     return url
   }
@@ -455,6 +448,27 @@ export class IssueMcpOAuth {
       "completed",
       `issue-mcp-grant:${id}`,
     )
+  }
+
+  private makeRegistrationSlot() {
+    // Count pending consent against the provisional limit, but never reclaim it.
+    // Grants and exchangeable codes have their own limits.
+    const provisional = this.store.db
+      .prepare(`SELECT count(*) AS n FROM issues_oauth_clients c
+      WHERE NOT EXISTS (SELECT 1 FROM issues_oauth_grants WHERE client=c.id)
+        AND NOT EXISTS (SELECT 1 FROM issues_oauth_requests WHERE client=c.id AND code IS NOT NULL)`)
+      .get() as { n: number }
+    const needed = provisional.n - maxProvisionalClients + 1
+    if (needed <= 0) return
+    const { changes } = this.store.db
+      .prepare(`DELETE FROM issues_oauth_clients WHERE id IN (
+      SELECT c.id FROM issues_oauth_clients c
+      WHERE NOT EXISTS (SELECT 1 FROM issues_oauth_grants WHERE client=c.id)
+        AND NOT EXISTS (SELECT 1 FROM issues_oauth_requests WHERE client=c.id)
+      ORDER BY c.expires, c.rowid LIMIT ?
+    )`)
+      .run(needed)
+    if (changes !== needed) throw new OAuthError("temporarily_unavailable", 503)
   }
 
   private prune(now: number) {

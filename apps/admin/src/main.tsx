@@ -339,9 +339,41 @@ function App() {
   )
   const { knownChats } = directory
   const refreshChats = directory.refresh
+  const confirmConsentEntry = useEffectEvent(() => {
+    // Policy and exact-tool input live in App and do not unmount with the workspace.
+    const drafts = (Object.keys(editorPending) as PendingEditor[]).filter(
+      (key) => key !== "tool" && editorPending[key],
+    )
+    const otherDrafts = mcpDirty || providerPending || drafts.some((key) => key !== "endpoint")
+    if (otherDrafts || editorPending.endpoint) {
+      if (!window.confirm(t(otherDrafts ? "app.discardConsentEditors" : "app.discardEndpoint")))
+        return false
+    }
+    if (runtimeGuard.current && !runtimeGuard.current()) return false
+    if (drafts.length) {
+      setEditorPending((previous) => {
+        const next = { ...previous }
+        for (const key of drafts) delete next[key]
+        return next
+      })
+    }
+    if (editorPending.endpoint) setEditingProvider(undefined)
+    if (mcpDirty) setMcpDirty(false)
+    if (providerPending) {
+      setProviderPending(false)
+      setAuthRequest(undefined)
+    }
+    return true
+  })
   useEffect(() => {
-    const capture = () => {
+    const capture = (event: HashChangeEvent) => {
       const consent = readIssuesMcpRequest(window.location.hash)
+      if (consent !== null && readIssuesMcpRequest(new URL(event.oldURL).hash) === null) {
+        if (!confirmConsentEntry()) {
+          window.history.replaceState(window.history.state, "", event.oldURL)
+          return
+        }
+      }
       setIssuesConsent(consent)
       if (consent !== null) return
       const params = new URLSearchParams(window.location.hash.slice(1))
