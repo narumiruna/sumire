@@ -24,8 +24,9 @@ pi mcp login sumire-issues
 pi mcp list
 ```
 
-The default challenge asks for `issues:read`. To request write access with Pi, add an
-explicit scope to the user-level MCP configuration, then sign in again:
+The default challenge asks for `issues:read`. On a fresh sign-in, Pi 1.5.2 adds the
+configured `oauth.scope` to the scope in that challenge. To request write access,
+set the scope in the user-level MCP configuration:
 
 ```json
 {
@@ -38,8 +39,10 @@ explicit scope to the user-level MCP configuration, then sign in again:
 }
 ```
 
-If Pi already has a read grant, use `pi mcp logout sumire-issues` before signing in
-again. You can revoke old grants in Sumire under **Issues > Manage Issues MCP grants**.
+Run `pi mcp login sumire-issues` and confirm that the consent page shows
+`issues:write` before you approve. If Pi is already signed in, run
+`pi mcp logout sumire-issues` first. Changing the configuration does not change an
+existing grant. You can revoke old grants under **Issues > Manage Issues MCP grants**.
 WebUI sign-out does not revoke a grant.
 
 ## Available tools
@@ -78,7 +81,10 @@ only clients you trust with these data.
   used refresh token revokes the grant. Sumire stores hashes, not token values. Revoking a
   grant does not affect the Passkey account or other grants.
 - MCP uses stateless JSON responses. It does not open a standalone event stream or accept
-  batches. It is not available on the local HTTP admin origin. No new environment variable,
+  batches. Public registrations and pending requests have limits. At capacity, a new
+  registration can replace the oldest client without a live grant or approved code.
+  Retry a fresh registration if an unapproved request expires or is replaced.
+  MCP is not available on the local HTTP admin origin. No new environment variable,
   external identity provider, or migration of existing Issues is required.
 
 After deployment, verify the reverse proxy and sign in with a real Passkey using your target

@@ -42,27 +42,50 @@ function createIssueMcpServer(options: IssueMcpTools) {
       throw new AdminError(403, "Issues MCP credential is no longer authorized for this action")
     return credential.actor
   }
-  async function runTool(
-    write: boolean,
-    action: (actor: string) => CallToolResult | Promise<CallToolResult>,
-  ) {
+  function toolError(error: unknown): CallToolResult {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text:
+            error instanceof IssueError || error instanceof AdminError
+              ? error.message
+              : "Issue operation failed",
+        },
+      ],
+    }
+  }
+
+  async function runRead(action: () => CallToolResult) {
     try {
-      const result = await action(authorize(write))
-      authorize(write)
+      authorize(false)
+      const result = await action()
+      authorize(false)
       return result
     } catch (error) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text:
-              error instanceof IssueError || error instanceof AdminError
-                ? error.message
-                : "Issue operation failed",
-          },
-        ],
-      } satisfies CallToolResult
+      return toolError(error)
+    }
+  }
+
+  async function runWrite(
+    commit: (actor: string) => object,
+    receipt: object,
+    notify?: () => Promise<void>,
+  ) {
+    let committed: object
+    try {
+      committed = commit(authorize(true))
+    } catch (error) {
+      return toolError(error)
+    }
+    try {
+      await notify?.()
+      authorize(true)
+      return textResult(committed)
+    } catch {
+      // The write already committed. Acknowledge it without returning protected issue data.
+      return textResult(receipt)
     }
   }
 
@@ -77,7 +100,7 @@ function createIssueMcpServer(options: IssueMcpTools) {
       }),
       annotations: readOnly,
     },
-    ({ before, state }) => runTool(false, () => textResult(options.issues.list(before, state))),
+    ({ before, state }) => runRead(() => textResult(options.issues.list(before, state))),
   )
   server.registerTool(
     "get_issue",
@@ -87,7 +110,7 @@ function createIssueMcpServer(options: IssueMcpTools) {
       inputSchema: z.strictObject({ id: positiveInteger }),
       annotations: readOnly,
     },
-    ({ id }) => runTool(false, () => textResult(options.issues.get(id))),
+    ({ id }) => runRead(() => textResult(options.issues.get(id))),
   )
   server.registerTool(
     "get_issue_screenshot",
@@ -98,7 +121,7 @@ function createIssueMcpServer(options: IssueMcpTools) {
       annotations: readOnly,
     },
     ({ id }) =>
-      runTool(false, () => {
+      runRead(() => {
         options.limitScreenshot()
         const image = options.issues.attachment(id)
         return {
@@ -127,13 +150,15 @@ function createIssueMcpServer(options: IssueMcpTools) {
         annotations: { ...destructive, idempotentHint: true },
       },
       ({ id, revision, title, state }) =>
-        runTool(true, async (actor) => {
-          if (title === undefined && state === undefined)
-            throw new IssueError(400, "Provide a title, state, or both")
-          const issue = options.issues.edit(id, revision, { title, state }, actor)
-          if (state === "closed") await options.changed(id)
-          return textResult(issue)
-        }),
+        runWrite(
+          (actor) => {
+            if (title === undefined && state === undefined)
+              throw new IssueError(400, "Provide a title, state, or both")
+            return options.issues.edit(id, revision, { title, state }, actor)
+          },
+          { id, updated: true },
+          state === "closed" ? () => options.changed(id) : undefined,
+        ),
     )
     server.registerTool(
       "delete_issue",
@@ -147,12 +172,17 @@ function createIssueMcpServer(options: IssueMcpTools) {
         }),
         annotations: destructive,
       },
-      ({ id, revision }) =>
-        runTool(true, async (actor) => {
-          options.issues.delete(id, revision, actor)
-          await options.changed(id)
-          return textResult({ id, deleted: true })
-        }),
+      ({ id, revision }) => {
+        const receipt = { id, deleted: true }
+        return runWrite(
+          (actor) => {
+            options.issues.delete(id, revision, actor)
+            return receipt
+          },
+          receipt,
+          () => options.changed(id),
+        )
+      },
     )
   }
   return server

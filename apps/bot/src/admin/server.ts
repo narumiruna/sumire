@@ -242,6 +242,10 @@ export function createAdminServer(config: AdminConfig, services: AdminServices) 
           oauthParameters(url.searchParams),
           readCookie(req, oauthBrowserCookie),
         )
+        if (request.kind === "error") {
+          res.writeHead(303, { location: request.redirect }).end()
+          return
+        }
         res.setHeader(
           "set-cookie",
           cookie(oauthBrowserCookie, request.browser, request.seconds, "Lax"),

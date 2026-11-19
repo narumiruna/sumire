@@ -84,6 +84,8 @@ export class AdminStore {
         hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES issues_oauth_grants(id) ON DELETE CASCADE,
         used INTEGER NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS issues_oauth_requests_client_idx ON issues_oauth_requests(client);
+      CREATE INDEX IF NOT EXISTS issues_oauth_grants_client_idx ON issues_oauth_grants(client);
       CREATE INDEX IF NOT EXISTS issues_oauth_refresh_grant_idx ON issues_oauth_refresh(grant_id);
       DROP TABLE IF EXISTS login;
       PRAGMA user_version = 5;

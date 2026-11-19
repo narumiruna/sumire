@@ -1,7 +1,14 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { request } from "node:http"
 import type { AddressInfo } from "node:net"
+import path from "node:path"
 import { arrayBuffer } from "node:stream/consumers"
+import {
+  completeMcpSignIn,
+  MemoryOAuthStateStore,
+  parseWwwAuthenticate,
+  startMcpSignIn,
+} from "@earendil-works/pi-mcp/oauth"
 import {
   discoverOAuthServerInfo,
   extractResourceMetadataUrl,
@@ -10,11 +17,13 @@ import {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Issue } from "@narumitw/sumire-issues"
-import { afterEach, beforeEach, expect, it } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { PNG } from "../../../packages/imagegen/tests/fixtures.js"
 import { McpAdmin } from "../src/admin/mcp.js"
 import { ProviderAdmin } from "../src/admin/providers.js"
 import { createAdminServer } from "../src/admin/server.js"
+import { IssueAnalysisRuntime } from "../src/issues/runtime.js"
+import { deferred } from "./helpers/github-fixture.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 const origin = "https://admin.example.test"
@@ -43,13 +52,14 @@ let session: { value: string; csrf: string }
 let clients: Client[]
 let adminOrigin: string
 
-async function start(configuredOrigin: string) {
+async function start(configuredOrigin: string, analysis?: IssueAnalysisRuntime) {
   const store = fixture.factory.control
   adminOrigin = configuredOrigin
   server = createAdminServer(
     { origin: configuredOrigin, host: "127.0.0.1", port: 0, assets: fixture.root },
     {
       store,
+      analysis,
       providers: new ProviderAdmin(fixture.modelRuntime, store),
       mcp: new McpAdmin(store, fixture.root),
       tools: () => [],
@@ -66,9 +76,18 @@ beforeEach(async () => {
   await start(origin)
 })
 afterEach(async () => {
-  await Promise.all(clients.map((client) => client.close()))
-  await server.stop()
-  await fixture.cleanup()
+  const attempts = await Promise.allSettled(clients.map(async (client) => client.close()))
+  const errors: unknown[] = attempts.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  )
+  for (const cleanup of [() => server.stop(), () => fixture.cleanup()]) {
+    try {
+      await cleanup()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, "Issues MCP fixture cleanup failed")
 })
 
 function endpoint(pathname: string) {
@@ -307,6 +326,57 @@ it("lets the MCP SDK discover OAuth and register a public loopback client", asyn
   await beginAuthorization({ clientId: client.client_id, redirectUri: loopbackCallback })
 })
 
+it("gets Pi write access on fresh sign-in even when the challenge asks for read", async () => {
+  const response = await call(mcpPath, "POST", initialize, mcpHeaders)
+  expect(response.status).toBe(401)
+  const challenge = parseWwwAuthenticate(response.headers.get("www-authenticate"))
+  expect(challenge?.scope).toBe("issues:read")
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch)
+  try {
+    const store = Object.assign(new MemoryOAuthStateStore(), {
+      withRefreshLock: <T>(work: () => Promise<T>) => work(),
+    })
+    const options = {
+      serverUrl: resource,
+      store,
+      clientName: "Pi fixture",
+      redirectUrl: loopbackCallback,
+      settings: { scope: "issues:write" },
+      challenge,
+    }
+    const authorization = await startMcpSignIn(options)
+    if (authorization.kind !== "redirect") throw new Error("Expected a fresh sign-in")
+    expect(new Set(authorization.scope?.split(" "))).toEqual(
+      new Set(["issues:read", "issues:write"]),
+    )
+    const redirect = await backendFetch(authorization.authorizationUrl)
+    expect(redirect.status).toBe(303)
+    const requestId = (redirect.headers.get("location") ?? "").slice("/#issues-mcp=".length)
+    const [cookie = ""] = (redirect.headers.get("set-cookie") ?? "").split(";")
+    const headers = passkey()
+    headers.cookie += `; ${cookie}`
+    const consent = await call(`${consentPath}?requestId=${requestId}`, "GET", undefined, headers)
+    expect(await consent.json()).toMatchObject({ scope: "issues:write" })
+    const approved = await call(consentPath, "POST", { requestId, approve: true }, headers)
+    expect(approved.status).toBe(200)
+    const { redirect: callback } = (await approved.json()) as { redirect: string }
+    const params = new URL(callback).searchParams
+    await completeMcpSignIn({
+      ...options,
+      authorization,
+      response: {
+        code: params.get("code") ?? "",
+        state: params.get("state") ?? "",
+        iss: params.get("iss") ?? "",
+      },
+    })
+    const tokens = store.load()?.tokens
+    expect(tokens?.scope).toBe("issues:write")
+  } finally {
+    fetch.mockRestore()
+  }
+})
+
 it("requires public registration claims and rejects unauthorized callback paths and hosts", async () => {
   const ipv4 = await register()
   const localhost = await register("http://localhost:12345/callback")
@@ -329,8 +399,7 @@ it("requires public registration claims and rejects unauthorized callback paths 
     ["redirect_uri", "http://localhost:12345/callback"],
     ["redirect_uri", "http://127.0.0.1:12345/other"],
     ["redirect_uri", "http://external.example.test:12345/callback"],
-    ["code_challenge_method", "plain"],
-    ["resource", origin],
+    ["client_id", randomBytes(32).toString("base64url")],
   ] as const) {
     const { params } = authorization(ipv4, "issues:read")
     params.set(key, value)
@@ -340,6 +409,66 @@ it("requires public registration claims and rejects unauthorized callback paths 
   }
   const { params } = authorization({ ...localhost, redirectUri: "http://localhost:12346/callback" })
   await expectOAuthError(await authorize(params))
+})
+
+it("returns OAuth errors only after validating the registered callback", async () => {
+  const client = await register()
+  for (const [key, value, error] of [
+    ["response_type", "token", "unsupported_response_type"],
+    ["code_challenge_method", "plain", "invalid_request"],
+    ["resource", origin, "invalid_target"],
+    ["scope", "unknown", "invalid_scope"],
+  ]) {
+    if (!key || !value) throw new Error("Missing OAuth fixture parameter")
+    const { params, state } = authorization(client)
+    params.set(key, value)
+    const response = await authorize(params)
+    expect(response.status).toBe(303)
+    expect(response.headers.has("set-cookie")).toBe(false)
+    const callback = new URL(response.headers.get("location") ?? "")
+    expect(`${callback.origin}${callback.pathname}`).toBe(client.redirectUri)
+    expect(Object.fromEntries(callback.searchParams)).toEqual({ state, iss: origin, error })
+  }
+})
+
+it("admits a new client at the provisional limit without evicting live grants or approved codes", async () => {
+  const db = fixture.factory.control.db
+  const granted = await register()
+  const tokens = await issueTokens(granted)
+  const approved = await register()
+  const code = await authorizeCode(approved)
+  const provisional = db.prepare("INSERT INTO issues_oauth_clients VALUES (?,?,?,?,?)")
+  const oldest = randomBytes(32).toString("base64url")
+  const now = Date.now()
+  for (let i = 0; i < 256; i++) {
+    provisional.run(
+      i === 0 ? oldest : randomBytes(32).toString("base64url"),
+      origin,
+      "Provisional",
+      JSON.stringify([loopbackCallback]),
+      now + 300_000 + i,
+    )
+  }
+  const fresh = await register()
+  expect(db.prepare("SELECT id FROM issues_oauth_clients WHERE id=?").get(oldest)).toBeUndefined()
+  await beginAuthorization(fresh)
+  await readTokens(await form(`${oauthPath}/token`, code))
+  expect((await call(mcpPath, "POST", initialize, bearer(tokens.access_token))).status).toBe(200)
+})
+
+it("limits pending consent per client without using or deleting an approved code", async () => {
+  const client = await register()
+  const code = await authorizeCode(client)
+  const other = await register()
+  for (let i = 0; i < 4; i++) await beginAuthorization(client)
+  const { params, state } = authorization(client)
+  const response = await authorize(params)
+  expect(response.status).toBe(303)
+  const callback = new URL(response.headers.get("location") ?? "")
+  expect(callback.searchParams.get("error")).toBe("temporarily_unavailable")
+  expect(callback.searchParams.get("state")).toBe(state)
+  await beginAuthorization(other)
+  await readTokens(await form(`${oauthPath}/token`, code))
 })
 
 it.each(["127.0.0.1", "[::1]"])(
@@ -596,6 +725,66 @@ it("works with the MCP SDK client and leaves original feedback intact when editi
   ).toBe(true)
   expect(fixture.requests).toHaveLength(0)
 })
+
+it.each(["close", "delete"] as const)(
+  "reports a committed %s after the access token rotates",
+  async (action) => {
+    await server.stop()
+    const worker = new IssueAnalysisRuntime({
+      store: fixture.factory.control,
+      runtime: fixture.modelRuntime,
+      directory: path.join(fixture.root, "issue-mcp-sessions"),
+    })
+    const entered = deferred<void>()
+    const finish = deferred<void>()
+    vi.spyOn(worker, "changed").mockImplementation(async () => {
+      entered.resolve()
+      await finish.promise
+    })
+    await start(origin, worker)
+    const issue = (await (
+      await call(
+        "/api/issues",
+        "POST",
+        {
+          requestId: randomUUID(),
+          description: "Private feedback",
+          source: { section: "Chats", viewport: { width: 1000, height: 800 } },
+        },
+        passkey(),
+      )
+    ).json()) as Issue
+    const oauth = await register()
+    const tokens = await issueTokens(oauth, "issues:write")
+    const writer = await connect(tokens.access_token)
+    const input = { id: issue.id, revision: issue.revision }
+    const result = writer.callTool(
+      action === "close"
+        ? { name: "update_issue", arguments: { ...input, state: "closed" } }
+        : { name: "delete_issue", arguments: { ...input, confirmDelete: true } },
+    )
+    try {
+      await Promise.race([
+        entered.promise,
+        result.then(() => {
+          throw new Error("Write did not reach the analysis worker")
+        }),
+      ])
+      await readTokens(await form(`${oauthPath}/token`, refreshGrant(oauth, tokens.refresh_token)))
+    } finally {
+      finish.resolve()
+    }
+    const receipt = await result
+    expect(receipt.isError).not.toBe(true)
+    expect(receipt.structuredContent).toEqual(
+      action === "close" ? { id: issue.id, updated: true } : { id: issue.id, deleted: true },
+    )
+    expect(JSON.stringify(receipt)).not.toContain("Private feedback")
+    const current = await call(`/api/issues/${issue.id}`, "GET", undefined, passkey())
+    if (action === "close") expect(await current.json()).toMatchObject({ state: "closed" })
+    else expect(current.status).toBe(404)
+  },
+)
 
 it("requires a Bearer token and an allowed origin on the stateless MCP transport", async () => {
   const unauthenticated = await call(mcpPath, "POST", initialize, { ...mcpHeaders, ...passkey() })

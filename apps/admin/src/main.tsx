@@ -23,7 +23,7 @@ import {
   Text,
   Theme,
 } from "@radix-ui/themes"
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
@@ -362,9 +362,14 @@ function App() {
         setError(new LocalizedError("app.loadFailed"))
     })
   }, [])
+  const resumeWorkspace = useEffectEvent(() => {
+    // Consent can interrupt a draft in the same session. Expiry clears the draft and snapshot.
+    if (snapshot && dirty) return
+    void run(load, false)
+  })
   useEffect(() => {
-    if (session && !isConsentView) void run(load, false)
-  }, [session, run, load, isConsentView])
+    if (session && !isConsentView) resumeWorkspace()
+  }, [session, isConsentView])
   useEffect(() => {
     if (!pending) return
     const warn = (event: BeforeUnloadEvent) => {

@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from "node:crypto"
 import { expect, type Page, test } from "@playwright/test"
+import { adminFixture, openChatAccess, openDisclosure } from "./admin-fixture.js"
 
 const requestId = `${"R_-".repeat(14)}R`
 const clientName = "Client <img src=x onerror=alert(1)>"
@@ -146,6 +147,44 @@ test("keeps consent in the hash across reload and passkey sign-in, then explicit
   await page.goBack()
   await expect(page).toHaveURL(`${admin.origin}/`)
 })
+
+for (const dirty of [true, false]) {
+  test(`leaving same-tab consent ${dirty ? "keeps unsaved policy edits" : "reloads clean settings"}`, async ({
+    page,
+  }) => {
+    const requests = await adminFixture(page)
+    const settingsReads = () => requests.filter((request) => request === "GET /api/settings").length
+    await page.route("**/api/issues-mcp/consent?*", (route) =>
+      route.fulfill({ json: { clientName, redirectUri: callback, scope: "issues:write" } }),
+    )
+    await openChatAccess(page)
+    const review = page.getByRole("button", { name: "Review and save changes", exact: true })
+    if (dirty) {
+      await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
+      await expect(review).toBeEnabled()
+    }
+    const settingsUrl = page.url()
+    await page.evaluate((id) => {
+      window.location.hash = `issues-mcp=${id}`
+    }, requestId)
+    await expect(page.getByRole("button", { name: "Approve access" })).toBeEnabled()
+    await expect(page.getByRole("complementary")).toHaveCount(0)
+    expect(settingsReads()).toBe(1)
+
+    await page.goBack()
+    await expect(page).toHaveURL(settingsUrl)
+    await openDisclosure(page, "Access management")
+    if (dirty) {
+      await expect(page.getByRole("button", { name: "Undo revocation for 42" })).toBeVisible()
+      await expect(review).toBeEnabled()
+      expect(settingsReads()).toBe(1)
+    } else {
+      await expect.poll(settingsReads).toBe(2)
+      await expect(page.getByRole("button", { name: "Revoke access for ID 42" })).toBeEnabled()
+      await expect(review).toHaveCount(0)
+    }
+  })
+}
 
 test("explicitly denies access and returns an OAuth denial to the local client", async ({
   page,

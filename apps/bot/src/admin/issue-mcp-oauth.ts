@@ -17,6 +17,8 @@ const accessAge = 60 * minute
 const grantAge = 30 * 24 * 60 * minute
 const browserAge = 10 * minute
 const maxGrants = 64
+const maxProvisionalClients = 256
+const maxPendingPerClient = 4
 const maxRefreshes = 1024
 
 export class OAuthError extends Error {
@@ -45,13 +47,13 @@ const registrationInput = z.object({
     .optional(),
   response_types: z.tuple([z.literal("code")]).optional(),
 })
+const authorizationCallback = z.object({ client_id: opaqueId, redirect_uri: z.string().max(512) })
+const authorizationState = z.string().min(1).max(512)
 const authorizationInput = z.object({
-  client_id: opaqueId,
-  redirect_uri: z.string().max(512),
   response_type: z.literal("code"),
   code_challenge: opaqueId,
   code_challenge_method: z.literal("S256"),
-  state: z.string().min(1).max(512),
+  state: authorizationState,
   scope: z.string().max(128).optional(),
   resource: z.string().max(512).optional(),
 })
@@ -159,10 +161,15 @@ export class IssueMcpOAuth {
     const redirects = JSON.stringify(input.redirect_uris)
     return this.transaction(() => {
       this.prune(now)
-      const count = this.store.db
-        .prepare("SELECT count(*) AS n FROM issues_oauth_clients")
-        .get() as { n: number }
-      if (count.n >= 256) throw new OAuthError("temporarily_unavailable", 503)
+      // Reclaim the oldest provisional slots without evicting live grants or approved codes.
+      this.store.db
+        .prepare(`DELETE FROM issues_oauth_clients WHERE id IN (
+        SELECT c.id FROM issues_oauth_clients c
+        WHERE NOT EXISTS (SELECT 1 FROM issues_oauth_grants WHERE client=c.id)
+          AND NOT EXISTS (SELECT 1 FROM issues_oauth_requests WHERE client=c.id AND code IS NOT NULL)
+        ORDER BY c.expires DESC, c.rowid DESC LIMIT -1 OFFSET ?
+      )`)
+        .run(maxProvisionalClients - 1)
       this.store.db
         .prepare("INSERT INTO issues_oauth_clients VALUES (?,?,?,?,?)")
         .run(id, this.origin, input.client_name, redirects, now + 20 * minute)
@@ -178,21 +185,19 @@ export class IssueMcpOAuth {
     })
   }
 
-  begin(value: unknown, browserCookie: string) {
-    const parsed = authorizationInput.safeParse(value)
-    if (!parsed.success || !this.store.adminId) throw new OAuthError("invalid_request")
-    const input = parsed.data
-    this.resource(input.resource)
-    const scope = this.scope(input.scope)
+  begin(params: Record<string, string>, browserCookie: string) {
+    const callback = authorizationCallback.safeParse(params)
+    if (!callback.success || !this.store.adminId) throw new OAuthError("invalid_request")
+    const { client_id: clientId, redirect_uri: redirectUri } = callback.data
     const now = Date.now()
     const browser = opaqueId.safeParse(browserCookie).success ? browserCookie : token()
     const id = token()
-    this.transaction(() => {
+    return this.transaction(() => {
       this.prune(now)
       const client = this.store.db
         .prepare("SELECT name, redirects FROM issues_oauth_clients WHERE id=? AND origin=?")
-        .get(input.client_id, this.origin) as Client | undefined
-      const redirect = loopback(input.redirect_uri)
+        .get(clientId, this.origin) as Client | undefined
+      const redirect = loopback(redirectUri)
       const matches =
         redirect &&
         client &&
@@ -206,26 +211,42 @@ export class IssueMcpOAuth {
           )
         })
       if (!matches) throw new OAuthError("invalid_request")
-      const count = this.store.db
-        .prepare("SELECT count(*) AS n FROM issues_oauth_requests")
-        .get() as { n: number }
-      if (count.n >= 256) throw new OAuthError("temporarily_unavailable", 503)
-      this.store.db
-        .prepare(`INSERT INTO issues_oauth_requests
-        (id,browser,client,actor,redirect,challenge,scope,state,expires) VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(
-          digest(id),
-          digest(browser),
-          input.client_id,
-          String(this.store.adminId),
-          input.redirect_uri,
-          input.code_challenge,
-          scope,
-          input.state,
-          now + browserAge,
-        )
+      try {
+        if (params.response_type !== undefined && params.response_type !== "code")
+          throw new OAuthError("unsupported_response_type")
+        const parsed = authorizationInput.safeParse(params)
+        if (!parsed.success) throw new OAuthError("invalid_request")
+        const input = parsed.data
+        this.resource(input.resource)
+        const scope = this.scope(input.scope)
+        const count = this.store.db
+          .prepare(
+            "SELECT count(*) AS n FROM issues_oauth_requests WHERE client=? AND code IS NULL",
+          )
+          .get(clientId) as { n: number }
+        if (count.n >= maxPendingPerClient) throw new OAuthError("temporarily_unavailable")
+        this.store.db
+          .prepare(`INSERT INTO issues_oauth_requests
+          (id,browser,client,actor,redirect,challenge,scope,state,expires) VALUES (?,?,?,?,?,?,?,?,?)`)
+          .run(
+            digest(id),
+            digest(browser),
+            clientId,
+            String(this.store.adminId),
+            redirectUri,
+            input.code_challenge,
+            scope,
+            input.state,
+            now + browserAge,
+          )
+        return { kind: "consent", id, browser, seconds: browserAge / 1000 } as const
+      } catch (error) {
+        if (!(error instanceof OAuthError)) throw error
+        const response = this.callback(redirectUri, params.state)
+        response.searchParams.set("error", error.code)
+        return { kind: "error", redirect: response.href } as const
+      }
     })
-    return { id, browser, seconds: browserAge / 1000 }
   }
 
   review(id: string, browser: string, actor: string) {
@@ -236,10 +257,14 @@ export class IssueMcpOAuth {
   decide(id: string, browser: string, actor: string, approve: boolean) {
     return this.transaction(() => {
       const request = this.pending(id, browser, actor)
-      const callback = new URL(request.redirect)
-      callback.searchParams.set("state", request.state)
-      callback.searchParams.set("iss", this.origin)
+      const callback = this.callback(request.redirect, request.state)
       if (approve) {
+        const count = this.store.db
+          .prepare(
+            "SELECT count(*) AS n FROM issues_oauth_requests WHERE code IS NOT NULL AND expires>?",
+          )
+          .get(Date.now()) as { n: number }
+        if (count.n >= maxGrants) throw new AdminError(429, "Too many pending OAuth code exchanges")
         const code = token()
         this.store.db
           .prepare("UPDATE issues_oauth_requests SET code=?, expires=? WHERE id=?")
@@ -373,6 +398,14 @@ export class IssueMcpOAuth {
       .get(digest(id), digest(browser), actor, this.origin, Date.now()) as RequestRow | undefined
     if (!request) throw new AdminError(404, "Authorization request expired or not found")
     return request
+  }
+
+  private callback(redirect: string, state: string | undefined) {
+    const url = new URL(redirect)
+    const validatedState = authorizationState.safeParse(state)
+    if (validatedState.success) url.searchParams.set("state", validatedState.data)
+    url.searchParams.set("iss", this.origin)
+    return url
   }
 
   private resource(value: string | undefined) {
