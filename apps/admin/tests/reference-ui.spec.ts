@@ -108,9 +108,11 @@ for (const width of [1448, 768, 390, 320]) {
       "MCP servers",
       "Secrets & variables",
       "GitHub mentions",
+      "Schedule",
+      "Issues",
       "Audit log",
     ])
-    await expect(navigation.locator("a > svg")).toHaveCount(10)
+    await expect(navigation.locator("a > svg")).toHaveCount(12)
     for (const icon of await navigation.locator("a > svg").all()) await expect(icon).toBeVisible()
     expect(state.methods.every((method) => method === "GET")).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
