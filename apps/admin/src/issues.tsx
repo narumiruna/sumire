@@ -1,9 +1,10 @@
 import type { Issue, IssuePage, IssueState } from "@narumitw/sumire-issues"
-import { Badge, Button, Callout, Flex, Heading, Table, Text } from "@radix-ui/themes"
+import { Badge, Button, Callout, Flex, Heading, Text } from "@radix-ui/themes"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
-import { t } from "./i18n.js"
+import { errorMessage, LocalizedError, type MessageKey, t } from "./i18n.js"
 import { IssueAnalysisPanel } from "./issue-analysis.js"
+import { IssuesList } from "./issues-list.js"
 
 const IssuesMcpGrants = lazy(() => import("./issues-mcp-grants.js"))
 const date = (value: number) => new Date(value).toLocaleString("zh-TW")
@@ -24,8 +25,10 @@ export function Issues({
   const [cursors, setCursors] = useState<number[]>([])
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-  const [listError, setListError] = useState("")
+  const [error, setError] = useState<Error | string>("")
+  const [listError, setListError] = useState<Error>()
+  const listRef = useRef<HTMLDivElement>(null)
+  const returnToIssue = useRef<number | undefined>(undefined)
   const [screenshotReload, setScreenshotReload] = useState(0)
   const generation = useRef(0)
   const alive = useRef(true)
@@ -46,6 +49,7 @@ export function Issues({
   useEffect(() => {
     if (created) {
       generation.current++
+      returnToIssue.current = undefined
       setError("")
       setNotice(created.id)
       onConsumedRef.current()
@@ -59,7 +63,7 @@ export function Issues({
   useEffect(() => {
     const controller = new AbortController()
     setPage(undefined)
-    setListError("")
+    setListError(undefined)
     const query = new URLSearchParams()
     if (filter) query.set("state", filter)
     const before = cursors.at(-1)
@@ -71,11 +75,26 @@ export function Issues({
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         if (error instanceof ApiError && error.status === 401) onExpiredRef.current()
-        else setListError(error instanceof Error ? error.message : "無法讀取回饋。")
+        else
+          setListError(
+            error instanceof ApiError ? error : new LocalizedError("issues.list.readFailed"),
+          )
       })
     return () => controller.abort()
   }, [filter, cursors, refresh])
-  async function operate(work: (version: number) => Promise<void>) {
+  useEffect(() => {
+    const issueId = returnToIssue.current
+    const list = listRef.current
+    if (issueId === undefined || !list || selected || busy || (!page && !listError)) return
+    returnToIssue.current = undefined
+    // Do not take focus back if the administrator moved on while the list loaded.
+    if (list.ownerDocument.activeElement !== list.ownerDocument.body) return
+    const row = list.querySelector<HTMLButtonElement>(`button[data-issue-id="${issueId}"]`)
+    const fallback = list.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
+    const target = row ?? fallback
+    target?.focus()
+  }, [busy, listError, page, selected])
+  async function operate(work: (version: number) => Promise<void>, fallback?: MessageKey) {
     if (busy) return
     setBusy(true)
     setError("")
@@ -86,7 +105,15 @@ export function Issues({
       if (!alive.current) return
       if (error instanceof ApiError && error.status === 401) onExpiredRef.current()
       else if (version === generation.current)
-        setError(error instanceof Error ? error.message : "操作失敗，請重新整理確認狀態。")
+        setError(
+          error instanceof ApiError
+            ? error
+            : fallback
+              ? new LocalizedError(fallback)
+              : error instanceof Error
+                ? error
+                : "操作失敗，請重新整理確認狀態。",
+        )
     } finally {
       if (alive.current) setBusy(false)
     }
@@ -104,7 +131,7 @@ export function Issues({
       setScreenshotReload((value) => value + 1)
     }
   }
-  const visibleError = error || (!selected ? listError : "")
+  const visibleError = error || (!selected && listError)
   return (
     <section aria-label="Issues" className="issues-workspace">
       <Text as="p">{t("issues.pageHelp")}</Text>
@@ -115,7 +142,7 @@ export function Issues({
       )}
       {visibleError && (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{visibleError}</Callout.Text>
+          <Callout.Text>{errorMessage(visibleError)}</Callout.Text>
         </Callout.Root>
       )}
       {selected ? (
@@ -134,6 +161,7 @@ export function Issues({
               disabled={busy}
               onClick={() => {
                 generation.current++
+                returnToIssue.current = selected.id
                 setSelected(undefined)
               }}
             >
@@ -238,95 +266,27 @@ export function Issues({
           </div>
         </article>
       ) : (
-        <>
-          <Flex gap="3" wrap="wrap" align="center">
-            <label>
-              狀態{" "}
-              <select
-                aria-label="篩選回饋狀態"
-                value={filter}
-                disabled={busy}
-                onChange={(event) => {
-                  setFilter(event.target.value as IssueState | "")
-                  setCursors([])
-                }}
-              >
-                <option value="">全部</option>
-                <option value="open">開啟中</option>
-                <option value="closed">已關閉</option>
-              </select>
-            </label>
-            <Button variant="soft" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>
-              重新整理列表
-            </Button>
+        <IssuesList
+          page={page}
+          filter={filter}
+          failed={Boolean(listError)}
+          busy={busy}
+          hasPrevious={cursors.length > 0}
+          grants={
             <Suspense fallback={null}>
               <IssuesMcpGrants csrf={csrf} onExpired={onExpired} />
             </Suspense>
-          </Flex>
-          {!page ? (
-            <Text as="p" role="status">
-              {listError ? "尚未載入回饋。" : "載入中…"}
-            </Text>
-          ) : (
-            <>
-              <Table.Root variant="surface">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>編號／標題</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>來源頁面</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>狀態</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>更新時間</Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
-                  {page.issues.map((issue) => (
-                    <Table.Row key={issue.id}>
-                      <Table.Cell>
-                        <Button
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => void operate((version) => detail(issue.id, version))}
-                        >
-                          #{issue.id} {issue.title}
-                        </Button>
-                        {issue.hasScreenshot && (
-                          <Text as="span" size="2">
-                            {" "}
-                            · 附截圖
-                          </Text>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell>{issue.section}</Table.Cell>
-                      <Table.Cell>{issue.state === "open" ? "開啟中" : "已關閉"}</Table.Cell>
-                      <Table.Cell>{date(issue.updatedAt)}</Table.Cell>
-                    </Table.Row>
-                  ))}
-                </Table.Body>
-              </Table.Root>
-              {!page.issues.length && (
-                <Text as="p">目前沒有符合條件的回饋。使用左下角的回饋按鈕新增。</Text>
-              )}
-              <Flex gap="3">
-                <Button
-                  variant="soft"
-                  disabled={busy || !cursors.length}
-                  onClick={() => setCursors((value) => value.slice(0, -1))}
-                >
-                  上一頁
-                </Button>
-                <Button
-                  variant="soft"
-                  disabled={busy || !page.next}
-                  onClick={() => {
-                    if (page.next) setCursors((value) => [...value, page.next as number])
-                  }}
-                >
-                  下一頁
-                </Button>
-              </Flex>
-            </>
-          )}
-        </>
+          }
+          listRef={listRef}
+          onFilter={(value) => {
+            setFilter(value)
+            setCursors([])
+          }}
+          onRefresh={() => setRefresh((value) => value + 1)}
+          onPrevious={() => setCursors((value) => value.slice(0, -1))}
+          onNext={(next) => setCursors((value) => [...value, next])}
+          onOpen={(id) => void operate((version) => detail(id, version), "issues.list.openFailed")}
+        />
       )}
     </section>
   )

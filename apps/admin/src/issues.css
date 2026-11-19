@@ -49,14 +49,203 @@
   gap: 20px;
   min-width: 0;
 }
-.issues-workspace .rt-TableRoot {
-  overflow-x: auto;
+.issues-list {
+  container: issues-list / inline-size;
+  min-inline-size: 0;
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-4);
+  background: var(--color-panel-solid);
 }
-.issues-workspace .rt-TableCell button {
+.issues-list :is(.issues-list-toolbar, .issues-list-footer) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--gray-2);
+}
+.issues-list .issues-list-toolbar {
+  border-block-end: 1px solid var(--gray-6);
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+.issues-list .issues-list-footer {
+  border-block-start: 1px solid var(--gray-6);
+  border-end-start-radius: inherit;
+  border-end-end-radius: inherit;
+}
+.issues-list :is(.issues-list-filters, .issues-list-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* The MCP trigger wraps with these controls, but its dialog buttons retain their own styles. */
+.issues-list :where(.issues-list-filters, .issues-list-actions) > .rt-Button {
+  min-inline-size: 0;
+  border-radius: var(--radius-3);
+  font-size: var(--font-size-2);
+  overflow-wrap: anywhere;
+}
+.issues-list-filters > .rt-Button {
+  border: 1px solid transparent;
+}
+.issues-list-filters > .rt-Button:where([aria-pressed="true"]) {
+  border-color: var(--accent-8);
+  background: var(--accent-3);
+  font-weight: var(--font-weight-bold);
+}
+.issues-list-actions > .rt-Button:where([aria-disabled="true"]) {
+  border-color: var(--gray-6);
+  background: var(--gray-3);
+  color: var(--gray-11);
+  cursor: default;
+}
+.issues-list :is(.issues-list-body, .issues-list-footer) > p {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.issues-list .issues-list-body {
+  position: relative;
+  padding: var(--space-3);
+}
+.issues-list .issues-list-body > p {
+  padding: var(--space-4) var(--space-2);
+  margin-inline: auto;
+  color: var(--gray-11);
+  text-align: center;
+}
+.issues-list-table {
+  inline-size: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-3);
+  overflow-wrap: anywhere;
+}
+.issues-list-table :is(th, td) {
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  vertical-align: middle;
+}
+.issues-list-table .issues-list-head th {
+  background: var(--gray-3);
+  color: var(--gray-11);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-medium);
+}
+.issues-list-table .issues-list-head th:first-child {
+  inline-size: 45%;
+  border-start-start-radius: var(--radius-3);
+}
+.issues-list-table .issues-list-head th:nth-child(2) {
+  inline-size: 20%;
+}
+.issues-list-table .issues-list-head th:nth-child(3) {
+  inline-size: 15%;
+}
+.issues-list-table .issues-list-head th:last-child {
+  border-start-end-radius: var(--radius-3);
+}
+.issues-list-table tbody :is(th, td) {
+  border-block-start: 1px solid var(--gray-6);
+}
+.issues-list-table .issues-list-title {
+  display: block;
+  padding-inline: 0;
+  color: var(--gray-12);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-bold);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.issues-list-table .issues-list-title:where(:focus-visible) {
+  outline-offset: 2px;
+}
+.issues-list-table .issues-list-title:where(:hover:not(:disabled), :focus-visible) {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.issues-list-table :is(.issues-list-meta, .issues-list-attachment) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.issues-list-table .issues-list-meta {
+  column-gap: var(--space-2);
+  font-weight: var(--font-weight-regular);
+}
+.issues-list-table .issues-list-attachment svg {
+  flex: none;
+  color: var(--violet-11);
+}
+.issues-list-table :is(.issues-list-meta, .issues-list-label, time) {
+  color: var(--gray-11);
+  font-size: var(--font-size-1);
+}
+.issues-list-table time {
+  font-variant-numeric: tabular-nums;
+}
+.issues-list-table .rt-Badge {
+  display: inline-block;
+  max-inline-size: 100%;
+  padding: calc(var(--space-1) / 2) var(--space-2);
+  font-size: var(--font-size-1);
   white-space: normal;
-  text-align: left;
-  height: auto;
-  min-height: 44px;
+}
+.issues-list-table .issues-list-label {
+  display: none;
+}
+@container issues-list (inline-size < 37rem) {
+  .issues-list-table {
+    border: 0;
+  }
+  /* Keep the column headers in the accessibility tree and retain the native table display. */
+  .issues-list-table .issues-list-head {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* These elements have explicit roles in the markup to preserve the table relationships. */
+  .issues-list-table :is(tbody, tbody tr, tbody th, tbody td) {
+    display: block;
+  }
+  .issues-list-table tbody tr {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--gray-6);
+    border-radius: var(--radius-3);
+  }
+  .issues-list-table tbody tr + tr {
+    margin-block-start: var(--space-2);
+  }
+  .issues-list-table tbody :is(th, td) {
+    padding: 0;
+    border: 0;
+  }
+  .issues-list-table tbody th {
+    padding-block-end: var(--space-2);
+    border-block-end: 1px solid var(--gray-6);
+  }
+  .issues-list-table tbody td {
+    padding-block-start: var(--space-2);
+  }
+  .issues-list-table .issues-list-label {
+    display: block;
+    margin-block-end: var(--space-1);
+    font-weight: var(--font-weight-medium);
+  }
 }
 .issue-detail {
   container: issue-detail / inline-size;
@@ -164,10 +353,6 @@
 }
 .issues-mcp-details dd {
   margin-inline-start: 0;
-}
-.issues-workspace select {
-  font: inherit;
-  min-height: 44px;
 }
 .feedback-saved-notice {
   position: fixed;
