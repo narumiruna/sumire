@@ -429,6 +429,77 @@ function analysisFixture(): IssueAnalysis {
     revision: 1,
   }
 }
+
+for (const width of [1810, 390, 320]) {
+  test(`prioritizes the report and latest analysis at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1022 })
+    const { issues } = await fixture(page)
+    const title = `https://example.test/${"long".repeat(64)}`
+    issues.push({
+      id: 1,
+      title,
+      description: `The report text stays readable.\n${title}`,
+      section: "Issues",
+      source: { section: "Issues", viewport: { width: 1810, height: 1022 } },
+      hasScreenshot: false,
+      state: "open",
+      revision: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    const attempts: IssueAnalysis[] = [3, 2, 1].map((attempt) => ({
+      ...analysisFixture(),
+      id: `fixture-attempt-${attempt}`,
+      attempt,
+      state: "blocked",
+      reason: "model_unavailable",
+      sessionId: `fixture-run-${attempt}`,
+      conversationId: attempt,
+    }))
+    await page.route("**/api/issues/1/analysis", (route) => {
+      expect(route.request().method()).toBe("GET")
+      return route.fulfill({ json: { available: true, analyses: attempts } })
+    })
+
+    await page.goto("/")
+    await navigate(page, "Issues")
+    await page.getByRole("button", { name: `#1 ${title}`, exact: true }).click()
+    await expect(page.getByRole("heading", { level: 2, name: `#1 ${title}` })).toBeVisible()
+    const report = page.locator(".issue-report")
+    const analysis = page.getByRole("region", { name: "Agent analysis", exact: true })
+    await expect(report.getByText(/The report text stays readable/)).toBeVisible()
+    await expect(report.getByRole("img")).toHaveCount(0)
+    await expect(analysis.getByRole("heading", { name: "Analysis 3", exact: true })).toBeVisible()
+    const current = analysis.getByRole("article", { name: "Analysis 3", exact: true })
+    await expect(current.getByText("Blocked", { exact: true })).toBeVisible()
+    await expect(current.getByText(/Configure an authorized shared model/)).toBeVisible()
+    const reportBox = await report.boundingBox()
+    const analysisBox = await analysis.boundingBox()
+    if (!reportBox || !analysisBox) throw new Error("Report and analysis must both have a layout")
+    if (width === 1810) expect(reportBox.x + reportBox.width).toBeLessThan(analysisBox.x)
+    else expect(reportBox.y + reportBox.height).toBeLessThan(analysisBox.y)
+
+    const runDetails = current.getByText("Run details", { exact: true })
+    const currentRun = analysis.getByText("fixture-run-3", { exact: true })
+    await expect(currentRun).toBeHidden()
+    await runDetails.press("Enter")
+    await expect(currentRun).toBeVisible()
+    await runDetails.press("Space")
+    await expect(currentRun).toBeHidden()
+
+    const previousAnalyses = analysis.getByText("Previous analyses", { exact: true })
+    const earlier = analysis.getByRole("heading", { name: "Analysis 2", exact: true })
+    await expect(earlier).toBeHidden()
+    await previousAnalyses.press("Enter")
+    await expect(earlier).toBeVisible()
+    await expect(analysis.getByRole("heading", { name: "Analysis 1", exact: true })).toBeVisible()
+    await expect(analysis.getByText("Blocked", { exact: true })).toHaveCount(3)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await previousAnalyses.press("Space")
+    await expect(earlier).toBeHidden()
+  })
+}
+
 for (const width of [1440, 390]) {
   test(`compares inert proposals and records a choice without implementation at ${width}px`, async ({
     page,
@@ -460,6 +531,8 @@ for (const width of [1440, 390]) {
     await expect(dialog.getByRole("checkbox")).not.toBeChecked()
     await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
     const panel = page.getByRole("region", { name: "Agent analysis", exact: true })
+    await expect(panel.getByText("Previous analyses", { exact: true })).toHaveCount(0)
+    await panel.getByText("Run details", { exact: true }).click()
     await expect(panel.getByText(analysis.sessionId ?? "", { exact: true })).toBeVisible()
     await panel.getByLabel("Additional context (optional)").fill("請維持現有配色")
     await panel.getByRole("button", { name: "Request analysis", exact: true }).click()

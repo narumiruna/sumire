@@ -119,8 +119,16 @@ export function Issues({
         </Callout.Root>
       )}
       {selected ? (
-        <>
-          <Flex gap="3" wrap="wrap" align="center">
+        <article className="issue-detail" aria-labelledby="issue-detail-heading">
+          <header className="issue-detail-header">
+            <Heading as="h2" id="issue-detail-heading" size="6">
+              #{selected.id} {selected.title}
+            </Heading>
+            <Badge color={selected.state === "open" ? "green" : "gray"}>
+              {selected.state === "open" ? "開啟中" : "已關閉"}
+            </Badge>
+          </header>
+          <Flex className="issue-detail-actions" gap="3" wrap="wrap" align="center">
             <Button
               variant="soft"
               disabled={busy}
@@ -138,42 +146,8 @@ export function Issues({
             >
               重新整理回饋
             </Button>
-          </Flex>
-          <Heading as="h2" size="4">
-            #{selected.id} {selected.title}
-          </Heading>
-          <Text as="p">
-            <Badge color={selected.state === "open" ? "green" : "gray"}>
-              {selected.state === "open" ? "開啟中" : "已關閉"}
-            </Badge>
-            　{selected.section} · {date(selected.createdAt)}
-          </Text>
-          <Text as="p" size="2">
-            回報時視窗：{selected.source.viewport.width} × {selected.source.viewport.height} ·
-            更新：{date(selected.updatedAt)}
-          </Text>
-          {selected.description ? (
-            <p className="issue-description">{selected.description}</p>
-          ) : (
-            <Text as="p" color="gray">
-              未提供文字描述。
-            </Text>
-          )}
-          {selected.hasScreenshot && (
-            <IssueScreenshot
-              key={`image:${selected.id}`}
-              id={selected.id}
-              reload={screenshotReload}
-            />
-          )}
-          <IssueAnalysisPanel
-            key={selected.id}
-            issue={selected}
-            csrf={csrf}
-            onExpired={onExpired}
-          />
-          <Flex gap="3" wrap="wrap">
             <Button
+              variant="soft"
               disabled={busy}
               onClick={() =>
                 void operate(async (version) => {
@@ -229,7 +203,40 @@ export function Issues({
               永久刪除
             </Button>
           </Flex>
-        </>
+          <div className="issue-detail-columns">
+            <div className="issue-report">
+              <div className="issue-report-meta">
+                <Text as="p" size="2" color="gray">
+                  {selected.section} · {date(selected.createdAt)}
+                </Text>
+                <Text as="p" size="2" color="gray">
+                  回報時視窗：{selected.source.viewport.width} × {selected.source.viewport.height}
+                  {" · "}更新：{date(selected.updatedAt)}
+                </Text>
+              </div>
+              {selected.description ? (
+                <p className="issue-description">{selected.description}</p>
+              ) : (
+                <Text as="p" color="gray">
+                  未提供文字描述。
+                </Text>
+              )}
+              {selected.hasScreenshot && (
+                <IssueScreenshot
+                  key={`image:${selected.id}`}
+                  id={selected.id}
+                  reload={screenshotReload}
+                />
+              )}
+            </div>
+            <IssueAnalysisPanel
+              key={selected.id}
+              issue={selected}
+              csrf={csrf}
+              onExpired={onExpired}
+            />
+          </div>
+        </article>
       ) : (
         <>
           <Flex gap="3" wrap="wrap" align="center">

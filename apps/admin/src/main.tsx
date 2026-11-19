@@ -5,24 +5,9 @@ import {
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
-import {
-  ExclamationTriangleIcon,
-  ExitIcon,
-  PersonIcon,
-  ReloadIcon,
-  UpdateIcon,
-} from "@radix-ui/react-icons"
+import { ExclamationTriangleIcon, ReloadIcon, UpdateIcon } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import {
-  AlertDialog,
-  Button,
-  Callout,
-  DropdownMenu,
-  Flex,
-  Heading,
-  Text,
-  Theme,
-} from "@radix-ui/themes"
+import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
@@ -520,41 +505,16 @@ function App() {
         chat={chat}
         actor={session.actor}
         onNavigate={setPage}
-        account={
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <Button variant="ghost" aria-label={t("app.account")} disabled={busy}>
-                <PersonIcon aria-hidden />
-                <span className="workspace-action-label">{t("app.account")}</span>
-                <DropdownMenu.TriggerIcon />
-              </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              align="end"
-              aria-label={t("app.account")}
-              className="account-menu"
-            >
-              <DropdownMenu.Label className="account-menu-actor">
-                {t("app.actor", { actor: session.actor })}
-              </DropdownMenu.Label>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                disabled={busy}
-                onSelect={() =>
-                  void run(async () => {
-                    if (!confirmDiscard()) return
-                    clearAccess()
-                    await request("logout", session.csrf)
-                    expireSession()
-                  })
-                }
-              >
-                <ExitIcon aria-hidden />
-                {t("app.signOut")}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        }
+        account={{
+          disabled: busy,
+          onSignOut: () =>
+            void run(async () => {
+              if (!confirmDiscard()) return
+              clearAccess()
+              await request("logout", session.csrf)
+              expireSession()
+            }),
+        }}
       />
       <main aria-busy={busy}>
         <PageHeader

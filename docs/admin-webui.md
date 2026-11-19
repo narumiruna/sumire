@@ -24,7 +24,7 @@ The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults
 
 Desktop navigation starts as a slim icon rail. **Expand navigation** restores the page labels; **Collapse navigation** restores the rail. Each icon keeps an accessible name and a pointer tooltip. The native language selector remains keyboard-accessible. This browser stores only the compact/expanded preference as `sumire.admin.navigation`; blocked storage does not prevent navigation. Narrow screens retain the **Sections** menu.
 
-The sidebar account menu contains **Sign out** at desktop and narrow widths. First-level pages have one title, a necessary description, and actions; they have no breadcrumb. **Refresh settings** refreshes configuration and related metadata. **Refresh records**, **Refresh chats**, and **Reload safe metadata** retain their separate read scopes. Page changes do not save settings. Editors remain mounted where needed to retain ordinary drafts; secret editors keep their existing navigation guards and clear sensitive state on expiry/sign-out.
+One sidebar account button shows the administrator role and ID when navigation is expanded. The compact rail and narrow header use its person icon. The same menu shows the account ID and **Sign out** at every width. First-level pages have one title, a necessary description, and actions; they have no breadcrumb. **Refresh settings** refreshes configuration and related metadata. **Refresh records**, **Refresh chats**, and **Reload safe metadata** retain their separate read scopes. Page changes do not save settings. Editors remain mounted where needed to retain ordinary drafts; secret editors keep their existing navigation guards and clear sensitive state on expiry/sign-out.
 
 Body and input text use 16 px at the default browser size. Navigation and primary list text use 15–16 px; help and secondary metadata use 14 px. Relative text sizes support browser font enlargement. Primary controls retain at least 44 px targets. Forms use a bounded reading width; data lists use the content width. Sections put their title and necessary context before controls rather than reserving a wide explanation column. Keyboard focus remains visible above the fixed changes bar.
 
@@ -50,7 +50,9 @@ The cache stamp reports the persisted read time, not live execution health. The 
 
 ## Visual feedback
 
-The global lower-left feedback button collects annotated/cropped screenshots or text. **Issues** lists private administrator feedback and supports close/reopen and confirmed deletion. Real Durable sessions support explicitly requested agent analysis, structured proposals, inert SVG previews and recorded choices. Choosing an option does not authorize implementation; code changes and automatic PRs remain disabled. See [collection privacy and rollout](visual-issues.md) and [analysis permissions and recovery](issue-analysis.md).
+The global lower-left feedback button collects annotated or cropped screenshots and text. **Issues** lists private administrator feedback. Open an issue to see its status, actions, and original report. The report comes before **Agent analysis** on narrow layouts and sits beside it where there is room. Close, reopen, and confirmed deletion are unchanged.
+
+**Agent analysis** shows the latest attempt first, including any reason it stopped. Open **Run details** for the session, conversation, and model metadata, or **Previous analyses** to review older attempts. Real Durable sessions support explicitly requested agent analysis, structured proposals, inert SVG previews, and recorded choices. Choosing an option does not authorize implementation; code changes and automatic PRs remain disabled. See [collection privacy and rollout](visual-issues.md) and [analysis permissions and recovery](issue-analysis.md).
 
 ## Model setup save boundaries
 

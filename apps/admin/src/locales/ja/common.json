@@ -257,6 +257,8 @@
   "issues.uncertain": "結果を確認できません。同じ送信 ID で再試行するため、分析は重複作成されません。",
   "issues.attempt": "分析 {{attempt}}",
   "issues.previous": "以前の提案",
+  "issues.previousAnalyses": "過去の分析",
+  "issues.runDetails": "実行の詳細",
   "issues.session": "エージェントセッション",
   "issues.sessionPending": "ローカルセッションの作成待ち",
   "issues.conversation": "会話 {{id}}",

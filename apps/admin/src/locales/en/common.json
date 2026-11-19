@@ -286,6 +286,8 @@
   "issues.uncertain": "The request outcome is unknown. Retry uses the same submission ID and cannot admit a duplicate analysis.",
   "issues.attempt": "Analysis {{attempt}}",
   "issues.previous": "Previous proposal version",
+  "issues.previousAnalyses": "Previous analyses",
+  "issues.runDetails": "Run details",
   "issues.session": "Agent session",
   "issues.sessionPending": "Local session initialization pending",
   "issues.conversation": "Conversation {{id}}",

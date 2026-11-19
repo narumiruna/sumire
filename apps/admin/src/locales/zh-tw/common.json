@@ -257,6 +257,8 @@
   "issues.uncertain": "請求結果尚未確認。重試會使用相同提交 ID，不會重複建立分析。",
   "issues.attempt": "第 {{attempt}} 次分析",
   "issues.previous": "先前方案版本",
+  "issues.previousAnalyses": "先前的分析",
+  "issues.runDetails": "執行詳細資訊",
   "issues.session": "Agent session",
   "issues.sessionPending": "等待建立本機 session",
   "issues.conversation": "Conversation {{id}}",
