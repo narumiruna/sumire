@@ -1,5 +1,14 @@
 # @narumitw/sumire-pi-polymarket
 
+## 0.2.8
+
+### Patch Changes
+
+- 0734da3: Update OpenTelemetry dependencies within the range supported by Logfire and
+  update the issues workspace to Vitest 5.1.1. Update the Polymarket catalog
+  generator to TypeScript 6.0.3 so it can still use the compiler API to check
+  that the catalog is current. Builds and type checks still use TypeScript 7.
+
 ## 0.2.7
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@narumitw/sumire",
-  "version": "0.19.13",
+  "version": "0.20.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -38,11 +38,11 @@
     "@grammyjs/runner": "2.0.3",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@narumitw/otter-cli": "0.5.1",
-    "@narumitw/sumire-contracts": "0.10.1",
+    "@narumitw/sumire-contracts": "0.11.0",
     "@narumitw/sumire-github-notifications": "0.2.3",
-    "@narumitw/sumire-imagegen": "0.2.3",
-    "@narumitw/sumire-issues": "0.1.0",
-    "@narumitw/sumire-pi-polymarket": "0.2.7",
+    "@narumitw/sumire-imagegen": "0.2.4",
+    "@narumitw/sumire-issues": "0.2.0",
+    "@narumitw/sumire-pi-polymarket": "0.2.8",
     "@narumitw/sumire-pi-url-reader": "0.7.8",
     "@narumitw/sumire-policy": "0.5.3",
     "@narumitw/sumire-progress": "0.3.7",
