@@ -50,7 +50,11 @@ The cache stamp reports the persisted read time, not live execution health. The 
 
 ## Visual feedback
 
-The global lower-left feedback button collects annotated or cropped screenshots and text. **Issues** lists private administrator feedback. Open an issue to see its status, actions, and original report. The report comes before **Agent analysis** on narrow layouts and sits beside it where there is room. Close, reopen, and confirmed deletion are unchanged.
+The global lower-left feedback button collects annotated or cropped screenshots and text. **Issues** lists private administrator feedback. The list shows each feedback title and ID, source page, status, update time, and whether a screenshot is attached. On wide screens these fields line up in columns. On narrow screens they stack under each title, with labels. The list labels and update times follow the interface language. Titles and source text stay as reported; a URL in a title is not a link. The list does not load screenshots or analysis.
+
+Choose **All**, **Open**, or **Closed** to filter by status. Changing the filter starts at the first page. Use **Previous page** or **Next page** to see more results. **On this page** counts only the feedback shown on the current page. There are no totals for each status or for all feedback. **Refresh list** reloads the current page without changing the filter. Use it to try again if the list fails to load.
+
+Select a title to open the issue and see its status, actions, and original report. Returning to the list keeps the filter and page. Keyboard focus returns to the title you opened, or to the active filter if the issue is no longer on the page. The report comes before **Agent analysis** on narrow layouts and sits beside it where there is room. Close, reopen, and confirmed deletion are unchanged.
 
 **Agent analysis** shows the latest attempt first, including any reason it stopped. Open **Run details** for the session, conversation, and model metadata, or **Previous analyses** to review older attempts. Real Durable sessions support explicitly requested agent analysis, structured proposals, inert SVG previews, and recorded choices. Choosing an option does not authorize implementation; code changes and automatic PRs remain disabled. See [collection privacy and rollout](visual-issues.md) and [analysis permissions and recovery](issue-analysis.md).
 

@@ -8,13 +8,23 @@ import type {
 import { expect, type Page, test } from "@playwright/test"
 import { adminFixture, navigate } from "./admin-fixture.js"
 
-async function fixture(page: Page) {
+async function fixture(page: Page, pageSize = Infinity) {
   await adminFixture(page)
-  const state: { issues: Issue[]; submissions: Feedback[]; screenshots: number } = {
-    issues: [],
-    submissions: [],
-    screenshots: 0,
-  }
+  const state: { issues: Issue[]; submissions: Feedback[]; screenshots: number; reads: string[] } =
+    {
+      issues: [],
+      submissions: [],
+      screenshots: 0,
+      reads: [],
+    }
+  page.on("request", (request) => {
+    const { pathname, search } = new URL(request.url())
+    if (
+      request.method() === "GET" &&
+      (pathname === "/api/issues" || /^\/api\/issues(?:-mcp)?\//.test(pathname))
+    )
+      state.reads.push(`${pathname}${search}`)
+  })
   await page.route("**/api/issues**", async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -38,12 +48,15 @@ async function fixture(page: Page) {
           issue ? { json: issue } : { status: 404, json: { error: "Issue not found" } },
         )
       else {
+        const filter = url.searchParams.get("state")
+        const before = Number(url.searchParams.get("before") ?? Infinity)
+        const matches = state.issues
+          .filter((value) => value.id < before && (!filter || value.state === filter))
+          .sort((a, b) => b.id - a.id)
+        const issues = matches.slice(0, pageSize)
         const response: IssuePage = {
-          issues: state.issues.filter(
-            (value) =>
-              !url.searchParams.get("state") || value.state === url.searchParams.get("state"),
-          ),
-          next: null,
+          issues,
+          next: matches.length > issues.length ? (issues.at(-1)?.id ?? null) : null,
         }
         await route.fulfill({ json: response })
       }
@@ -76,6 +89,394 @@ async function fixture(page: Page) {
   })
   return state
 }
+
+function sampleIssue(id: number, title: string, overrides: Partial<Issue> = {}): Issue {
+  const section = overrides.section ?? "Defaults"
+  const updatedAt = Date.UTC(2025, 1, 7, 14, 15)
+  return {
+    id,
+    title,
+    description: "Fixture report text",
+    section,
+    source: { section, viewport: { width: 1440, height: 900 } },
+    state: "open",
+    hasScreenshot: false,
+    createdAt: updatedAt,
+    updatedAt,
+    revision: 1,
+    ...overrides,
+  }
+}
+
+function filters(page: Page) {
+  return page.getByRole("group", { name: "Filter issues by status", exact: true })
+}
+
+function issueTitle(page: Page, title: string) {
+  return page.getByRole("button", { name: title, exact: true })
+}
+
+function listStatus(page: Page, text: string) {
+  return page.getByRole("status").and(page.getByText(text, { exact: true }))
+}
+
+function pageCount(page: Page, count: number) {
+  return listStatus(page, `On this page: ${count}`)
+}
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+test("filters and pages feedback with exact cursors, including refresh", async ({ page }) => {
+  const state = await fixture(page, 2)
+  state.issues.push(
+    sampleIssue(4, "Newest report"),
+    sampleIssue(3, "Resolved report", { state: "closed" }),
+    sampleIssue(2, "Earlier report"),
+    sampleIssue(1, "Oldest report"),
+  )
+  await navigate(page, "Issues")
+  const all = filters(page).getByRole("button", { name: "All", exact: true })
+  const open = filters(page).getByRole("button", { name: "Open", exact: true })
+  const closed = filters(page).getByRole("button", { name: "Closed", exact: true })
+  const previous = page.getByRole("button", { name: "Previous page", exact: true })
+  const next = page.getByRole("button", { name: "Next page", exact: true })
+  const titles = page.getByRole("table").getByRole("button")
+  await expect(all).toHaveAttribute("aria-pressed", "true")
+  await expect(previous).toBeDisabled()
+  await expect(titles).toHaveText(["Newest report", "Resolved report"])
+  await expect(pageCount(page, 2)).toBeVisible()
+
+  await next.press("Enter")
+  await expect(titles).toHaveText(["Earlier report", "Oldest report"])
+  await expect(next).toBeDisabled()
+  await open.press("Space")
+  await expect(open).toHaveAttribute("aria-pressed", "true")
+  await expect(all).toHaveAttribute("aria-pressed", "false")
+  await expect(titles).toHaveText(["Newest report", "Earlier report"])
+  await expect(previous).toBeDisabled()
+
+  await next.press("Enter")
+  await expect(titles).toHaveText(["Oldest report"])
+  await expect(pageCount(page, 1)).toBeVisible()
+  await Promise.all([
+    page.waitForResponse((response) => {
+      const { pathname, search } = new URL(response.url())
+      return pathname === "/api/issues" && search === "?state=open&before=2"
+    }),
+    page.getByRole("button", { name: "Refresh list", exact: true }).click(),
+  ])
+  await expect(titles).toHaveText(["Oldest report"])
+  await expect(open).toHaveAttribute("aria-pressed", "true")
+  await open.press("Enter")
+  await expect(previous).toBeEnabled()
+  await expect(titles).toHaveText(["Oldest report"])
+  expect(state.reads).toEqual([
+    "/api/issues",
+    "/api/issues?before=3",
+    "/api/issues?state=open",
+    "/api/issues?state=open&before=2",
+    "/api/issues?state=open&before=2",
+  ])
+
+  await previous.press("Enter")
+  await expect(titles).toHaveText(["Newest report", "Earlier report"])
+  await closed.press("Space")
+  await expect(closed).toHaveAttribute("aria-pressed", "true")
+  await expect(open).toHaveAttribute("aria-pressed", "false")
+  await expect(titles).toHaveText(["Resolved report"])
+  expect(state.reads.slice(5)).toEqual(["/api/issues?state=open", "/api/issues?state=closed"])
+})
+
+test("a superseded delayed filter response cannot replace the current empty page", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  const issue = sampleIssue(1, "Open report")
+  state.issues.push(issue)
+  const staleQuery = (url: URL) => url.pathname === "/api/issues" && url.search === "?state=open"
+  const release = deferred()
+  const settled = deferred()
+  page.on("requestfinished", (request) => {
+    if (staleQuery(new URL(request.url()))) settled.resolve()
+  })
+  page.on("requestfailed", (request) => {
+    if (staleQuery(new URL(request.url()))) settled.resolve()
+  })
+  await page.route(staleQuery, async (route) => {
+    await release.promise
+    await route.fulfill({ json: { issues: [issue], next: null } satisfies IssuePage })
+  })
+
+  try {
+    await navigate(page, "Issues")
+    const title = issueTitle(page, issue.title)
+    await expect(title).toBeVisible()
+    await filters(page).getByRole("button", { name: "Open", exact: true }).click()
+    await expect.poll(() => state.reads).toEqual(["/api/issues", "/api/issues?state=open"])
+    await expect(listStatus(page, "Loading feedback…")).toBeVisible()
+    await expect(title).toHaveCount(0)
+    const closed = filters(page).getByRole("button", { name: "Closed", exact: true })
+    await closed.click()
+    const empty = listStatus(page, "No feedback matches this filter.")
+    await expect(empty).toBeVisible()
+    release.resolve()
+    await settled.promise
+    // Let the browser process any late result before checking that the empty page persists.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    )
+    await expect(empty).toBeVisible()
+    await expect(pageCount(page, 0)).toBeVisible()
+    await expect(title).toHaveCount(0)
+    await expect(closed).toHaveAttribute("aria-pressed", "true")
+    expect(state.reads).toEqual([
+      "/api/issues",
+      "/api/issues?state=open",
+      "/api/issues?state=closed",
+    ])
+  } finally {
+    release.resolve()
+  }
+})
+
+test("changing language updates the list in place without reading the Issues API", async ({
+  page,
+}) => {
+  const state = await fixture(page, 1)
+  const issue = sampleIssue(1, "A report in the author's language", {
+    section: "設定ページ",
+    hasScreenshot: true,
+  })
+  state.issues.push(
+    sampleIssue(3, "Resolved report", { state: "closed" }),
+    sampleIssue(2, "Newest report"),
+    issue,
+  )
+  await navigate(page, "Issues")
+  await expect(issueTitle(page, "Resolved report")).toBeVisible()
+  await filters(page).getByRole("button", { name: "Open", exact: true }).click()
+  await expect(issueTitle(page, "Newest report")).toBeVisible()
+  await page.getByRole("button", { name: "Next page", exact: true }).click()
+  const title = issueTitle(page, issue.title)
+  await expect(title).toBeVisible()
+  const reads = ["/api/issues", "/api/issues?state=open", "/api/issues?state=open&before=2"]
+  expect(state.reads).toEqual(reads)
+
+  const language = page.locator(".language-selector select")
+  for (const [locale, filter, open, tableName, source, screenshot, previous, count] of [
+    [
+      "en",
+      "Filter issues by status",
+      "Open",
+      "Feedback list",
+      "Source page",
+      "Screenshot attached",
+      "Previous page",
+      "On this page: 1",
+    ],
+    [
+      "ja",
+      "フィードバックを状態で絞り込む",
+      "オープン",
+      "フィードバック一覧",
+      "報告元のページ",
+      "スクリーンショット付き",
+      "前のページ",
+      "このページに 1 件",
+    ],
+    [
+      "zh-TW",
+      "依狀態篩選回饋",
+      "開啟中",
+      "回饋清單",
+      "來源頁面",
+      "附有截圖",
+      "上一頁",
+      "本頁 1 筆",
+    ],
+  ] as const) {
+    await language.selectOption(locale)
+    await expect(page.locator("html")).toHaveAttribute("lang", locale)
+    const group = page.getByRole("group", { name: filter, exact: true })
+    await expect(group.getByRole("button", { name: open, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    const table = page.getByRole("table", { name: tableName, exact: true })
+    await expect(table.getByRole("columnheader", { name: source, exact: true })).toBeVisible()
+    await expect(table.getByRole("cell", { name: issue.section, exact: true })).toBeVisible()
+    await expect(table.getByRole("cell", { name: open, exact: true })).toBeVisible()
+    await expect(title).toHaveAccessibleDescription(`#1 ${screenshot}`)
+    await expect(listStatus(page, count)).toBeVisible()
+    await expect(page.getByRole("button", { name: previous, exact: true })).toBeEnabled()
+    const time = table.locator("time")
+    await expect(time).toHaveAttribute("datetime", new Date(issue.updatedAt).toISOString())
+    const formatted = await page.evaluate(
+      ({ locale, updatedAt }) =>
+        new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
+          updatedAt,
+        ),
+      { locale, updatedAt: issue.updatedAt },
+    )
+    await expect(time).toHaveText(formatted)
+    expect(state.reads).toEqual(reads)
+  }
+  await page.getByRole("button", { name: "重新整理清單", exact: true }).click()
+  await expect.poll(() => state.reads).toEqual([...reads, "/api/issues?state=open&before=2"])
+  await expect(title).toBeVisible()
+})
+
+test("keyboard return restores the title, or focuses the filter if the row is gone", async ({
+  page,
+}) => {
+  const state = await fixture(page, 1)
+  state.issues.push(
+    sampleIssue(3, "Resolved report", { state: "closed" }),
+    sampleIssue(2, "Newest report"),
+    sampleIssue(1, "Earlier report"),
+  )
+  await navigate(page, "Issues")
+  await expect(issueTitle(page, "Resolved report")).toBeVisible()
+  const open = filters(page).getByRole("button", { name: "Open", exact: true })
+  await filters(page).getByRole("button", { name: "All", exact: true }).focus()
+  await page.keyboard.press("Tab")
+  await expect(open).toBeFocused()
+  await page.keyboard.press("Space")
+  await expect(issueTitle(page, "Newest report")).toBeVisible()
+  await page.getByRole("button", { name: "Next page", exact: true }).press("Enter")
+  const earlier = issueTitle(page, "Earlier report")
+  const selection = page.getByRole("heading", { name: "#1 Earlier report", exact: true })
+  const back = page.getByRole("button", { name: "返回列表", exact: true })
+  const listReads = () => state.reads.filter((read) => /^\/api\/issues(?:\?|$)/.test(read))
+  const pages = ["/api/issues", "/api/issues?state=open", "/api/issues?state=open&before=2"]
+  await earlier.press("Enter")
+  await expect(selection).toBeVisible()
+  expect(state.reads).toContain("/api/issues/1")
+  await expect(back).toBeEnabled()
+  await back.press("Enter")
+  await expect(earlier).toBeFocused()
+  await expect(open).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: "Previous page", exact: true })).toBeEnabled()
+  expect(listReads()).toEqual(pages)
+
+  const release = deferred()
+  await page.route(
+    (url) => url.pathname === "/api/issues" && url.search === "?state=open&before=2",
+    async (route) => {
+      await release.promise
+      await route.fallback()
+    },
+  )
+  try {
+    await page.keyboard.press("Enter")
+    await expect(selection).toBeVisible()
+    const close = page.getByRole("button", { name: "關閉回饋", exact: true })
+    await expect(close).toBeEnabled()
+    await close.press("Enter")
+    await expect(page.getByRole("button", { name: "重新開啟", exact: true })).toBeVisible()
+    await expect(back).toBeEnabled()
+    await back.press("Enter")
+    await expect(listStatus(page, "Loading feedback…")).toBeVisible()
+    release.resolve()
+    await expect(listStatus(page, "No feedback matches this filter.")).toBeVisible()
+    await expect(open).toBeFocused()
+    await expect(earlier).toHaveCount(0)
+    expect(listReads()).toEqual([...pages, "/api/issues?state=open&before=2"])
+  } finally {
+    release.resolve()
+  }
+})
+
+for (const [width, fontScale] of [
+  [320, 100],
+  [390, 100],
+  [320, 200],
+  [390, 200],
+] as const) {
+  test(`the list fits at ${width}px and ${fontScale}% text with labeled rows`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await fixture(page)
+    const url = `https://feedback.example.test/${"long".repeat(17)}`
+    const source = `Fixture${"LongSection".repeat(5)}`
+    state.issues.push(
+      sampleIssue(2, url, { section: source, hasScreenshot: true }),
+      sampleIssue(1, "Resolved report", { state: "closed" }),
+    )
+    let externalRequests = 0
+    await page.route("https://feedback.example.test/**", (route) => {
+      externalRequests++
+      return route.abort()
+    })
+    await navigate(page, "Issues")
+    if (fontScale === 200) {
+      const client = await page.context().newCDPSession(page)
+      await client.send("Page.setFontSizes", { fontSizes: { standard: 32 } })
+      await expect(page.locator(".radix-themes").first()).toHaveCSS("font-size", "32px")
+    }
+    const table = page.getByRole("table", { name: "Feedback list", exact: true })
+    const title = table.getByRole("button", { name: url, exact: true })
+    const second = table.getByRole("button", { name: "Resolved report", exact: true })
+    await expect(table.getByRole("button")).toHaveCount(2)
+    await expect(title).toHaveAccessibleDescription("#2 Screenshot attached")
+    await expect(second).toHaveAccessibleDescription("#1")
+    await expect(table.getByRole("link")).toHaveCount(0)
+    await expect(table.getByRole("img")).toHaveCount(0)
+
+    const row = table
+      .getByRole("row")
+      .filter({ has: page.getByRole("button", { name: url, exact: true }) })
+    const rowHeader = row.getByRole("rowheader")
+    await expect(rowHeader.getByRole("button")).toHaveText(url)
+    const labels = ["Source page", "Status", "Updated"]
+    await expect(table.getByRole("columnheader")).toHaveText(["Feedback", ...labels])
+    const rowId = await rowHeader.getAttribute("id")
+    for (const [index, label] of labels.entries()) {
+      const cell = row.getByRole("cell").nth(index)
+      await expect(cell.getByText(label, { exact: true })).toBeVisible()
+      const column = table.getByRole("columnheader", { name: label, exact: true })
+      await expect(cell).toHaveAttribute("headers", `${rowId} ${await column.getAttribute("id")}`)
+    }
+    const sourceText = row.getByText(source, { exact: true })
+    await expect(sourceText).toBeVisible()
+    await expect(row.getByRole("cell", { name: "Open", exact: true })).toBeVisible()
+    await expect(table.getByRole("cell", { name: "Closed", exact: true })).toBeVisible()
+    for (const text of [title, sourceText]) {
+      // Check text bounds as well as page overflow, so clipping cannot pass this check.
+      expect(
+        await text.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          return Array.from(range.getClientRects()).every(
+            (rect) =>
+              rect.left >= Math.max(0, bounds.left) - 1 &&
+              rect.right <= Math.min(innerWidth, bounds.right) + 1 &&
+              rect.top >= bounds.top - 1 &&
+              rect.bottom <= bounds.bottom + 1,
+          )
+        }),
+      ).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await title.focus()
+    await page.keyboard.press("Tab")
+    await expect(second).toBeFocused()
+    await page.keyboard.press("Shift+Tab")
+    await expect(title).toBeFocused()
+    expect(state.reads).toEqual(["/api/issues"])
+    expect(externalRequests).toBe(0)
+  })
+}
+
 test("lists Issues MCP grants and revokes only the grant explicitly confirmed", async ({
   page,
 }) => {
@@ -215,9 +616,9 @@ for (const width of [1440, 390]) {
     await page.getByRole("button", { name: "關閉回饋", exact: true }).click()
     await expect(page.getByRole("button", { name: "重新開啟", exact: true })).toBeVisible()
     await page.getByRole("button", { name: "返回列表", exact: true }).click()
-    await expect(page.getByRole("table")).toContainText("已關閉")
-    await page.getByLabel("篩選回饋狀態").selectOption("open")
-    await expect(page.getByText("目前沒有符合條件的回饋。", { exact: false })).toBeVisible()
+    await expect(page.getByRole("table")).toContainText("Closed")
+    await filters(page).getByRole("button", { name: "Open", exact: true }).click()
+    await expect(page.getByText("No feedback matches this filter.", { exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`issues-${width}.png`), fullPage: true })
   })
@@ -463,7 +864,7 @@ for (const width of [1810, 390, 320]) {
 
     await page.goto("/")
     await navigate(page, "Issues")
-    await page.getByRole("button", { name: `#1 ${title}`, exact: true }).click()
+    await issueTitle(page, title).click()
     await expect(page.getByRole("heading", { level: 2, name: `#1 ${title}` })).toBeVisible()
     const report = page.locator(".issue-report")
     const analysis = page.getByRole("region", { name: "Agent analysis", exact: true })
@@ -865,7 +1266,7 @@ for (const operation of ["read", "update", "delete"] as const) {
     try {
       if (operation === "read") {
         await page.getByRole("button", { name: "返回列表", exact: true }).click()
-        await page.getByRole("button", { name: "#1 Issue A", exact: true }).click()
+        await issueTitle(page, "Issue A").click()
       } else if (operation === "update")
         await page.getByRole("button", { name: "關閉回饋", exact: true }).click()
       else {
@@ -908,10 +1309,10 @@ test("a detail refresh cannot conceal a failed background list request", async (
   await expect(page.getByRole("button", { name: "返回列表", exact: true })).toBeEnabled()
   await page.getByRole("button", { name: "返回列表", exact: true }).click()
   await expect(page.getByRole("alert")).toContainText("List unavailable")
-  await expect(page.getByText("尚未載入回饋。", { exact: true })).toBeVisible()
+  await expect(page.getByText("Feedback has not loaded.", { exact: true })).toBeVisible()
   fail = false
-  await page.getByRole("button", { name: "重新整理列表", exact: true }).click()
-  await expect(page.getByRole("button", { name: "#1 Issue A", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Refresh list", exact: true }).click()
+  await expect(issueTitle(page, "Issue A")).toBeVisible()
   await expect(page.getByRole("alert")).toHaveCount(0)
 })
 test("refresh retries a failed attachment and keeps its error until the image actually decodes", async ({
