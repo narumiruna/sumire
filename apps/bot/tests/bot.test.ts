@@ -406,7 +406,7 @@ describe("Telegram bot update routing", () => {
     }
   })
 
-  it("documents coding tools by default", async () => {
+  it("renders help as Markdown sections and lists instead of a soft-wrapped paragraph", async () => {
     const sessions = createSessions()
     const telegram = createTelegramAgentBot(
       loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
@@ -418,16 +418,59 @@ describe("Telegram bot update routing", () => {
 
     await telegram.bot.handleUpdate(commandMessage(1, "/help"))
 
-    expect(telegramPayloadText(calls[0]?.payload)).not.toContain("/ask")
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("@mention")
-    expect(telegramPayloadText(calls[0]?.payload)).toContain(
-      "Sumire 專案原始碼與說明：https://github.com/narumiruna/sumire",
-    )
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("/f <內容>")
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("/t <代碼>")
-    expect(telegramPayloadText(calls[0]?.payload)).toContain("read、bash、edit、write")
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.method).toBe("sendRichMessage")
+    const text = telegramPayloadText(calls[0]?.payload) ?? ""
+    expect(text).toContain("## 如何提問\n\n- 群組：@mention")
+    expect(text).toContain("\n\n## 常用指令\n\n- /f 內容")
+    expect(text).toContain("\n- /t 代碼")
+    expect(text).toContain("\n- /admin — 開啟管理介面")
+    expect(text).toContain("\n- /allow — 向管理員申請此對話的使用權限")
+    expect(text).toContain("`/t BTCUSDT`")
+    expect(text).toContain("\n\n## 還可以做什麼\n\n- ")
+    expect(text).toContain("read、bash、edit、write")
+    expect(text).toContain("[Sumire 原始碼與說明](https://github.com/narumiruna/sumire)")
+    expect(text).not.toContain("/ask")
+    expect(text).not.toContain("<內容>")
+    expect(text).not.toContain("steering/follow-up")
+    expect(Array.from(text).length).toBeLessThanOrEqual(1_000)
     expect(sessions.submit).not.toHaveBeenCalled()
   })
+
+  it.each(["private", "group", "disabled"] as const)(
+    "keeps help capability and administrator visibility rules: %s",
+    async (mode) => {
+      const sessions = createSessions()
+      const enabled = mode !== "disabled"
+      const telegram = createTelegramAgentBot(
+        {
+          ...loadSettings({ BOT_ADMIN_ID: "7", BOT_TOKEN: "test-token" }),
+          botDocumentInputEnabled: enabled,
+          botAudioInputEnabled: enabled,
+          botReplyTreeEnabled: enabled,
+        },
+        sessions,
+        logger,
+        { control: approvedStore([8, -100]), botInfo },
+      )
+      const calls = installApiMock(telegram.bot)
+      const update = commandMessage(1, "/help", mode === "group" ? 7 : 8)
+      if (mode === "group" && update.message) {
+        update.message.chat = { id: -100, type: "supergroup", title: "Group" }
+      }
+      await telegram.bot.handleUpdate(update)
+
+      expect(calls).toHaveLength(1)
+      const text = telegramPayloadText(calls[0]?.payload) ?? ""
+      expect(text).not.toContain("/admin")
+      expect(text.includes("附加文件提問")).toBe(enabled)
+      expect(text.includes("傳送語音訊息")).toBe(enabled)
+      expect(text.includes("對話分支")).toBe(enabled)
+      expect(text).toContain("## 還可以做什麼\n\n- ")
+      expect(Array.from(text).length).toBeLessThanOrEqual(1_000)
+      expect(sessions.submit).not.toHaveBeenCalled()
+    },
+  )
 
   it("restricts coding-tool help to allowlisted users", async () => {
     const sessions = createSessions()
