@@ -1,10 +1,11 @@
 import type { Issue, IssuePage, IssueState } from "@narumitw/sumire-issues"
 import { Badge, Button, Callout, Flex, Heading, Table, Text } from "@radix-ui/themes"
-import { useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { t } from "./i18n.js"
 import { IssueAnalysisPanel } from "./issue-analysis.js"
 
+const IssuesMcpGrants = lazy(() => import("./issues-mcp-grants.js"))
 const date = (value: number) => new Date(value).toLocaleString("zh-TW")
 export function Issues({
   csrf,
@@ -251,6 +252,9 @@ export function Issues({
             <Button variant="soft" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>
               重新整理列表
             </Button>
+            <Suspense fallback={null}>
+              <IssuesMcpGrants csrf={csrf} onExpired={onExpired} />
+            </Suspense>
           </Flex>
           {!page ? (
             <Text as="p" role="status">

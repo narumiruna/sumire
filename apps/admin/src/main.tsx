@@ -23,7 +23,7 @@ import {
   Text,
   Theme,
 } from "@radix-ui/themes"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import "@radix-ui/themes/styles.css"
 import "./styles.css"
@@ -55,6 +55,7 @@ import { FeedbackWidget } from "./feedback.js"
 import { GithubNotifications } from "./github-notifications.js"
 import { errorMessage, initializeLocale, LocalizedError, t, useLocale } from "./i18n.js"
 import { Issues } from "./issues.js"
+import { readIssuesMcpRequest } from "./issues-mcp-oauth.js"
 import { LanguageSelector } from "./language-selector.js"
 import { McpConnections } from "./mcp-connections.js"
 import { ModelRemovalImpact } from "./model-removal-impact.js"
@@ -88,9 +89,15 @@ import { ToolPermissions } from "./tool-permissions.js"
 
 initializeLocale()
 
+const IssuesMcpConsent = lazy(() => import("./issues-mcp-consent.js"))
+const initialIssuesConsent = readIssuesMcpRequest(window.location.hash)
 const accessStorage = tabStorage(window)
-const initialAccess = captureAccessLink(window.location, window.history, accessStorage)
-const initialSetup = captureSetupLink(window.location, window.history)
+const initialAccess =
+  initialIssuesConsent === null
+    ? captureAccessLink(window.location, window.history, accessStorage)
+    : ""
+const initialSetup =
+  initialIssuesConsent === null ? captureSetupLink(window.location, window.history) : ""
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 const pageDescriptions = () => ({
   Chats: undefined,
@@ -109,6 +116,8 @@ const pageDescriptions = () => ({
 function App() {
   useLocale()
   const [createdIssue, setCreatedIssue] = useState<Issue>()
+  const [issuesConsent, setIssuesConsent] = useState(initialIssuesConsent)
+  const isConsentView = issuesConsent !== null
   const [session, setSession] = useState<{ csrf: string; actor: string } | null | undefined>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [savedPolicy, setSavedPolicy] = useState<Policy>()
@@ -323,11 +332,50 @@ function App() {
     setImports(Array.isArray(reports) ? reports : [])
     setDirty(false)
   }, [sessionGeneration])
-  const directory = useChatDirectory(Boolean(session), chat, expireInspectorSession)
+  const directory = useChatDirectory(
+    Boolean(session) && !isConsentView,
+    chat,
+    expireInspectorSession,
+  )
   const { knownChats } = directory
   const refreshChats = directory.refresh
+  const confirmConsentEntry = useEffectEvent(() => {
+    // Policy and exact-tool input live in App and do not unmount with the workspace.
+    const drafts = (Object.keys(editorPending) as PendingEditor[]).filter(
+      (key) => key !== "tool" && editorPending[key],
+    )
+    const otherDrafts = mcpDirty || providerPending || drafts.some((key) => key !== "endpoint")
+    if (otherDrafts || editorPending.endpoint) {
+      if (!window.confirm(t(otherDrafts ? "app.discardConsentEditors" : "app.discardEndpoint")))
+        return false
+    }
+    if (runtimeGuard.current && !runtimeGuard.current()) return false
+    if (drafts.length) {
+      setEditorPending((previous) => {
+        const next = { ...previous }
+        for (const key of drafts) delete next[key]
+        return next
+      })
+    }
+    if (editorPending.endpoint) setEditingProvider(undefined)
+    if (mcpDirty) setMcpDirty(false)
+    if (providerPending) {
+      setProviderPending(false)
+      setAuthRequest(undefined)
+    }
+    return true
+  })
   useEffect(() => {
-    const capture = () => {
+    const capture = (event: HashChangeEvent) => {
+      const consent = readIssuesMcpRequest(window.location.hash)
+      if (consent !== null && readIssuesMcpRequest(new URL(event.oldURL).hash) === null) {
+        if (!confirmConsentEntry()) {
+          window.history.replaceState(window.history.state, "", event.oldURL)
+          return
+        }
+      }
+      setIssuesConsent(consent)
+      if (consent !== null) return
       const params = new URLSearchParams(window.location.hash.slice(1))
       if (params.has("allow")) {
         setAccessToken(captureAccessLink(window.location, window.history, accessStorage))
@@ -346,9 +394,14 @@ function App() {
         setError(new LocalizedError("app.loadFailed"))
     })
   }, [])
+  const resumeWorkspace = useEffectEvent(() => {
+    // Consent can interrupt a draft in the same session. Expiry clears the draft and snapshot.
+    if (snapshot && dirty) return
+    void run(load, false)
+  })
   useEffect(() => {
-    if (session) void run(load, false)
-  }, [session, run, load])
+    if (session && !isConsentView) resumeWorkspace()
+  }, [session, isConsentView])
   useEffect(() => {
     if (!pending) return
     const warn = (event: BeforeUnloadEvent) => {
@@ -364,6 +417,33 @@ function App() {
       setDirty(policyChanges(savedPolicy ?? policy, policy).length > 0)
     }
   }
+  const signIn = (setup: string) =>
+    void run(async () => {
+      const next = await signInWithPasskey(setup)
+      setSetup("")
+      setSession(next)
+    })
+  if (issuesConsent !== null)
+    return (
+      <Suspense
+        fallback={
+          <main className="session-screen" role="status">
+            {t("issuesMcp.checkingRequest")}
+          </main>
+        }
+      >
+        <IssuesMcpConsent
+          key={`${issuesConsent}:${sessionGeneration}:${Boolean(session)}`}
+          requestId={issuesConsent}
+          csrf={session?.csrf}
+          checkingSession={session === undefined}
+          signingIn={busy}
+          signInError={errorText}
+          onSignIn={() => signIn("")}
+          onExpired={expireInspectorSession}
+        />
+      </Suspense>
+    )
   if (session === undefined)
     return (
       <main className="session-screen">
@@ -396,16 +476,7 @@ function App() {
               <Callout.Text>{errorText}</Callout.Text>
             </Callout.Root>
           )}
-          <Button
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                const next = await signInWithPasskey(setup)
-                setSetup("")
-                setSession(next)
-              })
-            }
-          >
+          <Button disabled={busy} onClick={() => signIn(setup)}>
             {setup ? t("app.register") : t("app.signIn")}
           </Button>
         </Panel>

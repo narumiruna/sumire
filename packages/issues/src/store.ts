@@ -168,21 +168,37 @@ export class IssueStore {
     return { bytes: row.screenshot, mime: row.mime }
   }
   update(id: number, revision: number, state: IssueState, actor: string): Issue {
+    return this.edit(id, revision, { state }, actor)
+  }
+  edit(
+    id: number,
+    revision: number,
+    changes: { state?: IssueState; title?: string },
+    actor: string,
+  ): Issue {
+    const title = changes.title?.trim()
+    if (title !== undefined && (!title || title.length > 100 || /[\r\n]/.test(title)))
+      throw new IssueError(400, "Use a single-line title of 1 to 100 characters")
     return this.transaction(() => {
       const issue = this.get(id)
       if (issue.revision !== revision)
         throw new IssueError(409, "Issue changed. Refresh before trying again.")
-      if (issue.state === state) return issue
+      const nextTitle = title ?? issue.title
+      const nextState = changes.state ?? issue.state
+      if (issue.state === nextState && issue.title === nextTitle) return issue
       this.db
-        .prepare("UPDATE feedback_issues SET state=?, updated=?, revision=revision+1 WHERE id=?")
-        .run(state, Date.now(), id)
-      if (state === "closed")
+        .prepare(
+          "UPDATE feedback_issues SET title=?, state=?, updated=?, revision=revision+1 WHERE id=?",
+        )
+        .run(nextTitle, nextState, Date.now(), id)
+      if (issue.state !== nextState && nextState === "closed")
         this.db
           .prepare(
             "UPDATE feedback_analyses SET state='cancelled', reason='issue_closed', updated=?, revision=revision+1 WHERE issue_id=? AND state IN ('idle','queued','running','blocked')",
           )
           .run(Date.now(), id)
-      this.audit(actor, `issue.${state}`, id)
+      if (issue.state !== nextState) this.audit(actor, `issue.${nextState}`, id)
+      if (issue.title !== nextTitle) this.audit(actor, "issue.rename", id)
       return this.get(id)
     })
   }

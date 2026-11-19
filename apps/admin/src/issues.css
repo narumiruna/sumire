@@ -62,6 +62,55 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.issues-mcp-dialog:modal {
+  box-sizing: border-box;
+  inline-size: min(38rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  color: var(--gray-12);
+  background: var(--color-panel-solid);
+  border: 1px solid var(--gray-7);
+  border-radius: 12px;
+  overscroll-behavior: contain;
+}
+.issues-mcp-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.issues-mcp-dialog > * + *,
+.issues-mcp-grant > * + * {
+  margin-block-start: 0.75rem;
+}
+.issues-mcp-grant-list {
+  padding-inline-start: 1.25rem;
+}
+.issues-mcp-grant {
+  overflow-wrap: anywhere;
+  border-block-start: 1px solid var(--gray-6);
+  padding-block: 0.75rem;
+}
+.issues-mcp-value {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.issues-mcp-consent .rt-Button,
+.issues-mcp-dialog .rt-Button {
+  min-block-size: 3rem;
+  font-size: max(1rem, 1em);
+}
+.issues-mcp-details {
+  display: grid;
+  gap: 0.75rem;
+  max-inline-size: 100%;
+  margin-block-end: 0;
+  overflow-wrap: anywhere;
+}
+.issues-mcp-details dt {
+  font-weight: 600;
+}
+.issues-mcp-details dd {
+  margin-inline-start: 0;
+}
 .issues-workspace select {
   font: inherit;
   min-height: 44px;

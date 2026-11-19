@@ -19,6 +19,7 @@ import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
 import { BrandIcon } from "./brand-icon.js"
 import { type MessageKey, t } from "./i18n.js"
+import { readIssuesMcpRequest } from "./issues-mcp-oauth.js"
 import { LanguageSelector } from "./language-selector.js"
 
 export const pages = [
@@ -203,6 +204,8 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
   }
   useEffect(() => {
     const restore = () => {
+      // The consent hash handler checks drafts before it replaces the workspace.
+      if (readIssuesMcpRequest(window.location.hash) !== null) return
       if (!guard.current()) {
         window.history.pushState(null, "", currentHref.current)
         return
