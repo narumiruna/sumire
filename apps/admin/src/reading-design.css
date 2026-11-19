@@ -88,14 +88,7 @@
   }
   .reading-first
     .sidebar[data-collapsed="true"]
-    :is(
-      .brand-name,
-      .brand-caption,
-      nav a > span,
-      .language-selector > span,
-      .sidebar-account > .rt-Text,
-      .sidebar-account-icon
-    ) {
+    :is(.brand-name, .brand-caption, nav a > span, .language-selector > span) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -127,14 +120,18 @@
     box-shadow: inset 0 0 0 1px #cfdfcc;
   }
   .reading-first .sidebar[data-collapsed="true"] .sidebar-account {
-    padding: 8px 0 0;
-    align-items: center;
+    display: flex;
+    justify-content: center;
   }
-  .reading-first .sidebar[data-collapsed="true"] .sidebar-account button {
-    width: 44px;
-    padding: 10px;
+  .reading-first .sidebar[data-collapsed="true"] .account-trigger {
+    justify-content: center;
+    inline-size: 44px;
+    padding: 0;
   }
-  .reading-first .sidebar[data-collapsed="true"] .sidebar-account button > svg:last-child {
+  .reading-first
+    .sidebar[data-collapsed="true"]
+    .account-trigger
+    :is(.account-trigger-identity, .account-trigger-chevron) {
     display: none;
   }
   .reading-first .sidebar[data-collapsed="true"] .language-selector {

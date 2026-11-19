@@ -17,7 +17,7 @@ import {
   Text,
   TextArea,
 } from "@radix-ui/themes"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { t } from "./i18n.js"
 
@@ -182,6 +182,7 @@ export function IssueAnalysisPanel({
     !["queued", "running"].includes(current.state) &&
     (current.state === "idle" || current.attempt < MAX_ANALYSIS_ATTEMPTS)
   const visibleError = error || readError
+  const previous = data?.analyses?.slice(1) ?? []
   return (
     <section className="issue-analysis" aria-label={t("issues.analysis")}>
       <Flex justify="between" gap="3" align="center" wrap="wrap">
@@ -222,139 +223,70 @@ export function IssueAnalysisPanel({
           {t("issues.uncertain")}
         </Text>
       )}
-      {(data?.analyses ?? []).map((analysis, index) => (
-        <article
-          key={analysis.id}
-          className="issue-analysis-attempt"
-          aria-label={t("issues.attempt", { attempt: analysis.attempt })}
-        >
-          <Flex gap="2" align="center" wrap="wrap">
-            <Heading as="h4" size="3">
-              {t("issues.attempt", { attempt: analysis.attempt })}
-            </Heading>
-            <Badge>{t(`issues.state.${analysis.state}`)}</Badge>
-            {index > 0 && <Text size="2">{t("issues.previous")}</Text>}
-          </Flex>
-          <Text as="p" size="2">
-            {t("issues.session")}:{" "}
-            {analysis.sessionId ? <Code>{analysis.sessionId}</Code> : t("issues.sessionPending")}
-          </Text>
-          {analysis.conversationId !== null && (
-            <Text as="p" size="2">
-              {t("issues.conversation", { id: analysis.conversationId })}
-              {analysis.model ? ` · ${analysis.model}` : ""}
-            </Text>
-          )}
-          {analysis.reason && <Text as="p">{t(`issues.reason.${analysis.reason}`)}</Text>}
-          {analysis.report && (
-            <>
-              <p className="issue-description">{analysis.report.summary}</p>
-              <Callout.Root>
-                <Callout.Text>{analysis.report.limitations}</Callout.Text>
-              </Callout.Root>
-              {analysis.report.questions.length > 0 && (
-                <>
-                  <Heading as="h5" size="2">
-                    {t("issues.questions")}
-                  </Heading>
-                  <ul>
-                    {analysis.report.questions.map((question) => (
-                      <li key={question}>{question}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <div className="issue-proposals">
-                {analysis.report.proposals.map((proposal, number) => (
-                  <article key={`${analysis.id}:${proposal.title}`} className="issue-proposal">
-                    <Heading as="h5" size="3">
-                      {number + 1}. {proposal.title}
-                    </Heading>
-                    <p>{proposal.rationale}</p>
-                    <img
-                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderProposalSvg(proposal))}`}
-                      alt={proposal.preview.title}
-                      className="issue-proposal-preview"
-                    />
-                    <Button variant="soft" onClick={() => setPreview(proposal)}>
-                      {t("issues.enlarge")}
-                    </Button>
-                    <Text as="p" size="2">
-                      {t("issues.previewHelp")}
-                    </Text>
-                    <ul>
-                      {proposal.changes.map((change) => (
-                        <li key={change}>{change}</li>
-                      ))}
-                    </ul>
-                    <Text as="p">
-                      {t("issues.tradeoffs")}: {proposal.tradeoffs}
-                    </Text>
-                    {index === 0 && (
-                      <Button
-                        variant={analysis.selectedProposal === number ? "solid" : "soft"}
-                        aria-pressed={analysis.selectedProposal === number}
-                        disabled={busy || issue.state !== "open"}
-                        onClick={() =>
-                          void mutate(() =>
-                            request<IssueAnalyses>(
-                              `issues/${issue.id}/analysis/select`,
-                              csrf,
-                              {
-                                analysisId: analysis.id,
-                                revision: analysis.revision,
-                                proposal: analysis.selectedProposal === number ? null : number,
-                              },
-                              "POST",
-                              controller.current.signal,
-                            ),
-                          )
-                        }
-                      >
-                        {analysis.selectedProposal === number
-                          ? t("issues.selected")
-                          : t("issues.select")}
-                      </Button>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-        </article>
-      ))}
       {current && (
-        <>
-          <label htmlFor={`issue-analysis-context-${issue.id}`}>{t("issues.context")}</label>
-          <TextArea
-            id={`issue-analysis-context-${issue.id}`}
-            value={extra}
-            maxLength={4000}
-            disabled={busy || uncertain || !canRequest}
-            onChange={(event) => setExtra(event.target.value)}
-          />
-          <Text as="p" size="2">
-            {t("issues.consent")}
-          </Text>
-          <Flex gap="3" wrap="wrap">
-            <Button disabled={busy || (!uncertain && !canRequest)} onClick={() => void analyze()}>
-              {uncertain ? t("issues.retry") : t("issues.request")}
-            </Button>
-            {active && (
-              <Button
-                color="red"
-                variant="soft"
-                disabled={busy}
-                onClick={() => void mutate(() => cancel(current))}
-              >
-                {t("issues.cancel")}
+        <AnalysisAttempt
+          analysis={current}
+          onPreview={setPreview}
+          selection={{
+            disabled: busy || issue.state !== "open",
+            select: (number) =>
+              void mutate(() =>
+                request<IssueAnalyses>(
+                  `issues/${issue.id}/analysis/select`,
+                  csrf,
+                  {
+                    analysisId: current.id,
+                    revision: current.revision,
+                    proposal: current.selectedProposal === number ? null : number,
+                  },
+                  "POST",
+                  controller.current.signal,
+                ),
+              ),
+          }}
+        >
+          <div className="issue-analysis-controls">
+            <label htmlFor={`issue-analysis-context-${issue.id}`}>{t("issues.context")}</label>
+            <TextArea
+              id={`issue-analysis-context-${issue.id}`}
+              value={extra}
+              maxLength={4000}
+              disabled={busy || uncertain || !canRequest}
+              onChange={(event) => setExtra(event.target.value)}
+            />
+            <Text as="p" size="2">
+              {t("issues.consent")}
+            </Text>
+            <Flex gap="3" wrap="wrap">
+              <Button disabled={busy || (!uncertain && !canRequest)} onClick={() => void analyze()}>
+                {uncertain ? t("issues.retry") : t("issues.request")}
               </Button>
-            )}
-          </Flex>
-          <Text as="p" size="2">
-            {t("issues.limit", { max: MAX_ANALYSIS_ATTEMPTS })}
-          </Text>
-        </>
+              {active && (
+                <Button
+                  color="red"
+                  variant="soft"
+                  disabled={busy}
+                  onClick={() => void mutate(() => cancel(current))}
+                >
+                  {t("issues.cancel")}
+                </Button>
+              )}
+            </Flex>
+            <Text as="p" size="2">
+              {t("issues.limit", { max: MAX_ANALYSIS_ATTEMPTS })}
+            </Text>
+          </div>
+        </AnalysisAttempt>
+      )}
+      {previous.length > 0 && (
+        <details className="issue-analysis-disclosure issue-analysis-history">
+          <summary>{t("issues.previousAnalyses")}</summary>
+          <div className="issue-analysis-disclosure-content">
+            {previous.map((analysis) => (
+              <AnalysisAttempt key={analysis.id} analysis={analysis} onPreview={setPreview} />
+            ))}
+          </div>
+        </details>
       )}
       <Dialog.Root
         open={Boolean(preview)}
@@ -379,5 +311,112 @@ export function IssueAnalysisPanel({
         </Dialog.Content>
       </Dialog.Root>
     </section>
+  )
+}
+
+function AnalysisAttempt({
+  analysis,
+  onPreview,
+  selection,
+  children,
+}: {
+  analysis: IssueAnalysis
+  onPreview(proposal: Proposal): void
+  selection?: { disabled: boolean; select(index: number): void }
+  children?: ReactNode
+}) {
+  const { report } = analysis
+  return (
+    <article
+      className={
+        selection ? "issue-analysis-attempt issue-analysis-current" : "issue-analysis-attempt"
+      }
+      aria-label={t("issues.attempt", { attempt: analysis.attempt })}
+    >
+      <Flex gap="2" align="center" wrap="wrap">
+        <Heading as="h4" size="3">
+          {t("issues.attempt", { attempt: analysis.attempt })}
+        </Heading>
+        <Badge>{t(`issues.state.${analysis.state}`)}</Badge>
+      </Flex>
+      {analysis.reason && <Text as="p">{t(`issues.reason.${analysis.reason}`)}</Text>}
+      {report && (
+        <>
+          <p className="issue-description">{report.summary}</p>
+          <Callout.Root>
+            <Callout.Text>{report.limitations}</Callout.Text>
+          </Callout.Root>
+          {report.questions.length > 0 && (
+            <>
+              <Heading as="h5" size="2">
+                {t("issues.questions")}
+              </Heading>
+              <ul>
+                {report.questions.map((question) => (
+                  <li key={question}>{question}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+      {children}
+      <details key={analysis.id} className="issue-analysis-disclosure issue-analysis-run-details">
+        <summary>{t("issues.runDetails")}</summary>
+        <div className="issue-analysis-disclosure-content">
+          <Text as="p" size="2">
+            {t("issues.session")}:{" "}
+            {analysis.sessionId ? <Code>{analysis.sessionId}</Code> : t("issues.sessionPending")}
+          </Text>
+          {analysis.conversationId !== null && (
+            <Text as="p" size="2">
+              {t("issues.conversation", { id: analysis.conversationId })}
+              {analysis.model ? ` · ${analysis.model}` : ""}
+            </Text>
+          )}
+        </div>
+      </details>
+      {report && (
+        <div className="issue-proposals">
+          {report.proposals.map((proposal, number) => (
+            <article key={`${analysis.id}:${proposal.title}`} className="issue-proposal">
+              <Heading as="h5" size="3">
+                {number + 1}. {proposal.title}
+              </Heading>
+              <p>{proposal.rationale}</p>
+              <img
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderProposalSvg(proposal))}`}
+                alt={proposal.preview.title}
+                className="issue-proposal-preview"
+              />
+              <Button variant="soft" onClick={() => onPreview(proposal)}>
+                {t("issues.enlarge")}
+              </Button>
+              <Text as="p" size="2">
+                {t("issues.previewHelp")}
+              </Text>
+              <ul>
+                {proposal.changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+              <Text as="p">
+                {t("issues.tradeoffs")}: {proposal.tradeoffs}
+              </Text>
+              {selection && (
+                <Button
+                  variant={analysis.selectedProposal === number ? "solid" : "soft"}
+                  aria-pressed={analysis.selectedProposal === number}
+                  disabled={selection.disabled}
+                  onClick={() => selection.select(number)}
+                >
+                  {analysis.selectedProposal === number ? t("issues.selected") : t("issues.select")}
+                </Button>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </article>
   )
 }

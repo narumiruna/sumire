@@ -2,10 +2,12 @@ import {
   ActivityLogIcon,
   CalendarIcon,
   ChatBubbleIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ComponentInstanceIcon,
   CubeIcon,
+  ExitIcon,
   FileTextIcon,
   GitHubLogoIcon,
   HamburgerMenuIcon,
@@ -16,8 +18,8 @@ import {
   TokensIcon,
 } from "@radix-ui/react-icons"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { Button, Flex, Heading, Separator, Text } from "@radix-ui/themes"
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
+import { Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes"
+import { Fragment, useEffect, useRef, useState } from "react"
 import { BrandIcon } from "./brand-icon.js"
 import { type MessageKey, t } from "./i18n.js"
 import { readIssuesMcpRequest } from "./issues-mcp-oauth.js"
@@ -292,7 +294,7 @@ export function SideNavigation({
   page: Page
   chat: string
   actor: string
-  account?: ReactNode
+  account?: { disabled: boolean; onSignOut(): void }
   onNavigate(page: Page): void
 }) {
   const [open, setOpen] = useState(false)
@@ -404,17 +406,45 @@ export function SideNavigation({
       >
         {collapsed ? <ChevronRightIcon aria-hidden /> : <ChevronLeftIcon aria-hidden />}
       </Button>
-      <Flex direction="column" gap="3" className="sidebar-account">
-        <Separator size="4" />
-        <PersonIcon aria-hidden className="sidebar-account-icon" />
-        <Text size="1" color="gray">
-          {t("nav.administrator")}
-        </Text>
-        <Text size="2" weight="medium">
-          {actor}
-        </Text>
-        {account}
-      </Flex>
+      {account && (
+        <div className="sidebar-account">
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <Button
+                variant="soft"
+                className="account-trigger"
+                aria-label={t("app.account")}
+                disabled={account.disabled}
+              >
+                <PersonIcon aria-hidden className="account-trigger-icon" />
+                <span className="account-trigger-identity">
+                  <Text size="1" color="gray">
+                    {t("nav.administrator")}
+                  </Text>
+                  <Text size="2" weight="medium">
+                    {actor}
+                  </Text>
+                </span>
+                <ChevronDownIcon aria-hidden className="account-trigger-chevron" />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content
+              align="end"
+              aria-label={t("app.account")}
+              className="account-menu"
+            >
+              <DropdownMenu.Label className="account-menu-actor">
+                {t("app.actor", { actor })}
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item disabled={account.disabled} onSelect={account.onSignOut}>
+                <ExitIcon aria-hidden />
+                {t("app.signOut")}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
+      )}
     </aside>
   )
 }

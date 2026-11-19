@@ -161,23 +161,6 @@
   .admin-shell .sidebar-account {
     order: 2;
   }
-  .admin-shell .sidebar-account > .rt-Separator {
-    display: none;
-  }
-  .admin-shell .sidebar-account button {
-    border-radius: 50%;
-    color: var(--chat-green);
-    background: #e0eddf;
-    width: 36px;
-    min-height: 36px;
-  }
-  .admin-shell .sidebar-account button > svg:first-child {
-    width: 22px;
-    height: 22px;
-  }
-  .admin-shell .sidebar-account button > svg:last-child:not(:first-child) {
-    display: none;
-  }
   .admin-shell .sidebar nav {
     order: 3;
   }
@@ -231,22 +214,6 @@
   }
   .admin-shell .mobile-menu > svg {
     margin-left: -12px;
-  }
-  .admin-shell .sidebar-account button {
-    position: relative;
-    isolation: isolate;
-    width: 44px;
-    min-height: 44px;
-    margin-right: -4px;
-    background: transparent;
-  }
-  .admin-shell .sidebar-account button::before {
-    content: "";
-    position: absolute;
-    inset: 4px;
-    z-index: -1;
-    border-radius: 50%;
-    background: #e0eddf;
   }
 }
 
