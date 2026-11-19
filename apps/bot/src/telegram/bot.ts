@@ -35,6 +35,8 @@ import {
 import { MarketDataOutputError } from "../market-data/format.js"
 import { MarketDataInputError, queryMarketDataMessages } from "../market-data/query.js"
 import { createMorselPublisher, MorselPublishError, type MorselPublisher } from "../morsel.js"
+import { ScheduleStore } from "../schedules/store.js"
+import { ScheduleWorker } from "../schedules/worker.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
@@ -70,6 +72,7 @@ import {
   renderProgressStatus,
 } from "./progress.js"
 import { recoverTelegramResponses } from "./recovery.js"
+import { runScheduledTask } from "./scheduled-task.js"
 
 export interface TelegramAgentBot {
   bot: Bot
@@ -225,6 +228,22 @@ export function createTelegramAgentBot(
     morselPublisher,
     logger,
     settings.morselLongReplyThreshold,
+  )
+  const schedules = new ScheduleWorker(
+    new ScheduleStore(dependencies.control),
+    (schedule, isOwned) => {
+      const generation = submissionGenerations.get(schedule.chatId)?.generation ?? 0
+      return runScheduledTask(
+        schedule,
+        bot,
+        sessions,
+        delivery,
+        () =>
+          isOwned() && (submissionGenerations.get(schedule.chatId)?.generation ?? 0) === generation,
+        logger,
+      )
+    },
+    logger,
   )
   const marketDataQuery =
     dependencies.marketDataQuery ??
@@ -1751,6 +1770,7 @@ export function createTelegramAgentBot(
           logger,
         )
       if (stopping) return
+      schedules.start()
       const polling = runTelegramPolling(
         bot,
         logger,
@@ -1763,6 +1783,7 @@ export function createTelegramAgentBot(
     async stop() {
       if (stopPromise) return stopPromise
       stopping = true
+      schedules.stop()
       for (const controllers of activeAudioLoads.values()) {
         for (const controller of controllers) controller.abort()
       }

@@ -3,6 +3,7 @@ import commonMessages from "./ja/common.json"
 import policyMessages from "./ja/policy.json"
 import providersMessages from "./ja/providers.json"
 import recordsMessages from "./ja/records.json"
+import schedulesMessages from "./ja/schedules.json"
 import settingsMessages from "./ja/settings.json"
 
 export const ja = {
@@ -12,4 +13,5 @@ export const ja = {
   ...providersMessages,
   ...policyMessages,
   ...settingsMessages,
+  ...schedulesMessages,
 } as const

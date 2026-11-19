@@ -1,6 +1,6 @@
 # Administration WebUI
 
-The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, model providers, runtime secrets, and variables. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
+The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, model providers, runtime secrets, variables, and scheduled user-message tasks. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
 
 ## Interface language
 
@@ -20,7 +20,7 @@ Add presentation text through the typed `t()` helper in `apps/admin/src/i18n.ts`
 
 ## Workspace layout
 
-The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults**, **Providers & models**, **Tool permissions**, **Skills**, **MCP servers**, **Secrets & variables**, **GitHub mentions**, **Issues**, and **Audit log**. Existing section IDs, aliases, anchors, and selected-chat URLs remain valid. There is no notification settings page in this build. Telegram lifecycle notices are a separate feature, not a polling-service dashboard.
+The flat navigation order is **Chats**, **Conversation logs**, **Shared defaults**, **Providers & models**, **Tool permissions**, **Skills**, **MCP servers**, **Secrets & variables**, **GitHub mentions**, **Schedule**, **Issues**, and **Audit log**. Existing section IDs, aliases, anchors, and selected-chat URLs remain valid. There is no notification settings page in this build. Telegram lifecycle notices are a separate feature, not a polling-service dashboard.
 
 Desktop navigation starts as a slim icon rail. **Expand navigation** restores the page labels; **Collapse navigation** restores the rail. Each icon keeps an accessible name and a pointer tooltip. The native language selector remains keyboard-accessible. This browser stores only the compact/expanded preference as `sumire.admin.navigation`; blocked storage does not prevent navigation. Narrow screens retain the **Sections** menu.
 
@@ -37,6 +37,7 @@ Body and input text use 16 px at the default browser size. Navigation and primar
 - **MCP servers** uses compact rows and separate connection details. **Test & discover** is one explicit operation. Configured enabled state, a connection observation, published names, and execution permission are separate facts. Editing remains a masked patch; closing retains the draft.
 - **Secrets & variables** puts tabs, search, Add, and saved rows before optional GitHub connection details. Create, replace, keep unchanged, and delete are separate actions. GitHub mentions opens the same on-demand connection panel and shared credential store.
 - **GitHub mentions** shows the saved author policy, known local blockers, prior account metadata, and application state before the editor. Draft author changes do not repair saved state. Worker and delivery health are not measured by the connection metadata endpoint.
+- **Schedule** adds tasks with a literal user message, allowed destination chat, future time, and optional fixed repeat interval. Task cards support revision-checked pause/resume and confirmed deletion; scheduled replies use the existing Pi Durable registry/outbox. Browser-local time and UTC offsets are explicit. See [scheduling semantics and recovery limits](schedules.md).
 - **Audit log** retains exact server filters and grouped records. Actor, time, target, result, and revision are available; historical field diffs were not recorded. It is separate from conversation/tool content.
 
 ### Reading saved conversation content

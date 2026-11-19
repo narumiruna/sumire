@@ -1,5 +1,6 @@
 import {
   ActivityLogIcon,
+  CalendarIcon,
   ChatBubbleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -32,6 +33,7 @@ export const pages = [
   "Model Providers",
   "Secrets & variables",
   "GitHub mentions",
+  "Schedule",
   "Issues",
   "Audit",
 ] as const
@@ -40,6 +42,12 @@ export type Page = (typeof pages)[number]
 export type EditorTarget = { page: Page; selector: string; chat?: string }
 
 export const pendingEditors = {
+  schedule: {
+    get label() {
+      return t("schedule.pending")
+    },
+    target: { page: "Schedule", selector: "#schedule-task-input" },
+  },
   access: {
     get label() {
       return t("nav.pendingAccess")
@@ -101,6 +109,7 @@ const pageIcons = {
   "Model Providers": CubeIcon,
   "Secrets & variables": LockClosedIcon,
   "GitHub mentions": GitHubLogoIcon,
+  Schedule: CalendarIcon,
   Issues: ChatBubbleIcon,
   Audit: ActivityLogIcon,
 } satisfies Record<Page, typeof ChatBubbleIcon>
@@ -114,6 +123,7 @@ export const pageTitles = {
   "Model Providers": "nav.providers",
   "Secrets & variables": "nav.secrets",
   "GitHub mentions": "nav.github",
+  Schedule: "nav.schedule",
   Issues: "nav.issues",
   Audit: "nav.audit",
 } as const satisfies Record<Page, MessageKey>
@@ -131,6 +141,7 @@ const navigationOrder: readonly Page[] = [
   "MCP connections",
   "Secrets & variables",
   "GitHub mentions",
+  "Schedule",
   "Issues",
   "Audit",
 ]
