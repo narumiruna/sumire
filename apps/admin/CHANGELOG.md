@@ -1,5 +1,17 @@
 # @narumitw/sumire-admin
 
+## 0.13.1
+
+### Patch Changes
+
+- 7b899d6: Make the Issues list easier to scan with aligned columns on wide screens and
+  stacked, labeled rows on narrow screens. Use status buttons to filter feedback,
+  see how many items are on the current page, and keep your place when you return
+  from an issue. List labels and update times now follow the interface language.
+- 2ba757e: Use one compact sidebar account control. Show issue reports and their latest
+  analysis side by side where space allows, and move run details and previous
+  attempts into expandable sections.
+
 ## 0.13.0
 
 ### Minor Changes
