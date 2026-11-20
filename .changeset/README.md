@@ -1,13 +1,14 @@
 # Changesets
 
-Add a changeset for package changes. Do not add empty changesets when no package version should change.
-
-Create a package changeset with:
+Add a changeset for changes that should ship in a Sumire release, including
+changes to the admin app and shared packages. To create a changeset, run:
 
 ```bash
 npm run changeset
 ```
 
-Select every affected package, including private packages that will not be published, choose the appropriate SemVer bump, and include a meaningful change summary. Publishing status does not decide whether a package should be versioned. If no package version should change, omit the changeset instead of adding an empty one.
+Select only `@narumitw/sumire`, choose a SemVer bump for the product change,
+and summarize what changed. Omit the changeset when no release is needed.
 
-The publish workflow maintains the release pull request and publishes merged versions.
+The [release workflow](../.github/workflows/publish.yml) maintains the release
+pull request and tags the merged Sumire version. It does not publish to npm.
