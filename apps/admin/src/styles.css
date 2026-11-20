@@ -1204,29 +1204,6 @@ html {
   padding-block: 6px;
 }
 
-.overview-settings {
-  margin: 0;
-}
-.overview-settings > div {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--gray-6);
-  font-size: var(--font-size-2);
-}
-.overview-settings dt {
-  font-weight: 600;
-}
-.overview-settings dd {
-  margin: 0;
-}
-.overview-settings small {
-  display: block;
-  color: var(--gray-11);
-  margin-top: 2px;
-}
 .directory-help {
   font-size: var(--font-size-1);
   color: var(--gray-11);
@@ -1476,14 +1453,6 @@ html {
   }
   .chat-workspace {
     margin-top: 0;
-  }
-  .overview-settings > div {
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 8px;
-  }
-  .overview-settings button {
-    grid-column: 2;
-    justify-self: start;
   }
   .effective-settings {
     grid-template-columns: minmax(0, 1fr);
@@ -2626,17 +2595,6 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   min-width: 0;
   flex: 1 1 150px;
 }
-.chat-facts.chat-overview-facts > .rt-DataListItem {
-  padding-block: 12px;
-}
-.chat-overview-facts .chat-fact-value {
-  display: grid;
-  grid-template-columns: minmax(0, 280px) auto;
-  justify-content: start;
-  align-items: center;
-  justify-items: start;
-  gap: 8px 20px;
-}
 .chat-fact-detail {
   display: block;
   margin-top: 4px;
@@ -2726,19 +2684,6 @@ main .directory-heading :is(h1, h2, h3, h4, h5):not(#current-section-heading) {
   }
   .chat-facts .rt-DataListValue {
     margin-bottom: 0;
-  }
-  .chat-facts.chat-overview-facts {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .chat-facts.chat-overview-facts > .rt-DataListItem {
-    grid-column: 1;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
-    padding-block: 8px;
-  }
-  .chat-overview-facts .chat-fact-value {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
   }
   .chat-detail [role="tab"] {
     padding-inline: 6px;
@@ -3442,14 +3387,6 @@ main .durable-record-meta a {
 .durable-history-context h4 {
   margin-bottom: 8px;
 }
-.durable-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-.durable-history {
-  padding-left: 20px;
-}
 
 .durable-chat-identity {
   display: flex;
@@ -3690,7 +3627,6 @@ main .durable-entry-message .durable-message-heading > svg {
   .durable-message-text {
     padding: 10px;
   }
-  .durable-overview-grid,
   .durable-metadata {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;

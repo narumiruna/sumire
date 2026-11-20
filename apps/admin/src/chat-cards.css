@@ -216,17 +216,6 @@
   font-size: 16px;
   line-height: 1.4;
 }
-.chat-card-actions .chat-card-primary {
-  background: #2c693b;
-  color: #fff;
-}
-.chat-card-actions .chat-card-primary:hover {
-  background: #235631;
-}
-.chat-card-actions .chat-card-primary:disabled {
-  background: #d9dfd9;
-  color: #69726b;
-}
 .chat-card-actions .chat-card-secondary {
   color: var(--chat-green);
   box-shadow: inset 0 0 0 1px #bfc3bf;
@@ -445,36 +434,21 @@
 }
 .chat-card-actions {
   position: relative;
-  height: 32px;
+  min-height: 44px;
 }
-.chat-card-actions :is(.chat-card-primary, .chat-card-secondary) {
+.chat-card-actions .chat-card-secondary {
   position: relative;
   isolation: isolate;
   border: 0;
   box-shadow: none;
   background: transparent;
 }
-.chat-card-actions :is(.chat-card-primary, .chat-card-secondary)::before {
+.chat-card-actions .chat-card-secondary::before {
   content: "";
   position: absolute;
   inset: 6px 0;
   z-index: -1;
   border-radius: 8px;
-}
-.chat-card-actions .chat-card-primary::before {
-  background: #2c693b;
-}
-.chat-card-actions .chat-card-primary:hover {
-  background: transparent;
-}
-.chat-card-actions .chat-card-primary:hover::before {
-  background: #235631;
-}
-.chat-card-actions .chat-card-primary:disabled {
-  background: transparent;
-}
-.chat-card-actions .chat-card-primary:disabled::before {
-  background: #d9dfd9;
 }
 .chat-card-actions .chat-card-secondary::before {
   border: 1px solid #bfc3bf;

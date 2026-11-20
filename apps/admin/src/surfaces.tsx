@@ -1,4 +1,4 @@
-import { ChevronRightIcon } from "@radix-ui/react-icons"
+import { ChevronRightIcon, ReaderIcon } from "@radix-ui/react-icons"
 import { Badge, Box, type BoxProps, Flex, Heading, Text, type TextProps } from "@radix-ui/themes"
 import { type ComponentProps, type ReactNode, useId } from "react"
 
@@ -139,6 +139,16 @@ export function Disclosure({
 
 export function TableToolbar({ className, ...props }: ComponentProps<"div">) {
   return <div {...props} className={["table-toolbar", className].filter(Boolean).join(" ")} />
+}
+
+/** Keep the empty-state explanation visible; the icon is decorative. */
+export function OverviewEmpty({ children }: { children: ReactNode }) {
+  return (
+    <p className="overview-empty">
+      <ReaderIcon aria-hidden />
+      {children}
+    </p>
+  )
 }
 
 /** Paragraph typography with a bounded reading measure. */

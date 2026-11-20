@@ -238,6 +238,7 @@ export function ChatWorkspace({
       className="chat-workspace"
       data-directory-visible={showDirectory}
       data-selected={Boolean(chat)}
+      data-chat-view={tab}
     >
       <SectionActive value={active && showDirectory}>
         <aside
@@ -461,73 +462,97 @@ export function ChatWorkspace({
                       </Text>
                     )}
                     <Tabs.Content
-                      className="chat-view"
+                      className="chat-view chat-overview overview-surface"
                       value="overview"
                       forceMount
                       hidden={tab !== "overview"}
                     >
-                      <DataList.Root
-                        className="chat-facts chat-overview-facts overview-settings"
-                        size="2"
-                      >
-                        <ChatFact
-                          label={t("chat.access")}
-                          detail={
-                            effective.enabled
-                              ? undefined
-                              : t(
-                                  approved
-                                    ? override?.enabled === false
-                                      ? "chat.approvalDisabled"
-                                      : "chat.approvalEnabled"
-                                    : override?.enabled === false
-                                      ? "chat.noApprovalDisabled"
-                                      : "chat.noApprovalEnabled",
-                                )
-                          }
-                          action={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => changeTab("access")}
+                      <div className="overview-grid">
+                        <section>
+                          <Heading as="h3" size="3">
+                            {t("chat.accessForChat")}
+                          </Heading>
+                          <DataList.Root className="chat-facts chat-overview-facts" size="2">
+                            <ChatFact
+                              label={t("chat.access")}
+                              detail={
+                                effective.enabled
+                                  ? undefined
+                                  : t(
+                                      approved
+                                        ? override?.enabled === false
+                                          ? "chat.approvalDisabled"
+                                          : "chat.approvalEnabled"
+                                        : override?.enabled === false
+                                          ? "chat.noApprovalDisabled"
+                                          : "chat.noApprovalEnabled",
+                                    )
+                              }
+                              action={
+                                <Button
+                                  type="button"
+                                  className="overview-action"
+                                  variant="outline"
+                                  onClick={() => changeTab("access")}
+                                >
+                                  {t("chat.manageAccess")}
+                                </Button>
+                              }
                             >
-                              {t("chat.manageAccess")}
-                            </Button>
-                          }
-                        >
-                          {effective.enabled ? t("chat.approvedEnabled") : t("chat.blockedPolicy")}
-                        </ChatFact>
-                        <ChatFact
-                          label={t("chat.model")}
-                          detail={
-                            effective.sources.model === "chat"
-                              ? t("chat.chatOverride")
-                              : t("chat.sharedDefault")
-                          }
-                          action={
-                            <Button type="button" variant="ghost" onClick={() => repair("model")}>
-                              {t("chat.changeModel")}
-                            </Button>
-                          }
-                        >
-                          <Code variant="ghost">{effective.model ?? t("chat.noAllowedModel")}</Code>
-                        </ChatFact>
-                        <ChatFact
-                          label={t("chat.tools")}
-                          detail={
-                            effective.sources.tools === "chat"
-                              ? t("chat.chatOverride")
-                              : t("chat.sharedDefault")
-                          }
-                          action={
-                            <Button type="button" variant="ghost" onClick={() => repair("tools")}>
-                              {t("chat.viewPermissions")}
-                            </Button>
-                          }
-                        >
-                          {t("chat.allowedCount", { count: effective.tools.length })}
-                        </ChatFact>
-                      </DataList.Root>
+                              {effective.enabled
+                                ? t("chat.approvedEnabled")
+                                : t("chat.blockedPolicy")}
+                            </ChatFact>
+                          </DataList.Root>
+                        </section>
+                        <section>
+                          <Heading as="h3" size="3">
+                            {t("chat.modelTools")}
+                          </Heading>
+                          <DataList.Root className="chat-facts chat-overview-facts" size="2">
+                            <ChatFact
+                              label={t("chat.model")}
+                              detail={
+                                effective.sources.model === "chat"
+                                  ? t("chat.chatOverride")
+                                  : t("chat.sharedDefault")
+                              }
+                              action={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => repair("model")}
+                                >
+                                  {t("chat.changeModel")}
+                                </Button>
+                              }
+                            >
+                              <Code variant="ghost">
+                                {effective.model ?? t("chat.noAllowedModel")}
+                              </Code>
+                            </ChatFact>
+                            <ChatFact
+                              label={t("chat.tools")}
+                              detail={
+                                effective.sources.tools === "chat"
+                                  ? t("chat.chatOverride")
+                                  : t("chat.sharedDefault")
+                              }
+                              action={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => repair("tools")}
+                                >
+                                  {t("chat.viewPermissions")}
+                                </Button>
+                              }
+                            >
+                              {t("chat.allowedCount", { count: effective.tools.length })}
+                            </ChatFact>
+                          </DataList.Root>
+                        </section>
+                      </div>
                       {!state.primary && configuredStatus}
                       {unavailableTools.length > 0 && (
                         <div className="blocker">

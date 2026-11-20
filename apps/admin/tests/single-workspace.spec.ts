@@ -139,7 +139,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
         details.getByRole("heading", { name: "Fixture chat", exact: true }),
       ).toBeVisible()
       const overview = details.getByRole("tabpanel", { name: "Overview", exact: true })
-      const facts = overview.locator(".chat-overview-facts")
+      const facts = overview.locator(".overview-grid")
 
       // Measure the initial overview before any action can scroll it into view.
       if (width === 1440) {

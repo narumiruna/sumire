@@ -20,6 +20,7 @@ import { navigationHref } from "./navigation.js"
 import { withChatAccess } from "./policy-changes.js"
 import { SectionActive, SectionSelect } from "./sections.js"
 import { countText } from "./status-text.js"
+import { OverviewEmpty } from "./surfaces.js"
 
 export type ChatScope = "all" | "enabled" | "pending"
 
@@ -242,14 +243,20 @@ export function ChatCard({
       )}
       <div className="chat-card-actions">
         {saved.approved ? (
-          <Button className="chat-card-primary" disabled={busy} onClick={() => onConfigure(chat)}>
+          <Button
+            className="chat-card-primary overview-action"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onConfigure(chat)}
+          >
             <GearIcon aria-hidden="true" />
             {t("chat.configure")}
           </Button>
         ) : (
           <>
             <Button
-              className="chat-card-primary"
+              className="chat-card-primary overview-action"
+              variant="outline"
               disabled={busy}
               onClick={() => onChange(withChatAccess(policy, chat.id, !approved))}
             >
@@ -345,6 +352,7 @@ export function ChatCards({
             ? !["private", "group", "supergroup", "channel"].includes(chat.type)
             : chat.type === type)),
   )
+  const listLabel = t("chat.onPage")
   return (
     <>
       <p className="chat-card-count" aria-live="polite" aria-busy={directory.loading}>
@@ -466,11 +474,12 @@ export function ChatCards({
           <Button onClick={directory.refresh}>{t("chat.reload")}</Button>
         </div>
       ) : !directory.loading && visible.length === 0 ? (
-        <p className="chat-card-empty">
+        <OverviewEmpty>
           {directory.query ? t("chat.noSearchMatchesShort") : t("chat.noPageMatches")}
-        </p>
+        </OverviewEmpty>
       ) : null}
-      <ul className="chat-cards chat-list directory-list-region" aria-label={t("chat.onPage")}>
+      {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs this role when list markers are hidden. */}
+      <ul className="chat-cards chat-list directory-list-region" role="list" aria-label={listLabel}>
         {!directory.loading &&
           !directory.error &&
           visible.map((chat) => <ChatCard key={chat.id} {...props} chat={chat} />)}

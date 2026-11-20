@@ -60,7 +60,7 @@ import { DurableTree } from "./durable-tree.js"
 import { navigationHref } from "./navigation.js"
 import { SectionSelect as Select } from "./sections.js"
 import { countText } from "./status-text.js"
-import { Panel } from "./surfaces.js"
+import { OverviewEmpty, Panel } from "./surfaces.js"
 
 const views = ["history", "conversations", "tasks", "documents", "entries"] as const
 const labels = () => ({
@@ -454,10 +454,10 @@ export function DurableInspector({
     setReadLocation(readContextLocation(next))
     setPages([undefined])
   }
-  const link = (label: ReactNode, next: DurableLocation) => (
+  const link = (label: ReactNode, next: DurableLocation, className?: string) => (
     <a
       href={durableHref(chat, next)}
-      className={typeof label === "string" ? undefined : "durable-record-link"}
+      className={className ?? (typeof label === "string" ? undefined : "durable-record-link")}
       aria-current={
         next.objectId !== undefined &&
         next.objectId === detail?.id &&
@@ -1116,12 +1116,15 @@ export function DurableInspector({
         </Panel>
       )}
       {validChat && (
-        <Panel className="durable-overview" aria-label={t("record.durableOverview")}>
+        <Panel
+          className="durable-overview overview-surface"
+          aria-label={t("record.durableOverview")}
+        >
           <Heading as="h3" size="3">
             {t("record.persistedSessionContext")}
           </Heading>
-          <div className="durable-overview-grid">
-            <Panel
+          <div className="overview-grid">
+            <section
               aria-label={t("record.selectionDetails")}
               aria-live="polite"
               aria-busy={!selection}
@@ -1138,15 +1141,16 @@ export function DurableInspector({
                   {readError(selection)}
                 </Text>
               ) : selection.data?.state === "not-loaded" ? (
-                <Text as="p">{t("record.noLoadedSession")}</Text>
+                <OverviewEmpty>{t("record.noLoadedSession")}</OverviewEmpty>
               ) : selected ? (
                 <>
                   <Text as="p">{t("record.conversationNumber", { id: selected.id })}</Text>
                   <Flex gap="3" wrap="wrap">
-                    {link(t("record.inspectSelected"), {
-                      view: "conversations",
-                      objectId: selected.id,
-                    })}
+                    {link(
+                      t("record.inspectSelected"),
+                      { view: "conversations", objectId: selected.id },
+                      "overview-action",
+                    )}
                     {link(t("record.viewSelectedTasks"), {
                       view: "tasks",
                       conversationId: selected.id,
@@ -1190,11 +1194,11 @@ export function DurableInspector({
                   )}
                 </>
               ) : (
-                <Text as="p">
+                <OverviewEmpty>
                   {selected === null
                     ? t("record.noSelectionMetadata")
                     : t("record.selectionUnavailable")}
-                </Text>
+                </OverviewEmpty>
               )}
               {readTime(selection)}
               {inspectedConversation && inspectedConversation !== selected?.id && (
@@ -1202,8 +1206,8 @@ export function DurableInspector({
                   {t("record.inspectionTarget", { id: inspectedConversation })}
                 </Text>
               )}
-            </Panel>
-            <Panel
+            </section>
+            <section
               aria-label={t("record.selectedTaskHistory")}
               aria-live="polite"
               aria-busy={Boolean(selected && !history)}
@@ -1233,11 +1237,10 @@ export function DurableInspector({
                       )}
                     </Text>
                     {!history.data?.items.length ? (
-                      <Text as="p" size="2">
-                        {t("record.noTaskHistory")}
-                      </Text>
+                      <OverviewEmpty>{t("record.noTaskHistory")}</OverviewEmpty>
                     ) : (
-                      <ul className="durable-history">
+                      // biome-ignore lint/a11y/noRedundantRoles: Safari needs this role when list markers are hidden.
+                      <ul className="durable-history" role="list">
                         {history.data.items.map(
                           (item) =>
                             item.type === "task" && (
@@ -1257,16 +1260,16 @@ export function DurableInspector({
                   </>
                 )
               ) : (
-                <Text as="p">
+                <OverviewEmpty>
                   {selection?.error
                     ? t("record.selectionReadUnavailable")
                     : selected === null
                       ? t("record.noSelectionMetadataRead")
                       : t("record.taskHistoryUnavailable")}
-                </Text>
+                </OverviewEmpty>
               )}
               {readTime(history)}
-            </Panel>
+            </section>
           </div>
         </Panel>
       )}

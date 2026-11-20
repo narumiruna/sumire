@@ -1,0 +1,301 @@
+/* Green and stone is local to the admin summaries, not their editors. */
+:where(.admin-shell, .overview-surface) {
+  --overview-canvas: #edefe7;
+  --overview-paper: #fbfcf7;
+  --overview-ink: #222a21;
+  --overview-muted: #52614e;
+  --overview-accent: #356245;
+  --overview-line: #7c887a;
+}
+
+.admin-shell-chats:has(
+    .chat-workspace:is([data-directory-visible="true"], [data-chat-view="overview"])
+  )
+  > main {
+  --chat-bg: var(--overview-canvas);
+  --chat-ink: var(--overview-ink);
+  --chat-muted: var(--overview-muted);
+}
+
+.admin-shell-chats:has(
+    .chat-workspace:is([data-directory-visible="true"], [data-chat-view="overview"])
+  )
+  > main
+  > .workspace-header {
+  margin-block-end: 2rem;
+}
+
+.admin-shell-chats:has(
+    .chat-workspace:is([data-directory-visible="true"], [data-chat-view="overview"])
+  )
+  .workspace-header
+  #current-section-heading,
+.durable-history-context .durable-overview > h3 {
+  color: var(--overview-ink);
+  font-size: 1.875rem;
+  font-weight: 750;
+  letter-spacing: normal;
+  line-height: 1.25;
+}
+
+.overview-surface,
+.admin-shell-chats .chat-workspace > .chat-directory {
+  background: var(--overview-paper);
+  color: var(--overview-ink);
+  container: overview / inline-size;
+  padding: clamp(0.75rem, 2.5vw, 1.5rem);
+}
+
+.overview-grid {
+  display: grid;
+  gap: 1.25rem 2rem;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+@container overview (min-width: 35rem) {
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.overview-grid > section > .rt-Heading {
+  color: var(--overview-accent);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  margin-block: 0 0.5rem;
+}
+
+.overview-empty {
+  align-items: start;
+  color: var(--overview-muted);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.overview-empty > svg {
+  flex: none;
+  margin-block-start: 0.2em;
+}
+
+.admin-shell :is(.rt-Button, a).overview-action {
+  background: var(--overview-paper);
+  border: 1px solid currentColor;
+  border-radius: 0.375rem;
+  box-shadow: none;
+  color: var(--overview-accent);
+}
+
+.admin-shell :is(.rt-Button, a).overview-action:hover:not(:disabled) {
+  background: var(--overview-canvas);
+}
+
+.admin-shell .overview-action:disabled {
+  opacity: 0.6;
+}
+
+.admin-shell .overview-action:focus-visible,
+.durable-overview a:focus-visible {
+  outline: 2px solid var(--overview-ink);
+  outline-offset: 2px;
+}
+
+/* Keep status text and controls; remove the repeated boxes and rules. */
+.admin-shell-chats .chat-directory .chat-cards {
+  gap: 1.5rem 2rem;
+}
+
+.admin-shell-chats .chat-directory .chat-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.25rem 0;
+}
+
+.chat-directory .chat-card-facts > div + div {
+  border: 0;
+}
+
+.chat-directory .chat-card-avatar {
+  background: transparent;
+  color: var(--overview-muted);
+}
+
+.admin-shell-chats .chat-directory .chat-card-name.directory-chat {
+  font-size: 1.0625rem;
+}
+
+.chat-directory .chat-card-actions .rt-Button {
+  font-size: 0.875rem;
+}
+
+.chat-directory .chat-card-actions .rt-Button:not(.overview-action) {
+  border-radius: 0;
+}
+
+.chat-directory .chat-card-actions .chat-card-secondary {
+  color: var(--overview-ink);
+}
+
+.chat-directory .chat-card-actions .chat-card-secondary::before,
+.chat-directory .chat-card-scopes {
+  border-radius: 0;
+}
+
+.chat-directory .chat-card-scopes {
+  border: 0;
+  height: auto;
+  overflow: visible;
+}
+
+.chat-directory .chat-card-scopes button {
+  border: 0;
+  border-block-end: 2px solid transparent;
+  font-size: 0.875rem;
+}
+
+.chat-directory .chat-card-scopes button[aria-pressed="true"] {
+  background: transparent;
+  border-block-end-color: currentColor;
+  color: var(--overview-ink);
+}
+
+/* The selected tab's underline and the keyboard outline are separate cues. */
+.chat-workspace[data-chat-view="overview"] .chat-detail [role="tablist"] {
+  --accent-indicator: var(--overview-ink);
+  --focus-8: var(--overview-ink);
+  border-block-end: 1px solid var(--overview-line);
+  box-shadow: none;
+}
+
+.chat-workspace[data-chat-view="overview"] .chat-detail [role="tab"] {
+  color: var(--overview-muted);
+}
+
+.chat-workspace[data-chat-view="overview"] .chat-detail [role="tab"][aria-selected="true"] {
+  color: var(--overview-ink);
+}
+
+.chat-workspace[data-chat-view="overview"] [role="tab"] .rt-BaseTabListTriggerInner {
+  border-radius: 0;
+}
+
+.chat-workspace[data-chat-view="overview"] [role="tab"]:focus-visible .rt-BaseTabListTriggerInner {
+  outline: 2px solid var(--overview-ink);
+  outline-offset: 2px;
+}
+
+.chat-facts.chat-overview-facts {
+  display: block;
+}
+
+.chat-facts.chat-overview-facts > .rt-DataListItem {
+  border: 0;
+  gap: 0.125rem;
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr);
+  padding-block: 0.25rem;
+}
+
+.chat-overview-facts .chat-fact-value {
+  align-items: center;
+  display: grid;
+  gap: 0.25rem 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-items: start;
+}
+
+.chat-overview .chat-facts .rt-DataListLabel,
+.chat-overview :is(.chat-fact-detail, .chat-ready-summary) {
+  color: var(--overview-muted);
+}
+
+.chat-overview-facts .chat-fact-value > .rt-Button {
+  font-size: 0.875rem;
+  min-block-size: 2.75rem;
+}
+
+.chat-overview-facts .chat-fact-value > .rt-Button:not(.overview-action) {
+  border-radius: 0;
+  color: var(--overview-ink);
+}
+
+@container overview (max-width: 22rem) {
+  .chat-overview-facts .chat-fact-value {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.durable-history-context .durable-overview {
+  background: var(--overview-paper);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: clamp(0.75rem, 2.5vw, 1.5rem);
+}
+
+.durable-overview .overview-grid {
+  margin-block-start: 2rem;
+}
+
+.durable-overview .durable-read-time {
+  color: var(--overview-muted);
+}
+
+.durable-overview .durable-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.durable-overview .durable-history > li {
+  padding-block: 0.25rem;
+}
+
+.durable-overview a {
+  color: var(--overview-ink);
+}
+
+.durable-overview a:not(.overview-action) {
+  text-decoration: underline;
+}
+
+.durable-overview .overview-action {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.875rem;
+  min-block-size: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  text-decoration: none;
+}
+
+@media (max-width: 650px) {
+  .admin-shell-chats:has(
+      .chat-workspace:is([data-directory-visible="true"], [data-chat-view="overview"])
+    )
+    > .sidebar {
+    border-block-end: 1px solid var(--overview-line);
+  }
+
+  .admin-shell-chats:has(
+      .chat-workspace:is([data-directory-visible="true"], [data-chat-view="overview"])
+    )
+    .sidebar
+    nav
+    a[aria-current="page"] {
+    background: transparent;
+    border-radius: 0;
+    color: var(--overview-ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3em;
+  }
+}
+
+@media (forced-colors: active) {
+  .chat-workspace[data-chat-view="overview"] [role="tab"][aria-selected="true"]::before {
+    background-color: CanvasText;
+    forced-color-adjust: none;
+  }
+}

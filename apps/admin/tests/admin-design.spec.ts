@@ -42,10 +42,11 @@ for (const [width, height, zoom] of [
       await page.evaluate(() => window.scrollTo(0, 0))
       const heading = page.locator("#current-section-heading")
       await expect(heading).toHaveText(title)
-      await expect(heading).toHaveCSS("font-size", width <= 360 ? "28px" : "30px")
+      const chatsOverview = section === "Chats"
+      await expect(heading).toHaveCSS("font-size", width <= 360 && !chatsOverview ? "28px" : "30px")
       await expect(page.locator(".admin-shell > main")).toHaveCSS(
         "background-color",
-        "rgb(250, 250, 249)",
+        chatsOverview ? "rgb(237, 239, 231)" : "rgb(250, 250, 249)",
       )
       expect((await contrast(heading)).text).toBeGreaterThanOrEqual(4.5)
       await expect(page.locator(".changes-bar")).toHaveCount(0)
