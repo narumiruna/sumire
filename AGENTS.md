@@ -61,5 +61,4 @@
 
 ## Git and commits
 
-- Add a changeset for package changes; include a meaningful change summary and bump every affected package, including private packages.
-- Do not add empty changesets; omit the changeset when no package version should change.
+- [UNREVIEWED] For changes that should ship, add a changeset for `@narumitw/sumire` only; see `.changeset/README.md`.

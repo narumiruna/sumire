@@ -1,4 +1,4 @@
-name: Publish
+name: Release
 
 on:
   workflow_dispatch:
@@ -15,11 +15,8 @@ concurrency:
 
 jobs:
   release:
-    name: release-packages
+    name: release-sumire
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # Generate npm package provenance attestations.
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -31,19 +28,15 @@ jobs:
         with:
           node-version: 26
           cache: npm
-          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: npm ci
-      - name: Create release pull request or publish
+      - name: Create release pull request or tag Sumire
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         with:
           version-script: npm run version-packages
           publish-script: npm run release
-          pr-title: "chore(release): version packages"
-          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version Sumire"
+          commit-message: "chore(release): version Sumire"
           github-token: ${{ secrets.PAT_TOKEN }}
           # Push commits and tags through the API without persisted Git credentials.
           push-with-git-cli: false
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"

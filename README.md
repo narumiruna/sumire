@@ -135,19 +135,23 @@ The Pi-based PR Review workflow was removed in [#285](https://github.com/narumir
 
 ## Package releases
 
-Add a Changesets file for package changes:
+Sumire has one release version, stored in [`apps/bot/package.json`](apps/bot/package.json).
+For changes that should ship, including admin or shared-package changes, run
+`npm run changeset` and select only `@narumitw/sumire`. See the [changeset guide](.changeset/README.md).
+Other workspaces keep their existing manifest versions for internal dependency
+resolution; they are not released separately.
 
-```bash
-npm run changeset
-```
-
-Include a meaningful change summary and bump every affected package, including private packages. Omit the changeset when no package version should change; do not add an empty changeset. On each push to `main`, [`.github/workflows/publish.yml`](.github/workflows/publish.yml) uses Changesets to create or update a release pull request. Merging that pull request publishes the pending package versions to npm with provenance. Configure the `NPM_TOKEN` repository secret with publish access to the `@narumitw` scope, and allow GitHub Actions to create pull requests in the repository Actions settings.
+On each push to `main`, the [release workflow](.github/workflows/publish.yml)
+uses Changesets to maintain a release pull request or tag an untagged Sumire
+version. It uses the `PAT_TOKEN` repository secret for GitHub operations and
+does not publish to npm.
 
 ### Deployment
 
 The [Deploy workflow](.github/workflows/deploy.yml) runs when a `@narumitw/sumire@*` tag is pushed, for example `@narumitw/sumire@0.17.0`. Pushes to `main` and tags for other workspaces do not trigger deployment. Manual runs remain available through `workflow_dispatch`.
 
-Changesets creates tags for the private bot package because `.changeset/config.json` enables `privatePackages.tag`. Include a changeset that bumps `@narumitw/sumire` when a shared-package change must be deployed. Each tag identifies a repository commit, so Docker Compose builds the bot and its dependencies from the same revision.
+Each tag identifies a repository commit, so Docker Compose builds the bot and
+its dependencies from the same revision.
 
 ## Security
 
