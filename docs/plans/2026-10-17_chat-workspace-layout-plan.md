@@ -12,7 +12,7 @@ Automated tests did not reproduce the reported tab failure. Tab handlers and sta
 
 ## Plan
 
-- [x] Implement directory scrolling, stable titles, readiness details, and scroll-restoration fixes with regression coverage. Evidence: the validation record and `apps/admin/tests/chat-workspace.spec.ts`.
+- [x] Implement directory scrolling, stable titles, readiness details, and scroll-restoration fixes with regression coverage. Evidence: the validation record and `apps/web/tests/chat-workspace.spec.ts`.
 - [x] Record automated results, screenshot locations, review findings, and verification limits in the validation record.
 - [ ] Record manual Access/History verification or explicit user acceptance of the unavailable check. Blocked on the review described below.
 

@@ -54,7 +54,7 @@ Local final checks on Node.js 26.10.0:
 | `npm test` | Passed: 131 test files, 1,736 tests; bot 1,174, admin 73 |
 | `npm run build` | Passed across all workspaces |
 | `npm run test:browser --workspace @narumitw/sumire-admin` | Passed: 182 Chromium browser tests |
-| `node apps/admin/scripts/capture-durable-comparison.ts origin/main apps/admin/test-results/durable-comparison` | Passed; six synthetic before/after screenshots generated |
+| `node apps/web/scripts/capture-durable-comparison.ts origin/main apps/web/test-results/durable-comparison` | Passed (paths shown for the current layout); six synthetic before/after screenshots generated |
 | `git diff --check` | Passed |
 
 The first full root test run overlapped browser work and had five process-recovery deadline failures in unchanged MCP/codemode tests. The isolated recovery checks passed, then an unmodified `npm test` passed in full without concurrent browser work. No timeout, assertion, or test selection was relaxed. Initial browser failures from changed copy/fixtures were corrected; the final stale-response test verifies actual request cancellation and that a released old handler cannot replace fresh metadata.

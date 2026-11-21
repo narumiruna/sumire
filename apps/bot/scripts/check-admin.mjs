@@ -58,7 +58,7 @@ try {
       origin,
       host: "127.0.0.1",
       port: 0,
-      assets: path.resolve(import.meta.dirname, "../../admin/dist"),
+      assets: path.resolve(import.meta.dirname, "../../web/dist"),
     },
     {
       store,

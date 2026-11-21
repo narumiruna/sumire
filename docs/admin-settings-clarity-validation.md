@@ -70,7 +70,7 @@ At the 390 px narrow viewport, the pending scope strip ended at 320.6 px and the
 | `CI=1 npm run test:browser --workspace @narumitw/sumire-admin -- --reporter=line,json --workers=4` | 386 passed |
 | `git diff --check` | Passed |
 
-The new browser cases are `tests/settings-clarity.spec.ts`, `tests/settings-clarity-state.spec.ts`, and `tests/settings-clarity-layout.spec.ts` in `apps/admin/`. The complete browser run also includes the existing focused regression suites specified by the implementation plan.
+The new browser cases are `tests/settings-clarity.spec.ts`, `tests/settings-clarity-state.spec.ts`, and `tests/settings-clarity-layout.spec.ts` in `apps/web/`. The complete browser run also includes the existing focused regression suites specified by the implementation plan.
 
 Generated evidence stays outside tracked sources:
 

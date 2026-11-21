@@ -52,6 +52,7 @@ describe("container application packaging", () => {
       expect(application).toContain(
         `COPY --from=production-dependencies /build/${directory} /app/${directory}`,
       )
+    expect(application).toContain("COPY --from=admin-build /build/apps/web/dist /app/apps/web/dist")
     expect(application).toContain(
       "RUN --network=none node --input-type=module -e \"await import('/app/apps/bot/dist/startup.js')\"",
     )
@@ -144,7 +145,7 @@ describe("container application packaging", () => {
 
   it("builds the same application target in CI when Docker inputs change", async () => {
     const workflow = await readFile(ciUrl, "utf8")
-    for (const input of ["Dockerfile", ".dockerignore", "scripts/**"])
+    for (const input of ["Dockerfile", ".dockerignore", "scripts/**", "apps/web/**"])
       expect(workflow.split(`- "${input}"`)).toHaveLength(3)
     const container = workflow.split("\n  container:\n")[1]
     expect(container).toMatch(/uses: docker\/build-push-action@[a-f0-9]{40}\b/)

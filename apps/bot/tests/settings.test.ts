@@ -106,6 +106,7 @@ describe("loadSettings", () => {
   it("keeps Docker workdir separate from application-owned resources", () => {
     const settings = loadSettings({}, "/app", "/workdir")
     expect(settings.botWorkdir).toBe("/workdir")
+    expect(settings.admin.assets).toBe("/app/apps/web/dist")
     expect(settings.botMcpConfigPath).toBe("/app/mcp.json")
     expect(settings.botSessionLogDir).toBe("/app/.telegramagent/sessions")
     expect(settings.botSystemPromptPath).toBe("/app/instructions/APPEND_SYSTEM.md")

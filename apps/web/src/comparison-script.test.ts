@@ -11,6 +11,6 @@ it("loads comparison fixtures with native Node before checking CLI arguments", (
   expect(result.error).toBeUndefined()
   expect(result.status).toBe(1)
   expect(result.stderr).toContain(
-    "Usage: node apps/admin/scripts/capture-durable-comparison.ts <base-ref> <output-directory>",
+    "Usage: node apps/web/scripts/capture-durable-comparison.ts <base-ref> <output-directory>",
   )
 })

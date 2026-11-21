@@ -21,7 +21,7 @@ The final suite repeats these checks. Inspection found controlled Radix tabs wit
 
 ## Regression evidence
 
-`apps/admin/tests/chat-workspace.spec.ts` adds 15 tests:
+`apps/web/tests/chat-workspace.spec.ts` adds 15 tests:
 
 - Desktop/narrow screenshots of an approved long emoji/CJK supergroup, a short unapproved group, and two same-name groups with different IDs. Additional after screenshots cover an unbroken title.
 - Click and keyboard tab selection, one visible matching panel, retained tab on chat switch, no requests from navigation, and no dirty policy.

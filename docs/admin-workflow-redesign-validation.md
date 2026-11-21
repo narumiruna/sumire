@@ -73,7 +73,7 @@ At 390px, both chat states meet the 450px tab-bottom target and show the first O
 | Density and difficult states | Workflow layout fixtures at all five sizes; workflow state screenshots for 152 tools, long labels, mixed drafts, loading, empty inventory, and retryable errors |
 | Stable navigation | `navigation.test.ts` stable IDs and aliases; existing navigation/repair tests and model workflow Back/return focus checks |
 
-Generated screenshots remain in ignored `apps/admin/test-results/`. Rerun the browser tests to regenerate them. No images, credentials, runtime state, or dependency changes are included in the commit.
+Generated screenshots remain in ignored `apps/web/test-results/`. Rerun the browser tests to regenerate them. No images, credentials, runtime state, or dependency changes are included in the commit.
 
 ## Final checks
 

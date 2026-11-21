@@ -8,8 +8,8 @@ The pre-change Chromium suite passed 103 tests. The initial inspection and basel
 
 | Section | Source | Baseline finding and delivered change |
 | --- | --- | --- |
-| Chats | `apps/admin/src/chats.tsx`, `styles.css` | Directory used “Allowed” and repeated unnamed labels. Setup blockers already existed. Approval now has a neutral badge; details separate approval, enabled state, configuration, verification, and application. Fallback names include IDs. The directory has one viewport-bounded scroll area on desktop. |
-| Access | `apps/admin/src/main.tsx`, `tests/access.spec.ts` | Search already covered the whole policy list, but names were loaded-page metadata and rows were tall. Labeled tables now include matching/draft/saved/revocation counts and pending-change links. |
+| Chats | `apps/web/src/chats.tsx`, `styles.css` | Directory used “Allowed” and repeated unnamed labels. Setup blockers already existed. Approval now has a neutral badge; details separate approval, enabled state, configuration, verification, and application. Fallback names include IDs. The directory has one viewport-bounded scroll area on desktop. |
+| Access | `apps/web/src/main.tsx`, `tests/access.spec.ts` | Search already covered the whole policy list, but names were loaded-page metadata and rows were tall. Labeled tables now include matching/draft/saved/revocation counts and pending-change links. |
 | Defaults | `main.tsx`, `tests/tool-permissions.spec.ts` | Tool defaults already had a canonical destination. Saved/draft summaries now include model, thinking, and allowed models; reset has a visible disabled-state explanation. Checkbox names are explicit. |
 | Tool permissions | `tool-permissions.tsx` | Existing global/default controls already retained removed selections and showed conflicts. Four columns now expose the effective inherited result and named MCP server gates. Detailed rules are expandable. |
 | MCP connections | `main.tsx`, `mcp-editor.tsx`, backend `admin/mcp.ts` | Updates were advanced JSON patches. Guided fields now precede JSON and share the same draft. Preview operations use field names only and include transport cleanup. Saved connection values remain hidden. |
@@ -34,9 +34,9 @@ The pre-change Chromium suite passed 103 tests. The initial inspection and basel
 
 ## Acceptance evidence
 
-- `apps/admin/tests/admin.spec.ts`: existing mutation, conflict, application failure, cancellation, missing/disabled provider, inherited/empty list, pagination, navigation, deep-link, draft retention, and session-expiry cases remain in the suite. Assertions changed only for the delivered UI contract.
-- `apps/admin/tests/usability.spec.ts`: clean, policy-only, MCP-only, provider-only, and mixed drafts across all seven sections; guided/JSON round-trip and masked preview; server-query filters without draft loss; failed and stale query isolation; visible failed audit retries; provider check failure/configuration versus remote verification; accessible names, keyboard focus, reflow, and contrast.
-- `apps/admin/src/mcp-editor.test.ts`, `audit.test.ts`, `navigation.test.ts`: deterministic map replacement/preservation/removal, transport cleanup, malformed input, bounded date encoding, grouping boundaries, and old/new provider deep links.
+- `apps/web/tests/admin.spec.ts`: existing mutation, conflict, application failure, cancellation, missing/disabled provider, inherited/empty list, pagination, navigation, deep-link, draft retention, and session-expiry cases remain in the suite. Assertions changed only for the delivered UI contract.
+- `apps/web/tests/usability.spec.ts`: clean, policy-only, MCP-only, provider-only, and mixed drafts across all seven sections; guided/JSON round-trip and masked preview; server-query filters without draft loss; failed and stale query isolation; visible failed audit retries; provider check failure/configuration versus remote verification; accessible names, keyboard focus, reflow, and contrast.
+- `apps/web/src/mcp-editor.test.ts`, `audit.test.ts`, `navigation.test.ts`: deterministic map replacement/preservation/removal, transport cleanup, malformed input, bounded date encoding, grouping boundaries, and old/new provider deep links.
 - `apps/bot/tests/admin-server.test.ts`: authenticated filter queries, exact combined predicates, inclusive date boundaries, equal-time stable ID ordering, page bounds, empty results, SQL injection input, duplicates, malformed dates, and unauthenticated rejection.
 - `apps/bot/tests/admin-mcp.test.ts`: omitted-field preservation, null preservation, literal replacement, map clearing, unknown fields, stale revisions, transport cleanup, and inventory/audit secret redaction.
 
