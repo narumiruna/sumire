@@ -64,8 +64,8 @@ Automated coverage lives in:
 - `apps/bot/tests/schedules-api.test.ts`: authenticated CRUD, creation deduplication, strict schemas, origin/CSRF/session enforcement, body bounds, and unsupported methods.
 - `apps/bot/tests/scheduled-task.test.ts`: registry/outbox transport contract, real Telegram message anchors, channel contexts, media delegation, acknowledgement, and fail-closed checks.
 - `apps/bot/tests/scheduled-task-durable.test.ts`: real Pi Durable and SQLite with a **loopback-only synthetic model**, including recovery of an unsent answer without another model turn.
-- `apps/admin/src/schedule-time.test.ts`: UTC conversion, invalid dates, DST gap/fold behavior, and saved-zone presentation.
-- `apps/admin/tests/schedules.spec.ts`: synthetic intercepted-API CRUD at 320/390/1440 px, literal text, creation retry, drafts/deep links, overdue confirmation, unknown outcomes, and localized mobile layouts.
+- `apps/web/src/schedule-time.test.ts`: UTC conversion, invalid dates, DST gap/fold behavior, and saved-zone presentation.
+- `apps/web/tests/schedules.spec.ts`: synthetic intercepted-API CRUD at 320/390/1440 px, literal text, creation retry, drafts/deep links, overdue confirmation, unknown outcomes, and localized mobile layouts.
 
 Adding the navigation destination also requires keeping the feedback launcher clear of the rail controls. Desktop feedback placement follows the expanded/compact sidebar width, including the 200 px intermediate layout; the mobile placement is unchanged. Browser regressions exercise both rail states and existing pending-save controls.
 

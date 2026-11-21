@@ -55,7 +55,7 @@ Screenshots show the rendered application with isolated API fixtures, not a prod
 
 Each viewport folder contains `defaults.png`, `model-providers.png`, `tool-permissions.png`, `skills.png`, `mcp-connections.png`, `chats.png`, `access.png`, `conversation-records.png`, and `audit.png`. It also contains `skills-expanded.png`.
 
-Reproduce the populated captures with `npm run test:browser --workspace @narumitw/sumire-admin -- direction-b.spec.ts`. Playwright writes them to `apps/admin/test-results/`.
+Reproduce the populated captures with `npm run test:browser --workspace @narumitw/sumire-admin -- direction-b.spec.ts`. Playwright writes them to `apps/web/test-results/`.
 
 ## Limits
 

@@ -11,7 +11,7 @@ import { durableComparisonHref, durableFixture } from "../tests/durable-fixture.
 const [baseRef, output] = process.argv.slice(2)
 if (!baseRef || !output)
   throw new Error(
-    "Usage: node apps/admin/scripts/capture-durable-comparison.ts <base-ref> <output-directory>",
+    "Usage: node apps/web/scripts/capture-durable-comparison.ts <base-ref> <output-directory>",
   )
 const root = process.cwd()
 const base = execFileSync(
@@ -19,19 +19,24 @@ const base = execFileSync(
   ["rev-parse", "--verify", "--end-of-options", `${baseRef}^{commit}`],
   { encoding: "utf8" },
 ).trim()
+const webDirectory = "apps/web"
+const baseDirectory =
+  execFileSync("git", ["ls-tree", "--name-only", base, "--", webDirectory], {
+    encoding: "utf8",
+  }).trim() || "apps/admin"
 const temporary = await mkdtemp(path.join(os.tmpdir(), "sumire-durable-comparison-"))
 let browser: Browser | undefined
 try {
-  browser = await chromium.launch({ headless: true })
-  const archive = execFileSync("git", ["archive", base, "apps/admin"], {
+  const archive = execFileSync("git", ["archive", base, baseDirectory], {
     maxBuffer: 16 * 1024 * 1024,
   })
   execFileSync("tar", ["-x", "-C", temporary], { input: archive })
   await symlink(path.join(root, "node_modules"), path.join(temporary, "node_modules"), "dir")
   await mkdir(output, { recursive: true })
+  browser = await chromium.launch({ headless: true })
   for (const [phase, directory] of [
-    ["before", temporary],
-    ["after", root],
+    ["before", path.join(temporary, baseDirectory)],
+    ["after", path.join(root, webDirectory)],
   ] as const) {
     const server = spawn(
       process.execPath,
@@ -43,7 +48,7 @@ try {
         "17467",
         "--strictPort",
       ],
-      { cwd: path.join(directory, "apps/admin"), stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: directory, stdio: ["ignore", "pipe", "pipe"] },
     )
     let logs = ""
     server.stdout.on("data", (data) => {

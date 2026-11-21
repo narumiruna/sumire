@@ -25,7 +25,7 @@ Measurements use full row bounds inside both the list region and viewport. Names
 
 ## State and action contract
 
-`apps/admin/src/chat-state.ts` is the shared saved-state resolver for directory rows and selected-chat details. It uses `effectivePolicy`, local provider inventory, and the saved/applied revision state. It does not perform network requests.
+`apps/web/src/chat-state.ts` is the shared saved-state resolver for directory rows and selected-chat details. It uses `effectivePolicy`, local provider inventory, and the saved/applied revision state. It does not perform network requests.
 
 | Fixture condition | Primary label | Repair destination and focus |
 | --- | --- | --- |
@@ -101,7 +101,7 @@ Four new 320px cases cover message and tool content with Arial and Verdana. They
 
 The fixture now imports the actual `admin-fixture.ts` file. The admin TypeScript configuration already permits that extension; no loader, dependency, or workflow change is needed. `src/comparison-script.test.ts` launches the actual script with native Node and no CLI arguments. It must reach the existing usage error before any browser starts. This test failed with the missing-module error before the import fix and passes after it.
 
-The complete capture command also passed locally: `node apps/admin/scripts/capture-durable-comparison.ts origin/main /tmp/sumire-ci-159-durable-comparison`. It produced all six before/after screenshots at 1440, 390, and 320px. These generated files remain outside the repository.
+The complete capture command also passed locally (script path updated for the current layout): `node apps/web/scripts/capture-durable-comparison.ts origin/main /tmp/sumire-ci-159-durable-comparison`. It produced all six before/after screenshots at 1440, 390, and 320px. These generated files remain outside the repository.
 
 The final browser suite passed 306 cases with normal test timeouts. One local attempt exceeded the 300-second command limit; the complete rerun finished in the background without changing test timeouts. Formatting, lint, typecheck, and build passed again. The default local root test retry hit ten unchanged bot subprocess/deadline failures; the complete two-worker rerun passed all 1,969 tests. Only scheduling changed for that rerun, not test cases, assertions, or timeouts. Remote CI uses the normal root command; its current result is linked above.
 

@@ -18,7 +18,7 @@ WORKDIR /build
 
 COPY package.json package-lock.json ./
 COPY apps/bot/package.json apps/bot/package.json
-COPY apps/admin/package.json apps/admin/package.json
+COPY apps/web/package.json apps/web/package.json
 COPY packages/issues/package.json packages/issues/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/runtime-config/package.json packages/runtime-config/package.json
@@ -124,8 +124,8 @@ COPY --from=policy-build /build/packages/policy/dist /build/packages/policy/dist
 COPY --from=contracts-build /build/packages/contracts/dist /build/packages/contracts/dist
 COPY --from=issues-build /build/packages/issues/dist /build/packages/issues/dist
 
-COPY apps/admin/tsconfig.json apps/admin/vite.config.ts apps/admin/index.html apps/admin/
-COPY apps/admin/src/ apps/admin/src/
+COPY apps/web/tsconfig.json apps/web/vite.config.ts apps/web/index.html apps/web/
+COPY apps/web/src/ apps/web/src/
 RUN npm --ignore-scripts run build --workspace @narumitw/sumire-admin
 
 FROM dependencies AS production-dependencies
@@ -145,7 +145,7 @@ COPY --from=production-dependencies /build/apps/bot /app/apps/bot
 COPY --from=production-dependencies /build/packages /app/packages
 COPY --from=compiled-packages /packages /app/packages
 COPY --from=build /build/apps/bot/dist /app/apps/bot/dist
-COPY --from=admin-build /build/apps/admin/dist /app/apps/admin/dist
+COPY --from=admin-build /build/apps/web/dist /app/apps/web/dist
 
 # Import without credentials or network access; do not start the bot.
 RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"

@@ -45,7 +45,7 @@ review dialog were also captured during acceptance checks.
 
 ## Local screenshot acceptance
 
-`apps/admin/tests/admin-design-fixture.ts` intercepts every API request using
+`apps/web/tests/admin-design-fixture.ts` intercepts every API request using
 synthetic policy, inventory, chat, audit and runtime metadata. Conversation reads
 fall back to the existing intercepted Durable fixture. No production API is used.
 The dedicated acceptance tests assert that browsing/filtering never mutates data.
@@ -61,7 +61,7 @@ Checks cover shared palette/type, contrast, folded clean metadata, horizontal
 reflow, and the horizontal bounds of visible controls. Mobile and desktop page
 captures were visually inspected, including the expanded editors and review flow.
 
-Images are written only to ignored `apps/admin/test-results/` or local `/tmp/`
+Images are written only to ignored `apps/web/test-results/` or local `/tmp/`
 review directories. No screenshots, image links or generated image files are
 included in the commit or PR description.
 
