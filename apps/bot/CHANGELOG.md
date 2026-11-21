@@ -1,5 +1,11 @@
 # @narumitw/sumire
 
+## 0.20.1
+
+### Patch Changes
+
+- 69374ec: Move the administration frontend to `apps/web` and update the container build and browser checks to use the new path.
+
 ## 0.20.0
 
 ### Minor Changes
