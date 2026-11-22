@@ -7,7 +7,6 @@ import { focusEditor, navigationHref, type Page } from "./navigation.js"
 import { List } from "./policy-editors.js"
 import { countText } from "./status-text.js"
 import { Disclosure, Prose, SettingsSection, TableToolbar } from "./surfaces.js"
-import { toolPermissionGroups } from "./tool-permissions.js"
 
 export function SharedDefaults({
   policy,
@@ -52,17 +51,9 @@ export function SharedDefaults({
     </Button>
   )
   const effective = effectivePolicy(policy, 0)
-  const groups = toolPermissionGroups(effective.tools, inventory)
-  const skills = effective.skills
   return (
     <div className="defaults-layout">
-      <Prose>{t("selection.defaultsHelp")}</Prose>
-      <SettingsSection
-        id="default-model-settings"
-        tabIndex={-1}
-        title={t("model.thinkingTitle")}
-        description={t("model.defaultDescription")}
-      >
+      <SettingsSection id="default-model-settings" tabIndex={-1} title={t("model.thinkingTitle")}>
         <DefaultModel
           policy={policy}
           saved={saved.defaults}
@@ -96,50 +87,25 @@ export function SharedDefaults({
           />
         </Disclosure>
       </SettingsSection>
-      <SettingsSection title={t("selection.toolsTitle")} description={t("selection.globalLimits")}>
+      <SettingsSection className="defaults-summary" title={t("selection.toolsTitle")}>
         <TableToolbar>
-          <Prose size="2">
-            {t("selection.toolCounts", {
-              tools: countText(effective.tools.length, "tool"),
-              sources: countText(groups.length, "source"),
-              servers: countText(effective.servers.length, "server gate"),
-            })}
-          </Prose>
+          <Prose size="2">{countText(effective.tools.length, "tool")}</Prose>
           {managementLink(
             "Tool permissions",
             t("selection.manageDefaultTools"),
             "default-tool-permissions",
           )}
         </TableToolbar>
-        {effective.tools.length === 0 && (
-          <Prose size="2" color="gray">
-            {t("selection.noDefaultTools")}
-          </Prose>
-        )}
       </SettingsSection>
-      <SettingsSection title={t("skill.title")} description={t("skill.defaultsDescription")}>
+      <SettingsSection className="defaults-summary" title={t("skill.title")}>
         <TableToolbar>
-          <Prose size="2">
-            {t("skill.selectedCount", { count: countText(skills.length, "skill") })}
-          </Prose>
+          <Prose size="2">{countText(effective.skills.length, "skill")}</Prose>
           {managementLink("Skills", t("skill.manageDefaults"), "default-skills")}
         </TableToolbar>
-        {skills.length === 0 && (
-          <Prose size="2" color="gray">
-            {t("skill.noDefaults")}
-          </Prose>
-        )}
       </SettingsSection>
-      <SettingsSection
-        title={t("selection.serversTitle")}
-        description={t("selection.serverGateHelp")}
-      >
+      <SettingsSection className="defaults-summary" title={t("selection.serversTitle")}>
         <TableToolbar>
-          <Prose size="2">
-            {t("selection.defaultGatesCount", {
-              count: countText(effective.servers.length, "server gate"),
-            })}
-          </Prose>
+          <Prose size="2">{countText(effective.servers.length, "server gate")}</Prose>
           {managementLink(
             "Tool permissions",
             t("selection.manageDefaultGates"),

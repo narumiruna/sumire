@@ -205,16 +205,37 @@ export function ModelAvailability({
 }) {
   // Keep removed rows until this saved revision changes, so an unchecked model can be restored.
   const [approved] = useState(value)
+  const matches = (ref: string) => !provider || ref.startsWith(`${provider}/`)
+  const options = [...new Set([...approved, ...value])].filter(matches)
+  const selected = value.filter(matches)
   return (
-    <List
-      label={t("selection.globallyAvailableModels")}
-      scope="global"
-      options={[...new Set([...approved, ...value])].filter(
-        (ref) => !provider || ref.startsWith(`${provider}/`),
+    <Panel as="fieldset" className="policy-list">
+      <legend>{t("selection.globallyAvailableModels")}</legend>
+      {options.length === 0 ? (
+        <Prose size="2" color="gray" className="empty-state">
+          {t("selection.noGlobalOptions")}
+        </Prose>
+      ) : (
+        <Flex direction="column" gap="2" className="policy-list__options">
+          {options.map((ref) => (
+            <Check
+              key={ref}
+              label={ref}
+              checked={selected.includes(ref)}
+              onChange={(checked) =>
+                onChange(
+                  withProviderModelSelection(
+                    value,
+                    checked ? [...selected, ref] : selected.filter((name) => name !== ref),
+                    provider,
+                  ),
+                )
+              }
+            />
+          ))}
+        </Flex>
       )}
-      value={value.filter((ref) => !provider || ref.startsWith(`${provider}/`))}
-      onChange={(v) => onChange(withProviderModelSelection(value, v ?? [], provider))}
-    />
+    </Panel>
   )
 }
 export function Choices({

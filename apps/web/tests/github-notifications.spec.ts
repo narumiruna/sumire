@@ -42,9 +42,11 @@ test("username edits use policy review and save without runtime variables or aut
       })
   })
   await navigate(page, "GitHub mentions")
-  await expect(
-    page.getByText("No usernames allowed. An empty saved allowlist disables automatic replies."),
-  ).toBeVisible()
+  const disabledPolicy = page.getByText("Automatic replies disabled: no saved authors.", {
+    exact: true,
+  })
+  await expect(disabledPolicy).toBeVisible()
+  await expect(disabledPolicy).toHaveCount(1)
   await addAuthor(page, "OctoCat")
   await expect(page.getByText("Pending addition", { exact: true })).toBeVisible()
   expect(fixture.writes).toHaveLength(0)
@@ -156,7 +158,7 @@ test("undo removal cannot exceed the username limit after a replacement is added
   await addAuthor(page, "new-author")
   await page.getByRole("button", { name: "Restore username user-1", exact: true }).click()
   await expect(page.getByRole("alert")).toContainText("limit is 1,000")
-  await expect(page.getByText("1000 allowed usernames", { exact: true })).toBeVisible()
+  await expect(page.getByText(/Draft author policy: 1000 allowed usernames/)).toBeVisible()
   await expect(
     page.getByRole("button", { name: "Restore username user-1", exact: true }),
   ).toHaveCount(1)
@@ -192,7 +194,7 @@ for (const width of [375, 1440]) {
     await expect(
       page.getByRole("button", { name: `Remove username ${"a".repeat(39)}`, exact: true }),
     ).toBeVisible()
-    await expect(page.getByText(/Chats with bash access can use and read GH_TOKEN/)).toBeVisible()
+    await expect(page.getByText(/chats with bash can read and use GH_TOKEN/)).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({
       path: testInfo.outputPath(`github-notifications-${width}.png`),

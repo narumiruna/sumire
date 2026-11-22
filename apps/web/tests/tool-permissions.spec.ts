@@ -111,7 +111,7 @@ for (const width of [1440, 390]) {
     await expect(
       page
         .getByRole("region", { name: "Shared defaults", exact: true })
-        .getByText(/2 tools · .*source/),
+        .getByText("2 tools", { exact: true }),
     ).toBeVisible()
     await page.getByRole("link", { name: "Manage default tool permissions", exact: true }).click()
     await expect(page).toHaveURL(/section=Tool\+permissions.*#default-tool-permissions/)
@@ -155,7 +155,7 @@ for (const width of [1440, 390]) {
     await expect(
       page
         .getByRole("region", { name: "Shared defaults", exact: true })
-        .getByText(/3 tools · .*source/),
+        .getByText("3 tools", { exact: true }),
     ).toBeVisible()
     expect(state.saved().defaults.tools).toHaveLength(2)
     await page.getByRole("link", { name: "Manage default tool permissions", exact: true }).click()

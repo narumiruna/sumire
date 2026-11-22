@@ -6,7 +6,7 @@ import { ApiError, type Policy, request } from "./api.js"
 import { githubApplicationStatusLabel, parseGitHubConnection } from "./github-state.js"
 import { type MessageKey, t } from "./i18n.js"
 import type { Page } from "./navigation.js"
-import { Panel, Prose, SettingsSection } from "./surfaces.js"
+import { Disclosure, Panel, Prose, SettingsSection } from "./surfaces.js"
 
 function mentionAuthorErrorKey(value: string, usernames: readonly string[]): MessageKey | "" {
   const parsed = githubUsernameSchema.safeParse(value.trim())
@@ -32,15 +32,15 @@ export function mentionBlockers(
   saved: Policy,
   connection?: GitHubConnection,
   application?: GitHubApplicationState,
-): string[] {
-  const blockers: string[] = []
-  if (!saved.githubNotifications.allowedUsernames.length) blockers.push(t("github.blockerEmpty"))
-  if (!connection) blockers.push(t("github.blockerCredentialUnknown"))
+): MessageKey[] {
+  const blockers: MessageKey[] = []
+  if (!saved.githubNotifications.allowedUsernames.length) blockers.push("github.blockerEmpty")
+  if (!connection) blockers.push("github.blockerCredentialUnknown")
   else {
-    if (connection.secretStatus !== "ready") blockers.push(t("github.blockerStore"))
-    if (connection.mode === "none") blockers.push(t("github.blockerToken"))
-    if (connection.mode === "invalid") blockers.push(t("github.blockerManaged"))
-    if (connection.reconnectRequired) blockers.push(t("github.blockerReconnect"))
+    if (connection.secretStatus !== "ready") blockers.push("github.blockerStore")
+    if (connection.mode === "none") blockers.push("github.blockerToken")
+    if (connection.mode === "invalid") blockers.push("github.blockerManaged")
+    if (connection.reconnectRequired) blockers.push("github.blockerReconnect")
   }
   const model = saved.defaults.model
   if (
@@ -49,11 +49,11 @@ export function mentionBlockers(
     !saved.defaults.models?.includes(model) ||
     saved.providers.some((provider) => provider.id === model.split("/")[0] && !provider.enabled)
   )
-    blockers.push(t("github.blockerModel"))
-  if (!application) blockers.push(t("github.blockerApplicationUnknown"))
-  else if (application.status === "failed") blockers.push(t("github.blockerApplicationFailed"))
+    blockers.push("github.blockerModel")
+  if (!application) blockers.push("github.blockerApplicationUnknown")
+  else if (application.status === "failed") blockers.push("github.blockerApplicationFailed")
   else if (application.status !== "applied" || application.applied !== application.revision)
-    blockers.push(t("github.blockerApplicationPending"))
+    blockers.push("github.blockerApplicationPending")
   return blockers
 }
 
@@ -112,7 +112,10 @@ export function GithubNotifications({
     !application || (connection && connection.revision > application.revision)
       ? connection
       : application
-  const blockers = mentionBlockers(saved, connection, current)
+  const blockers = mentionBlockers(saved, connection, current).filter(
+    (key) =>
+      key !== "github.blockerEmpty" && !(readFailed && key === "github.blockerCredentialUnknown"),
+  )
   const usernames = policy.githubNotifications.allowedUsernames
   const savedUsernames = saved.githubNotifications.allowedUsernames
   const removed = savedUsernames.filter((username) => !usernames.includes(username))
@@ -120,84 +123,84 @@ export function GithubNotifications({
     onChange({ ...policy, githubNotifications: { allowedUsernames } })
   return (
     <div className="settings-stack github-notifications">
-      <SettingsSection
-        title={t("github.accountPermissions")}
-        description={t("github.tokenIdentity")}
-      >
+      <SettingsSection title={t("github.accountPermissions")}>
         <Panel aria-label={t("github.mentionsStatus")}>
           <Text as="p" weight="medium">
-            {t("github.savedAuthorPolicy", {
-              policy: savedUsernames.length
-                ? t(savedUsernames.length === 1 ? "github.allowedOne" : "github.allowedCount", {
-                    count: savedUsernames.length,
-                  })
-                : t("github.repliesDisabled"),
-            })}
+            {savedUsernames.length
+              ? t("github.savedAuthorPolicy", {
+                  policy: t(
+                    savedUsernames.length === 1 ? "github.allowedOne" : "github.allowedCount",
+                    {
+                      count: savedUsernames.length,
+                    },
+                  ),
+                })
+              : t("github.blockerEmpty")}
           </Text>
-          {(removed.length > 0 ||
-            usernames.some((username) => !savedUsernames.includes(username))) && (
-            <Text as="p" color="orange">
-              {t("github.draftAuthorPolicy", { count: usernames.length })}
-            </Text>
-          )}
-          <Text as="p">
-            {t("github.localCredential", {
-              state: loading
-                ? t("github.checkingMetadata")
-                : !connection
-                  ? t("settings.unknownTitle")
-                  : connection.mode === "none"
-                    ? t("github.missingToken")
-                    : connection.secretStatus !== "ready" ||
-                        connection.mode === "invalid" ||
-                        connection.reconnectRequired
-                      ? t("settings.unavailable")
-                      : t("github.tokenConfigured"),
-            })}
-          </Text>
-          <Text as="p">
-            {t("github.priorVerification", {
-              account: connection?.account
-                ? t("github.accountDuringAuthorization", {
-                    login: connection.account.login,
-                    id: connection.account.id,
-                  })
-                : t("github.noAccountMetadata"),
-            })}
-          </Text>
-          <Text as="p">
-            {t("github.applicationSummary", {
-              state: current
-                ? t("github.applicationRevision", {
-                    revision: current.revision,
-                    applied: current.applied,
-                    status: githubApplicationStatusLabel(current.status),
-                  })
-                : t("settings.unknownTitle"),
-            })}
-          </Text>
-          <Text as="p">{t("github.remoteUnavailable")}</Text>
+          <div aria-live="polite">
+            {(removed.length > 0 ||
+              usernames.some((username) => !savedUsernames.includes(username))) && (
+              <Text as="p" color="orange">
+                {t("github.draftAuthorPolicy", { count: usernames.length })}
+              </Text>
+            )}
+          </div>
+          {loading && <Text as="p">{t("github.checkingMetadata")}</Text>}
           {readFailed && (
             <Text as="p" role="status">
               {t("github.metadataFailed")}
             </Text>
           )}
-          {!loading && (
-            <section aria-label={t("github.knownBlockersLabel")}>
-              <Text as="p" weight="medium">
-                {t("github.knownBlockers")}
-              </Text>
-              {blockers.length ? (
-                <ul>
-                  {blockers.map((blocker) => (
-                    <li key={blocker}>{blocker}</li>
-                  ))}
-                </ul>
-              ) : (
-                <Prose>{t("github.noKnownBlockers")}</Prose>
-              )}
-            </section>
-          )}
+          {!loading &&
+            (blockers.length > 0 ? (
+              <ul aria-label={t("github.knownBlockersLabel")}>
+                {blockers.map((key) => (
+                  <li key={key}>{t(key)}</li>
+                ))}
+              </ul>
+            ) : savedUsernames.length > 0 && !readFailed ? (
+              <Prose>{t("github.noKnownBlockers")}</Prose>
+            ) : null)}
+          <Disclosure title={t("github.statusDetails")}>
+            <Prose size="2">{t("github.tokenIdentity")}</Prose>
+            <Text as="p">
+              {t("github.localCredential", {
+                state: loading
+                  ? t("github.checkingMetadata")
+                  : !connection
+                    ? t("settings.unknownTitle")
+                    : connection.mode === "none"
+                      ? t("github.missingToken")
+                      : connection.secretStatus !== "ready" ||
+                          connection.mode === "invalid" ||
+                          connection.reconnectRequired
+                        ? t("settings.unavailable")
+                        : t("github.tokenConfigured"),
+              })}
+            </Text>
+            <Text as="p">
+              {t("github.priorVerification", {
+                account: connection?.account
+                  ? t("github.accountDuringAuthorization", {
+                      login: connection.account.login,
+                      id: connection.account.id,
+                    })
+                  : t("github.noAccountMetadata"),
+              })}
+            </Text>
+            <Text as="p">
+              {t("github.applicationSummary", {
+                state: current
+                  ? t("github.applicationRevision", {
+                      revision: current.revision,
+                      applied: current.applied,
+                      status: githubApplicationStatusLabel(current.status),
+                    })
+                  : t("settings.unknownTitle"),
+              })}
+            </Text>
+            <Text as="p">{t("github.remoteUnavailable")}</Text>
+          </Disclosure>
         </Panel>
         <Flex gap="3" wrap="wrap">
           <Button
@@ -219,10 +222,7 @@ export function GithubNotifications({
           <Callout.Text>{t("github.hostTrust")}</Callout.Text>
         </Callout.Root>
       </SettingsSection>
-      <SettingsSection
-        title={t("github.authorAllowlist")}
-        description={t("github.authorAllowlistDescription")}
-      >
+      <SettingsSection title={t("github.authorAllowlist")}>
         <Prose>{t("github.authorHelp")}</Prose>
         <form
           className="github-author-form"
@@ -273,13 +273,12 @@ export function GithubNotifications({
             </Text>
           )}
         </form>
-        <Panel id="github-mention-authors" tabIndex={-1} aria-label={t("github.allowedUsernames")}>
-          <Text as="p" weight="medium" aria-live="polite">
-            {t(usernames.length === 1 ? "github.allowedOne" : "github.allowedCount", {
-              count: usernames.length,
-            })}
-          </Text>
-          {usernames.length === 0 && <Prose>{t("github.emptyAllowlist")}</Prose>}
+        <Panel
+          id="github-mention-authors"
+          tabIndex={-1}
+          aria-label={t("github.allowedUsernames")}
+          hidden={usernames.length === 0 && removed.length === 0}
+        >
           <ul className="github-author-list">
             {[...usernames, ...removed].map((username) => {
               const revoked = removed.includes(username)

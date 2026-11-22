@@ -96,7 +96,11 @@ for (const width of [1440, 390]) {
       page.getByRole("region", { name: "Skill load-public-url", exact: true }),
     ).toHaveCount(0)
     await navigate(page, "Defaults")
-    await expect(page.getByText("3 skills selected", { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("region", { name: "Shared defaults", exact: true }).getByText("3 skills", {
+        exact: true,
+      }),
+    ).toBeVisible()
     await page.getByRole("link", { name: "Manage default skills", exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Search skills" })).toHaveValue("expenses")
     await expect(defaults).toBeChecked()
