@@ -1,5 +1,12 @@
 # @narumitw/sumire
 
+## 0.20.1
+
+### Patch Changes
+
+- 69374ec: Move the administration frontend to `apps/web` and update the container build and browser checks to use the new path.
+- 8aadfb1: Remove repeated administration copy. Keep shared-default summaries compact, show GitHub diagnostics on demand, and display model removal impact and schedule pause warnings when relevant.
+
 ## 0.20.0
 
 ### Minor Changes
