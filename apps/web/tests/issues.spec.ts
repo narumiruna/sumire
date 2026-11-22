@@ -600,7 +600,9 @@ for (const width of [1440, 390]) {
     await dialog.getByRole("button", { name: "送出回饋", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Issues", exact: true })).toBeVisible()
     await expect(
-      page.getByText("Implementation and automatic PRs are not enabled.", { exact: false }),
+      page
+        .getByRole("region", { name: "Agent analysis" })
+        .getByText("Implementation and automatic PRs are not enabled.", { exact: false }),
     ).toBeVisible()
     await expect(page.locator(".issue-description")).toContainText("<script>alert(1)</script>")
     expect(state.submissions).toHaveLength(1)

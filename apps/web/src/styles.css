@@ -689,6 +689,9 @@ pre {
   .permission-list > .permission-row {
     grid-template-columns: minmax(0, 1fr);
   }
+  .permission-row .check button {
+    scroll-margin-bottom: 4rem;
+  }
 }
 .provider-current {
   overflow-wrap: anywhere;

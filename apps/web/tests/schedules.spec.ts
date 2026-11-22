@@ -132,11 +132,26 @@ for (const width of [320, 390, 1440]) {
   })
 }
 
+test("keeps execution details collapsed and available by keyboard", async ({ page }) => {
+  const state = await fixture(page)
+  const help = page.getByText("How scheduled tasks run", { exact: true })
+  const executionRules = page.getByText("Pause and delete prevent future dispatches", {
+    exact: false,
+  })
+  await expect(help).toBeVisible()
+  await expect(executionRules).toBeHidden()
+  await help.press("Enter")
+  await expect(executionRules).toBeVisible()
+  await help.press("Enter")
+  await expect(executionRules).toBeHidden()
+  expect(state.writes).toEqual([])
+})
+
 test("keeps the draft and reuses its creation key after an ambiguous network failure", async ({
   page,
 }) => {
   const state = await fixture(page, [], true)
-  await expect(page.getByRole("heading", { name: "Your next task starts here" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "No scheduled tasks", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Add task", exact: true }).click()
   await page.getByLabel("Task (user message)", { exact: true }).fill("Fixture retry task")
   await page.getByLabel("First execution", { exact: true }).fill("2026-11-21T09:30")
@@ -260,6 +275,26 @@ for (const [locale, heading, add] of [
     })
   })
 }
+
+test("warns beside Pause only when an attempt is running or queued", async ({ page }) => {
+  const state = await fixture(page, [
+    { ...task, lastOutcome: "running", lastRunAt: future - 1000 },
+    { ...task, id: "45bc065b-0593-4804-bfa5-39a1c2cfb77e", task: "Not running" },
+  ])
+  const running = page.locator(".schedule-card").filter({ hasText: task.task })
+  const idle = page.locator(".schedule-card").filter({ hasText: "Not running" })
+  const pause = running.getByRole("button", { name: "Pause", exact: true })
+  const warning = "Pausing does not stop this running or queued attempt."
+  await expect(running.getByText(warning, { exact: true })).toBeVisible()
+  await expect(pause).toHaveAccessibleDescription(warning)
+  await expect(idle.getByRole("button", { name: "Pause", exact: true })).not.toHaveAttribute(
+    "aria-describedby",
+  )
+  await pause.click()
+  await expect(running.getByText("Paused", { exact: true })).toBeVisible()
+  await expect(running.getByText(warning, { exact: true })).toHaveCount(0)
+  expect(state.writes.map((entry) => entry.method)).toEqual(["PUT"])
+})
 
 test("shows a paused schedule separately from its already-running attempt", async ({ page }) => {
   await fixture(page, [

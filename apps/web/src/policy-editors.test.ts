@@ -256,8 +256,8 @@ describe("policy field scope and source labels", () => {
       createElement(ModelAvailability, { value: [], onChange: vi.fn() }),
     )
     expect(html).toContain("<legend>Globally available models</legend>")
-    expect(html).toContain(">Global availability<")
-    expect(html).toContain("Availability alone does not select an option for a chat.")
+    expect(html).not.toContain(">Global availability<")
+    expect(html).not.toContain("Availability alone does not select an option for a chat.")
     expect(html).toContain("No options available globally.")
     expect(html).not.toContain('aria-label="Inherit default"')
   })

@@ -4,7 +4,7 @@
 
 The administration **Schedule** page (`?section=Schedule`) manages scheduled **user messages**, not shell commands or a second agent loop. It supports adding, deleting, pausing, and resuming tasks. Results are delivered to the selected Telegram chat through the existing delivery and recovery paths. There is no deployment, automatic task creation, Telegram scheduling command, or agent-facing schedule mutation tool in this change.
 
-The page follows the shared reading-first design: one primary **Add task** action, an inline draft editor, status filtering, and cards showing the literal message, target chat, next planned time, repeat interval, last attempt, and relevant actions. Navigation retains an unfinished draft in memory; the existing pending-editor bar can return to it. Expiry, sign-out, or reload does not persist that draft. The task text is rendered as escaped text, not HTML or Markdown. English, Traditional Chinese, and Japanese catalogs cover the new page.
+The page follows the shared reading-first design: one primary **Add task** action, an inline draft editor, status filtering, and cards showing the literal message, target chat, next planned time, repeat interval, last attempt, and relevant actions. Expand **How scheduled tasks run** below the list for timing, delivery, and pause/delete behavior. Navigation retains an unfinished draft in memory; the existing pending-editor bar can return to it. Expiry, sign-out, or reload does not persist that draft. The task text is rendered as escaped text, not HTML or Markdown. English, Traditional Chinese, and Japanese catalogs cover the new page.
 
 Creating a task requires:
 
@@ -25,7 +25,7 @@ A real bot-created Telegram status message anchors recovery. The submitted messa
 
 - **Once**: a successful reply completes the schedule. An overdue task not previously claimed runs once when the bot returns.
 - **Repeating**: after downtime, at most one overdue attempt is dispatched; after it finishes, the next instant follows the original cadence and is later than both the claimed occurrence and the current clock time. A backward clock change cannot make a completed occurrence eligible again. Missed intervals are never replayed in a burst. Repeating tasks do not overlap their own work.
-- **Pause**: prevents subsequent dispatches. Already dispatched work, including a chat-queued turn, is not cancelled. If the current repeating attempt completes, the schedule remains paused.
+- **Pause**: prevents subsequent dispatches. Already dispatched work, including a chat-queued turn, is not cancelled. When an attempt is running or queued, the card shows this reminder next to **Pause**. If the current repeating attempt completes, the schedule remains paused.
 - **Resume**: rechecks access. An unclaimed overdue once-only task is eligible immediately, with explicit UI confirmation. A repeating task skips to its next future interval. A task still running cannot be resumed.
 - **Delete**: requires confirmation and an exact revision; it is irreversible. It removes the scheduling record but does not abort dispatched work or delete its chat transcript/outbox. Already admitted work can still send a reply. A late completion cannot recreate a deleted record.
 

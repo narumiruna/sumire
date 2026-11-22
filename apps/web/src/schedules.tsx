@@ -1,11 +1,11 @@
 import type { Chat, Schedule, ScheduleInput, ScheduleList } from "@narumitw/sumire-contracts"
 import { CalendarIcon, PlusIcon, ReloadIcon } from "@radix-ui/react-icons"
 import { Badge, Button, Callout, Flex, Heading, Text, TextArea } from "@radix-ui/themes"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { errorMessage, LocalizedError, t } from "./i18n.js"
 import { formatScheduleTime, localScheduleTime, parseScheduleTime } from "./schedule-time.js"
-import { Panel } from "./surfaces.js"
+import { Disclosure, Panel, Prose } from "./surfaces.js"
 
 export function Schedules({
   active,
@@ -29,6 +29,7 @@ export function Schedules({
   const [result, setResult] = useState<ScheduleList>()
   const [error, setError] = useState<Error | string>("")
   const [refresh, setRefresh] = useState(0)
+  const pauseHelpId = useId()
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
   const [task, setTask] = useState("")
@@ -390,9 +391,6 @@ export function Schedules({
           <Heading as="h3" size="4">
             {t(result.items.length ? "schedule.noMatches" : "schedule.empty")}
           </Heading>
-          <Text as="p" size="2" color="gray">
-            {t("schedule.emptyHelp")}
-          </Text>
         </Panel>
       ) : (
         <div className="schedule-list">
@@ -457,11 +455,21 @@ export function Schedules({
                   {t("schedule.failedHelp")}
                 </Text>
               )}
+              {schedule.state === "active" && schedule.lastOutcome === "running" && (
+                <Text as="p" size="2" id={`${pauseHelpId}-${schedule.id}`}>
+                  {t("schedule.pauseRunningHelp")}
+                </Text>
+              )}
               <Flex gap="3" wrap="wrap" className="schedule-card-actions">
                 {schedule.state === "active" && (
                   <Button
                     variant="soft"
                     disabled={busy}
+                    aria-describedby={
+                      schedule.lastOutcome === "running"
+                        ? `${pauseHelpId}-${schedule.id}`
+                        : undefined
+                    }
                     onClick={() =>
                       void operate(async () => {
                         replace(
@@ -549,9 +557,11 @@ export function Schedules({
           ))}
         </div>
       )}
-      <Text as="p" size="2" color="gray" className="schedule-footnote">
-        {t("schedule.executionHelp")}
-      </Text>
+      <Disclosure title={t("schedule.executionDetails")}>
+        <Prose size="2" color="gray">
+          {t("schedule.executionHelp")}
+        </Prose>
+      </Disclosure>
     </div>
   )
 }

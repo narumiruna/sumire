@@ -708,10 +708,7 @@ export function Providers({
               </Heading>
               {provider && <Code>{provider}</Code>}
             </Flex>
-            <SettingsSection
-              title={t("provider.connection")}
-              description={t("provider.connectionHelp")}
-            >
+            <SettingsSection title={t("provider.connection")}>
               {selected && (
                 <div className="provider-readiness" data-attention={!selected.configured}>
                   <StatusLabel tone={selected.configured ? "neutral" : "warning"}>
@@ -1110,7 +1107,6 @@ export function Providers({
                   </Button>
                 )}
               </Flex>
-              <Prose size="2">{t("model.policyUseHelp")}</Prose>
             </SettingsSection>
           </div>
         </SectionActive.Provider>

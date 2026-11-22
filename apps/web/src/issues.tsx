@@ -2,7 +2,7 @@ import type { Issue, IssuePage, IssueState } from "@narumitw/sumire-issues"
 import { Badge, Button, Callout, Flex, Heading, Text } from "@radix-ui/themes"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
-import { errorMessage, LocalizedError, type MessageKey, t } from "./i18n.js"
+import { errorMessage, LocalizedError, type MessageKey } from "./i18n.js"
 import { IssueAnalysisPanel } from "./issue-analysis.js"
 import { IssuesList } from "./issues-list.js"
 
@@ -134,7 +134,6 @@ export function Issues({
   const visibleError = error || (!selected && listError)
   return (
     <section aria-label="Issues" className="issues-workspace">
-      <Text as="p">{t("issues.pageHelp")}</Text>
       {notice && (
         <Text as="p" role="status">
           回饋 #{notice} 已儲存。

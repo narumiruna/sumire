@@ -62,6 +62,7 @@ for (const width of [1440, 390, 320]) {
     }
     for (const section of sections) {
       await navigate(page, section)
+      await expect(page.locator(".page-header__description"), section).toHaveCount(0)
       if (section === "Tool permissions")
         await page.getByRole("button", { name: "Expand all", exact: true }).click()
       await page.evaluate(() => window.scrollTo(0, 0))
@@ -122,7 +123,7 @@ test("Defaults omits an identical model draft after a tool-only edit", async ({ 
   await expect(
     page
       .getByRole("region", { name: "Shared defaults", exact: true })
-      .getByText("No tools allowed by default.", { exact: true }),
+      .getByText("0 tools", { exact: true }),
   ).toBeVisible()
 })
 

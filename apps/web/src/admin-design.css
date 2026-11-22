@@ -333,12 +333,11 @@ body {
   gap: 14px;
   margin-block: 0;
 }
-.admin-shell .defaults-layout > .prose {
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--teal-3);
-  color: var(--forest-dark);
+.admin-shell .defaults-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 .admin-shell .provider-readiness {
   border-radius: 10px;

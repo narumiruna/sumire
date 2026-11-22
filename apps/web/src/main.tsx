@@ -86,20 +86,6 @@ const initialAccess =
 const initialSetup =
   initialIssuesConsent === null ? captureSetupLink(window.location, window.history) : ""
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
-const pageDescriptions = () => ({
-  Chats: undefined,
-  Durable: undefined,
-  Defaults: t("description.defaults"),
-  "Tool permissions": t("description.tools"),
-  Skills: t("description.skills"),
-  "MCP connections": t("description.mcp"),
-  "Model Providers": t("description.providers"),
-  "Secrets & variables": t("description.secrets"),
-  "GitHub mentions": t("description.github"),
-  Schedule: t("description.schedule"),
-  Issues: t("description.issues"),
-  Audit: t("description.audit"),
-})
 
 function App() {
   useLocale()
@@ -519,7 +505,6 @@ function App() {
       <main aria-busy={busy}>
         <PageHeader
           title={pageTitle(page)}
-          description={pageDescriptions()[page]}
           actions={
             page !== "Durable" &&
             page !== "Issues" &&
@@ -1143,7 +1128,6 @@ function App() {
                   title={t("app.availability")}
                   id="model-availability"
                   tabIndex={-1}
-                  description={t("app.removeModelsHelp")}
                 >
                   <ModelAvailability
                     key={snapshot.revision}
@@ -1151,7 +1135,6 @@ function App() {
                     provider={providerId || undefined}
                     onChange={(models) => update(withModelAvailability(policy, models))}
                   />
-                  <Prose size="2">{t("app.restoreModelsHelp")}</Prose>
                   <ModelRemovalImpact before={savedPolicy ?? policy} after={policy} />
                 </SettingsSection>
               )}

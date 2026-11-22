@@ -79,14 +79,14 @@ describe("GitHub mention administration", () => {
   })
   it("explains GitHub replies, empty-list denial, token identity, and independent host trust", () => {
     const html = render()
-    expect(html).toContain(
-      "No usernames allowed. An empty saved allowlist disables automatic replies.",
-    )
+    expect(html.match(/Automatic replies disabled: no saved authors\./g)).toHaveLength(1)
     expect(html).toContain("GH_TOKEN determines which GitHub account Sumire uses.")
-    expect(html).toContain("Sumire replies on")
-    expect(html).toContain("Mentions from other authors are")
-    expect(html).toContain("Telegram chat access and tool permissions are not required.")
-    expect(html).toContain("not a security sandbox")
+    expect(html).toContain(
+      "Only listed authors can trigger replies by mentioning the connected GitHub account.",
+    )
+    expect(html).toContain(
+      "Shell access is not sandboxed: chats with bash can read and use GH_TOKEN",
+    )
     expect(html).not.toContain("Manage chat access")
     expect(html).not.toContain("Manage tool permissions")
     expect(html).not.toContain("read_github_notifications")
@@ -94,7 +94,7 @@ describe("GitHub mention administration", () => {
   })
   it("reports saved policy, local application, and unmeasured health before the author editor", () => {
     const html = render(["pending"], [])
-    expect(html).toContain("Saved author policy: automatic replies disabled")
+    expect(html).toContain("Automatic replies disabled: no saved authors.")
     expect(html).toContain("Unsaved; saved policy still applies")
     expect(html).toContain("Remote verification and worker status: unavailable")
     expect(html.indexOf("GitHub mentions status")).toBeLessThan(
@@ -118,9 +118,9 @@ describe("GitHub mention administration", () => {
     expect(connection.flow).toBeUndefined()
     expect(JSON.stringify(connection)).not.toMatch(/NEVER|synthetic-secret/)
     expect(mentionBlockers(initialPolicy(), connection, connection)).toEqual([
-      "The saved author allowlist is empty; automatic replies are disabled.",
-      "A shared default model must be selected and allowed for GitHub replies.",
-      "Settings were saved but application failed.",
+      "github.blockerEmpty",
+      "github.blockerModel",
+      "github.blockerApplicationFailed",
     ])
   })
   it("does not claim remote readiness when known local blockers are absent", () => {
@@ -139,11 +139,9 @@ describe("GitHub mention administration", () => {
     })
     expect(mentionBlockers(saved, connection, connection)).toEqual([])
     saved.providers = [{ id: "fixture", enabled: false, models: [] }]
-    expect(mentionBlockers(saved, connection, connection)).toContain(
-      "A shared default model must be selected and allowed for GitHub replies.",
-    )
-    expect(mentionBlockers(saved)).toContain("Local credential state is unknown.")
-    expect(mentionBlockers(saved)).toContain("Application state is unknown.")
+    expect(mentionBlockers(saved, connection, connection)).toContain("github.blockerModel")
+    expect(mentionBlockers(saved)).toContain("github.blockerCredentialUnknown")
+    expect(mentionBlockers(saved)).toContain("github.blockerApplicationUnknown")
   })
   it("distinguishes staged additions and removals from saved authors", () => {
     const html = render(["octocat", "new-author"], ["octocat", "old-author"])

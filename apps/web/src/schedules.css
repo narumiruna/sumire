@@ -138,11 +138,6 @@
   color: var(--accent-9);
 }
 
-.schedule-footnote {
-  max-width: 78ch;
-  line-height: 1.8;
-}
-
 @media (max-width: 480px) {
   .schedule-editor,
   .schedule-card {
