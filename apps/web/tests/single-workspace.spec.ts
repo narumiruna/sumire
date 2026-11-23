@@ -147,10 +147,10 @@ for (const width of [1440, 851, 850, 390, 320]) {
         expect((await bounds(facts)).width).toBeLessThanOrEqual(800)
       }
       if (width === 390) {
-        const firstFact = await bounds(facts.locator(".rt-DataListItem").first())
+        const firstFact = await bounds(facts.locator(".chat-fact").first())
         expect(firstFact.y).toBeGreaterThanOrEqual(0)
         expect(firstFact.y + firstFact.height).toBeLessThanOrEqual(844)
-        await expect(facts.locator(".rt-DataListItem").first()).toBeInViewport({ ratio: 1 })
+        await expect(facts.locator(".chat-fact").first()).toBeInViewport({ ratio: 1 })
       }
       for (const [label, value] of [
         ["Access", "Approved and enabled"],

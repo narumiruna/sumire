@@ -1,12 +1,12 @@
 import type { Chat } from "@narumitw/sumire-contracts"
-import {
-  ChatBubbleIcon,
-  MagnifyingGlassIcon,
-  PersonIcon,
-  SpeakerLoudIcon,
-} from "@radix-ui/react-icons"
-import { Button, Code, Flex, Heading, Text, TextField } from "@radix-ui/themes"
-import { type ReactNode, type Ref, useEffect, useId, useState } from "react"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { Button } from "@react-spectrum/s2/Button"
+import ChatIcon from "@react-spectrum/s2/icons/Chat"
+import Search from "@react-spectrum/s2/icons/Search"
+import User from "@react-spectrum/s2/icons/User"
+import VolumeTwo from "@react-spectrum/s2/icons/VolumeTwo"
+import { TextField, type TextFieldProps, type TextFieldRef } from "@react-spectrum/s2/TextField"
+import { type ReactNode, type Ref, useCallback, useEffect, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { t } from "./i18n.js"
 import { countText } from "./status-text.js"
@@ -123,6 +123,35 @@ export function useChatDirectory(enabled: boolean, chat: string, onExpired: () =
 
 export type ChatDirectory = ReturnType<typeof useChatDirectory>
 
+export function ChatSearchField({
+  inputRef,
+  "aria-label": name,
+  ...props
+}: Pick<
+  TextFieldProps,
+  "aria-label" | "autoComplete" | "label" | "maxLength" | "onChange" | "placeholder" | "value"
+> & { inputRef?: Ref<HTMLInputElement> }) {
+  const setInput = useCallback(
+    (field: TextFieldRef | null) => {
+      const input = field?.getInputElement() ?? null
+      if (typeof inputRef === "function") return inputRef(input)
+      if (inputRef) inputRef.current = input
+    },
+    [inputRef],
+  )
+  return (
+    <TextField
+      {...props}
+      {...(!props.label && name
+        ? { label: name, UNSAFE_className: "chat-search-field chat-search-with-hidden-label" }
+        : { UNSAFE_className: "chat-search-field" })}
+      ref={inputRef ? setInput : undefined}
+      size="XL"
+      prefix={<Search />}
+    />
+  )
+}
+
 export function ChatSelector({
   directory,
   chat,
@@ -155,35 +184,26 @@ export function ChatSelector({
     href(chat: Chat): string
   }
 }) {
-  const searchId = useId()
-  const ChatControl = columns ? "a" : "button"
   return (
     <>
       <div className="directory-header">
         {title && (
-          <Flex className="directory-heading" align="center" gap="2">
-            <ChatBubbleIcon aria-hidden="true" />
-            <Heading size="3">{title}</Heading>
-          </Flex>
+          <div className="directory-heading">
+            <ChatIcon />
+            <h3 className="chat-heading">{title}</h3>
+          </div>
         )}
         <div className="directory-toolbar">
-          <label className="directory-search" htmlFor={searchId}>
-            <Text size="1" weight="medium">
-              {t("chat.searchStored")}
-            </Text>
-            <TextField.Root
-              id={searchId}
-              ref={searchRef}
+          <div className="directory-search">
+            <ChatSearchField
+              label={t("chat.searchStored")}
+              inputRef={searchRef}
               value={directory.query}
               maxLength={128}
-              onChange={(event) => directory.setQuery(event.target.value)}
+              onChange={directory.setQuery}
               placeholder={t("chat.nameOrId")}
-            >
-              <TextField.Slot>
-                <MagnifyingGlassIcon aria-hidden="true" />
-              </TextField.Slot>
-            </TextField.Root>
-          </label>
+            />
+          </div>
         </div>
         <details className="directory-options">
           <summary>{filters ? t("chat.filtersSearchScope") : t("chat.searchScope")}</summary>
@@ -194,27 +214,25 @@ export function ChatSelector({
         </details>
         <div className="directory-result-status" aria-live="polite" aria-busy={directory.loading}>
           {directory.loading ? (
-            <Text as="p" role="status">
-              {t("chat.loading")}
-            </Text>
+            <Prose role="status">{t("chat.loading")}</Prose>
           ) : directory.error ? (
             <>
-              <Text as="p" role="alert">
-                {directory.error}
-              </Text>
-              <Button onClick={directory.refresh}>{t("chat.retry")}</Button>
+              <Prose role="alert">{directory.error}</Prose>
+              <Button size="XL" onPress={directory.refresh}>
+                {t("chat.retry")}
+              </Button>
             </>
           ) : !directory.chats.length ? (
-            <Text as="p">{directory.query ? t("chat.noSearchMatches") : t("chat.noObserved")}</Text>
+            <Prose>{directory.query ? t("chat.noSearchMatches") : t("chat.noObserved")}</Prose>
           ) : !visibleChats.length ? (
-            <Text as="p">{t("chat.noFilterMatches")}</Text>
+            <Prose>{t("chat.noFilterMatches")}</Prose>
           ) : (
-            <Text as="p" size="1" color="gray">
+            <Prose size="1" color="gray">
               {t("chat.visibleCount", {
                 visible: visibleChats.length,
                 total: countText(directory.chats.length, "chat"),
               })}
-            </Text>
+            </Prose>
           )}
         </div>
         {summary}
@@ -236,126 +254,152 @@ export function ChatSelector({
               </div>
             )}
             <ul className="chat-list" aria-label={t("chat.onPage")}>
-              {visibleChats.map((value) => (
-                <li
-                  key={value.id}
-                  className={actions ? "directory-row" : undefined}
-                  data-management={Boolean(columns)}
-                >
-                  <div
-                    className={columns ? "directory-identity-cell" : undefined}
-                    style={columns ? undefined : { display: "contents" }}
+              {visibleChats.map((value) => {
+                const id = String(value.id)
+                const name = chatName(value)
+                const attributes = {
+                  "aria-current": chat === id ? ("true" as const) : undefined,
+                  "aria-label": t("chat.identity", { name, id: value.id }),
+                  "aria-describedby": badge ? `directory-state-${id}` : undefined,
+                }
+                const identity = (
+                  <>
+                    <span className="directory-chat-identity">
+                      {value.type === "private" ? (
+                        <User />
+                      ) : value.type === "channel" ? (
+                        <VolumeTwo />
+                      ) : (
+                        <ChatIcon />
+                      )}
+                      <strong title={name}>{name}</strong>
+                    </span>
+                    <span className="directory-chat-meta">
+                      <span>{value.type || t("chat.typeUnknown")}</span>
+                      <code>{value.id}</code>
+                    </span>
+                    {badge && !actions && (
+                      <span id={`directory-state-${id}`} className="directory-chat-state">
+                        {badge(value)}
+                      </span>
+                    )}
+                  </>
+                )
+                return (
+                  <li
+                    key={value.id}
+                    className={actions ? "directory-row" : undefined}
+                    data-management={Boolean(columns)}
                   >
-                    <Button asChild variant="ghost" className="directory-chat">
-                      <ChatControl
-                        type={columns ? undefined : "button"}
-                        href={columns?.href(value)}
-                        aria-current={chat === String(value.id) ? "true" : undefined}
-                        aria-label={t("chat.identity", { name: chatName(value), id: value.id })}
-                        aria-describedby={badge ? `directory-state-${value.id}` : undefined}
-                        onClick={(event) => {
-                          if (
-                            columns &&
-                            (event.button !== 0 ||
+                    <div
+                      className={columns ? "directory-identity-cell" : undefined}
+                      style={columns ? undefined : { display: "contents" }}
+                    >
+                      {columns ? (
+                        <a
+                          {...attributes}
+                          className="directory-chat"
+                          href={columns.href(value)}
+                          onClick={(event) => {
+                            if (
+                              event.defaultPrevented ||
+                              event.button !== 0 ||
                               event.metaKey ||
                               event.ctrlKey ||
                               event.shiftKey ||
-                              event.altKey)
-                          )
-                            return
-                          event.preventDefault()
-                          onSelect(String(value.id))
-                        }}
-                      >
-                        <Flex asChild className="directory-chat-identity" align="start" gap="2">
-                          <span>
-                            {value.type === "private" ? (
-                              <PersonIcon aria-hidden="true" />
-                            ) : value.type === "channel" ? (
-                              <SpeakerLoudIcon aria-hidden="true" />
-                            ) : (
-                              <ChatBubbleIcon aria-hidden="true" />
-                            )}
-                            <strong title={chatName(value)}>{chatName(value)}</strong>
-                          </span>
-                        </Flex>
-                        <Text as="span" size="1" color="gray" className="directory-chat-meta">
-                          <span>{value.type || t("chat.typeUnknown")}</span>
-                          <Code variant="ghost">{value.id}</Code>
-                        </Text>
-                        {badge && !actions && (
-                          <span id={`directory-state-${value.id}`} className="directory-chat-state">
-                            {badge(value)}
-                          </span>
-                        )}
-                      </ChatControl>
-                    </Button>
-                    {columns?.copyId(value)}
-                  </div>
-                  {actions && (
-                    <>
-                      <div id={`directory-state-${value.id}`} className="directory-row-state">
-                        {badge?.(value)}
-                      </div>
-                      {columns && (
-                        <section className="directory-model" aria-label={t("chat.effectiveModel")}>
-                          {columns.model(value)}
-                        </section>
-                      )}
-                      {columns && (
-                        <section
-                          className="directory-issues"
-                          aria-label={t("chat.configurationIssues")}
+                              event.altKey
+                            )
+                              return
+                            event.preventDefault()
+                            onSelect(id)
+                          }}
                         >
-                          {columns.issues(value)}
-                        </section>
+                          {identity}
+                        </a>
+                      ) : (
+                        <ActionButton
+                          {...attributes}
+                          size="XL"
+                          UNSAFE_className="directory-chat"
+                          isQuiet
+                          onPress={() => onSelect(id)}
+                        >
+                          {identity}
+                        </ActionButton>
                       )}
-                      <div className="directory-row-actions">{actions(value)}</div>
-                    </>
-                  )}
-                </li>
-              ))}
+                      {columns?.copyId(value)}
+                    </div>
+                    {actions && (
+                      <>
+                        <div id={`directory-state-${value.id}`} className="directory-row-state">
+                          {badge?.(value)}
+                        </div>
+                        {columns && (
+                          <section
+                            className="directory-model"
+                            aria-label={t("chat.effectiveModel")}
+                          >
+                            {columns.model(value)}
+                          </section>
+                        )}
+                        {columns && (
+                          <section
+                            className="directory-issues"
+                            aria-label={t("chat.configurationIssues")}
+                          >
+                            {columns.issues(value)}
+                          </section>
+                        )}
+                        <div className="directory-row-actions">{actions(value)}</div>
+                      </>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </>
         )}
       </div>
       <footer className="directory-footer">
-        <Flex gap="2" wrap="wrap" align="center">
+        <div className="chat-control-row">
           {(directory.offset !== 0 ||
             directory.loading ||
             Boolean(directory.error) ||
             directory.chats.length >= 100) && (
             <>
               <Button
-                variant="soft"
-                disabled={directory.loading || directory.offset === 0}
-                onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
+                size="XL"
+                variant="secondary"
+                isDisabled={directory.loading || directory.offset === 0}
+                onPress={() => directory.setOffset(Math.max(0, directory.offset - 100))}
               >
                 {t("chat.previousChats")}
               </Button>
               <Button
-                variant="soft"
-                disabled={
+                size="XL"
+                variant="secondary"
+                isDisabled={
                   directory.loading || Boolean(directory.error) || directory.chats.length < 100
                 }
-                onClick={() => directory.setOffset(directory.offset + 100)}
+                onPress={() => directory.setOffset(directory.offset + 100)}
               >
                 {t("chat.nextChats")}
               </Button>
-              <Text size="1" color="gray">
+              <span className="directory-page">
                 {t("chat.page", { page: Math.floor(directory.offset / 100) + 1 })}
-              </Text>
+              </span>
             </>
           )}
-          <Button
-            variant="ghost"
-            className="navigation-control"
-            disabled={directory.loading}
-            onClick={directory.refresh}
+          <ActionButton
+            size="XL"
+            isQuiet
+            UNSAFE_className="navigation-control"
+            isDisabled={directory.loading}
+            onPress={directory.refresh}
           >
             {t("chat.refresh")}
-          </Button>
-        </Flex>
+          </ActionButton>
+        </div>
         {footer}
       </footer>
     </>

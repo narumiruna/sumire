@@ -1,12 +1,22 @@
 import type { GitHubApplicationState, GitHubConnection } from "@narumitw/sumire-contracts"
 import { githubUsernameSchema } from "@narumitw/sumire-policy"
-import { Badge, Button, Callout, Code, Flex, Text, TextField } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField, type TextFieldRef } from "@react-spectrum/s2/TextField"
 import { useEffect, useRef, useState } from "react"
 import { ApiError, type Policy, request } from "./api.js"
 import { githubApplicationStatusLabel, parseGitHubConnection } from "./github-state.js"
 import { type MessageKey, t } from "./i18n.js"
 import type { Page } from "./navigation.js"
-import { Disclosure, Panel, Prose, SettingsSection } from "./surfaces.js"
+import { Disclosure, Panel, Prose, SettingsSection, StatusLabel } from "./surfaces.js"
+import "./spectrum-runtime.css"
+
+const hostTrust = style({
+  backgroundColor: "notice-subtle",
+  color: "notice-1000",
+  borderRadius: "default",
+  padding: 12,
+})
 
 function mentionAuthorErrorKey(value: string, usernames: readonly string[]): MessageKey | "" {
   const parsed = githubUsernameSchema.safeParse(value.trim())
@@ -82,7 +92,7 @@ export function GithubNotifications({
 }) {
   const [value, setValue] = useState("")
   const [error, setError] = useState<MessageKey | "">("")
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<TextFieldRef>(null)
   const [connection, setConnection] = useState<GitHubConnection>()
   const [loading, setLoading] = useState(true)
   const [readFailed, setReadFailed] = useState(false)
@@ -125,7 +135,7 @@ export function GithubNotifications({
     <div className="settings-stack github-notifications">
       <SettingsSection title={t("github.accountPermissions")}>
         <Panel aria-label={t("github.mentionsStatus")}>
-          <Text as="p" weight="medium">
+          <Prose weight="medium">
             {savedUsernames.length
               ? t("github.savedAuthorPolicy", {
                   policy: t(
@@ -136,21 +146,17 @@ export function GithubNotifications({
                   ),
                 })
               : t("github.blockerEmpty")}
-          </Text>
+          </Prose>
           <div aria-live="polite">
             {(removed.length > 0 ||
               usernames.some((username) => !savedUsernames.includes(username))) && (
-              <Text as="p" color="orange">
+              <Prose color="orange">
                 {t("github.draftAuthorPolicy", { count: usernames.length })}
-              </Text>
+              </Prose>
             )}
           </div>
-          {loading && <Text as="p">{t("github.checkingMetadata")}</Text>}
-          {readFailed && (
-            <Text as="p" role="status">
-              {t("github.metadataFailed")}
-            </Text>
-          )}
+          {loading && <Prose>{t("github.checkingMetadata")}</Prose>}
+          {readFailed && <Prose role="status">{t("github.metadataFailed")}</Prose>}
           {!loading &&
             (blockers.length > 0 ? (
               <ul aria-label={t("github.knownBlockersLabel")}>
@@ -163,7 +169,7 @@ export function GithubNotifications({
             ) : null)}
           <Disclosure title={t("github.statusDetails")}>
             <Prose size="2">{t("github.tokenIdentity")}</Prose>
-            <Text as="p">
+            <Prose>
               {t("github.localCredential", {
                 state: loading
                   ? t("github.checkingMetadata")
@@ -177,8 +183,8 @@ export function GithubNotifications({
                         ? t("settings.unavailable")
                         : t("github.tokenConfigured"),
               })}
-            </Text>
-            <Text as="p">
+            </Prose>
+            <Prose>
               {t("github.priorVerification", {
                 account: connection?.account
                   ? t("github.accountDuringAuthorization", {
@@ -187,8 +193,8 @@ export function GithubNotifications({
                     })
                   : t("github.noAccountMetadata"),
               })}
-            </Text>
-            <Text as="p">
+            </Prose>
+            <Prose>
               {t("github.applicationSummary", {
                 state: current
                   ? t("github.applicationRevision", {
@@ -198,34 +204,37 @@ export function GithubNotifications({
                     })
                   : t("settings.unknownTitle"),
               })}
-            </Text>
-            <Text as="p">{t("github.remoteUnavailable")}</Text>
+            </Prose>
+            <Prose>{t("github.remoteUnavailable")}</Prose>
           </Disclosure>
         </Panel>
-        <Flex gap="3" wrap="wrap">
+        <div className="runtime-actions">
           <Button
-            variant="soft"
-            onClick={() =>
+            variant="secondary"
+            onPress={() =>
               onOpenConnection ? onOpenConnection() : onNavigate("Secrets & variables")
             }
           >
             {t("github.manageConnection")}
           </Button>
-          <Button variant="soft" onClick={() => onNavigate("Secrets & variables")}>
+          <Button variant="secondary" onPress={() => onNavigate("Secrets & variables")}>
             {t("github.manageToken")}
           </Button>
-          <Button variant="soft" disabled={loading} onClick={() => setReload((value) => value + 1)}>
+          <Button
+            variant="secondary"
+            isDisabled={loading}
+            onPress={() => setReload((value) => value + 1)}
+          >
             {t("github.reloadMetadata")}
           </Button>
-        </Flex>
-        <Callout.Root color="orange">
-          <Callout.Text>{t("github.hostTrust")}</Callout.Text>
-        </Callout.Root>
+        </div>
+        <p className={`runtime-notice ${hostTrust}`}>{t("github.hostTrust")}</p>
       </SettingsSection>
       <SettingsSection title={t("github.authorAllowlist")}>
         <Prose>{t("github.authorHelp")}</Prose>
         <form
           className="github-author-form"
+          autoCapitalize="none"
           onSubmit={(event) => {
             event.preventDefault()
             if (disabled) return
@@ -241,36 +250,34 @@ export function GithubNotifications({
             input.current?.focus()
           }}
         >
-          <label className="form-field" htmlFor="github-mention-author">
-            {t("github.username")}
-            <TextField.Root
-              ref={input}
-              id="github-mention-author"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder="octocat"
-              value={value}
-              disabled={disabled}
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? "github-author-error" : "github-author-help"}
-              onChange={(event) => {
-                setValue(event.target.value)
-                setError("")
-                onPending(Boolean(event.target.value))
-              }}
-            />
-          </label>
-          <Button type="submit" disabled={disabled || !value.trim()}>
+          <TextField
+            UNSAFE_className="form-field"
+            ref={input}
+            id="github-mention-author"
+            label={t("github.username")}
+            autoComplete="off"
+            spellCheck="false"
+            placeholder="octocat"
+            value={value}
+            isDisabled={disabled}
+            isInvalid={Boolean(error)}
+            aria-describedby={error ? "github-author-error" : "github-author-help"}
+            onChange={(value) => {
+              setValue(value)
+              setError("")
+              onPending(Boolean(value))
+            }}
+          />
+          <Button type="submit" variant="accent" isDisabled={disabled || !value.trim()}>
             {t("github.addUsername")}
           </Button>
-          <Text as="p" size="2" color="gray" id="github-author-help">
+          <Prose size="2" color="gray" id="github-author-help">
             {t("github.usernameHelp")}
-          </Text>
+          </Prose>
           {error && (
-            <Text as="p" id="github-author-error" role="alert" color="red">
+            <p id="github-author-error" role="alert" className={style({ color: "negative-1000" })}>
               {t(error)}
-            </Text>
+            </p>
           )}
         </form>
         <Panel
@@ -284,22 +291,24 @@ export function GithubNotifications({
               const revoked = removed.includes(username)
               return (
                 <li key={username}>
-                  <Code variant="ghost">{username}</Code>
-                  <Badge color={revoked || !savedUsernames.includes(username) ? "orange" : "gray"}>
+                  <code>{username}</code>
+                  <StatusLabel
+                    tone={revoked || !savedUsernames.includes(username) ? "warning" : "neutral"}
+                  >
                     {revoked
                       ? t("settings.pendingRemoval")
                       : savedUsernames.includes(username)
                         ? t("settings.saved")
                         : t("settings.pendingAddition")}
-                  </Badge>
+                  </StatusLabel>
                   <Button
-                    variant="soft"
-                    color={revoked ? "gray" : "red"}
-                    disabled={disabled}
+                    variant={revoked ? "secondary" : "negative"}
+                    fillStyle="outline"
+                    isDisabled={disabled}
                     aria-label={t(revoked ? "github.restoreUsername" : "github.removeUsername", {
                       username,
                     })}
-                    onClick={() => {
+                    onPress={() => {
                       if (revoked) {
                         const message = mentionAuthorErrorKey(username, usernames)
                         if (message) {

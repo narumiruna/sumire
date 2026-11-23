@@ -1,6 +1,5 @@
 import { initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory } from "./api.js"
@@ -61,8 +60,8 @@ describe("chat workspace localization", () => {
       setLocale(locale)
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(ChatWorkspace, {
             directory,
             chat: "42",

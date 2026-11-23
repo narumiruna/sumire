@@ -1,3 +1,4 @@
+import "./client-validation.js"
 import type { Issue } from "@narumitw/sumire-issues"
 import {
   effectivePolicy,
@@ -5,12 +6,16 @@ import {
   policySchema,
   validateReferences,
 } from "@narumitw/sumire-policy"
-import { ExclamationTriangleIcon, ReloadIcon, UpdateIcon } from "@radix-ui/react-icons"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { AlertDialog, Button, Callout, Flex, Heading, Text, Theme } from "@radix-ui/themes"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { AlertDialog, DialogTrigger } from "@react-spectrum/s2/AlertDialog"
+import { Button } from "@react-spectrum/s2/Button"
+import AlertTriangle from "@react-spectrum/s2/icons/AlertTriangle"
+import Refresh from "@react-spectrum/s2/icons/Refresh"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
+import { I18nProvider } from "react-aria/I18nProvider"
 import { createRoot } from "react-dom/client"
-import "@radix-ui/themes/styles.css"
+import "@react-spectrum/s2/page.css"
 import "./styles.css"
 import "./chat-cards.css"
 import "./admin-design.css"
@@ -20,6 +25,7 @@ import "./schedules.css"
 import { AccessApproval } from "./access.js"
 import { captureAccessLink, clearAccessLink, tabStorage } from "./access-link.js"
 import { type AuditEntry, ImportHistory, type ImportReport } from "./activity.js"
+import { applyAdminTheme } from "./admin-theme.js"
 import {
   ApiError,
   type Inventory,
@@ -31,18 +37,17 @@ import {
   type Snapshot,
 } from "./api.js"
 import { AuditHistory } from "./audit.js"
-import { BrandIcon } from "./brand-icon.js"
 import { ChatAccess } from "./chat-access.js"
 import { ChatAccessIcon } from "./chat-cards.js"
 import { ChatSelector, useChatDirectory } from "./chat-directory.js"
 import { ChatWorkspace } from "./chats.js"
+import { Check } from "./check.js"
 import { DurableInspector } from "./durable-inspector.js"
 import { FeedbackWidget } from "./feedback.js"
 import { GithubNotifications } from "./github-notifications.js"
 import { errorMessage, initializeLocale, LocalizedError, t, useLocale } from "./i18n.js"
 import { Issues } from "./issues.js"
 import { readIssuesMcpRequest } from "./issues-mcp-oauth.js"
-import { LanguageSelector } from "./language-selector.js"
 import { McpConnections } from "./mcp-connections.js"
 import { ModelRemovalImpact } from "./model-removal-impact.js"
 import {
@@ -58,7 +63,7 @@ import {
 } from "./navigation.js"
 import { captureSetupLink, signInWithPasskey } from "./passkey.js"
 import { policyChangeCount, policyChangeEntries, policyChanges } from "./policy-changes.js"
-import { Check, Choices, Field, ModelAvailability } from "./policy-editors.js"
+import { Choices, Field, ModelAvailability } from "./policy-editors.js"
 import { PolicyRecoveryDialog } from "./policy-recovery-dialog.js"
 import { ProviderEditor } from "./provider-editor.js"
 import { withModelAvailability } from "./provider-policy.js"
@@ -68,6 +73,7 @@ import { SaveStatus } from "./save-status.js"
 import { Schedules } from "./schedules.js"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 import { EditorSection } from "./sections.js"
+import { SessionScreen } from "./session-screen.js"
 import { SharedDefaults } from "./shared-defaults.js"
 import { Skills } from "./skills.js"
 import { countText } from "./status-text.js"
@@ -88,7 +94,6 @@ const initialSetup =
 const emptyInventory: Inventory = { tools: [], providers: [], mcp: [] }
 
 function App() {
-  useLocale()
   const [createdIssue, setCreatedIssue] = useState<Issue>()
   const [issuesConsent, setIssuesConsent] = useState(initialIssuesConsent)
   const isConsentView = issuesConsent !== null
@@ -418,70 +423,30 @@ function App() {
         />
       </Suspense>
     )
-  if (session === undefined)
-    return (
-      <main className="session-screen">
-        <Panel className="session-card" aria-busy="true">
-          <BrandIcon />
-          <LanguageSelector />
-          <PageHeader title={t("app.title")} description={t("app.loadingSession")} />
-          <Text size="2" color="gray" role="status">
-            {t("app.checkingSession")}
-          </Text>
-        </Panel>
-      </main>
-    )
+  if (session === undefined) return <SessionScreen state="checking" />
   if (!session)
     return (
-      <main className="session-screen">
-        <Panel className="session-card">
-          <BrandIcon />
-          <LanguageSelector />
-          <PageHeader
-            title={t("app.title")}
-            description={setup ? t("app.registerHelp") : t("app.signInHelp")}
-          />
-          {!setup && <Prose>{t("app.firstVisit")}</Prose>}
-          {error && (
-            <Callout.Root role="alert" color="red">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>{errorText}</Callout.Text>
-            </Callout.Root>
-          )}
-          <Button disabled={busy} onClick={() => signIn(setup)}>
-            {setup ? t("app.register") : t("app.signIn")}
-          </Button>
-        </Panel>
-      </main>
+      <SessionScreen
+        state="signed-out"
+        setup={Boolean(setup)}
+        busy={busy}
+        error={error && errorText ? errorText : undefined}
+        onSignIn={() => signIn(setup)}
+      />
     )
   if (!snapshot)
     return (
-      <main className="session-screen">
-        <Panel className="session-card">
-          <BrandIcon />
-          <LanguageSelector />
-          <PageHeader title={t("app.title")} description={t("app.loadHelp")} />
-          {error ? (
-            <Callout.Root role="alert" color="red">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>{errorText}</Callout.Text>
-            </Callout.Root>
-          ) : (
-            <Text role="status">{t("app.loadingSettings")}</Text>
-          )}
-          <Button variant="soft" onClick={() => void run(load)}>
-            <ReloadIcon aria-hidden />
-            {t("app.retry")}
-          </Button>
-        </Panel>
-      </main>
+      <SessionScreen
+        state="loading-settings"
+        error={error && errorText ? errorText : undefined}
+        onRetry={() => void run(load)}
+      />
     )
   const policy = snapshot.policy
   const selected = policy.chats[chat]
+  const resetCount = Object.values(policy.chats).filter((choice) =>
+    Object.keys(inherit).some((key) => choice[key as keyof Selection] !== null),
+  ).length
   return (
     <div
       className={`admin-shell reading-first${page === "Durable" ? " admin-shell-durable" : ""}${page === "Chats" ? " admin-shell-chats" : ""}`}
@@ -509,39 +474,46 @@ function App() {
             page !== "Durable" &&
             page !== "Issues" &&
             page !== "Schedule" && (
-              <Button
-                variant="ghost"
+              <ActionButton
+                isQuiet
+                size="XL"
                 aria-label={t("app.refresh")}
-                disabled={
+                isDisabled={
                   busy || dirty || localPending || runtimePending || Boolean(failedPolicySave)
                 }
-                onClick={() => {
+                onPress={() => {
                   refreshChats()
                   void run(load)
                 }}
               >
-                <UpdateIcon aria-hidden />
+                <Refresh />
                 <span className="workspace-action-label">{t("app.refresh")}</span>
-              </Button>
+              </ActionButton>
             )
           }
         />
         {(error || refreshError) && (
-          <Callout.Root
+          <div
             ref={errorAlert}
             tabIndex={-1}
-            color="red"
             role="alert"
-            className="workspace-error"
+            className={`workspace-error ${style({
+              display: "flex",
+              alignItems: "start",
+              gap: 8,
+              padding: 12,
+              borderRadius: "lg",
+              color: "negative-1000",
+              backgroundColor: "negative-subtle",
+              font: "body-lg",
+            })}`}
           >
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
+            <AlertTriangle />
+            <span>
               {errorText || refreshErrorText}{" "}
               {error && (failedPolicySave ? t("app.retainedDraft") : t("app.retryHelp"))}
-            </Callout.Text>
-          </Callout.Root>
+            </span>
+          </div>
         )}
         {accessToken && (
           <AccessApproval
@@ -790,23 +762,25 @@ function App() {
                 <ChatAccessIcon />
                 {t("app.accessManagement")}
               </summary>
-              <Heading size="3">{t("app.chatAccess")}</Heading>
+              <h2 className={style({ font: "heading-sm", margin: 0 })}>{t("app.chatAccess")}</h2>
               {accessTarget && (
                 <Panel>
-                  <Heading size="3">{t("app.chatAccessFor", { id: accessTarget })}</Heading>
+                  <h3 className={style({ font: "heading-sm", margin: 0 })}>
+                    {t("app.chatAccessFor", { id: accessTarget })}
+                  </h3>
                   <Prose>{t("app.accessReview")}</Prose>
                   <Button
-                    variant="soft"
-                    onClick={(event) => {
-                      event.currentTarget.closest("details")?.removeAttribute("open")
+                    variant="secondary"
+                    onPress={(event) => {
+                      event.target.closest("details")?.removeAttribute("open")
                       openChat(accessTarget)
                     }}
                   >
                     {t("app.backChat")}
                   </Button>
-                  <Button variant="ghost" onClick={() => setAccessTarget("")}>
+                  <ActionButton isQuiet onPress={() => setAccessTarget("")}>
                     {t("app.allAccess")}
-                  </Button>
+                  </ActionButton>
                 </Panel>
               )}
               <ChatAccess
@@ -821,7 +795,7 @@ function App() {
               <details className="access-intro">
                 <summary>{t("app.importHistory")}</summary>
                 <Prose>{t("app.importHelp")}</Prose>
-                <Button variant="soft" onClick={() => setPage("Audit")}>
+                <Button variant="secondary" onPress={() => setPage("Audit")}>
                   {t("app.openImports")}
                 </Button>
               </details>
@@ -861,59 +835,38 @@ function App() {
             <details className="defaults-advanced">
               <summary>{t("app.advanced")}</summary>
               <section className="defaults-reset" aria-label={t("app.inheritance")}>
-                <AlertDialog.Root>
-                  <AlertDialog.Trigger>
-                    <Button
-                      variant="soft"
-                      disabled={
-                        !Object.values(policy.chats).some((choice) =>
-                          Object.keys(inherit).some(
-                            (key) => choice[key as keyof Selection] !== null,
-                          ),
-                        )
-                      }
-                    >
-                      {t("app.resetDefaults")}
-                    </Button>
-                  </AlertDialog.Trigger>
-                  <AlertDialog.Content>
-                    <AlertDialog.Title>{t("app.resetConfirm")}</AlertDialog.Title>
-                    <AlertDialog.Description>
-                      {t("app.resetHelp", {
-                        count: countText(
-                          Object.values(policy.chats).filter((choice) =>
-                            Object.keys(inherit).some(
-                              (key) => choice[key as keyof Selection] !== null,
-                            ),
-                          ).length,
-                          "chat has",
+                <DialogTrigger>
+                  <Button
+                    variant="secondary"
+                    UNSAFE_className={`defaults-reset-button ${style({
+                      "--disabled-text": { type: "color", value: "gray-1000" },
+                      "--disabled-surface": { type: "backgroundColor", value: "gray-200" },
+                    })}`}
+                    isDisabled={!resetCount}
+                  >
+                    {t("app.resetDefaults")}
+                  </Button>
+                  <AlertDialog
+                    variant="destructive"
+                    title={t("app.resetConfirm")}
+                    cancelLabel={t("app.cancel")}
+                    primaryActionLabel={t("app.stageReset")}
+                    autoFocusButton="cancel"
+                    onPrimaryAction={() =>
+                      update({
+                        ...policy,
+                        chats: Object.fromEntries(
+                          Object.entries(policy.chats).map(([id, choice]) => [
+                            id,
+                            { ...inherit, enabled: choice.enabled },
+                          ]),
                         ),
-                      })}
-                    </AlertDialog.Description>
-                    <Flex gap="3" mt="4">
-                      <AlertDialog.Cancel>
-                        <Button variant="soft">{t("app.cancel")}</Button>
-                      </AlertDialog.Cancel>
-                      <AlertDialog.Action>
-                        <Button
-                          onClick={() =>
-                            update({
-                              ...policy,
-                              chats: Object.fromEntries(
-                                Object.entries(policy.chats).map(([id, choice]) => [
-                                  id,
-                                  { ...inherit, enabled: choice.enabled },
-                                ]),
-                              ),
-                            })
-                          }
-                        >
-                          {t("app.stageReset")}
-                        </Button>
-                      </AlertDialog.Action>
-                    </Flex>
-                  </AlertDialog.Content>
-                </AlertDialog.Root>
+                      })
+                    }
+                  >
+                    {t("app.resetHelp", { count: countText(resetCount, "chat has") })}
+                  </AlertDialog>
+                </DialogTrigger>
               </section>
             </details>
           </EditorSection>
@@ -962,8 +915,8 @@ function App() {
                     }}
                   />
                   <Button
-                    disabled={!toolName}
-                    onClick={() => {
+                    isDisabled={!toolName}
+                    onPress={() => {
                       update({ ...policy, tools: [...new Set([...policy.tools, toolName])] })
                       setToolName("")
                       markPending("tool", false)
@@ -973,8 +926,8 @@ function App() {
                   </Button>
                   {toolName && (
                     <Button
-                      variant="soft"
-                      onClick={() => {
+                      variant="secondary"
+                      onPress={() => {
                         setToolName("")
                         markPending("tool", false)
                       }}
@@ -985,7 +938,7 @@ function App() {
                   <Prose size="2">{t("app.exactToolHelp")}</Prose>
                 </Panel>
               </details>
-              <Button variant="soft" onClick={() => setPage("MCP connections")}>
+              <Button variant="secondary" onPress={() => setPage("MCP connections")}>
                 {t("app.manageMcp")}
               </Button>
             </div>
@@ -1074,10 +1027,10 @@ function App() {
                             })
                           }
                         />
-                        <Flex gap="2" wrap="wrap">
+                        <div className={style({ display: "flex", flexWrap: "wrap", gap: 8 })}>
                           <Button
-                            variant="soft"
-                            onClick={() => {
+                            variant="secondary"
+                            onPress={() => {
                               if (
                                 !editorPending.endpoint ||
                                 window.confirm(t("app.discardEndpoint"))
@@ -1090,9 +1043,9 @@ function App() {
                             {t("app.editConfig", { provider: p.id })}
                           </Button>
                           <Button
-                            variant="soft"
-                            color="red"
-                            onClick={() =>
+                            variant="negative"
+                            fillStyle="outline"
+                            onPress={() =>
                               update({
                                 ...policy,
                                 providers: policy.providers.filter((row) => row.id !== p.id),
@@ -1101,7 +1054,7 @@ function App() {
                           >
                             {t("app.removeConfig")}
                           </Button>
-                        </Flex>
+                        </div>
                       </Panel>
                     ))}
                   <ProviderEditor
@@ -1198,19 +1151,23 @@ function App() {
           >
             <div className="audit-workspace">
               <section className="audit-configuration" aria-label={t("app.configOperations")}>
-                <Heading size="3">{t("app.configActivity")}</Heading>
+                <h2 className={style({ font: "heading-sm", margin: 0 })}>
+                  {t("app.configActivity")}
+                </h2>
                 <Prose size="2">{t("app.activityHelp")}</Prose>
                 <AuditHistory revision={snapshot.revision} run={run} />
               </section>
               <section className="audit-imports" aria-label={t("app.importReports")}>
-                <Heading size="3">{t("app.importReports")}</Heading>
+                <h2 className={style({ font: "heading-sm", margin: 0 })}>
+                  {t("app.importReports")}
+                </h2>
                 <ImportHistory reports={imports} />
               </section>
             </div>
           </EditorSection>
         </fieldset>
 
-        <VisuallyHidden.Root>
+        <span className="visually-hidden">
           <span role="status">
             {busy
               ? t("app.operation")
@@ -1220,14 +1177,14 @@ function App() {
                   ? t("app.pending")
                   : t("app.noPending")}
           </span>
-        </VisuallyHidden.Root>
+        </span>
       </main>
       {createdIssue && page !== "Issues" && (
         <div className="feedback-saved-notice" data-feedback-ui role="status">
           回饋 #{createdIssue.id} 已儲存。
-          <Button variant="ghost" onClick={() => setPage("Issues")}>
+          <ActionButton isQuiet onPress={() => setPage("Issues")}>
             查看 Issues
-          </Button>
+          </ActionButton>
         </div>
       )}
       <FeedbackWidget
@@ -1243,10 +1200,19 @@ function App() {
     </div>
   )
 }
-const root = document.getElementById("root")
-if (root)
-  createRoot(root).render(
-    <Theme appearance="light" accentColor="teal" grayColor="sand" radius="small">
-      <App />
-    </Theme>,
+function AdminRoot() {
+  const locale = useLocale()
+  return (
+    <I18nProvider locale={locale}>
+      <div className="admin-theme">
+        <App />
+      </div>
+    </I18nProvider>
   )
+}
+
+const root = document.getElementById("root")
+if (root) {
+  applyAdminTheme()
+  createRoot(root).render(<AdminRoot />)
+}

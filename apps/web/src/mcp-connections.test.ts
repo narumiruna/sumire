@@ -1,6 +1,5 @@
 import { initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
@@ -20,8 +19,8 @@ const snapshot = { policy, revision: 2, applied: 2, status: "applied", epoch: 1 
 function markup(connection = server) {
   return renderToStaticMarkup(
     createElement(
-      Theme,
-      {},
+      Fragment,
+      null,
       createElement(McpConnections, {
         inventory: { tools: [], providers: [], mcp: [connection] },
         policy,

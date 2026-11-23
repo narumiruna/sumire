@@ -29,7 +29,7 @@ for (const mode of ["font", "zoom"] as const) {
       if (mode === "font") {
         expect(
           await page
-            .locator(".radix-themes")
+            .locator(".admin-theme")
             .first()
             .evaluate((node) => getComputedStyle(node).fontSize),
         ).toBe("32px")
@@ -65,7 +65,7 @@ for (const [layout, width, height] of [
       if (fontScale === 200) {
         const client = await page.context().newCDPSession(page)
         await client.send("Page.setFontSizes", { fontSizes: { standard: 32 } })
-        await expect(page.locator(".radix-themes").first()).toHaveCSS("font-size", "32px")
+        await expect(page.locator(".admin-theme").first()).toHaveCSS("font-size", "32px")
       }
       const footer = sidebar.locator(".sidebar-account")
       const account = footer.getByRole("button", { name: "Account", exact: true })

@@ -1,21 +1,19 @@
-import { InfoCircledIcon, PlusIcon, TrashIcon } from "@radix-ui/react-icons"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import {
-  Box,
-  Button,
-  Callout,
-  Checkbox,
-  Flex,
-  Grid,
-  Heading,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import Add from "@react-spectrum/s2/icons/Add"
+import Delete from "@react-spectrum/s2/icons/Delete"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import { useId } from "react"
 import type { Inventory } from "./api.js"
+import { Check } from "./check.js"
 import { type MessageKey, t } from "./i18n.js"
-import { SectionSelect } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
 import { Prose } from "./surfaces.js"
+import "./spectrum-mcp.css"
+
+const fullWidth = style({ width: "full" })
+const argumentActions = style({ display: "flex", flexWrap: "wrap", gap: 8 })
 
 const fields = [
   "type",
@@ -174,14 +172,9 @@ export function McpGuidedEditor({
       throw new Error(t("mcp.argumentsInvalid"))
   } catch (error) {
     return (
-      <Callout.Root color="red" role="alert" size="1">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          {error instanceof Error ? error.message : t("mcp.guidedUnavailable")}
-        </Callout.Text>
-      </Callout.Root>
+      <InlineAlert variant="negative">
+        <Content>{error instanceof Error ? error.message : t("mcp.guidedUnavailable")}</Content>
+      </InlineAlert>
     )
   }
   const set = (key: string, value: unknown) =>
@@ -194,89 +187,78 @@ export function McpGuidedEditor({
   const transport =
     patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : savedTransport
   const fields = (advanced: boolean) => (
-    <Grid columns={{ initial: "1", sm: "2" }} gap="4" className="mcp-field-grid" mt="4">
+    <div className="mcp-field-grid">
       {(["command", "url", "cwd", "description", "timeout", "enabled", "exposure", "type"] as const)
         .filter((key) => advanced === !["command", "url", "enabled"].includes(key))
         .filter((key) => key !== "command" || transport === "stdio")
         .filter((key) => key !== "url" || transport === "http")
         .map((key) => (
-          <Flex key={key} direction="column" gap="2" className="mcp-field">
+          <div key={key} className="mcp-field">
             {(existing || advanced) && (
-              <Text
-                as="label"
-                size="2"
-                className="check mcp-field-toggle"
-                htmlFor={`${prefix}-${key}-edit`}
-              >
-                <Checkbox
-                  id={`${prefix}-${key}-edit`}
-                  aria-label={t("mcp.editField", { field: key })}
-                  aria-describedby={existing ? `${prefix}-replacement-help` : undefined}
-                  checked={key in patch}
-                  onCheckedChange={(checked) =>
-                    checked === true
-                      ? set(
-                          key,
-                          key === "enabled"
-                            ? true
-                            : key === "timeout"
-                              ? 30
-                              : key === "exposure"
-                                ? "codemode"
-                                : key === "type"
-                                  ? "stdio"
-                                  : "",
-                        )
-                      : omit(key)
-                  }
-                />
-                {t(existing ? "mcp.replaceField" : "mcp.setField", { field: key })}
-              </Text>
+              <Check
+                id={`${prefix}-${key}-edit`}
+                label={t("mcp.editField", { field: key })}
+                describedBy={existing ? `${prefix}-replacement-help` : undefined}
+                checked={key in patch}
+                onChange={(checked) =>
+                  checked
+                    ? set(
+                        key,
+                        key === "enabled"
+                          ? true
+                          : key === "timeout"
+                            ? 30
+                            : key === "exposure"
+                              ? "codemode"
+                              : key === "type"
+                                ? "stdio"
+                                : "",
+                      )
+                    : omit(key)
+                }
+                visibleLabel={t(existing ? "mcp.replaceField" : "mcp.setField", { field: key })}
+              />
             )}
             {key in patch &&
               (key === "enabled" ? (
-                <label className="check mcp-field-value" htmlFor={`${prefix}-enabled-value`}>
-                  <Checkbox
-                    id={`${prefix}-enabled-value`}
-                    aria-label={t("mcp.enabledValue")}
-                    checked={patch.enabled === true}
-                    onCheckedChange={(v) => set(key, v === true)}
-                  />
-                  {t("mcp.enabledAfterSave")}
-                </label>
+                <Check
+                  id={`${prefix}-enabled-value`}
+                  label={t("mcp.enabledValue")}
+                  checked={patch.enabled === true}
+                  onChange={(value) => set(key, value)}
+                  visibleLabel={t("mcp.enabledAfterSave")}
+                />
               ) : key === "exposure" || key === "type" ? (
                 <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
                   {existing ? t("mcp.replacementField", { field: key }) : key}
-                  <SectionSelect.Root
+                  <SectionPicker
                     value={String(patch[key])}
                     onValueChange={(value) => set(key, value)}
+                    id={`${prefix}-${key}-value`}
+                    aria-label={t("mcp.fieldReplacement", { field: key })}
                   >
-                    <SectionSelect.Trigger
-                      id={`${prefix}-${key}-value`}
-                      aria-label={t("mcp.fieldReplacement", { field: key })}
-                    />
-                    <SectionSelect.Content>
-                      {(key === "exposure"
-                        ? ["codemode", "direct", "hidden"]
-                        : ["stdio", "http", "streamable-http"]
-                      ).map((value) => (
-                        <SectionSelect.Item key={value} value={value}>
-                          {key === "exposure"
-                            ? t(`mcp.exposure.${value as "codemode" | "direct" | "hidden"}`)
-                            : value}
-                        </SectionSelect.Item>
-                      ))}
-                    </SectionSelect.Content>
-                  </SectionSelect.Root>
+                    {(key === "exposure"
+                      ? ["codemode", "direct", "hidden"]
+                      : ["stdio", "http", "streamable-http"]
+                    ).map((value) => (
+                      <PickerOption key={value} id={value}>
+                        {key === "exposure"
+                          ? t(`mcp.exposure.${value as "codemode" | "direct" | "hidden"}`)
+                          : value}
+                      </PickerOption>
+                    ))}
+                  </SectionPicker>
                 </label>
               ) : (
-                <label className="mcp-field-value" htmlFor={`${prefix}-${key}-value`}>
-                  {key === "url"
-                    ? "URL"
-                    : key === "command"
-                      ? t("mcp.command")
-                      : t("mcp.replacementField", { field: key })}
-                  <TextField.Root
+                <div className="mcp-field-value">
+                  <label htmlFor={`${prefix}-${key}-value`}>
+                    {key === "url"
+                      ? "URL"
+                      : key === "command"
+                        ? t("mcp.command")
+                        : t("mcp.replacementField", { field: key })}
+                  </label>
+                  <TextField
                     id={`${prefix}-${key}-value`}
                     aria-label={
                       key === "url"
@@ -287,15 +269,14 @@ export function McpGuidedEditor({
                     }
                     type={key === "timeout" ? "number" : "text"}
                     value={String(patch[key] ?? "")}
-                    onChange={(e) =>
-                      set(key, key === "timeout" ? Number(e.target.value) : e.target.value)
-                    }
+                    onChange={(value) => set(key, key === "timeout" ? Number(value) : value)}
+                    styles={fullWidth}
                   />
-                </label>
+                </div>
               ))}
-          </Flex>
+          </div>
         ))}
-    </Grid>
+    </div>
   )
   return (
     <fieldset
@@ -304,23 +285,17 @@ export function McpGuidedEditor({
       tabIndex={-1}
       aria-labelledby={`${prefix}-heading`}
     >
-      <VisuallyHidden.Root asChild>
-        <legend id={`${prefix}-heading`}>{t("mcp.connectionDetails")}</legend>
-      </VisuallyHidden.Root>
+      <legend className="visually-hidden" id={`${prefix}-heading`}>
+        {t("mcp.connectionDetails")}
+      </legend>
       {existing && (
         <Prose size="2" id={`${prefix}-replacement-help`}>
           {t("mcp.replacementHelp")}
         </Prose>
       )}
-      <Text
-        as="label"
-        size="2"
-        weight="medium"
-        className="mcp-guided-toolbar"
-        htmlFor={`${prefix}-transport`}
-      >
+      <label className="mcp-guided-toolbar" htmlFor={`${prefix}-transport`}>
         {t("mcp.connectionType")}
-        <SectionSelect.Root
+        <SectionPicker
           value={
             patch.url !== undefined ? "http" : patch.command !== undefined ? "stdio" : "preserve"
           }
@@ -339,84 +314,78 @@ export function McpGuidedEditor({
             }
             onChange(JSON.stringify(next, null, 2))
           }}
+          id={`${prefix}-transport`}
+          aria-label={t("mcp.connectionType")}
         >
-          <SectionSelect.Trigger id={`${prefix}-transport`} aria-label={t("mcp.connectionType")} />
-          <SectionSelect.Content>
-            {existing && (
-              <SectionSelect.Item value="preserve">{t("mcp.keepTransport")}</SectionSelect.Item>
-            )}
-            <SectionSelect.Item value="stdio">
-              {existing ? t("mcp.replaceStdio") : t("mcp.stdioCommand")}
-            </SectionSelect.Item>
-            <SectionSelect.Item value="http">
-              {existing ? t("mcp.replaceHttp") : t("mcp.httpEndpoint")}
-            </SectionSelect.Item>
-          </SectionSelect.Content>
-        </SectionSelect.Root>
-      </Text>
+          {existing && <PickerOption id="preserve">{t("mcp.keepTransport")}</PickerOption>}
+          <PickerOption id="stdio">
+            {existing ? t("mcp.replaceStdio") : t("mcp.stdioCommand")}
+          </PickerOption>
+          <PickerOption id="http">
+            {existing ? t("mcp.replaceHttp") : t("mcp.httpEndpoint")}
+          </PickerOption>
+        </SectionPicker>
+      </label>
       {fields(false)}
       <details className="mcp-optional-fields">
         <summary>{t("mcp.advancedFields")}</summary>
         {fields(true)}
       </details>
-      <Box hidden={transport !== "stdio"} className="mcp-arguments" mt="5">
-        <Heading as="h4" size="2" mb="3">
-          {t("mcp.arguments")}
-        </Heading>
+      <div hidden={transport !== "stdio"} className="mcp-arguments">
+        <h4 className={style({ font: "heading-xs" })}>{t("mcp.arguments")}</h4>
         {(Array.isArray(patch.args) ? (patch.args as string[]) : []).map((arg, index) => (
           // Arguments are controlled positional fields with no row state; additions append only.
-          <Flex
+          <div
             // biome-ignore lint/suspicious/noArrayIndexKey: Argument position is the field identity.
             key={`${prefix}-${index}`}
             className="mcp-argument-row"
-            gap="3"
-            align="end"
-            wrap="wrap"
-            mb="3"
           >
-            <Text as="label" size="2" htmlFor={`${prefix}-arg-${index}`}>
-              {t("mcp.argument", { number: index + 1 })}
-              <TextField.Root
+            <div className="mcp-argument-input">
+              <label htmlFor={`${prefix}-arg-${index}`}>
+                {t("mcp.argument", { number: index + 1 })}
+              </label>
+              <TextField
                 id={`${prefix}-arg-${index}`}
                 aria-label={t("mcp.argumentLabel", { number: index + 1 })}
+                styles={fullWidth}
                 value={arg}
-                onChange={(e) =>
+                onChange={(value) =>
                   set(
                     "args",
-                    (patch.args as string[]).map((v, i) => (i === index ? e.target.value : v)),
+                    (patch.args as string[]).map((v, i) => (i === index ? value : v)),
                   )
                 }
               />
-            </Text>
+            </div>
             <Button
-              variant="soft"
-              onClick={() =>
+              variant="secondary"
+              onPress={() =>
                 set(
                   "args",
                   (patch.args as string[]).filter((_, i) => i !== index),
                 )
               }
             >
-              <TrashIcon aria-hidden="true" />
+              <Delete aria-hidden="true" />
               {t("mcp.removeArgument", { number: index + 1 })}
             </Button>
-          </Flex>
+          </div>
         ))}
-        <Flex gap="2" wrap="wrap">
+        <div className={argumentActions}>
           <Button
-            variant="soft"
-            onClick={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
+            variant="secondary"
+            onPress={() => set("args", [...(Array.isArray(patch.args) ? patch.args : []), ""])}
           >
-            <PlusIcon aria-hidden="true" />
+            <Add aria-hidden="true" />
             {t("mcp.addArgument")}
           </Button>
           {existing && "args" in patch && (
-            <Button variant="soft" onClick={() => omit("args")}>
+            <Button variant="secondary" onPress={() => omit("args")}>
               {t("mcp.keepArguments")}
             </Button>
           )}
-        </Flex>
-      </Box>
+        </div>
+      </div>
     </fieldset>
   )
 }

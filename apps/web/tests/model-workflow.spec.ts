@@ -359,8 +359,8 @@ test("provider repair returns to chat editor and never duplicates model-use edit
   await page.goBack()
   await page.getByRole("button", { name: "Back to chat 42", exact: true }).click()
   await expect(page.getByRole("tab", { name: "Model & Tools", exact: true })).toHaveAttribute(
-    "data-state",
-    "active",
+    "aria-selected",
+    "true",
   )
   expect(state.policy.chats).toEqual(explicit)
 })

@@ -1,23 +1,37 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { ChevronDownIcon, ChevronRightIcon } from "@radix-ui/react-icons"
-import {
-  Badge,
-  Button,
-  Callout,
-  Checkbox,
-  Code,
-  DataList,
-  Flex,
-  Heading,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button } from "@react-spectrum/s2/Button"
+import ChevronDown from "@react-spectrum/s2/icons/ChevronDown"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
 import { t } from "./i18n.js"
-import { SectionSelect as Select } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
 import { countText } from "./status-text.js"
 import { Panel, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
+import "./spectrum-permissions.css"
+
+const layoutTokens = style({
+  "--permission-surface": { type: "backgroundColor", value: "layer-2" },
+  "--permission-divider": { type: "borderColor", value: "gray-300" },
+  "--permission-highlight": { type: "outlineColor", value: "accent-900" },
+  "--permission-muted": { type: "color", value: "neutral-subdued" },
+})
+const headingStyle = style({ font: "heading-xs", color: "title" })
+const body = style({ font: "body-lg", color: "body" })
+const code = style({ font: "code", fontWeight: "medium" })
+const actions = style({ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" })
+const notice = style({
+  font: "body",
+  color: "notice-1000",
+  backgroundColor: "notice-subtle",
+  borderRadius: "default",
+  padding: 12,
+  margin: 0,
+})
 
 export function defaultPermissionSummary(policy: Policy) {
   const effective = effectivePolicy(policy, 0)
@@ -257,31 +271,27 @@ function PermissionGroup({
   return (
     <section className="permission-group" aria-label={group.label}>
       <div className="permission-group-heading">
-        <Heading as="h4" size="2">
+        <h4 className={headingStyle}>
           {searching ? (
-            <Text>
+            <span>
               {group.label} · {countText(group.names.length, "tool")}
-            </Text>
+            </span>
           ) : (
-            <Button
-              variant="ghost"
-              className="permission-group-toggle"
+            <ActionButton
+              isQuiet
+              UNSAFE_className="permission-group-toggle"
               aria-expanded={expanded}
               aria-controls={id}
-              onClick={onToggle}
+              onPress={onToggle}
             >
-              {expanded ? (
-                <ChevronDownIcon aria-hidden="true" />
-              ) : (
-                <ChevronRightIcon aria-hidden="true" />
-              )}
-              <Text>{group.label} ·</Text>
-              <Badge color="gray" variant="soft">
+              {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+              <span>{group.label} ·</span>
+              <Badge variant="neutral" fillStyle="subtle">
                 {countText(group.names.length, "tool")}
               </Badge>
-            </Button>
+            </ActionButton>
           )}
-        </Heading>
+        </h4>
         {expanded && columns}
       </div>
       <div id={id} hidden={!expanded}>
@@ -333,7 +343,7 @@ export function ToolPermissions({
       ].find((row) => row.dataset.permissionName === name && row.dataset.permissionKey === key)
       row
         ?.querySelector<HTMLElement>(
-          `[data-permission-control="${global ? "global" : "default"}"] [role="checkbox"]`,
+          `[data-permission-control="${global ? "global" : "default"}"] input[type="checkbox"]`,
         )
         ?.focus()
     })
@@ -388,74 +398,70 @@ export function ToolPermissions({
     }
   }, [defaultContext])
   return (
-    <Flex
-      direction="column"
-      gap="4"
-      className="settings-stack tool-permissions"
+    <div
+      className={`settings-stack tool-permissions ${layoutTokens}`}
       ref={matrix}
       data-global-editing={globalEditing}
     >
       <section ref={scope} className="permission-scope" aria-label={t("permissions.editScope")}>
-        <Heading as="h2" ref={heading} tabIndex={-1} id="default-tool-permissions" size="3">
+        <h2 ref={heading} tabIndex={-1} id="default-tool-permissions" className={headingStyle}>
           {globalEditing ? t("permissions.editGlobalDefaults") : t("permissions.editDefaults")}
-        </Heading>
-        <Flex gap="2" wrap="wrap" aria-label={t("permissions.scope")}>
+        </h2>
+        <fieldset className="permission-scope-actions" aria-label={t("permissions.scope")}>
           <Button
-            variant="soft"
+            variant={globalEditing ? "accent" : "secondary"}
             aria-pressed={globalEditing}
-            onClick={() => setGlobalEditing(true)}
+            onPress={() => setGlobalEditing(true)}
           >
             {t("permissions.globalPolicy")}
           </Button>
           <Button
-            variant="soft"
+            variant={globalEditing ? "secondary" : "accent"}
             aria-pressed={!globalEditing}
-            onClick={() => setGlobalEditing(false)}
+            onPress={() => setGlobalEditing(false)}
           >
             {t("permissions.sourceDefaults")}
           </Button>
           <Button
-            variant="soft"
+            variant="secondary"
             aria-label={
               selectedChat
                 ? t("permissions.selectedChat", { id: selectedChat })
                 : t("permissions.noSelectedChat")
             }
-            disabled={!selectedChat}
-            onClick={() => onChat(selectedChat)}
+            isDisabled={!selectedChat}
+            onPress={() => onChat(selectedChat)}
           >
             {selectedChat ? t("permissions.chatName", { id: selectedChat }) : t("permissions.chat")}
           </Button>
-        </Flex>
-        <Text as="p" size="1">
+        </fieldset>
+        <p className={style({ font: "body-sm", color: "body", margin: 0 })}>
           {globalEditing ? t("permissions.globalHelp") : t("permissions.defaultsHelp")}
-        </Text>
+        </p>
         {(changes.global > 0 || changes.defaults > 0) && (
-          <Text as="p" size="2">
+          <Prose size="2">
             {t("permissions.changedCounts", {
               global: countText(changes.global, "changed global tool/server name"),
               defaults: countText(changes.defaults, "changed shared-default tool/server name"),
             })}
-          </Text>
+          </Prose>
         )}
       </section>
-      <Callout.Root color="amber" aria-label={t("permissions.credentialAccess")}>
-        <Callout.Text>{t("permissions.hostWarning")}</Callout.Text>
-      </Callout.Root>
+      <section className={notice} aria-label={t("permissions.credentialAccess")}>
+        {t("permissions.hostWarning")}
+      </section>
       {conflicts.length > 0 && (
         <section className="permission-conflicts" aria-label={t("permissions.retainedConflicts")}>
-          <Heading as="h3" size="3">
+          <h3 className={headingStyle}>
             {t("permissions.cannotSaveCount", {
               count: countText(conflicts.length, "tool/server name"),
             })}
-          </Heading>
-          <Text as="p" size="2">
-            {t("permissions.conflictsHelp")}
-          </Text>
+          </h3>
+          <Prose size="2">{t("permissions.conflictsHelp")}</Prose>
           <ul>
             {conflicts.map((conflict) => (
               <li key={`${conflict.key}:${conflict.name}`}>
-                <Code>{conflict.name}</Code> ·{" "}
+                <code className={code}>{conflict.name}</code> ·{" "}
                 {conflict.defaults ? t("permissions.conflictDefaults") : ""}
                 {conflict.chats.length > 0
                   ? t("permissions.chatOverrides", {
@@ -463,24 +469,21 @@ export function ToolPermissions({
                       chats: conflict.chats.join(", "),
                     })
                   : ""}
-                <Button
-                  variant="ghost"
-                  onClick={() => repairPermission(conflict.key, conflict.name)}
-                >
+                <ActionButton isQuiet onPress={() => repairPermission(conflict.key, conflict.name)}>
                   {t("permissions.reviewGlobalName", { name: conflict.name })}
-                </Button>
+                </ActionButton>
                 {conflict.defaults && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => repairPermission(conflict.key, conflict.name, false)}
+                  <ActionButton
+                    isQuiet
+                    onPress={() => repairPermission(conflict.key, conflict.name, false)}
                   >
                     {t("permissions.reviewSharedName", { name: conflict.name })}
-                  </Button>
+                  </ActionButton>
                 )}
                 {conflict.chats.map((id) => (
-                  <Button key={id} variant="ghost" onClick={() => onChat(id)}>
+                  <ActionButton key={id} isQuiet onPress={() => onChat(id)}>
                     {t("permissions.reviewChat", { id })}
-                  </Button>
+                  </ActionButton>
                 ))}
               </li>
             ))}
@@ -488,44 +491,41 @@ export function ToolPermissions({
         </section>
       )}
       <TableToolbar className="tool-search">
-        <label className="form-field" htmlFor={`${prefix}-search`}>
-          {t("permissions.search")}
-          <TextField.Root
-            id={`${prefix}-search`}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+        <TextField
+          id={`${prefix}-search`}
+          label={t("permissions.search")}
+          UNSAFE_className="form-field"
+          styles={style({ width: "full" })}
+          value={query}
+          onChange={setQuery}
+        />
         <label className="form-field" htmlFor={`${prefix}-filter`}>
           {t("permissions.toolStatus")}
-          <Select.Root
+          <SectionPicker
             value={filter}
             onValueChange={(value) => setFilter(value as PermissionFilter)}
+            id={`${prefix}-filter`}
+            aria-label={t("permissions.toolStatus")}
           >
-            <Select.Trigger id={`${prefix}-filter`} aria-label={t("permissions.toolStatus")} />
-            <Select.Content>
-              <Select.Item value="all">{t("permissions.all")}</Select.Item>
-              <Select.Item value="selected">{t("permissions.selectedDefault")}</Select.Item>
-              <Select.Item value="blocked">{t("permissions.blockedPolicy")}</Select.Item>
-              <Select.Item value="changed">{t("permissions.pendingChanges")}</Select.Item>
-              <Select.Item value="missing">{t("permissions.notInventory")}</Select.Item>
-              <Select.Item value="unavailable">
-                {t("permissions.capabilityUnavailable")}
-              </Select.Item>
-            </Select.Content>
-          </Select.Root>
+            <PickerOption id="all">{t("permissions.all")}</PickerOption>
+            <PickerOption id="selected">{t("permissions.selectedDefault")}</PickerOption>
+            <PickerOption id="blocked">{t("permissions.blockedPolicy")}</PickerOption>
+            <PickerOption id="changed">{t("permissions.pendingChanges")}</PickerOption>
+            <PickerOption id="missing">{t("permissions.notInventory")}</PickerOption>
+            <PickerOption id="unavailable">{t("permissions.capabilityUnavailable")}</PickerOption>
+          </SectionPicker>
         </label>
         <Button
-          variant="soft"
+          variant="secondary"
           aria-pressed={globalEditing}
-          onClick={() => setGlobalEditing(!globalEditing)}
+          onPress={() => setGlobalEditing(!globalEditing)}
         >
           {t("permissions.editGlobal")}
         </Button>
       </TableToolbar>
       {filtering && (
-        <Flex gap="2" wrap="wrap" align="center">
-          <Text role="status" size="2">
+        <div className={actions}>
+          <span role="status" className={body}>
             {t("permissions.matchCounts", {
               tools: countText(
                 new Set(groups.flatMap((group) => group.names)).size,
@@ -533,17 +533,17 @@ export function ToolPermissions({
               ),
               servers: countText(servers.length, "matching server"),
             })}
-          </Text>
-          <Button
-            variant="ghost"
-            onClick={() => {
+          </span>
+          <ActionButton
+            isQuiet
+            onPress={() => {
               setQuery("")
               setFilter("all")
             }}
           >
             {t("permissions.clearFilters")}
-          </Button>
-        </Flex>
+          </ActionButton>
+        </div>
       )}
       {filtering && !groups.length && !servers.length && (
         <Prose role="status">{t("permissions.noMatches")}</Prose>
@@ -559,30 +559,22 @@ export function ToolPermissions({
               : t("permissions.serverPermissions")
           }
         >
-          <Heading as="h3" size="3" className="section-heading">
+          <h3 className={`section-heading ${headingStyle}`}>
             {key === "tools" ? t("permissions.tools") : t("permissions.servers")}
-          </Heading>
+          </h3>
           {key === "servers" && (
-            <Text as="p" size="2" color="gray">
+            <Prose size="2" color="gray">
               {t("permissions.gateHelp")}
-            </Text>
+            </Prose>
           )}
           {!permissionNames(key, policy, saved, inventory).length && (
-            <Text as="p" size="2" className="empty-state">
+            <Prose size="2" className="empty-state">
               {t(key === "tools" ? "permissions.noKnownTools" : "permissions.noKnownServers")}
-            </Text>
+            </Prose>
           )}
           {key === "tools" && (
-            <Flex
-              hidden={filtering}
-              gap="3"
-              my="3"
-              wrap="wrap"
-              align="center"
-              justify="between"
-              className="permission-toolbar"
-            >
-              <Text size="2" color="gray">
+            <div hidden={filtering} className="permission-toolbar">
+              <span className={style({ font: "body-lg", color: "neutral-subdued" })}>
                 {t("permissions.groupCounts", {
                   tools: countText(
                     permissionNames(key, policy, saved, inventory).length,
@@ -590,19 +582,19 @@ export function ToolPermissions({
                   ),
                   groups: countText(groups.length, "source group"),
                 })}
-              </Text>
-              <Flex gap="2" wrap="wrap">
+              </span>
+              <div className={actions}>
                 <Button
-                  variant="soft"
-                  onClick={() => changeExpansion(allGroups.map((group) => group.id))}
+                  variant="secondary"
+                  onPress={() => changeExpansion(allGroups.map((group) => group.id))}
                 >
                   {t("permissions.expandAll")}
                 </Button>
-                <Button variant="soft" onClick={() => changeExpansion([])}>
+                <Button variant="secondary" onPress={() => changeExpansion([])}>
                   {t("permissions.collapseAll")}
                 </Button>
-              </Flex>
-            </Flex>
+              </div>
+            </div>
           )}
           {(key === "tools"
             ? groups
@@ -651,37 +643,36 @@ export function ToolPermissions({
                     data-permission-name={name}
                   >
                     <div className="permission-name">
-                      <Code variant="ghost" weight="medium">
-                        {name}
-                      </Code>
+                      <code className={code}>{name}</code>
                       {availability && (
-                        <Flex direction="column" gap="1" mt="1">
-                          <Badge color={availability.available ? "gray" : "orange"}>
+                        <div className="permission-availability">
+                          <Badge
+                            variant={availability.available ? "neutral" : "notice"}
+                            fillStyle="subtle"
+                          >
                             {availability.available
                               ? t("permissions.capabilityConfigured")
                               : t("permissions.capabilityUnavailable")}
                           </Badge>
-                          <Text as="p" size="2">
-                            {availability.reason}
-                          </Text>
-                        </Flex>
+                          <Prose size="2">{availability.reason}</Prose>
+                        </div>
                       )}
                       {servers.length > 1 && (
-                        <Text as="p" size="2">
+                        <Prose size="2">
                           {t("permissions.serverRequirement", {
                             servers: servers.map((m) => m.name).join(", "),
                           })}
-                        </Text>
+                        </Prose>
                       )}
                       {key === "tools" && !inventory.tools.includes(name) && !servers.length && (
-                        <Text as="p" size="2">
-                          <Badge color="gray">{t("permissions.notInventory")}</Badge>
-                        </Text>
+                        <div>
+                          <StatusLabel>{t("permissions.notInventory")}</StatusLabel>
+                        </div>
                       )}
                       {key === "servers" && !inventory.mcp.some((m) => m.name === name) && (
-                        <Text as="p" size="2">
-                          <Badge color="gray">{t("permissions.notInventory")}</Badge>
-                        </Text>
+                        <div>
+                          <StatusLabel>{t("permissions.notInventory")}</StatusLabel>
+                        </div>
                       )}
                     </div>
                     <label
@@ -690,20 +681,20 @@ export function ToolPermissions({
                       hidden={!globalEditing}
                       data-permission-control="global"
                     >
-                      <Checkbox
+                      <input
+                        type="checkbox"
                         id={`${id}-global`}
                         aria-label={t(
                           key === "tools" ? "permissions.globalTool" : "permissions.globalServer",
                           { name },
                         )}
                         checked={global}
-                        onCheckedChange={(checked) =>
+                        onChange={(event) =>
                           onChange({
                             ...policy,
-                            [key]:
-                              checked === true
-                                ? [...policy[key], name]
-                                : policy[key].filter((v) => v !== name),
+                            [key]: event.target.checked
+                              ? [...policy[key], name]
+                              : policy[key].filter((v) => v !== name),
                           })
                         }
                       />
@@ -717,7 +708,8 @@ export function ToolPermissions({
                         htmlFor={`${id}-default`}
                         data-permission-control="default"
                       >
-                        <Checkbox
+                        <input
+                          type="checkbox"
                           id={`${id}-default`}
                           aria-describedby={`${id}-status`}
                           aria-label={t(
@@ -728,15 +720,14 @@ export function ToolPermissions({
                           )}
                           checked={selected}
                           disabled={!global && !selected}
-                          onCheckedChange={(checked) =>
+                          onChange={(event) =>
                             onChange({
                               ...policy,
                               defaults: {
                                 ...policy.defaults,
-                                [key]:
-                                  checked === true
-                                    ? [...(policy.defaults[key] ?? []), name]
-                                    : (policy.defaults[key] ?? []).filter((v) => v !== name),
+                                [key]: event.target.checked
+                                  ? [...(policy.defaults[key] ?? []), name]
+                                  : (policy.defaults[key] ?? []).filter((v) => v !== name),
                               },
                             })
                           }
@@ -752,41 +743,39 @@ export function ToolPermissions({
                           {result.statusLabel}
                         </StatusLabel>
                         {!global && selected && (
-                          <Text as="p" size="2">
-                            {t("permissions.selectionRetained")}
-                          </Text>
+                          <Prose size="2">{t("permissions.selectionRetained")}</Prose>
                         )}
                       </div>
-                      <Text as="p" size="2">
+                      <Prose size="2">
                         {t("permissions.configuredSummary", {
                           selection: t(selected ? "permissions.allow" : "permissions.deny"),
                           source: result.sourceLabel,
                         })}
-                      </Text>
+                      </Prose>
                       {result.blocking && (
                         <div>
-                          <Text as="p" size="2">
+                          <Prose size="2">
                             {t("permissions.blockingSource", {
                               source: result.blockingLabel ?? "",
                             })}
-                          </Text>
+                          </Prose>
                           {!global ? (
-                            <Button variant="ghost" onClick={() => repairPermission(key, name)}>
+                            <ActionButton isQuiet onPress={() => repairPermission(key, name)}>
                               {t("permissions.reviewGlobal")}
-                            </Button>
+                            </ActionButton>
                           ) : !selected ? (
-                            <Button
-                              variant="ghost"
-                              onClick={() => repairPermission(key, name, false)}
+                            <ActionButton
+                              isQuiet
+                              onPress={() => repairPermission(key, name, false)}
                             >
                               {t("permissions.reviewShared")}
-                            </Button>
+                            </ActionButton>
                           ) : (
                             result.blockedServers.map((server) => (
-                              <Button
+                              <ActionButton
                                 key={server.name}
-                                variant="ghost"
-                                onClick={() =>
+                                isQuiet
+                                onPress={() =>
                                   repairPermission(
                                     "servers",
                                     server.name,
@@ -795,13 +784,13 @@ export function ToolPermissions({
                                 }
                               >
                                 {t("permissions.reviewServer", { name: server.name })}
-                              </Button>
+                              </ActionButton>
                             ))
                           )}
                         </div>
                       )}
                       {servers.map((server) => (
-                        <Text key={server.name} as="p" size="2">
+                        <Prose key={server.name} size="2">
                           {t("permissions.serverGateState", {
                             name: server.name,
                             state: t(
@@ -811,32 +800,34 @@ export function ToolPermissions({
                                 : "permissions.serverPermissionBlocked",
                             ),
                           })}
-                        </Text>
+                        </Prose>
                       ))}
                     </div>
                     {removed && (
-                      <Text as="p" size="2" color="orange" className="permission-impact">
+                      <Prose size="2" color="orange" className="permission-impact">
                         {t("permissions.removalImpact")}
-                      </Text>
+                      </Prose>
                     )}
                     {restored && (
-                      <Text as="p" size="2" color="orange" className="permission-impact">
+                      <Prose size="2" color="orange" className="permission-impact">
                         {t("permissions.restoreImpact")}
-                      </Text>
+                      </Prose>
                     )}
                     {!global && (selected || refs.length > 0) && (
-                      <Callout.Root color="orange" className="permission-impact">
-                        <Callout.Text>
-                          {t("permissions.cannotSaveRetained", {
-                            defaults: selected ? t("permissions.retainedDefaults") : "",
-                            chats: refs.length > 0 ? t("permissions.retainedChats") : "",
-                          })}
-                        </Callout.Text>
-                      </Callout.Root>
+                      <p className={`permission-impact ${notice}`}>
+                        {t("permissions.cannotSaveRetained", {
+                          defaults: selected ? t("permissions.retainedDefaults") : "",
+                          chats: refs.length > 0 ? t("permissions.retainedChats") : "",
+                        })}
+                      </p>
                     )}
                     {(global !== saved[key].includes(name) ||
                       selected !== (saved.defaults[key]?.includes(name) ?? false)) && (
-                      <Badge color="orange" className="permission-pending">
+                      <Badge
+                        variant="notice"
+                        fillStyle="subtle"
+                        UNSAFE_className="permission-pending"
+                      >
                         {t("permissions.pendingPolicy")}
                       </Badge>
                     )}
@@ -849,30 +840,28 @@ export function ToolPermissions({
       ))}
       <details className="permission-rules">
         <summary>{t("permissions.rules")}</summary>
-        <Text as="p" size="2" color="gray">
+        <Prose size="2" color="gray">
           {t("permissions.rulesHelp")}
-        </Text>
-        <Text as="p" size="2">
-          {t("permissions.registrationHelp")}
-        </Text>
+        </Prose>
+        <Prose size="2">{t("permissions.registrationHelp")}</Prose>
         <Panel className="permission-summary">
-          <DataList.Root size="2" className="data-list">
-            <DataList.Item className="data-row">
-              <DataList.Label>{t("permissions.savedDefaults")}</DataList.Label>
-              <DataList.Value>{defaultPermissionSummary(saved)}.</DataList.Value>
-            </DataList.Item>
+          <dl className="data-list">
+            <div className="data-row">
+              <dt>{t("permissions.savedDefaults")}</dt>
+              <dd>{defaultPermissionSummary(saved)}.</dd>
+            </div>
             {dirty && (
-              <DataList.Item className="data-row">
-                <DataList.Label>{t("permissions.draftDefaults")}</DataList.Label>
-                <DataList.Value>{defaultPermissionSummary(policy)}.</DataList.Value>
-              </DataList.Item>
+              <div className="data-row">
+                <dt>{t("permissions.draftDefaults")}</dt>
+                <dd>{defaultPermissionSummary(policy)}.</dd>
+              </div>
             )}
-          </DataList.Root>
+          </dl>
           <Prose size="2" color="gray" className="section-copy">
             {t("permissions.countsHelp")}
           </Prose>
         </Panel>
       </details>
-    </Flex>
+    </div>
   )
 }

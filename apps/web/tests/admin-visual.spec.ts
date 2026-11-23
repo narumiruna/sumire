@@ -19,7 +19,7 @@ for (const viewport of [
   { width: 320, height: 844, zoom: 1 },
   { width: 640, height: 900, zoom: 2 },
 ]) {
-  test(`all production pages use the shared Radix workspace at ${viewport.width}px and ${viewport.zoom}x zoom`, async ({
+  test(`all production pages use the shared Spectrum workspace at ${viewport.width}px and ${viewport.zoom}x zoom`, async ({
     page,
   }, testInfo) => {
     test.setTimeout(120000)
@@ -75,7 +75,7 @@ for (const viewport of [
           )?.width,
         ).toBeGreaterThanOrEqual(200 * viewport.zoom)
       }
-      // The added CSS-zoom case checks page reflow. Radix popup positioning under CSS zoom
+      // The added CSS-zoom case checks page reflow. Popup positioning under CSS zoom
       // also fails on the base revision; retain the existing popup checks at every native width.
       if (section === "Model providers" && viewport.zoom === 1) {
         await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
@@ -88,7 +88,7 @@ for (const viewport of [
         await expect(page.getByRole("option", { name: /Other/ })).toBeInViewport()
         await page.getByRole("combobox", { name: "Search model", exact: true }).press("Escape")
       }
-      await expect(page.locator(".radix-themes").first()).toHaveAttribute("data-gray-color", "sand")
+      await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "light")
       expect((await contrast(heading)).text, `${section} heading contrast`).toBeGreaterThanOrEqual(
         4.5,
       )
@@ -99,7 +99,7 @@ for (const viewport of [
       await expect(
         page.getByRole("alert").filter({ hasText: "could not be displayed" }),
       ).toHaveCount(0)
-      for (const button of await page.locator("main :is(.rt-Button, .rt-SelectTrigger)").all()) {
+      for (const button of await page.locator("main button[data-rac]").all()) {
         if (!(await button.isVisible())) continue
         expect(
           (await button.boundingBox())?.height,

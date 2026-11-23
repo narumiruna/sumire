@@ -1,25 +1,30 @@
 import type { Chat } from "@narumitw/sumire-contracts"
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import {
-  CheckIcon,
-  ChevronRightIcon,
-  DotsHorizontalIcon,
-  ExclamationTriangleIcon,
-  GearIcon,
-  MagnifyingGlassIcon,
-  PersonIcon,
-  SpeakerLoudIcon,
-} from "@radix-ui/react-icons"
-import { Button, DropdownMenu, TextField } from "@radix-ui/themes"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { Button } from "@react-spectrum/s2/Button"
+import AlertTriangle from "@react-spectrum/s2/icons/AlertTriangle"
+import Checkmark from "@react-spectrum/s2/icons/Checkmark"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import Filter from "@react-spectrum/s2/icons/Filter"
+import Group from "@react-spectrum/s2/icons/Group"
+import More from "@react-spectrum/s2/icons/More"
+import Settings from "@react-spectrum/s2/icons/Settings"
+import User from "@react-spectrum/s2/icons/User"
+import UsersLock from "@react-spectrum/s2/icons/UsersLock"
+import VolumeTwo from "@react-spectrum/s2/icons/VolumeTwo"
+import { Menu, MenuItem, MenuSection, MenuTrigger } from "@react-spectrum/s2/Menu"
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
 import { type ReactNode, type Ref, useContext, useEffect, useId, useState } from "react"
 import type { Inventory, Policy, Snapshot } from "./api.js"
-import { type ChatDirectory, chatName } from "./chat-directory.js"
+import { type ChatDirectory, ChatSearchField, chatName } from "./chat-directory.js"
 import { type ChatRepair, chatState } from "./chat-state.js"
 import { t } from "./i18n.js"
 import { navigationHref } from "./navigation.js"
 import { withChatAccess } from "./policy-changes.js"
-import { SectionActive, SectionSelect } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
+import { SectionActive } from "./sections.js"
 import { countText } from "./status-text.js"
+import { StatusLabel } from "./surfaces.js"
 
 export type ChatScope = "all" | "enabled" | "pending"
 
@@ -41,49 +46,7 @@ export function chatModelName(model: string | null, inventory: Inventory) {
   return model.slice(model.indexOf("/") + 1)
 }
 
-export function ChatAccessIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3 3.5 6v6c0 5 8.5 9 8.5 9s8.5-4 8.5-9V6L12 3Z" />
-      <path d="m8 12 2.5 2.5L16 9" />
-    </svg>
-  )
-}
-
-function ChatFilterIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 4h18l-7 9v7l-4-2v-5L3 4Z" />
-    </svg>
-  )
-}
-
-function GroupIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="12" cy="7" r="3" />
-      <circle cx="4.5" cy="8.5" r="2.5" />
-      <circle cx="19.5" cy="8.5" r="2.5" />
-      <path d="M7 20v-5a5 5 0 0 1 10 0v5H7ZM1 19v-4a3.5 3.5 0 0 1 5.2-3.1A6.8 6.8 0 0 0 5 16v3H1Zm18 0v-3a6.8 6.8 0 0 0-1.2-4.1A3.5 3.5 0 0 1 23 15v4h-4Z" />
-    </svg>
-  )
-}
+export { UsersLock as ChatAccessIcon }
 
 type Application = Pick<Snapshot, "revision" | "applied" | "status">
 
@@ -145,13 +108,7 @@ export function ChatCard({
     <li className="chat-card" data-chat-id={chat.id}>
       <div className="chat-card-header">
         <span className="chat-card-avatar">
-          {chat.type === "private" ? (
-            <PersonIcon />
-          ) : chat.type === "channel" ? (
-            <SpeakerLoudIcon />
-          ) : (
-            <GroupIcon />
-          )}
+          {chat.type === "private" ? <User /> : chat.type === "channel" ? <VolumeTwo /> : <Group />}
         </span>
         <a
           className="chat-card-name directory-chat"
@@ -161,6 +118,7 @@ export function ChatCard({
           title={name}
           onClick={(event) => {
             if (
+              event.defaultPrevented ||
               event.button !== 0 ||
               event.metaKey ||
               event.ctrlKey ||
@@ -174,14 +132,15 @@ export function ChatCard({
         >
           <strong title={name}>{name}</strong>
         </a>
-        <span
+        <div
           className="chat-card-status"
           title={t("chat.savedStatusHint")}
           data-status={!saved.approved ? "pending" : saved.enabled ? "enabled" : "disabled"}
         >
-          <span aria-hidden="true" />
-          {status}
-        </span>
+          <StatusLabel tone={!saved.approved ? "warning" : saved.enabled ? "success" : "neutral"}>
+            {status}
+          </StatusLabel>
+        </div>
       </div>
       {saved.approved ? (
         <dl className="chat-card-facts">
@@ -216,9 +175,9 @@ export function ChatCard({
             disabled={busy}
             onClick={() => onRepair(chat, "enabled")}
           >
-            <ExclamationTriangleIcon aria-hidden="true" />
+            <AlertTriangle />
             <span>{t("chat.chatDisabled")}</span>
-            <ChevronRightIcon aria-hidden="true" />
+            <ChevronRight />
           </button>
         </div>
       )}
@@ -230,81 +189,85 @@ export function ChatCard({
             disabled={busy}
             onClick={() => onRepair(chat, issue.target)}
           >
-            <ExclamationTriangleIcon aria-hidden="true" />
+            <AlertTriangle />
             <span>
               {issues.length > 1
                 ? t("chat.needsAttentionCount", { count: issues.length })
                 : t("chat.needsAttention")}
             </span>
-            <ChevronRightIcon aria-hidden="true" />
+            <ChevronRight />
           </button>
         </div>
       )}
       <div className="chat-card-actions">
         {saved.approved ? (
-          <Button className="chat-card-primary" disabled={busy} onClick={() => onConfigure(chat)}>
-            <GearIcon aria-hidden="true" />
+          <Button
+            UNSAFE_className="chat-card-primary"
+            variant="accent"
+            size="XL"
+            isDisabled={busy}
+            onPress={() => onConfigure(chat)}
+          >
+            <Settings />
             {t("chat.configure")}
           </Button>
         ) : (
           <>
             <Button
-              className="chat-card-primary"
-              disabled={busy}
-              onClick={() => onChange(withChatAccess(policy, chat.id, !approved))}
+              UNSAFE_className="chat-card-primary"
+              variant="accent"
+              size="XL"
+              isDisabled={busy}
+              onPress={() => onChange(withChatAccess(policy, chat.id, !approved))}
             >
-              <CheckIcon aria-hidden="true" />
+              <Checkmark />
               {approved ? t("chat.cancelApproval") : t("chat.approve")}
             </Button>
             <Button
-              variant="outline"
-              className="chat-card-secondary"
-              disabled={busy}
-              onClick={() => onOpen(chat)}
+              variant="secondary"
+              fillStyle="outline"
+              size="XL"
+              UNSAFE_className="chat-card-secondary"
+              isDisabled={busy}
+              onPress={() => onOpen(chat)}
             >
               {t("chat.view")}
             </Button>
           </>
         )}
-        <DropdownMenu.Root open={menuOpen && active && !busy} onOpenChange={setMenuOpen}>
-          <DropdownMenu.Trigger>
-            <Button
-              variant="ghost"
-              className="chat-card-menu"
-              disabled={busy}
-              aria-label={t("chat.moreActions", { name })}
-            >
-              <DotsHorizontalIcon aria-hidden="true" />
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content
-            align="end"
-            onCloseAutoFocus={(event) => {
-              if (!active || busy) event.preventDefault()
-            }}
+        <MenuTrigger align="end" isOpen={menuOpen && active && !busy} onOpenChange={setMenuOpen}>
+          <ActionButton
+            UNSAFE_className="chat-card-menu"
+            size="XL"
+            isQuiet
+            isDisabled={busy || !active}
+            aria-label={t("chat.moreActions", { name })}
           >
-            <DropdownMenu.Item onSelect={() => onOpen(chat)}>
-              {t("chat.viewDetails")}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => void copyId()}>{t("chat.copyId")}</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => onRepair(chat, "access")}>
-              {t("chat.manageAccess")}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              color={approved ? "red" : undefined}
-              onSelect={() => onChange(withChatAccess(policy, chat.id, !approved))}
-            >
-              {approved
-                ? pending
-                  ? t("chat.cancelPendingApproval")
-                  : t("chat.revokeApproval")
-                : pending
-                  ? t("chat.cancelPendingRevocation")
-                  : t("chat.approveAccess")}
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+            <More />
+          </ActionButton>
+          {menuOpen && active && !busy && (
+            <Menu size="XL">
+              <MenuSection>
+                <MenuItem onAction={() => onOpen(chat)}>{t("chat.viewDetails")}</MenuItem>
+                <MenuItem onAction={() => void copyId()}>{t("chat.copyId")}</MenuItem>
+                <MenuItem onAction={() => onRepair(chat, "access")}>
+                  {t("chat.manageAccess")}
+                </MenuItem>
+              </MenuSection>
+              <MenuSection>
+                <MenuItem onAction={() => onChange(withChatAccess(policy, chat.id, !approved))}>
+                  {approved
+                    ? pending
+                      ? t("chat.cancelPendingApproval")
+                      : t("chat.revokeApproval")
+                    : pending
+                      ? t("chat.cancelPendingRevocation")
+                      : t("chat.approveAccess")}
+                </MenuItem>
+              </MenuSection>
+            </Menu>
+          )}
+        </MenuTrigger>
       </div>
       {copyStatus && (
         <p className="chat-card-copy" role="status">
@@ -329,7 +292,6 @@ export function ChatCards({
   const [type, setType] = useState("all")
   const [access, setAccess] = useState("all")
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const searchId = useId()
   const typeId = useId()
   const accessId = useId()
   const filterId = useId()
@@ -363,28 +325,25 @@ export function ChatCards({
               )}
       </p>
       <div className="chat-card-toolbar">
-        <TextField.Root
-          id={searchId}
-          ref={searchRef}
+        <ChatSearchField
+          inputRef={searchRef}
           aria-label={t("chat.search")}
           placeholder={t("chat.search")}
           value={directory.query}
           maxLength={128}
-          onChange={(event) => directory.setQuery(event.target.value)}
-        >
-          <TextField.Slot>
-            <MagnifyingGlassIcon aria-hidden="true" />
-          </TextField.Slot>
-        </TextField.Root>
+          onChange={directory.setQuery}
+        />
         <Button
-          className="chat-card-filter"
+          UNSAFE_className="chat-card-filter"
           aria-label={t("chat.filter")}
-          variant="outline"
+          variant="secondary"
+          fillStyle="outline"
+          size="XL"
           aria-expanded={filtersOpen}
           aria-controls={filterId}
-          onClick={() => setFiltersOpen(!filtersOpen)}
+          onPress={() => setFiltersOpen(!filtersOpen)}
         >
-          <ChatFilterIcon />
+          <Filter />
           {t("chat.filter")}
           {(type !== "all" || access !== "all") && (
             <span className="chat-filter-dot" role="img" aria-label={t("chat.typeFilterApplied")} />
@@ -399,17 +358,18 @@ export function ChatCards({
             ["pending", "chat.pendingApproval"],
           ] as const
         ).map(([value, label]) => (
-          <button
+          <ToggleButton
             key={value}
-            type="button"
-            aria-pressed={scope === value}
-            onClick={() => {
+            size="XL"
+            isEmphasized
+            isSelected={scope === value}
+            onPress={() => {
               setScope(value)
               setAccess("all")
             }}
           >
             {t(label)}
-          </button>
+          </ToggleButton>
         ))}
       </fieldset>
       <section
@@ -419,36 +379,38 @@ export function ChatCards({
         aria-label={t("chat.searchFilterOptions")}
       >
         <label htmlFor={typeId}>{t("chat.chatType")}</label>
-        <SectionSelect.Root value={type} onValueChange={setType}>
-          <SectionSelect.Trigger id={typeId} />
-          <SectionSelect.Content>
-            <SectionSelect.Item value="all">{t("chat.allTypes")}</SectionSelect.Item>
-            <SectionSelect.Item value="private">{t("chat.private")}</SectionSelect.Item>
-            <SectionSelect.Item value="group">{t("chat.groupSupergroup")}</SectionSelect.Item>
-            <SectionSelect.Item value="channel">{t("chat.channel")}</SectionSelect.Item>
-            <SectionSelect.Item value="unknown">{t("chat.unknownType")}</SectionSelect.Item>
-          </SectionSelect.Content>
-        </SectionSelect.Root>
+        <SectionPicker
+          value={type}
+          onValueChange={setType}
+          id={typeId}
+          aria-label={t("chat.chatType")}
+        >
+          <PickerOption id="all">{t("chat.allTypes")}</PickerOption>
+          <PickerOption id="private">{t("chat.private")}</PickerOption>
+          <PickerOption id="group">{t("chat.groupSupergroup")}</PickerOption>
+          <PickerOption id="channel">{t("chat.channel")}</PickerOption>
+          <PickerOption id="unknown">{t("chat.unknownType")}</PickerOption>
+        </SectionPicker>
         <label htmlFor={accessId}>{t("chat.accessFilter")}</label>
-        <SectionSelect.Root
+        <SectionPicker
           value={access}
           onValueChange={(value) => {
             setAccess(value)
             setScope("all")
           }}
+          id={accessId}
+          aria-label={t("chat.accessFilter")}
         >
-          <SectionSelect.Trigger id={accessId} />
-          <SectionSelect.Content>
-            <SectionSelect.Item value="all">{t("chat.allAccess")}</SectionSelect.Item>
-            <SectionSelect.Item value="allowed">{t("chat.approvedEnabled")}</SectionSelect.Item>
-            <SectionSelect.Item value="denied">{t("chat.notApprovedDisabled")}</SectionSelect.Item>
-          </SectionSelect.Content>
-        </SectionSelect.Root>
+          <PickerOption id="all">{t("chat.allAccess")}</PickerOption>
+          <PickerOption id="allowed">{t("chat.approvedEnabled")}</PickerOption>
+          <PickerOption id="denied">{t("chat.notApprovedDisabled")}</PickerOption>
+        </SectionPicker>
         <p>{t("chat.filterHelp")}</p>
         {(directory.query || type !== "all" || scope !== "all" || access !== "all") && (
           <Button
-            variant="soft"
-            onClick={() => {
+            variant="secondary"
+            size="XL"
+            onPress={() => {
               directory.setQuery("")
               setType("all")
               setScope("all")
@@ -463,7 +425,9 @@ export function ChatCards({
       {directory.error ? (
         <div className="chat-card-empty">
           <p role="alert">{directory.error}</p>
-          <Button onClick={directory.refresh}>{t("chat.reload")}</Button>
+          <Button size="XL" onPress={directory.refresh}>
+            {t("chat.reload")}
+          </Button>
         </div>
       ) : !directory.loading && visible.length === 0 ? (
         <p className="chat-card-empty">
@@ -478,9 +442,10 @@ export function ChatCards({
       <footer className="directory-footer chat-card-footer">
         {props.selected && (
           <Button
-            variant="soft"
-            className="chat-card-return"
-            onClick={() => {
+            variant="secondary"
+            size="XL"
+            UNSAFE_className="chat-card-return"
+            onPress={() => {
               const current = directory.knownChats.find(
                 (entry) => String(entry.id) === props.selected,
               ) ?? { id: Number(props.selected), name: "", type: "" }
@@ -493,19 +458,23 @@ export function ChatCards({
         {(directory.offset > 0 || directory.chats.length >= 100) && (
           <nav className="chat-card-pagination" aria-label={t("chat.pagination")}>
             <Button
-              variant="outline"
-              disabled={directory.loading || directory.offset === 0}
-              onClick={() => directory.setOffset(Math.max(0, directory.offset - 100))}
+              variant="secondary"
+              fillStyle="outline"
+              size="XL"
+              isDisabled={directory.loading || directory.offset === 0}
+              onPress={() => directory.setOffset(Math.max(0, directory.offset - 100))}
             >
               {t("chat.previous")}
             </Button>
             <span>{t("chat.page", { page: Math.floor(directory.offset / 100) + 1 })}</span>
             <Button
-              variant="outline"
-              disabled={
+              variant="secondary"
+              fillStyle="outline"
+              size="XL"
+              isDisabled={
                 directory.loading || Boolean(directory.error) || directory.chats.length < 100
               }
-              onClick={() => directory.setOffset(directory.offset + 100)}
+              onPress={() => directory.setOffset(directory.offset + 100)}
             >
               {t("chat.next")}
             </Button>

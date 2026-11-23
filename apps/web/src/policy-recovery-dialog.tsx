@@ -1,9 +1,11 @@
-import { Badge, Button, Dialog, Flex, RadioGroup, Text } from "@radix-ui/themes"
-import { useEffect, useState } from "react"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { useEffect, useId, useRef, useState } from "react"
 import type { Policy, Snapshot } from "./api.js"
 import { t } from "./i18n.js"
 import { type RecoveryChoice, recoverPolicy } from "./policy-recovery.js"
-import { Prose } from "./surfaces.js"
+import { Prose, StatusLabel } from "./surfaces.js"
+import "./spectrum-policy.css"
 
 function valueText(value: unknown) {
   return value === undefined ? t("recovery.noEntry") : JSON.stringify(value, null, 2)
@@ -30,105 +32,118 @@ export function PolicyRecoveryDialog({
   onConfirm(policy: Policy): void
   onReturnFocus(): void
 }) {
-  const [content, setContent] = useState<HTMLDivElement | null>(null)
+  const ref = useRef<HTMLDialogElement>(null)
+  const id = useId()
   useEffect(() => {
-    const dialog = content
-    const padding = dialog?.parentElement
-    if (!dialog || !padding) return
-    const resizeContent = () => {
+    const dialog = ref.current
+    if (!dialog) return
+    dialog.showModal()
+    const resize = () => {
       const root = document.documentElement
       const zoom = root.getBoundingClientRect().width / root.offsetWidth || 1
-      const style = getComputedStyle(padding)
-      const space = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
-      dialog.style.maxHeight = `${Math.max(0, innerHeight / zoom - space)}px`
+      dialog.style.maxHeight = `${Math.max(0, innerHeight / zoom - 24)}px`
     }
-    const observer = new ResizeObserver(resizeContent)
+    const observer = new ResizeObserver(resize)
     observer.observe(document.documentElement)
-    window.addEventListener("resize", resizeContent)
-    resizeContent()
+    window.addEventListener("resize", resize)
+    resize()
     return () => {
+      dialog.close()
       observer.disconnect()
-      window.removeEventListener("resize", resizeContent)
+      window.removeEventListener("resize", resize)
     }
-  }, [content])
+  }, [])
   const [choices, setChoices] = useState<Record<string, RecoveryChoice>>({})
   const recovered = recoverPolicy(base, draft, latest.policy, choices, submitted)
+  const cancel = () => {
+    onCancel()
+    // The preceding save review may no longer have a mounted invoker.
+    requestAnimationFrame(onReturnFocus)
+  }
   return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) onCancel()
+    <dialog
+      ref={ref}
+      className={`policy-recovery-dialog ${style({
+        backgroundColor: "layer-2",
+        color: "body",
+        borderRadius: "xl",
+        boxShadow: "elevated",
+        font: "body-lg",
+      })}`}
+      aria-labelledby={`${id}-title`}
+      aria-describedby={`${id}-description`}
+      onCancel={(event) => {
+        event.preventDefault()
+        cancel()
       }}
     >
-      <Dialog.Content
-        ref={setContent}
-        maxWidth="720px"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault()
-          onReturnFocus()
-        }}
-      >
-        <Dialog.Title>{t("recovery.title")}</Dialog.Title>
-        <Dialog.Description>
-          {t("recovery.description", { revision: latest.revision })}
-        </Dialog.Description>
-        {latest.revision === revision && (
-          <Prose role="status">{t("recovery.failed", { failure })}</Prose>
-        )}
-        <Prose size="2">{t("recovery.help")}</Prose>
-        <ul className="policy-recovery-changes" aria-label={t("recovery.changes")}>
-          {recovered.changes.map((change) => (
-            <li key={change.id}>
-              <Text as="p" size="2" weight="bold">
-                {change.label}
-              </Text>
-              <Badge color={change.state === "conflict" ? "orange" : "gray"}>
-                {change.state === "saved"
-                  ? t("recovery.saved")
-                  : change.state === "draft"
-                    ? t("recovery.draft")
-                    : t("recovery.choose")}
-              </Badge>
-              {change.state === "conflict" && (
-                <RadioGroup.Root
-                  aria-label={change.label}
-                  value={choices[change.id] ?? ""}
-                  onValueChange={(choice) =>
-                    setChoices((previous) => ({
-                      ...previous,
-                      [change.id]: choice as RecoveryChoice,
-                    }))
-                  }
-                >
-                  <RadioGroup.Item value="saved">{t("recovery.keepSaved")}</RadioGroup.Item>
-                  <RadioGroup.Item value="draft">{t("recovery.useDraft")}</RadioGroup.Item>
-                </RadioGroup.Root>
-              )}
-              <details>
-                <summary>{t("recovery.compare", { label: change.label })}</summary>
-                <Text as="p" size="2">
-                  {t("recovery.latest")}
-                </Text>
-                <pre className="policy-recovery-value">{valueText(change.saved)}</pre>
-                <Text as="p" size="2">
-                  {t("recovery.yours")}
-                </Text>
-                <pre className="policy-recovery-value">{valueText(change.draft)}</pre>
-              </details>
-            </li>
-          ))}
-        </ul>
-        {!recovered.changes.length && <Prose>{t("recovery.none")}</Prose>}
-        {recovered.unresolved > 0 && <Prose role="status">{t("recovery.resolve")}</Prose>}
-        <Flex gap="3" justify="end" wrap="wrap" mt="4">
-          <Button variant="soft" onClick={onCancel}>
-            {t("recovery.cancel")}
-          </Button>
-          <Button disabled={recovered.unresolved > 0} onClick={() => onConfirm(recovered.policy)}>
-            {t("recovery.confirm")}
-          </Button>
-        </Flex>
-      </Dialog.Content>
-    </Dialog.Root>
+      <h2 id={`${id}-title`} className={style({ font: "heading-lg", margin: 0 })}>
+        {t("recovery.title")}
+      </h2>
+      <Prose id={`${id}-description`}>
+        {t("recovery.description", { revision: latest.revision })}
+      </Prose>
+      {latest.revision === revision && (
+        <Prose role="status">{t("recovery.failed", { failure })}</Prose>
+      )}
+      <Prose>{t("recovery.help")}</Prose>
+      <ul className="policy-recovery-changes" aria-label={t("recovery.changes")}>
+        {recovered.changes.map((change) => (
+          <li key={change.id}>
+            <p>
+              <strong>{change.label}</strong>
+            </p>
+            <StatusLabel tone={change.state === "conflict" ? "warning" : "neutral"}>
+              {change.state === "saved"
+                ? t("recovery.saved")
+                : change.state === "draft"
+                  ? t("recovery.draft")
+                  : t("recovery.choose")}
+            </StatusLabel>
+            {change.state === "conflict" && (
+              <div role="radiogroup" aria-label={change.label} className="policy-recovery-choices">
+                {(["saved", "draft"] as const).map((choice) => (
+                  <label key={choice}>
+                    <input
+                      className="policy-check"
+                      type="radio"
+                      name={`${id}-${change.id}`}
+                      checked={choices[change.id] === choice}
+                      onChange={() =>
+                        setChoices((previous) => ({ ...previous, [change.id]: choice }))
+                      }
+                    />
+                    <span>
+                      {t(choice === "saved" ? "recovery.keepSaved" : "recovery.useDraft")}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <details>
+              <summary>{t("recovery.compare", { label: change.label })}</summary>
+              <Prose>{t("recovery.latest")}</Prose>
+              <pre className="policy-recovery-value">{valueText(change.saved)}</pre>
+              <Prose>{t("recovery.yours")}</Prose>
+              <pre className="policy-recovery-value">{valueText(change.draft)}</pre>
+            </details>
+          </li>
+        ))}
+      </ul>
+      {!recovered.changes.length && <Prose>{t("recovery.none")}</Prose>}
+      {recovered.unresolved > 0 && <Prose role="status">{t("recovery.resolve")}</Prose>}
+      <div className="policy-recovery-actions">
+        <Button variant="secondary" autoFocus onPress={cancel}>
+          {t("recovery.cancel")}
+        </Button>
+        <Button
+          variant="accent"
+          isDisabled={recovered.unresolved > 0}
+          onPress={() => onConfirm(recovered.policy)}
+        >
+          {t("recovery.confirm")}
+        </Button>
+      </div>
+    </dialog>
   )
 }

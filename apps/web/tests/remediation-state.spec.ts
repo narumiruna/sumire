@@ -2,6 +2,16 @@ import { expect, type Page, test } from "@playwright/test"
 import { navigate, openDisclosure, reviewPolicyRecovery } from "./admin-fixture.js"
 import { remediationFixture as fixture } from "./remediation-fixture.js"
 
+async function removeDefaultSkill(page: Page) {
+  const selection = page.getByRole("checkbox", {
+    name: "Default chat selection for skill url-guide",
+    exact: true,
+  })
+  await expect(selection).toBeChecked()
+  await selection.press("Space")
+  await expect(selection).not.toBeChecked()
+}
+
 const unfinished = [
   {
     section: "Access",
@@ -105,9 +115,7 @@ for (const width of [1440, 390]) {
       await page.locator(".chat-list .directory-chat").first().click()
       await navigate(page, "Skills")
       await page.getByRole("textbox", { name: "Search skills", exact: true }).fill("url")
-      await page
-        .getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true })
-        .uncheck()
+      await removeDefaultSkill(page)
       await navigate(page, editor.section)
       if (editor.section === "Model Providers") {
         await page.getByRole("button", { name: "Manage provider fixture", exact: true }).click()
@@ -202,9 +210,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
     const state = await fixture(page)
     await navigate(page, "Skills")
-    await page
-      .getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true })
-      .uncheck()
+    await removeDefaultSkill(page)
     await navigate(page, "Chats")
     await page.locator(".chat-list .directory-chat").first().click()
     await page.getByRole("button", { name: "Change model", exact: true }).click()
@@ -380,9 +386,7 @@ for (const value of ["historical.operation", "constructor"]) {
   }) => {
     const state = await fixture(page)
     await navigate(page, "Skills")
-    await page
-      .getByRole("checkbox", { name: "Default chat selection for skill url-guide", exact: true })
-      .uncheck()
+    await removeDefaultSkill(page)
     await navigate(page, "Audit")
     await openDisclosure(page, "Filters")
     for (const field of ["operation", "outcome"]) {

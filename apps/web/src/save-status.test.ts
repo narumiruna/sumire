@@ -38,6 +38,12 @@ function render(props: Partial<Props> = {}, snapshot: Partial<Snapshot> = {}) {
   )
 }
 
+function buttonsNamed(html: string, label: string) {
+  return Array.from(html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g))
+    .filter(([, , content]) => content?.replace(/<[^>]+>/g, "").trim() === label)
+    .map(([, attributes]) => ({ disabled: /(?:^|\s)disabled=""/.test(attributes ?? "") }))
+}
+
 describe("SaveStatus", () => {
   it("keeps a clean applied state compact", () => {
     const html = render()
@@ -114,8 +120,8 @@ describe("SaveStatus", () => {
           ? "Saved, but application failed. Retry application."
           : "Saved changes are waiting to apply.",
       )
-      expect(html).toMatch(/<button(?![^>]*disabled=)[^>]*>Retry application<\/button>/)
-      expect(html).not.toContain("Review and save changes</button>")
+      expect(buttonsNamed(html, "Retry application")).toEqual([{ disabled: false }])
+      expect(buttonsNamed(html, "Review and save changes")).toEqual([])
     },
   )
   it("shows only affected scopes and identifies the unfinished input", () => {
@@ -142,12 +148,12 @@ describe("SaveStatus", () => {
       providerPending: true,
     })
     expect(html).toContain("1 unsaved change")
-    expect(html.split("Review and save changes")).toHaveLength(2)
+    expect(buttonsNamed(html, "Review and save changes")).toHaveLength(1)
     expect(html).not.toContain("Review pending policy changes")
     expect(html).not.toContain("Policy: 1 change")
     expect(html).toContain("MCP: Unsaved configuration")
     expect(html).toContain("Provider: Unsaved selection or authentication")
-    expect(html).toContain("Discard settings changes</button>")
+    expect(buttonsNamed(html, "Discard settings changes")).toHaveLength(1)
   })
   it("names the policy transaction separately from runtime-value drafts", () => {
     const html = render({
@@ -167,12 +173,12 @@ describe("SaveStatus", () => {
     expect(html).not.toContain("Settings saved and applied.")
   })
   it("retains pending-input guards on review and application retry", () => {
-    expect(render({ dirty: true, localPending: true })).toMatch(
-      /<button(?=[^>]*disabled=)[^>]*>Review and save changes<\/button>/,
-    )
-    expect(render({ localPending: true }, { status: "failed" })).toMatch(
-      /<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/,
-    )
+    expect(
+      buttonsNamed(render({ dirty: true, localPending: true }), "Review and save changes"),
+    ).toEqual([{ disabled: true }])
+    expect(
+      buttonsNamed(render({ localPending: true }, { status: "failed" }), "Retry application"),
+    ).toEqual([{ disabled: true }])
   })
   it("does not imply that an unknown save outcome was discarded or applied", () => {
     const html = render({ recover: () => {}, dirty: false }, { status: "failed" })
@@ -181,10 +187,10 @@ describe("SaveStatus", () => {
     expect(html).toContain("Save attempt needs review. Last confirmed revision shown.")
     expect(html).toContain("Load latest and review draft")
     expect(html).not.toContain("Settings saved and applied.")
-    expect(html).toMatch(/<button(?=[^>]*disabled=)[^>]*>Retry application<\/button>/)
-    expect(render({ recover: () => {}, dirty: true })).toMatch(
-      /<button(?=[^>]*disabled=)[^>]*>Review and save changes<\/button>/,
-    )
+    expect(buttonsNamed(html, "Retry application")).toEqual([{ disabled: true }])
+    expect(
+      buttonsNamed(render({ recover: () => {}, dirty: true }), "Review and save changes"),
+    ).toEqual([{ disabled: true }])
   })
 
   it("blocks review and application actions while busy", () => {
@@ -194,7 +200,7 @@ describe("SaveStatus", () => {
       "Retry application",
       "Discard settings changes",
     ]) {
-      expect(html).toMatch(new RegExp(`<button(?=[^>]*disabled=)[^>]*>${label}</button>`))
+      expect(buttonsNamed(html, label)).toEqual([{ disabled: true }])
     }
   })
 })

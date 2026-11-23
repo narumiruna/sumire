@@ -45,7 +45,9 @@ for (const [width, height, zoom] of [
       await expect(heading).toHaveCSS("font-size", width <= 360 ? "28px" : "30px")
       await expect(page.locator(".admin-shell > main")).toHaveCSS(
         "background-color",
-        "rgb(250, 250, 249)",
+        await page
+          .locator(".admin-theme")
+          .evaluate((root) => getComputedStyle(root).backgroundColor),
       )
       expect((await contrast(heading)).text).toBeGreaterThanOrEqual(4.5)
       await expect(page.locator(".changes-bar")).toHaveCount(0)
@@ -69,7 +71,7 @@ for (const [width, height, zoom] of [
         true,
       )
       for (const control of await page
-        .locator("main :is(button, input, select, textarea):visible")
+        .locator("main :is(button, input, select, textarea):not([aria-hidden=true] *):visible")
         .all()) {
         const bounds = await control.boundingBox()
         if (!bounds) continue

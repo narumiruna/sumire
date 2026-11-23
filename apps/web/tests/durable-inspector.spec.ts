@@ -281,7 +281,7 @@ test("all four views, approved fields and JSON, scopes, named relationships, and
   await click(
     inspector.getByRole("combobox", { includeHidden: true, name: "Document scope", exact: true }),
   )
-  await click(page.getByRole("option", { includeHidden: true, name: "Conversation", exact: true }))
+  await click(page.getByRole("option", { name: "Conversation", exact: true }))
   await click(
     inspector.getByRole("button", {
       includeHidden: true,
@@ -1496,9 +1496,7 @@ for (const width of [1440, 390, 320])
     await click(
       inspector.getByRole("combobox", { includeHidden: true, name: "Document scope", exact: true }),
     )
-    await click(
-      page.getByRole("option", { includeHidden: true, name: "Conversation", exact: true }),
-    )
+    await click(page.getByRole("option", { name: "Conversation", exact: true }))
     const inspect = inspector.getByRole("link", {
       includeHidden: true,
       name: "Inspect document 101",

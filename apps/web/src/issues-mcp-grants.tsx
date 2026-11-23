@@ -1,5 +1,8 @@
-import { Button, Callout, Flex, Heading, Text } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { useEffect, useId, useRef, useState } from "react"
+import "./spectrum-issue-controls.css"
 import { ApiError, request } from "./api.js"
 import { getLocale, t } from "./i18n.js"
 import type { IssuesMcpScope } from "./issues-mcp-oauth.js"
@@ -13,6 +16,23 @@ type Grant = {
 }
 type GrantList = { endpoint: string | null; grants: Grant[] }
 const path = "issues-mcp/grants"
+const dialogStyles = style({
+  font: "body",
+  "--issue-dialog-surface": { type: "backgroundColor", value: "layer-2" },
+  "--issue-dialog-border": { type: "borderColor", value: "gray-300" },
+  "--issue-dialog-text": { type: "color", value: "body" },
+  "--issue-dialog-backdrop": { type: "backgroundColor", value: "transparent-black-500" },
+})
+const titleStyles = style({ font: "heading-sm", color: "title", margin: 0 })
+const grantTitleStyles = style({ font: "heading-xs", color: "title", margin: 0 })
+const actions = style({ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 })
+const headingRow = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 12,
+})
 
 export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onExpired(): void }) {
   const manager = useRef<HTMLDialogElement>(null)
@@ -65,9 +85,10 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
     <>
       <Button
         type="button"
-        variant="soft"
+        variant="secondary"
+        fillStyle="outline"
         aria-haspopup="dialog"
-        onClick={() => {
+        onPress={() => {
           if (!manager.current || active.current) return
           manager.current.showModal()
           active.current = new AbortController()
@@ -78,7 +99,7 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
       </Button>
       <dialog
         ref={manager}
-        className="issues-mcp-dialog"
+        className={`issues-mcp-dialog ${dialogStyles}`}
         aria-labelledby={titleId}
         closedby="closerequest"
         data-feedback-private
@@ -91,32 +112,36 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
           setOutcome(undefined)
         }}
       >
-        <Flex align="center" justify="between" gap="3" wrap="wrap">
-          <Heading as="h2" size="4" id={titleId}>
+        <div className={headingRow}>
+          <h2 className={titleStyles} id={titleId}>
             {t("issuesMcp.title")}
-          </Heading>
+          </h2>
           <form method="dialog">
-            <Button variant="soft" type="submit">
+            <Button variant="secondary" fillStyle="outline" type="submit" size="XL">
               {t("issuesMcp.close")}
             </Button>
           </form>
-        </Flex>
-        {busy && <Text role="status">{t(list ? "issuesMcp.saving" : "issuesMcp.loading")}</Text>}
+        </div>
+        {busy && <div role="status">{t(list ? "issuesMcp.saving" : "issuesMcp.loading")}</div>}
         {outcome && (
           <div tabIndex={-1} ref={result}>
             {outcome === "revoked" ? (
-              <Text as="p" role="status">
-                {t("issuesMcp.revoked")}
-              </Text>
+              <p role="status">{t("issuesMcp.revoked")}</p>
             ) : (
-              <Callout.Root color="red" role="alert">
-                <Callout.Text>{t(`issuesMcp.${outcome}`)}</Callout.Text>
-              </Callout.Root>
+              <InlineAlert variant="negative">
+                <Content>{t(`issuesMcp.${outcome}`)}</Content>
+              </InlineAlert>
             )}
           </div>
         )}
         {outcome && outcome !== "revoked" && (
-          <Button type="button" variant="soft" onClick={() => void update()}>
+          <Button
+            type="button"
+            variant="secondary"
+            fillStyle="outline"
+            size="XL"
+            onPress={() => void update()}
+          >
             {t("issuesMcp.reload")}
           </Button>
         )}
@@ -124,13 +149,13 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
           <>
             {list.endpoint ? (
               <div>
-                <Text as="p">{t("issuesMcp.clientHelp")}</Text>
+                <p>{t("issuesMcp.clientHelp")}</p>
                 <code className="issues-mcp-value" dir="ltr">
                   {list.endpoint}
                 </code>
               </div>
             ) : (
-              <Text as="p">{t("issuesMcp.noEndpoint")}</Text>
+              <p>{t("issuesMcp.noEndpoint")}</p>
             )}
             {list.grants.length ? (
               <ul className="issues-mcp-grant-list">
@@ -144,14 +169,14 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
                 ))}
               </ul>
             ) : (
-              <Text as="p">{t("issuesMcp.empty")}</Text>
+              <p>{t("issuesMcp.empty")}</p>
             )}
           </>
         )}
       </dialog>
       <dialog
         ref={confirmation}
-        className="issues-mcp-dialog"
+        className={`issues-mcp-dialog ${dialogStyles}`}
         aria-labelledby={confirmTitleId}
         aria-describedby={confirmDescriptionId}
         closedby="closerequest"
@@ -166,34 +191,36 @@ export default function IssuesMcpGrants({ csrf, onExpired }: { csrf: string; onE
       >
         {pending && (
           <>
-            <Heading as="h2" size="4" id={confirmTitleId}>
+            <h2 className={titleStyles} id={confirmTitleId}>
               {t("issuesMcp.revokeTitle")}
-            </Heading>
+            </h2>
             <div id={confirmDescriptionId}>
-              <Text as="p">
+              <p>
                 <bdi>{pending.clientName}</bdi>
-              </Text>
+              </p>
               <code className="issues-mcp-value" dir="ltr">
                 {pending.redirectUri}
               </code>
-              <Text as="p">{t("issuesMcp.revokeHelp")}</Text>
+              <p>{t("issuesMcp.revokeHelp")}</p>
             </div>
-            <form method="dialog">
-              <Flex gap="2" wrap="wrap">
-                <Button
-                  ref={(button) => {
-                    if (button) button.autofocus = true
-                  }}
-                  type="submit"
-                  value="cancel"
-                  variant="soft"
-                >
-                  {t("issuesMcp.cancel")}
-                </Button>
-                <Button type="submit" value="confirm" color="red">
-                  {t("issuesMcp.revoke")}
-                </Button>
-              </Flex>
+            <form method="dialog" className={actions}>
+              <Button
+                ref={(button) => {
+                  // Set native autofocus for showModal(), not mount-time focus in a closed dialog.
+                  const element = button?.UNSAFE_getDOMNode()
+                  if (element) element.autofocus = true
+                }}
+                type="submit"
+                value="cancel"
+                variant="secondary"
+                fillStyle="outline"
+                size="XL"
+              >
+                {t("issuesMcp.cancel")}
+              </Button>
+              <Button type="submit" value="confirm" variant="negative" size="XL">
+                {t("issuesMcp.revoke")}
+              </Button>
             </form>
           </>
         )}
@@ -207,9 +234,9 @@ function GrantRow({ grant, busy, onRevoke }: { grant: Grant; busy: boolean; onRe
   const expiresAt = new Date(grant.expiresAt)
   return (
     <li className="issues-mcp-grant">
-      <Heading as="h3" size="3" id={nameId}>
+      <h3 className={grantTitleStyles} id={nameId}>
         <bdi>{grant.clientName}</bdi>
-      </Heading>
+      </h3>
       <dl className="issues-mcp-details">
         <div>
           <dt>{t("issuesMcp.callback")}</dt>
@@ -235,11 +262,12 @@ function GrantRow({ grant, busy, onRevoke }: { grant: Grant; busy: boolean; onRe
       </dl>
       <Button
         type="button"
-        variant="soft"
-        color="red"
+        variant="negative"
+        fillStyle="outline"
+        size="XL"
         aria-describedby={nameId}
-        disabled={busy}
-        onClick={onRevoke}
+        isDisabled={busy}
+        onPress={onRevoke}
       >
         {t("issuesMcp.revoke")}
       </Button>

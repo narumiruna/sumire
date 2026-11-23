@@ -1,0 +1,134 @@
+.provider-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.provider-controls--end {
+  justify-content: flex-end;
+}
+.provider-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.provider-model-facts,
+.provider-task-fields {
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+}
+.provider-task-fields {
+  justify-items: start;
+}
+.provider-model-facts code,
+.provider-spectrum code {
+  overflow-wrap: anywhere;
+}
+.provider-model-badges {
+  margin-block: 12px;
+}
+.provider-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-inline-size: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.provider-notice {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--provider-radius);
+  background: var(--provider-notice-bg);
+}
+.provider-notice[data-tone="warning"] {
+  background: var(--provider-warning-bg);
+}
+.provider-notice p {
+  margin: 0;
+}
+.provider-notice svg {
+  flex: none;
+}
+.provider-spectrum .provider-readiness {
+  background: var(--provider-notice-bg);
+  border-inline-start: 2px solid var(--provider-divider);
+  border-radius: var(--provider-radius);
+}
+.provider-spectrum .provider-readiness[data-attention="true"] {
+  background: var(--provider-warning-bg);
+  border-inline-start-color: var(--provider-warning-line);
+}
+.provider-spectrum :is(.provider-checks, .provider-advanced) {
+  border-color: var(--provider-divider);
+}
+.provider-credential-facts {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin-block: 12px;
+}
+.provider-credential-facts dd {
+  margin-inline-start: 0;
+}
+.provider-credential-facts p {
+  margin: 0;
+}
+.provider-dialog-underlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  padding: 16px;
+  pointer-events: auto;
+}
+/* SectionPicker portals to the document, outside the dialog's stacking context. */
+body:has(.provider-dialog-underlay) .section-picker-popup {
+  z-index: 31;
+}
+.provider-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  inline-size: min(100%, 480px);
+  max-block-size: 100%;
+  padding: 24px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  outline: 1px solid transparent;
+}
+.provider-dialog p {
+  margin: 0;
+}
+.provider-dialog .form-field {
+  margin: 0;
+}
+.provider-dialog button {
+  max-inline-size: 100%;
+}
+@media (max-width: 650px) {
+  .provider-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .provider-dialog-underlay {
+    padding: 8px;
+  }
+  .provider-dialog {
+    padding: 16px;
+  }
+}
+@media (max-width: 430px) {
+  .provider-spectrum .provider-directory-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+}

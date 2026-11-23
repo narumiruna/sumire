@@ -4,24 +4,35 @@ import type {
   RuntimeConfigMutation,
   RuntimeConfigResponse,
 } from "@narumitw/sumire-contracts"
-import {
-  AlertDialog,
-  Badge,
-  Button,
-  Callout,
-  Flex,
-  Heading,
-  Tabs,
-  Text,
-  TextArea,
-  TextField,
-} from "@radix-ui/themes"
-import { useEffect, useRef, useState } from "react"
+import { AlertDialog, DialogTrigger } from "@react-spectrum/s2/AlertDialog"
+import { Button } from "@react-spectrum/s2/Button"
+import { SearchField } from "@react-spectrum/s2/SearchField"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { Tab, TabList, TabPanel, Tabs } from "@react-spectrum/s2/Tabs"
+import { TextArea } from "@react-spectrum/s2/TextArea"
+import { TextField } from "@react-spectrum/s2/TextField"
+import { useEffect, useId, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { GitHubConnection } from "./github-connection.js"
 import { getLocale, type MessageKey, t } from "./i18n.js"
 import { parseRuntimeConfig, runtimeValueErrorKey } from "./runtime-config-state.js"
-import { Panel, Prose } from "./surfaces.js"
+import { Panel, Prose, StatusLabel } from "./surfaces.js"
+import "./spectrum-runtime.css"
+
+const storeNotice = style({
+  backgroundColor: "notice-subtle",
+  color: "notice-1000",
+  borderRadius: "default",
+  padding: 12,
+})
+const errorNotice = style({
+  backgroundColor: "negative-subtle",
+  color: "negative-1000",
+  borderRadius: "default",
+  padding: 12,
+})
+const field = style({ width: "full" })
+const heading = style({ font: "heading-xs", color: "title", margin: 0 })
 
 type Draft = { name: string; kind: "secret" | "variable"; value: string; existing: boolean }
 type Props = {
@@ -68,6 +79,7 @@ export function RuntimeConfig({
   const [recovery, setRecovery] = useState(false)
   const [notice, setNotice] = useState<MessageKey | "">("")
   const generation = useRef(0)
+  const deleteDescription = useId()
   const alert = useRef<HTMLDivElement>(null)
   const focusTarget = useRef<"runtime-name" | "runtime-value" | "runtime-add">(undefined)
   const clear = () => {
@@ -192,60 +204,59 @@ export function RuntimeConfig({
   }
   return (
     <div className="settings-stack runtime-config" aria-busy={busy}>
-      <Tabs.Root
-        value={kind}
-        onValueChange={(value) => {
-          if (!canLeave()) return
+      <Tabs
+        aria-label={t("runtime.valueKinds")}
+        selectedKey={kind}
+        keyboardActivation="manual"
+        onSelectionChange={(value) => {
+          if ((value !== "secret" && value !== "variable") || !canLeave()) return
           setDeleting(undefined)
-          setKind(value as "secret" | "variable")
+          setKind(value)
           setSearch("")
         }}
       >
-        <Tabs.List aria-label={t("runtime.valueKinds")}>
-          <Tabs.Trigger value="secret">{t("runtime.secrets")}</Tabs.Trigger>
-          <Tabs.Trigger value="variable">{t("runtime.variables")}</Tabs.Trigger>
-        </Tabs.List>
-        <Tabs.Content value={kind} className="settings-stack">
+        <TabList>
+          <Tab id="secret">{t("runtime.secrets")}</Tab>
+          <Tab id="variable">{t("runtime.variables")}</Tab>
+        </TabList>
+        <TabPanel key={kind} id={kind} UNSAFE_className="runtime-values-panel">
           <Prose>{kind === "secret" ? t("runtime.secretHelp") : t("runtime.variableHelp")}</Prose>
           {data?.secretStatus !== "ready" && data && (
-            <Callout.Root color="orange" role="status">
-              <Callout.Text>
-                {data.secretStatus === "locked"
-                  ? t("runtime.storeLocked")
-                  : t("runtime.storeUnavailable")}{" "}
-                {t("runtime.variablesAvailable")}
-              </Callout.Text>
-            </Callout.Root>
+            <p className={`runtime-notice ${storeNotice}`} role="status">
+              {data.secretStatus === "locked"
+                ? t("runtime.storeLocked")
+                : t("runtime.storeUnavailable")}{" "}
+              {t("runtime.variablesAvailable")}
+            </p>
           )}
           {blocked && <Prose>{t("runtime.blocked")}</Prose>}
           {stale && <Prose>{t("runtime.stale")}</Prose>}
           {error && (
-            <Callout.Root ref={alert} tabIndex={-1} role="alert" color="red">
-              <Callout.Text>{t(error)}</Callout.Text>
-            </Callout.Root>
+            <div className={`runtime-notice ${errorNotice}`} ref={alert} tabIndex={-1} role="alert">
+              {t(error)}
+            </div>
           )}
-          {notice && <Text role="status">{t(notice)}</Text>}
-          <label htmlFor="runtime-search">
-            {t("runtime.search")}
-            <TextField.Root
-              id="runtime-search"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <Flex gap="3" wrap="wrap">
+          {notice && <Prose role="status">{t(notice)}</Prose>}
+          <SearchField
+            id="runtime-search"
+            label={t("runtime.search")}
+            value={search}
+            onChange={setSearch}
+            styles={field}
+          />
+          <div className="runtime-actions">
             <Button
               id="runtime-add"
-              disabled={!data || disabled || unavailable || Boolean(draft)}
-              onClick={() => start()}
+              variant="accent"
+              isDisabled={!data || disabled || unavailable || Boolean(draft)}
+              onPress={() => start()}
             >
               {t(kind === "secret" ? "runtime.addSecret" : "runtime.addVariable")}
             </Button>
             <Button
-              variant="soft"
-              disabled={busy || blocked}
-              onClick={() => {
+              variant="secondary"
+              isDisabled={busy || blocked}
+              onPress={() => {
                 if (draft && !window.confirm(t("runtime.reloadConfirm"))) return
                 if (githubGuard.current && !githubGuard.current()) return
                 clear()
@@ -264,7 +275,7 @@ export function RuntimeConfig({
             >
               {t("runtime.reload")}
             </Button>
-          </Flex>
+          </div>
           {draft && (
             <form
               onSubmit={(event) => {
@@ -287,62 +298,63 @@ export function RuntimeConfig({
               }}
             >
               <Panel>
-                <Heading size="3">
+                <h2 className={heading}>
                   {draft.existing
                     ? kind === "secret"
                       ? t("runtime.replaceSecret")
                       : t("runtime.editVariable")
                     : t(kind === "secret" ? "runtime.addSecret" : "runtime.addVariable")}
-                </Heading>
+                </h2>
                 {draft.name === "GH_TOKEN" && (
                   <Prose size="2">{t("runtime.manualTokenHelp")}</Prose>
                 )}
-                <label htmlFor="runtime-name">
-                  {t("settings.name")}
-                  <TextField.Root
-                    id="runtime-name"
-                    value={draft.name}
-                    disabled={draft.existing || busy}
-                    autoComplete="off"
-                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                <TextField
+                  id="runtime-name"
+                  label={t("settings.name")}
+                  value={draft.name}
+                  isDisabled={draft.existing || busy}
+                  autoComplete="off"
+                  onChange={(name) => setDraft({ ...draft, name })}
+                  styles={field}
+                />
+                {kind === "secret" ? (
+                  <TextField
+                    id="runtime-value"
+                    label={t("runtime.secretValue")}
+                    type="password"
+                    autoComplete="new-password"
+                    value={draft.value}
+                    isDisabled={busy}
+                    onChange={(value) => setDraft({ ...draft, value })}
+                    styles={field}
                   />
-                </label>
-                <label htmlFor="runtime-value">
-                  {kind === "secret" ? t("runtime.secretValue") : t("runtime.variableValue")}
-                  {kind === "secret" ? (
-                    <TextField.Root
-                      id="runtime-value"
-                      type="password"
-                      autoComplete="new-password"
-                      value={draft.value}
-                      disabled={busy}
-                      onChange={(event) => setDraft({ ...draft, value: event.target.value })}
-                    />
-                  ) : (
-                    <TextArea
-                      id="runtime-value"
-                      value={draft.value}
-                      disabled={busy}
-                      onChange={(event) => setDraft({ ...draft, value: event.target.value })}
-                    />
-                  )}
-                </label>
+                ) : (
+                  <TextArea
+                    id="runtime-value"
+                    label={t("runtime.variableValue")}
+                    value={draft.value}
+                    isDisabled={busy}
+                    onChange={(value) => setDraft({ ...draft, value })}
+                    styles={field}
+                  />
+                )}
                 <Prose size="2">
                   {t("runtime.saveHelp")}
                   {draft.existing && kind === "secret" && t("runtime.previousNotLoaded")}
                 </Prose>
-                <Flex gap="3" wrap="wrap" mt="3">
+                <div className="runtime-actions runtime-actions--spaced">
                   <Button
                     type="submit"
-                    disabled={disabled || unavailable || (kind === "secret" && !draft.value)}
+                    variant="accent"
+                    isDisabled={disabled || unavailable || (kind === "secret" && !draft.value)}
                   >
                     {t(kind === "secret" ? "runtime.saveSecret" : "runtime.saveVariable")}
                   </Button>
                   <Button
                     type="button"
-                    variant="soft"
-                    disabled={busy}
-                    onClick={() => {
+                    variant="secondary"
+                    isDisabled={busy}
+                    onPress={() => {
                       focusTarget.current = "runtime-add"
                       clear()
                       if (!recovery) setError("")
@@ -350,7 +362,7 @@ export function RuntimeConfig({
                   >
                     {draft.existing ? t("runtime.keepUnchanged") : t("settings.cancel")}
                   </Button>
-                </Flex>
+                </div>
               </Panel>
             </form>
           )}
@@ -363,11 +375,11 @@ export function RuntimeConfig({
                 <strong>{t("settings.actions")}</strong>
               </div>
               {!visible?.length && (
-                <Text role="status">
+                <Prose role="status">
                   {entries?.length
                     ? t("runtime.noMatches")
                     : t(kind === "secret" ? "runtime.noSecrets" : "runtime.noVariables")}
-                </Text>
+                </Prose>
               )}
               {visible?.map((entry) => (
                 <Panel
@@ -377,57 +389,82 @@ export function RuntimeConfig({
                   })}
                   className="runtime-values-row"
                 >
-                  <Heading as="h2" size="3" className="runtime-entry-name">
-                    {entry.name}
-                  </Heading>
+                  <h2 className={`runtime-entry-name ${heading}`}>{entry.name}</h2>
                   {entry.kind === "secret" ? (
-                    <Badge>{t("runtime.writeOnly")}</Badge>
+                    <StatusLabel>{t("runtime.writeOnly")}</StatusLabel>
                   ) : (
                     <div>
-                      <Badge>{t("runtime.configured")}</Badge>
+                      <StatusLabel>{t("runtime.configured")}</StatusLabel>
                       <pre className="runtime-variable-value">{entry.value}</pre>
                     </div>
                   )}
-                  <Text as="p" size="2">
+                  <Prose size="2">
                     {t("runtime.updatedAt", {
                       date: new Date(entry.updatedAt).toLocaleString(getLocale()),
                     })}
-                  </Text>
-                  <Flex gap="3" wrap="wrap">
+                  </Prose>
+                  <div className="runtime-actions">
                     <Button
-                      variant="soft"
-                      disabled={disabled || unavailable || Boolean(draft)}
-                      onClick={() => start(entry)}
+                      variant="secondary"
+                      isDisabled={disabled || unavailable || Boolean(draft)}
+                      onPress={() => start(entry)}
                     >
                       {t(kind === "secret" ? "runtime.replaceName" : "settings.editName", {
                         name: entry.name,
                       })}
                     </Button>
-                    <Button
-                      variant="soft"
-                      color="red"
-                      disabled={disabled || unavailable || Boolean(draft)}
-                      onClick={() => setDeleting(entry)}
+                    <DialogTrigger
+                      isOpen={deleting?.name === entry.name}
+                      onOpenChange={(open) => {
+                        if (!open) focusTarget.current = "runtime-add"
+                        setDeleting(open ? entry : undefined)
+                      }}
                     >
-                      {t("settings.deleteName", { name: entry.name })}
-                    </Button>
-                  </Flex>
+                      <Button
+                        variant="negative"
+                        fillStyle="outline"
+                        isDisabled={disabled || unavailable || Boolean(draft)}
+                      >
+                        {t("settings.deleteName", { name: entry.name })}
+                      </Button>
+                      <AlertDialog
+                        variant="destructive"
+                        title={t("settings.deleteConfirm", { name: entry.name })}
+                        aria-describedby={`${deleteDescription}-${entry.name}`}
+                        cancelLabel={t("settings.cancel")}
+                        primaryActionLabel={t("runtime.deleteApply")}
+                        autoFocusButton="cancel"
+                        isPrimaryActionDisabled={disabled}
+                        onPrimaryAction={() => void mutate(entry.name)}
+                      >
+                        <p id={`${deleteDescription}-${entry.name}`}>
+                          {t(
+                            entry.kind === "secret"
+                              ? "runtime.deleteSecretHelp"
+                              : "runtime.deleteVariableHelp",
+                          )}{" "}
+                          {entry.name === "GH_TOKEN" && t("runtime.deleteTokenHelp")}
+                          {t("runtime.deleteHelp")}
+                        </p>
+                      </AlertDialog>
+                    </DialogTrigger>
+                  </div>
                 </Panel>
               ))}
             </>
           ) : (
-            <Text role="status">
+            <Prose role="status">
               {busy ? t("runtime.loading") : t("runtime.metadataUnavailable")}
-            </Text>
+            </Prose>
           )}
           {kind === "secret" && (
             <section aria-label={t("github.credentialOptions")} className="settings-stack">
-              <Flex gap="3" wrap="wrap">
+              <div className="runtime-actions">
                 <Button
                   id="github-connection-entry"
-                  variant="soft"
-                  disabled={busy || blocked || recovery || Boolean(draft)}
-                  onClick={() => {
+                  variant="secondary"
+                  isDisabled={busy || blocked || recovery || Boolean(draft)}
+                  onPress={() => {
                     if (connectionOpen) {
                       if (githubGuard.current && !githubGuard.current()) return
                       setConnectionOpen(false)
@@ -437,7 +474,7 @@ export function RuntimeConfig({
                 >
                   {connectionOpen ? t("github.closeConnection") : t("github.manageConnection")}
                 </Button>
-              </Flex>
+              </div>
               <Prose size="2">{t("runtime.tokenHelp")}</Prose>
               <Prose size="2">{t("runtime.mentionHelp")}</Prose>
               {connectionOpen && (
@@ -457,50 +494,8 @@ export function RuntimeConfig({
               )}
             </section>
           )}
-          <AlertDialog.Root
-            open={Boolean(deleting)}
-            onOpenChange={(open) => {
-              if (!open) setDeleting(undefined)
-            }}
-          >
-            <AlertDialog.Content
-              onCloseAutoFocus={(event) => {
-                event.preventDefault()
-                document.getElementById("runtime-add")?.focus()
-              }}
-            >
-              <AlertDialog.Title>
-                {t("settings.deleteConfirm", { name: deleting?.name ?? "" })}
-              </AlertDialog.Title>
-              <AlertDialog.Description>
-                {t(
-                  deleting?.kind === "secret"
-                    ? "runtime.deleteSecretHelp"
-                    : "runtime.deleteVariableHelp",
-                )}{" "}
-                {deleting?.name === "GH_TOKEN" && t("runtime.deleteTokenHelp")}
-                {t("runtime.deleteHelp")}
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4">
-                <AlertDialog.Cancel>
-                  <Button variant="soft">{t("settings.cancel")}</Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button
-                    color="red"
-                    disabled={disabled}
-                    onClick={() => {
-                      if (deleting) void mutate(deleting.name)
-                    }}
-                  >
-                    {t("runtime.deleteApply")}
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Tabs.Content>
-      </Tabs.Root>
+        </TabPanel>
+      </Tabs>
     </div>
   )
 }

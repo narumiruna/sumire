@@ -1,30 +1,16 @@
-import {
-  ChevronDownIcon,
-  CubeIcon,
-  InfoCircledIcon,
-  MagnifyingGlassIcon,
-} from "@radix-ui/react-icons"
-import {
-  AlertDialog,
-  Badge,
-  Button,
-  Callout,
-  Code,
-  DataList,
-  Dialog,
-  Flex,
-  Heading,
-  Popover,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import Asset3D from "@react-spectrum/s2/icons/3DAsset"
+import InfoCircle from "@react-spectrum/s2/icons/InfoCircle"
+import { LinkButton } from "@react-spectrum/s2/LinkButton"
+import { iconStyle, style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
 import {
   type ReactNode,
   useContext,
   useEffect,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -39,144 +25,32 @@ import {
   savedProviderSelection,
   withProviderModel,
 } from "./provider-policy.js"
-import { SectionActive, SectionSelect as Select } from "./sections.js"
+import { focusProviderControl, ProviderConfirmation, ProviderDialog } from "./provider-spectrum.js"
+import { SearchChoice } from "./search-choice.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
+import { SectionActive } from "./sections.js"
 import { Panel, Prose, SettingsSection, StatusLabel } from "./surfaces.js"
 
-type Option = { id: string; label: string; detail?: string }
-export function SearchChoice({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: Option[]
-  disabled?: boolean
-  onChange(value: string): void
-}) {
-  const sectionActive = useContext(SectionActive)
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    if (!sectionActive) setOpen(false)
-  }, [sectionActive])
-  const [query, setQuery] = useState("")
-  const [active, setActive] = useState(0)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const tabExit = useRef(false)
-  const id = useId()
-  const displayValue =
-    options.find((option) => option.id === value)?.label ??
-    (value || t("selection.choose", { label: label.toLowerCase() }))
-  const filtered = useMemo(
-    () => options.filter((v) => `${v.label} ${v.id}`.toLowerCase().includes(query.toLowerCase())),
-    [options, query],
-  )
-  useEffect(() => {
-    if (open && filtered[active])
-      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" })
-  }, [active, filtered, id, open])
-  const choose = (value: string) => {
-    onChange(value)
-    setOpen(false)
-  }
+const workspaceStyles = style({
+  font: "body-lg",
+  color: "body",
+  "--provider-notice-bg": { type: "backgroundColor", value: "gray-100" },
+  "--provider-warning-bg": { type: "backgroundColor", value: "notice-subtle" },
+  "--provider-warning-line": { type: "borderColor", value: "orange-900" },
+  "--provider-divider": { type: "borderColor", value: "gray-300" },
+  "--provider-radius": { type: "borderRadius", value: "default" },
+})
+const titleStyles = style({ font: "heading-sm", color: "title", margin: 0 })
+const wideField = style({ width: "full", minWidth: 0 })
+
+// InlineAlert always announces an alert. Provider notices are polite status updates.
+function ProviderNotice({ children, warning }: { children: ReactNode; warning?: boolean }) {
   return (
-    <div className="provider-choice">
-      <Text as="p" size="2" weight="medium">
-        {label}
-      </Text>
-      <Popover.Root
-        open={open && sectionActive}
-        onOpenChange={(v) => {
-          if (v) tabExit.current = false
-          setOpen(v)
-          setQuery("")
-          setActive(0)
-        }}
-      >
-        <Popover.Trigger>
-          <Button
-            ref={trigger}
-            variant="surface"
-            disabled={disabled}
-            aria-label={t("selection.choiceValue", { label, value: displayValue })}
-            aria-haspopup="dialog"
-          >
-            <span>{displayValue}</span>
-            <ChevronDownIcon aria-hidden />
-          </Button>
-        </Popover.Trigger>
-        <Popover.Content
-          className="provider-search"
-          aria-label={t("selection.choose", { label: label.toLowerCase() })}
-          onCloseAutoFocus={(event) => {
-            // Navigation must keep focus on the destination, not a hidden trigger.
-            if (!sectionActive || tabExit.current || !trigger.current?.checkVisibility())
-              event.preventDefault()
-          }}
-        >
-          <TextField.Root
-            role="combobox"
-            aria-label={t("selection.search", { label: label.toLowerCase() })}
-            aria-expanded="true"
-            aria-autocomplete="list"
-            aria-controls={id}
-            aria-activedescendant={filtered[active] ? `${id}-${active}` : undefined}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              setActive(0)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Tab") {
-                // Leave Radix's looping focus scope. Native Tab then moves from the trigger.
-                e.stopPropagation()
-                tabExit.current = true
-                setOpen(false)
-                if (sectionActive && trigger.current?.checkVisibility()) trigger.current.focus()
-              } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault()
-                setActive((v) =>
-                  Math.max(0, Math.min(filtered.length - 1, v + (e.key === "ArrowDown" ? 1 : -1))),
-                )
-              } else if (e.key === "Enter" && filtered[active]) {
-                e.preventDefault()
-                choose(filtered[active].id)
-              }
-            }}
-          />
-          <div
-            id={id}
-            role="listbox"
-            aria-label={t("selection.results", { label })}
-            className="provider-options"
-          >
-            {filtered.map((v, index) => (
-              <Button asChild variant="ghost" key={v.id}>
-                <button
-                  type="button"
-                  role="option"
-                  tabIndex={-1}
-                  id={`${id}-${index}`}
-                  aria-selected={v.id === value}
-                  data-active={index === active}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => choose(v.id)}
-                >
-                  <strong>{v.label}</strong>
-                  <small>{v.detail ?? v.id}</small>
-                </button>
-              </Button>
-            ))}
-          </div>
-          {!filtered.length && (
-            <Text as="p" size="2">
-              {t("selection.noMatches")}
-            </Text>
-          )}
-        </Popover.Content>
-      </Popover.Root>
+    <div className="provider-notice" data-tone={warning ? "warning" : undefined} role="status">
+      <InfoCircle
+        styles={warning ? iconStyle({ color: "notice" }) : iconStyle({ color: "neutral" })}
+      />
+      <Prose size="2">{children}</Prose>
     </div>
   )
 }
@@ -260,6 +134,11 @@ export function Providers({
   const [directoryQuery, setDirectoryQuery] = useState("")
   const [providerFilter, setProviderFilter] = useState("all")
   const [authOpen, setAuthOpen] = useState(false)
+  const authDialogId = useId()
+  const authWasVisible = useRef(false)
+  const authError = useRef<HTMLParagraphElement>(null)
+  const authStatus = useRef<HTMLParagraphElement>(null)
+  const confirmationFocus = useRef<"authentication" | "availability" | undefined>(undefined)
   const [authDetails, setAuthDetails] = useState<{ provider: string; open: boolean }>()
   const [method, setMethod] = useState<"choose" | "key" | "account">("choose")
   const [key, setKey] = useState("")
@@ -482,6 +361,41 @@ export function Providers({
     else startAccount()
   }
   const authLink = loginUrl(login?.event?.url ?? login?.event?.verificationUri)
+  const authVisible = authOpen && sectionActive && view === "detail"
+  useEffect(() => {
+    if (!sectionActive || view !== "detail") {
+      authWasVisible.current = false
+      confirmationFocus.current = undefined
+      return
+    }
+    if (authVisible) {
+      authWasVisible.current = true
+      return
+    }
+    if (busy || (!authWasVisible.current && !confirmationFocus.current)) return
+    const frame = requestAnimationFrame(() => {
+      const restoreAuth = authWasVisible.current
+      const confirmed = confirmationFocus.current
+      authWasVisible.current = false
+      confirmationFocus.current = undefined
+      if (document.activeElement !== document.body) return
+      if (restoreAuth || confirmed === "authentication") {
+        if (focusProviderControl(document.getElementById("provider-auth-action"))) return
+        if (focusProviderControl(document.getElementById("provider-authentication"))) return
+      } else if (focusProviderControl(document.getElementById("model-availability"))) return
+      focusProviderControl(document.getElementById("provider-detail-heading"))
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [authVisible, busy, sectionActive, view])
+  useEffect(() => {
+    if (!authVisible || document.activeElement !== document.body) return
+    // Switching methods or disabling the active control while saving can move focus to body.
+    const target =
+      (!busy && error ? authError.current : null) ??
+      (method === "account" ? authStatus.current : null) ??
+      document.getElementById(authDialogId)
+    focusProviderControl(target)
+  }, [authDialogId, authVisible, busy, error, method])
   useEffect(() => {
     if (!sectionActive || view !== "detail" || !focusDetail.current) return
     focusDetail.current = false
@@ -510,44 +424,35 @@ export function Providers({
     setView("detail")
   }
   return (
-    <Dialog.Root
-      open={authOpen && sectionActive}
-      onOpenChange={(open) => {
-        if (!open && !busy) closeAuth()
-      }}
-    >
-      <Flex direction="column" gap="4" className="settings-stack">
-        {dirty && (
-          <Callout.Root color="orange" size="1" role="status">
-            <Callout.Icon>
-              <InfoCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>{t("provider.dirtyHelp")}</Callout.Text>
-          </Callout.Root>
-        )}
+    <>
+      <div className={`provider-spectrum settings-stack ${workspaceStyles}`}>
+        {dirty && <ProviderNotice warning>{t("provider.dirtyHelp")}</ProviderNotice>}
         {view === "list" && (
           <section aria-label={t("provider.configuredList")} className="settings-stack">
-            <Text as="p" color="gray">
+            <Prose color="gray">
               {t(providers.length === 1 ? "provider.countOne" : "provider.count", {
                 count: providers.length,
               })}
-            </Text>
+            </Prose>
             <div className="provider-directory-toolbar">
-              <TextField.Root
+              <TextField
                 aria-label={t("provider.search")}
                 placeholder={t("provider.search")}
+                size="XL"
+                styles={wideField}
                 value={directoryQuery}
-                onChange={(event) => setDirectoryQuery(event.target.value)}
+                onChange={setDirectoryQuery}
+              />
+              <Button
+                variant="accent"
+                size="XL"
+                isDisabled={busy || Boolean(oauth)}
+                onPress={() => setView("add")}
               >
-                <TextField.Slot>
-                  <MagnifyingGlassIcon aria-hidden />
-                </TextField.Slot>
-              </TextField.Root>
-              <Button disabled={busy || Boolean(oauth)} onClick={() => setView("add")}>
                 {t("provider.add")}
               </Button>
             </div>
-            <fieldset className="scope-segments" aria-label={t("provider.status")}>
+            <fieldset className="provider-filters" aria-label={t("provider.status")}>
               {(
                 [
                   ["all", "provider.all"],
@@ -555,14 +460,15 @@ export function Providers({
                   ["attention", "provider.attention"],
                 ] as const
               ).map(([value, label]) => (
-                <button
-                  type="button"
+                <ToggleButton
                   key={value}
-                  aria-pressed={providerFilter === value}
-                  onClick={() => setProviderFilter(value ?? "all")}
+                  size="XL"
+                  isEmphasized
+                  isSelected={providerFilter === value}
+                  onChange={() => setProviderFilter(value)}
                 >
                   {t(label)}
-                </button>
+                </ToggleButton>
               ))}
             </fieldset>
             {!providers.length && <Prose className="empty-state">{t("provider.none")}</Prose>}
@@ -577,7 +483,7 @@ export function Providers({
                   aria-label={t("provider.named", { id: item.id })}
                 >
                   <div className="provider-card-header">
-                    <CubeIcon aria-hidden />
+                    <Asset3D styles={iconStyle({ color: "neutral" })} />
                     <strong>{item.name}</strong>
                     <StatusLabel tone={item.configured === false ? "warning" : "neutral"}>
                       {item.configured === null
@@ -614,17 +520,19 @@ export function Providers({
                   <div className="provider-card-footer">
                     <Prose size="2">{t("provider.localCredentialHelp")}</Prose>
                     <Button
-                      variant="outline"
-                      disabled={busy || Boolean(oauth)}
+                      variant="secondary"
+                      fillStyle="outline"
+                      size="XL"
+                      isDisabled={busy || Boolean(oauth)}
                       aria-label={t("provider.manageNamed", { id: item.id })}
-                      onClick={() => openProvider(item.id)}
+                      onPress={() => openProvider(item.id)}
                     >
                       {t("provider.manage")}
                     </Button>
                   </div>
                   <details className="disclosure">
                     <summary>{t("provider.identifiers")}</summary>
-                    <Code>{item.id}</Code>
+                    <code>{item.id}</code>
                   </details>
                 </section>
               ))}
@@ -634,20 +542,21 @@ export function Providers({
         {view === "add" && (
           <section aria-label={t("provider.add")} className="settings-stack">
             <Button
-              variant="ghost"
-              disabled={busy || Boolean(oauth)}
-              onClick={() => setView("list")}
+              variant="secondary"
+              size="XL"
+              isDisabled={busy || Boolean(oauth)}
+              onPress={() => setView("list")}
             >
               {t("provider.back")}
             </Button>
-            <Heading as="h2" size="4">
-              {t("provider.add")}
-            </Heading>
+            <h2 className={titleStyles}>{t("provider.add")}</h2>
             <Prose>{t("provider.setupHelp")}</Prose>
-            <TextField.Root
+            <TextField
               aria-label={t("provider.search")}
+              size="XL"
+              styles={wideField}
               value={providerQuery}
-              onChange={(event) => setProviderQuery(event.target.value)}
+              onChange={setProviderQuery}
             />
             <div id="provider-choice" className="data-list" tabIndex={-1}>
               {inventory.providers
@@ -656,15 +565,17 @@ export function Providers({
                 )
                 .map((item) => (
                   <div className="data-row" key={item.id}>
-                    <Flex direction="column" gap="2">
+                    <div className="provider-model-facts">
                       <strong>{item.name}</strong>
-                      <Code>{item.id}</Code>
-                    </Flex>
+                      <code>{item.id}</code>
+                    </div>
                     <Button
-                      variant="outline"
-                      disabled={busy || Boolean(oauth)}
+                      variant="secondary"
+                      fillStyle="outline"
+                      size="XL"
+                      isDisabled={busy || Boolean(oauth)}
                       aria-label={t("provider.setupNamed", { id: item.id })}
-                      onClick={() => openProvider(item.id)}
+                      onPress={() => openProvider(item.id)}
                     >
                       {t("provider.setup")}
                     </Button>
@@ -676,8 +587,10 @@ export function Providers({
             ) && <Prose>{t("provider.noMatches")}</Prose>}
             {onCustomEndpoint && (
               <Button
-                variant="outline"
-                onClick={() => {
+                variant="secondary"
+                fillStyle="outline"
+                size="XL"
+                onPress={() => {
                   if (busy || oauth) return
                   if ((key || answer || draft) && !window.confirm(t("provider.replacePending")))
                     return
@@ -695,19 +608,20 @@ export function Providers({
         )}
         <SectionActive.Provider value={sectionActive && view === "detail"}>
           <div hidden={view !== "detail"}>
-            <Flex gap="3" align="center" wrap="wrap">
+            <div className="provider-controls">
               <Button
-                variant="ghost"
-                disabled={busy || Boolean(oauth)}
-                onClick={() => setView("list")}
+                variant="secondary"
+                size="XL"
+                isDisabled={busy || Boolean(oauth)}
+                onPress={() => setView("list")}
               >
                 {t("provider.back")}
               </Button>
-              <Heading as="h2" size="5" id="provider-detail-heading" tabIndex={-1}>
+              <h2 className={titleStyles} id="provider-detail-heading" tabIndex={-1}>
                 {selected?.name ?? (provider || t("provider.customEndpoint"))}
-              </Heading>
-              {provider && <Code>{provider}</Code>}
-            </Flex>
+              </h2>
+              {provider && <code>{provider}</code>}
+            </div>
             <SettingsSection title={t("provider.connection")}>
               {selected && (
                 <div className="provider-readiness" data-attention={!selected.configured}>
@@ -720,9 +634,9 @@ export function Providers({
                 </div>
               )}
               {provider && !selected && (
-                <Text as="p" color="orange" mt="3">
+                <Prose color="orange" mt="3">
                   {t("provider.catalogMissing", { provider })}
-                </Text>
+                </Prose>
               )}
 
               {selected && (
@@ -736,27 +650,31 @@ export function Providers({
                 >
                   <summary id="provider-authentication">{t("provider.authentication")}</summary>
                   <Panel className="provider-connection">
-                    <Flex align="center" gap="3" wrap="wrap">
+                    <div className="provider-controls">
                       {selected.apiKey || selected.oauth ? (
-                        <Dialog.Trigger>
-                          <Button
-                            id="provider-auth-action"
-                            variant="soft"
-                            disabled={blocked}
-                            onClick={configureAuth}
-                          >
-                            {t("provider.configureAuthentication")}
-                          </Button>
-                        </Dialog.Trigger>
+                        <Button
+                          id="provider-auth-action"
+                          variant="secondary"
+                          size="XL"
+                          isDisabled={blocked}
+                          aria-haspopup="dialog"
+                          aria-expanded={authVisible}
+                          aria-controls={authVisible ? authDialogId : undefined}
+                          onPress={configureAuth}
+                        >
+                          {t("provider.configureAuthentication")}
+                        </Button>
                       ) : (
-                        <Text id="provider-auth-action" tabIndex={-1} size="2">
+                        <span id="provider-auth-action" tabIndex={-1}>
                           {t("provider.hostCredentials")}
-                        </Text>
+                        </span>
                       )}
                       <Button
-                        variant="ghost"
-                        disabled={blocked}
-                        onClick={() =>
+                        variant="secondary"
+                        fillStyle="outline"
+                        size="XL"
+                        isDisabled={blocked}
+                        onPress={() =>
                           void run(async () => {
                             try {
                               const result = await request<{ configured: boolean }>(
@@ -789,52 +707,34 @@ export function Providers({
                         {t("provider.checkAuthentication")}
                       </Button>
                       {selected.configured && (
-                        <AlertDialog.Root>
-                          <AlertDialog.Trigger>
-                            <Button variant="ghost" color="red" disabled={blocked}>
-                              {t("provider.removeCredential")}
-                            </Button>
-                          </AlertDialog.Trigger>
-                          <AlertDialog.Content>
-                            <AlertDialog.Title>
-                              {t("provider.removeCredentialTitle")}
-                            </AlertDialog.Title>
-                            <AlertDialog.Description>
-                              {t("provider.removeCredentialHelp")}
-                            </AlertDialog.Description>
-                            <Flex gap="3" mt="4">
-                              <AlertDialog.Cancel>
-                                <Button variant="soft">{t("selection.cancel")}</Button>
-                              </AlertDialog.Cancel>
-                              <AlertDialog.Action>
-                                <Button
-                                  color="red"
-                                  onClick={() =>
-                                    void run(async () => {
-                                      await request(`providers/${provider}/credential`, csrf, {
-                                        key: null,
-                                        revision: snapshot.revision,
-                                      })
-                                      await refresh()
-                                    })
-                                  }
-                                >
-                                  {t("selection.remove")}
-                                </Button>
-                              </AlertDialog.Action>
-                            </Flex>
-                          </AlertDialog.Content>
-                        </AlertDialog.Root>
+                        <ProviderConfirmation
+                          trigger={t("provider.removeCredential")}
+                          title={t("provider.removeCredentialTitle")}
+                          description={t("provider.removeCredentialHelp")}
+                          action={t("selection.remove")}
+                          destructive
+                          disabled={blocked}
+                          onConfirm={() =>
+                            void run(async () => {
+                              await request(`providers/${provider}/credential`, csrf, {
+                                key: null,
+                                revision: snapshot.revision,
+                              })
+                              await refresh()
+                              confirmationFocus.current = "authentication"
+                            })
+                          }
+                        />
                       )}
-                    </Flex>
+                    </div>
                     <details className="provider-checks">
                       <summary>{t("provider.credentialChecks")}</summary>
                       <Prose size="2">{t("provider.idValue", { id: selected.id })}</Prose>
-                      <DataList.Root size="2" orientation="vertical">
-                        <DataList.Item>
-                          <DataList.Label>{t("provider.credentialResolution")}</DataList.Label>
-                          <DataList.Value>
-                            <Text as="p" size="2" role="status">
+                      <dl className="provider-credential-facts">
+                        <div>
+                          <dt>{t("provider.credentialResolution")}</dt>
+                          <dd>
+                            <Prose size="2" role="status">
                               {t("provider.localCheck", {
                                 status:
                                   credentialCheck?.provider === provider &&
@@ -842,18 +742,16 @@ export function Providers({
                                     ? t(credentialCheck.status)
                                     : t("provider.notChecked"),
                               })}
-                            </Text>
-                          </DataList.Value>
-                        </DataList.Item>
-                        <DataList.Item>
-                          <DataList.Label>{t("provider.remoteAcceptance")}</DataList.Label>
-                          <DataList.Value>
-                            <Text as="p" size="2">
-                              {t("provider.remoteVerificationHelp")}
-                            </Text>
-                          </DataList.Value>
-                        </DataList.Item>
-                      </DataList.Root>
+                            </Prose>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{t("provider.remoteAcceptance")}</dt>
+                          <dd>
+                            <Prose size="2">{t("provider.remoteVerificationHelp")}</Prose>
+                          </dd>
+                        </div>
+                      </dl>
                       <Prose size="2" color="gray" mt="3" className="section-copy">
                         {t("provider.availabilityHelp")}
                       </Prose>
@@ -890,101 +788,71 @@ export function Providers({
                     }}
                   />
                   {model && !selectedModel && (
-                    <Text as="p" color="orange">
-                      {t("model.catalogRemoved")}
-                    </Text>
+                    <Prose color="orange">{t("model.catalogRemoved")}</Prose>
                   )}
                   {selectedModel && (
                     <>
-                      <Flex gap="2" my="3" wrap="wrap">
-                        <Badge>
+                      <div className="provider-controls provider-model-badges">
+                        <StatusLabel>
                           {selectedModel.reasoning ? t("model.reasoning") : t("model.noReasoning")}
-                        </Badge>
-                        <Badge>
+                        </StatusLabel>
+                        <StatusLabel>
                           {selectedModel.image ? t("model.imageInput") : t("model.textInput")}
-                        </Badge>
-                      </Flex>
+                        </StatusLabel>
+                      </div>
                       {!thinkingValid &&
                         (supported.length > 1 || (!thinkingValid && supported.length > 0)) && (
                           <label htmlFor="provider-thinking" className="form-field">
                             {t("model.thinkingLevel")}
-                            <Select.Root
+                            <SectionPicker
                               value={thinking ?? ""}
                               onValueChange={(v) =>
                                 setDraft({ provider, model, thinking: v as Selection["thinking"] })
                               }
+                              id="provider-thinking"
+                              aria-label={t("model.thinkingLevel")}
                             >
-                              <Select.Trigger
-                                id="provider-thinking"
-                                aria-label={t("model.thinkingLevel")}
-                              />
-                              <Select.Content>
-                                {supported.map((level) => (
-                                  <Select.Item key={level} value={level}>
-                                    {thinkingLabel(level)}
-                                  </Select.Item>
-                                ))}
-                              </Select.Content>
-                            </Select.Root>
+                              {supported.map((level) => (
+                                <PickerOption key={level} id={level}>
+                                  {thinkingLabel(level)}
+                                </PickerOption>
+                              ))}
+                            </SectionPicker>
                           </label>
                         )}
                       {!thinkingValid && (
-                        <Text as="p" color="orange">
-                          {t("model.thinkingUnavailable")}
-                        </Text>
+                        <Prose color="orange">{t("model.thinkingUnavailable")}</Prose>
                       )}
                       <section className="provider-save">
-                        <AlertDialog.Root>
-                          <AlertDialog.Trigger>
-                            <Button
-                              mt="3"
-                              disabled={
-                                blocked ||
-                                !thinkingValid ||
-                                !modelChanged ||
-                                custom?.enabled === false
-                              }
-                            >
-                              {t("model.saveAvailability")}
-                            </Button>
-                          </AlertDialog.Trigger>
-                          <AlertDialog.Content>
-                            <AlertDialog.Title>{t("model.saveSelectionTitle")}</AlertDialog.Title>
-                            <AlertDialog.Description>
-                              {t("model.saveSelectionHelp", { model: ref })}
-                            </AlertDialog.Description>
-                            <Flex gap="3" mt="4">
-                              <AlertDialog.Cancel>
-                                <Button variant="soft">{t("selection.cancel")}</Button>
-                              </AlertDialog.Cancel>
-                              <AlertDialog.Action>
-                                <Button
-                                  onClick={() =>
-                                    void run(async () => {
-                                      await request(
-                                        "settings",
-                                        csrf,
-                                        {
-                                          revision: snapshot.revision,
-                                          policy: withProviderModel(snapshot.policy, ref),
-                                        },
-                                        "PUT",
-                                      )
-                                      await refresh()
-                                      setNotice("model.selectionSaved")
-                                    })
-                                  }
-                                >
-                                  {t("selection.saveChanges")}
-                                </Button>
-                              </AlertDialog.Action>
-                            </Flex>
-                          </AlertDialog.Content>
-                        </AlertDialog.Root>
+                        <ProviderConfirmation
+                          trigger={t("model.saveAvailability")}
+                          title={t("model.saveSelectionTitle")}
+                          description={t("model.saveSelectionHelp", { model: ref })}
+                          action={t("selection.saveChanges")}
+                          disabled={
+                            blocked || !thinkingValid || !modelChanged || custom?.enabled === false
+                          }
+                          onConfirm={() =>
+                            void run(async () => {
+                              await request(
+                                "settings",
+                                csrf,
+                                {
+                                  revision: snapshot.revision,
+                                  policy: withProviderModel(snapshot.policy, ref),
+                                },
+                                "PUT",
+                              )
+                              await refresh()
+                              setNotice("model.selectionSaved")
+                              confirmationFocus.current = "availability"
+                            })
+                          }
+                        />
                         {!blocked && !modelChanged && (
-                          <Text as="p" size="2" color="gray" mt="2">
+                          <Prose size="2" color="gray">
                             {t("model.selectionMatches")}
-                          </Text>
+                          </Prose>
                         )}
                       </section>
                     </>
@@ -992,13 +860,12 @@ export function Providers({
                   {custom?.baseUrl && (
                     <details className="provider-advanced">
                       <summary>{t("model.discovery")}</summary>
-                      <Text as="p" size="2">
-                        {t("model.discoveryHelp")}
-                      </Text>
+                      <Prose size="2">{t("model.discoveryHelp")}</Prose>
                       <Button
-                        variant="soft"
-                        disabled={blocked || !custom.api?.startsWith("openai-")}
-                        onClick={() =>
+                        variant="secondary"
+                        size="XL"
+                        isDisabled={blocked || !custom.api?.startsWith("openai-")}
+                        onPress={() =>
                           void run(async () => {
                             try {
                               const models = await request<string[]>(
@@ -1027,11 +894,11 @@ export function Providers({
                       >
                         {t("model.discover")}
                       </Button>
-                      <Text as="p" role="status">
+                      <Prose role="status">
                         {t("model.listCheck", {
                           status: t(currentDiscovery?.status ?? "provider.notChecked"),
                         })}
-                      </Text>
+                      </Prose>
                       {discovered.length > 0 && (
                         <ul>
                           {discovered.map((id) => (
@@ -1046,20 +913,18 @@ export function Providers({
                 <Prose size="2">{t("model.chooseProviderHelp")}</Prose>
               )}
               {draft && modelChanged && (
-                <Flex>
-                  <Button
-                    variant="soft"
-                    mt="2"
-                    disabled={busy || Boolean(oauth)}
-                    onClick={() => {
-                      setDraft(null)
-                      setNotice("")
-                      setDiscoveryCheck(undefined)
-                    }}
-                  >
-                    {t("model.savedSelection")}
-                  </Button>
-                </Flex>
+                <Button
+                  variant="secondary"
+                  size="XL"
+                  isDisabled={busy || Boolean(oauth)}
+                  onPress={() => {
+                    setDraft(null)
+                    setNotice("")
+                    setDiscoveryCheck(undefined)
+                  }}
+                >
+                  {t("model.savedSelection")}
+                </Button>
               )}
 
               {availability?.(provider)}
@@ -1097,158 +962,176 @@ export function Providers({
                   ))}
                 </ul>
               )}
-              <Flex gap="2" wrap="wrap" align="center">
-                <Button variant="outline" onClick={onDefaults}>
+              <div className="provider-controls">
+                <Button variant="secondary" fillStyle="outline" size="XL" onPress={onDefaults}>
                   {t("model.editShared")}
                 </Button>
                 {chat && onChat && (
-                  <Button variant="outline" onClick={onChat}>
+                  <Button variant="secondary" fillStyle="outline" size="XL" onPress={onChat}>
                     {t("provider.backChat", { chat })}
                   </Button>
                 )}
-              </Flex>
+              </div>
             </SettingsSection>
           </div>
         </SectionActive.Provider>
-        {notice && (
-          <Callout.Root size="1" role="status">
-            <Callout.Icon>
-              <InfoCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>{t(notice)}</Callout.Text>
-          </Callout.Root>
-        )}
-      </Flex>
-      <Dialog.Content
-        maxWidth="480px"
-        onEscapeKeyDown={(e) => {
-          if (busy) e.preventDefault()
-        }}
-        onInteractOutside={(e) => e.preventDefault()}
-      >
-        <Dialog.Title>
-          {t("provider.connectNamed", { name: selected?.name ?? provider })}
-        </Dialog.Title>
-        <Dialog.Description size="2">{t("provider.credentialsHelp")}</Dialog.Description>
-        {error && (
-          <Text as="p" color="red" role="alert">
-            {error}
-          </Text>
-        )}
-        {method === "choose" && (
-          <Flex direction="column" gap="3" mt="4">
-            <Button disabled={busy} onClick={startAccount}>
-              {t("provider.accountSignIn")}
-            </Button>
-            <Button variant="soft" disabled={busy} onClick={() => setMethod("key")}>
-              {t("provider.useApiKey")}
-            </Button>
-          </Flex>
-        )}
-        {method === "key" && (
-          <>
-            <label htmlFor="provider-key">
-              {t("provider.apiKey")}
-              <TextField.Root
+        {notice && <ProviderNotice>{t(notice)}</ProviderNotice>}
+      </div>
+      {authVisible && (
+        <ProviderDialog
+          id={authDialogId}
+          title={t("provider.connectNamed", { name: selected?.name ?? provider })}
+          description={t("provider.credentialsHelp")}
+          busy={busy}
+          onClose={closeAuth}
+        >
+          {error && (
+            <p
+              className={style({ color: "negative-1000" })}
+              role="alert"
+              tabIndex={-1}
+              ref={authError}
+            >
+              {error}
+            </p>
+          )}
+          {method === "choose" && (
+            <div className="provider-task-fields">
+              <Button variant="accent" size="XL" isDisabled={busy} onPress={startAccount}>
+                {t("provider.accountSignIn")}
+              </Button>
+              <Button
+                variant="secondary"
+                size="XL"
+                isDisabled={busy}
+                onPress={() => setMethod("key")}
+              >
+                {t("provider.useApiKey")}
+              </Button>
+            </div>
+          )}
+          {method === "key" && (
+            <div className="provider-task-fields">
+              <TextField
                 id="provider-key"
-                disabled={busy}
+                label={t("provider.apiKey")}
+                size="XL"
+                styles={wideField}
+                autoFocus
+                isDisabled={busy}
                 type="password"
                 autoComplete="new-password"
                 value={key}
-                onChange={(e) => setKey(e.target.value)}
+                onChange={setKey}
               />
-            </label>
-            <Button
-              disabled={busy || !key || dirty}
-              onClick={() =>
-                void run(async () => {
-                  await request(`providers/${provider}/credential`, csrf, {
-                    key,
-                    revision: snapshot.revision,
+              <Button
+                variant="accent"
+                size="XL"
+                isDisabled={busy || !key || dirty}
+                onPress={() =>
+                  void run(async () => {
+                    await request(`providers/${provider}/credential`, csrf, {
+                      key,
+                      revision: snapshot.revision,
+                    })
+                    setKey("")
+                    await refresh()
+                    setAuthOpen(false)
+                    setNotice("provider.authenticationSaved")
                   })
-                  setKey("")
-                  await refresh()
-                  setAuthOpen(false)
-                  setNotice("provider.authenticationSaved")
-                })
-              }
-            >
-              {t("provider.saveApiKey")}
-            </Button>
-          </>
-        )}
-        {method === "account" && (
-          <Flex direction="column" gap="3" mt="3">
-            <Text role="status">
-              {t("provider.loginStatus", { status: loginStatusLabel(login?.status) })}
-            </Text>
-            {!oauth && (
-              <Button variant="soft" disabled={busy || dirty} onClick={startAccount}>
-                {t("provider.retrySignIn")}
+                }
+              >
+                {t("provider.saveApiKey")}
               </Button>
-            )}
-            {login?.event?.message && <Text>{login.event.message}</Text>}
-            {authLink && (
-              <Button asChild variant="soft">
-                <a href={authLink} target="_blank" rel="noopener noreferrer">
+            </div>
+          )}
+          {method === "account" && (
+            <div className="provider-task-fields">
+              <p role="status" tabIndex={-1} ref={authStatus}>
+                {t("provider.loginStatus", { status: loginStatusLabel(login?.status) })}
+              </p>
+              {!oauth && (
+                <Button
+                  variant="secondary"
+                  size="XL"
+                  isDisabled={busy || dirty}
+                  onPress={startAccount}
+                >
+                  {t("provider.retrySignIn")}
+                </Button>
+              )}
+              {login?.event?.message && <p>{login.event.message}</p>}
+              {authLink && (
+                <LinkButton
+                  href={authLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="secondary"
+                  size="XL"
+                >
                   {t("provider.openSignIn")}
-                </a>
-              </Button>
-            )}
-            {login?.event?.userCode && (
-              <Text>{t("provider.verificationCode", { code: login.event.userCode })}</Text>
-            )}
-            {login?.prompt && (
-              <>
-                <Text>{login.prompt.message}</Text>
-                {login.prompt.options ? (
-                  <label htmlFor="provider-answer">
-                    {t("provider.loginOption")}
-                    <Select.Root disabled={busy} value={answer} onValueChange={setAnswer}>
-                      <Select.Trigger id="provider-answer" aria-label={login.prompt.message} />
-                      <Select.Content>
+                </LinkButton>
+              )}
+              {login?.event?.userCode && (
+                <p>{t("provider.verificationCode", { code: login.event.userCode })}</p>
+              )}
+              {login?.prompt && (
+                <>
+                  <p>{login.prompt.message}</p>
+                  {login.prompt.options ? (
+                    <label className="form-field" htmlFor="provider-answer">
+                      {t("provider.loginOption")}
+                      <SectionPicker
+                        disabled={busy}
+                        value={answer}
+                        onValueChange={setAnswer}
+                        id="provider-answer"
+                        aria-label={login.prompt.message}
+                      >
                         {login.prompt.options.map((v) => (
-                          <Select.Item key={v.id} value={v.id}>
+                          <PickerOption key={v.id} id={v.id}>
                             {v.label}
-                          </Select.Item>
+                          </PickerOption>
                         ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </label>
-                ) : (
-                  <label htmlFor="provider-answer">
-                    {t("provider.loginResponse")}
-                    <TextField.Root
+                      </SectionPicker>
+                    </label>
+                  ) : (
+                    <TextField
                       id="provider-answer"
-                      disabled={busy}
+                      label={t("provider.loginResponse")}
+                      size="XL"
+                      styles={wideField}
+                      isDisabled={busy}
                       type="password"
                       autoComplete="off"
                       value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
+                      onChange={setAnswer}
                     />
-                  </label>
-                )}
-                <Button
-                  disabled={busy || !answer}
-                  onClick={() =>
-                    void run(async () => {
-                      await request(`oauth/${oauth}`, csrf, { answer })
-                      setAnswer("")
-                    })
-                  }
-                >
-                  {t("provider.submitResponse")}
-                </Button>
-              </>
-            )}
-          </Flex>
-        )}
-        <Flex justify="end" mt="4">
-          <Button variant="soft" disabled={busy} onClick={closeAuth}>
-            {oauth ? t("provider.cancelLogin") : t("selection.close")}
-          </Button>
-        </Flex>
-      </Dialog.Content>
-    </Dialog.Root>
+                  )}
+                  <Button
+                    variant="accent"
+                    size="XL"
+                    isDisabled={busy || !answer}
+                    onPress={() =>
+                      void run(async () => {
+                        await request(`oauth/${oauth}`, csrf, { answer })
+                        setAnswer("")
+                      })
+                    }
+                  >
+                    {t("provider.submitResponse")}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+          <div className="provider-controls provider-controls--end">
+            <Button variant="secondary" size="XL" isDisabled={busy} onPress={closeAuth}>
+              {oauth ? t("provider.cancelLogin") : t("selection.close")}
+            </Button>
+          </div>
+        </ProviderDialog>
+      )}
+    </>
   )
 }

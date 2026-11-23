@@ -5,38 +5,38 @@
   padding: 6px;
   border: 0;
   border-radius: 7px;
-  color: var(--ink-muted);
+  color: var(--app-muted);
   background: transparent;
   font: inherit;
   cursor: pointer;
 }
 .scope-segments button[aria-pressed="true"] {
   color: #fff;
-  background: var(--forest);
+  background: var(--app-accent);
   font-weight: 600;
 }
 .scope-segments button:focus-visible {
-  outline: 2px solid var(--forest);
+  outline: 2px solid var(--app-accent);
   outline-offset: 2px;
 }
 .provider-card-header > svg {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-  color: var(--forest);
+  color: var(--app-accent);
 }
 .provider-card-footer > p {
   flex: 1 1 180px;
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--app-muted);
 }
 /* Shared administration frame, promoted from the approved chat design. */
 .admin-shell {
-  --chat-ink: #111514;
-  --chat-muted: #666b68;
-  --chat-green: #24553e;
-  --chat-border: #d4d6d4;
-  --chat-bg: #fafaf9;
+  --chat-ink: var(--app-text);
+  --chat-muted: var(--app-muted);
+  --chat-green: var(--app-accent);
+  --chat-border: var(--app-line);
+  --chat-bg: var(--app-page);
 }
 .admin-shell > main {
   display: flex;
@@ -86,15 +86,15 @@
   min-height: 44px;
   max-width: 100%;
   padding: 8px;
-  border: 1px solid var(--gray-7);
+  border: 1px solid var(--app-border);
   border-radius: 6px;
-  background: var(--color-panel);
-  color: var(--gray-12);
+  background: var(--app-panel);
+  color: var(--app-text);
   font: inherit;
   font-size: 1rem;
 }
 .language-selector select:focus-visible {
-  outline: 2px solid var(--teal-9);
+  outline: 2px solid var(--app-accent);
   outline-offset: 2px;
 }
 .sidebar .language-selector {
@@ -217,32 +217,6 @@
   }
 }
 
-/* One neutral/forest palette for every page, dialog and signed-out surface. */
-.radix-themes {
-  --surface-main: #fafaf9;
-  --surface-sidebar: #fafaf9;
-  --surface-line: #d4d6d4;
-  --ink: #111514;
-  --ink-muted: #666b68;
-  --forest: #24553e;
-  --forest-dark: #173c2b;
-  --gray-2: #f6f7f5;
-  --gray-3: #eef2ed;
-  --gray-4: #e4ebe2;
-  --gray-7: #b7beb7;
-  --gray-8: #879087;
-  --gray-9: #717a73;
-  --sand-2: #fafaf9;
-  --teal-3: #edf4eb;
-  --teal-4: #e1eddf;
-  --teal-7: #a3bba4;
-  --teal-8: #658769;
-  --teal-a8: #658769;
-  --font-size-4: 1.25rem;
-}
-body {
-  background: #fafaf9;
-}
 .admin-shell main {
   margin: 0;
   padding: 24px 28px calc(var(--changes-bar-height, 0px) + 28px);
@@ -250,18 +224,18 @@ body {
   border-radius: 0;
 }
 .admin-shell .sidebar {
-  border-color: var(--surface-line);
+  border-color: var(--app-line);
 }
 .admin-shell .sidebar a {
   border-radius: 10px;
-  color: var(--ink-muted);
+  color: var(--app-muted);
 }
 .admin-shell .sidebar a[aria-current="page"] {
-  color: var(--forest);
-  background: var(--teal-3);
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
 }
 .admin-shell .sidebar a svg {
-  color: var(--forest);
+  color: var(--app-accent);
 }
 .admin-shell > main > .workspace-header {
   margin-bottom: 18px;
@@ -277,30 +251,6 @@ body {
   overflow: hidden;
   clip-path: inset(50%);
 }
-.admin-shell .page-header__actions > .rt-Button {
-  width: 44px;
-  padding-inline: 0;
-}
-.admin-shell :is(.rt-Button, .rt-SelectTrigger, .rt-TextFieldRoot, .rt-TextArea) {
-  border-radius: 10px;
-  font-size: 16px;
-}
-.admin-shell :is(.rt-SelectTrigger, .rt-TextFieldRoot, .rt-TextArea) {
-  background: #fff;
-}
-.admin-shell .rt-Badge {
-  padding: 4px 8px;
-  border-radius: 7px;
-  font-size: 14px;
-  line-height: 1.4;
-}
-.admin-shell :is(.prose, .form-field, .check, .rt-DataListValue) {
-  font-size: 16px;
-  line-height: 1.5;
-}
-.admin-shell :is(.rt-CalloutRoot, .empty-state) {
-  border-radius: 10px;
-}
 .admin-shell .panel,
 .admin-shell .settings-section,
 .admin-shell .skill-row,
@@ -310,17 +260,23 @@ body {
   min-width: 0;
   margin: 0;
   padding: 16px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 12px;
   background: #fff;
   box-shadow: none;
+}
+.admin-shell :is(.panel, .settings-section) {
+  background: var(--panel-background, #fff);
+}
+.admin-shell .panel-spaced {
+  margin-block-start: 12px;
 }
 .admin-shell .settings-section {
   gap: 12px;
   grid-template-columns: minmax(0, 1fr);
 }
-.admin-shell .settings-section__intro .rt-Heading,
-.admin-shell .skill-identity .rt-Heading,
+.admin-shell .settings-section__intro h2,
+.admin-shell .skill-identity :is(h2, h3, h4),
 .admin-shell .runtime-entry-name {
   font-size: 20px;
   line-height: 1.4;
@@ -347,27 +303,20 @@ body {
   min-height: 44px;
   padding-block: 10px;
   font-size: 16px;
-  color: var(--forest);
+  color: var(--app-accent);
 }
 .admin-shell .saved-settings-details {
   margin-top: 16px;
 }
 .admin-shell .changes-bar {
   background: #fff;
-  border-top-color: var(--surface-line);
+  border-top-color: var(--app-line);
   box-shadow: 0 -4px 20px #173c2b0a;
 }
 .admin-shell .permission-scope {
   padding: 12px;
   border-radius: 12px;
-  background: var(--surface-main);
-}
-.admin-shell .permission-scope > .rt-Flex {
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--surface-line);
-  border-radius: 10px;
-  background: #fff;
+  background: var(--app-page);
 }
 .admin-shell .permission-scope button {
   flex: 1 1 0;
@@ -375,13 +324,9 @@ body {
   border: 0;
   font-size: 16px;
 }
-.admin-shell .permission-scope button[aria-pressed="true"] {
-  color: #fff;
-  background: var(--forest);
-}
 .admin-shell .tool-permissions .permission-group {
   padding: 0 14px 8px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 12px;
   background: #fff;
 }
@@ -392,14 +337,14 @@ body {
 }
 .admin-shell .permission-group-toggle {
   font-size: 20px;
-  color: var(--ink);
+  color: var(--app-text);
 }
-.admin-shell .permission-name .rt-Code {
+.admin-shell .permission-name code {
   font-size: 16px;
 }
 .admin-shell .permission-section > .permission-list {
   padding: 0 14px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 12px;
   background: #fff;
 }
@@ -410,7 +355,6 @@ body {
 .admin-shell .mcp-connection-summary {
   padding: 16px;
 }
-.admin-shell .mcp-summary-facts :is(.rt-DataListLabel, .rt-DataListValue),
 .admin-shell .mcp-summary-actions > button {
   font-size: 16px;
 }
@@ -419,13 +363,13 @@ body {
 }
 .admin-shell .audit-imports {
   padding: 16px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 12px;
   background: #fff;
 }
 .admin-shell .github-author-list li {
   padding: 12px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 10px;
 }
 .admin-shell .durable-inspector {
@@ -451,7 +395,7 @@ body {
 }
 .session-card {
   padding: 24px;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 12px;
   background: #fff;
 }
@@ -463,19 +407,13 @@ body {
   align-items: center;
   gap: 10px;
 }
-.provider-directory-toolbar .rt-TextFieldRoot {
-  width: 100%;
-}
-.provider-directory-toolbar .rt-TextFieldSlot {
-  padding-left: 12px;
-}
 .scope-segments {
   display: flex;
   gap: 0;
   margin: 0;
   padding: 3px;
   min-inline-size: 0;
-  border: 1px solid var(--surface-line);
+  border: 1px solid var(--app-line);
   border-radius: 10px;
   background: #fff;
 }
@@ -504,10 +442,10 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding-block: 8px;
-  border-bottom: 1px solid var(--surface-line);
+  border-bottom: 1px solid var(--app-line);
 }
 .provider-card-facts dt {
-  color: var(--ink-muted);
+  color: var(--app-muted);
 }
 .provider-card-facts dd {
   margin: 0;
@@ -553,9 +491,6 @@ body {
   .admin-shell #model-availability {
     padding-block: 0;
   }
-  .admin-shell .permission-scope .rt-Heading {
-    font-size: 16px;
-  }
   .admin-shell .permission-scope button {
     font-size: 14px;
   }
@@ -571,17 +506,11 @@ body {
   width: 26px;
   height: 26px;
 }
-.admin-shell .permission-group-toggle > .rt-Text {
-  font: inherit;
-}
 .admin-shell .permission-section.panel,
 .admin-shell .mcp-chooser.panel {
   padding: 0;
   border: 0;
   background: transparent;
-}
-.admin-shell .mcp-connection-summary .rt-Heading {
-  font-size: 20px;
 }
 
 @media (max-width: 650px) {

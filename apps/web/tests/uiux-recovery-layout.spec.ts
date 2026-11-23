@@ -55,7 +55,10 @@ for (const mode of [
     await expect(choose).toBeInViewport({ ratio: 1 })
     const radioBox = await choose.boundingBox()
     const labelBox = await choose.locator("..").boundingBox()
-    const textBox = await choose.locator("..").locator(".rt-RadioGroupItemInner").boundingBox()
+    const textBox = await choose
+      .locator("..")
+      .getByText("Use draft value", { exact: true })
+      .boundingBox()
     if (!radioBox || !labelBox || !textBox) throw new Error("Missing radio label geometry")
     expect(labelBox.height).toBeGreaterThanOrEqual(44 * mode.zoom)
     expect(

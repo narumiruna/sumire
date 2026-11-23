@@ -1,8 +1,16 @@
 import type { IssuePage, IssueState } from "@narumitw/sumire-issues"
-import { ImageIcon, ReloadIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Text } from "@radix-ui/themes"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button, Text } from "@react-spectrum/s2/Button"
+import Image from "@react-spectrum/s2/icons/Image"
+import Refresh from "@react-spectrum/s2/icons/Refresh"
+import { iconStyle, style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
 import { type ReactNode, type Ref, useId } from "react"
 import { getLocale, t } from "./i18n.js"
+import { Prose } from "./surfaces.js"
+
+const fit = style({ width: "fit", minWidth: 0, maxWidth: "full" })
+const screenshotIcon = iconStyle({ size: "XS", color: "purple" })
 
 type Filter = IssueState | ""
 const filters = ["", "open", "closed"] as const
@@ -53,36 +61,48 @@ export function IssuesList({
       <div className="issues-list-toolbar">
         <fieldset className="issues-list-filters" aria-label={t("issues.list.filter")}>
           {filters.map((value) => (
-            <Button
+            <ToggleButton
               key={value}
-              type="button"
-              variant={filter === value ? "soft" : "ghost"}
-              aria-pressed={filter === value}
-              disabled={busy}
-              onClick={() => {
-                if (filter !== value) onFilter(value)
+              size="XL"
+              styles={fit}
+              isQuiet
+              isEmphasized
+              isSelected={filter === value}
+              isDisabled={busy}
+              onChange={(selected) => {
+                if (selected) onFilter(value)
               }}
             >
               {t(filterLabels[value])}
-            </Button>
+            </ToggleButton>
           ))}
         </fieldset>
         <div className="issues-list-actions">
-          <Button type="button" variant="outline" disabled={busy} onClick={onRefresh}>
-            <ReloadIcon aria-hidden />
-            {t("issues.list.refresh")}
+          <Button
+            variant="secondary"
+            fillStyle="outline"
+            size="XL"
+            styles={fit}
+            isDisabled={busy}
+            onPress={onRefresh}
+          >
+            <Refresh />
+            <Text>{t("issues.list.refresh")}</Text>
           </Button>
           {grants}
         </div>
       </div>
       <div className="issues-list-body">
         {!page ? (
-          <Text as="p" role="status">
+          <Prose color="gray" role="status">
             {t(failed ? "issues.list.notLoaded" : "issues.list.loading")}
-          </Text>
+          </Prose>
         ) : (
           <>
-            <table className="issues-list-table" aria-label={t("issues.list.table")}>
+            <table
+              className={`issues-list-table ${style({ font: "body-sm" })}`}
+              aria-label={t("issues.list.table")}
+            >
               {/* biome-ignore lint/a11y/noRedundantRoles: Positioning the header on narrow layouts changes its CSS table display. */}
               <thead className="issues-list-head" role="rowgroup">
                 <tr>
@@ -112,12 +132,13 @@ export function IssuesList({
                       <th scope="row" role="rowheader" id={row} headers={`${id}-title`}>
                         <Button
                           type="button"
-                          variant="ghost"
-                          className="issues-list-title"
+                          variant="secondary"
+                          size="XL"
+                          styles={fit}
                           data-issue-id={issue.id}
                           aria-describedby={`${row}-meta`}
-                          disabled={busy}
-                          onClick={() => onOpen(issue.id)}
+                          isDisabled={busy}
+                          onPress={() => onOpen(issue.id)}
                         >
                           {issue.title}
                         </Button>
@@ -125,7 +146,8 @@ export function IssuesList({
                           <span>#{issue.id}</span>
                           {issue.hasScreenshot && (
                             <span className="issues-list-attachment">
-                              <ImageIcon aria-hidden /> {t("issues.list.screenshot")}
+                              <Image aria-hidden styles={screenshotIcon} />{" "}
+                              {t("issues.list.screenshot")}
                             </span>
                           )}
                         </span>
@@ -135,7 +157,7 @@ export function IssuesList({
                         <span className="issues-list-label" aria-hidden="true">
                           {source}
                         </span>
-                        <Badge color="violet" variant="soft">
+                        <Badge variant="purple" fillStyle="subtle" styles={fit}>
                           {issue.section}
                         </Badge>
                       </td>
@@ -144,7 +166,11 @@ export function IssuesList({
                         <span className="issues-list-label" aria-hidden="true">
                           {status}
                         </span>
-                        <Badge color={issue.state === "open" ? "green" : "gray"} variant="soft">
+                        <Badge
+                          variant={issue.state === "open" ? "positive" : "neutral"}
+                          fillStyle="subtle"
+                          styles={fit}
+                        >
                           {t(filterLabels[issue.state])}
                         </Badge>
                       </td>
@@ -163,31 +189,35 @@ export function IssuesList({
               </tbody>
             </table>
             {!page.issues.length && (
-              <Text as="p" role="status">
+              <Prose color="gray" role="status">
                 {t("issues.list.empty")}
-              </Text>
+              </Prose>
             )}
           </>
         )}
       </div>
       <div className="issues-list-footer">
-        <Text as="p" size="2" color="gray" role="status">
+        <Prose size="1" color="gray" role="status">
           {page && t("issues.list.count", { count: page.issues.length })}
-        </Text>
+        </Prose>
         <fieldset className="issues-list-actions" aria-label={t("issues.list.pagination")}>
           <Button
-            variant="soft"
+            variant="secondary"
+            size="XL"
+            styles={fit}
             aria-disabled={busy || !page || !hasPrevious}
-            onClick={() => {
+            onPress={() => {
               if (!busy && page && hasPrevious) onPrevious()
             }}
           >
             {t("issues.list.previous")}
           </Button>
           <Button
-            variant="soft"
+            variant="secondary"
+            size="XL"
+            styles={fit}
             aria-disabled={busy || next == null}
-            onClick={() => {
+            onPress={() => {
               if (!busy && next != null) onNext(next)
             }}
           >

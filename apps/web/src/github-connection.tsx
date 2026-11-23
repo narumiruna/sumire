@@ -3,19 +3,14 @@ import type {
   GitHubApplicationState,
   GitHubFlow,
 } from "@narumitw/sumire-contracts"
-import {
-  AlertDialog,
-  Button,
-  Callout,
-  Checkbox,
-  Dialog,
-  Flex,
-  Heading,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
-import { type MutableRefObject, useEffect, useRef, useState } from "react"
+import { AlertDialog } from "@react-spectrum/s2/AlertDialog"
+import { Button } from "@react-spectrum/s2/Button"
+import { CustomDialog, DialogTrigger, Heading } from "@react-spectrum/s2/CustomDialog"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
+import { type MutableRefObject, useEffect, useId, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
+import { Check } from "./check.js"
 import {
   activeGitHubFlow,
   githubApplicationStatusLabel,
@@ -26,6 +21,16 @@ import {
 import { getLocale, type MessageKey, t } from "./i18n.js"
 import { parseRuntimeConfig } from "./runtime-config-state.js"
 import { Panel, Prose } from "./surfaces.js"
+import "./spectrum-runtime.css"
+
+const connectionWarning = style({
+  backgroundColor: "notice-subtle",
+  color: "notice-1000",
+  borderRadius: "default",
+  padding: 12,
+})
+const heading = style({ font: "heading-sm", color: "title", margin: 0 })
+const field = style({ width: "full" })
 
 type Props = {
   csrf: string
@@ -82,6 +87,8 @@ export function GitHubConnection({
   const [unavailable, setUnavailable] = useState(false)
   const [error, setError] = useState<MessageKey | "">("")
   const [notice, setNotice] = useState<MessageKey | "">("")
+  const authorizationDescription = useId()
+  const disconnectDescription = useId()
   const alert = useRef<HTMLDivElement>(null)
   const flowPanel = useRef<HTMLElement>(null)
   const focusFlow = useRef(false)
@@ -424,7 +431,7 @@ export function GitHubConnection({
   useEffect(() => {
     if (!pending) return
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !owner.current.unresolved) return
+      if (event.defaultPrevented || event.key !== "Escape" || !owner.current.unresolved) return
       event.preventDefault()
       void operations.current.cancel()
     }
@@ -508,6 +515,7 @@ export function GitHubConnection({
       if (valid(version, signal)) setBusy(false)
     }
   }
+  const authorizationActive = activeGitHubFlow(flow) || owner.current.unresolved
   const terminalMessage =
     flow?.status === "conflict"
       ? t("github.conflict")
@@ -521,13 +529,13 @@ export function GitHubConnection({
 
   return (
     <Panel aria-label={t("github.connection")} aria-busy={busy}>
-      <Heading as="h2" size="4" id="github-connection-heading" tabIndex={-1}>
+      <h2 className={heading} id="github-connection-heading" tabIndex={-1}>
         {t("github.connect")}
-      </Heading>
+      </h2>
       <Prose size="2">{t("github.setupHelp")}</Prose>
       <Prose size="2">{t("github.scopeHelp")}</Prose>
       {connection && (
-        <Text as="p" size="2">
+        <Prose size="2">
           {connection.mode === "none"
             ? t("github.noCredential")
             : connection.mode === "manual"
@@ -539,11 +547,11 @@ export function GitHubConnection({
                     scopes: connection.scopes?.join(", ") || t("settings.none"),
                   })}
           {connection.reconnectRequired && t("github.reconnectRequired")}
-        </Text>
+        </Prose>
       )}
       {flow?.receipt && (
         <div role="status" aria-label={t("github.savedOutcome")}>
-          <Text as="p" weight="medium">
+          <Prose weight="medium">
             {flow.receipt.application.status === "failed"
               ? t("github.savedFailed")
               : flow.receipt.application.status === "unknown"
@@ -552,94 +560,85 @@ export function GitHubConnection({
                     flow.receipt.application.applied === flow.receipt.savedRevision
                   ? t("github.savedApplied")
                   : t("github.savedPending")}
-          </Text>
-          <Text as="p" size="2">
+          </Prose>
+          <Prose size="2">
             {t("github.receipt", {
               saved: flow.receipt.savedRevision,
               revision: flow.receipt.application.revision,
               applied: flow.receipt.application.applied,
               status: githubApplicationStatusLabel(flow.receipt.application.status),
             })}
-          </Text>
+          </Prose>
           <Prose size="2">{t("github.noResave")}</Prose>
         </div>
       )}
       {current && (
-        <Text as="p" size="2" aria-label={t("github.currentApplication")}>
+        <Prose size="2" aria-label={t("github.currentApplication")}>
           {t("github.currentRevision", {
             revision: current.revision,
             applied: current.applied,
             status: githubApplicationStatusLabel(current.status),
           })}
-        </Text>
+        </Prose>
       )}
-      {terminalMessage && (
-        <Text as="p" role="status">
-          {terminalMessage}
-        </Text>
-      )}
-      {notice && (
-        <Text as="p" role="status">
-          {t(notice)}
-        </Text>
-      )}
+      {terminalMessage && <Prose role="status">{terminalMessage}</Prose>}
+      {notice && <Prose role="status">{t(notice)}</Prose>}
       {error && !open && (
-        <Callout.Root
+        <div
           ref={alert}
           tabIndex={-1}
           role={unavailable ? "status" : "alert"}
-          color="orange"
+          className={`runtime-notice ${connectionWarning}`}
         >
-          <Callout.Text>{t(error)}</Callout.Text>
-        </Callout.Root>
+          {t(error)}
+        </div>
       )}
       {busy && owner.current.unresolved && !flow && (
-        <Text as="p" role="status">
-          {t("github.starting")}
-        </Text>
+        <Prose role="status">{t("github.starting")}</Prose>
       )}
       {activeGitHubFlow(flow) && (
         <section ref={flowPanel} tabIndex={-1} aria-label={t("github.authorization")}>
           {flow?.status === "pending" && (
-            <Flex direction="column" gap="3" mt="3">
-              <Text role="status">{t("github.waiting")}</Text>
+            <div className="github-flow-actions">
+              <Prose role="status">{t("github.waiting")}</Prose>
               {flow.userCode && (
-                <Text as="p">
+                <Prose>
                   {t("github.userCode")} <code>{flow.userCode}</code>
-                </Text>
+                </Prose>
               )}
               {flow.verificationUri && (
-                <Button asChild variant="soft">
+                <div>
                   <a href={flow.verificationUri} target="_blank" rel="noopener noreferrer">
                     {t("github.openDevice")}
                   </a>
-                </Button>
+                </div>
               )}
-              <Text as="p" size="2">
+              <Prose size="2">
                 {t("github.expires", {
                   date: new Date(flow.expiresAt).toLocaleString(getLocale()),
                 })}
-              </Text>
-            </Flex>
+              </Prose>
+            </div>
           )}
           {flow?.status === "authorized" && flow.account && (
-            <Flex direction="column" gap="3" mt="3">
-              <Text as="p" weight="medium">
+            <div className="github-flow-actions">
+              <Prose weight="medium">
                 {t("github.verifiedAccount", { login: flow.account.login, id: flow.account.id })}
-              </Text>
-              <Text as="p">
+              </Prose>
+              <Prose>
                 {t("github.actualScopes", {
                   scopes: flow.scopes?.join(", ") || t("settings.none"),
                 })}
-              </Text>
+              </Prose>
               <Prose size="2">{t("github.saveAccountHelp")}</Prose>
               <Button
-                disabled={disabled || !flow.scopes || completionAttempted.current}
-                onClick={() => void complete()}
+                variant="accent"
+                isDisabled={disabled || !flow.scopes || completionAttempted.current}
+                onPress={() => void complete()}
               >
                 {t("github.saveAccount")}
               </Button>
-            </Flex>
+            </div>
           )}
           <Prose size="2">{t("github.cancelHelp")}</Prose>
         </section>
@@ -647,55 +646,123 @@ export function GitHubConnection({
       {connection && !connection.clientId && (
         <Prose size="2">{t("github.configureClientHelp")}</Prose>
       )}
-      <Flex gap="3" wrap="wrap" mt="3">
-        {activeGitHubFlow(flow) || owner.current.unresolved ? (
-          <Button variant="soft" onClick={() => void cancel()}>
+      <div className="runtime-actions runtime-actions--spaced">
+        {authorizationActive && !open ? (
+          <Button variant="secondary" onPress={() => void cancel()}>
             {t("github.cancelAuthorization")}
           </Button>
         ) : (
-          <Button
-            disabled={!canConnect}
-            onClick={() => {
-              setScopeConsent(false)
-              setReplaceConsent(false)
-              setError("")
-              setOpen(true)
+          <DialogTrigger
+            isOpen={open}
+            onOpenChange={(value) => {
+              if (value) {
+                setScopeConsent(false)
+                setReplaceConsent(false)
+                setError("")
+                setOpen(true)
+              } else void cancel()
             }}
           >
-            {connection?.mode === "oauth" ? t("github.reconnect") : t("github.connect")}
-          </Button>
+            <Button variant="accent" isDisabled={!canConnect}>
+              {connection?.mode === "oauth" ? t("github.reconnect") : t("github.connect")}
+            </Button>
+            <CustomDialog size="M" aria-describedby={authorizationDescription}>
+              {({ close }) => (
+                <>
+                  <Heading slot="title" styles={heading}>
+                    {t(activeGitHubFlow(flow) ? "github.authorization" : "github.connectAccount")}
+                  </Heading>
+                  <Prose size="2" id={authorizationDescription}>
+                    {t("github.authorizeHelp")}
+                  </Prose>
+                  {error && (
+                    <p role="alert" className={style({ color: "negative-1000" })}>
+                      {t(error)}
+                    </p>
+                  )}
+                  {!authorizationActive && (
+                    <div className="github-flow-actions">
+                      <Check
+                        checked={scopeConsent}
+                        onChange={setScopeConsent}
+                        autoFocus
+                        label={t("github.scopeConsent")}
+                      />
+                      {replacing && (
+                        <Check
+                          checked={replaceConsent}
+                          onChange={setReplaceConsent}
+                          label={t("github.replaceConsent")}
+                        />
+                      )}
+                      <Button
+                        variant="accent"
+                        isDisabled={!canConnect || !scopeConsent || (replacing && !replaceConsent)}
+                        onPress={() => void start()}
+                      >
+                        {t("github.start")}
+                      </Button>
+                    </div>
+                  )}
+                  {terminalMessage && <Prose role="status">{terminalMessage}</Prose>}
+                  <div className="github-dialog-footer">
+                    <Button variant="secondary" onPress={close}>
+                      {t(authorizationActive ? "github.cancelAuthorization" : "settings.close")}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CustomDialog>
+          </DialogTrigger>
         )}
         <Button
-          variant="soft"
-          disabled={busy || blocked || clientDraft !== undefined}
-          onClick={() => void load()}
+          variant="secondary"
+          isDisabled={busy || blocked || clientDraft !== undefined}
+          onPress={() => void load()}
         >
           {t("github.reload")}
         </Button>
         {connection && !activeGitHubFlow(flow) && !recovery && (
           <>
             <Button
-              variant="soft"
-              disabled={disabled || clientDraft !== undefined}
-              onClick={() => setClientDraft(connection.clientId ?? "")}
+              variant="secondary"
+              isDisabled={disabled || clientDraft !== undefined}
+              onPress={() => setClientDraft(connection.clientId ?? "")}
             >
               {connection.clientId ? t("github.editClient") : t("github.configureClient")}
             </Button>
             {connection.mode !== "none" && (
-              <Button
-                variant="soft"
-                color="red"
-                disabled={
-                  disabled || clientDraft !== undefined || connection.secretStatus !== "ready"
-                }
-                onClick={() => setDisconnecting(true)}
-              >
-                {connection.mode === "invalid" ? t("github.reset") : t("github.disconnect")}
-              </Button>
+              <DialogTrigger isOpen={disconnecting} onOpenChange={setDisconnecting}>
+                <Button
+                  variant="negative"
+                  fillStyle="outline"
+                  isDisabled={
+                    disabled || clientDraft !== undefined || connection.secretStatus !== "ready"
+                  }
+                >
+                  {connection.mode === "invalid" ? t("github.reset") : t("github.disconnect")}
+                </Button>
+                <AlertDialog
+                  variant="destructive"
+                  title={t(
+                    connection.mode === "invalid"
+                      ? "github.resetConfirm"
+                      : "github.disconnectConfirm",
+                  )}
+                  aria-describedby={disconnectDescription}
+                  cancelLabel={t("github.keepConnection")}
+                  primaryActionLabel={t("github.deleteBoth")}
+                  autoFocusButton="cancel"
+                  isPrimaryActionDisabled={disabled || connection.secretStatus !== "ready"}
+                  onPrimaryAction={() => void disconnect()}
+                >
+                  <p id={disconnectDescription}>{t("github.deleteHelp")}</p>
+                </AlertDialog>
+              </DialogTrigger>
             )}
           </>
         )}
-      </Flex>
+      </div>
       {clientDraft !== undefined && (
         <form
           onSubmit={(event) => {
@@ -709,117 +776,37 @@ export function GitHubConnection({
             }
           }}
         >
-          <label htmlFor="github-client-id">
-            {t("github.publicClient")}
-            <TextField.Root
-              id="github-client-id"
-              value={clientDraft}
-              autoComplete="off"
-              autoFocus
-              disabled={busy}
-              maxLength={128}
-              onChange={(event) => setClientDraft(event.target.value)}
-            />
-          </label>
+          <TextField
+            id="github-client-id"
+            label={t("github.publicClient")}
+            value={clientDraft}
+            autoComplete="off"
+            autoFocus
+            isDisabled={busy}
+            maxLength={128}
+            onChange={setClientDraft}
+            styles={field}
+          />
           <Prose size="2">{t("github.publicClientHelp")}</Prose>
-          <Flex gap="3" wrap="wrap" mt="3">
+          <div className="runtime-actions runtime-actions--spaced">
             <Button
               type="submit"
-              disabled={disabled || !/^[a-zA-Z0-9_.-]{1,128}$/.test(clientDraft)}
+              variant="accent"
+              isDisabled={disabled || !/^[a-zA-Z0-9_.-]{1,128}$/.test(clientDraft)}
             >
               {t("github.saveClient")}
             </Button>
             <Button
               type="button"
-              variant="soft"
-              disabled={busy}
-              onClick={() => setClientDraft(undefined)}
+              variant="secondary"
+              isDisabled={busy}
+              onPress={() => setClientDraft(undefined)}
             >
               {t("github.discardClient")}
             </Button>
-          </Flex>
+          </div>
         </form>
       )}
-      <Dialog.Root
-        open={open}
-        onOpenChange={(value) => {
-          if (!value) void cancel()
-        }}
-      >
-        <Dialog.Content maxWidth="520px" onInteractOutside={(event) => event.preventDefault()}>
-          <Dialog.Title>
-            {activeGitHubFlow(flow) ? t("github.authorization") : t("github.connectAccount")}
-          </Dialog.Title>
-          <Dialog.Description size="2">{t("github.authorizeHelp")}</Dialog.Description>
-          {error && (
-            <Text as="p" color="red" role="alert">
-              {t(error)}
-            </Text>
-          )}
-          {!activeGitHubFlow(flow) && !owner.current.unresolved && (
-            <Flex direction="column" gap="3" mt="3">
-              <Text as="label" size="2">
-                <Checkbox
-                  checked={scopeConsent}
-                  onCheckedChange={(value) => setScopeConsent(value === true)}
-                />{" "}
-                {t("github.scopeConsent")}
-              </Text>
-              {replacing && (
-                <Text as="label" size="2">
-                  <Checkbox
-                    checked={replaceConsent}
-                    onCheckedChange={(value) => setReplaceConsent(value === true)}
-                  />{" "}
-                  {t("github.replaceConsent")}
-                </Text>
-              )}
-              <Button
-                disabled={!canConnect || !scopeConsent || (replacing && !replaceConsent)}
-                onClick={() => void start()}
-              >
-                {t("github.start")}
-              </Button>
-            </Flex>
-          )}
-          {terminalMessage && (
-            <Text as="p" role="status">
-              {terminalMessage}
-            </Text>
-          )}
-          <Flex justify="end" mt="4">
-            <Button variant="soft" onClick={() => void cancel()}>
-              {activeGitHubFlow(flow) || owner.current.unresolved
-                ? t("github.cancelAuthorization")
-                : t("settings.close")}
-            </Button>
-          </Flex>
-        </Dialog.Content>
-      </Dialog.Root>
-      <AlertDialog.Root open={disconnecting} onOpenChange={setDisconnecting}>
-        <AlertDialog.Content>
-          <AlertDialog.Title>
-            {connection?.mode === "invalid"
-              ? t("github.resetConfirm")
-              : t("github.disconnectConfirm")}
-          </AlertDialog.Title>
-          <AlertDialog.Description>{t("github.deleteHelp")}</AlertDialog.Description>
-          <Flex gap="3" wrap="wrap" mt="4">
-            <AlertDialog.Cancel>
-              <Button variant="soft">{t("github.keepConnection")}</Button>
-            </AlertDialog.Cancel>
-            <AlertDialog.Action>
-              <Button
-                color="red"
-                disabled={disabled || connection?.secretStatus !== "ready"}
-                onClick={() => void disconnect()}
-              >
-                {t("github.deleteBoth")}
-              </Button>
-            </AlertDialog.Action>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
     </Panel>
   )
 }

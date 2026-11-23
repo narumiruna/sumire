@@ -1,5 +1,4 @@
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import { setLocale } from "./i18n.js"
@@ -24,8 +23,8 @@ describe("runtime configuration localization", () => {
       setLocale(locale)
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(RuntimeConfig, {
             csrf: "fixture",
             blocked: false,

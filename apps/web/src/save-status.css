@@ -1,0 +1,68 @@
+.save-application-message,
+.save-pending-message {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+.save-application-message {
+  font-weight: 500;
+}
+.save-status button,
+.save-review-dialog button {
+  min-block-size: 44px;
+  max-inline-size: 100%;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.save-review-underlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  padding: 16px;
+  pointer-events: auto;
+}
+.save-review-dialog {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(100%, 520px);
+  max-block-size: 100%;
+  outline: 1px solid transparent;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.save-review-content {
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px 0;
+}
+.save-review-content h2 {
+  margin: 0;
+}
+.save-review-content .settings-review-list {
+  max-block-size: none;
+  overflow: visible;
+}
+.save-review-targets,
+.save-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.save-review-actions {
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: 12px 24px 20px;
+}
+@media (max-width: 650px) {
+  .save-review-underlay {
+    padding: 8px;
+  }
+  .save-review-content,
+  .save-review-actions {
+    padding-inline: 16px;
+  }
+}

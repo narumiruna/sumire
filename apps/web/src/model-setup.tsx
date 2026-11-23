@@ -1,8 +1,9 @@
-import { Badge, Button, Code, Flex } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import type { Inventory } from "./api.js"
 import { modelIssues } from "./chat-state.js"
 import { t } from "./i18n.js"
-import { Prose } from "./surfaces.js"
+import { Prose, StatusLabel } from "./surfaces.js"
 
 /** A scoped local setup summary. Never a claim about successful remote execution. */
 export function ModelSetup({
@@ -25,20 +26,20 @@ export function ModelSetup({
   const issue = modelIssues(model, selected, inventory)[0]
   return (
     <section aria-label={scope} className="model-setup">
-      <Flex gap="2" align="center" wrap="wrap">
+      <div className={style({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 })}>
         <strong>{scope}</strong>
-        <Code variant="ghost">{selected ?? t("model.notConfigured")}</Code>
-        <Badge color={issue ? "orange" : "gray"}>
+        <code>{selected ?? t("model.notConfigured")}</code>
+        <StatusLabel tone={issue ? "warning" : "neutral"}>
           {issue?.code === "authentication"
             ? t("model.authenticationRequired")
             : (issue?.label ?? t("model.configuredLocally"))}
-        </Badge>
-      </Flex>
+        </StatusLabel>
+      </div>
       <Prose size="2">{issue?.reason ?? t("model.responseUnchecked")}</Prose>
       {issue && (
         <Button
-          variant="soft"
-          onClick={() =>
+          variant="secondary"
+          onPress={() =>
             issue.target === "model"
               ? onModel()
               : onProvider((model ?? selected ?? "").split("/")[0] ?? "")

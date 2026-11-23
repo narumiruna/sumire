@@ -1,22 +1,20 @@
-import {
-  ChatBubbleIcon,
-  CheckCircledIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CodeIcon,
-  FileTextIcon,
-  GearIcon,
-  InfoCircledIcon,
-  LayersIcon,
-  LockClosedIcon,
-  MixerHorizontalIcon,
-  PersonIcon,
-  ReloadIcon,
-} from "@radix-ui/react-icons"
-import { Theme } from "@radix-ui/themes"
+import ChatBubbleIcon from "@react-spectrum/s2/icons/Chat"
+import CheckCircledIcon from "@react-spectrum/s2/icons/CheckmarkCircle"
+import ChevronDownIcon from "@react-spectrum/s2/icons/ChevronDown"
+import ChevronRightIcon from "@react-spectrum/s2/icons/ChevronRight"
+import CodeIcon from "@react-spectrum/s2/icons/Code"
+import FileTextIcon from "@react-spectrum/s2/icons/FileText"
+import MixerHorizontalIcon from "@react-spectrum/s2/icons/Filter"
+import InfoCircledIcon from "@react-spectrum/s2/icons/InfoCircle"
+import LayersIcon from "@react-spectrum/s2/icons/Layers"
+import LockClosedIcon from "@react-spectrum/s2/icons/Lock"
+import ReloadIcon from "@react-spectrum/s2/icons/Refresh"
+import GearIcon from "@react-spectrum/s2/icons/Settings"
+import PersonIcon from "@react-spectrum/s2/icons/User"
 import { type ReactNode, useEffect, useRef } from "react"
 import { createRoot } from "react-dom/client"
-import "@radix-ui/themes/styles.css"
+import "@react-spectrum/s2/page.css"
+import { applyAdminTheme } from "../../src/admin-theme.js"
 import "../../src/styles.css"
 import "./durable-visual-preview.css"
 
@@ -46,7 +44,7 @@ function Disclosure({ title, children }: { title: string; children: ReactNode })
   return (
     <details className="dv-disclosure">
       <summary>
-        <ChevronRightIcon className="dv-chevron" aria-hidden />
+        <ChevronRightIcon UNSAFE_className="dv-chevron" aria-hidden />
         {title}
       </summary>
       <div className="dv-disclosure-body">{children}</div>
@@ -118,7 +116,7 @@ function Branch({
     <li>
       <details className={`dv-branch dv-role-${recordRole}`} open>
         <summary aria-label={`Toggle ${label} ${id} records`}>
-          <ChevronRightIcon className="dv-chevron" aria-hidden />
+          <ChevronRightIcon UNSAFE_className="dv-chevron" aria-hidden />
           <span className="dv-role-icon">{icon}</span>
           <span className="dv-row-body">
             <span className="dv-row-heading">
@@ -193,7 +191,7 @@ function RecordBrowser() {
         <LayersIcon aria-hidden />
         <span>Browse records</span>
         <span className="dv-browse-current">Entry {selectedId}</span>
-        <ChevronDownIcon className="dv-chevron" aria-hidden />
+        <ChevronDownIcon UNSAFE_className="dv-chevron" aria-hidden />
       </summary>
       <nav className="dv-navigator" aria-label="Record navigator">
         <div className="dv-navigator-heading">
@@ -456,9 +454,10 @@ function Preview() {
 
 const root = document.getElementById("root")
 if (root) {
+  applyAdminTheme()
   createRoot(root).render(
-    <Theme appearance="light" accentColor="teal" grayColor="sand" radius="medium">
+    <div className="admin-theme">
       <Preview />
-    </Theme>,
+    </div>,
   )
 }

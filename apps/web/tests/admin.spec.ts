@@ -350,10 +350,15 @@ test("stages inheritance for all chat overrides without changing access or enabl
     exact: true,
   })
   await bulk.click()
-  await expect(page.getByRole("alertdialog")).toContainText(
-    "3 chats have explicit overrides in the policy draft.",
-  )
-  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  const dialog = page.getByRole("alertdialog", {
+    name: "Reset all chat overrides to inherit defaults?",
+  })
+  await expect(dialog).toContainText("3 chats have explicit overrides in the policy draft.")
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true })
+  await expect(cancel).toBeFocused()
+  await cancel.click()
+  await expect(dialog).toBeHidden()
+  await expect(bulk).toBeFocused()
   await expect(
     page.getByRole("button", { name: "Review and save changes", exact: true }),
   ).toHaveCount(0)
@@ -723,8 +728,9 @@ test("edits private access and saves with a confirmation", async ({ page }) => {
   await navigate(page, "Access")
   await page.getByLabel("Telegram ID to approve").fill("43")
   await page.getByRole("button", { name: "Review approval" }).click()
-  await expect(page.getByRole("alertdialog")).toBeVisible()
-  await page.getByRole("button", { name: "Save changes" }).click()
+  const confirmation = page.getByRole("alertdialog")
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole("button", { name: "Save changes", exact: true }).click()
   await expect(page.getByText("Settings saved and applied.", { exact: true })).toBeVisible()
 })
 test("shows inherited chat settings and supported thinking levels", async ({ page }) => {
@@ -1313,7 +1319,10 @@ test("configures multiple custom models without exposing an existing key", async
   const saving = page.waitForRequest(
     (r) => r.url().endsWith("/api/settings") && r.method() === "PUT",
   )
-  await page.getByRole("button", { name: "Save changes" }).click()
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click()
   expect(
     (await saving).postDataJSON().policy.providers[0].models.map((m: { id: string }) => m.id),
   ).toEqual(["one", "two"])
@@ -1332,7 +1341,10 @@ test("retains edits and reports revision conflicts", async ({ page }) => {
   await navigate(page, "Tool permissions")
   await page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }).check()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
-  await page.getByRole("button", { name: "Save changes" }).click()
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click()
   await expect(page.getByRole("alert")).toContainText("Settings changed")
   await expect(page.getByText(/\d+ unsaved changes?/).first()).toBeVisible()
   await expect(

@@ -1,0 +1,67 @@
+/* Keep the Durable panel layout and touch targets independent of the control library. */
+.durable-history-search {
+  min-width: 0;
+}
+.durable-history-search > [role="group"] {
+  height: auto;
+}
+.durable-history-search input {
+  min-height: 44px;
+}
+.durable-history-search input:focus-visible {
+  outline: none; /* The Spectrum field group draws the focus ring. */
+}
+.durable-history-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.durable-entry-navigation button,
+.durable-message-heading > .durable-copy-button {
+  align-items: center;
+}
+.durable-entry-message > p:not(.durable-message-text) {
+  margin-block: 0;
+}
+.durable-message-heading :is(h4, h5),
+.reading-entry-identity h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.durable-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  padding: 12px;
+}
+.durable-inspector.durable-history-dialog {
+  /* This surface is portaled outside the inspector's theme. */
+  --durable-ink: var(--history-dialog-text);
+  --durable-muted: var(--history-dialog-muted);
+  --durable-line: var(--history-dialog-border);
+  --durable-panel: var(--history-dialog-panel);
+  --durable-paper: var(--history-dialog-paper);
+  --code-font-family: ui-monospace, monospace;
+  width: min(100%, 760px);
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.durable-history-dialog > h2 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+}
+.durable-history-dialog > p:first-of-type {
+  margin: 0;
+  color: var(--durable-muted);
+}
+@media (max-width: 650px) {
+  .durable-history-dialog .durable-copy-button {
+    width: 44px;
+    padding-inline: 0;
+  }
+}

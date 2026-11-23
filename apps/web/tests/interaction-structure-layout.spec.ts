@@ -38,7 +38,7 @@ for (const width of [1440, 1024, 768, 390, 320]) {
       ).toBeLessThanOrEqual(32)
       expect(
         await page
-          .locator(".radix-themes")
+          .locator(".admin-theme")
           .first()
           .evaluate((node) => getComputedStyle(node).fontSize),
       ).toBe("16px")
@@ -55,7 +55,7 @@ for (const width of [1440, 1024, 768, 390, 320]) {
             height: document.documentElement.scrollHeight,
             title: heading && getComputedStyle(heading).fontSize,
             navigation: navigation && getComputedStyle(navigation).fontSize,
-            body: getComputedStyle(document.querySelector(".radix-themes") ?? document.body)
+            body: getComputedStyle(document.querySelector(".admin-theme") ?? document.body)
               .fontSize,
           }
         }, section),

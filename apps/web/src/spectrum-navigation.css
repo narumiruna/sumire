@@ -1,0 +1,62 @@
+.admin-shell .spectrum-sidebar {
+  background: var(--nav-surface);
+  border-color: var(--nav-divider);
+}
+.spectrum-sidebar .sidebar-account {
+  border-color: var(--nav-divider);
+}
+.admin-shell .spectrum-sidebar .navigation-link,
+.admin-shell .spectrum-sidebar .navigation-link svg,
+.admin-shell .spectrum-sidebar .account-trigger:enabled,
+.admin-shell .spectrum-sidebar .rail-toggle {
+  color: var(--nav-text);
+}
+.admin-shell .spectrum-sidebar .navigation-link {
+  border-radius: var(--nav-radius);
+}
+.admin-shell .spectrum-sidebar .navigation-link:hover {
+  background: var(--nav-hover);
+}
+.admin-shell .spectrum-sidebar .navigation-link[aria-current="page"] {
+  background: var(--nav-current);
+  border-left-color: var(--nav-current-text);
+  color: var(--nav-current-text);
+  box-shadow: none;
+}
+.admin-shell .spectrum-sidebar .navigation-link[aria-current="page"] svg {
+  color: currentColor;
+}
+.admin-shell .spectrum-sidebar :is(.navigation-link, .account-trigger):focus-visible {
+  outline: 2px solid var(--nav-focus);
+  outline-offset: 2px;
+}
+.account-trigger-id {
+  font-size: 1rem;
+  font-weight: 500;
+}
+@media (min-width: 651px) {
+  .reading-first .spectrum-sidebar[data-collapsed="true"] .account-trigger {
+    min-inline-size: 44px;
+  }
+}
+.spectrum-language select {
+  background: var(--language-surface);
+  border-color: var(--language-border);
+  border-radius: var(--language-radius);
+  color: var(--language-text);
+}
+.spectrum-language select:hover {
+  background: var(--language-hover);
+}
+.spectrum-language select:focus-visible {
+  outline-color: var(--language-focus);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

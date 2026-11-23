@@ -16,9 +16,12 @@ it("builds the browser application without warnings and splits the React runtime
   const chunks = result.output.filter((output) => output.type === "chunk")
   const entry = chunks.find((chunk) => chunk.isEntry)
   const react = chunks.find((chunk) => chunk.name === "react")
+  const spectrum = chunks.find((chunk) => chunk.name === "spectrum")
   expect(warnings).toEqual([])
   expect(react?.moduleIds.some((id) => id.includes("/react-dom/"))).toBe(true)
   expect(entry?.imports).toContain(react?.fileName)
+  expect(entry?.imports).toContain(spectrum?.fileName)
+  expect(spectrum?.imports).not.toContain(entry?.fileName)
 
   const assets = result.output.filter((output) => output.type === "asset")
   const icon = assets.find((asset) =>
@@ -28,6 +31,13 @@ it("builds the browser application without warnings and splits the React runtime
   expect(icon).toBeDefined()
   expect(html?.source).toEqual(expect.stringContaining(`href="/${icon?.fileName}"`))
   expect(entry?.code).toContain(`/${icon?.fileName}`)
-  for (const chunk of chunks)
+  for (const chunk of chunks) {
     expect(Buffer.byteLength(chunk.code), chunk.fileName).toBeLessThanOrEqual(500_000)
+    expect(chunk.moduleIds, chunk.fileName).not.toContainEqual(
+      expect.stringMatching(/[/\\]node_modules[/\\](?:@radix-ui|radix-ui)[/\\]/),
+    )
+  }
+  for (const asset of assets.filter((asset) => asset.fileName.endsWith(".css"))) {
+    expect(asset.source.toString(), asset.fileName).not.toMatch(/\.radix-themes\b|\.rt-[A-Z]/)
+  }
 })

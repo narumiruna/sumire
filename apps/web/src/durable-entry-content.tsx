@@ -1,6 +1,7 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
-import { ChatBubbleIcon, CopyIcon } from "@radix-ui/react-icons"
-import { Button, Heading, Text } from "@radix-ui/themes"
+import { Button, Text } from "@react-spectrum/s2/Button"
+import Chat from "@react-spectrum/s2/icons/Chat"
+import Copy from "@react-spectrum/s2/icons/Copy"
 import { useState } from "react"
 import { type MessageKey, t } from "./i18n.js"
 
@@ -10,11 +11,12 @@ function CopyContent({ text }: { text: string }) {
     <>
       <Button
         type="button"
-        className="durable-copy-button"
+        UNSAFE_className="durable-copy-button"
         aria-label={t("record.copyContent")}
-        size="1"
-        variant="outline"
-        onClick={() => {
+        size="S"
+        variant="secondary"
+        fillStyle="outline"
+        onPress={() => {
           void Promise.resolve()
             .then(() => navigator.clipboard.writeText(text))
             .then(
@@ -23,14 +25,10 @@ function CopyContent({ text }: { text: string }) {
             )
         }}
       >
-        <CopyIcon aria-hidden />{" "}
-        <span className="durable-copy-label">{t("record.copyContent")}</span>
+        <Copy aria-hidden />
+        <Text UNSAFE_className="durable-copy-label">{t("record.copyContent")}</Text>
       </Button>
-      {status && (
-        <Text size="1" role="status">
-          {t(status)}
-        </Text>
-      )}
+      {status && <span role="status">{t(status)}</span>}
     </>
   )
 }
@@ -52,15 +50,9 @@ export function EntryContent({
   }
   return (
     <section aria-label={t("record.entryContent")} className="durable-entry-content">
-      {content.truncated && (
-        <Text as="p" role="status">
-          {t("record.contentTruncatedDetails")}
-        </Text>
-      )}
+      {content.truncated && <p role="status">{t("record.contentTruncatedDetails")}</p>}
       {content.messages.length === 0 && (
-        <Text as="p">
-          {content.truncated ? t("record.noMessagesIncluded") : t("record.noMessages")}
-        </Text>
+        <p>{content.truncated ? t("record.noMessagesIncluded") : t("record.noMessages")}</p>
       )}
       {content.messages.map((message, index) => (
         <section
@@ -70,14 +62,14 @@ export function EntryContent({
           className="durable-entry-message"
         >
           <div className="durable-message-heading">
-            <ChatBubbleIcon aria-hidden />
-            <Heading as="h4" size="2">
+            <Chat aria-hidden />
+            <h4>
               {content.messages.length > 1
                 ? roles[message.role]
                 : message.role === "toolResult"
                   ? t("record.output")
                   : t("record.message")}
-            </Heading>
+            </h4>
             {message.toolName !== undefined &&
               (content.messages.length > 1 || message.toolName !== toolName) && (
                 <span>{message.toolName}</span>
@@ -108,9 +100,7 @@ export function EntryContent({
             )}
           </div>
           {message.content.length === 0 && (
-            <Text as="p">
-              {content.truncated ? t("record.noBlocksIncluded") : t("record.noBlocks")}
-            </Text>
+            <p>{content.truncated ? t("record.noBlocksIncluded") : t("record.noBlocks")}</p>
           )}
           {message.content.map((block, blockIndex) => {
             switch (block.type) {
@@ -155,9 +145,7 @@ export function EntryContent({
                       <summary>{t("record.argumentsForTool", { name: block.name })}</summary>
                     )}
                     <div className="durable-message-heading">
-                      <Heading as="h5" size="2">
-                        {t("record.argumentsForTool", { name: block.name })}
-                      </Heading>
+                      <h5>{t("record.argumentsForTool", { name: block.name })}</h5>
                       <span>{t("record.jsonText")}</span>
                     </div>
                     <pre className="durable-arguments">{block.arguments}</pre>
@@ -176,9 +164,7 @@ export function EntryContent({
               case "image":
                 return (
                   // biome-ignore lint/suspicious/noArrayIndexKey: Content blocks have no IDs and cannot be reordered in this snapshot.
-                  <Text as="p" key={blockIndex}>
-                    {t("record.imageOmitted", { mimeType: block.mimeType })}
-                  </Text>
+                  <p key={blockIndex}>{t("record.imageOmitted", { mimeType: block.mimeType })}</p>
                 )
               default:
                 return null

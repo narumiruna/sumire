@@ -1,8 +1,11 @@
-import { Button, Code, Dialog, Flex, Heading } from "@radix-ui/themes"
-import { useContext, useEffect, useState } from "react"
+import { Button } from "@react-spectrum/s2/Button"
+import { CustomDialog, DialogTrigger, Heading } from "@react-spectrum/s2/CustomDialog"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
+import { useContext, useEffect, useId, useState } from "react"
 import type { Inventory, Policy } from "./api.js"
+import { Check } from "./check.js"
 import { t } from "./i18n.js"
-import { Check, Field } from "./policy-editors.js"
 import { SectionActive } from "./sections.js"
 import { Disclosure, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
 
@@ -42,6 +45,7 @@ export function Skills({
   const [query, setQuery] = useState("")
   const active = useContext(SectionActive)
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const maintenanceDescription = useId()
   useEffect(() => {
     if (!active) setMaintenanceOpen(false)
   }, [active])
@@ -52,34 +56,49 @@ export function Skills({
     `${name} ${metadata.get(name)?.description ?? ""}`.toLowerCase().includes(query.toLowerCase()),
   )
   return (
-    <Flex id="default-skills" tabIndex={-1} direction="column" gap="4" className="skills-workspace">
-      <Flex gap="3" align="start" justify="between" wrap="wrap">
+    <div id="default-skills" tabIndex={-1} className="skills-workspace settings-stack">
+      <div
+        className={style({
+          display: "flex",
+          alignItems: "start",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+        })}
+      >
         <Prose>{t("skill.intro")}</Prose>
-        <Dialog.Root open={maintenanceOpen && active} onOpenChange={setMaintenanceOpen}>
-          <Dialog.Trigger>
-            <Button id="skill-maintenance" variant="soft">
-              {t("skill.installation")}
-            </Button>
-          </Dialog.Trigger>
-          <Dialog.Content
-            maxWidth="560px"
-            onCloseAutoFocus={(event) => {
-              if (!active) event.preventDefault()
-            }}
-          >
-            <Dialog.Title>{t("skill.installation")}</Dialog.Title>
-            <Dialog.Description>{t("skill.installationDescription")}</Dialog.Description>
-            <Prose>{t("skill.installationHelp")}</Prose>
-            <Flex justify="end" mt="4">
-              <Dialog.Close>
-                <Button variant="soft">{t("selection.close")}</Button>
-              </Dialog.Close>
-            </Flex>
-          </Dialog.Content>
-        </Dialog.Root>
-      </Flex>
+        <DialogTrigger isOpen={maintenanceOpen && active} onOpenChange={setMaintenanceOpen}>
+          <Button id="skill-maintenance" variant="secondary" size="XL">
+            {t("skill.installation")}
+          </Button>
+          <CustomDialog isDismissible aria-describedby={maintenanceDescription}>
+            {({ close }) => (
+              <>
+                <Heading slot="title" styles={style({ font: "title-2xl", margin: 0 })}>
+                  {t("skill.installation")}
+                </Heading>
+                <Prose id={maintenanceDescription}>{t("skill.installationDescription")}</Prose>
+                <Prose>{t("skill.installationHelp")}</Prose>
+                <div className={style({ display: "flex", justifyContent: "end", marginTop: 16 })}>
+                  <Button variant="secondary" size="XL" autoFocus onPress={close}>
+                    {t("selection.close")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CustomDialog>
+        </DialogTrigger>
+      </div>
       <TableToolbar>
-        <Field id="skill-search" label={t("skill.search")} value={query} onChange={setQuery} />
+        <TextField
+          id="skill-search"
+          label={t("skill.search")}
+          size="XL"
+          value={query}
+          onChange={setQuery}
+          autoComplete="off"
+          styles={style({ width: "full" })}
+        />
         <Prose size="2">{t("skill.count", { visible: visible.length, total: names.length })}</Prose>
       </TableToolbar>
       {inventory.skills === undefined && <Prose role="status">{t("skill.inventoryUnknown")}</Prose>}
@@ -110,9 +129,9 @@ export function Skills({
         return (
           <section key={name} aria-label={t("skill.named", { name })} className="skill-row">
             <div className="skill-identity">
-              <Heading as="h3" size="3">
-                <Code variant="ghost">{name}</Code>
-              </Heading>
+              <h3 className={style({ font: "heading-xs", color: "title", marginBottom: 8 })}>
+                <code>{name}</code>
+              </h3>
               <Prose size="2" className="summary-description">
                 {skill?.description
                   ? skillPurpose(skill.description)
@@ -134,7 +153,6 @@ export function Skills({
             </div>
             <Check
               label={t("skill.enableNamed", { name })}
-              visibleLabel={t("skill.enabledGlobally")}
               checked={global}
               onChange={(checked) =>
                 onChange({
@@ -144,10 +162,10 @@ export function Skills({
                     : (policy.skills ?? []).filter((value) => value !== name),
                 })
               }
+              visibleLabel={t("skill.enabledGlobally")}
             />
             <Check
               label={t("skill.defaultNamed", { name })}
-              visibleLabel={t("skill.useDefault")}
               checked={selected}
               disabled={!global && !selected}
               onChange={(checked) =>
@@ -161,8 +179,17 @@ export function Skills({
                   },
                 })
               }
+              visibleLabel={t("skill.useDefault")}
             />
-            <Flex direction="column" align="start" gap="2">
+            <div
+              className={style({
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "start",
+                gap: 8,
+                gridColumn: { "@media (max-width: 650px)": "[1 / -1]" },
+              })}
+            >
               <StatusLabel tone={global && selected && skill ? "success" : "neutral"}>
                 {global && selected
                   ? skill
@@ -180,7 +207,7 @@ export function Skills({
                 </StatusLabel>
               )}
               {pending && <StatusLabel tone="warning">{t("selection.pendingChange")}</StatusLabel>}
-            </Flex>
+            </div>
             {!global && (selected || refs.length > 0) && (
               <Prose size="2" color="orange" className="skill-impact">
                 {t("skill.retainedHelp")}
@@ -193,7 +220,13 @@ export function Skills({
                 open={!global}
               >
                 {refs.map(([id]) => (
-                  <Button key={id} variant="ghost" onClick={() => onChat(id)}>
+                  <Button
+                    key={id}
+                    variant="secondary"
+                    fillStyle="outline"
+                    size="XL"
+                    onPress={() => onChat(id)}
+                  >
                     {t("selection.chatNamed", { id })}
                   </Button>
                 ))}
@@ -202,6 +235,6 @@ export function Skills({
           </section>
         )
       })}
-    </Flex>
+    </div>
   )
 }

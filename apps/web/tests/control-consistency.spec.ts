@@ -111,14 +111,13 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
     const { auditQueries, writes } = await fixture(page, "Audit")
     const fields = page.locator(
-      ".audit-filters .rt-TextFieldRoot, .audit-filters button[role=combobox]",
+      ".audit-filters :is(.audit-text-control, input[type=date], button[role=combobox])",
     )
     await expect(fields).toHaveCount(5)
     for (const label of ["From date (UTC)", "Through date (UTC)"]) {
       const date = page.getByLabel(label, { exact: true })
       await expect(date).toHaveAccessibleName(label)
       await expect(date).toHaveAttribute("type", "date")
-      await expect(date.locator("..")).toHaveClass(/rt-TextFieldRoot/)
     }
     const boxes = await fields.evaluateAll((elements) =>
       elements.map((element) => {

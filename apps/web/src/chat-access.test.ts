@@ -1,6 +1,5 @@
 import { initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import { ChatAccess } from "./chat-access.js"
@@ -42,8 +41,8 @@ describe("chat access localization", () => {
       setLocale(locale)
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(ChatAccess, {
             policy,
             saved,

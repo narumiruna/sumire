@@ -1,0 +1,22 @@
+/* Keep workspace defaults from overriding the consent screen's Spectrum styles. */
+.issues-mcp-consent > .session-card {
+  background: var(--consent-card-surface);
+  border-color: var(--consent-card-border);
+}
+.issues-mcp-consent #issues-mcp-consent-heading {
+  margin: 0;
+}
+.issues-mcp-consent a.consent-back {
+  color: var(--consent-back-text);
+}
+.issues-mcp-consent a.consent-back:hover {
+  color: var(--consent-back-hover);
+}
+.issues-mcp-consent a.consent-continue {
+  color: var(--consent-continue-text);
+  text-decoration: none;
+}
+.issues-mcp-consent :is(button, .consent-back, .consent-continue):focus-visible {
+  outline-color: var(--consent-focus);
+  outline-offset: 2px;
+}

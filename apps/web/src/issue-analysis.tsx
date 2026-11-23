@@ -6,20 +6,53 @@ import {
   type Proposal,
   renderProposalSvg,
 } from "@narumitw/sumire-issues"
-import {
-  Badge,
-  Button,
-  Callout,
-  Code,
-  Dialog,
-  Flex,
-  Heading,
-  Text,
-  TextArea,
-} from "@radix-ui/themes"
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, Dialog, DialogContainer, Footer, Heading } from "@react-spectrum/s2/Dialog"
+import { InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextArea } from "@react-spectrum/s2/TextArea"
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react"
+import "./spectrum-issue-controls.css"
 import { ApiError, request } from "./api.js"
 import { t } from "./i18n.js"
+
+const panelStyles = style({
+  color: "body",
+  font: "body",
+  "--analysis-border": { type: "borderColor", value: "gray-300" },
+  "--analysis-surface": { type: "backgroundColor", value: "layer-2" },
+  "--analysis-disclosure": { type: "backgroundColor", value: "gray-75" },
+  "--analysis-focus": {
+    type: "outlineColor",
+    value: { default: "focus-ring", forcedColors: "Highlight" },
+  },
+})
+const headingRow = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 12,
+})
+const actions = style({ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 })
+const footer = style({ display: "flex", justifyContent: "end" })
+const title = style({ font: "heading-sm", color: "title", margin: 0 })
+const subtitle = style({ font: "heading-xs", color: "title", margin: 0 })
+const smallText = style({ font: "body-sm", margin: 0 })
+const muted = style({ color: "neutral-subdued" })
+const note = style({
+  backgroundColor: "gray-75",
+  borderColor: "gray-300",
+  borderStyle: "solid",
+  borderWidth: 1,
+  borderRadius: "default",
+  font: "body",
+  margin: 0,
+  padding: 12,
+})
+const fullWidth = style({ width: "full" })
 
 export function IssueAnalysisPanel({
   issue,
@@ -33,6 +66,7 @@ export function IssueAnalysisPanel({
   const [data, setData] = useState<IssueAnalyses>()
   const [extra, setExtra] = useState("")
   const [preview, setPreview] = useState<Proposal>()
+  const previewDescriptionId = useId()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [readError, setReadError] = useState("")
@@ -184,45 +218,34 @@ export function IssueAnalysisPanel({
   const visibleError = error || readError
   const previous = data?.analyses?.slice(1) ?? []
   return (
-    <section className="issue-analysis" aria-label={t("issues.analysis")}>
-      <Flex justify="between" gap="3" align="center" wrap="wrap">
-        <Heading as="h3" size="4">
-          {t("issues.analysis")}
-        </Heading>
+    <section className={`issue-analysis ${panelStyles}`} aria-label={t("issues.analysis")}>
+      <div className={headingRow}>
+        <h3 className={title}>{t("issues.analysis")}</h3>
         <Button
-          variant="soft"
-          disabled={busy}
-          onClick={() => {
+          variant="secondary"
+          fillStyle="outline"
+          isDisabled={busy}
+          onPress={() => {
             setError("")
             void load()
           }}
         >
           {t("issues.refresh")}
         </Button>
-      </Flex>
-      <Text as="p" size="2">
-        {t("issues.analysisHelp")}
-      </Text>
+      </div>
+      <p className={smallText}>{t("issues.analysisHelp")}</p>
       {readAt && (
-        <Text as="p" size="2" color="gray">
+        <p className={`${smallText} ${muted}`}>
           {t("issues.readAt", { time: new Date(readAt).toLocaleTimeString() })}
-        </Text>
+        </p>
       )}
-      {data && !data.available && (
-        <Callout.Root>
-          <Callout.Text>{t("issues.unavailable")}</Callout.Text>
-        </Callout.Root>
-      )}
+      {data && !data.available && <p className={note}>{t("issues.unavailable")}</p>}
       {visibleError && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>{visibleError}</Callout.Text>
-        </Callout.Root>
+        <InlineAlert variant="negative">
+          <Content>{visibleError}</Content>
+        </InlineAlert>
       )}
-      {uncertain && (
-        <Text as="p" role="status">
-          {t("issues.uncertain")}
-        </Text>
-      )}
+      {uncertain && <p role="status">{t("issues.uncertain")}</p>}
       {current && (
         <AnalysisAttempt
           analysis={current}
@@ -246,35 +269,36 @@ export function IssueAnalysisPanel({
           }}
         >
           <div className="issue-analysis-controls">
-            <label htmlFor={`issue-analysis-context-${issue.id}`}>{t("issues.context")}</label>
             <TextArea
               id={`issue-analysis-context-${issue.id}`}
+              label={t("issues.context")}
               value={extra}
               maxLength={4000}
-              disabled={busy || uncertain || !canRequest}
-              onChange={(event) => setExtra(event.target.value)}
+              isDisabled={busy || uncertain || !canRequest}
+              styles={fullWidth}
+              onChange={setExtra}
             />
-            <Text as="p" size="2">
-              {t("issues.consent")}
-            </Text>
-            <Flex gap="3" wrap="wrap">
-              <Button disabled={busy || (!uncertain && !canRequest)} onClick={() => void analyze()}>
+            <p className={smallText}>{t("issues.consent")}</p>
+            <div className={actions}>
+              <Button
+                variant="accent"
+                isDisabled={busy || (!uncertain && !canRequest)}
+                onPress={() => void analyze()}
+              >
                 {uncertain ? t("issues.retry") : t("issues.request")}
               </Button>
               {active && (
                 <Button
-                  color="red"
-                  variant="soft"
-                  disabled={busy}
-                  onClick={() => void mutate(() => cancel(current))}
+                  variant="negative"
+                  fillStyle="outline"
+                  isDisabled={busy}
+                  onPress={() => void mutate(() => cancel(current))}
                 >
                   {t("issues.cancel")}
                 </Button>
               )}
-            </Flex>
-            <Text as="p" size="2">
-              {t("issues.limit", { max: MAX_ANALYSIS_ATTEMPTS })}
-            </Text>
+            </div>
+            <p className={smallText}>{t("issues.limit", { max: MAX_ANALYSIS_ATTEMPTS })}</p>
           </div>
         </AnalysisAttempt>
       )}
@@ -288,28 +312,41 @@ export function IssueAnalysisPanel({
           </div>
         </details>
       )}
-      <Dialog.Root
-        open={Boolean(preview)}
-        onOpenChange={(open) => {
-          if (!open) setPreview(undefined)
-        }}
-      >
-        <Dialog.Content maxWidth="1100px">
-          <Dialog.Title>{preview?.preview.title}</Dialog.Title>
-          <Dialog.Description>{t("issues.previewHelp")}</Dialog.Description>
-          {preview && (
-            <div className="issue-preview-scroll">
-              <img
-                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderProposalSvg(preview))}`}
-                alt={preview.preview.title}
-              />
-            </div>
-          )}
-          <Dialog.Close>
-            <Button variant="soft">{t("issues.closePreview")}</Button>
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Root>
+      <DialogContainer onDismiss={() => setPreview(undefined)}>
+        {preview && (
+          <Dialog
+            size="XL"
+            isDismissible
+            aria-describedby={previewDescriptionId}
+            UNSAFE_className="issue-proposal-dialog "
+          >
+            <Heading slot="title">{preview.preview.title}</Heading>
+            <Content>
+              <p id={previewDescriptionId} className={smallText}>
+                {t("issues.previewHelp")}
+              </p>
+              <div className="issue-preview-scroll">
+                <img
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderProposalSvg(preview))}`}
+                  alt={preview.preview.title}
+                />
+              </div>
+            </Content>
+            <Footer>
+              <div className={footer}>
+                <Button
+                  autoFocus
+                  variant="secondary"
+                  fillStyle="outline"
+                  onPress={() => setPreview(undefined)}
+                >
+                  {t("issues.closePreview")}
+                </Button>
+              </div>
+            </Footer>
+          </Dialog>
+        )}
+      </DialogContainer>
     </section>
   )
 }
@@ -333,24 +370,20 @@ function AnalysisAttempt({
       }
       aria-label={t("issues.attempt", { attempt: analysis.attempt })}
     >
-      <Flex gap="2" align="center" wrap="wrap">
-        <Heading as="h4" size="3">
-          {t("issues.attempt", { attempt: analysis.attempt })}
-        </Heading>
-        <Badge>{t(`issues.state.${analysis.state}`)}</Badge>
-      </Flex>
-      {analysis.reason && <Text as="p">{t(`issues.reason.${analysis.reason}`)}</Text>}
+      <div className={actions}>
+        <h4 className={subtitle}>{t("issues.attempt", { attempt: analysis.attempt })}</h4>
+        <Badge variant="neutral" fillStyle="subtle">
+          {t(`issues.state.${analysis.state}`)}
+        </Badge>
+      </div>
+      {analysis.reason && <p>{t(`issues.reason.${analysis.reason}`)}</p>}
       {report && (
         <>
           <p className="issue-description">{report.summary}</p>
-          <Callout.Root>
-            <Callout.Text>{report.limitations}</Callout.Text>
-          </Callout.Root>
+          <p className={note}>{report.limitations}</p>
           {report.questions.length > 0 && (
             <>
-              <Heading as="h5" size="2">
-                {t("issues.questions")}
-              </Heading>
+              <h5 className={subtitle}>{t("issues.questions")}</h5>
               <ul>
                 {report.questions.map((question) => (
                   <li key={question}>{question}</li>
@@ -364,15 +397,15 @@ function AnalysisAttempt({
       <details key={analysis.id} className="issue-analysis-disclosure issue-analysis-run-details">
         <summary>{t("issues.runDetails")}</summary>
         <div className="issue-analysis-disclosure-content">
-          <Text as="p" size="2">
+          <p className={smallText}>
             {t("issues.session")}:{" "}
-            {analysis.sessionId ? <Code>{analysis.sessionId}</Code> : t("issues.sessionPending")}
-          </Text>
+            {analysis.sessionId ? <code>{analysis.sessionId}</code> : t("issues.sessionPending")}
+          </p>
           {analysis.conversationId !== null && (
-            <Text as="p" size="2">
+            <p className={smallText}>
               {t("issues.conversation", { id: analysis.conversationId })}
               {analysis.model ? ` · ${analysis.model}` : ""}
-            </Text>
+            </p>
           )}
         </div>
       </details>
@@ -380,38 +413,36 @@ function AnalysisAttempt({
         <div className="issue-proposals">
           {report.proposals.map((proposal, number) => (
             <article key={`${analysis.id}:${proposal.title}`} className="issue-proposal">
-              <Heading as="h5" size="3">
+              <h5 className={subtitle}>
                 {number + 1}. {proposal.title}
-              </Heading>
+              </h5>
               <p>{proposal.rationale}</p>
               <img
                 src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderProposalSvg(proposal))}`}
                 alt={proposal.preview.title}
                 className="issue-proposal-preview"
               />
-              <Button variant="soft" onClick={() => onPreview(proposal)}>
+              <Button variant="secondary" fillStyle="outline" onPress={() => onPreview(proposal)}>
                 {t("issues.enlarge")}
               </Button>
-              <Text as="p" size="2">
-                {t("issues.previewHelp")}
-              </Text>
+              <p className={smallText}>{t("issues.previewHelp")}</p>
               <ul>
                 {proposal.changes.map((change) => (
                   <li key={change}>{change}</li>
                 ))}
               </ul>
-              <Text as="p">
+              <p>
                 {t("issues.tradeoffs")}: {proposal.tradeoffs}
-              </Text>
+              </p>
               {selection && (
-                <Button
-                  variant={analysis.selectedProposal === number ? "solid" : "soft"}
-                  aria-pressed={analysis.selectedProposal === number}
-                  disabled={selection.disabled}
-                  onClick={() => selection.select(number)}
+                <ToggleButton
+                  isSelected={analysis.selectedProposal === number}
+                  isEmphasized
+                  isDisabled={selection.disabled}
+                  onChange={() => selection.select(number)}
                 >
                   {analysis.selectedProposal === number ? t("issues.selected") : t("issues.select")}
-                </Button>
+                </ToggleButton>
               )}
             </article>
           ))}

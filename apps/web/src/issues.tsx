@@ -1,10 +1,21 @@
 import type { Issue, IssuePage, IssueState } from "@narumitw/sumire-issues"
-import { Badge, Button, Callout, Flex, Heading, Text } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { errorMessage, LocalizedError, type MessageKey } from "./i18n.js"
 import { IssueAnalysisPanel } from "./issue-analysis.js"
 import { IssuesList } from "./issues-list.js"
+import { Prose, StatusLabel } from "./surfaces.js"
+
+const workspaceStyles = style({
+  "--issues-surface": { type: "backgroundColor", value: "layer-2" },
+  "--issues-toolbar": { type: "backgroundColor", value: "gray-75" },
+  "--issues-table-heading": { type: "backgroundColor", value: "gray-100" },
+  "--issues-border": { type: "borderColor", value: "gray-300" },
+  "--issues-muted": { type: "color", value: "neutral-subdued" },
+})
 
 const IssuesMcpGrants = lazy(() => import("./issues-mcp-grants.js"))
 const date = (value: number) => new Date(value).toLocaleString("zh-TW")
@@ -133,32 +144,32 @@ export function Issues({
   }
   const visibleError = error || (!selected && listError)
   return (
-    <section aria-label="Issues" className="issues-workspace">
-      {notice && (
-        <Text as="p" role="status">
-          回饋 #{notice} 已儲存。
-        </Text>
-      )}
+    <section aria-label="Issues" className={`issues-workspace ${workspaceStyles}`}>
+      {notice && <Prose role="status">回饋 #{notice} 已儲存。</Prose>}
       {visibleError && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>{errorMessage(visibleError)}</Callout.Text>
-        </Callout.Root>
+        <InlineAlert variant="negative">
+          <Content>{errorMessage(visibleError)}</Content>
+        </InlineAlert>
       )}
       {selected ? (
         <article className="issue-detail" aria-labelledby="issue-detail-heading">
           <header className="issue-detail-header">
-            <Heading as="h2" id="issue-detail-heading" size="6">
+            <h2
+              id="issue-detail-heading"
+              className={style({ font: "heading-sm", color: "title", margin: 0 })}
+            >
               #{selected.id} {selected.title}
-            </Heading>
-            <Badge color={selected.state === "open" ? "green" : "gray"}>
+            </h2>
+            <StatusLabel tone={selected.state === "open" ? "success" : "neutral"}>
               {selected.state === "open" ? "開啟中" : "已關閉"}
-            </Badge>
+            </StatusLabel>
           </header>
-          <Flex className="issue-detail-actions" gap="3" wrap="wrap" align="center">
+          <div className="issue-detail-actions">
             <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() => {
+              variant="secondary"
+              size="XL"
+              isDisabled={busy}
+              onPress={() => {
                 generation.current++
                 returnToIssue.current = selected.id
                 setSelected(undefined)
@@ -167,16 +178,18 @@ export function Issues({
               返回列表
             </Button>
             <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() => void operate((version) => detail(selected.id, version))}
+              variant="secondary"
+              size="XL"
+              isDisabled={busy}
+              onPress={() => void operate((version) => detail(selected.id, version))}
             >
               重新整理回饋
             </Button>
             <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() =>
+              variant="secondary"
+              size="XL"
+              isDisabled={busy}
+              onPress={() =>
                 void operate(async (version) => {
                   const issue = await request<Issue>(
                     `issues/${selected.id}`,
@@ -198,10 +211,10 @@ export function Issues({
               {selected.state === "open" ? "關閉回饋" : "重新開啟"}
             </Button>
             <Button
-              color="red"
-              variant="soft"
-              disabled={busy}
-              onClick={() => {
+              variant="negative"
+              size="XL"
+              isDisabled={busy}
+              onPress={() => {
                 if (
                   !window.confirm(
                     `永久刪除回饋 #${selected.id} 及其截圖？此操作無法復原；備份中的副本需另行清除。`,
@@ -229,24 +242,22 @@ export function Issues({
             >
               永久刪除
             </Button>
-          </Flex>
+          </div>
           <div className="issue-detail-columns">
             <div className="issue-report">
               <div className="issue-report-meta">
-                <Text as="p" size="2" color="gray">
+                <Prose size="1" color="gray">
                   {selected.section} · {date(selected.createdAt)}
-                </Text>
-                <Text as="p" size="2" color="gray">
+                </Prose>
+                <Prose size="1" color="gray">
                   回報時視窗：{selected.source.viewport.width} × {selected.source.viewport.height}
                   {" · "}更新：{date(selected.updatedAt)}
-                </Text>
+                </Prose>
               </div>
               {selected.description ? (
                 <p className="issue-description">{selected.description}</p>
               ) : (
-                <Text as="p" color="gray">
-                  未提供文字描述。
-                </Text>
+                <Prose color="gray">未提供文字描述。</Prose>
               )}
               {selected.hasScreenshot && (
                 <IssueScreenshot
@@ -296,9 +307,9 @@ function IssueScreenshot({ id, reload }: { id: number; reload: number }) {
   return (
     <>
       {failed && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>截圖無法載入，請確認登入狀態後重新整理。</Callout.Text>
-        </Callout.Root>
+        <InlineAlert variant="negative">
+          <Content>截圖無法載入，請確認登入狀態後重新整理。</Content>
+        </InlineAlert>
       )}
       <img
         key={reload}

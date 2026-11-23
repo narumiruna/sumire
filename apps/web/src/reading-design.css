@@ -1,11 +1,7 @@
 /* Reading-first administration. Shared chrome applies to every page; editor behavior is unchanged. */
 .admin-shell.reading-first {
-  --forest: #285c43;
-  --forest-dark: #193c2b;
   --chat-green: #285c43;
-  --surface-line: #dce3dc;
   --chat-border: #dce3dc;
-  --ink-muted: #59655e;
 }
 .reading-first > main {
   padding: 28px 32px calc(var(--changes-bar-height, 0px) + 32px);
@@ -17,16 +13,13 @@
 }
 .reading-first
   :is(.panel, .settings-section, .provider-card, .skill-row, .runtime-values-row, .activity-group) {
-  border-color: var(--surface-line);
+  border-color: var(--app-line);
   border-radius: 14px;
 }
 .reading-first .page-header__description {
   max-width: 76ch;
-  color: var(--ink-muted);
+  color: var(--app-muted);
   line-height: 1.6;
-}
-.reading-first :is(.rt-TextFieldRoot, .rt-SelectTrigger, .rt-TextArea, .rt-Button) {
-  border-radius: 9px;
 }
 .reading-first .settings-section {
   padding: 22px;
@@ -35,7 +28,7 @@
 .reading-first :is(.defaults-layout, .provider-directory, .audit-workspace, .github-author-list) {
   gap: 18px;
 }
-.reading-first .settings-section__intro .rt-Heading {
+.reading-first .settings-section__intro h2 {
   font-weight: 650;
 }
 .reading-first :is(.page-content, .settings-section__body, .reading-entry) {
@@ -69,7 +62,7 @@
     min-height: 40px;
     width: 44px;
     padding: 8px;
-    color: var(--forest);
+    color: var(--app-accent);
   }
   .reading-first .sidebar-account {
     margin-top: 8px;
@@ -145,7 +138,7 @@
   }
   .reading-first .sidebar[data-collapsed="true"] .language-selector-icon {
     display: block;
-    color: var(--forest);
+    color: var(--app-accent);
     width: 22px;
     height: 22px;
   }
@@ -158,7 +151,7 @@
     cursor: pointer;
   }
   .reading-first .sidebar[data-collapsed="true"] .language-selector:focus-within {
-    outline: 2px solid var(--forest);
+    outline: 2px solid var(--app-accent);
     outline-offset: 2px;
   }
 }
@@ -175,7 +168,7 @@
 }
 .reading-first .durable-context-bar {
   background: transparent;
-  border-color: var(--surface-line);
+  border-color: var(--app-line);
   box-shadow: none;
 }
 .reading-first .durable-directory-pane {
@@ -196,7 +189,7 @@
   gap: 8px;
   margin-block: 8px 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--surface-line);
+  border-bottom: 1px solid var(--app-line);
 }
 .history-mode-switch button[aria-pressed="true"] {
   background: #eaf2e7;
@@ -398,7 +391,7 @@
 }
 .reading-first .durable-header-actions > button[aria-label]:not([aria-pressed]) {
   background: #fff;
-  color: var(--forest);
+  color: var(--app-accent);
 }
 @media (min-width: 651px) and (max-width: 1100px) {
   .reading-first {

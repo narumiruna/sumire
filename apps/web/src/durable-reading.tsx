@@ -1,6 +1,5 @@
 import type { DurableEntryItem } from "@narumitw/sumire-contracts"
-import { FileTextIcon } from "@radix-ui/react-icons"
-import { Heading } from "@radix-ui/themes"
+import FileText from "@react-spectrum/s2/icons/FileText"
 import { EntryContent } from "./durable-entry-content.js"
 import { formatDurableTime, recordIcon, recordTitle, recordTone } from "./durable-presentation.js"
 import { t } from "./i18n.js"
@@ -58,9 +57,7 @@ export function ReadingEntries({
             <Icon aria-hidden />
           </span>
           <div className="reading-entry-identity">
-            <Heading as="h4" size="3">
-              {recordTitle(entry)}
-            </Heading>
+            <h4>{recordTitle(entry)}</h4>
             {entry.timestamp !== undefined && <time>{formatDurableTime(entry.timestamp)}</time>}
           </div>
           <a
@@ -80,7 +77,7 @@ export function ReadingEntries({
               onInspect(entry.id, event.currentTarget)
             }}
           >
-            <FileTextIcon aria-hidden />
+            <FileText aria-hidden />
             <span>#{entry.id}</span>
           </a>
         </header>

@@ -8,23 +8,22 @@ import type {
   DurableInspectionView,
   DurableNumericUsage,
 } from "@narumitw/sumire-contracts"
-import {
-  ChatBubbleIcon,
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CopyIcon,
-  EnterFullScreenIcon,
-  ExitFullScreenIcon,
-  FileTextIcon,
-  LayersIcon,
-  MagnifyingGlassIcon,
-  MixerHorizontalIcon,
-  PersonIcon,
-  ReloadIcon,
-  SpeakerLoudIcon,
-} from "@radix-ui/react-icons"
-import { Badge, Button, Flex, Heading, Tabs, Text, TextField } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import ChatBubbleIcon from "@react-spectrum/s2/icons/Chat"
+import ChevronDownIcon from "@react-spectrum/s2/icons/ChevronDown"
+import ChevronLeftIcon from "@react-spectrum/s2/icons/ChevronLeft"
+import ChevronRightIcon from "@react-spectrum/s2/icons/ChevronRight"
+import CopyIcon from "@react-spectrum/s2/icons/Copy"
+import FileTextIcon from "@react-spectrum/s2/icons/FileText"
+import EnterFullScreenIcon from "@react-spectrum/s2/icons/FullScreen"
+import ExitFullScreenIcon from "@react-spectrum/s2/icons/FullScreenExit"
+import LayersIcon from "@react-spectrum/s2/icons/Layers"
+import ReloadIcon from "@react-spectrum/s2/icons/Refresh"
+import MagnifyingGlassIcon from "@react-spectrum/s2/icons/Search"
+import MixerHorizontalIcon from "@react-spectrum/s2/icons/Settings"
+import PersonIcon from "@react-spectrum/s2/icons/User"
+import SpeakerLoudIcon from "@react-spectrum/s2/icons/VolumeTwo"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import {
   type FormEvent,
   Fragment,
@@ -34,6 +33,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { Tab, TabList, TabPanel, Tabs } from "react-aria-components/Tabs"
 import { ApiError, request } from "./api.js"
 import { chatName } from "./chat-directory.js"
 import { EntryContent } from "./durable-entry-content.js"
@@ -58,9 +58,9 @@ import {
 } from "./durable-presentation.js"
 import { DurableTree } from "./durable-tree.js"
 import { navigationHref } from "./navigation.js"
-import { SectionSelect as Select } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
 import { countText } from "./status-text.js"
-import { Panel } from "./surfaces.js"
+import { Panel, Prose, StatusLabel } from "./surfaces.js"
 
 const views = ["history", "conversations", "tasks", "documents", "entries"] as const
 const labels = () => ({
@@ -249,9 +249,9 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
     <details className="durable-json">
       <summary>{label}</summary>
       <Button
-        variant="soft"
-        size="1"
-        onClick={() => {
+        variant="secondary"
+        size="S"
+        onPress={() => {
           void Promise.resolve()
             .then(() => navigator.clipboard.writeText(json))
             .then(
@@ -262,11 +262,7 @@ function JsonDetails({ label, value }: { label: string; value: unknown }) {
       >
         {t("record.copyLabel", { label })}
       </Button>
-      {copyState && (
-        <Text as="p" role="status">
-          {t(copyState)}
-        </Text>
-      )}
+      {copyState && <Prose role="status">{t(copyState)}</Prose>}
       <pre>{json}</pre>
     </details>
   )
@@ -549,10 +545,10 @@ export function DurableInspector({
           : undefined
   const readTime = (block: ReadBlock | undefined) =>
     block?.data && (
-      <Text as="p" size="1" className="durable-read-time">
+      <Prose size="1" className="durable-read-time">
         {t("record.readTime")}
         <time dateTime={block.data.readAt}>{formatReadTime(block.data.readAt)}</time>
-      </Text>
+      </Prose>
     )
   const recordDetails = (item: DurableInspectionItem) => (
     <dl className="durable-metadata">
@@ -711,15 +707,13 @@ export function DurableInspector({
             <span className="durable-detail-icon durable-role-icon">
               <Icon aria-hidden />
             </span>
-            <Heading
-              as="h3"
-              size="4"
+            <h3
               tabIndex={-1}
               ref={detailHeading}
-              className="durable-detail-heading"
+              className={`durable-detail-heading ${style({ font: "heading-sm" })}`}
             >
               {recordTitle(item)}
-            </Heading>
+            </h3>
             <span className="durable-record-id durable-detail-record-id">
               {recordTypeLabel(item.type)} #{item.id}
             </span>
@@ -750,18 +744,14 @@ export function DurableInspector({
           {(item.type === "conversation" ||
             (item.type === "document" && item.valueState !== "available") ||
             (item.type === "entry" && !item.content)) && (
-            <Text as="p" className="durable-record-summary">
-              {recordSummary(item)}
-            </Text>
+            <Prose className="durable-record-summary">{recordSummary(item)}</Prose>
           )}
           {item.type === "document" && item.valueState === "available" && !item.value && (
-            <Text as="p">{t("record.fieldsMissing")}</Text>
+            <Prose>{t("record.fieldsMissing")}</Prose>
           )}
           {item.type === "document" && item.valueState === "available" && item.value && (
             <section aria-label={t("record.approvedDocumentFields")} className="durable-projection">
-              <Heading as="h4" size="3">
-                {t("record.approvedFields")}
-              </Heading>
+              <h4 className={style({ font: "heading-xs" })}>{t("record.approvedFields")}</h4>
               {item.value.kind === "pi.agent" ? (
                 <dl className="durable-metadata">
                   <dt>{t("record.modelProvider")}</dt>
@@ -773,17 +763,11 @@ export function DurableInspector({
                 </dl>
               ) : item.value.kind === "pi.usage" ? (
                 <>
-                  <Heading as="h5" size="2">
-                    {t("record.totalUsage")}
-                  </Heading>
+                  <h5 className={style({ font: "heading-xs" })}>{t("record.totalUsage")}</h5>
                   <UsageFields usage={item.value.total} />
-                  <Heading as="h5" size="2">
-                    {t("record.perModelUsage")}
-                  </Heading>
+                  <h5 className={style({ font: "heading-xs" })}>{t("record.perModelUsage")}</h5>
                   {Object.keys(item.value.models).length === 0 && (
-                    <Text as="p" size="2">
-                      {t("record.noModelUsage")}
-                    </Text>
+                    <Prose size="2">{t("record.noModelUsage")}</Prose>
                   )}
                   {Object.entries(item.value.models).map(([model, usage]) => (
                     <details key={model} className="durable-model-usage">
@@ -821,7 +805,7 @@ export function DurableInspector({
               toolName={item.role === "toolResult" ? item.toolName : undefined}
             />
           )}
-          <Flex gap="3" wrap="wrap" className="durable-links">
+          <div className={`durable-links ${style({ display: "flex", flexWrap: "wrap", gap: 12 })}`}>
             {item.type === "conversation" && (
               <>
                 {link(t("record.historyInConversation", { id: item.id }), {
@@ -850,7 +834,7 @@ export function DurableInspector({
                 conversationId: item.conversationId,
                 taskId: item.id,
               })}
-          </Flex>
+          </div>
         </div>
         <div className="durable-detail-disclosures">
           <details className="durable-record-details">
@@ -945,7 +929,7 @@ export function DurableInspector({
             </span>
             <div>
               <div className="durable-chat-name">
-                <Heading as="h2" size="5">
+                <h2 className={style({ font: "heading-sm" })}>
                   {!validChat
                     ? t("record.chooseChat")
                     : metadataLoading
@@ -955,47 +939,58 @@ export function DurableInspector({
                         : metadata
                           ? chatName(metadata)
                           : t("record.chatNameUnknown")}
-                </Heading>
+                </h2>
                 {metadata?.type && (
                   <span className="durable-chat-type">{chatTypeLabel(metadata.type)}</span>
                 )}
               </div>
               {validChat && (
-                <Flex gap="2" align="center" wrap="wrap">
-                  <Text size="2">
+                <div
+                  className={style({
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  })}
+                >
+                  <span>
                     <code>{chat}</code>
                     {metadata ? ` · ${chatTypeLabel(metadata.type)}` : ""}
-                  </Text>
-                </Flex>
+                  </span>
+                </div>
               )}
             </div>
           </div>
         )}
-        <Flex gap="2" wrap="wrap" align="center" className="durable-header-actions">
-          <Badge variant="soft" color="gray" className="durable-read-only">
-            {t("record.readOnly")}
-          </Badge>
+        <div
+          className={`durable-header-actions ${style({ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 })}`}
+        >
+          <span className="durable-read-only">
+            <StatusLabel>{t("record.readOnly")}</StatusLabel>
+          </span>
+          {validChat && (
+            <Button
+              variant="accent"
+              aria-label={t("record.refresh")}
+              isDisabled={!current && !selection}
+              onPress={() => {
+                historyTarget.current = undefined
+                setReadLocation(readContextLocation(location))
+                setPages([undefined])
+                setRefresh((value) => value + 1)
+              }}
+            >
+              <ReloadIcon aria-hidden />
+              <span className="durable-action-label">{t("record.refresh")}</span>
+            </Button>
+          )}
           <Button
-            hidden={!validChat}
-            variant="solid"
-            aria-label={t("record.refresh")}
-            disabled={!validChat || (!current && !selection)}
-            onClick={() => {
-              historyTarget.current = undefined
-              setReadLocation(readContextLocation(location))
-              setPages([undefined])
-              setRefresh((value) => value + 1)
-            }}
-          >
-            <ReloadIcon aria-hidden />
-            <span className="durable-action-label">{t("record.refresh")}</span>
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!validChat}
+            variant="secondary"
+            fillStyle="outline"
+            isDisabled={!validChat}
             aria-pressed={readingFocus}
             aria-label={t(readingFocus ? "record.restoreReading" : "record.expandReading")}
-            onClick={() => setReadingFocus(!readingFocus)}
+            onPress={() => setReadingFocus(!readingFocus)}
           >
             {readingFocus ? (
               <ExitFullScreenIcon aria-hidden />
@@ -1006,7 +1001,7 @@ export function DurableInspector({
               {t(readingFocus ? "record.restoreReading" : "record.expandReading")}
             </span>
           </Button>
-        </Flex>
+        </div>
       </header>
       {validChat && (
         <div className="reading-cache-status" role="status">
@@ -1026,11 +1021,9 @@ export function DurableInspector({
       )}
       {metadataError && (
         <div>
-          <Text as="p" role="alert">
-            {metadataError}
-          </Text>
+          <Prose role="alert">{metadataError}</Prose>
           {onMetadataRetry && (
-            <Button variant="soft" onClick={onMetadataRetry}>
+            <Button variant="secondary" onPress={onMetadataRetry}>
               {t("record.retryMetadata")}
             </Button>
           )}
@@ -1046,7 +1039,7 @@ export function DurableInspector({
           aria-label={t("record.inspectionContext")}
           aria-live="polite"
         >
-          <Heading as="h3" size="4">
+          <h3 className={style({ font: "heading-sm" })}>
             {data?.state === "not-loaded"
               ? t("record.noLoadedSessionInspect")
               : sessionDocuments
@@ -1056,8 +1049,8 @@ export function DurableInspector({
                   : inspectedConversation
                     ? t("record.inspectingConversation", { id: inspectedConversation })
                     : t("record.chooseConversationInspect")}
-          </Heading>
-          <Text as="p">
+          </h3>
+          <Prose>
             {data?.state === "not-loaded"
               ? t("record.noSessionWork")
               : sessionDocuments
@@ -1069,9 +1062,9 @@ export function DurableInspector({
                       : t("record.notPersistedSelection", { id: selected.id })
                     : t("record.selectionUnconfirmed")
                   : t("record.useConversationList")}
-          </Text>
+          </Prose>
           {conversation?.parent && (
-            <Text as="p">
+            <Prose>
               {linkedSentence("record.branchedLinks", {
                 conversation: link(
                   t("record.conversationLink", { id: conversation.parent.conversationId }),
@@ -1086,18 +1079,16 @@ export function DurableInspector({
                   objectId: conversation.parent.at,
                 }),
               })}
-            </Text>
+            </Prose>
           )}
           {!sessionDocuments &&
             inspectedConversation &&
             !conversation &&
             selection?.data?.state === "loaded" && (
-              <Text as="p" size="2">
-                {t("record.relationshipMissing")}
-              </Text>
+              <Prose size="2">{t("record.relationshipMissing")}</Prose>
             )}
           {conversation?.owner && (
-            <Text as="p">
+            <Prose>
               {linkedSentence("record.ownedLinks", {
                 owner: link(
                   t("record.taskInConversation", {
@@ -1111,38 +1102,30 @@ export function DurableInspector({
                   },
                 ),
               })}
-            </Text>
+            </Prose>
           )}
         </Panel>
       )}
       {validChat && (
         <Panel className="durable-overview" aria-label={t("record.durableOverview")}>
-          <Heading as="h3" size="3">
-            {t("record.persistedSessionContext")}
-          </Heading>
+          <h3 className={style({ font: "heading-xs" })}>{t("record.persistedSessionContext")}</h3>
           <div className="durable-overview-grid">
             <Panel
               aria-label={t("record.selectionDetails")}
               aria-live="polite"
               aria-busy={!selection}
             >
-              <Heading as="h4" size="2">
-                {t("record.selectedConversation")}
-              </Heading>
+              <h4 className={style({ font: "heading-xs" })}>{t("record.selectedConversation")}</h4>
               {!selection ? (
-                <Text as="p" role="status">
-                  {t("record.loadingSelection")}
-                </Text>
+                <Prose role="status">{t("record.loadingSelection")}</Prose>
               ) : selection.error ? (
-                <Text as="p" role="alert">
-                  {readError(selection)}
-                </Text>
+                <Prose role="alert">{readError(selection)}</Prose>
               ) : selection.data?.state === "not-loaded" ? (
-                <Text as="p">{t("record.noLoadedSession")}</Text>
+                <Prose>{t("record.noLoadedSession")}</Prose>
               ) : selected ? (
                 <>
-                  <Text as="p">{t("record.conversationNumber", { id: selected.id })}</Text>
-                  <Flex gap="3" wrap="wrap">
+                  <Prose>{t("record.conversationNumber", { id: selected.id })}</Prose>
+                  <div className={style({ display: "flex", flexWrap: "wrap", gap: 12 })}>
                     {link(t("record.inspectSelected"), {
                       view: "conversations",
                       objectId: selected.id,
@@ -1151,11 +1134,11 @@ export function DurableInspector({
                       view: "tasks",
                       conversationId: selected.id,
                     })}
-                  </Flex>
+                  </div>
                   {(selected.parent || selected.owner) && (
                     <details className="durable-selection-relationships">
                       <summary>{t("record.selectionRelationships")}</summary>
-                      <Text as="p" size="2">
+                      <Prose size="2">
                         {selected.parent && (
                           <>
                             {t("record.parent")}{" "}
@@ -1185,22 +1168,22 @@ export function DurableInspector({
                             })}
                           </>
                         )}
-                      </Text>
+                      </Prose>
                     </details>
                   )}
                 </>
               ) : (
-                <Text as="p">
+                <Prose>
                   {selected === null
                     ? t("record.noSelectionMetadata")
                     : t("record.selectionUnavailable")}
-                </Text>
+                </Prose>
               )}
               {readTime(selection)}
               {inspectedConversation && inspectedConversation !== selected?.id && (
-                <Text as="p" size="2">
+                <Prose size="2">
                   {t("record.inspectionTarget", { id: inspectedConversation })}
-                </Text>
+                </Prose>
               )}
             </Panel>
             <Panel
@@ -1208,34 +1191,26 @@ export function DurableInspector({
               aria-live="polite"
               aria-busy={Boolean(selected && !history)}
             >
-              <Heading as="h4" size="2">
-                {t("record.persistedTaskHistory")}
-              </Heading>
+              <h4 className={style({ font: "heading-xs" })}>{t("record.persistedTaskHistory")}</h4>
               {selected ? (
                 !history ? (
-                  <Text as="p" role="status">
-                    {t("record.loadingTaskHistory")}
-                  </Text>
+                  <Prose role="status">{t("record.loadingTaskHistory")}</Prose>
                 ) : history.error ? (
-                  <Text as="p" role="alert">
-                    {readError(history)}
-                  </Text>
+                  <Prose role="alert">{readError(history)}</Prose>
                 ) : history.data?.state === "not-loaded" ? (
-                  <Text as="p">{t("record.sessionNoLongerLoaded")}</Text>
+                  <Prose>{t("record.sessionNoLongerLoaded")}</Prose>
                 ) : (
                   <>
-                    <Text as="p">
+                    <Prose>
                       {t(
                         history.data?.nextCursor || history.data?.truncated
                           ? "record.taskPageCountMore"
                           : "record.taskPageCount",
                         { count: countText(history.data?.items.length ?? 0, "task record") },
                       )}
-                    </Text>
+                    </Prose>
                     {!history.data?.items.length ? (
-                      <Text as="p" size="2">
-                        {t("record.noTaskHistory")}
-                      </Text>
+                      <Prose size="2">{t("record.noTaskHistory")}</Prose>
                     ) : (
                       <ul className="durable-history">
                         {history.data.items.map(
@@ -1257,13 +1232,13 @@ export function DurableInspector({
                   </>
                 )
               ) : (
-                <Text as="p">
+                <Prose>
                   {selection?.error
                     ? t("record.selectionReadUnavailable")
                     : selected === null
                       ? t("record.noSelectionMetadataRead")
                       : t("record.taskHistoryUnavailable")}
-                </Text>
+                </Prose>
               )}
               {readTime(history)}
             </Panel>
@@ -1323,12 +1298,11 @@ export function DurableInspector({
             aria-label={t("record.chatDirectory")}
           >
             <Button
-              variant="ghost"
-              className="directory-collapse"
+              variant="secondary"
+              UNSAFE_className="directory-collapse"
               aria-expanded={!directoryCollapsed}
               aria-label={t(directoryCollapsed ? "record.showDirectory" : "record.hideDirectory")}
-              title={t(directoryCollapsed ? "record.showDirectory" : "record.hideDirectory")}
-              onClick={() => setDirectoryCollapsed(!directoryCollapsed)}
+              onPress={() => setDirectoryCollapsed(!directoryCollapsed)}
             >
               {directoryCollapsed ? (
                 <ChevronRightIcon aria-hidden />
@@ -1420,11 +1394,9 @@ export function DurableInspector({
               className="durable-unselected"
               aria-label={t("record.chooseChatForConversation")}
             >
-              <Heading as="h2" size="5">
-                {t("record.chooseChat")}
-              </Heading>
-              <Text as="p">{t("record.searchChatsNotice")}</Text>
-              <Text as="p">{t("record.noChatSelected")}</Text>
+              <h2 className={style({ font: "heading-sm" })}>{t("record.chooseChat")}</h2>
+              <Prose>{t("record.searchChatsNotice")}</Prose>
+              <Prose>{t("record.noChatSelected")}</Prose>
             </Panel>
           ) : (
             <>
@@ -1481,22 +1453,16 @@ export function DurableInspector({
                 ) : (
                   <Panel aria-live="polite">
                     {!current ? (
-                      <Text as="p" role="status">
-                        {t("record.loadingHistory")}
-                      </Text>
+                      <Prose role="status">{t("record.loadingHistory")}</Prose>
                     ) : current.error ? (
-                      <Text as="p" role="alert">
-                        {readError(current)}
-                      </Text>
+                      <Prose role="alert">{readError(current)}</Prose>
                     ) : data?.state === "not-loaded" ? (
                       <>
-                        <Heading as="h3" size="3">
-                          {t("record.notLoaded")}
-                        </Heading>
-                        <Text as="p">{t("record.noLoadedChat")}</Text>
+                        <h3 className={style({ font: "heading-xs" })}>{t("record.notLoaded")}</h3>
+                        <Prose>{t("record.noLoadedChat")}</Prose>
                       </>
                     ) : (
-                      <Text as="p">{t("record.noPersistedConversation")}</Text>
+                      <Prose>{t("record.noPersistedConversation")}</Prose>
                     )}
                   </Panel>
                 )
@@ -1543,58 +1509,46 @@ export function DurableInspector({
                         current?.error ||
                         current?.unavailable ||
                         data?.state === "not-loaded") && (
-                        <Heading
-                          as="h3"
-                          size="3"
+                        <h3
                           tabIndex={-1}
                           ref={detailHeading}
-                          className="durable-detail-heading durable-empty-heading"
+                          className={`durable-detail-heading durable-empty-heading ${style({ font: "heading-xs" })}`}
                         >
                           {t("record.selectedRecord")}
-                        </Heading>
+                        </h3>
                       )}
                       {missing ? (
-                        <Text as="p">{missing}</Text>
+                        <Prose>{missing}</Prose>
                       ) : !current ? (
-                        <Text as="p" role="status">
-                          {t("record.loadingDurable")}
-                        </Text>
+                        <Prose role="status">{t("record.loadingDurable")}</Prose>
                       ) : current.unavailable ? (
-                        <Text as="p" role="status">
-                          {t("record.retiredScope")}
-                        </Text>
+                        <Prose role="status">{t("record.retiredScope")}</Prose>
                       ) : current.error ? (
-                        <Text as="p" role="alert">
-                          {readError(current)}
-                        </Text>
+                        <Prose role="alert">{readError(current)}</Prose>
                       ) : data?.state === "not-loaded" ? (
                         <div>
-                          <Heading as="h3" size="3">
-                            {t("record.notLoaded")}
-                          </Heading>
-                          <Text as="p">{t("record.noLoadedChat")}</Text>
+                          <h3 className={style({ font: "heading-xs" })}>{t("record.notLoaded")}</h3>
+                          <Prose>{t("record.noLoadedChat")}</Prose>
                         </div>
                       ) : !detail ? (
-                        <Text as="p">
+                        <Prose>
                           {location.objectId
                             ? t("record.retiredUnavailable")
                             : t("record.emptyView")}
-                        </Text>
+                        </Prose>
                       ) : (
                         row(detail)
                       )}
                       {data?.truncated && (
-                        <Text as="p" role="status">
-                          {t("record.serverTruncated")}
-                        </Text>
+                        <Prose role="status">{t("record.serverTruncated")}</Prose>
                       )}
                       {current !== selection && current !== history && readTime(current)}
                     </div>
                     <details className="durable-raw-collections">
                       <summary>{t("record.rawCollections")}</summary>
-                      <Tabs.Root
-                        value={location.view}
-                        onValueChange={(view) =>
+                      <Tabs
+                        selectedKey={location.view}
+                        onSelectionChange={(view) =>
                           navigate({
                             view: view as DurableInspectionView,
                             ...(view === "conversations"
@@ -1610,18 +1564,18 @@ export function DurableInspector({
                           })
                         }
                       >
-                        <Tabs.List aria-label={t("record.objectViews")}>
+                        <TabList aria-label={t("record.objectViews")}>
                           {views.map((view) => (
-                            <Tabs.Trigger key={view} value={view}>
+                            <Tab key={view} id={view}>
                               {labels()[view]}
-                            </Tabs.Trigger>
+                            </Tab>
                           ))}
-                        </Tabs.List>
-                        <Tabs.Content value={location.view}>
+                        </TabList>
+                        <TabPanel id={location.view}>
                           {location.view === "documents" && (
                             <label htmlFor="durable-scope">
                               {t("record.documentScope")}
-                              <Select.Root
+                              <SectionPicker
                                 value={location.scope ?? "conversation"}
                                 onValueChange={(scope) =>
                                   navigate({
@@ -1631,23 +1585,19 @@ export function DurableInspector({
                                     scope: scope as DurableDocumentScope,
                                   })
                                 }
+                                id="durable-scope"
+                                aria-label={t("record.documentScope")}
                               >
-                                <Select.Trigger
-                                  id="durable-scope"
-                                  aria-label={t("record.documentScope")}
-                                />
-                                <Select.Content>
-                                  <Select.Item value="session">{t("record.session")}</Select.Item>
-                                  <Select.Item value="conversation">
-                                    {t("record.conversation")}
-                                  </Select.Item>
-                                  <Select.Item value="task">{t("record.task")}</Select.Item>
-                                </Select.Content>
-                              </Select.Root>
+                                <PickerOption id="session">{t("record.session")}</PickerOption>
+                                <PickerOption id="conversation">
+                                  {t("record.conversation")}
+                                </PickerOption>
+                                <PickerOption id="task">{t("record.task")}</PickerOption>
+                              </SectionPicker>
                             </label>
                           )}
                           {location.objectId && (
-                            <Text as="p">
+                            <Prose>
                               {t("record.objectNumber", { id: location.objectId })}{" "}
                               {link(
                                 t("record.backTo", {
@@ -1658,23 +1608,17 @@ export function DurableInspector({
                                   objectId: undefined,
                                 },
                               )}
-                            </Text>
+                            </Prose>
                           )}
                           <div aria-live="polite" aria-busy={!missing && !current}>
                             {missing ? (
-                              <Text as="p">{missing}</Text>
+                              <Prose>{missing}</Prose>
                             ) : !current ? (
-                              <Text as="p" role="status">
-                                {t("record.loadingDurable")}
-                              </Text>
+                              <Prose role="status">{t("record.loadingDurable")}</Prose>
                             ) : current.unavailable ? (
-                              <Text as="p" role="status">
-                                {t("record.retiredScope")}
-                              </Text>
+                              <Prose role="status">{t("record.retiredScope")}</Prose>
                             ) : current.error ? (
-                              <Text as="p" role="alert">
-                                {readError(current)}
-                              </Text>
+                              <Prose role="alert">{readError(current)}</Prose>
                             ) : (
                               data && (
                                 <>
@@ -1683,24 +1627,22 @@ export function DurableInspector({
                                     readTime(current)}
                                   {data.state === "not-loaded" ? (
                                     <Panel>
-                                      <Heading as="h3" size="3">
+                                      <h3 className={style({ font: "heading-xs" })}>
                                         {t("record.notLoaded")}
-                                      </Heading>
-                                      <Text as="p">{t("record.noLoadedChat")}</Text>
+                                      </h3>
+                                      <Prose>{t("record.noLoadedChat")}</Prose>
                                     </Panel>
                                   ) : (
                                     <>
                                       {data.truncated && (
-                                        <Text as="p" role="status">
-                                          {t("record.serverTruncated")}
-                                        </Text>
+                                        <Prose role="status">{t("record.serverTruncated")}</Prose>
                                       )}
                                       {!data.items.length ? (
-                                        <Text as="p">
+                                        <Prose>
                                           {location.objectId
                                             ? t("record.retiredUnavailable")
                                             : t("record.emptyView")}
-                                        </Text>
+                                        </Prose>
                                       ) : (
                                         <div className="durable-browser">
                                           <ul
@@ -1753,49 +1695,61 @@ export function DurableInspector({
                                           </ul>
                                         </div>
                                       )}
-                                      <Flex gap="3" wrap="wrap" align="center">
+                                      <div
+                                        className={style({
+                                          display: "flex",
+                                          alignItems: "center",
+                                          flexWrap: "wrap",
+                                          gap: 12,
+                                        })}
+                                      >
                                         <Button
-                                          variant="soft"
-                                          disabled={pages.length === 1}
-                                          onClick={() => setPages((value) => value.slice(0, -1))}
+                                          variant="secondary"
+                                          isDisabled={pages.length === 1}
+                                          onPress={() => setPages((value) => value.slice(0, -1))}
                                         >
                                           {t("record.previousObjects")}
                                         </Button>
                                         <Button
-                                          variant="soft"
-                                          disabled={!data.nextCursor}
-                                          onClick={() =>
+                                          variant="secondary"
+                                          isDisabled={!data.nextCursor}
+                                          onPress={() =>
                                             setPages((value) => [...value, data.nextCursor])
                                           }
                                         >
                                           {t("record.nextObjects")}
                                         </Button>
-                                        <Text size="2">
-                                          {t("record.page", { page: pages.length })}
-                                        </Text>
-                                      </Flex>
+                                        <span>{t("record.page", { page: pages.length })}</span>
+                                      </div>
                                     </>
                                   )}
                                 </>
                               )
                             )}
                           </div>
-                        </Tabs.Content>
-                      </Tabs.Root>
+                        </TabPanel>
+                      </Tabs>
                     </details>
                   </div>
                 </div>
               )}
               <details className="durable-history-context">
                 <summary>{t("record.historyContext")}</summary>
-                <Flex gap="2" wrap="wrap" align="center">
-                  <Button variant="soft" onClick={onChats}>
+                <div
+                  className={style({
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  })}
+                >
+                  <Button variant="secondary" onPress={onChats}>
                     <MixerHorizontalIcon aria-hidden />
                     {t("record.openChatSettings")}
                   </Button>
                   <Button
-                    variant="soft"
-                    onClick={() => {
+                    variant="secondary"
+                    onPress={() => {
                       void Promise.resolve()
                         .then(() => navigator.clipboard.writeText(chat))
                         .then(
@@ -1807,12 +1761,8 @@ export function DurableInspector({
                     <CopyIcon aria-hidden />
                     {t("record.copyChatId")}
                   </Button>
-                  {copyIdState && (
-                    <Text role="status" size="1">
-                      {t(copyIdState)}
-                    </Text>
-                  )}
-                </Flex>
+                  {copyIdState && <span role="status">{t(copyIdState)}</span>}
+                </div>
                 {historyContext}
               </details>
               <details className="durable-advanced">
@@ -1820,7 +1770,8 @@ export function DurableInspector({
                 <form onSubmit={selectContext} className="durable-context">
                   <label htmlFor="durable-conversation">
                     {t("record.conversationId")}
-                    <TextField.Root
+                    <input
+                      className="policy-field durable-context-field"
                       id="durable-conversation"
                       inputMode="numeric"
                       value={conversationDraft}
@@ -1829,29 +1780,26 @@ export function DurableInspector({
                   </label>
                   <label htmlFor="durable-task">
                     {t("record.taskId")}
-                    <TextField.Root
+                    <input
+                      className="policy-field durable-context-field"
                       id="durable-task"
                       inputMode="numeric"
                       value={taskDraft}
                       onChange={(event) => setTaskDraft(event.target.value)}
                     />
                   </label>
-                  <Button variant="soft" type="submit">
+                  <Button variant="secondary" type="submit">
                     {t("record.inspectIds")}
                   </Button>
-                  {inputError && <Text role="alert">{t(inputError)}</Text>}
+                  {inputError && <span role="alert">{t(inputError)}</span>}
                 </form>
               </details>
             </>
           )}
           <details className="durable-limits">
             <summary>{t("record.dataScope")}</summary>
-            <Text as="p" id="durable-history-warning">
-              {t("record.readOnlyNotLive")}
-            </Text>
-            <Text as="p" size="2">
-              {t("record.scopeNotice")}
-            </Text>
+            <Prose id="durable-history-warning">{t("record.readOnlyNotLive")}</Prose>
+            <Prose size="2">{t("record.scopeNotice")}</Prose>
           </details>
         </div>
       </div>

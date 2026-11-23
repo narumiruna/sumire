@@ -1,12 +1,12 @@
-import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { Badge, Button, Code, Flex, Table, Text, TextField } from "@radix-ui/themes"
-import { useEffect, useId, useState } from "react"
+import type { Chat } from "@narumitw/sumire-contracts"
+import { Button } from "@react-spectrum/s2/Button"
+import { TextField } from "@react-spectrum/s2/TextField"
+import { useEffect, useState } from "react"
 import { type Policy, parseIds } from "./api.js"
-import { type Chat, chatName } from "./chats.js"
+import { ChatSearchField, chatName } from "./chat-directory.js"
 import { t } from "./i18n.js"
 import { withChatAccess } from "./policy-changes.js"
-import { Panel, Prose, SettingsSection } from "./surfaces.js"
+import { Panel, Prose, SettingsSection, StatusLabel } from "./surfaces.js"
 
 const pageSize = 20
 
@@ -29,7 +29,6 @@ function IdList({
 }) {
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(0)
-  const searchId = useId()
   useEffect(() => {
     setQuery(target && Number(target) > 0 === positive ? target : "")
     setPage(0)
@@ -52,22 +51,17 @@ function IdList({
       tabIndex={-1}
     >
       <legend>{label}</legend>
-      <label className="form-field access-list__search" htmlFor={searchId}>
-        {t(positive ? "access.searchPrivate" : "access.searchGroups")}
-        <TextField.Root
-          id={searchId}
+      <div className="access-list__search">
+        <ChatSearchField
+          label={t(positive ? "access.searchPrivate" : "access.searchGroups")}
           value={query}
           autoComplete="off"
-          onChange={(event) => {
-            setQuery(event.target.value)
+          onChange={(value) => {
+            setQuery(value)
             setPage(0)
           }}
-        >
-          <TextField.Slot>
-            <MagnifyingGlassIcon aria-hidden="true" />
-          </TextField.Slot>
-        </TextField.Root>
-      </label>
+        />
+      </div>
       <Prose size="2" color="gray" className="access-list__summary" aria-live="polite">
         {t(
           pending.length > 0
@@ -90,90 +84,84 @@ function IdList({
           },
         )}
       </Prose>
-      <Table.Root size="1" className="access-table">
-        <VisuallyHidden.Root asChild>
-          <caption>{label}</caption>
-        </VisuallyHidden.Root>
-        <Table.Header>
-          <Table.Row>
-            <Table.ColumnHeaderCell scope="col">{t("access.chatId")}</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">{t("access.access")}</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell scope="col">{t("access.action")}</Table.ColumnHeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
+      <table className="access-table">
+        <caption className="visually-hidden">{label}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("access.chatId")}</th>
+            <th scope="col">{t("access.access")}</th>
+            <th scope="col">{t("access.action")}</th>
+          </tr>
+        </thead>
+        <tbody>
           {visible.map((id) => {
             const known = metadata.get(id)
             const removed = revoked.includes(id)
             return (
-              <Table.Row key={id} className={removed ? "access-row--revoked" : undefined}>
-                <Table.Cell>
+              <tr key={id} className={removed ? "access-row--revoked" : undefined}>
+                <td>
                   <Prose weight="medium">
                     {known
                       ? chatName(known)
                       : t(id > 0 ? "access.unnamedPrivate" : "access.unnamedGroup")}
                   </Prose>
-                  <Code size="2" variant="ghost" className="access-id">
-                    {id}
-                  </Code>
-                </Table.Cell>
-                <Table.Cell>
-                  <Badge
-                    color={removed || pending.includes(id) ? "orange" : "green"}
-                    variant="soft"
-                  >
+                  <code className="access-id">{id}</code>
+                </td>
+                <td>
+                  <StatusLabel tone={removed || pending.includes(id) ? "warning" : "success"}>
                     {removed
                       ? t("access.pendingRevocation")
                       : pending.includes(id)
                         ? t("access.pendingApproval")
                         : t("access.approved")}
-                  </Badge>
-                </Table.Cell>
-                <Table.Cell>
+                  </StatusLabel>
+                </td>
+                <td>
                   {removed ? (
-                    <Button variant="soft" onClick={() => onChange([...values, id])}>
+                    <Button size="XL" variant="secondary" onPress={() => onChange([...values, id])}>
                       {t("access.undoRevocation", { id })}
                     </Button>
                   ) : (
                     <Button
-                      variant="ghost"
-                      color="red"
+                      size="XL"
+                      variant="negative"
+                      fillStyle="outline"
                       aria-label={t("access.revokeId", { id })}
-                      onClick={() => onChange(values.filter((value) => value !== id))}
+                      onPress={() => onChange(values.filter((value) => value !== id))}
                     >
                       {t("access.revoke")}
                     </Button>
                   )}
-                </Table.Cell>
-              </Table.Row>
+                </td>
+              </tr>
             )
           })}
-        </Table.Body>
-      </Table.Root>
+        </tbody>
+      </table>
       {lastPage > 0 && (
-        <Flex
-          gap="2"
-          mt="3"
-          wrap="wrap"
+        <nav
+          className="chat-control-row access-list__pages"
           aria-label={t(positive ? "access.privatePages" : "access.groupPages")}
         >
           <Button
-            variant="soft"
+            size="XL"
+            variant="secondary"
             aria-label={t(positive ? "access.previousPrivate" : "access.previousGroups")}
-            disabled={currentPage === 0}
-            onClick={() => setPage(currentPage - 1)}
+            isDisabled={currentPage === 0}
+            onPress={() => setPage(currentPage - 1)}
           >
             {t("access.previous")}
           </Button>
           <Button
-            variant="soft"
+            size="XL"
+            variant="secondary"
             aria-label={t(positive ? "access.nextPrivate" : "access.nextGroups")}
-            disabled={currentPage === lastPage}
-            onClick={() => setPage(currentPage + 1)}
+            isDisabled={currentPage === lastPage}
+            onPress={() => setPage(currentPage + 1)}
           >
             {t("access.next")}
           </Button>
-        </Flex>
+        </nav>
       )}
     </Panel>
   )
@@ -199,7 +187,7 @@ export function ChatAccess({
   const [draft, setDraft] = useState("")
   const [error, setError] = useState<"" | "access.duplicate" | "access.invalidId">("")
   return (
-    <Flex direction="column" gap="4">
+    <div className="chat-access">
       <SettingsSection
         title={t("access.approveTitle")}
         description={t("access.approveDescription")}
@@ -227,30 +215,31 @@ export function ChatAccess({
             }
           }}
         >
-          <Flex gap="3" align="end" wrap="wrap" className="access-list__add">
-            <label className="form-field" htmlFor="access-id-input">
-              {t("access.idInput")}
-              <TextField.Root
-                id="access-id-input"
-                value={draft}
-                autoComplete="off"
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? "access-id-error" : undefined}
-                onChange={(event) => {
-                  setDraft(event.target.value)
-                  setError("")
-                  onPending(Boolean(event.target.value))
-                }}
-              />
-            </label>
-            <Button type="submit" disabled={!draft}>
+          <div className="chat-control-row access-list__add">
+            <TextField
+              UNSAFE_className="access-list__input"
+              id="access-id-input"
+              label={t("access.idInput")}
+              size="XL"
+              value={draft}
+              autoComplete="off"
+              isInvalid={Boolean(error)}
+              aria-describedby={error ? "access-id-error" : undefined}
+              onChange={(value) => {
+                setDraft(value)
+                setError("")
+                onPending(Boolean(value))
+              }}
+            />
+            <Button variant="accent" size="XL" type="submit" isDisabled={!draft}>
               {t("access.reviewApproval")}
             </Button>
             {draft && (
               <Button
                 type="button"
-                variant="soft"
-                onClick={() => {
+                size="XL"
+                variant="secondary"
+                onPress={() => {
                   setDraft("")
                   setError("")
                   onPending(false)
@@ -259,11 +248,11 @@ export function ChatAccess({
                 {t("access.clearInput")}
               </Button>
             )}
-          </Flex>
+          </div>
           {error && (
-            <Text as="p" id="access-id-error" role="alert" color="red" size="2">
+            <Prose id="access-id-error" role="alert" className="chat-field-error">
               {t(error)}
-            </Text>
+            </Prose>
           )}
         </form>
       </SettingsSection>
@@ -291,6 +280,6 @@ export function ChatAccess({
         <summary>{t("access.searchHelpTitle")}</summary>
         <Prose size="2">{t("access.searchHelp")}</Prose>
       </details>
-    </Flex>
+    </div>
   )
 }

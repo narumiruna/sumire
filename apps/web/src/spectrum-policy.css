@@ -1,0 +1,54 @@
+.policy-check {
+  appearance: auto;
+  accent-color: var(--app-accent);
+  inline-size: 18px;
+  block-size: 18px;
+  flex: none;
+  margin: 0;
+}
+.policy-field {
+  min-inline-size: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-block-size: 44px;
+  border-width: 1px;
+  border-style: solid;
+  padding: 6px 10px;
+}
+.policy-field:focus-visible,
+.policy-check:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+.policy-field:disabled {
+  opacity: 0.65;
+}
+.policy-recovery-dialog {
+  width: min(720px, calc(100% - 24px));
+  padding: clamp(12px, 3vw, 24px);
+  border: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.policy-recovery-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.policy-recovery-choices {
+  min-inline-size: 0;
+  margin-block: 8px;
+  padding: 0;
+  border: 0;
+}
+.policy-recovery-choices label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 44px;
+}
+.policy-recovery-actions {
+  display: flex;
+  justify-content: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}

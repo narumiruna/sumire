@@ -1,5 +1,4 @@
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import { GitHubConnection } from "./github-connection.js"
@@ -20,8 +19,8 @@ describe("GitHub connection localization", () => {
       const application = parseGitHubApplication({ revision: 3, applied: 2, status: "failed" })
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(GitHubConnection, {
             csrf: "fixture",
             blocked: false,

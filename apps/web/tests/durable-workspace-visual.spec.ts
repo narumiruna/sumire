@@ -123,7 +123,7 @@ for (const viewport of [
       const state = await fixture(page, record)
       if (viewport.font)
         await page.addStyleTag({
-          content: `.radix-themes { --default-font-family: ${viewport.font}, sans-serif; }`,
+          content: `:root { --default-font-family: ${viewport.font}, sans-serif; }`,
         })
       await expect.poll(() => state.requests.length).toBe(3)
       const detail = page.getByRole("region", { name: "Selected item details", exact: true })

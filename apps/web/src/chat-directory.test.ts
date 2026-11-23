@@ -1,6 +1,5 @@
 import type { Chat } from "@narumitw/sumire-contracts"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import { type ChatDirectory, ChatSelector, chatName, directoryPath } from "./chat-directory.js"
@@ -68,8 +67,8 @@ describe("optional chat management columns", () => {
       setLocale(locale)
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(ChatSelector, {
             directory: { ...directory, offset: 100 },
             chat: "42",
@@ -88,8 +87,8 @@ describe("optional chat management columns", () => {
   it("keeps the default selector a button without management columns for Durable", () => {
     const html = renderToStaticMarkup(
       createElement(
-        Theme,
-        {},
+        Fragment,
+        null,
         createElement(ChatSelector, { directory, chat: "42", onSelect: () => {} }),
       ),
     )
@@ -100,8 +99,8 @@ describe("optional chat management columns", () => {
   it("renders five management columns, native detail links and independent ID controls", () => {
     const html = renderToStaticMarkup(
       createElement(
-        Theme,
-        {},
+        Fragment,
+        null,
         createElement(ChatSelector, {
           directory,
           chat: "42",

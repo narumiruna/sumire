@@ -1,13 +1,27 @@
 import { type Feedback, type Issue, MAX_SCREENSHOT_BYTES } from "@narumitw/sumire-issues"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, Dialog, DialogContainer, Footer, Heading } from "@react-spectrum/s2/Dialog"
+import { InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import Camera from "@react-spectrum/s2/icons/Camera"
+import Chat from "@react-spectrum/s2/icons/Chat"
+import Crop from "@react-spectrum/s2/icons/Crop"
+import Edit from "@react-spectrum/s2/icons/Edit"
+import Upload from "@react-spectrum/s2/icons/Upload"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { Text } from "@react-spectrum/s2/Text"
+import { TextArea } from "@react-spectrum/s2/TextArea"
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
 import {
-  CameraIcon,
-  ChatBubbleIcon,
-  CropIcon,
-  Pencil1Icon,
-  UploadIcon,
-} from "@radix-ui/react-icons"
-import { Button, Callout, Dialog, Flex, IconButton, Text, TextArea } from "@radix-ui/themes"
-import { type PointerEvent, useEffect, useRef, useState } from "react"
+  type ComponentRef,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react"
+import { Check } from "./check.js"
+import "./spectrum-issue-controls.css"
 import { ApiError, request } from "./api.js"
 import {
   captureViewport,
@@ -23,6 +37,18 @@ import {
 import { t } from "./i18n.js"
 
 type Tool = "pen" | "box" | "redact" | "crop"
+const surface = style({
+  font: "body",
+  color: "body",
+  "--feedback-surface": { type: "backgroundColor", value: "layer-2" },
+  "--feedback-border": { type: "borderColor", value: "gray-400" },
+  "--feedback-shadow": { type: "backgroundColor", value: "transparent-black-300" },
+})
+const actions = style({ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 })
+const footer = style({ display: "flex", justifyContent: "end", flexWrap: "wrap", gap: 12 })
+const smallText = style({ font: "body-sm", margin: 0 })
+const fullWidth = style({ width: "full" })
+
 export function FeedbackWidget({
   csrf,
   section,
@@ -50,6 +76,15 @@ export function FeedbackWidget({
   const [uncertain, setUncertain] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const file = useRef<HTMLInputElement>(null)
+  const launcher = useRef<ComponentRef<typeof Button>>(null)
+  const restoreLauncher = useRef(false)
+  const descriptionId = useId()
+  const dialogDescriptionRef = useCallback((paragraph: HTMLParagraphElement | null) => {
+    if (paragraph || !restoreLauncher.current) return
+    restoreLauncher.current = false
+    // The toolbar action that opened the dialog has unmounted. Return to its launcher.
+    requestAnimationFrame(() => launcher.current?.focus())
+  }, [])
   const start = useRef<Point | undefined>(undefined)
   const activePointer = useRef<number | undefined>(undefined)
   const submission = useRef<AbortController | undefined>(undefined)
@@ -119,6 +154,7 @@ export function FeedbackWidget({
       )
     )
       return
+    restoreLauncher.current = true
     reset()
   }
   function context() {
@@ -276,57 +312,70 @@ export function FeedbackWidget({
   }
   return (
     <>
-      <div className="feedback-launcher" data-feedback-ui>
+      <div className={`feedback-launcher ${surface}`} data-feedback-ui>
         {expanded && (
           <fieldset className="feedback-toolbar" aria-label="回饋工具">
-            <Button
-              disabled={busy || blockedCapture}
+            <span
               title={
                 blockedCapture ? "此頁包含敏感內容，請使用文字或經遮蔽的圖片。" : "截取目前畫面"
               }
-              onClick={() => void prepare(captureViewport)}
             >
-              <CameraIcon />
-              截圖
-            </Button>
-            <Button disabled={busy} onClick={() => file.current?.click()}>
-              <UploadIcon />
-              上傳
+              <Button
+                variant="secondary"
+                fillStyle="outline"
+                isDisabled={busy || blockedCapture}
+                onPress={() => void prepare(captureViewport)}
+              >
+                <Camera />
+                <Text>截圖</Text>
+              </Button>
+            </span>
+            <Button
+              variant="secondary"
+              fillStyle="outline"
+              isDisabled={busy}
+              onPress={() => file.current?.click()}
+            >
+              <Upload />
+              <Text>上傳</Text>
             </Button>
             <Button
-              disabled={busy}
-              onClick={() => {
+              variant="secondary"
+              fillStyle="outline"
+              isDisabled={busy}
+              onPress={() => {
                 setMetadata(context())
                 setOpen(true)
                 setExpanded(false)
               }}
             >
-              <Pencil1Icon />
-              文字
+              <Edit />
+              <Text>文字</Text>
             </Button>
-            {blockedCapture && <Text size="2">敏感頁面不提供自動截圖。</Text>}
+            {blockedCapture && <p className={smallText}>敏感頁面不提供自動截圖。</p>}
           </fieldset>
         )}
         {busy && !open && (
-          <Text size="2" role="status">
+          <p className={smallText} role="status">
             正在處理圖片，請勿切換頁面…
-          </Text>
+          </p>
         )}
         {!open && error && (
-          <Callout.Root color="red" role="alert">
-            <Callout.Text>{error}</Callout.Text>
-          </Callout.Root>
+          <InlineAlert variant="negative">
+            <Content>{error}</Content>
+          </InlineAlert>
         )}
-        <IconButton
-          size="3"
-          radius="full"
+        <Button
+          ref={launcher}
+          size="L"
+          variant="accent"
           aria-label="回報問題"
           aria-expanded={expanded}
-          disabled={busy || open}
-          onClick={() => setExpanded(!expanded)}
+          isDisabled={busy || open}
+          onPress={() => setExpanded(!expanded)}
         >
-          <ChatBubbleIcon />
-        </IconButton>
+          <Chat />
+        </Button>
         <input
           ref={file}
           type="file"
@@ -339,150 +388,176 @@ export function FeedbackWidget({
           }}
         />
       </div>
-      <Dialog.Root
-        open={open}
-        onOpenChange={(next) => {
-          if (!next) close()
-        }}
-      >
-        <Dialog.Content maxWidth="1000px" data-feedback-ui className="feedback-dialog">
-          <Dialog.Title>回報問題</Dialog.Title>
-          <Dialog.Description>
-            標註不滿意的地方，裁切或遮蔽敏感內容後送出。文字描述可不填。
-          </Dialog.Description>
-          <Text as="p" size="2">
-            來源：{metadata?.section}。僅儲存送出後的圖片與描述，不收集網址參數、DOM
-            或表單值。圖片可能仍含私人內容，請檢查。
-          </Text>
-          {source && !review && (
-            <>
-              <Flex gap="2" wrap="wrap" role="group" aria-label="圖片標註工具">
-                {(
-                  [
-                    ["pen", "畫筆"],
-                    ["box", "方框"],
-                    ["redact", "遮蔽"],
-                    ["crop", "裁切"],
-                  ] as const
-                ).map(([value, label]) => (
+      <DialogContainer onDismiss={close}>
+        {open && (
+          <Dialog
+            size="XL"
+            isDismissible={!busy}
+            isKeyboardDismissDisabled={busy}
+            aria-describedby={descriptionId}
+            data-feedback-ui
+            UNSAFE_className="feedback-dialog "
+          >
+            <Heading slot="title">回報問題</Heading>
+            <Content UNSAFE_className={`feedback-editor ${surface} `}>
+              <p ref={dialogDescriptionRef} id={descriptionId} className={smallText}>
+                標註不滿意的地方，裁切或遮蔽敏感內容後送出。文字描述可不填。
+              </p>
+              <p className={smallText}>
+                來源：{metadata?.section}。僅儲存送出後的圖片與描述，不收集網址參數、DOM
+                或表單值。圖片可能仍含私人內容，請檢查。
+              </p>
+              {source && !review && (
+                <>
+                  <fieldset className={`feedback-image-tools ${actions}`} aria-label="圖片標註工具">
+                    {(
+                      [
+                        ["pen", "畫筆"],
+                        ["box", "方框"],
+                        ["redact", "遮蔽"],
+                        ["crop", "裁切"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <ToggleButton
+                        key={value}
+                        autoFocus={value === "pen"}
+                        isSelected={tool === value}
+                        isEmphasized
+                        isDisabled={busy || uncertain}
+                        onChange={() => setTool(value)}
+                      >
+                        {value === "crop" && <Crop />}
+                        <Text>{label}</Text>
+                      </ToggleButton>
+                    ))}
+                    <Button
+                      variant="secondary"
+                      fillStyle="outline"
+                      isDisabled={busy || uncertain || !marks.length}
+                      onPress={() => setMarks((current) => current.slice(0, -1))}
+                    >
+                      復原標註
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      fillStyle="outline"
+                      isDisabled={busy || uncertain || !crop}
+                      onPress={() => setCrop(undefined)}
+                    >
+                      取消裁切
+                    </Button>
+                  </fieldset>
+                  <p className={smallText}>
+                    拖曳圖片來標註／裁切。最多 100 個標註。觸控或無法繪圖時，也可只填文字描述。
+                  </p>
+                  <canvas
+                    ref={canvas}
+                    className="feedback-canvas"
+                    aria-label="回饋圖片標註區"
+                    onPointerDown={down}
+                    onPointerMove={move}
+                    onPointerUp={up}
+                    onPointerCancel={(event) => {
+                      if (activePointer.current !== event.pointerId) return
+                      activePointer.current = undefined
+                      start.current = undefined
+                      gesture.current = undefined
+                      setSelection(undefined)
+                    }}
+                  />
                   <Button
-                    key={value}
-                    variant={tool === value ? "solid" : "soft"}
-                    aria-pressed={tool === value}
-                    disabled={busy || uncertain}
-                    onClick={() => setTool(value)}
+                    variant="secondary"
+                    fillStyle="outline"
+                    isDisabled={busy || uncertain}
+                    onPress={() => {
+                      try {
+                        const encoded = encodeFeedback(source, marks, crop)
+                        activePointer.current = undefined
+                        start.current = undefined
+                        gesture.current = undefined
+                        setSelection(undefined)
+                        setReview(encoded)
+                        setError("")
+                      } catch (error) {
+                        setError(error instanceof Error ? error.message : "無法處理圖片。")
+                      }
+                    }}
                   >
-                    {value === "crop" && <CropIcon />}
-                    {label}
+                    預覽送出圖片
                   </Button>
-                ))}
-                <Button
-                  disabled={busy || uncertain || !marks.length}
-                  onClick={() => setMarks((current) => current.slice(0, -1))}
-                >
-                  復原標註
-                </Button>
-                <Button disabled={busy || uncertain || !crop} onClick={() => setCrop(undefined)}>
-                  取消裁切
-                </Button>
-              </Flex>
-              <Text as="p" size="2">
-                拖曳圖片來標註／裁切。最多 100 個標註。觸控或無法繪圖時，也可只填文字描述。
-              </Text>
-              <canvas
-                ref={canvas}
-                className="feedback-canvas"
-                aria-label="回饋圖片標註區"
-                onPointerDown={down}
-                onPointerMove={move}
-                onPointerUp={up}
-                onPointerCancel={(event) => {
-                  if (activePointer.current !== event.pointerId) return
-                  activePointer.current = undefined
-                  start.current = undefined
-                  gesture.current = undefined
-                  setSelection(undefined)
-                }}
+                </>
+              )}
+              {review && (
+                <>
+                  <img
+                    className="feedback-preview"
+                    src={`data:image/png;base64,${review}`}
+                    alt="即將送出的裁切與標註圖片"
+                  />
+                  <Button
+                    variant="secondary"
+                    fillStyle="outline"
+                    isDisabled={busy || uncertain}
+                    onPress={() => setReview(undefined)}
+                  >
+                    返回編輯圖片
+                  </Button>
+                </>
+              )}
+              <TextArea
+                id="feedback-description"
+                label="文字描述（選填）"
+                value={description}
+                maxLength={8000}
+                isDisabled={busy || uncertain}
+                autoFocus={!source}
+                styles={fullWidth}
+                onChange={setDescription}
+                placeholder="哪裡不符合預期？希望如何改善？"
               />
-              <Button
+              <Check
+                checked={analyzeAfterSubmit}
                 disabled={busy || uncertain}
-                onClick={() => {
-                  try {
-                    const encoded = encodeFeedback(source, marks, crop)
-                    activePointer.current = undefined
-                    start.current = undefined
-                    gesture.current = undefined
-                    setSelection(undefined)
-                    setReview(encoded)
-                    setError("")
-                  } catch (error) {
-                    setError(error instanceof Error ? error.message : "無法處理圖片。")
-                  }
-                }}
-              >
-                預覽送出圖片
-              </Button>
-            </>
-          )}
-          {review && (
-            <>
-              <img
-                className="feedback-preview"
-                src={`data:image/png;base64,${review}`}
-                alt="即將送出的裁切與標註圖片"
+                onChange={setAnalyzeAfterSubmit}
+                label={t("issues.analyzeConsent")}
               />
-              <Button disabled={busy || uncertain} onClick={() => setReview(undefined)}>
-                返回編輯圖片
-              </Button>
-            </>
-          )}
-          <label className="feedback-description" htmlFor="feedback-description">
-            文字描述（選填）
-            <TextArea
-              id="feedback-description"
-              value={description}
-              maxLength={8000}
-              disabled={busy || uncertain}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="哪裡不符合預期？希望如何改善？"
-            />
-          </label>
-          <label htmlFor="feedback-analyze">
-            <input
-              id="feedback-analyze"
-              type="checkbox"
-              checked={analyzeAfterSubmit}
-              disabled={busy || uncertain}
-              onChange={(event) => setAnalyzeAfterSubmit(event.target.checked)}
-            />{" "}
-            {t("issues.analyzeConsent")}
-          </label>
-          <Text as="p" size="2">
-            附件上限 {MAX_SCREENSHOT_BYTES / 1024 / 1024} MiB。{t("issues.feedbackHelp")}
-          </Text>
-          {error && (
-            <Callout.Root color="red" role="alert">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
-          )}
-          <Flex justify="end" gap="3" mt="4">
-            {busy && (
-              <Button variant="soft" onClick={() => submission.current?.abort()}>
-                {t("issues.stopWaiting")}
-              </Button>
-            )}
-            <Button variant="soft" disabled={busy} onClick={close}>
-              取消
-            </Button>
-            <Button
-              disabled={busy || Boolean(source && !review) || (!review && !description.trim())}
-              onClick={() => void submit()}
-            >
-              {busy ? "送出中…" : uncertain ? "重試相同提交" : "送出回饋"}
-            </Button>
-          </Flex>
-        </Dialog.Content>
-      </Dialog.Root>
+              <p className={smallText}>
+                附件上限 {MAX_SCREENSHOT_BYTES / 1024 / 1024} MiB。{t("issues.feedbackHelp")}
+              </p>
+              {error && (
+                <InlineAlert variant="negative">
+                  <Content>{error}</Content>
+                </InlineAlert>
+              )}
+            </Content>
+            <Footer>
+              <div className={footer}>
+                {busy && (
+                  <Button
+                    variant="secondary"
+                    fillStyle="outline"
+                    onPress={() => submission.current?.abort()}
+                  >
+                    {t("issues.stopWaiting")}
+                  </Button>
+                )}
+                <Button variant="secondary" fillStyle="outline" isDisabled={busy} onPress={close}>
+                  取消
+                </Button>
+                <Button
+                  variant="accent"
+                  isDisabled={
+                    busy || Boolean(source && !review) || (!review && !description.trim())
+                  }
+                  onPress={() => void submit()}
+                >
+                  {busy ? "送出中…" : uncertain ? "重試相同提交" : "送出回饋"}
+                </Button>
+              </div>
+            </Footer>
+          </Dialog>
+        )}
+      </DialogContainer>
     </>
   )
 }

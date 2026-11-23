@@ -435,7 +435,7 @@ for (const [width, height, zoom] of [
         fonts: Object.fromEntries(
           [
             ["title", "#current-section-heading"],
-            ["body", ".radix-themes"],
+            ["body", ".admin-theme"],
             ["input", ".chat-card-toolbar input"],
             ["chatName", ".directory-chat strong"],
             ["badge", ".chat-card-status"],

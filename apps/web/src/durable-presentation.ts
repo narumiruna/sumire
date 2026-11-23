@@ -1,13 +1,11 @@
 import type { DurableInspectionItem, DurableTaskItem } from "@narumitw/sumire-contracts"
-import {
-  ChatBubbleIcon,
-  CodeIcon,
-  FileTextIcon,
-  GearIcon,
-  LayersIcon,
-  MagicWandIcon,
-  PersonIcon,
-} from "@radix-ui/react-icons"
+import Chat from "@react-spectrum/s2/icons/Chat"
+import Code from "@react-spectrum/s2/icons/Code"
+import FileText from "@react-spectrum/s2/icons/FileText"
+import Layers from "@react-spectrum/s2/icons/Layers"
+import MagicWand from "@react-spectrum/s2/icons/MagicWand"
+import Settings from "@react-spectrum/s2/icons/Settings"
+import User from "@react-spectrum/s2/icons/User"
 import { getLocale, t } from "./i18n.js"
 
 export function recordTypeLabel(type: DurableInspectionItem["type"]): string {
@@ -62,15 +60,15 @@ export function recordTone(item: DurableInspectionItem): string {
 }
 
 export function recordIcon(item: DurableInspectionItem) {
-  if (item.type === "conversation") return ChatBubbleIcon
-  if (item.type === "document") return FileTextIcon
+  if (item.type === "conversation") return Chat
+  if (item.type === "document") return FileText
   const tone = recordTone(item)
-  if (tone === "user") return PersonIcon
-  if (tone === "assistant") return MagicWandIcon
-  if (tone === "system") return GearIcon
-  if (tone === "call") return CodeIcon
-  if (tone === "result") return LayersIcon
-  return ChatBubbleIcon
+  if (tone === "user") return User
+  if (tone === "assistant") return MagicWand
+  if (tone === "system") return Settings
+  if (tone === "call") return Code
+  if (tone === "result") return Layers
+  return Chat
 }
 
 export function recordBadge(item: DurableInspectionItem): string | undefined {

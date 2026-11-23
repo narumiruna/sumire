@@ -1,0 +1,100 @@
+.admin-shell .tool-permissions .permission-scope,
+.admin-shell .tool-permissions .permission-group,
+.admin-shell .tool-permissions .permission-group-heading,
+.admin-shell .tool-permissions .permission-section > .permission-list {
+  border-color: var(--permission-divider);
+  background: var(--permission-surface);
+}
+.permission-scope-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.permission-scope-actions > button {
+  flex: 1 1 auto;
+}
+.tool-permissions .permission-group-heading > h4 {
+  margin: 0;
+}
+.tool-permissions .permission-group-toggle {
+  gap: 8px;
+}
+.permission-group-toggle > :first-child {
+  flex-shrink: 0;
+}
+.tool-permissions .permission-list > .permission-row,
+.tool-permissions .permission-matrix-heading {
+  border-color: var(--permission-divider);
+}
+.tool-permissions .permission-matrix-heading {
+  color: var(--permission-muted);
+}
+.tool-permissions #default-tool-permissions:focus-visible {
+  outline-color: var(--permission-highlight);
+}
+.tool-permissions input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  scroll-margin-bottom: 4rem;
+}
+
+@media (forced-colors: none) {
+  .tool-permissions input[type="checkbox"] {
+    display: grid;
+    place-items: center;
+    appearance: none;
+    border: 1px solid var(--app-control-border);
+    border-radius: 3px;
+    background-color: var(--app-panel);
+  }
+  .tool-permissions input[type="checkbox"]:checked {
+    border-color: var(--app-accent);
+    background-color: var(--app-accent);
+  }
+  .tool-permissions input[type="checkbox"]:checked::before {
+    content: "";
+    width: 9px;
+    height: 5px;
+    border: solid white;
+    border-width: 0 0 2px 2px;
+    transform: translateY(-1px) rotate(-45deg);
+  }
+  .tool-permissions input[type="checkbox"]:disabled {
+    opacity: 0.55;
+  }
+}
+.permission-availability {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 4px;
+  margin-top: 4px;
+}
+.tool-search input {
+  font-size: 1rem;
+}
+.permission-toolbar:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.permission-summary dt {
+  color: var(--permission-muted);
+}
+.permission-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1101px) {
+  .permission-section > .prose {
+    margin-block: 0;
+  }
+}

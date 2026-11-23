@@ -4,8 +4,7 @@ import {
   initialPolicy,
   validateReferences,
 } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import type { Inventory } from "./api.js"
@@ -113,8 +112,8 @@ describe("tool permission presentation and existing policy rules", () => {
     expect(policy).toEqual(before)
     const html = renderToStaticMarkup(
       createElement(
-        Theme,
-        {},
+        Fragment,
+        null,
         createElement(ToolPermissions, {
           actor: "42",
           selectedChat: "42",
@@ -189,8 +188,8 @@ describe("tool permission presentation and existing policy rules", () => {
         : "Requires Codex OAuth <not a probe>."
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(ToolPermissions, {
             actor: "42",
             policy,

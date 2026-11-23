@@ -1,6 +1,6 @@
 import type { Locator } from "@playwright/test"
 
-/** Composite translucent Radix tokens over the actual ancestor backgrounds. */
+/** Composite translucent colors over the actual ancestor backgrounds. */
 export async function contrast(locator: Locator) {
   return locator.evaluate((element) => {
     type Color = [number, number, number, number]

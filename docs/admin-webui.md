@@ -1,6 +1,6 @@
 # Administration WebUI
 
-The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, model providers, runtime secrets, variables, and scheduled user-message tasks. It uses React, Radix Themes, Radix Primitives, Radix Colors, and Radix Icons. The bot serves the frontend and API from one origin.
+The WebUI manages chat access, tools, skills, MCP servers, models, thinking levels, model providers, runtime secrets, variables, and scheduled user-message tasks. It uses Adobe React Spectrum 2 for its appearance and controls, with React Aria and native HTML for interactions that need to preserve existing keyboard, focus, or form behavior. The bot serves the frontend and API from one origin.
 
 ## Interface language
 
@@ -199,7 +199,9 @@ Configure providers, credentials, chat models, and thinking levels in the WebUI.
 
 ## Presentation
 
-The app uses an explicit light appearance, including when the operating system prefers dark mode. Dark mode is not supported in this presentation pass. Teal identifies links and navigation controls; destructive controls have a visible boundary. Shared panels use one border, radius, spacing, and heading rhythm. Paragraphs have a maximum measure of 72ch. Control groups retain fieldset semantics without a border notch. Selectors use the section-aware Radix control; date fields retain native date semantics within Radix text fields.
+The app uses a light Spectrum 2 appearance even when the operating system prefers dark mode. It compiles Spectrum styles with `unplugin-parcel-macros` in Vite and sets the Adobe locale from the current interface language. The Admin loads system fonts instead of Adobe Typekit, so the interface needs no external font or script.
+
+Shared panels use one border, radius, spacing, and heading rhythm. Paragraphs have a maximum measure of 72ch. Control groups retain native fieldset semantics without a border notch. Section-aware pickers use React Aria to keep the visible field label, description, and focus behavior. Date fields retain native date semantics.
 
 Each section has an error boundary. A malformed record shows a local error and a retry action, not a blank app. Navigation, the save bar, and other sections remain available. Chat History has its own boundary, independent of Audit. Retrying a display does not submit a mutation.
 
@@ -479,7 +481,7 @@ npm run build
 npm run test:browser --workspace @narumitw/sumire-admin
 ```
 
-After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and database-only access. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
+After building, `node apps/bot/scripts/check-admin-local.mjs` runs a real Chromium test against the local HTTP server. It checks that sign-in renders in all three locales without external assets or content security policy violations. It also checks virtual-authenticator registration and sign-in, Secure cookies, CSRF rejection, logout, pending-request reload, explicit chat approval, and database-only access. It uses temporary state and no live Telegram or provider requests. Chromium must be installed through Playwright.
 
 `node apps/bot/scripts/check-admin.mjs` runs an offline HTTPS smoke test with temporary certificates and state. It checks production assets, session and CSRF enforcement, logout cookies, restart persistence, and the absence of same-user file isolation. It does not use real bot credentials or contact Telegram or providers. In Compose, use an isolated test override with no environment file, persistent volumes, published ports, or external network.
 

@@ -1,12 +1,25 @@
 import type { DurableEntryItem, DurableInspectionResponse } from "@narumitw/sumire-contracts"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { Button, Text } from "@react-spectrum/s2/Button"
+import ChevronLeft from "@react-spectrum/s2/icons/ChevronLeft"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import Close from "@react-spectrum/s2/icons/Close"
+import { SearchField } from "@react-spectrum/s2/SearchField"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { ToggleButton } from "@react-spectrum/s2/ToggleButton"
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  Cross2Icon,
-  MagnifyingGlassIcon,
-} from "@radix-ui/react-icons"
-import { Button, Dialog, Flex, Heading, Text, TextField } from "@radix-ui/themes"
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
+  type ComponentRef,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
+import { FocusScope } from "react-aria/FocusScope"
+import { Overlay } from "react-aria/Overlay"
+import { useModalOverlay } from "react-aria/useModalOverlay"
+import { useOverlayTriggerState } from "react-stately/useOverlayTriggerState"
 import { ApiError } from "./api.js"
 import {
   formatDurableTime,
@@ -17,6 +30,20 @@ import {
 } from "./durable-presentation.js"
 import { ReadingEntries } from "./durable-reading.js"
 import { type MessageKey, t } from "./i18n.js"
+import "./durable-spectrum.css"
+
+const dialogBackdrop = style({ backgroundColor: "transparent-black-500" })
+const precedingButtonLabel = style({ order: -1 })
+const dialogSurface = style({
+  backgroundColor: "layer-2",
+  borderRadius: "xl",
+  boxShadow: "elevated",
+  "--history-dialog-text": { type: "color", value: "body" },
+  "--history-dialog-muted": { type: "color", value: "neutral-subdued" },
+  "--history-dialog-border": { type: "borderColor", value: "gray-300" },
+  "--history-dialog-panel": { type: "backgroundColor", value: "layer-1" },
+  "--history-dialog-paper": { type: "backgroundColor", value: "layer-2" },
+})
 
 export type HistoryFilter = "all" | "user" | "assistant" | "tools" | "other"
 export type HistoryGroup = { id: number; userTurn: boolean; entries: DurableEntryItem[] }
@@ -146,9 +173,28 @@ export function DurableHistory({
     unavailable?: boolean
   }>()
   const opener = useRef<HTMLAnchorElement | null>(null)
-  const previousButton = useRef<HTMLButtonElement>(null)
-  const nextButton = useRef<HTMLButtonElement>(null)
-  const closeButton = useRef<HTMLButtonElement>(null)
+  const search = useRef<ComponentRef<typeof SearchField>>(null)
+  const previousButton = useRef<ComponentRef<typeof Button>>(null)
+  const nextButton = useRef<ComponentRef<typeof Button>>(null)
+  const closeButton = useRef<ComponentRef<typeof ActionButton>>(null)
+  const dialogId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogOpen = !wide && open && selectedId !== undefined
+  const wasDialogOpen = useRef(false)
+  const dialogState = useOverlayTriggerState({ isOpen: dialogOpen, onOpenChange: setOpen })
+  const { modalProps, underlayProps } = useModalOverlay(
+    { isDismissable: true },
+    dialogState,
+    dialogRef,
+  )
+  useEffect(() => {
+    const restore = wasDialogOpen.current && !dialogOpen
+    wasDialogOpen.current = dialogOpen
+    if (!restore) return
+    const target = opener.current
+    if (target?.isConnected && target.checkVisibility({ visibilityProperty: true })) target.focus()
+    else search.current?.focus()
+  }, [dialogOpen])
   const navigationFocus = useRef<
     | {
         id: number
@@ -160,9 +206,9 @@ export function DurableHistory({
     const trackFocus = (event: FocusEvent) => {
       const pending = navigationFocus.current
       if (!pending) return
-      if (event.target === previousButton.current) pending.control = "previous"
-      else if (event.target === nextButton.current) pending.control = "next"
-      else if (event.target === closeButton.current) pending.control = "close"
+      if (event.target === previousButton.current?.UNSAFE_getDOMNode()) pending.control = "previous"
+      else if (event.target === nextButton.current?.UNSAFE_getDOMNode()) pending.control = "next"
+      else if (event.target === closeButton.current?.UNSAFE_getDOMNode()) pending.control = "close"
       else if (event.target !== document.body) navigationFocus.current = undefined
     }
     document.addEventListener("focusin", trackFocus)
@@ -247,25 +293,29 @@ export function DurableHistory({
   useEffect(() => {
     const pending = navigationFocus.current
     if (!pending) return
-    if (!wide || !open || selectedId !== pending.id) {
+    if (!open || selectedId !== pending.id) {
       navigationFocus.current = undefined
       return
     }
     if (activeDetail || error || denied || ownerUnavailable) navigationFocus.current = undefined
     if (document.activeElement !== document.body) return
+    const previous = previousButton.current?.UNSAFE_getDOMNode()
+    const next = nextButton.current?.UNSAFE_getDOMNode()
+    const close = closeButton.current?.UNSAFE_getDOMNode()
     const buttons =
       pending.control === "previous"
-        ? [previousButton.current, nextButton.current, closeButton.current]
+        ? [previous, next, close]
         : pending.control === "next"
-          ? [nextButton.current, previousButton.current, closeButton.current]
-          : [closeButton.current, previousButton.current, nextButton.current]
+          ? [next, previous, close]
+          : [close, previous, next]
     buttons.find((button) => button && !button.disabled)?.focus({ preventScroll: true })
-  }, [activeDetail, selectedId, error, denied, ownerUnavailable, wide, open])
-  const selectAdjacent = (offset: number, button: HTMLButtonElement) => {
+  }, [activeDetail, selectedId, error, denied, ownerUnavailable, open])
+  const selectAdjacent = (offset: number) => {
     const entry = displayedEntries[selectedIndex + offset]
     if (selectedIndex < 0 || !entry) return
+    const button = offset < 0 ? previousButton.current : nextButton.current
     navigationFocus.current =
-      wide && document.activeElement === button
+      document.activeElement === button?.UNSAFE_getDOMNode()
         ? { id: entry.id, control: offset < 0 ? "previous" : "next" }
         : undefined
     onSelect(entry.id)
@@ -276,80 +326,64 @@ export function DurableHistory({
       className="durable-entry-navigation durable-event-header"
     >
       <Button
-        variant="outline"
-        size="1"
+        variant="secondary"
+        fillStyle="outline"
+        size="S"
         ref={previousButton}
-        disabled={selectedIndex <= 0}
-        onClick={(event) => selectAdjacent(-1, event.currentTarget)}
+        isDisabled={selectedIndex <= 0}
+        onPress={() => selectAdjacent(-1)}
       >
-        <ChevronLeftIcon aria-hidden />
-        {t("record.previous")}
+        <ChevronLeft aria-hidden />
+        <Text>{t("record.previous")}</Text>
       </Button>
       <Button
-        variant="outline"
-        size="1"
+        variant="secondary"
+        fillStyle="outline"
+        size="S"
         ref={nextButton}
-        disabled={selectedIndex < 0 || selectedIndex >= displayedEntries.length - 1}
-        onClick={(event) => selectAdjacent(1, event.currentTarget)}
+        isDisabled={selectedIndex < 0 || selectedIndex >= displayedEntries.length - 1}
+        onPress={() => selectAdjacent(1)}
       >
-        {t("record.next")}
-        <ChevronRightIcon aria-hidden />
+        <Text styles={precedingButtonLabel}>{t("record.next")}</Text>
+        <ChevronRight aria-hidden />
       </Button>
-      <Button
-        variant="ghost"
-        size="1"
+      <ActionButton
+        isQuiet
+        size="S"
         aria-label={t("record.closeDetails")}
         ref={closeButton}
-        onClick={() => setOpen(false)}
+        onPress={() => setOpen(false)}
       >
-        <Cross2Icon aria-hidden />
-      </Button>
+        <Close aria-hidden />
+      </ActionButton>
     </nav>
   )
   const detailContent = (
     <>
       {(!wide || !activeDetail?.entry) && detailNavigation}
       {denied ? (
-        <Text as="p" role="alert">
-          {t("record.permissionRefresh")}
-        </Text>
+        <p role="alert">{t("record.permissionRefresh")}</p>
       ) : error ? (
-        <Text as="p" role="alert">
-          {error}
-        </Text>
+        <p role="alert">{error}</p>
       ) : ownerUnavailable ? (
-        <Text as="p" role="status">
+        <p role="status">
           {ownerState === "not-loaded" ? t("record.sessionRefresh") : t("record.sessionChanged")}
-        </Text>
+        </p>
       ) : !activeDetail ? (
-        <Text as="p" role="status">
-          {t("record.loadingEntry")}
-        </Text>
+        <p role="status">{t("record.loadingEntry")}</p>
       ) : activeDetail.unavailable ? (
-        <Text as="p" role="status">
-          {t("record.entryUnavailable")}
-        </Text>
+        <p role="status">{t("record.entryUnavailable")}</p>
       ) : activeDetail.error ? (
-        <Text as="p" role="alert">
-          {t(activeDetail.error)}
-        </Text>
+        <p role="alert">{t(activeDetail.error)}</p>
       ) : activeDetail.entry ? (
         <>
-          {!selectedOnPage && (
-            <Text as="p" size="2">
-              {t("record.outsidePage")}
-            </Text>
-          )}
-          {selectedOnPage && !selectedVisible && (
-            <Text as="p" size="2">
-              {t("record.filteredEntry")}
-            </Text>
-          )}
+          {!selectedOnPage && <p>{t("record.outsidePage")}</p>}
+          {selectedOnPage && !selectedVisible && <p>{t("record.filteredEntry")}</p>}
           {renderDetail(activeDetail.entry, wide ? detailNavigation : undefined)}
           {activeDetail.readAt && (
-            <Text as="p" size="1" className="durable-read-time">
+            <p className="durable-read-time">
               {t("record.entryReadTime", { time: formatReadTime(activeDetail.readAt) })}
-            </Text>
+            </p>
           )}
         </>
       ) : null}
@@ -365,11 +399,11 @@ export function DurableHistory({
     >
       <fieldset className="history-mode-switch" aria-label={t("record.historyMode")}>
         {(["reading", "events"] as const).map((value) => (
-          <Button
+          <ToggleButton
             key={value}
-            variant="ghost"
-            aria-pressed={mode === value}
-            onClick={() => {
+            isQuiet
+            isSelected={mode === value}
+            onPress={() => {
               setMode(value)
               try {
                 window.sessionStorage.setItem("sumire.admin.history-mode", value)
@@ -379,26 +413,21 @@ export function DurableHistory({
             }}
           >
             {t(value === "reading" ? "record.readingMode" : "record.eventsMode")}
-          </Button>
+          </ToggleButton>
         ))}
         {navigation}
       </fieldset>
       <div className="durable-history-filters">
-        <label htmlFor="durable-history-search">
-          <span className="durable-search-label">{t("record.searchPage")}</span>
-          <TextField.Root
-            id="durable-history-search"
-            type="search"
-            placeholder={t("record.searchPlaceholder")}
-            maxLength={512}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          >
-            <TextField.Slot>
-              <MagnifyingGlassIcon aria-hidden />
-            </TextField.Slot>
-          </TextField.Root>
-        </label>
+        <SearchField
+          ref={search}
+          id="durable-history-search"
+          UNSAFE_className="durable-history-search"
+          aria-label={t("record.searchPage")}
+          placeholder={t("record.searchPlaceholder")}
+          maxLength={512}
+          value={query}
+          onChange={setQuery}
+        />
         <label htmlFor="durable-history-role">
           {t("record.recordType")}
           <select
@@ -413,9 +442,9 @@ export function DurableHistory({
             <option value="other">{t("record.systemInternal")}</option>
           </select>
         </label>
-        <Text as="p" size="1" role="status" className="durable-match-count">
+        <p role="status" className="durable-match-count">
           {t("record.matchesCount", { count, loaded: entries.length })}
-        </Text>
+        </p>
       </div>
       <div className="durable-history-layout">
         <section
@@ -423,14 +452,12 @@ export function DurableHistory({
           className="durable-conversation-history"
         >
           {selectedId !== undefined && !open && (
-            <Button variant="soft" onClick={() => setOpen(true)}>
+            <Button variant="secondary" onPress={() => setOpen(true)}>
               {t("record.openDetails")}
             </Button>
           )}
           <div className="durable-entry-list-header">
-            <Heading as="h3" size="3">
-              {t("record.entriesHeading", { count: entries.length })}
-            </Heading>
+            <h3>{t("record.entriesHeading", { count: entries.length })}</h3>
             <select
               aria-label={t("record.entryOrder")}
               value={newestFirst ? "newest" : "oldest"}
@@ -441,23 +468,19 @@ export function DurableHistory({
             </select>
           </div>
           {error || denied ? (
-            <Text as="p" role="alert">
-              {denied ? t("record.permissionRefresh") : error}
-            </Text>
+            <p role="alert">{denied ? t("record.permissionRefresh") : error}</p>
           ) : !data ? (
-            <Text as="p" role="status">
-              {t("record.loadingHistory")}
-            </Text>
+            <p role="status">{t("record.loadingHistory")}</p>
           ) : ownerUnavailable ? (
-            <Text as="p">
+            <p>
               {ownerState === "not-loaded"
                 ? t("record.notLoadedNotice")
                 : t("record.sessionChanged")}
-            </Text>
+            </p>
           ) : !entries.length ? (
-            <Text as="p">{t("record.noEntries")}</Text>
+            <p>{t("record.noEntries")}</p>
           ) : !count ? (
-            <Text as="p">{t("record.noMatches")}</Text>
+            <p>{t("record.noMatches")}</p>
           ) : (
             <div className="durable-turns">
               {displayedGroups.map((group) => (
@@ -470,16 +493,12 @@ export function DurableHistory({
                   }
                   className="durable-turn"
                 >
-                  <Heading as="h4" size="2">
+                  <h4>
                     {group.userTurn
                       ? t("record.userTurnEntry", { id: group.id })
                       : t("record.earlierContext")}
-                  </Heading>
-                  {!group.userTurn && (
-                    <Text as="p" size="1">
-                      {t("record.precedingTurn")}
-                    </Text>
-                  )}
+                  </h4>
+                  {!group.userTurn && <p>{t("record.precedingTurn")}</p>}
                   {mode === "reading" ? (
                     <ReadingEntries
                       entries={group.entries}
@@ -558,49 +577,41 @@ export function DurableHistory({
             </div>
           )}
           <header className="durable-history-heading">
-            <Heading as="h3" size="4">
-              {t("record.historyHeading", { id: conversationId })}
-            </Heading>
-            <Text as="p" size="2">
+            <h3>{t("record.historyHeading", { id: conversationId })}</h3>
+            <p>
               {t(
                 newestFirst ? "record.historyDescriptionNewest" : "record.historyDescriptionOldest",
               )}
-            </Text>
+            </p>
           </header>
-          {data?.truncated && (
-            <Text as="p" role="status">
-              {t("record.historyTruncated")}
-            </Text>
-          )}
-          <Flex gap="3" wrap="wrap" align="center" className="durable-history-pages">
+          {data?.truncated && <p role="status">{t("record.historyTruncated")}</p>}
+          <div className="durable-history-pages">
             <Button
-              variant="soft"
-              disabled={page === 1 || !data || Boolean(error) || denied || ownerUnavailable}
-              onClick={onPrevious}
+              variant="secondary"
+              isDisabled={page === 1 || !data || Boolean(error) || denied || ownerUnavailable}
+              onPress={onPrevious}
             >
               {t("record.newerRecords")}
             </Button>
             <Button
-              variant="soft"
-              disabled={
+              variant="secondary"
+              isDisabled={
                 data?.state !== "loaded" ||
                 !data.nextCursor ||
                 Boolean(error) ||
                 denied ||
                 ownerUnavailable
               }
-              onClick={onNext}
+              onPress={onNext}
             >
               {t("record.olderRecords")}
             </Button>
-            <Text size="2">
-              {t(page === 1 ? "record.latestPage" : "record.olderPage", { page })}
-            </Text>
-          </Flex>
+            <span>{t(page === 1 ? "record.latestPage" : "record.olderPage", { page })}</span>
+          </div>
           {data && (
-            <Text as="p" size="1" className="durable-read-time">
+            <p className="durable-read-time">
               {t("record.historyReadTime", { time: formatReadTime(data.readAt) })}
-            </Text>
+            </p>
           )}
         </section>
         {wide && (
@@ -609,33 +620,36 @@ export function DurableHistory({
               detailContent
             ) : (
               <div className="durable-event-placeholder">
-                <Heading as="h3" size="3">
-                  {t("record.entryDetails")}
-                </Heading>
-                <Text as="p">{t("record.selectEntry")}</Text>
+                <h3>{t("record.entryDetails")}</h3>
+                <p>{t("record.selectEntry")}</p>
               </div>
             )}
           </aside>
         )}
       </div>
-      {!wide && (
-        <Dialog.Root open={open && selectedId !== undefined} onOpenChange={setOpen}>
-          <Dialog.Content
-            className="durable-inspector durable-history-dialog"
-            onCloseAutoFocus={(event) => {
-              event.preventDefault()
-              const target = opener.current
-              if (target?.isConnected && target.checkVisibility()) target.focus()
-              else document.getElementById("durable-history-search")?.focus()
-            }}
-          >
-            <Dialog.Title>{t("record.eventDetails")}</Dialog.Title>
-            <Dialog.Description size="1">
-              {t("record.dialogDescription", { id: conversationId })}
-            </Dialog.Description>
-            {detailContent}
-          </Dialog.Content>
-        </Dialog.Root>
+      {dialogOpen && (
+        // The opener may be gone or filtered out; restore focus to it or search explicitly.
+        <Overlay disableFocusManagement>
+          <div className={`durable-history-backdrop ${dialogBackdrop}`} {...underlayProps}>
+            <FocusScope contain autoFocus>
+              <div
+                {...modalProps}
+                ref={dialogRef}
+                className={`durable-inspector durable-history-dialog ${dialogSurface}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={`${dialogId}-title`}
+                aria-describedby={`${dialogId}-description`}
+              >
+                <h2 id={`${dialogId}-title`}>{t("record.eventDetails")}</h2>
+                <p id={`${dialogId}-description`}>
+                  {t("record.dialogDescription", { id: conversationId })}
+                </p>
+                {detailContent}
+              </div>
+            </FocusScope>
+          </div>
+        </Overlay>
       )}
     </section>
   )

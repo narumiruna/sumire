@@ -1,10 +1,17 @@
 import type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
-import { Badge, Code, Flex, Heading, Text } from "@radix-ui/themes"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { getLocale, t } from "./i18n.js"
 import { countText } from "./status-text.js"
 import { Disclosure, Panel, Prose, StatusLabel } from "./surfaces.js"
 
 export type { AuditEntry, ImportReport } from "@narumitw/sumire-contracts"
+
+const stack = style({ display: "flex", flexDirection: "column", gap: 12 })
+const inline = style({ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 })
+
+function outcomeTone(outcome: string) {
+  return outcome === "failed" ? "danger" : outcome === "applied" ? "success" : "neutral"
+}
 
 function failedImports(report: ImportReport["report"]) {
   return Array.isArray(report.failedChatIds) ? report.failedChatIds.length : 0
@@ -13,12 +20,12 @@ function failedImports(report: ImportReport["report"]) {
 export function ImportHistory({ reports }: { reports: ImportReport[] }) {
   if (!reports.length)
     return (
-      <Text as="p" size="2" color="gray" className="empty-state">
+      <Prose size="2" color="gray" className="empty-state">
         {t("audit.noImportHistory")}
-      </Text>
+      </Prose>
     )
   return (
-    <Flex direction="column" gap="3" className="import-history settings-stack">
+    <div className={`import-history settings-stack ${stack}`}>
       <Prose size="2" color="gray" className="section-copy">
         {t("audit.importScope")}
       </Prose>
@@ -30,23 +37,21 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
         )
         .map(({ name, report }) => (
           <Panel key={name} className="import-report">
-            <Flex direction="column" gap="3">
-              <Flex align="center" gap="2" wrap="wrap" className="section-heading">
-                <Heading as="h4" size="2">
-                  {name}
-                </Heading>
+            <div className={stack}>
+              <div className={`section-heading ${inline}`}>
+                <h4 className={style({ font: "heading-xs", color: "title", margin: 0 })}>{name}</h4>
                 {failedImports(report) > 0 && (
-                  <Badge color="red">{t("audit.importFailures")}</Badge>
+                  <StatusLabel tone="danger">{t("audit.importFailures")}</StatusLabel>
                 )}
                 {((typeof report.skippedServers === "number" && report.skippedServers > 0) ||
                   (typeof report.unscannedEntries === "number" && report.unscannedEntries > 0)) && (
-                  <Badge color="orange">{t("audit.incompleteImport")}</Badge>
+                  <StatusLabel tone="warning">{t("audit.incompleteImport")}</StatusLabel>
                 )}
                 {report.reviewRequired === true && (
-                  <Badge color="orange">{t("audit.reviewAtImport")}</Badge>
+                  <StatusLabel tone="warning">{t("audit.reviewAtImport")}</StatusLabel>
                 )}
-              </Flex>
-              <Text as="p" size="2" className="import-report-summary">
+              </div>
+              <Prose size="2" className="import-report-summary">
                 {typeof report.servers === "number" &&
                   t("audit.importedCount", { count: countText(report.servers, "server") })}
                 {typeof report.imported === "number" &&
@@ -63,15 +68,14 @@ export function ImportHistory({ reports }: { reports: ImportReport[] }) {
                   t("audit.decisionCount", {
                     count: countText(report.decisions.length, "recorded access decision"),
                   })}
-              </Text>
-              <details>
-                <summary>{t("audit.importDetails")}</summary>
+              </Prose>
+              <Disclosure title={t("audit.importDetails")}>
                 <pre>{JSON.stringify(report, null, 2)}</pre>
-              </details>
-            </Flex>
+              </Disclosure>
+            </div>
           </Panel>
         ))}
-    </Flex>
+    </div>
   )
 }
 
@@ -148,7 +152,7 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
   }
   const time = new Date(entry.time)
   return (
-    <Flex direction="column" gap="2" className="activity-record">
+    <div className={`activity-record ${stack}`}>
       <dl className="audit-record-fields">
         <div>
           <dt>{t("audit.timestamp")}</dt>
@@ -167,21 +171,13 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
         <div>
           <dt>{t("audit.target")}</dt>
           <dd>
-            <Code variant="ghost">{entry.target}</Code>
+            <code>{entry.target}</code>
           </dd>
         </div>
         <div>
           <dt>{t("audit.result")}</dt>
           <dd>
-            <StatusLabel
-              tone={
-                entry.outcome === "failed"
-                  ? "danger"
-                  : entry.outcome === "applied"
-                    ? "success"
-                    : "neutral"
-              }
-            >
+            <StatusLabel tone={outcomeTone(entry.outcome)}>
               {auditValueLabel("outcome", entry.outcome)}
             </StatusLabel>
           </dd>
@@ -191,16 +187,16 @@ function AuditRecord({ entry }: { entry: AuditEntry }) {
         <Prose size="2">{t("audit.revisionNotice", { revision: entry.revision })}</Prose>
         <pre>{JSON.stringify(entry, null, 2)}</pre>
       </Disclosure>
-    </Flex>
+    </div>
   )
 }
 
 export function Activity({ entries }: { entries: AuditEntry[] }) {
   if (!entries.length)
     return (
-      <Text as="p" size="2" color="gray" className="empty-state">
+      <Prose size="2" color="gray" className="empty-state">
         {t("audit.noRecords")}
-      </Text>
+      </Prose>
     )
   return (
     <ol className="activity" aria-label={t("audit.activity")}>
@@ -216,38 +212,30 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
             group[0] && <AuditRecord entry={group[0]} />
           ) : (
             <>
-              <Flex
-                align="center"
-                justify="between"
-                gap="2"
-                wrap="wrap"
-                className="activity-group-heading"
+              <div
+                className={`activity-group-heading ${inline} ${style({ justifyContent: "space-between" })}`}
               >
-                <Text size="2" weight="medium">
+                <span className={style({ font: "detail", color: "title" })}>
                   {countText(group.length, "save/application record")} ·{" "}
                   {group[0] && new Date(group[0].time).toLocaleString(getLocale())}
-                </Text>
-                <Flex gap="2" wrap="wrap">
+                </span>
+                <div className={inline}>
                   {[...new Set(group.map((entry) => entry.outcome))].map((outcome) => (
-                    <Badge
-                      key={outcome}
-                      color={outcome === "failed" ? "red" : outcome === "applied" ? "teal" : "gray"}
-                    >
+                    <StatusLabel key={outcome} tone={outcomeTone(outcome)}>
                       {auditValueLabel("outcome", outcome)}
-                    </Badge>
+                    </StatusLabel>
                   ))}
-                </Flex>
-              </Flex>
-              <Text as="p" size="2" color="gray">
+                </div>
+              </div>
+              <Prose size="2" color="gray">
                 {t("audit.failedNotice", {
                   count: countText(
                     group.filter((entry) => entry.outcome === "failed").length,
                     "failed application",
                   ),
                 })}
-              </Text>
-              <details open>
-                <summary>{t("audit.individualRecords")}</summary>
+              </Prose>
+              <Disclosure open title={t("audit.individualRecords")}>
                 <ul className="activity-group-records">
                   {group.map((entry) => (
                     <li key={entry.id}>
@@ -255,7 +243,7 @@ export function Activity({ entries }: { entries: AuditEntry[] }) {
                     </li>
                   ))}
                 </ul>
-              </details>
+              </Disclosure>
             </>
           )}
         </li>

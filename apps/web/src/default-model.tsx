@@ -1,10 +1,13 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { AlertDialog, Button, Callout, Flex, Grid } from "@radix-ui/themes"
+import { AlertDialog, DialogTrigger } from "@react-spectrum/s2/AlertDialog"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { useContext, useEffect, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
 import { modelIssues } from "./chat-state.js"
 import { t } from "./i18n.js"
-import { SectionActive, SectionSelect as Select } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
+import { SectionActive } from "./sections.js"
 import { Prose, StatusLabel } from "./surfaces.js"
 
 const thinkingKeys = {
@@ -84,7 +87,7 @@ export function DefaultModel({
   return (
     <fieldset className="model-fields">
       <legend className="visually-hidden">{t("model.default")}</legend>
-      <Grid gap="3" className="grid settings-grid policy-model__controls">
+      <div className="grid settings-grid policy-model__controls">
         <label className="form-field" htmlFor="default-model-selection">
           <span>
             {t("model.sharedDefaultModel")}{" "}
@@ -92,7 +95,7 @@ export function DefaultModel({
               <StatusLabel tone="warning">{t("selection.changed")}</StatusLabel>
             )}
           </span>
-          <Select.Root
+          <SectionPicker
             value={value.model ?? "none"}
             onValueChange={(ref) => {
               const option = options.find((option) => option.ref === ref)
@@ -107,30 +110,26 @@ export function DefaultModel({
                   ),
                 )
             }}
+            id="default-model-selection"
+            aria-label={t("model.sharedDefaultModel")}
+            title={value.model ?? t("model.notConfigured")}
           >
-            <Select.Trigger
-              id="default-model-selection"
-              aria-label={t("model.sharedDefaultModel")}
-              title={value.model ?? t("model.notConfigured")}
-            />
-            <Select.Content>
-              {!value.model && (
-                <Select.Item value="none" disabled>
-                  {t("model.notConfigured")}
-                </Select.Item>
-              )}
-              {value.model && !current && (
-                <Select.Item value={value.model} disabled>
-                  {t("model.unavailableNamed", { model: value.model })}
-                </Select.Item>
-              )}
-              {options.map((option) => (
-                <Select.Item key={option.ref} value={option.ref} title={option.ref}>
-                  {modelNames.get(option.ref) ?? option.ref}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+            {!value.model && (
+              <PickerOption id="none" isDisabled>
+                {t("model.notConfigured")}
+              </PickerOption>
+            )}
+            {value.model && !current && (
+              <PickerOption id={value.model} isDisabled>
+                {t("model.unavailableNamed", { model: value.model })}
+              </PickerOption>
+            )}
+            {options.map((option) => (
+              <PickerOption key={option.ref} id={option.ref}>
+                {modelNames.get(option.ref) ?? option.ref}
+              </PickerOption>
+            ))}
+          </SectionPicker>
         </label>
         <label className="form-field" htmlFor="default-thinking-selection">
           <span>
@@ -139,39 +138,31 @@ export function DefaultModel({
               <StatusLabel tone="warning">{t("selection.changed")}</StatusLabel>
             )}
           </span>
-          <Select.Root
+          <SectionPicker
             value={value.thinking ?? "off"}
             disabled={!current}
             onValueChange={(thinking) =>
               onChange({ ...value, thinking: thinking as Selection["thinking"] })
             }
+            id="default-thinking-selection"
+            aria-label={t("model.sharedThinking")}
           >
-            <Select.Trigger
-              id="default-thinking-selection"
-              aria-label={t("model.sharedThinking")}
-            />
-            <Select.Content>
-              {!thinkingValid && (
-                <Select.Item value={value.thinking ?? "off"} disabled>
-                  {t("model.unsupportedThinking", {
-                    level: thinkingLabel(value.thinking ?? "off"),
-                  })}
-                </Select.Item>
-              )}
-              {(current?.levels ?? (thinkingValid ? ["off"] : [])).map((level) => (
-                <Select.Item key={level} value={level}>
-                  {thinkingLabel(level)}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+            {!thinkingValid && (
+              <PickerOption id={value.thinking ?? "off"} isDisabled>
+                {t("model.unsupportedThinking", {
+                  level: thinkingLabel(value.thinking ?? "off"),
+                })}
+              </PickerOption>
+            )}
+            {(current?.levels ?? (thinkingValid ? ["off"] : [])).map((level) => (
+              <PickerOption key={level} id={level}>
+                {thinkingLabel(level)}
+              </PickerOption>
+            ))}
+          </SectionPicker>
         </label>
-      </Grid>
-      {value.model && !current && (
-        <Callout.Root color="orange">
-          <Callout.Text>{t("model.savedUnavailable")}</Callout.Text>
-        </Callout.Root>
-      )}
+      </div>
+      {value.model && !current && <Prose color="orange">{t("model.savedUnavailable")}</Prose>}
       {!thinkingValid && <Prose role="alert">{t("model.chooseThinking")}</Prose>}
       <section
         aria-label={t("model.defaultSetup")}
@@ -179,55 +170,47 @@ export function DefaultModel({
         data-attention={Boolean(issue)}
       >
         <div>
-          <Flex gap="2" align="center" wrap="wrap">
+          <div
+            className={style({ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 })}
+          >
             <strong>{provider?.name ?? providerId ?? t("model.noProvider")}</strong>
             <StatusLabel tone={issue ? "warning" : "neutral"}>
               {issue?.code === "authentication"
                 ? t("model.authenticationRequired")
                 : (issue?.label ?? t("model.configuredLocally"))}
             </StatusLabel>
-          </Flex>
+          </div>
           {saved.model !== value.model && <Prose size="2">{t("model.draftSetup")}</Prose>}
           <Prose size="2">{issue?.reason ?? t("model.localUnchecked")}</Prose>
         </div>
         {providerId && (
-          <Button variant="outline" onClick={() => onProvider(providerId)}>
+          <Button variant="secondary" fillStyle="outline" onPress={() => onProvider(providerId)}>
             {t("provider.configure")}
           </Button>
         )}
       </section>
-      <Flex gap="2" wrap="wrap">
-        <Button variant="soft" onClick={onAvailability}>
+      <div className={style({ display: "flex", flexWrap: "wrap", gap: 8 })}>
+        <Button variant="secondary" onPress={onAvailability}>
           {t("model.manageAvailability")}
         </Button>
         {value.model && (
-          <AlertDialog.Root open={clearOpen && active} onOpenChange={setClearOpen}>
-            <AlertDialog.Trigger>
-              <Button variant="ghost">{t("model.clearDefault")}</Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content
-              onCloseAutoFocus={(event) => {
-                if (!active) event.preventDefault()
-              }}
+          <DialogTrigger isOpen={clearOpen && active} onOpenChange={setClearOpen}>
+            <Button variant="secondary" fillStyle="outline">
+              {t("model.clearDefault")}
+            </Button>
+            <AlertDialog
+              variant="destructive"
+              title={t("model.clearDefaultTitle")}
+              cancelLabel={t("selection.cancel")}
+              primaryActionLabel={t("model.clearDraftDefault")}
+              autoFocusButton="cancel"
+              onPrimaryAction={() => onChange({ ...value, model: null, thinking: null })}
             >
-              <AlertDialog.Title>{t("model.clearDefaultTitle")}</AlertDialog.Title>
-              <AlertDialog.Description>
-                {t("model.clearDefaultDescription")}
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4">
-                <AlertDialog.Cancel>
-                  <Button variant="soft">{t("selection.cancel")}</Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button onClick={() => onChange({ ...value, model: null, thinking: null })}>
-                    {t("model.clearDraftDefault")}
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
+              {t("model.clearDefaultDescription")}
+            </AlertDialog>
+          </DialogTrigger>
         )}
-      </Flex>
+      </div>
     </fieldset>
   )
 }

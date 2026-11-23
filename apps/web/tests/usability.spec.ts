@@ -589,9 +589,7 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
     page.getByRole("button", { name: "Reset all chats to inherit defaults", exact: true }),
   )
   await navigate(page, "Tool permissions")
-  measurements.warning = await contrast(
-    page.locator(".rt-CalloutText").filter({ hasText: "Shell and file tools" }),
-  )
+  measurements.warning = await contrast(page.getByText(/Shell and file tools/))
   const checkboxBoundary = await contrast(
     page.getByRole("checkbox", { name: "Globally allow tool bash", exact: true }),
   )
@@ -603,14 +601,17 @@ test("measures normal, muted, disabled, pending, error, and control-boundary con
   })
   await stagePolicy(page)
   measurements.pending = await contrast(
-    page.locator("#save-status .rt-Badge").filter({ hasText: /unsaved changes?/ }),
+    page
+      .locator("#save-status")
+      .getByRole("status")
+      .filter({ hasText: /unsaved changes?/ }),
   )
   state.conflict()
   await page.getByRole("button", { name: "Review and save changes", exact: true }).click()
   await page.getByRole("button", { name: "Save changes", exact: true }).click()
   const error = page.getByRole("alert")
   await expect(error).toBeVisible()
-  measurements.error = await contrast(error.locator(".rt-CalloutText"))
+  measurements.error = await contrast(error)
   await navigate(page, "Chats")
   await openDirectoryFilters(page)
   measurements.control = await contrast(page.getByLabel("Chat type", { exact: true }))
@@ -640,7 +641,7 @@ for (const mode of [
     for (const section of ["Defaults", "Model providers"]) {
       await navigate(page, section)
       const controls = page.locator(
-        'main :is(button, input, select, textarea, [role="checkbox"], [role="combobox"]):visible',
+        'main :is(button, input, select, textarea, [role="checkbox"], [role="combobox"]):not([aria-hidden=true] *):visible',
       )
       for (let index = 0; index < (await controls.count()); index++)
         await expect(controls.nth(index)).toHaveAccessibleName(/\S/)

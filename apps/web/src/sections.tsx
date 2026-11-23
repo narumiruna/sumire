@@ -1,5 +1,4 @@
-import { Select } from "@radix-ui/themes"
-import { type ComponentProps, createContext, useContext, useEffect, useState } from "react"
+import { type ComponentProps, createContext } from "react"
 import { SectionErrorBoundary } from "./section-error-boundary.js"
 
 export const SectionActive = createContext(true)
@@ -25,36 +24,3 @@ export function EditorSection({
     </SectionActive>
   )
 }
-
-function Root({ onOpenChange, ...props }: ComponentProps<typeof Select.Root>) {
-  const active = useContext(SectionActive)
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    if (!active) setOpen(false)
-  }, [active])
-  return (
-    <Select.Root
-      {...props}
-      open={open && active}
-      onOpenChange={(value) => {
-        setOpen(value)
-        onOpenChange?.(value)
-      }}
-    />
-  )
-}
-
-function Content({ onCloseAutoFocus, ...props }: ComponentProps<typeof Select.Content>) {
-  const active = useContext(SectionActive)
-  return (
-    <Select.Content
-      {...props}
-      onCloseAutoFocus={(event) => {
-        onCloseAutoFocus?.(event)
-        if (!active) event.preventDefault()
-      }}
-    />
-  )
-}
-
-export const SectionSelect = { ...Select, Root, Content }

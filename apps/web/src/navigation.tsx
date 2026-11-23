@@ -1,25 +1,26 @@
-import {
-  ActivityLogIcon,
-  CalendarIcon,
-  ChatBubbleIcon,
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ComponentInstanceIcon,
-  CubeIcon,
-  ExitIcon,
-  FileTextIcon,
-  GitHubLogoIcon,
-  HamburgerMenuIcon,
-  LockClosedIcon,
-  MixerHorizontalIcon,
-  PersonIcon,
-  ReaderIcon,
-  TokensIcon,
-} from "@radix-ui/react-icons"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes"
-import { Fragment, useEffect, useRef, useState } from "react"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import Calendar from "@react-spectrum/s2/icons/Calendar"
+import Chat from "@react-spectrum/s2/icons/Chat"
+import ChevronDown from "@react-spectrum/s2/icons/ChevronDown"
+import ChevronLeft from "@react-spectrum/s2/icons/ChevronLeft"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import CommentText from "@react-spectrum/s2/icons/CommentText"
+import Education from "@react-spectrum/s2/icons/Education"
+import History from "@react-spectrum/s2/icons/History"
+import Leave from "@react-spectrum/s2/icons/Leave"
+import Lock from "@react-spectrum/s2/icons/Lock"
+import Mention from "@react-spectrum/s2/icons/Mention"
+import MenuHamburger from "@react-spectrum/s2/icons/MenuHamburger"
+import Plugin from "@react-spectrum/s2/icons/Plugin"
+import Prompt from "@react-spectrum/s2/icons/Prompt"
+import Settings from "@react-spectrum/s2/icons/Settings"
+import Tools from "@react-spectrum/s2/icons/Tools"
+import Transcript from "@react-spectrum/s2/icons/Transcript"
+import User from "@react-spectrum/s2/icons/User"
+import { Header, Menu, MenuItem, MenuSection, MenuTrigger, Text } from "@react-spectrum/s2/Menu"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { type ComponentRef, Fragment, useEffect, useRef, useState } from "react"
+import "./spectrum-navigation.css"
 import { BrandIcon } from "./brand-icon.js"
 import { type MessageKey, t } from "./i18n.js"
 import { readIssuesMcpRequest } from "./issues-mcp-oauth.js"
@@ -102,19 +103,19 @@ export function focusEditor(selector: string) {
   target.scrollIntoView({ block: "center", behavior: "instant" })
 }
 const pageIcons = {
-  Chats: ChatBubbleIcon,
-  Durable: FileTextIcon,
-  Defaults: MixerHorizontalIcon,
-  "Tool permissions": TokensIcon,
-  Skills: ReaderIcon,
-  "MCP connections": ComponentInstanceIcon,
-  "Model Providers": CubeIcon,
-  "Secrets & variables": LockClosedIcon,
-  "GitHub mentions": GitHubLogoIcon,
-  Schedule: CalendarIcon,
-  Issues: ChatBubbleIcon,
-  Audit: ActivityLogIcon,
-} satisfies Record<Page, typeof ChatBubbleIcon>
+  Chats: Chat,
+  Durable: Transcript,
+  Defaults: Settings,
+  "Tool permissions": Tools,
+  Skills: Education,
+  "MCP connections": Plugin,
+  "Model Providers": Prompt,
+  "Secrets & variables": Lock,
+  "GitHub mentions": Mention,
+  Schedule: Calendar,
+  Issues: CommentText,
+  Audit: History,
+} satisfies Record<Page, typeof Chat>
 export const pageTitles = {
   Chats: "nav.chats",
   Durable: "nav.durable",
@@ -284,6 +285,18 @@ export function useNavigation(ready = true, canLeave: () => boolean = () => true
   }
 }
 
+const sidebarTokens = style({
+  font: "ui-lg",
+  "--nav-surface": { type: "backgroundColor", value: "layer-2" },
+  "--nav-divider": { type: "borderColor", value: "gray-300" },
+  "--nav-text": { type: "color", value: "neutral" },
+  "--nav-hover": { type: "backgroundColor", value: "gray-200" },
+  "--nav-current": { type: "backgroundColor", value: "accent-subtle" },
+  "--nav-current-text": { type: "color", value: "accent-1000" },
+  "--nav-focus": { type: "outlineColor", value: "focus-ring" },
+  "--nav-radius": { type: "borderRadius", value: "default" },
+})
+
 export function SideNavigation({
   page,
   chat,
@@ -314,7 +327,7 @@ export function SideNavigation({
       /* Presentation works even when browser storage is unavailable. */
     }
   }
-  const trigger = useRef<HTMLButtonElement>(null)
+  const trigger = useRef<ComponentRef<typeof ActionButton>>(null)
   const navigationFrame = useRef<number | undefined>(undefined)
   useEffect(
     () => () => {
@@ -322,29 +335,33 @@ export function SideNavigation({
     },
     [],
   )
+  const signOutLabel = t("app.signOut")
   return (
-    <aside className="sidebar" data-collapsed={collapsed} aria-label={t("nav.navigation")}>
-      <Flex direction="column" gap="1" className="sidebar-brand">
-        <Heading size="5" className="brand">
+    <aside
+      className={`sidebar spectrum-sidebar ${sidebarTokens}`}
+      data-collapsed={collapsed}
+      aria-label={t("nav.navigation")}
+    >
+      <div className="sidebar-brand">
+        <h2 className={`brand ${style({ font: "heading-sm", margin: 0 })}`}>
           <BrandIcon /> <span className="brand-name">Sumire</span>
-        </Heading>
-        <Text size="1" color="gray" className="brand-caption">
+        </h2>
+        <span className={`brand-caption ${style({ font: "ui", color: "neutral-subdued" })}`}>
           {t("nav.administration")}
-        </Text>
-      </Flex>
-      <Button
+        </span>
+      </div>
+      <ActionButton
         ref={trigger}
-        className="mobile-menu"
-        variant="soft"
+        UNSAFE_className="mobile-menu"
+        isQuiet
+        size="XL"
+        aria-label={t("nav.sectionTrigger", { page: pageLabel(page) })}
         aria-expanded={open}
         aria-controls="section-navigation"
-        onClick={() => setOpen(!open)}
+        onPress={() => setOpen((previous) => !previous)}
       >
-        <HamburgerMenuIcon aria-hidden />
-        <span className="section-trigger-label">
-          {t("nav.sectionTrigger", { page: pageLabel(page) })}
-        </span>
-      </Button>
+        <MenuHamburger />
+      </ActionButton>
       <nav id="section-navigation" aria-label={t("nav.sections")} data-open={open}>
         {navigationOrder.map((item) => {
           const Icon = pageIcons[item]
@@ -353,6 +370,7 @@ export function SideNavigation({
           return (
             <Fragment key={item}>
               <a
+                className="navigation-link"
                 href={navigationHref(item, chat)}
                 title={pageTitle(item)}
                 aria-current={page === item ? "page" : undefined}
@@ -371,7 +389,8 @@ export function SideNavigation({
                     cancelAnimationFrame(navigationFrame.current)
                   onNavigate(item)
                   setOpen(false)
-                  if (trigger.current?.checkVisibility()) trigger.current.focus()
+                  if (trigger.current?.UNSAFE_getDOMNode()?.checkVisibility())
+                    trigger.current.focus()
                   else {
                     const link = event.currentTarget
                     navigationFrame.current = requestAnimationFrame(() => {
@@ -384,65 +403,64 @@ export function SideNavigation({
                   }
                 }}
               >
-                <Icon aria-hidden />
+                <Icon />
                 <span>{pageTitle(item)}</span>
               </a>
               {description && (
-                <VisuallyHidden.Root id={descriptionId}>{t(description)}</VisuallyHidden.Root>
+                <span className="visually-hidden" id={descriptionId}>
+                  {t(description)}
+                </span>
               )}
             </Fragment>
           )
         })}
         <LanguageSelector />
       </nav>
-      <Button
-        className="rail-toggle"
-        variant="ghost"
-        onClick={toggleNavigation}
+      <ActionButton
+        UNSAFE_className="rail-toggle"
+        isQuiet
+        size="XL"
+        onPress={toggleNavigation}
         aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}
-        title={t(collapsed ? "nav.expand" : "nav.collapse")}
         aria-expanded={!collapsed}
         aria-controls="section-navigation"
       >
-        {collapsed ? <ChevronRightIcon aria-hidden /> : <ChevronLeftIcon aria-hidden />}
-      </Button>
+        {collapsed ? <ChevronRight /> : <ChevronLeft />}
+      </ActionButton>
       {account && (
         <div className="sidebar-account">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <Button
-                variant="soft"
-                className="account-trigger"
-                aria-label={t("app.account")}
-                disabled={account.disabled}
-              >
-                <PersonIcon aria-hidden className="account-trigger-icon" />
-                <span className="account-trigger-identity">
-                  <Text size="1" color="gray">
-                    {t("nav.administrator")}
-                  </Text>
-                  <Text size="2" weight="medium">
-                    {actor}
-                  </Text>
-                </span>
-                <ChevronDownIcon aria-hidden className="account-trigger-chevron" />
-              </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              align="end"
+          <MenuTrigger align="end">
+            <ActionButton
+              size="XL"
+              UNSAFE_className="account-trigger"
               aria-label={t("app.account")}
-              className="account-menu"
+              isDisabled={account.disabled}
             >
-              <DropdownMenu.Label className="account-menu-actor">
-                {t("app.actor", { actor })}
-              </DropdownMenu.Label>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item disabled={account.disabled} onSelect={account.onSignOut}>
-                <ExitIcon aria-hidden />
-                {t("app.signOut")}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+              <User UNSAFE_className="account-trigger-icon" />
+              <Text UNSAFE_className="account-trigger-identity">
+                <span className={style({ font: "ui", color: "neutral-subdued" })}>
+                  {t("nav.administrator")}
+                </span>
+                <span className="account-trigger-id">{actor}</span>
+              </Text>
+              <span className="account-trigger-chevron">
+                <ChevronDown />
+              </span>
+            </ActionButton>
+            <Menu size="XL" aria-label={t("app.account")} UNSAFE_className="account-menu">
+              <MenuSection>
+                <Header UNSAFE_className="account-menu-actor">{t("app.actor", { actor })}</Header>
+                <MenuItem
+                  textValue={signOutLabel}
+                  isDisabled={account.disabled}
+                  onAction={account.onSignOut}
+                >
+                  <Leave />
+                  <Text slot="label">{signOutLabel}</Text>
+                </MenuItem>
+              </MenuSection>
+            </Menu>
+          </MenuTrigger>
         </div>
       )}
     </aside>

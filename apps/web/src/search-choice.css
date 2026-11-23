@@ -1,0 +1,57 @@
+.provider-choice > .provider-choice-trigger {
+  justify-content: space-between;
+  min-block-size: 44px;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.provider-choice-overlay {
+  z-index: 20;
+  inline-size: min(24rem, calc(100vw - 24px));
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--search-border);
+  border-radius: var(--search-radius);
+  background: var(--search-surface);
+  color: var(--search-text);
+  box-shadow: 0 4px 12px #0002;
+}
+.provider-choice-overlay input {
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: 6px 10px;
+  color: var(--search-text);
+  background: var(--search-surface);
+  border: 1px solid var(--search-border);
+  border-radius: var(--search-radius);
+}
+.provider-choice-overlay input:focus-visible {
+  outline: 2px solid var(--search-focus);
+  outline-offset: -2px;
+}
+.provider-choice-options {
+  max-block-size: min(16rem, 40vh);
+  overflow: auto;
+  margin-block-start: 4px;
+}
+.provider-choice-options button {
+  display: grid;
+  gap: 2px;
+  inline-size: 100%;
+  min-block-size: 44px;
+  border: 0;
+  border-radius: var(--search-radius);
+  padding: 6px 10px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.provider-choice-options button:is(:hover, [data-active="true"]) {
+  background: var(--search-highlight);
+}
+.provider-choice-options small {
+  font-size: 0.875em;
+}

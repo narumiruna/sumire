@@ -1,18 +1,17 @@
 import { effectivePolicy } from "@narumitw/sumire-policy"
-import { ArrowLeftIcon, DotsHorizontalIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons"
-import {
-  Button,
-  Callout,
-  Code,
-  DataList,
-  DropdownMenu,
-  Flex,
-  Heading,
-  Tabs,
-  Text,
-  TextField,
-} from "@radix-ui/themes"
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content } from "@react-spectrum/s2/Content"
+import { Heading } from "@react-spectrum/s2/Heading"
+import { InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import ChevronLeft from "@react-spectrum/s2/icons/ChevronLeft"
+import More from "@react-spectrum/s2/icons/More"
+import { Menu, MenuItem, MenuTrigger } from "@react-spectrum/s2/Menu"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import { type ReactNode, useContext, useEffect, useRef, useState } from "react"
+import { RouterProvider } from "react-aria-components"
+import { Tab, TabList, TabPanel, Tabs } from "react-aria-components/Tabs"
 import { Activity, type AuditEntry } from "./activity.js"
 import type { Inventory, Policy, Snapshot } from "./api.js"
 import { ChatCards } from "./chat-cards.js"
@@ -29,6 +28,18 @@ import { permissionResult } from "./tool-permissions.js"
 export type { Chat } from "@narumitw/sumire-contracts"
 export { chatName } from "./chat-directory.js"
 
+const chatViews = [
+  ["overview", "chat.overview"],
+  ["access", "chat.access"],
+  ["configuration", "chat.modelTools"],
+  ["history", "chat.history"],
+] as const
+
+type ChatView = (typeof chatViews)[number][0]
+
+const chatHeading = style({ font: "heading-sm", margin: 0 })
+const chatTitle = style({ font: "heading", margin: 0 })
+
 function ChatFact({
   label,
   children,
@@ -41,29 +52,16 @@ function ChatFact({
   action?: ReactNode
 }) {
   return (
-    <DataList.Item>
-      <DataList.Label>{label}</DataList.Label>
-      <DataList.Value>
-        <Flex
-          className="chat-fact-value"
-          justify="between"
-          align="start"
-          gap="3"
-          wrap="wrap"
-          width="100%"
-        >
-          <div>
-            {children}
-            {detail && (
-              <Text as="span" size="1" color="gray" className="chat-fact-detail">
-                {detail}
-              </Text>
-            )}
-          </div>
-          {action}
-        </Flex>
-      </DataList.Value>
-    </DataList.Item>
+    <div className="chat-fact">
+      <dt>{label}</dt>
+      <dd className="chat-fact-value">
+        <div>
+          {children}
+          {detail && <span className="chat-fact-detail">{detail}</span>}
+        </div>
+        {action}
+      </dd>
+    </div>
   )
 }
 
@@ -114,7 +112,7 @@ export function ChatWorkspace({
   const [chatDraft, setChatDraft] = useState(chat)
   useEffect(() => setChatDraft(chat), [chat])
   const validDraft = /^-?[1-9]\d*$/.test(chatDraft) && Number.isSafeInteger(Number(chatDraft))
-  const [tab, setTab] = useState("overview")
+  const [tab, setTab] = useState<ChatView>("overview")
   const [showDirectory, setShowDirectory] = useState(!chat)
   useEffect(() => {
     if (!active || showDirectory) setActionsOpen(false)
@@ -148,9 +146,9 @@ export function ChatWorkspace({
       window.scrollTo({ top: directoryScroll.current, behavior: "instant" })
     } else headerRef.current?.focus()
   }, [active, showDirectory])
-  const changeTab = (value: string) => {
+  const changeTab = (value: ChatView) => {
     setTab(value)
-    tabsRef.current?.querySelector<HTMLButtonElement>(`[data-view="${value}"]`)?.focus()
+    tabsRef.current?.querySelector<HTMLElement>(`[data-view="${value}"]`)?.focus()
   }
   const [repairRequest, setRepairRequest] = useState<{ target: ChatRepair | "tools" }>()
   useEffect(() => {
@@ -163,7 +161,7 @@ export function ChatWorkspace({
     if (!repairRequest) return
     const selector = {
       access: ".chat-access-editor h3",
-      enabled: '.chat-policy-editor [role="checkbox"]',
+      enabled: '.chat-policy-editor input[type="checkbox"]',
       model: "#model-selection",
       providers: "",
       application: "",
@@ -229,9 +227,9 @@ export function ChatWorkspace({
     showChatDetails()
   }
   const configuredStatus = (
-    <Text as="p" size="2" color="gray" className="chat-ready-summary">
+    <Prose color="gray" className="chat-ready-summary">
       {t("chat.statusSummary", { label: state.label, reason: state.reason })}
-    </Text>
+    </Prose>
   )
   return (
     <div
@@ -243,6 +241,8 @@ export function ChatWorkspace({
         <aside
           ref={directoryRef}
           className="chat-directory chat-sidebar"
+          hidden={!showDirectory}
+          inert={!active || !showDirectory}
           aria-label={t("chat.find")}
         >
           <ChatCards
@@ -271,13 +271,19 @@ export function ChatWorkspace({
             <details className="configure-id">
               <summary>{t("chat.openById")}</summary>
               <p>{t("chat.beforeFirstMessage")}</p>
-              <label htmlFor="chat-id">{t("chat.id")}</label>
-              <TextField.Root
+              <TextField
                 id="chat-id"
+                size="XL"
+                label={t("chat.id")}
                 value={chatDraft}
-                onChange={(event) => setChatDraft(event.target.value)}
+                onChange={setChatDraft}
               />
-              <Button variant="soft" disabled={!validDraft} onClick={() => openChat(chatDraft)}>
+              <Button
+                variant="secondary"
+                size="XL"
+                isDisabled={!validDraft}
+                onPress={() => openChat(chatDraft)}
+              >
                 {t("chat.openDetails")}
               </Button>
             </details>
@@ -285,112 +291,86 @@ export function ChatWorkspace({
         </aside>
       </SectionActive>
       <SectionActive value={active && !showDirectory}>
-        <section className="chat-detail" aria-label={t("chat.details")}>
+        <section
+          className="chat-detail"
+          hidden={showDirectory}
+          inert={!active || showDirectory}
+          aria-label={t("chat.details")}
+        >
           {!chat ? (
             <Panel className="chat-initial">
-              <Heading size="4">{t("chat.select")}</Heading>
+              <h2 className={chatHeading}>{t("chat.select")}</h2>
               <Prose color="gray">{t("chat.selectHelp")}</Prose>
             </Panel>
           ) : (
             <>
-              <Button
-                className="directory-action"
-                variant="ghost"
-                mb="0"
-                onClick={() => setShowDirectory(true)}
+              <ActionButton
+                UNSAFE_className="directory-action"
+                size="XL"
+                isQuiet
+                onPress={() => setShowDirectory(true)}
               >
-                <ArrowLeftIcon aria-hidden="true" />
+                <ChevronLeft />
                 {t("chat.back")}
-              </Button>
+              </ActionButton>
               {metadataState.error && (
                 <>
-                  <Text role="alert">{metadataState.error}</Text>
-                  <Button variant="soft" onClick={directory.refresh}>
+                  <Prose role="alert">{metadataState.error}</Prose>
+                  <Button size="XL" variant="secondary" onPress={directory.refresh}>
                     {t("chat.retryMetadata")}
                   </Button>
                 </>
               )}
               <header className="chat-header">
                 <div className="chat-identity">
-                  <Heading
-                    size="5"
-                    className="chat-detail-name"
+                  <h2
+                    className={`chat-detail-name ${chatTitle}`}
                     title={detailName}
                     ref={headerRef}
                     tabIndex={-1}
                   >
                     {detailName}
-                  </Heading>
-                  <Flex className="chat-identity-meta" gap="2" align="center" wrap="wrap">
-                    <Text size="2">{metadata?.type || t("chat.typeUnknown")}</Text>
-                    <Code size="2" variant="ghost">
-                      {chat}
-                    </Code>
-                  </Flex>
+                  </h2>
+                  <div className="chat-identity-meta chat-control-row">
+                    <span>{metadata?.type || t("chat.typeUnknown")}</span>
+                    <code>{chat}</code>
+                  </div>
                 </div>
-                <Button variant="ghost" onClick={() => void copyChatId()}>
-                  {t("chat.copyId")}
-                </Button>
-                <DropdownMenu.Root
-                  open={actionsOpen && active && !showDirectory}
-                  onOpenChange={setActionsOpen}
-                >
-                  <DropdownMenu.Trigger>
-                    <Button
-                      className="chat-actions"
-                      variant="soft"
-                      aria-label={t("chat.chatActions")}
+                <div className="chat-header-actions">
+                  <ActionButton size="XL" isQuiet onPress={() => void copyChatId()}>
+                    {t("chat.copyId")}
+                  </ActionButton>
+                  <RouterProvider navigate={onDurable}>
+                    <MenuTrigger
+                      align="end"
+                      isOpen={actionsOpen && active && !showDirectory}
+                      onOpenChange={setActionsOpen}
                     >
-                      <DotsHorizontalIcon />
-                    </Button>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content
-                    align="end"
-                    onCloseAutoFocus={(event) => {
-                      if (!active || showDirectory) event.preventDefault()
-                    }}
-                  >
-                    <DropdownMenu.Item onSelect={() => void copyChatId()}>
-                      {t("chat.copyId")}
-                    </DropdownMenu.Item>
-                    {valid && (
-                      <DropdownMenu.Item asChild>
-                        <a
-                          href={navigationHref("Durable", chat)}
-                          onKeyDownCapture={(event) => {
-                            if (
-                              event.key === "Enter" &&
-                              (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-                            )
-                              event.stopPropagation()
-                          }}
-                          onClick={(event) => {
-                            if (
-                              event.button !== 0 ||
-                              event.metaKey ||
-                              event.ctrlKey ||
-                              event.shiftKey ||
-                              event.altKey
-                            )
-                              return
-                            event.preventDefault()
-                            onDurable()
-                          }}
-                        >
-                          {t("chat.viewConversation")}
-                        </a>
-                      </DropdownMenu.Item>
-                    )}
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
+                      <ActionButton
+                        size="XL"
+                        UNSAFE_className="chat-actions"
+                        aria-label={t("chat.chatActions")}
+                        isDisabled={!active || showDirectory}
+                      >
+                        <More />
+                      </ActionButton>
+                      <Menu size="XL">
+                        <MenuItem onAction={() => void copyChatId()}>{t("chat.copyId")}</MenuItem>
+                        {valid && (
+                          <MenuItem href={navigationHref("Durable", chat)}>
+                            {t("chat.viewConversation")}
+                          </MenuItem>
+                        )}
+                      </Menu>
+                    </MenuTrigger>
+                  </RouterProvider>
+                </div>
               </header>
-              <Text as="p" role="status" size="2" className="chat-copy-status">
+              <Prose role="status" className="chat-copy-status">
                 {copyStatus.chat === chat && copyStatus.message ? t(copyStatus.message) : ""}
-              </Text>
+              </Prose>
               {!valid ? (
-                <Text as="p" role="alert">
-                  {t("chat.invalidId")}
-                </Text>
+                <Prose role="alert">{t("chat.invalidId")}</Prose>
               ) : (
                 <>
                   <section
@@ -400,76 +380,72 @@ export function ChatWorkspace({
                     hidden={!state.primary && !preview && tab === "overview"}
                   >
                     {state.primary ? (
-                      <Callout.Root className="chat-setup-callout" color="amber" size="1">
-                        <Callout.Icon>
-                          <ExclamationTriangleIcon />
-                        </Callout.Icon>
-                        <div className="chat-setup-body">
-                          <Heading size="3">{state.label}</Heading>
-                          <Text as="p" size="2">
-                            {state.reason}
-                          </Text>
+                      <InlineAlert
+                        UNSAFE_className="chat-setup-callout"
+                        variant="notice"
+                        fillStyle="subtleFill"
+                      >
+                        <Heading level={3}>{state.label}</Heading>
+                        <Content UNSAFE_className="chat-setup-body">
+                          <Prose>{state.reason}</Prose>
                           {primary && (
-                            <Button type="button" onClick={() => repair(primary.target)}>
+                            <Button size="XL" onPress={() => repair(primary.target)}>
                               {primary.action}
                             </Button>
                           )}
-                        </div>
-                      </Callout.Root>
+                        </Content>
+                      </InlineAlert>
                     ) : (
                       tab !== "overview" && configuredStatus
                     )}
 
                     {preview && (
-                      <Text as="p" size="2" className="chat-draft-status">
+                      <Prose className="chat-draft-status">
                         {t("chat.draftPreview", {
                           label: draftState.label,
                           reason: draftState.reason,
                         })}
-                      </Text>
+                      </Prose>
                     )}
                   </section>
-                  <Tabs.Root value={tab} onValueChange={changeTab}>
-                    <Tabs.List ref={tabsRef} aria-label={t("chat.views")}>
-                      <Tabs.Trigger type="button" value="overview" data-view="overview">
-                        {t("chat.overview")}
-                      </Tabs.Trigger>
-                      <Tabs.Trigger type="button" value="access" data-view="access">
-                        {t("chat.access")}
-                      </Tabs.Trigger>
-                      <Tabs.Trigger type="button" value="configuration" data-view="configuration">
-                        {t("chat.modelTools")}
-                      </Tabs.Trigger>
-                      <Tabs.Trigger type="button" value="history" data-view="history">
-                        {t("chat.history")}
-                      </Tabs.Trigger>
-                    </Tabs.List>
+                  {/* Spectrum Tabs collapse to a picker. Keep all four views visible at narrow widths. */}
+                  <Tabs
+                    selectedKey={tab}
+                    onSelectionChange={(key) => {
+                      const view = chatViews.find(([id]) => id === key)
+                      if (view) setTab(view[0])
+                    }}
+                  >
+                    <TabList ref={tabsRef} className="chat-tabs" aria-label={t("chat.views")}>
+                      {chatViews.map(([id, label]) => (
+                        <Tab key={id} id={id} data-view={id} className="chat-tab">
+                          {t(label)}
+                        </Tab>
+                      ))}
+                    </TabList>
 
                     {preview && (
-                      <Text className="draft-context" as="p" size="2" color="gray">
+                      <Prose className="draft-context" color="gray">
                         {t("chat.unsavedPreview")}
-                      </Text>
+                      </Prose>
                     )}
                     {preview && (
-                      <Text as="p" size="2">
+                      <Prose>
                         {t("chat.savedPreview", {
                           access: saved.enabled
                             ? t("chat.approvedEnabled")
                             : t("chat.blockedPolicy"),
                           model: saved.model ?? t("chat.noAllowedModel"),
                         })}
-                      </Text>
+                      </Prose>
                     )}
-                    <Tabs.Content
+                    <TabPanel
                       className="chat-view"
-                      value="overview"
-                      forceMount
+                      id="overview"
+                      shouldForceMount
                       hidden={tab !== "overview"}
                     >
-                      <DataList.Root
-                        className="chat-facts chat-overview-facts overview-settings"
-                        size="2"
-                      >
+                      <dl className="chat-facts chat-overview-facts overview-settings">
                         <ChatFact
                           label={t("chat.access")}
                           detail={
@@ -486,13 +462,9 @@ export function ChatWorkspace({
                                 )
                           }
                           action={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => changeTab("access")}
-                            >
+                            <ActionButton size="XL" isQuiet onPress={() => changeTab("access")}>
                               {t("chat.manageAccess")}
-                            </Button>
+                            </ActionButton>
                           }
                         >
                           {effective.enabled ? t("chat.approvedEnabled") : t("chat.blockedPolicy")}
@@ -505,12 +477,12 @@ export function ChatWorkspace({
                               : t("chat.sharedDefault")
                           }
                           action={
-                            <Button type="button" variant="ghost" onClick={() => repair("model")}>
+                            <ActionButton size="XL" isQuiet onPress={() => repair("model")}>
                               {t("chat.changeModel")}
-                            </Button>
+                            </ActionButton>
                           }
                         >
-                          <Code variant="ghost">{effective.model ?? t("chat.noAllowedModel")}</Code>
+                          <code>{effective.model ?? t("chat.noAllowedModel")}</code>
                         </ChatFact>
                         <ChatFact
                           label={t("chat.tools")}
@@ -520,44 +492,42 @@ export function ChatWorkspace({
                               : t("chat.sharedDefault")
                           }
                           action={
-                            <Button type="button" variant="ghost" onClick={() => repair("tools")}>
+                            <ActionButton size="XL" isQuiet onPress={() => repair("tools")}>
                               {t("chat.viewPermissions")}
-                            </Button>
+                            </ActionButton>
                           }
                         >
                           {t("chat.allowedCount", { count: effective.tools.length })}
                         </ChatFact>
-                      </DataList.Root>
+                      </dl>
                       {!state.primary && configuredStatus}
                       {unavailableTools.length > 0 && (
                         <div className="blocker">
-                          <Text size="2">
+                          <span>
                             {t("chat.excludedTools", { names: unavailableTools.join(", ") })}
-                          </Text>
+                          </span>
                           <Button
-                            type="button"
-                            variant="soft"
-                            onClick={() => changeTab("configuration")}
+                            size="XL"
+                            variant="secondary"
+                            onPress={() => changeTab("configuration")}
                           >
                             {t("chat.reviewToolPermissions")}
                           </Button>
                         </div>
                       )}
-                    </Tabs.Content>
-                    <Tabs.Content
+                    </TabPanel>
+                    <TabPanel
                       className="chat-view"
-                      value="access"
-                      forceMount
+                      id="access"
+                      shouldForceMount
                       hidden={tab !== "access"}
                     >
                       <section className="chat-access-editor">
-                        <Heading as="h3" size="3" tabIndex={-1}>
+                        <h3 className={chatHeading} tabIndex={-1}>
                           {t("chat.accessForChat")}
-                        </Heading>
-                        <Text as="p" size="2" mt="2">
-                          {t(id > 0 ? "access.privateScope" : "access.groupScope")}
-                        </Text>
-                        <DataList.Root className="chat-facts effective-settings" size="2">
+                        </h3>
+                        <Prose>{t(id > 0 ? "access.privateScope" : "access.groupScope")}</Prose>
+                        <dl className="chat-facts effective-settings">
                           <ChatFact label={t("chat.savedApproval")}>
                             {savedApproval ? t("chat.approved") : t("chat.notApproved")}
                           </ChatFact>
@@ -575,19 +545,20 @@ export function ChatWorkspace({
                                 ? t("chat.approvedEnabled")
                                 : t("chat.blockedPolicy")}
                           </ChatFact>
-                        </DataList.Root>
-                        <Text as="p" role="status">
+                        </dl>
+                        <Prose role="status">
                           {accessPending
                             ? approved
                               ? t("chat.pendingGrant")
                               : t("chat.pendingRevocation")
                             : t("chat.noPendingApproval")}
-                        </Text>
-                        <Flex gap="3" wrap="wrap" mt="3">
+                        </Prose>
+                        <div className="chat-control-row">
                           <Button
-                            color={approved ? "red" : "teal"}
-                            variant={approved ? "soft" : "solid"}
-                            onClick={() => onPolicyChange(withChatAccess(policy, id, !approved))}
+                            size="XL"
+                            variant={approved ? "negative" : "accent"}
+                            fillStyle={approved ? "outline" : "fill"}
+                            onPress={() => onPolicyChange(withChatAccess(policy, id, !approved))}
                           >
                             {approved
                               ? t("chat.revoke")
@@ -597,52 +568,48 @@ export function ChatWorkspace({
                           </Button>
                           {accessPending && approved && (
                             <Button
-                              variant="soft"
-                              onClick={() =>
+                              size="XL"
+                              variant="secondary"
+                              onPress={() =>
                                 onPolicyChange(withChatAccess(policy, id, savedApproval))
                               }
                             >
                               {t("chat.undoGrant")}
                             </Button>
                           )}
-                          <Button variant="ghost" onClick={onAccess}>
+                          <ActionButton size="XL" isQuiet onPress={onAccess}>
                             {t("chat.manageChatAccess")}
-                          </Button>
-                        </Flex>
-                        <Text as="p" size="2" color="gray" mt="3">
+                          </ActionButton>
+                        </div>
+                        <Prose color="gray" mt="3">
                           {t("chat.accessStageHelp")}
-                        </Text>
+                        </Prose>
                       </section>
-                    </Tabs.Content>
-                    <Tabs.Content
+                    </TabPanel>
+                    <TabPanel
                       className="chat-view"
-                      value="configuration"
-                      forceMount
+                      id="configuration"
+                      shouldForceMount
                       hidden={tab !== "configuration"}
                     >
-                      <Heading size="3">{t("chat.modelTools")}</Heading>
+                      <h3 className={chatHeading}>{t("chat.modelTools")}</h3>
                       <section className="chat-override-editor" aria-label={t("chat.overrides")}>
-                        <Heading size="3" mt="4">
-                          {t("chat.overrides")}
-                        </Heading>
-                        {children}
+                        <h4 className={chatHeading}>{t("chat.overrides")}</h4>
+                        <SectionActive value={active && !showDirectory && tab === "configuration"}>
+                          {children}
+                        </SectionActive>
                       </section>
                       <details className="configuration-summary">
                         <summary>{t("chat.effectiveAuthentication")}</summary>
-                        <DataList.Root className="chat-facts effective-settings" size="2">
+                        <dl className="chat-facts effective-settings">
                           <ChatFact label={t("chat.effectiveModel")}>
-                            <Code variant="ghost">
-                              {effective.model ?? t("chat.noAllowedModel")}
-                            </Code>{" "}
-                            ·{" "}
+                            <code>{effective.model ?? t("chat.noAllowedModel")}</code> ·{" "}
                             {effective.sources.model === "chat"
                               ? t("chat.chatOverride")
                               : t("chat.fromDefaults")}
                           </ChatFact>
                           <ChatFact label={t("chat.modelOverride")}>
-                            <Code variant="ghost">
-                              {override?.model ?? t("chat.inheritDefaults")}
-                            </Code>
+                            <code>{override?.model ?? t("chat.inheritDefaults")}</code>
                           </ChatFact>
                           <ChatFact label={t("chat.tools")}>
                             {effective.tools.join(", ") || t("chat.none")} ·{" "}
@@ -668,24 +635,23 @@ export function ChatWorkspace({
                               ? t("chat.chatOverride")
                               : t("chat.fromDefaults")}
                           </ChatFact>
-                        </DataList.Root>
-                        <Flex gap="3" wrap="wrap">
+                        </dl>
+                        <div className="chat-control-row">
                           <Button
-                            variant="soft"
-                            onClick={() => onProviders(saved.model?.split("/")[0] ?? "")}
+                            size="XL"
+                            variant="secondary"
+                            onPress={() => onProviders(saved.model?.split("/")[0] ?? "")}
                           >
                             {t("chat.manageModelAuthentication")}
                           </Button>
-                          <Button variant="soft" onClick={onTools}>
+                          <Button size="XL" variant="secondary" onPress={onTools}>
                             {t("chat.manageToolPermissions")}
                           </Button>
-                        </Flex>
+                        </div>
                       </details>
                       <details className="permission-details">
                         <summary>{t("chat.inspectPermissions")}</summary>
-                        <Text as="p" size="2">
-                          {t("chat.capabilitiesHelp")}
-                        </Text>
+                        <Prose>{t("chat.capabilitiesHelp")}</Prose>
                         <ul>
                           {[
                             ...new Set([
@@ -712,14 +678,15 @@ export function ChatWorkspace({
                                 })}
                                 {result.blocking && (
                                   <>
-                                    <Text as="p" size="2">
+                                    <Prose>
                                       {t("chat.blockingSource", {
                                         source: result.blockingLabel ?? result.blocking,
                                       })}
-                                    </Text>
-                                    <Button
-                                      variant="ghost"
-                                      onClick={() =>
+                                    </Prose>
+                                    <ActionButton
+                                      size="XL"
+                                      isQuiet
+                                      onPress={() =>
                                         result.blockedServers.length
                                           ? repair("servers")
                                           : result.blocking === "Global policy"
@@ -728,15 +695,15 @@ export function ChatWorkspace({
                                       }
                                     >
                                       {t("chat.reviewBlocking", { name })}
-                                    </Button>
+                                    </ActionButton>
                                   </>
                                 )}
                                 {inventory.toolAvailability?.[name]?.available === false && (
-                                  <Text as="p" size="2">
+                                  <Prose>
                                     {t("chat.capabilityUnavailable", {
                                       reason: inventory.toolAvailability[name]?.reason ?? "",
                                     })}
-                                  </Text>
+                                  </Prose>
                                 )}
                               </li>
                             )
@@ -745,10 +712,8 @@ export function ChatWorkspace({
                       </details>
                       {!!effective.servers.length && (
                         <Panel mt="3">
-                          <Heading size="2">{t("chat.mcpStatus")}</Heading>
-                          <Text as="p" size="2">
-                            {t("chat.connectionHelp")}
-                          </Text>
+                          <h4 className={chatHeading}>{t("chat.mcpStatus")}</h4>
+                          <Prose>{t("chat.connectionHelp")}</Prose>
                           <ul>
                             {effective.servers.map((name) => {
                               const server = inventory.mcp.find((entry) => entry.name === name)
@@ -768,33 +733,31 @@ export function ChatWorkspace({
                           </ul>
                         </Panel>
                       )}
-                    </Tabs.Content>
-                    <Tabs.Content
+                    </TabPanel>
+                    <TabPanel
                       className="chat-view"
-                      value="history"
-                      forceMount
+                      id="history"
+                      shouldForceMount
                       hidden={tab !== "history"}
                     >
-                      <Heading size="3">{t("chat.auditHistory")}</Heading>
-                      <Text as="p" size="2" color="gray">
-                        {t("chat.auditHelp")}
-                      </Text>
+                      <h3 className={chatHeading}>{t("chat.auditHistory")}</h3>
+                      <Prose color="gray">{t("chat.auditHelp")}</Prose>
                       {history.length ? (
                         <SectionErrorBoundary label={t("chat.chatHistory")}>
                           <Activity entries={history} />
                         </SectionErrorBoundary>
                       ) : (
-                        <Text as="p">{t("chat.noAuditRecords")}</Text>
+                        <Prose>{t("chat.noAuditRecords")}</Prose>
                       )}
-                      <Button variant="soft" mt="3" onClick={onAudit}>
+                      <Button size="XL" variant="secondary" onPress={onAudit}>
                         {t("chat.openAudit")}
                       </Button>
-                    </Tabs.Content>
+                    </TabPanel>
                     <details className="setup-details">
                       <summary className="chat-readiness-toggle">
                         {t("chat.readinessDetails")}
                       </summary>
-                      <DataList.Root className="chat-facts effective-settings readiness" size="2">
+                      <dl className="chat-facts effective-settings readiness">
                         <ChatFact label={t("chat.access")}>
                           {state.approved ? t("chat.approved") : t("chat.notApproved")}
                         </ChatFact>
@@ -821,22 +784,26 @@ export function ChatWorkspace({
                               ? t("chat.applied")
                               : t("chat.pending")}
                         </ChatFact>
-                      </DataList.Root>
+                      </dl>
                       {state.issues.slice(1).map((issue) => (
                         <div className="blocker" key={issue.code}>
-                          <Text size="2">{issue.reason}</Text>
-                          <Button type="button" variant="soft" onClick={() => repair(issue.target)}>
+                          <span>{issue.reason}</span>
+                          <Button
+                            size="XL"
+                            variant="secondary"
+                            onPress={() => repair(issue.target)}
+                          >
                             {issue.action}
                           </Button>
                         </div>
                       ))}
-                      <Text as="p" size="2" color="gray">
+                      <Prose color="gray">
                         {t(saved.enabled ? "chat.runtimeApproval" : "chat.runtimeDenied")}
-                      </Text>
+                      </Prose>
                     </details>
                     <details className="permission-details" hidden={tab !== "overview"}>
                       <summary>{t("chat.advanced")}</summary>
-                      <DataList.Root className="chat-facts effective-settings" size="2">
+                      <dl className="chat-facts effective-settings">
                         <ChatFact label={t("chat.tools")}>
                           {effective.tools.join(", ") || t("chat.none")} ·{" "}
                           {effective.sources.tools === "chat"
@@ -861,31 +828,29 @@ export function ChatWorkspace({
                             ? t("chat.chatOverride")
                             : t("chat.fromDefaults")}
                         </ChatFact>
-                      </DataList.Root>
-                      <Text as="p" size="2">
-                        {t("chat.remoteUnchecked")}
-                      </Text>
-                      <Flex gap="3" wrap="wrap" mt="2">
+                      </dl>
+                      <Prose>{t("chat.remoteUnchecked")}</Prose>
+                      <div className="chat-control-row">
                         <Button
-                          type="button"
-                          variant="soft"
-                          onClick={() => onProviders(saved.model?.split("/")[0] ?? "")}
+                          size="XL"
+                          variant="secondary"
+                          onPress={() => onProviders(saved.model?.split("/")[0] ?? "")}
                         >
                           {t("chat.manageAuthentication")}
                         </Button>
-                        <Button type="button" variant="soft" onClick={onTools}>
+                        <Button size="XL" variant="secondary" onPress={onTools}>
                           {t("chat.manageToolPermissions")}
                         </Button>
                         <Button
-                          type="button"
-                          variant="soft"
-                          onClick={() => changeTab("configuration")}
+                          size="XL"
+                          variant="secondary"
+                          onPress={() => changeTab("configuration")}
                         >
                           {t("chat.reviewOverrides")}
                         </Button>
-                      </Flex>
+                      </div>
                     </details>
-                  </Tabs.Root>
+                  </Tabs>
                 </>
               )}
             </>

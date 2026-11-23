@@ -1,0 +1,196 @@
+.feedback-launcher .feedback-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  max-inline-size: min(26.25rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--feedback-border);
+  border-radius: 0.75rem;
+  background: var(--feedback-surface);
+  box-shadow: 0 4px 20px var(--feedback-shadow);
+}
+
+/* Spectrum portals these two overlays to the body. Keep them above the fixed feedback launcher. */
+body > div:has(> div > div > :is(.feedback-dialog, .issue-proposal-dialog)) {
+  z-index: 32;
+}
+
+.feedback-dialog .feedback-editor {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.feedback-editor .feedback-image-tools {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.feedback-editor .feedback-canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  border: 0;
+  padding: 0;
+  outline: 1px solid var(--feedback-border);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.feedback-editor .feedback-preview {
+  display: block;
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  block-size: auto;
+  border: 1px solid var(--feedback-border);
+}
+
+.issue-analysis {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--analysis-border);
+  border-radius: 0.75rem;
+  background: var(--analysis-surface);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.issue-analysis :where(p, ul) {
+  margin: 0;
+}
+
+.issue-analysis :where(ul) {
+  padding-inline-start: 1.25rem;
+}
+
+.issue-analysis-attempt,
+.issue-analysis-controls,
+.issue-analysis-disclosure-content {
+  display: grid;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.issue-analysis-current {
+  border-block-start: 1px solid var(--analysis-border);
+  padding-block-start: 1rem;
+}
+
+.issue-analysis-disclosure {
+  border: 1px solid var(--analysis-border);
+  border-radius: 0.5rem;
+  background: var(--analysis-disclosure);
+}
+
+.issue-analysis-disclosure > summary {
+  align-content: center;
+  min-block-size: 44px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.issue-analysis-disclosure > summary:focus-visible {
+  outline: 2px solid var(--analysis-focus);
+  outline-offset: 2px;
+}
+
+.issue-analysis-disclosure-content {
+  border-block-start: 1px solid var(--analysis-border);
+  padding: 0.75rem;
+}
+
+.issue-analysis-history .issue-analysis-attempt + .issue-analysis-attempt {
+  border-block-start: 1px solid var(--analysis-border);
+  padding-block-start: 0.75rem;
+}
+
+.issue-analysis-attempt code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.issue-proposals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+}
+
+.issue-proposal {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0.75rem;
+  border: 1px solid var(--analysis-border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  min-inline-size: 0;
+}
+
+.issue-proposal-preview {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+.issue-proposal-dialog {
+  overflow-wrap: anywhere;
+}
+
+.issue-preview-scroll {
+  overflow: auto;
+  margin-block: 1rem;
+}
+
+.issue-preview-scroll img {
+  display: block;
+  inline-size: 840px;
+  max-inline-size: none;
+  block-size: auto;
+}
+
+.issues-mcp-dialog:modal {
+  box-sizing: border-box;
+  inline-size: min(38rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  color: var(--issue-dialog-text);
+  background: var(--issue-dialog-surface);
+  border: 1px solid var(--issue-dialog-border);
+  border-radius: 0.75rem;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+
+.issues-mcp-dialog::backdrop {
+  background: var(--issue-dialog-backdrop);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.issues-mcp-dialog > * + *,
+.issues-mcp-grant > * + * {
+  margin-block-start: 0.75rem;
+}
+
+.issues-mcp-grant-list {
+  padding-inline-start: 1.25rem;
+}
+
+.issues-mcp-grant {
+  border-block-start: 1px solid var(--issue-dialog-border);
+  padding-block: 0.75rem;
+}
+
+.issues-mcp-value {
+  display: block;
+  overflow-wrap: anywhere;
+}

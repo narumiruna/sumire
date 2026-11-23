@@ -32,7 +32,7 @@ describe("shared presentation primitives", () => {
     expect(html).toContain("<section")
     expect(html).toContain('aria-label="Chat details"')
     expect(html).toContain("panel chat-detail")
-    expect(html).toContain("rt-r-mt-3")
+    expect(html).toContain("panel-spaced")
   })
 
   it("retains native fieldset, legend, and disabled semantics", () => {

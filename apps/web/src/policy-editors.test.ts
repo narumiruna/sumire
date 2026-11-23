@@ -1,6 +1,5 @@
 import { effectivePolicy, inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory, Policy } from "./api.js"
@@ -32,7 +31,7 @@ function renderChoices(
   const onChange = vi.fn()
   const html = renderToStaticMarkup(
     createElement(
-      Theme,
+      Fragment,
       null,
       createElement(Choices, {
         policy,
@@ -96,8 +95,8 @@ describe("policy field scope and source labels", () => {
     expect(html.split("From shared defaults")).toHaveLength(7)
     expect(html).toContain('aria-label="Chat model override"')
     expect(html).toContain('aria-label="Thinking level"')
-    expect(html).toContain('aria-describedby="model-selection-source"')
-    expect(html).toContain('aria-describedby="thinking-selection-source"')
+    expect(html).toMatch(/aria-describedby="[^"]*\bmodel-selection-source\b[^"]*"/)
+    expect(html).toMatch(/aria-describedby="[^"]*\bthinking-selection-source\b[^"]*"/)
     expect(html).toContain("Effective model: provider/model")
     expect(html).toContain("Effective thinking: high")
     expect(html).not.toContain("Reset model and thinking to default")

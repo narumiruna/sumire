@@ -1,5 +1,10 @@
-import { Button, Callout, Flex, Text } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import { Link } from "@react-spectrum/s2/Link"
+import { LinkButton } from "@react-spectrum/s2/LinkButton"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { useEffect, useRef, useState } from "react"
+import "./issues-mcp-consent.css"
 import { ApiError, request } from "./api.js"
 import { BrandIcon } from "./brand-icon.js"
 import { t } from "./i18n.js"
@@ -10,7 +15,6 @@ import {
   validateIssuesMcpRedirect,
 } from "./issues-mcp-oauth.js"
 import { LanguageSelector } from "./language-selector.js"
-import { PageHeader, Panel } from "./surfaces.js"
 
 type Consent = {
   clientName: string
@@ -24,6 +28,36 @@ type View =
   | { kind: "complete"; redirect: string }
 
 const path = "issues-mcp/consent"
+const pageStyles = style({ backgroundColor: "layer-1", color: "body", font: "body" })
+const cardStyles = style({
+  overflowWrap: "anywhere",
+  "--consent-card-surface": { type: "backgroundColor", value: "layer-2" },
+  "--consent-card-border": { type: "borderColor", value: "gray-300" },
+  "--consent-focus": { type: "outlineColor", value: "focus-ring" },
+  "--consent-back-text": {
+    type: "color",
+    value: { default: "accent", forcedColors: "LinkText" },
+  },
+  "--consent-back-hover": {
+    type: "color",
+    value: { default: "accent-1000", forcedColors: "LinkText" },
+  },
+  "--consent-continue-text": {
+    type: "color",
+    value: { default: "white", forcedColors: "ButtonFace" },
+  },
+})
+const noticeStyles = style({
+  alignSelf: "stretch",
+  backgroundColor: "notice-subtle",
+  borderColor: "notice-700",
+  borderStyle: "solid",
+  borderWidth: 2,
+  borderRadius: "lg",
+  display: "grid",
+  gap: 8,
+  padding: 16,
+})
 
 export default function IssuesMcpConsent({
   requestId,
@@ -44,7 +78,7 @@ export default function IssuesMcpConsent({
 }) {
   const active = useRef<AbortController>(null)
   const submitting = useRef(false)
-  const resultRef = useRef<HTMLDivElement>(null)
+  const returningRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState<View>({ kind: "loading" })
   const [retry, setRetry] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -82,7 +116,7 @@ export default function IssuesMcpConsent({
   }, [csrf, onExpired, requestId, retry])
 
   useEffect(() => {
-    if (view.kind !== "loading" && view.kind !== "review") resultRef.current?.focus()
+    if (view.kind === "complete") returningRef.current?.focus()
   }, [view.kind])
 
   async function decide(approve: boolean, consent: Consent) {
@@ -144,120 +178,160 @@ export default function IssuesMcpConsent({
     kind === "decisionFailed" ||
     kind === "redirectFailed"
   return (
-    <main className="session-screen issues-mcp-consent">
-      <Panel className="session-card">
-        <BrandIcon />
-        <LanguageSelector />
-        <PageHeader title={t("issuesMcp.consentTitle")} />
-        {kind === "loading" && <Text role="status">{t("issuesMcp.checkingRequest")}</Text>}
-        {kind === "signIn" && (
-          <>
-            <Text as="p">{t("issuesMcp.signInHelp")}</Text>
-            {signInError && (
-              <Callout.Root role="alert" color="red">
-                <Callout.Text>{signInError}</Callout.Text>
-              </Callout.Root>
-            )}
-            <Button type="button" disabled={signingIn} onClick={onSignIn}>
-              {t("app.signIn")}
-            </Button>
-          </>
-        )}
-        {kind === "review" && view.kind === "review" && (
-          <>
-            <dl className="issues-mcp-details">
-              <div>
-                <dt>{t("issuesMcp.clientName")}</dt>
-                <dd>
-                  <bdi>{view.consent.clientName}</bdi>
-                </dd>
-              </div>
-              <div>
-                <dt>{t("issuesMcp.callback")}</dt>
-                <dd>
-                  <code dir="ltr">{view.consent.redirectUri}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>{t("issuesMcp.scope")}</dt>
-                <dd>
-                  {t(
-                    view.consent.scope === "issues:read"
-                      ? "issuesMcp.readTitle"
-                      : "issuesMcp.writeTitle",
-                  )}{" "}
-                  (<code>{view.consent.scope}</code>)
-                </dd>
-              </div>
-            </dl>
-            <Callout.Root color="orange">
-              <Callout.Text>{t("issuesMcp.unverified")}</Callout.Text>
-              <Callout.Text>
-                {t(
-                  view.consent.scope === "issues:read"
-                    ? "issuesMcp.readHelp"
-                    : "issuesMcp.writeHelp",
-                )}
-              </Callout.Text>
-            </Callout.Root>
-            <form
-              action={`/api/${path}`}
-              method="post"
-              aria-labelledby="current-section-heading"
-              onSubmit={(event) => {
-                event.preventDefault()
-                const button = (event.nativeEvent as SubmitEvent).submitter
-                if (button instanceof HTMLButtonElement && button.name === "approve") {
-                  if (button.value === "true" || button.value === "false")
-                    void decide(button.value === "true", view.consent)
-                }
-              }}
+    <div className={pageStyles}>
+      <main className="session-screen issues-mcp-consent">
+        <section className={`session-card ${cardStyles}`}>
+          <BrandIcon />
+          <LanguageSelector />
+          <header>
+            <h1
+              id="issues-mcp-consent-heading"
+              tabIndex={-1}
+              className={style({ font: "heading-lg", color: "heading" })}
             >
-              <Flex gap="2" wrap="wrap">
-                <Button type="submit" name="approve" value="false" variant="soft" disabled={busy}>
-                  {t("issuesMcp.deny")}
-                </Button>
-                <Button type="submit" name="approve" value="true" disabled={busy}>
-                  {t("issuesMcp.approve")}
-                </Button>
-              </Flex>
-            </form>
-            {busy && <Text role="status">{t("issuesMcp.submitting")}</Text>}
-          </>
-        )}
-        {failed && (
-          <>
-            <Callout.Root ref={resultRef} tabIndex={-1} role="alert" color="red">
-              <Callout.Text>{t(`issuesMcp.consent.${kind}`)}</Callout.Text>
-            </Callout.Root>
-            {kind === "loadFailed" && (
+              {t("issuesMcp.consentTitle")}
+            </h1>
+          </header>
+          {kind === "loading" && <span role="status">{t("issuesMcp.checkingRequest")}</span>}
+          {kind === "signIn" && (
+            <>
+              <p className="session-description">{t("issuesMcp.signInHelp")}</p>
+              {signInError && (
+                <InlineAlert variant="negative">
+                  <Content>{signInError}</Content>
+                </InlineAlert>
+              )}
               <Button
                 type="button"
-                variant="soft"
-                onClick={() => {
-                  setView({ kind: "loading" })
-                  setRetry((value) => value + 1)
+                variant="accent"
+                size="XL"
+                isDisabled={signingIn}
+                onPress={onSignIn}
+              >
+                {t("app.signIn")}
+              </Button>
+            </>
+          )}
+          {kind === "review" && view.kind === "review" && (
+            <>
+              <dl className="issues-mcp-details">
+                <div>
+                  <dt>{t("issuesMcp.clientName")}</dt>
+                  <dd>
+                    <bdi>{view.consent.clientName}</bdi>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("issuesMcp.callback")}</dt>
+                  <dd>
+                    <code dir="ltr">{view.consent.redirectUri}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("issuesMcp.scope")}</dt>
+                  <dd>
+                    {t(
+                      view.consent.scope === "issues:read"
+                        ? "issuesMcp.readTitle"
+                        : "issuesMcp.writeTitle",
+                    )}{" "}
+                    (<code>{view.consent.scope}</code>)
+                  </dd>
+                </div>
+              </dl>
+              {/* This review notice is static, not a live alert. */}
+              <div className={noticeStyles}>
+                <div>{t("issuesMcp.unverified")}</div>
+                <div>
+                  {t(
+                    view.consent.scope === "issues:read"
+                      ? "issuesMcp.readHelp"
+                      : "issuesMcp.writeHelp",
+                  )}
+                </div>
+              </div>
+              <form
+                action={`/api/${path}`}
+                method="post"
+                aria-labelledby="issues-mcp-consent-heading"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const button = (event.nativeEvent as SubmitEvent).submitter
+                  if (button instanceof HTMLButtonElement && button.name === "approve") {
+                    if (button.value === "true" || button.value === "false")
+                      void decide(button.value === "true", view.consent)
+                  }
                 }}
               >
-                {t("app.retry")}
-              </Button>
-            )}
-            <a href="/">{t("issuesMcp.back")}</a>
-          </>
-        )}
-        {kind === "complete" && view.kind === "complete" && (
-          <>
-            <div ref={resultRef} tabIndex={-1} role="status">
-              {t("issuesMcp.returning")}
-            </div>
-            <Button asChild>
-              <a href={view.redirect} rel="noreferrer">
+                <div className={style({ display: "flex", flexWrap: "wrap", gap: 8 })}>
+                  <Button
+                    type="submit"
+                    name="approve"
+                    value="false"
+                    variant="secondary"
+                    fillStyle="outline"
+                    size="XL"
+                    isDisabled={busy}
+                  >
+                    {t("issuesMcp.deny")}
+                  </Button>
+                  <Button
+                    type="submit"
+                    name="approve"
+                    value="true"
+                    variant="accent"
+                    size="XL"
+                    isDisabled={busy}
+                  >
+                    {t("issuesMcp.approve")}
+                  </Button>
+                </div>
+              </form>
+              {busy && <span role="status">{t("issuesMcp.submitting")}</span>}
+            </>
+          )}
+          {failed && (
+            <>
+              <InlineAlert key={kind} variant="negative" autoFocus={view.kind === kind}>
+                <Content>{t(`issuesMcp.consent.${kind}`)}</Content>
+              </InlineAlert>
+              {kind === "loadFailed" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fillStyle="outline"
+                  size="XL"
+                  onPress={() => {
+                    setView({ kind: "loading" })
+                    setRetry((value) => value + 1)
+                  }}
+                >
+                  {t("app.retry")}
+                </Button>
+              )}
+              <Link href="/" isStandalone UNSAFE_className="consent-back">
+                {t("issuesMcp.back")}
+              </Link>
+            </>
+          )}
+          {kind === "complete" && view.kind === "complete" && (
+            <>
+              <div ref={returningRef} tabIndex={-1} role="status">
+                {t("issuesMcp.returning")}
+              </div>
+              <LinkButton
+                href={view.redirect}
+                rel="noreferrer"
+                variant="accent"
+                size="XL"
+                UNSAFE_className="consent-continue"
+              >
                 {t("issuesMcp.continue")}
-              </a>
-            </Button>
-          </>
-        )}
-      </Panel>
-    </main>
+              </LinkButton>
+            </>
+          )}
+        </section>
+      </main>
+    </div>
   )
 }

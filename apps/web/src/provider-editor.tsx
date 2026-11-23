@@ -1,11 +1,14 @@
-import { PlusIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Code, Flex, Grid, Text } from "@radix-ui/themes"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button } from "@react-spectrum/s2/Button"
+import Add from "@react-spectrum/s2/icons/Add"
+import { TextField } from "@react-spectrum/s2/TextField"
 import { useState } from "react"
 import type { ProviderSettings } from "./api.js"
+import { Check } from "./check.js"
 import { t } from "./i18n.js"
-import { Check, Field } from "./policy-editors.js"
-import { SectionSelect as Select } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
 import { Panel, Prose } from "./surfaces.js"
+import "./provider-spectrum.css"
 
 export function ProviderEditor({
   onAdd,
@@ -49,59 +52,82 @@ export function ProviderEditor({
       onChangeCapture={() => onPending(true)}
     >
       <legend>{initial ? t("provider.editConfiguration") : t("provider.addConfiguration")}</legend>
-      <Grid columns={{ initial: "1", md: "2" }} gap="3" className="settings-grid">
-        <Field id="endpoint-provider-id" label={t("provider.id")} value={id} onChange={setId} />
-        <Field label={t("provider.baseUrl")} value={url} onChange={setUrl} />
-      </Grid>
+      <div className="provider-fields">
+        <TextField
+          id="endpoint-provider-id"
+          label={t("provider.id")}
+          value={id}
+          onChange={setId}
+          autoComplete="off"
+          size="XL"
+        />
+        <TextField
+          label={t("provider.baseUrl")}
+          value={url}
+          onChange={setUrl}
+          autoComplete="off"
+          size="XL"
+        />
+      </div>
       <details className="provider-advanced">
         <summary>{t("provider.protocol")}</summary>
         <label htmlFor="provider-api" className="form-field">
           {t("provider.api")}
-          <Select.Root
+          <SectionPicker
             value={api}
             onValueChange={(v) => {
               onPending(true)
               setApi(v as ProviderSettings["api"])
             }}
+            id="provider-api"
+            aria-label={t("provider.api")}
           >
-            <Select.Trigger id="provider-api" aria-label={t("provider.api")} />
-            <Select.Content>
-              {[
-                "openai-completions",
-                "openai-responses",
-                "anthropic-messages",
-                "google-generative-ai",
-              ].map((v) => (
-                <Select.Item key={v} value={v}>
-                  {v}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+            {[
+              "openai-completions",
+              "openai-responses",
+              "anthropic-messages",
+              "google-generative-ai",
+            ].map((v) => (
+              <PickerOption key={v} id={v}>
+                {v}
+              </PickerOption>
+            ))}
+          </SectionPicker>
         </label>
       </details>
       {models.length > 0 && (
         <section className="data-list" aria-label={t("provider.customModels")}>
           {models.map((m) => (
             <div className="data-row" key={m.id}>
-              <Flex direction="column" gap="2">
-                <Flex align="center" gap="2" wrap="wrap">
-                  <Text size="2" weight="medium">
-                    {m.name}
-                  </Text>
-                  <Code size="1">{m.id}</Code>
-                </Flex>
-                <Flex gap="2" wrap="wrap">
-                  <Badge color="gray">{t("model.contextValue", { count: m.contextWindow })}</Badge>
-                  <Badge color="gray">{t("model.outputValue", { count: m.maxTokens })}</Badge>
-                  {m.reasoning && <Badge color="gray">{t("model.reasoning")}</Badge>}
-                  {m.image && <Badge color="gray">{t("model.imageInput")}</Badge>}
-                </Flex>
-              </Flex>
-              <Flex gap="2" wrap="wrap">
+              <div className="provider-model-facts">
+                <div className="provider-controls">
+                  <strong>{m.name}</strong>
+                  <code>{m.id}</code>
+                </div>
+                <div className="provider-controls">
+                  <Badge variant="neutral" fillStyle="subtle">
+                    {t("model.contextValue", { count: m.contextWindow })}
+                  </Badge>
+                  <Badge variant="neutral" fillStyle="subtle">
+                    {t("model.outputValue", { count: m.maxTokens })}
+                  </Badge>
+                  {m.reasoning && (
+                    <Badge variant="neutral" fillStyle="subtle">
+                      {t("model.reasoning")}
+                    </Badge>
+                  )}
+                  {m.image && (
+                    <Badge variant="neutral" fillStyle="subtle">
+                      {t("model.imageInput")}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <div className="provider-controls">
                 <Button
-                  variant="soft"
-                  onClick={() => {
+                  variant="secondary"
+                  size="XL"
+                  onPress={() => {
                     setModel(m.id)
                     setName(m.name)
                     setReasoning(m.reasoning)
@@ -113,9 +139,10 @@ export function ProviderEditor({
                   {t("model.editNamed", { id: m.id })}
                 </Button>
                 <Button
-                  variant="soft"
-                  color="red"
-                  onClick={() => {
+                  variant="negative"
+                  fillStyle="outline"
+                  size="XL"
+                  onPress={() => {
                     onPending(true)
                     setModels(models.filter((row) => row.id !== m.id))
                     if (model === m.id) {
@@ -126,54 +153,81 @@ export function ProviderEditor({
                 >
                   {t("model.removeNamed", { id: m.id })}
                 </Button>
-              </Flex>
+              </div>
             </div>
           ))}
         </section>
       )}
-      <Field label={t("model.endpointId")} value={model} onChange={setModel} />
+      <TextField
+        label={t("model.endpointId")}
+        value={model}
+        onChange={setModel}
+        autoComplete="off"
+        size="XL"
+      />
       <details className="provider-advanced">
         <summary>{t("model.metadata")}</summary>
-        <Field label={t("model.displayName")} value={name} onChange={setName} />
-        <Flex gap="4" wrap="wrap" my="3">
+        <TextField
+          label={t("model.displayName")}
+          value={name}
+          onChange={setName}
+          autoComplete="off"
+          size="XL"
+        />
+        <div className="provider-controls">
           <Check
-            label={t("model.reasoningSupported")}
             checked={reasoning}
             onChange={(v) => {
               onPending(true)
               setReasoning(v)
             }}
+            label={t("model.reasoningSupported")}
           />
           <Check
-            label={t("model.imageSupported")}
             checked={image}
             onChange={(v) => {
               onPending(true)
               setImage(v)
             }}
+            label={t("model.imageSupported")}
           />
-        </Flex>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3" className="settings-grid">
-          <Field label={t("model.contextTokens")} value={context} onChange={setContext} />
-          <Field label={t("model.outputTokens")} value={output} onChange={setOutput} />
-        </Grid>
+        </div>
+        <div className="provider-fields">
+          <TextField
+            label={t("model.contextTokens")}
+            value={context}
+            onChange={setContext}
+            autoComplete="off"
+            size="XL"
+          />
+          <TextField
+            label={t("model.outputTokens")}
+            value={output}
+            onChange={setOutput}
+            autoComplete="off"
+            size="XL"
+          />
+        </div>
       </details>
-      <Flex gap="2" wrap="wrap">
+      <div className="provider-controls">
         <Button
-          variant="soft"
-          disabled={!model}
-          onClick={() => {
+          variant="secondary"
+          size="XL"
+          isDisabled={!model}
+          onPress={() => {
             onPending(true)
             setModels(workingModels())
             setModel("")
             setName("")
           }}
         >
-          <PlusIcon /> {t("model.update")}
+          <Add /> {t("model.update")}
         </Button>
         <Button
-          disabled={!id}
-          onClick={() =>
+          variant="accent"
+          size="XL"
+          isDisabled={!id}
+          onPress={() =>
             onAdd({
               id,
               enabled: initial?.enabled ?? true,
@@ -184,10 +238,10 @@ export function ProviderEditor({
         >
           {t("provider.setConfiguration")}
         </Button>
-        <Button variant="soft" onClick={onDiscard}>
+        <Button variant="secondary" size="XL" onPress={onDiscard}>
           {t("provider.discardEndpoint")}
         </Button>
-      </Flex>
+      </div>
       <Prose size="2" color="gray" className="section-copy">
         {t("provider.stageHelp")}
       </Prose>

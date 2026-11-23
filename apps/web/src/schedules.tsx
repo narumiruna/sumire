@@ -1,11 +1,58 @@
 import type { Chat, Schedule, ScheduleInput, ScheduleList } from "@narumitw/sumire-contracts"
-import { CalendarIcon, PlusIcon, ReloadIcon } from "@radix-ui/react-icons"
-import { Badge, Button, Callout, Flex, Heading, Text, TextArea } from "@radix-ui/themes"
-import { useEffect, useId, useRef, useState } from "react"
+import { Button } from "@react-spectrum/s2/Button"
+import { Heading } from "@react-spectrum/s2/Heading"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import Add from "@react-spectrum/s2/icons/Add"
+import AlertDiamond from "@react-spectrum/s2/icons/AlertDiamond"
+import Calendar from "@react-spectrum/s2/icons/Calendar"
+import ChevronDown from "@react-spectrum/s2/icons/ChevronDown"
+import Refresh from "@react-spectrum/s2/icons/Refresh"
+import { iconStyle, style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextArea, type TextFieldRef } from "@react-spectrum/s2/TextArea"
+import { type ComponentProps, type ReactNode, useEffect, useId, useRef, useState } from "react"
 import { ApiError, request } from "./api.js"
 import { errorMessage, LocalizedError, t } from "./i18n.js"
 import { formatScheduleTime, localScheduleTime, parseScheduleTime } from "./schedule-time.js"
-import { Disclosure, Panel, Prose } from "./surfaces.js"
+import { Disclosure, Panel, Prose, StatusLabel } from "./surfaces.js"
+
+const workspaceStyles = style({
+  font: "body",
+  color: "body",
+  "--schedule-muted": { type: "color", value: "neutral-subdued" },
+  "--schedule-link": { type: "color", value: "accent-1000" },
+  "--schedule-preview": { type: "backgroundColor", value: "accent-subtle" },
+  "--schedule-notice": { type: "backgroundColor", value: "notice-subtle" },
+  "--schedule-surface": { type: "backgroundColor", value: "layer-2" },
+  "--schedule-divider": { type: "borderColor", value: "gray-300" },
+  "--schedule-border": { type: "borderColor", value: "gray-500" },
+  "--schedule-focus": { type: "outlineColor", value: "focus-ring" },
+  "--schedule-radius": { type: "borderRadius", value: "default" },
+})
+const headingStyles = style({ font: "heading-sm", color: "title" })
+const cardHeadingStyles = style({ font: "heading-xs", color: "title" })
+const labelStyles = style({ font: "ui", color: "body" })
+const successStyles = style({ color: "positive-1000" })
+const errorStyles = style({ color: "negative-1000" })
+
+// A native select preserves the combobox role, form validation, and OS picker.
+function ScheduleSelect(props: ComponentProps<"select">) {
+  return (
+    <div className="schedule-select">
+      <select {...props} className="schedule-input" />
+      <ChevronDown />
+    </div>
+  )
+}
+
+// InlineAlert always has role="alert"; these notices are ordinary contextual help.
+function ScheduleNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="schedule-notice">
+      <AlertDiamond styles={iconStyle({ color: "notice" })} />
+      <p>{children}</p>
+    </div>
+  )
+}
 
 export function Schedules({
   active,
@@ -52,7 +99,7 @@ export function Schedules({
   const readVersion = useRef(0)
   const requests = useRef(new AbortController())
   const creation = useRef<{ fingerprint: string; id: string } | undefined>(undefined)
-  const taskInput = useRef<HTMLTextAreaElement>(null)
+  const taskInput = useRef<TextFieldRef<HTMLTextAreaElement>>(null)
   useEffect(() => {
     alive.current = true
     const controller = new AbortController()
@@ -168,58 +215,56 @@ export function Schedules({
     }))
   }
   return (
-    <div className="schedule-workspace" aria-busy={busy}>
-      <Flex gap="3" align="center" wrap="wrap" className="schedule-toolbar">
+    <div className={`schedule-workspace ${workspaceStyles}`} aria-busy={busy}>
+      <div className="schedule-toolbar">
         <Button
-          disabled={
+          variant="accent"
+          isDisabled={
             busy ||
             editing ||
             !ready ||
             allowedIds.length === 0 ||
             (result !== undefined && result.items.length >= result.limit)
           }
-          onClick={() => {
+          onPress={() => {
             setEditing(true)
             setNotice(false)
           }}
         >
-          <PlusIcon aria-hidden />
+          <Add />
           {t("schedule.add")}
         </Button>
         <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() => {
+          variant="secondary"
+          fillStyle="outline"
+          isDisabled={busy}
+          onPress={() => {
             setError("")
             setRefresh((value) => value + 1)
           }}
         >
-          <ReloadIcon aria-hidden />
+          <Refresh />
           {t("schedule.refresh")}
         </Button>
-        <Text size="2" color="gray">
+        <span className="schedule-muted">
           {t("schedule.count", { count: result?.items.length ?? 0, limit: result?.limit ?? 100 })}
-        </Text>
-      </Flex>
-      {!ready && (
-        <Callout.Root color="orange">
-          <Callout.Text>{t("schedule.policyPending")}</Callout.Text>
-        </Callout.Root>
-      )}
-      {ready && allowedIds.length === 0 && <Text as="p">{t("schedule.noChats")}</Text>}
+        </span>
+      </div>
+      {!ready && <ScheduleNotice>{t("schedule.policyPending")}</ScheduleNotice>}
+      {ready && allowedIds.length === 0 && <p>{t("schedule.noChats")}</p>}
       {error && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>{errorMessage(error)}</Callout.Text>
-        </Callout.Root>
+        <InlineAlert variant="negative" fillStyle="subtleFill">
+          <Content>{errorMessage(error)}</Content>
+        </InlineAlert>
       )}
       {notice && (
-        <Text as="p" role="status" color="green">
+        <p className={successStyles} role="status">
           {t("schedule.saved")}
-        </Text>
+        </p>
       )}
       {editing && (
         <Panel className="schedule-editor" aria-labelledby="schedule-editor-title">
-          <Heading as="h2" size="4" id="schedule-editor-title">
+          <Heading level={2} styles={headingStyles} id="schedule-editor-title">
             {t("schedule.add")}
           </Heading>
           <form
@@ -251,33 +296,27 @@ export function Schedules({
             }}
           >
             <fieldset disabled={busy}>
-              <div className="schedule-field">
-                <label htmlFor="schedule-task-input">
-                  <Text weight="medium">{t("schedule.task")}</Text>
-                </label>
-                <Text size="2" color="gray" id="schedule-task-help">
-                  {t("schedule.taskHelp")}
-                </Text>
-                <TextArea
-                  ref={taskInput}
-                  id="schedule-task-input"
-                  aria-describedby="schedule-task-help"
-                  rows={5}
-                  required
-                  maxLength={8000}
-                  value={task}
-                  onChange={(event) => setTask(event.target.value)}
-                  placeholder={t("schedule.taskPlaceholder")}
-                />
-              </div>
+              <TextArea
+                UNSAFE_className="schedule-task-field "
+                ref={taskInput}
+                id="schedule-task-input"
+                label={t("schedule.task")}
+                description={<span id="schedule-task-help">{t("schedule.taskHelp")}</span>}
+                isRequired
+                validationBehavior="native"
+                isDisabled={busy}
+                maxLength={8000}
+                value={task}
+                onChange={setTask}
+                placeholder={t("schedule.taskPlaceholder")}
+              />
               <div className="schedule-form-grid">
                 <div className="schedule-field">
-                  <label htmlFor="schedule-chat">
-                    <Text weight="medium">{t("schedule.chat")}</Text>
+                  <label className={labelStyles} htmlFor="schedule-chat">
+                    {t("schedule.chat")}
                   </label>
-                  <select
+                  <ScheduleSelect
                     id="schedule-chat"
-                    className="schedule-input"
                     required
                     value={chatId}
                     onChange={(event) => setChatId(event.target.value)}
@@ -290,12 +329,13 @@ export function Schedules({
                         {name(id)}
                       </option>
                     ))}
-                  </select>
+                  </ScheduleSelect>
                 </div>
                 <div className="schedule-field">
-                  <label htmlFor="schedule-time">
-                    <Text weight="medium">{t("schedule.when")}</Text>
+                  <label className={labelStyles} htmlFor="schedule-time">
+                    {t("schedule.when")}
                   </label>
+                  {/* Keep the wall-clock string used by the schedule serializer. */}
                   <input
                     className="schedule-input"
                     id="schedule-time"
@@ -308,12 +348,11 @@ export function Schedules({
                   />
                 </div>
                 <div className="schedule-field">
-                  <label htmlFor="schedule-repeat">
-                    <Text weight="medium">{t("schedule.repeat")}</Text>
+                  <label className={labelStyles} htmlFor="schedule-repeat">
+                    {t("schedule.repeat")}
                   </label>
-                  <select
+                  <ScheduleSelect
                     id="schedule-repeat"
-                    className="schedule-input"
                     value={repeatMinutes ?? "once"}
                     onChange={(event) =>
                       setRepeatMinutes(
@@ -327,52 +366,51 @@ export function Schedules({
                     <option value="60">{t("schedule.hourly")}</option>
                     <option value="1440">{t("schedule.daily")}</option>
                     <option value="10080">{t("schedule.weekly")}</option>
-                  </select>
+                  </ScheduleSelect>
                 </div>
               </div>
-              <Text as="p" size="2" id="schedule-time-help">
-                {t("schedule.timeHelp", { zone: timeZone })}
-              </Text>
+              <p id="schedule-time-help">{t("schedule.timeHelp", { zone: timeZone })}</p>
               {preview && chatId && (
                 <p className="schedule-preview">
                   {t("schedule.preview", { time: preview, chat: name(Number(chatId)) })}
                 </p>
               )}
-              <Text as="p" size="2" color="gray">
-                {t("schedule.repeatHelp")}
-              </Text>
-              <Flex gap="3" wrap="wrap">
+              <p className="schedule-muted">{t("schedule.repeatHelp")}</p>
+              <div className="schedule-actions">
                 <Button
                   type="submit"
-                  disabled={!ready || !task.trim() || !allowedIds.includes(Number(chatId))}
+                  variant="accent"
+                  isDisabled={
+                    busy || !ready || !task.trim() || !allowedIds.includes(Number(chatId))
+                  }
                 >
                   {t("schedule.create")}
                 </Button>
                 <Button
                   type="button"
-                  variant="soft"
-                  onClick={() => {
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => {
                     if (!task.trim() || window.confirm(t("schedule.discard"))) resetDraft()
                   }}
                 >
                   {t("schedule.cancel")}
                 </Button>
-              </Flex>
+              </div>
             </fieldset>
           </form>
         </Panel>
       )}
       <div className="schedule-list-heading">
-        <Heading as="h2" size="4">
+        <Heading level={2} styles={headingStyles}>
           {t("schedule.list")}
         </Heading>
         <div className="schedule-filter">
-          <label htmlFor="schedule-filter">
-            <Text size="2">{t("schedule.filter")}</Text>
+          <label className={labelStyles} htmlFor="schedule-filter">
+            {t("schedule.filter")}
           </label>
-          <select
+          <ScheduleSelect
             id="schedule-filter"
-            className="schedule-input"
             value={filter}
             onChange={(event) => setFilter(event.target.value as Schedule["state"] | "all")}
           >
@@ -380,15 +418,15 @@ export function Schedules({
             <option value="active">{t("schedule.state.active")}</option>
             <option value="paused">{t("schedule.state.paused")}</option>
             <option value="completed">{t("schedule.state.completed")}</option>
-          </select>
+          </ScheduleSelect>
         </div>
       </div>
       {!result ? (
-        <Text role="status">{t("schedule.loading")}</Text>
+        <span role="status">{t("schedule.loading")}</span>
       ) : items?.length === 0 ? (
         <Panel className="schedule-empty">
-          <CalendarIcon aria-hidden width="32" height="32" />
-          <Heading as="h3" size="4">
+          <Calendar styles={iconStyle({ color: "accent" })} />
+          <Heading level={3} styles={headingStyles}>
             {t(result.items.length ? "schedule.noMatches" : "schedule.empty")}
           </Heading>
         </Panel>
@@ -401,14 +439,14 @@ export function Schedules({
               className="schedule-card"
               aria-labelledby={`schedule-${schedule.id}`}
             >
-              <Flex justify="between" align="center" gap="3" wrap="wrap">
-                <Heading as="h3" size="3" id={`schedule-${schedule.id}`}>
+              <div className="schedule-card-heading">
+                <Heading level={3} styles={cardHeadingStyles} id={`schedule-${schedule.id}`}>
                   {t("schedule.entry", { id: schedule.id.slice(0, 8) })}
                 </Heading>
-                <Badge color={schedule.state === "active" ? "green" : "gray"}>
+                <StatusLabel tone={schedule.state === "active" ? "success" : "neutral"}>
                   {t(`schedule.state.${schedule.state}`)}
-                </Badge>
-              </Flex>
+                </StatusLabel>
+              </div>
               <p className="schedule-task">{schedule.task}</p>
               <dl className="schedule-metadata">
                 <div>
@@ -446,31 +484,25 @@ export function Schedules({
                 )}
               </dl>
               {schedule.lastOutcome === "interrupted" && (
-                <Callout.Root color="orange">
-                  <Callout.Text>{t("schedule.interruptedHelp")}</Callout.Text>
-                </Callout.Root>
+                <ScheduleNotice>{t("schedule.interruptedHelp")}</ScheduleNotice>
               )}
               {schedule.lastOutcome === "failed" && (
-                <Text as="p" size="2" color="red">
-                  {t("schedule.failedHelp")}
-                </Text>
+                <p className={errorStyles}>{t("schedule.failedHelp")}</p>
               )}
               {schedule.state === "active" && schedule.lastOutcome === "running" && (
-                <Text as="p" size="2" id={`${pauseHelpId}-${schedule.id}`}>
-                  {t("schedule.pauseRunningHelp")}
-                </Text>
+                <p id={`${pauseHelpId}-${schedule.id}`}>{t("schedule.pauseRunningHelp")}</p>
               )}
-              <Flex gap="3" wrap="wrap" className="schedule-card-actions">
+              <div className="schedule-actions schedule-card-actions">
                 {schedule.state === "active" && (
                   <Button
-                    variant="soft"
-                    disabled={busy}
+                    variant="secondary"
+                    isDisabled={busy}
                     aria-describedby={
                       schedule.lastOutcome === "running"
                         ? `${pauseHelpId}-${schedule.id}`
                         : undefined
                     }
-                    onClick={() =>
+                    onPress={() =>
                       void operate(async () => {
                         replace(
                           await request<Schedule>(
@@ -489,15 +521,15 @@ export function Schedules({
                 )}
                 {schedule.state === "paused" && (
                   <Button
-                    variant="soft"
-                    disabled={
+                    variant="secondary"
+                    isDisabled={
                       busy ||
                       !ready ||
                       schedule.lastOutcome === "running" ||
                       schedule.lastOutcome === "interrupted" ||
                       schedule.nextRunAt === null
                     }
-                    onClick={() => {
+                    onPress={() => {
                       if (
                         !window.confirm(
                           t(
@@ -526,10 +558,10 @@ export function Schedules({
                   </Button>
                 )}
                 <Button
-                  variant="ghost"
-                  color="red"
-                  disabled={busy}
-                  onClick={() => {
+                  variant="negative"
+                  fillStyle="outline"
+                  isDisabled={busy}
+                  onPress={() => {
                     if (!window.confirm(t("schedule.deleteConfirm"))) return
                     void operate(async () => {
                       await request(
@@ -552,7 +584,7 @@ export function Schedules({
                 >
                   {t("schedule.delete")}
                 </Button>
-              </Flex>
+              </div>
             </Panel>
           ))}
         </div>

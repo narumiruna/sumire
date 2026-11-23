@@ -1,0 +1,38 @@
+.runtime-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.runtime-actions > button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.runtime-actions--spaced,
+.github-flow-actions {
+  margin-block-start: 12px;
+}
+
+.github-flow-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.runtime-notice {
+  margin: 0;
+}
+
+.github-dialog-footer {
+  display: flex;
+  justify-content: end;
+  margin-block-start: 16px;
+}
+
+.runtime-config .runtime-values-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-block-start: 12px;
+}

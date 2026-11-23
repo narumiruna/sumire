@@ -1,6 +1,5 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory, Snapshot } from "./api.js"
@@ -83,7 +82,7 @@ describe("provider and model workflow presentation", () => {
       const before = structuredClone(policy)
       const html = renderToStaticMarkup(
         createElement(
-          Theme,
+          Fragment,
           null,
           createElement(Providers, {
             snapshot: { policy, revision: 1, applied: 1, epoch: 1, status: "applied" } as Snapshot,
@@ -110,7 +109,7 @@ describe("provider and model workflow presentation", () => {
       expect(html).not.toContain("Configured providers")
       const editor = renderToStaticMarkup(
         createElement(
-          Theme,
+          Fragment,
           null,
           createElement(ProviderEditor, {
             initial: {
@@ -257,8 +256,8 @@ describe("provider and model workflow presentation", () => {
     }
     const html = renderToStaticMarkup(
       createElement(
-        Theme,
-        {},
+        Fragment,
+        null,
         createElement(SharedDefaults, {
           policy,
           saved: policy,

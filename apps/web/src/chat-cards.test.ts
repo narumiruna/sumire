@@ -1,6 +1,5 @@
 import { inherited, initialPolicy } from "@narumitw/sumire-policy"
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Inventory, Policy } from "./api.js"
@@ -36,8 +35,8 @@ function render(saved = policy(), draft: Policy = saved) {
   vi.stubGlobal("window", { location: { href: "https://example.test/?section=Chats" } })
   return renderToStaticMarkup(
     createElement(
-      Theme,
-      {},
+      Fragment,
+      null,
       createElement(ChatCard, {
         chat,
         selected: "",

@@ -1,11 +1,27 @@
-import { AlertDialog, Badge, Button, Flex } from "@radix-ui/themes"
-import { type ReactNode, useEffect, useRef, useState } from "react"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { type ComponentRef, type ReactNode, useEffect, useId, useRef, useState } from "react"
+import { FocusScope } from "react-aria/FocusScope"
+import { Overlay } from "react-aria/Overlay"
+import { useModalOverlay } from "react-aria/useModalOverlay"
+import { useOverlayTriggerState } from "react-stately/useOverlayTriggerState"
 import type { Snapshot } from "./api.js"
 import { t } from "./i18n.js"
 import { type EditorTarget, type Page, pageLabel } from "./navigation.js"
 import type { PolicyChange } from "./policy-changes.js"
 import { countText } from "./status-text.js"
-import { Prose } from "./surfaces.js"
+import "./save-status.css"
+
+const reviewBackdrop = style({ backgroundColor: "transparent-black-500" })
+const reviewSurface = style({
+  backgroundColor: "layer-2",
+  borderRadius: "xl",
+  boxShadow: "elevated",
+  color: "body",
+  font: "body",
+})
+const reviewHeading = style({ font: "heading-lg" })
 
 type Props = {
   quiet?: boolean
@@ -66,7 +82,36 @@ export function SaveStatus({
       ),
     ),
   ]
-  const navigating = useRef(false)
+  const reviewId = useId()
+  const reviewRef = useRef<HTMLDivElement>(null)
+  const reviewTrigger = useRef<ComponentRef<typeof Button>>(null)
+  const statusRef = useRef<HTMLElement>(null)
+  const returnFocus = useRef(false)
+  const reviewState = useOverlayTriggerState({
+    isOpen: reviewOpen,
+    onOpenChange: (open) => {
+      // Only Cancel and Escape use the overlay's close action.
+      returnFocus.current = !open
+      setReviewOpen(open)
+    },
+  })
+  const { modalProps, underlayProps } = useModalOverlay({}, reviewState, reviewRef)
+  useEffect(() => {
+    if (reviewOpen || !returnFocus.current) return
+    returnFocus.current = false
+    // An external entry point (e.g. direct approval) still returns to the global review action.
+    const trigger = reviewTrigger.current?.UNSAFE_getDOMNode()
+    if (
+      trigger &&
+      !trigger.disabled &&
+      trigger.checkVisibility({ visibilityProperty: true }) &&
+      !trigger.closest('[inert], [aria-hidden="true"]')
+    ) {
+      trigger.focus()
+    } else {
+      statusRef.current?.focus()
+    }
+  }, [reviewOpen])
   useEffect(() => {
     const bar = ref.current
     if (!pending || !bar) return
@@ -139,18 +184,13 @@ export function SaveStatus({
     }
   }, [quiet, compact, busy])
   const reviewEditor = (target: EditorTarget) => {
-    navigating.current = true
     setReviewOpen(false)
     openEditor(target)
   }
   const applicationStatus = (
     <div className="application-status" id="application-status" tabIndex={-1}>
       {!compact && <span className="status-scope">{t("save.configuration")}</span>}
-      <Badge
-        role="status"
-        color={applied && !recover ? "gray" : "orange"}
-        data-saved={applied && !recover}
-      >
+      <span role="status" className="save-application-message" data-saved={applied && !recover}>
         {recover
           ? t("save.reviewNeeded")
           : snapshot.status === "failed"
@@ -160,7 +200,7 @@ export function SaveStatus({
               : compact
                 ? t("save.applied")
                 : t("save.revisionApplied")}
-      </Badge>
+      </span>
       <details>
         <summary>{t("save.revisions")}</summary>
         {t("save.revisionValues", {
@@ -171,23 +211,25 @@ export function SaveStatus({
       </details>
       {!applied && (
         <Button
-          variant="outline"
-          disabled={busy || dirty || localPending || Boolean(recover)}
-          onClick={retry}
+          variant="secondary"
+          fillStyle="outline"
+          isDisabled={busy || dirty || localPending || Boolean(recover)}
+          onPress={retry}
         >
           {t("save.retry")}
         </Button>
       )}
       {busy && (
-        <Prose size="2" role="status">
+        <p className="prose" role="status">
           {t("save.operation")}
-        </Prose>
+        </p>
       )}
     </div>
   )
   return (
-    <AlertDialog.Root open={reviewOpen} onOpenChange={setReviewOpen}>
+    <>
       <section
+        ref={statusRef}
         id="save-status"
         tabIndex={-1}
         aria-label={t("save.status")}
@@ -212,44 +254,46 @@ export function SaveStatus({
         {pending && (
           <section ref={ref} className="changes-bar" aria-label={t("save.pending")}>
             <div className="save-status-line">
-              <Badge role="status" color="orange">
-                {dirty
-                  ? countText(changeCount, "unsaved change")
-                  : recover
-                    ? t("save.outcomeReview")
-                    : t("save.unsubmitted")}
-              </Badge>
+              <div role="status" className="save-pending-message">
+                <Badge variant="notice" fillStyle="subtle">
+                  {dirty
+                    ? countText(changeCount, "unsaved change")
+                    : recover
+                      ? t("save.outcomeReview")
+                      : t("save.unsubmitted")}
+                </Badge>
+              </div>
               {dirty && <span>{t("save.draft")}</span>}
             </div>
             {dirty && (
-              <Prose size="2" className="policy-save-scopes">
+              <p className="prose policy-save-scopes">
                 {t("save.scopes", { scopes: scopes.join(" · ") || t("save.settings") })}
-              </Prose>
+              </p>
             )}
             {(mcpDirty || providerPending || runtimePending || unfinished.length > 0) && (
               <div className="save-scopes">
                 {mcpDirty && (
                   <Button
-                    variant="surface"
-                    className="navigation-control"
-                    onClick={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
+                    variant="secondary"
+                    UNSAFE_className="navigation-control"
+                    onPress={() => openEditor({ page: "MCP connections", selector: "#mcp-name" })}
                   >
                     {t("save.mcp")}
                   </Button>
                 )}
                 {providerPending && (
                   <Button
-                    variant="surface"
-                    className="navigation-control"
-                    onClick={() => navigate("Model Providers")}
+                    variant="secondary"
+                    UNSAFE_className="navigation-control"
+                    onPress={() => navigate("Model Providers")}
                   >
                     {t("save.provider")}
                   </Button>
                 )}
                 {runtimePending && (
                   <Button
-                    variant="surface"
-                    onClick={() =>
+                    variant="secondary"
+                    onPress={() =>
                       openEditor({ page: "Secrets & variables", selector: "#runtime-add" })
                     }
                   >
@@ -258,7 +302,7 @@ export function SaveStatus({
                 )}
                 {unfinished.map((editor) => (
                   <div key={editor.label} className="unfinished-editor">
-                    <Button variant="soft" onClick={() => openEditor(editor.target)}>
+                    <Button variant="secondary" onPress={() => openEditor(editor.target)}>
                       {t("save.continue", { editor: editor.label })}
                     </Button>
                   </div>
@@ -268,115 +312,148 @@ export function SaveStatus({
             {recover && (
               <Button
                 id="policy-recovery-trigger"
-                variant="outline"
-                disabled={busy}
-                onClick={recover}
+                variant="secondary"
+                fillStyle="outline"
+                isDisabled={busy}
+                onPress={recover}
               >
                 {t("save.loadLatest")}
               </Button>
             )}
             {dirty && (
               <div className="save-actions">
-                <Button variant="outline" disabled={busy} onClick={discard}>
+                <Button variant="secondary" fillStyle="outline" isDisabled={busy} onPress={discard}>
                   {t("save.discard")}
                 </Button>
-                <AlertDialog.Trigger>
-                  <Button disabled={busy || localPending || Boolean(recover)}>
-                    {t("save.review")}
-                  </Button>
-                </AlertDialog.Trigger>
+                <Button
+                  ref={reviewTrigger}
+                  variant="accent"
+                  aria-haspopup="dialog"
+                  aria-expanded={reviewOpen}
+                  aria-controls={reviewOpen ? reviewId : undefined}
+                  isDisabled={busy || localPending || Boolean(recover)}
+                  onPress={reviewState.open}
+                >
+                  {t("save.review")}
+                </Button>
               </div>
             )}
           </section>
         )}
       </section>
-      <AlertDialog.Content
-        onCloseAutoFocus={(event) => {
-          if (navigating.current) {
-            event.preventDefault()
-            navigating.current = false
-          }
-        }}
-      >
-        <AlertDialog.Title>{t("save.confirm")}</AlertDialog.Title>
-        <AlertDialog.Description>{t("save.confirmHelp")}</AlertDialog.Description>
-        {modelReview && (
-          <section aria-label={t("save.modelChange")}>
-            <Prose size="2">
-              {t("save.modelBeforeAfter", {
-                before: modelReview.before ?? t("save.notConfigured"),
-                after: modelReview.after ?? t("save.notConfigured"),
-              })}
-            </Prose>
-            {modelReview.added.map((ref) => (
-              <Prose size="2" key={ref}>
-                {t("save.addModel", { model: ref })}
-              </Prose>
-            ))}
-          </section>
-        )}
-        {removalReview}
-        <ul aria-label={t("save.changes")} className="settings-review-list">
-          {entries.map((entry) => (
-            <li key={entry.label}>
-              <Prose size="2">{entry.label}</Prose>
-              <Flex gap="2" wrap="wrap">
-                {entry.targets
-                  .filter(
-                    (target, index, targets) =>
-                      targets.findIndex(
-                        (other) => JSON.stringify(other) === JSON.stringify(target),
-                      ) === index,
-                  )
-                  .map((target) => (
-                    <Button
-                      key={JSON.stringify(target)}
-                      variant="ghost"
-                      onClick={() => reviewEditor(target)}
-                    >
-                      {t("save.reviewScope", {
-                        scope: target.chat
-                          ? t("save.reviewChat", { id: target.chat })
-                          : pageLabel(target.page),
-                      })}
-                    </Button>
+      {reviewOpen && (
+        // Editor and recovery actions own their next focus target, so do not restore automatically.
+        <Overlay disableFocusManagement>
+          <div className={`save-review-underlay ${reviewBackdrop}`} {...underlayProps}>
+            <FocusScope contain>
+              <div
+                {...modalProps}
+                ref={reviewRef}
+                id={reviewId}
+                className={`save-review-dialog ${reviewSurface}`}
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby={`${reviewId}-title`}
+                aria-describedby={`${reviewId}-description`}
+              >
+                <div className="save-review-content">
+                  <h2 id={`${reviewId}-title`} className={reviewHeading}>
+                    {t("save.confirm")}
+                  </h2>
+                  <p id={`${reviewId}-description`}>{t("save.confirmHelp")}</p>
+                  {modelReview && (
+                    <section aria-label={t("save.modelChange")}>
+                      <p className="prose">
+                        {t("save.modelBeforeAfter", {
+                          before: modelReview.before ?? t("save.notConfigured"),
+                          after: modelReview.after ?? t("save.notConfigured"),
+                        })}
+                      </p>
+                      {modelReview.added.map((ref) => (
+                        <p className="prose" key={ref}>
+                          {t("save.addModel", { model: ref })}
+                        </p>
+                      ))}
+                    </section>
+                  )}
+                  {removalReview}
+                  <ul aria-label={t("save.changes")} className="settings-review-list">
+                    {entries.map((entry) => (
+                      <li key={entry.label}>
+                        <p className="prose">{entry.label}</p>
+                        <div className="save-review-targets">
+                          {entry.targets
+                            .filter(
+                              (target, index, targets) =>
+                                targets.findIndex(
+                                  (other) => JSON.stringify(other) === JSON.stringify(target),
+                                ) === index,
+                            )
+                            .map((target) => (
+                              <Button
+                                key={JSON.stringify(target)}
+                                variant="secondary"
+                                size="S"
+                                onPress={() => reviewEditor(target)}
+                              >
+                                {t("save.reviewScope", {
+                                  scope: target.chat
+                                    ? t("save.reviewChat", { id: target.chat })
+                                    : pageLabel(target.page),
+                                })}
+                              </Button>
+                            ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {unfinished.map((editor) => (
+                    <p key={editor.label} className="prose" role="alert">
+                      {t("save.finish", { editor: editor.label })}{" "}
+                      <Button variant="secondary" onPress={() => reviewEditor(editor.target)}>
+                        {t("save.continue", { editor: editor.label })}
+                      </Button>
+                    </p>
                   ))}
-              </Flex>
-            </li>
-          ))}
-        </ul>
-        {unfinished.map((editor) => (
-          <Prose key={editor.label} size="2" role="alert">
-            {t("save.finish", { editor: editor.label })}{" "}
-            <Button variant="soft" onClick={() => reviewEditor(editor.target)}>
-              {t("save.continue", { editor: editor.label })}
-            </Button>
-          </Prose>
-        ))}
-        <Flex gap="3" mt="4" justify="end" wrap="wrap">
-          <AlertDialog.Cancel>
-            <Button variant="soft">{t("save.cancel")}</Button>
-          </AlertDialog.Cancel>
-          {recover && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                navigating.current = true
-                setReviewOpen(false)
-                recover()
-              }}
-            >
-              {t("save.loadLatest")}
-            </Button>
-          )}
-          <AlertDialog.Action>
-            <Button disabled={busy || localPending || !dirty || Boolean(recover)} onClick={apply}>
-              {t("save.save")}
-            </Button>
-          </AlertDialog.Action>
-        </Flex>
-      </AlertDialog.Content>
-    </AlertDialog.Root>
+                </div>
+                <div className="save-review-actions">
+                  <Button
+                    variant="secondary"
+                    fillStyle="outline"
+                    autoFocus
+                    onPress={reviewState.close}
+                  >
+                    {t("save.cancel")}
+                  </Button>
+                  {recover && (
+                    <Button
+                      variant="secondary"
+                      fillStyle="outline"
+                      isDisabled={busy}
+                      onPress={() => {
+                        setReviewOpen(false)
+                        recover()
+                      }}
+                    >
+                      {t("save.loadLatest")}
+                    </Button>
+                  )}
+                  <Button
+                    variant="accent"
+                    isDisabled={busy || localPending || !dirty || Boolean(recover)}
+                    onPress={() => {
+                      apply()
+                      setReviewOpen(false)
+                    }}
+                  >
+                    {t("save.save")}
+                  </Button>
+                </div>
+              </div>
+            </FocusScope>
+          </div>
+        </Overlay>
+      )}
+    </>
   )
 }

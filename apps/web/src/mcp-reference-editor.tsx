@@ -1,10 +1,12 @@
 import type { RuntimeConfigResponse } from "@narumitw/sumire-contracts"
-import { Button, Flex, Text, TextField } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import { useEffect, useId, useState } from "react"
 import { request } from "./api.js"
 import { t } from "./i18n.js"
 import { parseRuntimeConfig } from "./runtime-config-state.js"
-import { SectionSelect } from "./sections.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
 import { Prose } from "./surfaces.js"
 
 export function storedReference(name: string, prefix = "") {
@@ -38,49 +40,45 @@ export function McpReferenceEditor({
   return (
     <div className="settings-stack" id="mcp-reference-editor" tabIndex={-1}>
       <Prose size="2">{t("mcp.referenceHelp", { reference: `\${NAME}` })}</Prose>
-      <Flex gap="3" wrap="wrap">
+      <div className={style({ display: "flex", flexWrap: "wrap", gap: 12 })}>
         <label htmlFor={`${id}-scope`}>
           {t("mcp.bindingScope")}
-          <SectionSelect.Root
+          <SectionPicker
             value={scope}
             onValueChange={(value) => setScope(value as "env" | "headers")}
+            id={`${id}-scope`}
+            aria-label={t("mcp.bindingScope")}
           >
-            <SectionSelect.Trigger id={`${id}-scope`} aria-label={t("mcp.bindingScope")} />
-            <SectionSelect.Content>
-              <SectionSelect.Item value="headers">{t("mcp.headers")}</SectionSelect.Item>
-              <SectionSelect.Item value="env">{t("mcp.environment")}</SectionSelect.Item>
-            </SectionSelect.Content>
-          </SectionSelect.Root>
+            <PickerOption id="headers">{t("mcp.headers")}</PickerOption>
+            <PickerOption id="env">{t("mcp.environment")}</PickerOption>
+          </SectionPicker>
         </label>
-        <label htmlFor={`${id}-field`}>
-          {t("mcp.bindingField")}
-          <TextField.Root
-            id={`${id}-field`}
-            value={field}
-            onChange={(event) => setField(event.target.value)}
-          />
-        </label>
-        <label htmlFor={`${id}-name`}>
-          {t("mcp.storedName")}
-          <TextField.Root
-            id={`${id}-name`}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label htmlFor={`${id}-prefix`}>
-          {t("mcp.literalPrefix")}
-          <TextField.Root
-            id={`${id}-prefix`}
-            value={prefix}
-            placeholder="Bearer "
-            onChange={(event) => setPrefix(event.target.value)}
-          />
-        </label>
-      </Flex>
+        <TextField
+          id={`${id}-field`}
+          label={t("mcp.bindingField")}
+          size="XL"
+          value={field}
+          onChange={setField}
+        />
+        <TextField
+          id={`${id}-name`}
+          label={t("mcp.storedName")}
+          size="XL"
+          value={name}
+          onChange={setName}
+        />
+        <TextField
+          id={`${id}-prefix`}
+          label={t("mcp.literalPrefix")}
+          size="XL"
+          value={prefix}
+          placeholder="Bearer "
+          onChange={setPrefix}
+        />
+      </div>
       <Button
-        variant="soft"
-        onClick={() =>
+        variant="secondary"
+        onPress={() =>
           void run(async () => {
             const metadata = parseRuntimeConfig(
               await request<RuntimeConfigResponse>("runtime-config"),
@@ -94,26 +92,25 @@ export function McpReferenceEditor({
       {names.length > 0 && (
         <label htmlFor={`${id}-stored`}>
           {t("mcp.chooseReference")}
-          <SectionSelect.Root value={names.includes(name) ? name : ""} onValueChange={setName}>
-            <SectionSelect.Trigger
-              id={`${id}-stored`}
-              aria-label={t("mcp.chooseReference")}
-              placeholder={t("mcp.chooseName")}
-            />
-            <SectionSelect.Content>
-              {names.map((item) => (
-                <SectionSelect.Item key={item} value={item}>
-                  {item}
-                </SectionSelect.Item>
-              ))}
-            </SectionSelect.Content>
-          </SectionSelect.Root>
+          <SectionPicker
+            value={names.includes(name) ? name : ""}
+            onValueChange={setName}
+            id={`${id}-stored`}
+            aria-label={t("mcp.chooseReference")}
+            placeholder={t("mcp.chooseName")}
+          >
+            {names.map((item) => (
+              <PickerOption key={item} id={item}>
+                {item}
+              </PickerOption>
+            ))}
+          </SectionPicker>
         </label>
       )}
       {pending && (
         <Button
-          variant="soft"
-          onClick={() => {
+          variant="secondary"
+          onPress={() => {
             setField("")
             setName("")
             setPrefix("")
@@ -122,11 +119,11 @@ export function McpReferenceEditor({
           {t("mcp.clearReference")}
         </Button>
       )}
-      <Text size="2">{t("mcp.referencePrivacy")}</Text>
+      <Prose>{t("mcp.referencePrivacy")}</Prose>
       <Button
-        variant="soft"
-        disabled={!field || !/^[A-Z][A-Z0-9_]{0,127}$/.test(name)}
-        onClick={() => {
+        variant="primary"
+        isDisabled={!field || !/^[A-Z][A-Z0-9_]{0,127}$/.test(name)}
+        onPress={() => {
           onAdd({ scope, name: field, value: storedReference(name, prefix) })
           setField("")
           setName("")

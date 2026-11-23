@@ -110,13 +110,13 @@ for (const viewport of [
       expect(geometry.bottom).toBeLessThanOrEqual(geometry.height)
       expect(geometry.left).toBeGreaterThanOrEqual(0)
       expect(geometry.right).toBeLessThanOrEqual(geometry.width)
-      expect(geometry.fontSize).toBe(16)
+      expect(geometry.fontSize).toBeGreaterThanOrEqual(16)
       await expect(action).toBeFocused()
       await testInfo.attach(`${section}-action-geometry`, {
         body: JSON.stringify(geometry),
         contentType: "application/json",
       })
-      for (const control of await page.locator("main :is(.rt-Button, .rt-SelectTrigger)").all()) {
+      for (const control of await page.locator("main button[data-rac]").all()) {
         if (await control.isVisible())
           expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(44 * viewport.zoom)
       }

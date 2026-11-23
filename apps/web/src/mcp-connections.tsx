@@ -1,36 +1,75 @@
+import { ActionButton } from "@react-spectrum/s2/ActionButton"
+import { AlertDialog, DialogContainer } from "@react-spectrum/s2/AlertDialog"
+import { Badge } from "@react-spectrum/s2/Badge"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import Checkmark from "@react-spectrum/s2/icons/Checkmark"
+import Delete from "@react-spectrum/s2/icons/Delete"
+import Edit from "@react-spectrum/s2/icons/Edit"
+import InfoCircle from "@react-spectrum/s2/icons/InfoCircle"
+import Lock from "@react-spectrum/s2/icons/Lock"
+import More from "@react-spectrum/s2/icons/More"
+import Undo from "@react-spectrum/s2/icons/Undo"
+import { Menu, MenuItem, MenuTrigger } from "@react-spectrum/s2/Menu"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import {
-  CheckIcon,
-  DotsHorizontalIcon,
-  InfoCircledIcon,
-  LockClosedIcon,
-  Pencil2Icon,
-  ResetIcon,
-  TrashIcon,
-} from "@radix-ui/react-icons"
-import {
-  AlertDialog,
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Code,
-  DataList,
-  DropdownMenu,
-  Flex,
-  Heading,
-  Text,
-  TextArea,
-} from "@radix-ui/themes"
-import { useContext, useEffect, useRef, useState } from "react"
+  type ComponentRef,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react"
 import { type Inventory, type Policy, request, type Snapshot } from "./api.js"
 import { getLocale, t } from "./i18n.js"
 import { McpGuidedEditor, mcpChangePreview, mcpSavePatch } from "./mcp-editor.js"
 import { McpReferenceEditor } from "./mcp-reference-editor.js"
 import { focusEditor, type PendingEditor } from "./navigation.js"
-import { Field, SecretFields } from "./policy-editors.js"
+import { SecretFields } from "./policy-editors.js"
 import { SectionActive } from "./sections.js"
 import { countText } from "./status-text.js"
 import { Disclosure, Panel, Prose, StatusLabel, TableToolbar } from "./surfaces.js"
+
+const layoutTokens = style({
+  "--mcp-divider": { type: "borderColor", value: "gray-300" },
+  "--mcp-muted": { type: "color", value: "neutral-subdued" },
+})
+const heading = style({ font: "heading-xs", color: "title" })
+const headingRow = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "start",
+  flexWrap: "wrap",
+  gap: 8,
+})
+const factContent = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "start",
+  gap: 8,
+})
+const body = style({ font: "body-lg", color: "body" })
+const muted = style({ font: "body", color: "neutral-subdued" })
+const code = style({ font: "code", color: "code" })
+const codeField = style({
+  font: "code",
+  color: "body",
+  backgroundColor: "layer-2",
+  borderColor: "gray-500",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderRadius: "default",
+  padding: 8,
+  width: "full",
+  boxSizing: "border-box",
+  resize: "vertical",
+})
+
+function connectionActionsId(name: string) {
+  return `connection-actions-${encodeURIComponent(name)}`
+}
 
 type Props = {
   inventory: Inventory
@@ -92,6 +131,26 @@ export function McpConnections({
 }: Props) {
   const active = useContext(SectionActive)
   const [deleting, setDeleting] = useState<string>()
+  const deleteDescription = useId()
+  const restoreDeleteFocus = useCallback(
+    (dialog: ComponentRef<typeof AlertDialog> | null) => {
+      if (dialog || deleting === undefined) return
+      // The menu item is gone when the dialog closes. Return focus to its trigger.
+      requestAnimationFrame(() => {
+        const trigger = document.getElementById(connectionActionsId(deleting))
+        if (
+          document.activeElement === document.body &&
+          trigger instanceof HTMLButtonElement &&
+          !trigger.disabled &&
+          !trigger.closest("[hidden], [inert]") &&
+          trigger.checkVisibility()
+        ) {
+          trigger.focus()
+        }
+      })
+    },
+    [deleting],
+  )
   const [checking, setChecking] = useState<{ name: string; startedAt: number }>()
   const [unknown, setUnknown] = useState<Map<string, Inventory>>(() => new Map())
   useEffect(() => {
@@ -155,16 +214,16 @@ export function McpConnections({
     mcpValidation = error instanceof Error ? error.message : t("mcp.invalidConfig")
   }
   return (
-    <Box className="page-content settings-stack">
+    <div className={`page-content settings-stack ${layoutTokens}`}>
       <TableToolbar hidden={editorOpen}>
-        <Button id="mcp-add" disabled={busy} onClick={() => startEditor()}>
+        <Button id="mcp-add" variant="accent" isDisabled={busy} onPress={() => startEditor()}>
           {t("mcp.addConnection")}
         </Button>
         {editing && !editorOpen && (
           <Button
             id="mcp-resume"
-            variant="soft"
-            onClick={() => {
+            variant="secondary"
+            onPress={() => {
               setEditorOpen(true)
               requestEditorFocus("#mcp-name")
             }}
@@ -172,19 +231,17 @@ export function McpConnections({
             {t("mcp.resumeDraft")}
           </Button>
         )}
-        <Button variant="soft" onClick={onTools}>
+        <Button variant="secondary" onPress={onTools}>
           {t("mcp.managePermissions")}
         </Button>
       </TableToolbar>
-      <Box className="mcp-workspace mcp-list-only">
+      <div className="mcp-workspace mcp-list-only">
         <Panel className="mcp-step mcp-chooser" hidden={editorOpen}>
-          <Heading as="h2" size="3" className="section-heading">
-            {t("mcp.savedConnections")}
-          </Heading>
+          <h2 className={`section-heading ${heading}`}>{t("mcp.savedConnections")}</h2>
           {!inventory.mcp.length && (
-            <Box className="empty-state">
+            <div className="empty-state">
               <Prose>{t("mcp.emptyConnections")}</Prose>
-            </Box>
+            </div>
           )}
           <div className="mcp-choice-grid">
             <div className="mcp-saved-list">
@@ -211,28 +268,26 @@ export function McpConnections({
                     aria-label={t("mcp.connectionName", { name: m.name })}
                   >
                     <div className="mcp-connection-row">
-                      <Flex justify="between" align="start" gap="2" wrap="wrap">
-                        <Heading as="h3" size="3">
-                          {m.name}
-                        </Heading>
+                      <div className={headingRow}>
+                        <h3 className={heading}>{m.name}</h3>
                         {mcpName === m.name && (
-                          <Badge color="blue" variant="outline">
+                          <Badge variant="informative" fillStyle="outline">
                             {t("settings.editing")}
                           </Badge>
                         )}
-                      </Flex>
-                      <Flex gap="2" wrap="wrap" className="mcp-summary-state">
+                      </div>
+                      <div className="mcp-summary-state">
                         <StatusLabel>
                           {m.enabled === false ? t("settings.disabled") : t("settings.enabled")}
                         </StatusLabel>
                         <StatusLabel>{t("mcp.testStatus", { status: view.label })}</StatusLabel>
-                        <Text size="2">{view.count}</Text>
-                      </Flex>
-                      <Flex className="mcp-summary-actions" gap="2" wrap="wrap">
+                        <span className={body}>{view.count}</span>
+                      </div>
+                      <div className="mcp-summary-actions">
                         <Button
-                          variant="solid"
+                          variant="accent"
                           aria-label={t("mcp.testName", { name: m.name })}
-                          disabled={
+                          isDisabled={
                             busy ||
                             m.enabled === false ||
                             view.observation?.state === "checking" ||
@@ -241,7 +296,7 @@ export function McpConnections({
                             snapshot.status !== "applied" ||
                             snapshot.revision !== snapshot.applied
                           }
-                          onClick={() =>
+                          onPress={() =>
                             void run(async () => {
                               setChecking({ name: m.name, startedAt: Date.now() })
                               try {
@@ -259,89 +314,35 @@ export function McpConnections({
                           {t("mcp.testDiscover")}
                         </Button>
                         <Button
-                          variant="soft"
+                          variant="secondary"
                           aria-label={t("mcp.editFieldsName", { name: m.name })}
-                          disabled={busy}
-                          onClick={() => startEditor(m.name)}
+                          isDisabled={busy}
+                          onPress={() => startEditor(m.name)}
                         >
-                          <Pencil2Icon aria-hidden="true" />
+                          <Edit aria-hidden="true" />
                           {t("settings.edit")}
                         </Button>
-                        <DropdownMenu.Root>
-                          <DropdownMenu.Trigger>
-                            <Button
-                              id={`connection-actions-${encodeURIComponent(m.name)}`}
-                              variant="ghost"
-                              aria-label={t("mcp.actionsName", { name: m.name })}
-                              disabled={busy}
-                            >
-                              <DotsHorizontalIcon aria-hidden />
-                            </Button>
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Content align="end">
-                            <DropdownMenu.Item
-                              color="red"
-                              aria-label={t("settings.deleteName", { name: m.name })}
-                              disabled={busy || dirty || localPending}
-                              onSelect={() => setDeleting(m.name)}
-                            >
-                              <TrashIcon aria-hidden /> {t("settings.delete")}
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Root>
-                        <AlertDialog.Root
-                          open={active && deleting === m.name}
-                          onOpenChange={(open) => {
-                            if (!open) setDeleting(undefined)
-                          }}
-                        >
-                          <AlertDialog.Content
-                            onCloseAutoFocus={(event) => {
-                              event.preventDefault()
-                              document
-                                .getElementById(`connection-actions-${encodeURIComponent(m.name)}`)
-                                ?.focus()
-                            }}
+                        <MenuTrigger align="end">
+                          <ActionButton
+                            id={connectionActionsId(m.name)}
+                            isQuiet
+                            aria-label={t("mcp.actionsName", { name: m.name })}
+                            isDisabled={busy}
                           >
-                            <AlertDialog.Title>
-                              {t("mcp.deleteServerConfirm", { name: m.name })}
-                            </AlertDialog.Title>
-                            <AlertDialog.Description>{t("mcp.deleteHelp")}</AlertDialog.Description>
-                            <Flex gap="3" justify="end" mt="4">
-                              <AlertDialog.Cancel>
-                                <Button variant="soft">{t("settings.cancel")}</Button>
-                              </AlertDialog.Cancel>
-                              <AlertDialog.Action>
-                                <Button
-                                  color="red"
-                                  onClick={() =>
-                                    void run(async () => {
-                                      await request(
-                                        `mcp/${encodeURIComponent(m.name)}`,
-                                        csrf,
-                                        { revision: snapshot.revision },
-                                        "DELETE",
-                                      )
-                                      if (mcpName === m.name) {
-                                        setEditing(false)
-                                        setEditorOpen(false)
-                                        setMcpEditorVersion((version) => version + 1)
-                                        setMcpName("")
-                                        setMcpConfig("{}")
-                                        setMcpSecrets({ env: {}, headers: {} })
-                                        setMcpDirty(false)
-                                      }
-                                      await load()
-                                    })
-                                  }
-                                >
-                                  {t("mcp.deleteApply")}
-                                </Button>
-                              </AlertDialog.Action>
-                            </Flex>
-                          </AlertDialog.Content>
-                        </AlertDialog.Root>
-                      </Flex>
+                            <More aria-hidden="true" />
+                          </ActionButton>
+                          <Menu>
+                            <MenuItem
+                              textValue={t("settings.deleteName", { name: m.name })}
+                              isDisabled={busy || dirty || localPending}
+                              onAction={() => setDeleting(m.name)}
+                            >
+                              <Delete slot="icon" aria-hidden="true" />
+                              {t("settings.deleteName", { name: m.name })}
+                            </MenuItem>
+                          </Menu>
+                        </MenuTrigger>
+                      </div>
                     </div>
                     <Disclosure title={t("mcp.details")}>
                       {view.observation && view.observation.state !== "untested" && (
@@ -370,56 +371,60 @@ export function McpConnections({
                           {view.observation.state === "failed" && ` · ${view.observation.reason}`}
                         </Prose>
                       )}
-                      <DataList.Root size="1" className="mcp-summary-facts data-list">
-                        <DataList.Item className="data-row">
-                          <DataList.Label minWidth="80px">{t("mcp.exposure")}</DataList.Label>
-                          <DataList.Value>
-                            <Code>{m.exposure ?? "codemode"}</Code>
-                          </DataList.Value>
-                        </DataList.Item>
-                        <DataList.Item className="data-row">
-                          <DataList.Label minWidth="80px">{t("mcp.execution")}</DataList.Label>
-                          <DataList.Value>
-                            <Flex direction="column" align="start" gap="2">
-                              <Badge color={policy.servers.includes(m.name) ? "green" : "gray"}>
-                                {policy.servers.includes(m.name)
-                                  ? t("mcp.globallyAvailable")
-                                  : t("mcp.notGloballyAvailable")}
-                              </Badge>
-                              <Text size="1" color="gray">
-                                {view.succeeded
-                                  ? countText(
-                                      m.tools.filter((name) => policy.tools.includes(name)).length,
-                                      "globally approved published tool name",
-                                    )
-                                  : t("mcp.approvedUnknown")}{" "}
-                                · {dirty ? t("mcp.policyDraft") : t("mcp.savedPolicy")}
-                              </Text>
-                              <Text size="2">
-                                {t("mcp.gateSummary", {
-                                  state:
-                                    policy.defaults.servers === null
-                                      ? t("mcp.inheritsGlobal")
-                                      : policy.defaults.servers.includes(m.name)
-                                        ? t("mcp.selected")
-                                        : t("mcp.notSelected"),
-                                })}
-                              </Text>
-                            </Flex>
-                          </DataList.Value>
-                        </DataList.Item>
-                      </DataList.Root>
+                      <dl className="mcp-summary-facts data-list">
+                        <div className="data-row">
+                          <dt>{t("mcp.exposure")}</dt>
+                          <dd>
+                            <code className={code}>{m.exposure ?? "codemode"}</code>
+                          </dd>
+                        </div>
+                        <div className="data-row">
+                          <dt>{t("mcp.execution")}</dt>
+                          <dd className={factContent}>
+                            <StatusLabel
+                              tone={policy.servers.includes(m.name) ? "success" : "neutral"}
+                            >
+                              {policy.servers.includes(m.name)
+                                ? t("mcp.globallyAvailable")
+                                : t("mcp.notGloballyAvailable")}
+                            </StatusLabel>
+                            <span className={muted}>
+                              {view.succeeded
+                                ? countText(
+                                    m.tools.filter((name) => policy.tools.includes(name)).length,
+                                    "globally approved published tool name",
+                                  )
+                                : t("mcp.approvedUnknown")}{" "}
+                              · {dirty ? t("mcp.policyDraft") : t("mcp.savedPolicy")}
+                            </span>
+                            <span className={body}>
+                              {t("mcp.gateSummary", {
+                                state:
+                                  policy.defaults.servers === null
+                                    ? t("mcp.inheritsGlobal")
+                                    : policy.defaults.servers.includes(m.name)
+                                      ? t("mcp.selected")
+                                      : t("mcp.notSelected"),
+                              })}
+                            </span>
+                          </dd>
+                        </div>
+                      </dl>
                       <details className="mcp-disclosure">
                         <summary>{t("mcp.publishedNames")}</summary>
-                        <Flex direction="column" align="start" gap="2" mt="3">
+                        <div className={`mcp-published-names ${factContent}`}>
                           {view.succeeded && m.tools.length ? (
-                            m.tools.map((name) => <Code key={name}>{name}</Code>)
+                            m.tools.map((name) => (
+                              <code className={code} key={name}>
+                                {name}
+                              </code>
+                            ))
                           ) : (
-                            <Text size="2" color="gray">
+                            <span className={muted}>
                               {view.succeeded ? t("mcp.noPublishedNames") : t("mcp.runDiscovery")}
-                            </Text>
+                            </span>
                           )}
-                        </Flex>
+                        </div>
                       </details>
                       <Prose size="2">{t("mcp.resultHelp")}</Prose>
                       <Prose size="2">
@@ -443,26 +448,29 @@ export function McpConnections({
           className="settings-stack mcp-editor-column"
         >
           <summary className="mcp-editor-summary">{t("mcp.editor")}</summary>
-          <Flex justify="between" align="center" gap="3" wrap="wrap">
-            <Heading as="h2" size="4">
+          <div className={`mcp-editor-heading ${headingRow}`}>
+            <h2 className={style({ font: "heading-sm", color: "title" })}>
               {inventory.mcp.some((server) => server.name === mcpName)
                 ? t("mcp.editConnection")
                 : t("mcp.addConnection")}
-            </Heading>
+            </h2>
             <Button
-              variant="soft"
-              onClick={() => {
+              variant="secondary"
+              onPress={() => {
                 setEditorOpen(false)
                 requestEditorFocus("#mcp-resume")
               }}
             >
               {t("mcp.closeEditor")}
             </Button>
-          </Flex>
+          </div>
           <div className="mcp-server-name">
-            <Field
+            <TextField
               id="mcp-name"
               label={t("mcp.serverName")}
+              UNSAFE_className="form-field"
+              styles={style({ width: "full" })}
+              autoComplete="off"
               value={mcpName}
               onChange={(name) => {
                 if (
@@ -531,7 +539,7 @@ export function McpConnections({
             {(Object.keys(mcpSecrets.env).length > 0 ||
               Object.keys(mcpSecrets.headers).length > 0) && (
               <Prose size="2" color="gray">
-                <LockClosedIcon aria-hidden="true" />{" "}
+                <Lock aria-hidden="true" />{" "}
                 {t("mcp.pendingSecrets", {
                   fields: [...Object.keys(mcpSecrets.env), ...Object.keys(mcpSecrets.headers)].join(
                     ", ",
@@ -540,12 +548,9 @@ export function McpConnections({
               </Prose>
             )}
             {mcpValidation && (
-              <Callout.Root color="red" role="alert" size="1">
-                <Callout.Icon>
-                  <InfoCircledIcon />
-                </Callout.Icon>
-                <Callout.Text>{mcpValidation}</Callout.Text>
-              </Callout.Root>
+              <InlineAlert variant="negative">
+                <Content>{mcpValidation}</Content>
+              </InlineAlert>
             )}
             {(dirty || localPending || !mcpName) && (
               <Prose size="2">
@@ -558,10 +563,11 @@ export function McpConnections({
                 })}
               </Prose>
             )}
-            <Flex className="mcp-review-footer" gap="3" wrap="wrap" mt="4">
+            <div className="mcp-review-footer">
               <Button
-                disabled={busy || dirty || localPending || !mcpName || Boolean(mcpValidation)}
-                onClick={() =>
+                variant="accent"
+                isDisabled={busy || dirty || localPending || !mcpName || Boolean(mcpValidation)}
+                onPress={() =>
                   void run(async () => {
                     await request(
                       `mcp/${encodeURIComponent(mcpName)}`,
@@ -589,14 +595,14 @@ export function McpConnections({
                   })
                 }
               >
-                <CheckIcon aria-hidden="true" />
+                <Checkmark aria-hidden="true" />
                 {t("mcp.saveConnection")}
               </Button>
               {(mcpDirty || secretPending) && (
                 <Button
-                  variant="soft"
-                  disabled={busy}
-                  onClick={() => {
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => {
                     if (window.confirm(t("mcp.discardConfirm"))) {
                       setEditing(false)
                       setEditorOpen(false)
@@ -613,11 +619,11 @@ export function McpConnections({
                     }
                   }}
                 >
-                  <ResetIcon aria-hidden="true" />
+                  <Undo aria-hidden="true" />
                   {t("mcp.discardDraft")}
                 </Button>
               )}
-            </Flex>
+            </div>
             <Prose size="2" color="gray">
               {t("mcp.savePermissionHelp")}
             </Prose>
@@ -625,25 +631,22 @@ export function McpConnections({
               <summary>{t("mcp.reviewChanges")}</summary>
               <section aria-label={t("mcp.changePreview")}>
                 <Prose size="2">{t("mcp.namesOnly")}</Prose>
-                <Box asChild className="mcp-review-operations">
-                  <ul>
-                    {mcpPreview.map((line) => (
-                      <li key={line}>
-                        <Text size="2">
-                          <Code variant="ghost">{line}</Code>
-                        </Text>
-                      </li>
-                    ))}
-                  </ul>
-                </Box>
+                <ul className="mcp-review-operations">
+                  {mcpPreview.map((line) => (
+                    <li key={line}>
+                      <code className={code}>{line}</code>
+                    </li>
+                  ))}
+                </ul>
               </section>
             </details>
             <details className="provider-advanced mcp-disclosure">
               <summary>{t("mcp.advancedJson")}</summary>
               <label htmlFor="mcp-config">
                 {t("mcp.configJson")}
-                <TextArea
+                <textarea
                   id="mcp-config"
+                  className={codeField}
                   value={mcpConfig}
                   onChange={(e) => {
                     setMcpDirty(true)
@@ -665,16 +668,62 @@ export function McpConnections({
             </details>
           </Panel>
         </details>
-      </Box>
+      </div>
       <details className="mcp-disclosure">
         <summary>{t("mcp.discoveryRules")}</summary>
-        <Callout.Root size="2" color="blue">
-          <Callout.Icon>
-            <InfoCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>{t("mcp.discoveryRulesHelp")}</Callout.Text>
-        </Callout.Root>
+        <p
+          className={style({
+            display: "flex",
+            alignItems: "start",
+            gap: 8,
+            padding: 12,
+            borderRadius: "default",
+            backgroundColor: "informative-subtle",
+            font: "body-lg",
+            color: "body",
+          })}
+        >
+          <InfoCircle aria-hidden="true" />
+          {t("mcp.discoveryRulesHelp")}
+        </p>
       </details>
-    </Box>
+      <DialogContainer onDismiss={() => setDeleting(undefined)}>
+        {active &&
+          deleting !== undefined &&
+          inventory.mcp.some((server) => server.name === deleting) && (
+            <AlertDialog
+              ref={restoreDeleteFocus}
+              variant="destructive"
+              title={t("mcp.deleteServerConfirm", { name: deleting })}
+              aria-describedby={deleteDescription}
+              cancelLabel={t("settings.cancel")}
+              primaryActionLabel={t("mcp.deleteApply")}
+              autoFocusButton="cancel"
+              onPrimaryAction={() =>
+                void run(async () => {
+                  await request(
+                    `mcp/${encodeURIComponent(deleting)}`,
+                    csrf,
+                    { revision: snapshot.revision },
+                    "DELETE",
+                  )
+                  if (mcpName === deleting) {
+                    setEditing(false)
+                    setEditorOpen(false)
+                    setMcpEditorVersion((version) => version + 1)
+                    setMcpName("")
+                    setMcpConfig("{}")
+                    setMcpSecrets({ env: {}, headers: {} })
+                    setMcpDirty(false)
+                  }
+                  await load()
+                })
+              }
+            >
+              <p id={deleteDescription}>{t("mcp.deleteHelp")}</p>
+            </AlertDialog>
+          )}
+      </DialogContainer>
+    </div>
   )
 }

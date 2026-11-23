@@ -90,8 +90,9 @@ for (const width of [1440, 390, 320]) {
     await navigate(page, "Access")
     await page.getByRole("button", { name: "Revoke access for ID 42", exact: true }).click()
     const bar = page.getByRole("region", { name: "Save status and pending changes" })
-    await expect(bar.locator(".save-status-line .rt-Badge")).toHaveCount(1)
-    await expect(bar.locator(".save-status-line .rt-Badge")).toHaveText("1 unsaved change")
+    const pending = bar.locator(".save-status-line").getByRole("status")
+    await expect(pending).toHaveCount(1)
+    await expect(pending).toHaveText("1 unsaved change")
     await expect(
       bar.getByRole("button", { name: "Review and save changes", exact: true }),
     ).toBeEnabled()
@@ -130,9 +131,8 @@ test("Defaults omits an identical model draft after a tool-only edit", async ({ 
 test("dark operating-system preference keeps the complete light appearance", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" })
   await fixture(page)
-  const theme = page.locator(".radix-themes").first()
-  await expect(theme).toHaveClass(/light/)
-  await expect(theme).not.toHaveClass(/dark/)
+  const theme = page.locator(".admin-theme").first()
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "light")
   for (const section of sections) {
     await navigate(page, section)
     expect(await theme.evaluate((element) => getComputedStyle(element).colorScheme), section).toBe(

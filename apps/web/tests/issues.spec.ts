@@ -420,7 +420,7 @@ for (const [width, fontScale] of [
     if (fontScale === 200) {
       const client = await page.context().newCDPSession(page)
       await client.send("Page.setFontSizes", { fontSizes: { standard: 32 } })
-      await expect(page.locator(".radix-themes").first()).toHaveCSS("font-size", "32px")
+      await expect(page.locator(".admin-theme").first()).toHaveCSS("font-size", "32px")
     }
     const table = page.getByRole("table", { name: "Feedback list", exact: true })
     const title = table.getByRole("button", { name: url, exact: true })
@@ -943,8 +943,9 @@ for (const width of [1440, 390]) {
     await expect(panel.getByRole("img", { name: "工具列概念", exact: true })).toBeVisible()
     await panel.getByRole("button", { name: "View larger wireframe", exact: true }).first().click()
     const preview = page.getByRole("dialog", { name: "工具列概念", exact: true })
-    await expect(preview.getByRole("img")).toBeVisible()
-    await expect(preview.getByRole("img")).toHaveJSProperty("naturalWidth", 840)
+    const wireframe = preview.getByRole("img", { name: "工具列概念" })
+    await expect(wireframe).toBeVisible()
+    await expect(wireframe).toHaveJSProperty("naturalWidth", 840)
     await preview.getByRole("button", { name: "Close preview", exact: true }).click()
     await panel.getByRole("button", { name: "Select for discussion", exact: true }).nth(1).click()
     await expect(
@@ -1094,6 +1095,8 @@ test("keeps a redaction gesture owned by one touch pointer and ignores unrelated
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 })
   await fixture(page)
+  const client = await page.context().newCDPSession(page)
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
   const dialog = await whiteImageFeedback(page)
   await dialog.getByRole("button", { name: "遮蔽", exact: true }).click()
   const canvas = dialog.locator("canvas")
@@ -1101,8 +1104,6 @@ test("keeps a redaction gesture owned by one touch pointer and ignores unrelated
   const box = await canvas.boundingBox()
   if (!box) throw new Error("Missing canvas")
   expect(await canvas.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe("0px")
-  const client = await page.context().newCDPSession(page)
-  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
   const point = (id: number, x: number, y: number) => ({
     id,
     x: box.x + box.width * x,

@@ -4,8 +4,9 @@ import type {
   DurableInspectionResponse,
   DurableTaskItem,
 } from "@narumitw/sumire-contracts"
-import { ChevronRightIcon, LayersIcon } from "@radix-ui/react-icons"
-import { Button, Heading, Text } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import Layers from "@react-spectrum/s2/icons/Layers"
 import { type ReactNode, useEffect, useState } from "react"
 import { ApiError } from "./api.js"
 import type { DurableLocation } from "./durable-inspector.js"
@@ -64,7 +65,7 @@ function Branch({ label, children }: { label: string; children: ReactNode }) {
       }}
     >
       <summary>
-        <ChevronRightIcon aria-hidden />
+        <ChevronRight aria-hidden />
         {label}
       </summary>
       {opened && children}
@@ -131,7 +132,7 @@ function RecordRow({
               setLoaded(true)
             }}
           >
-            <ChevronRightIcon aria-hidden />
+            <ChevronRight aria-hidden />
           </button>
         ) : (
           <span className="durable-chevron-space" aria-hidden />
@@ -142,11 +143,7 @@ function RecordRow({
           props.link(identity, location)
         )}
       </div>
-      {withheld && (
-        <Text as="p" className="durable-tree-note">
-          {recordSummary(item)}
-        </Text>
-      )}
+      {withheld && <p className="durable-tree-note">{recordSummary(item)}</p>}
       {loaded && <div hidden={!open}>{children}</div>}
     </>
   )
@@ -251,33 +248,32 @@ function CollectionStatus({
   const label = getLocale() === "en" ? heading.toLowerCase() : heading
   return (
     <div className="durable-tree-status">
-      {collection.loading && (
-        <Text as="p" role="status">
-          {t("record.loadingCollection", { label })}
-        </Text>
-      )}
+      {collection.loading && <p role="status">{t("record.loadingCollection", { label })}</p>}
       {collection.error && (
         <>
-          <Text as="p" role="alert">
+          <p role="alert">
             {t("record.incompleteCollection", { error: t(collection.error), label })}
-          </Text>
-          <Button size="1" variant="soft" onClick={collection.retry}>
+          </p>
+          <Button size="S" variant="secondary" onPress={collection.retry}>
             {t("record.retryCollection", { label })}
           </Button>
         </>
       )}
-      {collection.unloaded && <Text as="p">{t("record.unloadedCollection", { label })}</Text>}
+      {collection.unloaded && <p>{t("record.unloadedCollection", { label })}</p>}
       {!collection.loading &&
         !collection.error &&
         !collection.unloaded &&
-        collection.items.length === 0 && (
-          <Text as="p">{t("record.emptyCollection", { label })}</Text>
-        )}
+        collection.items.length === 0 && <p>{t("record.emptyCollection", { label })}</p>}
       {(collection.nextCursor || collection.truncated) && (
-        <Text as="p">{t("record.partialCollection", { label })}</Text>
+        <p>{t("record.partialCollection", { label })}</p>
       )}
       {collection.nextCursor && (
-        <Button size="1" variant="soft" disabled={collection.loading} onClick={collection.more}>
+        <Button
+          size="S"
+          variant="secondary"
+          isDisabled={collection.loading}
+          onPress={collection.more}
+        >
           {t("record.moreCollection", { label })}
         </Button>
       )}
@@ -322,9 +318,7 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
             location={{ view: "entries", conversationId: id, objectId: entry.id }}
           />
           {taskId === undefined && entry.byTaskId !== undefined && (
-            <Text as="p" size="1">
-              {t("record.taskNotLoaded", { id: entry.byTaskId })}
-            </Text>
+            <p className="durable-tree-note">{t("record.taskNotLoaded", { id: entry.byTaskId })}</p>
           )}
         </li>
       ))
@@ -347,16 +341,14 @@ function ConversationContents({ props, id }: { props: TreeProps; id: number }) {
             location={{ view: "tasks", conversationId: id, objectId: task.id }}
           >
             {task.ownerTaskId !== undefined && !parents.has(task.ownerTaskId) && (
-              <Text as="p" size="1">
+              <p className="durable-tree-note">
                 {t("record.parentTaskMissing", { id: task.ownerTaskId })}
-              </Text>
+              </p>
             )}
             {task.ownerTaskId !== undefined &&
               parents.has(task.ownerTaskId) &&
               parents.get(task.id) === undefined && (
-                <Text as="p" size="1">
-                  {t("record.taskCycle")}
-                </Text>
+                <p className="durable-tree-note">{t("record.taskCycle")}</p>
               )}
             <ul>
               {taskNodes(task.id)}
@@ -445,19 +437,17 @@ export function DurableTree(props: TreeProps) {
           persisted={item.id === props.selected}
         >
           {!loadedIds.has(item.id) && (
-            <Text as="p" size="1">
-              {t("record.relationshipMissing")}
-            </Text>
+            <p className="durable-tree-note">{t("record.relationshipMissing")}</p>
           )}
           {item.parent && (
-            <Text as="p" size="1" className="durable-tree-note">
+            <p className="durable-tree-note">
               {t("record.branchedFrom", {
                 conversation: item.parent.conversationId,
                 entry: item.parent.at,
               })}
               {!known.has(item.parent.conversationId) ? t("record.parentMissing") : ""}
               {cycles.has(item.id) ? t("record.parentCycle") : ""}
-            </Text>
+            </p>
           )}
           <ConversationContents props={props} id={item.id} />
           <ul>{nodes.filter((child) => child.parent?.conversationId === item.id).map(node)}</ul>
@@ -468,10 +458,10 @@ export function DurableTree(props: TreeProps) {
   return (
     <section aria-label={t("record.relationshipTree")} className="durable-tree">
       <div className="durable-navigator-heading">
-        <Heading as="h3" size="3">
-          <LayersIcon aria-hidden />
+        <h3>
+          <Layers aria-hidden />
           {t("record.records")}
-        </Heading>
+        </h3>
         <span className="durable-count">
           {t("record.conversationsLoaded", { count: countText(loadedCount, "conversation") })}
         </span>
@@ -485,9 +475,7 @@ export function DurableTree(props: TreeProps) {
         label={t("record.conversations")}
       />
       <Branch label={t("record.aboutRecords")}>
-        <Text as="p" size="1">
-          {t("record.treeScope")}
-        </Text>
+        <p className="durable-tree-note">{t("record.treeScope")}</p>
       </Branch>
       <Branch label={t("record.sessionDocuments")}>
         <Documents props={props} location={{ view: "documents", scope: "session" }} />

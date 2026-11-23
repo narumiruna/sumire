@@ -1,11 +1,11 @@
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ExclamationTriangleIcon,
-  MagnifyingGlassIcon,
-  ResetIcon,
-} from "@radix-ui/react-icons"
-import { Button, Callout, Flex, Heading, Text, TextField } from "@radix-ui/themes"
+import { Button, Text } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import ChevronLeft from "@react-spectrum/s2/icons/ChevronLeft"
+import ChevronRight from "@react-spectrum/s2/icons/ChevronRight"
+import Refresh from "@react-spectrum/s2/icons/Refresh"
+import Search from "@react-spectrum/s2/icons/Search"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
+import { TextField } from "@react-spectrum/s2/TextField"
 import { useEffect, useState } from "react"
 import {
   Activity,
@@ -16,8 +16,31 @@ import {
 } from "./activity.js"
 import { ApiError, request } from "./api.js"
 import { type MessageKey, t } from "./i18n.js"
-import { SectionSelect as Select } from "./sections.js"
-import { Prose } from "./surfaces.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
+import { Disclosure, Prose } from "./surfaces.js"
+
+const actions = style({ display: "flex", flexWrap: "wrap", gap: 8 })
+// Native date inputs keep the date-only value used for the inclusive UTC query.
+const dateField = style({
+  outlineStyle: { ":focus-visible": "solid" },
+  outlineColor: { default: "focus-ring", forcedColors: "Highlight" },
+  outlineOffset: 2,
+  outlineWidth: 2,
+  boxSizing: "border-box",
+  minWidth: 0,
+  minHeight: 44,
+  width: "full",
+  paddingX: 12,
+  borderStyle: "solid",
+  borderWidth: 1,
+  borderRadius: "default",
+  borderColor: { default: "gray-500", ":hover": "gray-700" },
+  backgroundColor: "layer-2",
+  color: "neutral",
+  font: "ui-lg",
+})
+const textField = style({ width: "full", minWidth: 0 })
+const labelStyle = style({ color: "body", font: "ui-sm" })
 
 class AuditFilterError extends Error {
   constructor(readonly key: MessageKey) {
@@ -94,9 +117,8 @@ export function AuditHistory({
     }
   }, [query, revision, retry, run])
   return (
-    <Flex direction="column" gap="3" className="settings-stack">
-      <details className="audit-filter-disclosure">
-        <summary>{t("audit.filters")}</summary>
+    <div className="settings-stack">
+      <Disclosure className="audit-filter-disclosure" title={t("audit.filters")}>
         <form
           className="audit-filter-form"
           onSubmit={(event) => {
@@ -111,9 +133,12 @@ export function AuditHistory({
           }}
         >
           <fieldset className="audit-filter-toolbar" aria-labelledby="audit-filter-heading">
-            <Heading as="h4" size="2" id="audit-filter-heading" className="section-heading">
+            <h4
+              id="audit-filter-heading"
+              className={`section-heading ${style({ font: "heading-xs", color: "title" })}`}
+            >
               {t("audit.filterHeading")}
-            </Heading>
+            </h4>
             <div className="audit-filters">
               {[
                 {
@@ -125,9 +150,11 @@ export function AuditHistory({
                 <div className={className} key={className}>
                   {keys.map((key) => (
                     <div key={key} className="form-field">
-                      <label htmlFor={`audit-${key}`}>{filterLabels()[key]}</label>
+                      <label className={labelStyle} htmlFor={`audit-${key}`}>
+                        {filterLabels()[key]}
+                      </label>
                       {key === "operation" || key === "outcome" ? (
-                        <Select.Root
+                        <SectionPicker
                           value={custom[key] ? "__custom" : draft[key] || "__all"}
                           onValueChange={(value) => {
                             setCustom((previous) => ({
@@ -139,37 +166,50 @@ export function AuditHistory({
                               [key]: value === "__custom" || value === "__all" ? "" : value,
                             }))
                           }}
-                        >
-                          <Select.Trigger id={`audit-${key}`} />
-                          <Select.Content>
-                            <Select.Item value="__all">{t("audit.all")}</Select.Item>
-                            {Object.entries(
-                              key === "operation" ? operationNames() : outcomeNames(),
-                            ).map(([value, label]) => (
-                              <Select.Item key={value} value={value}>
-                                {label}
-                              </Select.Item>
-                            ))}
-                            <Select.Item value="__custom">{t("audit.otherExact")}</Select.Item>
-                          </Select.Content>
-                        </Select.Root>
-                      ) : (
-                        <TextField.Root
                           id={`audit-${key}`}
-                          type={key === "actor" ? "text" : "date"}
+                          aria-label={filterLabels()[key]}
+                        >
+                          <PickerOption id="__all">{t("audit.all")}</PickerOption>
+                          {Object.entries(
+                            key === "operation" ? operationNames() : outcomeNames(),
+                          ).map(([value, label]) => (
+                            <PickerOption key={value} id={value}>
+                              {label}
+                            </PickerOption>
+                          ))}
+                          <PickerOption id="__custom">{t("audit.otherExact")}</PickerOption>
+                        </SectionPicker>
+                      ) : key === "actor" ? (
+                        <TextField
+                          id="audit-actor"
+                          aria-label={filterLabels().actor}
+                          UNSAFE_className="audit-text-control"
+                          size="XL"
+                          styles={textField}
                           maxLength={128}
+                          value={draft.actor}
+                          onChange={(actor) => setDraft({ ...draft, actor })}
+                        />
+                      ) : (
+                        <input
+                          id={`audit-${key}`}
+                          className={`audit-date-control ${dateField}`}
+                          type="date"
                           value={draft[key]}
                           onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
                         />
                       )}
                       {(key === "operation" || key === "outcome") && custom[key] && (
-                        <TextField.Root
+                        <TextField
                           aria-label={t(
                             key === "operation" ? "audit.operationExact" : "audit.outcomeExact",
                           )}
+                          UNSAFE_className="audit-text-control"
+                          size="XL"
+                          styles={textField}
                           maxLength={128}
                           value={draft[key]}
-                          onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                          onChange={(value) => setDraft({ ...draft, [key]: value })}
                         />
                       )}
                     </div>
@@ -177,27 +217,27 @@ export function AuditHistory({
                 </div>
               ))}
             </div>
-            <Flex gap="2" wrap="wrap" className="audit-filter-actions">
-              <Button type="submit" disabled={loading}>
-                <MagnifyingGlassIcon />
-                {t("audit.applyFilters")}
+            <div className={`audit-filter-actions ${actions}`}>
+              <Button type="submit" variant="accent" size="XL" isDisabled={loading}>
+                <Search />
+                <Text>{t("audit.applyFilters")}</Text>
               </Button>
               <Button
-                type="button"
-                variant="soft"
-                onClick={() => {
+                variant="secondary"
+                size="XL"
+                onPress={() => {
                   setDraft(empty)
                   setCustom({ operation: false, outcome: false })
                   setQuery({ filters: empty, offset: 0 })
                 }}
               >
-                <ResetIcon />
-                {t("audit.clearFilters")}
+                <Refresh />
+                <Text>{t("audit.clearFilters")}</Text>
               </Button>
-            </Flex>
+            </div>
           </fieldset>
         </form>
-      </details>
+      </Disclosure>
       {Object.values(query.filters).some(Boolean) && (
         <Prose size="2" role="status" className="audit-active-filters">
           {t("audit.activeFilters", {
@@ -212,57 +252,53 @@ export function AuditHistory({
         </Prose>
       )}
       {error && (
-        <Callout.Root color="red" size="1" role="alert">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{t(error)}</Callout.Text>
-        </Callout.Root>
+        <InlineAlert variant="negative">
+          <Content>{t(error)}</Content>
+        </InlineAlert>
       )}
       {error && (
-        <Button variant="soft" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="secondary" size="XL" onPress={() => setRetry((value) => value + 1)}>
           {t("audit.retry")}
         </Button>
       )}
-      <Flex direction="column" gap="1" className="audit-results-summary">
-        <Text as="p" size="2" weight="medium">
+      <div className={`audit-results-summary ${style({ display: "grid", gap: 4 })}`}>
+        <Prose size="2" weight="medium">
           {t("audit.recordsRange", {
             from: entries.length ? query.offset + 1 : 0,
             to: query.offset + entries.length,
           })}
-        </Text>
-        <details>
-          <summary>{t("audit.historyScope")}</summary>
+        </Prose>
+        <Disclosure title={t("audit.historyScope")}>
           <Prose size="1" color="gray">
             {t("audit.scopeNotice")}
           </Prose>
-        </details>
-      </Flex>
+        </Disclosure>
+      </div>
       {loading ? (
         <Prose role="status">{t("audit.loading")}</Prose>
       ) : (
         !error && <Activity entries={entries} />
       )}
-      <Flex asChild gap="2" className="audit-pagination">
-        <nav aria-label={t("audit.pagination")}>
-          <Button
-            variant="surface"
-            disabled={loading || query.offset === 0}
-            onClick={() => setQuery({ ...query, offset: Math.max(0, query.offset - 100) })}
-          >
-            <ChevronLeftIcon />
-            {t("audit.newer")}
-          </Button>
-          <Button
-            variant="surface"
-            disabled={loading || entries.length < 100}
-            onClick={() => setQuery({ ...query, offset: query.offset + 100 })}
-          >
-            {t("audit.older")}
-            <ChevronRightIcon />
-          </Button>
-        </nav>
-      </Flex>
-    </Flex>
+      <nav className={`audit-pagination ${actions}`} aria-label={t("audit.pagination")}>
+        <Button
+          variant="secondary"
+          size="XL"
+          isDisabled={loading || query.offset === 0}
+          onPress={() => setQuery({ ...query, offset: Math.max(0, query.offset - 100) })}
+        >
+          <ChevronLeft />
+          <Text>{t("audit.newer")}</Text>
+        </Button>
+        <Button
+          variant="secondary"
+          size="XL"
+          isDisabled={loading || entries.length < 100}
+          onPress={() => setQuery({ ...query, offset: query.offset + 100 })}
+        >
+          <Text styles={style({ order: -1 })}>{t("audit.older")}</Text>
+          <ChevronRight />
+        </Button>
+      </nav>
+    </div>
   )
 }

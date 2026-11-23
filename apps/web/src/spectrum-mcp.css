@@ -1,0 +1,79 @@
+.mcp-step > h2:first-child {
+  margin-block-end: 12px;
+}
+.mcp-connection-row h3,
+.mcp-editor-heading > h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mcp-editor-heading {
+  align-items: center;
+}
+.mcp-summary-facts > .data-row {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) minmax(0, 1fr);
+  gap: 8px 12px;
+  padding-block: 4px;
+  border: 0;
+}
+.mcp-summary-facts dt {
+  color: var(--mcp-muted);
+}
+.mcp-summary-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mcp-published-names {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.mcp-server-name > .form-field {
+  max-width: 640px;
+}
+.mcp-guided-toolbar {
+  font-weight: 500;
+}
+.mcp-field-grid {
+  margin-top: 16px;
+}
+.mcp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mcp-field > .check {
+  margin: 0;
+}
+.mcp-field-value {
+  border-color: var(--mcp-divider);
+}
+.mcp-field-value > label {
+  margin: 0 0 6px;
+}
+.mcp-arguments {
+  margin-top: 24px;
+}
+.mcp-argument-row {
+  margin-bottom: 12px;
+}
+.mcp-argument-row .mcp-argument-input {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.mcp-argument-row .mcp-argument-input label {
+  margin: 0;
+}
+.mcp-disclosure,
+.mcp-guided-toolbar,
+.mcp-review-footer {
+  border-color: var(--mcp-divider);
+}
+.mcp-review-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.mcp-review-operations code {
+  overflow-wrap: anywhere;
+}

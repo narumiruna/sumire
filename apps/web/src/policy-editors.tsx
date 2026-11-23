@@ -1,44 +1,18 @@
 import type { effectivePolicy } from "@narumitw/sumire-policy"
-import { Badge, Button, Callout, Checkbox, Flex, Grid, Text, TextField } from "@radix-ui/themes"
+import { Button } from "@react-spectrum/s2/Button"
+import { Content, InlineAlert } from "@react-spectrum/s2/InlineAlert"
+import { style } from "@react-spectrum/s2/style" with { type: "macro" }
 import { useId, useState } from "react"
 import type { Inventory, Policy, Selection } from "./api.js"
+import { Check } from "./check.js"
 import { DefaultModel, thinkingLabel } from "./default-model.js"
 import { t } from "./i18n.js"
 import { focusEditor } from "./navigation.js"
-import { SectionSelect as Select } from "./sections.js"
-import { Panel, Prose } from "./surfaces.js"
+import { PickerOption, SectionPicker } from "./section-picker.js"
+import { Panel, Prose, StatusLabel } from "./surfaces.js"
 import { permissionResult } from "./tool-permissions.js"
+import "./spectrum-policy.css"
 
-export function Check({
-  id: providedId,
-  label,
-  checked,
-  onChange,
-  disabled = false,
-  visibleLabel,
-}: {
-  id?: string
-  label: string
-  visibleLabel?: string
-  checked: boolean
-  disabled?: boolean
-  onChange(value: boolean): void
-}) {
-  const generatedId = useId()
-  const id = providedId ?? generatedId
-  return (
-    <label className="check" htmlFor={id}>
-      <Checkbox
-        id={id}
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(v) => onChange(v === true)}
-      />
-      {visibleLabel ?? label}
-    </label>
-  )
-}
 export function Field({
   label,
   value,
@@ -57,7 +31,14 @@ export function Field({
   return (
     <label className="form-field" htmlFor={id}>
       {label}
-      <TextField.Root
+      <input
+        className={`policy-field ${style({
+          color: "body",
+          backgroundColor: "layer-2",
+          borderColor: "gray-700",
+          borderRadius: "default",
+          font: "ui-lg",
+        })}`}
         id={id}
         type={secret ? "password" : "text"}
         value={value}
@@ -103,7 +84,9 @@ export function List({
   return (
     <Panel as="fieldset" className="policy-list">
       <legend>{label}</legend>
-      <Badge color={scope === "chat" && value !== null ? "orange" : "gray"}>{source}</Badge>
+      <StatusLabel tone={scope === "chat" && value !== null ? "warning" : "neutral"}>
+        {source}
+      </StatusLabel>
       <Prose size="2" color="gray">
         {scope === "global"
           ? t("selection.globalHelp")
@@ -127,7 +110,9 @@ export function List({
           onChange={(v) => onChange(v ? null : [])}
         />
       )}
-      <Flex direction="column" gap="2" className="policy-list__options">
+      <div
+        className={`policy-list__options ${style({ display: "flex", flexDirection: "column", gap: 8 })}`}
+      >
         {value !== null &&
           (displayed.length ? (
             displayed.map((name) => (
@@ -141,11 +126,11 @@ export function List({
               />
             ))
           ) : (
-            <Text size="2" color="gray" className="empty-state">
+            <Prose size="2" color="gray" className="empty-state">
               {t("selection.noApproved")}
-            </Text>
+            </Prose>
           ))}
-      </Flex>
+      </div>
       {value === null && !inheritable && (
         <Prose size="2">{t("selection.noDefaultSelection")}</Prose>
       )}
@@ -164,21 +149,23 @@ export function List({
             {t("selection.blockedRetained", { names: blocked.join(", ") })}
           </Prose>
           {onRepair && (
-            <Button variant="ghost" onClick={onRepair}>
+            <Button variant="secondary" fillStyle="outline" onPress={onRepair}>
               {t("selection.reviewGlobal")}
             </Button>
           )}
         </div>
       )}
       {scope !== "global" && (
-        <Flex direction="column" align="start" gap="2" className="policy-list__status">
+        <div
+          className={`policy-list__status ${style({ display: "flex", flexDirection: "column", alignItems: "start", gap: 8 })}`}
+        >
           <Prose size="2" color="gray">
             {t("selection.effective", { names: effective?.join(", ") || t("selection.none") })}
           </Prose>
-        </Flex>
+        </div>
       )}
       {inheritable && value !== null && (
-        <Button variant="soft" onClick={() => onChange(null)}>
+        <Button variant="secondary" fillStyle="outline" onPress={() => onChange(null)}>
           {t("selection.reset", { label: label.toLowerCase() })}
         </Button>
       )}
@@ -216,7 +203,9 @@ export function ModelAvailability({
           {t("selection.noGlobalOptions")}
         </Prose>
       ) : (
-        <Flex direction="column" gap="2" className="policy-list__options">
+        <div
+          className={`policy-list__options ${style({ display: "flex", flexDirection: "column", gap: 8 })}`}
+        >
           {options.map((ref) => (
             <Check
               key={ref}
@@ -233,7 +222,7 @@ export function ModelAvailability({
               }
             />
           ))}
-        </Flex>
+        </div>
       )}
     </Panel>
   )
@@ -260,7 +249,9 @@ export function Choices({
     .flatMap((p) => p.models.map((m) => ({ ref: `${p.id}/${m.id}`, levels: m.thinking })))
     .find((m) => m.ref === model)?.levels ?? ["off"]
   return (
-    <Flex direction="column" gap="4" className="settings-stack policy-choices">
+    <div
+      className={`settings-stack policy-choices ${style({ display: "flex", flexDirection: "column", gap: 16 })}`}
+    >
       {defaults ? (
         <DefaultModel
           policy={policy}
@@ -272,51 +263,47 @@ export function Choices({
       ) : (
         <Panel as="fieldset" className="policy-model">
           <legend>{t("model.thinkingTitle")}</legend>
-          <Grid gap="3" className="grid settings-grid policy-model__controls">
-            <Flex direction="column" gap="2">
+          <div className="grid settings-grid policy-model__controls">
+            <div className={style({ display: "flex", flexDirection: "column", gap: 8 })}>
               <label className="form-field" htmlFor="model-selection">
                 {t("model.chatModelOverride")}
-                <Select.Root
+                <SectionPicker
                   value={value.model ?? "inherit"}
                   onValueChange={(v) =>
                     onChange({ ...value, model: v === "inherit" ? null : v, thinking: null })
                   }
+                  id="model-selection"
+                  aria-label={t("model.chatModelOverride")}
+                  aria-describedby="model-selection-source"
+                  placeholder={t("model.choose")}
                 >
-                  <Select.Trigger
-                    id="model-selection"
-                    aria-label={t("model.chatModelOverride")}
-                    aria-describedby="model-selection-source"
-                    placeholder={t("model.choose")}
-                  />
-                  <Select.Content>
-                    <Select.Item value="inherit">
-                      {defaults ? t("model.notConfigured") : t("selection.inheritDefault")}
-                    </Select.Item>
-                    {[
-                      ...new Set([
-                        ...(value.models ?? policy.defaults.models ?? []),
-                        ...(value.model ? [value.model] : []),
-                      ]),
-                    ].map((ref) => (
-                      <Select.Item key={ref} value={ref}>
-                        {(value.models ?? policy.defaults.models ?? []).includes(ref)
-                          ? ref
-                          : t("model.notAllowedNamed", { model: ref })}
-                      </Select.Item>
-                    ))}
-                  </Select.Content>
-                </Select.Root>
+                  <PickerOption id="inherit">
+                    {defaults ? t("model.notConfigured") : t("selection.inheritDefault")}
+                  </PickerOption>
+                  {[
+                    ...new Set([
+                      ...(value.models ?? policy.defaults.models ?? []),
+                      ...(value.model ? [value.model] : []),
+                    ]),
+                  ].map((ref) => (
+                    <PickerOption key={ref} id={ref}>
+                      {(value.models ?? policy.defaults.models ?? []).includes(ref)
+                        ? ref
+                        : t("model.notAllowedNamed", { model: ref })}
+                    </PickerOption>
+                  ))}
+                </SectionPicker>
               </label>
               <Prose id="model-selection-source" size="2" color="gray">
                 {t(value.model === null ? "model.inheritedSource" : "model.overrideSource", {
                   model: effective.model ?? t("model.noAllowed"),
                 })}
               </Prose>
-            </Flex>
-            <Flex direction="column" gap="2">
+            </div>
+            <div className={style({ display: "flex", flexDirection: "column", gap: 8 })}>
               <label className="form-field" htmlFor="thinking-selection">
                 {t("model.thinkingLevel")}
-                <Select.Root
+                <SectionPicker
                   value={value.thinking ?? "inherit"}
                   onValueChange={(v) =>
                     onChange({
@@ -324,35 +311,32 @@ export function Choices({
                       thinking: v === "inherit" ? null : (v as Selection["thinking"]),
                     })
                   }
+                  id="thinking-selection"
+                  aria-label={t("model.thinkingLevel")}
+                  aria-describedby="thinking-selection-source"
                 >
-                  <Select.Trigger
-                    id="thinking-selection"
-                    aria-label={t("model.thinkingLevel")}
-                    aria-describedby="thinking-selection-source"
-                  />
-                  <Select.Content>
-                    <Select.Item value="inherit">
-                      {defaults ? t("model.offDefault") : t("selection.inheritDefault")}
-                    </Select.Item>
-                    {levels.map((level) => (
-                      <Select.Item key={level} value={level}>
-                        {thinkingLabel(level)}
-                      </Select.Item>
-                    ))}
-                  </Select.Content>
-                </Select.Root>
+                  <PickerOption id="inherit">
+                    {defaults ? t("model.offDefault") : t("selection.inheritDefault")}
+                  </PickerOption>
+                  {levels.map((level) => (
+                    <PickerOption key={level} id={level}>
+                      {thinkingLabel(level)}
+                    </PickerOption>
+                  ))}
+                </SectionPicker>
               </label>
               <Prose id="thinking-selection-source" size="2" color="gray">
                 {t(value.thinking === null ? "model.inheritedThinking" : "model.overrideThinking", {
                   level: thinkingLabel(effective.thinking ?? "off"),
                 })}
               </Prose>
-            </Flex>
-          </Grid>
+            </div>
+          </div>
           {(value.model !== null || value.thinking !== null) && (
             <Button
-              variant="soft"
-              onClick={() => onChange({ ...value, model: null, thinking: null })}
+              variant="secondary"
+              fillStyle="outline"
+              onPress={() => onChange({ ...value, model: null, thinking: null })}
             >
               {t("model.resetDefault")}
             </Button>
@@ -360,8 +344,8 @@ export function Choices({
         </Panel>
       )}
       {value.model && !(value.models ?? policy.defaults.models ?? []).includes(value.model) && (
-        <Callout.Root color="red" role="alert">
-          <Callout.Text>
+        <InlineAlert variant="negative">
+          <Content>
             {t(
               defaults
                 ? "model.defaultConflict"
@@ -370,24 +354,33 @@ export function Choices({
                   : "model.chatConflict",
               { model: value.model },
             )}
-          </Callout.Text>
+          </Content>
           <Button
-            variant="soft"
-            onClick={() => focusEditor(`#${defaults ? "default" : "chat"}-models-options`)}
+            variant="secondary"
+            fillStyle="outline"
+            onPress={() => focusEditor(`#${defaults ? "default" : "chat"}-models-options`)}
           >
             {t("model.reviewAllowed")}
           </Button>
-        </Callout.Root>
+        </InlineAlert>
       )}
       {!defaults && (
         <>
-          <Callout.Root color="amber" aria-label={t("selection.chatAuthorization")}>
-            <Callout.Text>{t("selection.authorizationHelp")}</Callout.Text>
-          </Callout.Root>
+          <section
+            className={style({
+              padding: 12,
+              borderRadius: "default",
+              backgroundColor: "notice-subtle",
+              color: "notice-1000",
+            })}
+            aria-label={t("selection.chatAuthorization")}
+          >
+            {t("selection.authorizationHelp")}
+          </section>
           <section aria-label={t("selection.chatToolResults")}>
-            <Text as="p" size="2" weight="medium">
+            <Prose size="2" weight="medium">
               {t(value.tools === null ? "selection.toolInherited" : "selection.toolOverride")}
-            </Text>
+            </Prose>
             <ul>
               {[...new Set(value.tools ?? policy.defaults.tools ?? [])].map((name) => {
                 const result = permissionResult("tools", name, policy, inventory, {
@@ -404,32 +397,34 @@ export function Choices({
                     })}
                     {result.blocking && (
                       <>
-                        <Text as="p" size="2">
+                        <Prose size="2">
                           {t("selection.blockingSource", { source: result.blockingLabel ?? "" })}
-                        </Text>
-                        <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+                        </Prose>
+                        <Button
+                          variant="secondary"
+                          fillStyle="outline"
+                          onPress={() => navigate("Tool permissions")}
+                        >
                           {t("selection.reviewBlocking", { name })}
                         </Button>
                       </>
                     )}
                     {availability?.available === false && (
-                      <Text as="p" size="2">
+                      <Prose size="2">
                         {t("selection.capabilityUnavailable", { reason: availability.reason })}
-                      </Text>
+                      </Prose>
                     )}
                   </li>
                 )
               })}
             </ul>
             {!(value.tools ?? policy.defaults.tools ?? []).length && (
-              <Text as="p" size="2">
-                {t("selection.noChatTools")}
-              </Text>
+              <Prose size="2">{t("selection.noChatTools")}</Prose>
             )}
           </section>
         </>
       )}
-      <Grid gap="4" className="grid settings-grid policy-choice-lists">
+      <div className="grid settings-grid policy-choice-lists">
         {(defaults
           ? (["models"] as const)
           : (["tools", "servers", "skills", "models"] as const)
@@ -470,18 +465,22 @@ export function Choices({
             </details>
           )
         })}
-      </Grid>
+      </div>
       {!defaults && (
-        <Flex gap="3" wrap="wrap">
-          <Button variant="ghost" onClick={() => navigate("Tool permissions")}>
+        <div className={style({ display: "flex", flexWrap: "wrap", gap: 12 })}>
+          <Button
+            variant="secondary"
+            fillStyle="outline"
+            onPress={() => navigate("Tool permissions")}
+          >
             {t("selection.manageTools")}
           </Button>
-          <Button variant="ghost" onClick={() => navigate("Skills")}>
+          <Button variant="secondary" fillStyle="outline" onPress={() => navigate("Skills")}>
             {t("skill.manageGlobalDefaults")}
           </Button>
-        </Flex>
+        </div>
       )}
-    </Flex>
+    </div>
   )
 }
 export function SecretFields({
@@ -500,13 +499,15 @@ export function SecretFields({
       <Prose size="2">{t("selection.secretHelp")}</Prose>
       <label htmlFor="secret-scope">
         {t("selection.fieldMap")}
-        <Select.Root value={scope} onValueChange={(v) => setScope(v as "env" | "headers")}>
-          <Select.Trigger id="secret-scope" aria-label={t("selection.fieldMap")} />
-          <Select.Content>
-            <Select.Item value="env">{t("selection.environment")}</Select.Item>
-            <Select.Item value="headers">{t("selection.headers")}</Select.Item>
-          </Select.Content>
-        </Select.Root>
+        <SectionPicker
+          value={scope}
+          onValueChange={(v) => setScope(v as "env" | "headers")}
+          id="secret-scope"
+          aria-label={t("selection.fieldMap")}
+        >
+          <PickerOption id="env">{t("selection.environment")}</PickerOption>
+          <PickerOption id="headers">{t("selection.headers")}</PickerOption>
+        </SectionPicker>
       </label>
       <Field
         id="secret-name"
@@ -527,9 +528,10 @@ export function SecretFields({
         }}
       />
       <Button
-        variant="soft"
-        disabled={!name || !value}
-        onClick={() => {
+        variant="secondary"
+        fillStyle="outline"
+        isDisabled={!name || !value}
+        onPress={() => {
           onChange({ scope, name, value })
           onPending(false)
           setName("")
@@ -540,8 +542,9 @@ export function SecretFields({
       </Button>
       {(name || value) && (
         <Button
-          variant="soft"
-          onClick={() => {
+          variant="secondary"
+          fillStyle="outline"
+          onPress={() => {
             setName("")
             setValue("")
             onPending(false)

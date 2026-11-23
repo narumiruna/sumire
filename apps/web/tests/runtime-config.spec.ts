@@ -324,10 +324,14 @@ test("navigation, tab changes, signout and session expiry clear drafts", async (
   await navigate(page, "Secrets & variables")
   await page.getByRole("button", { name: "Add secret", exact: true }).click()
   await expect(page.getByLabel("Runtime secret value")).toHaveValue("")
-  await page.getByLabel("Runtime secret value").fill("tab-secret")
+  await page.getByLabel("Runtime secret value").fill("discarded-runtime-value-sentinel")
   page.once("dialog", (dialog) => dialog.accept())
   await page.getByRole("tab", { name: "Variables", exact: true }).click()
-  await noLeak(page, "tab-secret")
+  await expect(page.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await noLeak(page, "discarded-runtime-value-sentinel")
   await page.getByRole("tab", { name: "Secrets", exact: true }).click()
   await add(page, "secret", "TOKEN", "signout-secret")
   await page.getByRole("button", { name: "Account", exact: true }).click()

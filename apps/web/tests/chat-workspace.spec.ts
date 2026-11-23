@@ -276,7 +276,7 @@ for (const width of [1440, 851, 850, 390, 320]) {
       page.getByRole("button", { name: /^Previous(?: chats)?$/, exact: true }),
     ).toBeDisabled()
     await expect(rows.first().locator("strong")).toHaveAttribute("title", longName.trim())
-    expect(await rows.first().evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2")
+    await expect(rows.first().locator("strong")).toHaveCSS("-webkit-line-clamp", "2")
     await expect(page.locator(".chat-directory")).toHaveCSS("position", "static")
     await expect(page.locator(".chat-directory")).toHaveCSS("max-height", "none")
     await expect(list).toHaveCSS("overflow-y", "visible")

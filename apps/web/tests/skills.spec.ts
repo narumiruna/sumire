@@ -165,9 +165,13 @@ for (const width of [1440, 390]) {
     const state = await setup(page)
     const missing = page.getByRole("region", { name: "Skill missing", exact: true })
     await expect(missing.getByText("Not loaded", { exact: true })).toBeVisible()
-    await missing
-      .getByRole("checkbox", { name: "Globally enable skill missing", exact: true })
-      .uncheck()
+    const global = missing.getByRole("checkbox", {
+      name: "Globally enable skill missing",
+      exact: true,
+    })
+    await expect(global).toBeChecked()
+    await global.press("Space")
+    await expect(global).not.toBeChecked()
     await expect(
       missing.getByText(
         "Clear retained default and chat selections, or restore global availability before saving.",
@@ -185,9 +189,13 @@ for (const width of [1440, 390]) {
       page.getByRole("alert").filter({ hasText: "selection exceeds global availability" }),
     ).toBeVisible()
     expect(state.saved().skills).toContain("missing")
-    await missing
-      .getByRole("checkbox", { name: "Default chat selection for skill missing", exact: true })
-      .uncheck()
+    const selected = missing.getByRole("checkbox", {
+      name: "Default chat selection for skill missing",
+      exact: true,
+    })
+    await expect(selected).toBeChecked()
+    await selected.press("Space")
+    await expect(selected).not.toBeChecked()
     await missing.getByRole("button", { name: "Chat 43", exact: true }).click()
     await expect(page.getByRole("region", { name: "Chat details", exact: true })).toBeVisible()
     await openChatConfiguration(page)

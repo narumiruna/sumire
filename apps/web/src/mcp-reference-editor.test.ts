@@ -1,5 +1,4 @@
-import { Theme } from "@radix-ui/themes"
-import { createElement } from "react"
+import { createElement, Fragment } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it } from "vitest"
 import { setLocale } from "./i18n.js"
@@ -25,8 +24,8 @@ describe("MCP editor localization", () => {
       setLocale(locale)
       const reference = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(McpReferenceEditor, {
             onAdd: () => {},
             onPending: () => {},
@@ -41,8 +40,8 @@ describe("MCP editor localization", () => {
       expect(reference).toContain("Bearer ")
       const editor = renderToStaticMarkup(
         createElement(
-          Theme,
-          {},
+          Fragment,
+          null,
           createElement(McpGuidedEditor, {
             text: JSON.stringify({ command: "fixture-command", exposure: "hidden" }),
             onChange: () => {},
