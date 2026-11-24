@@ -192,7 +192,7 @@ describe("Yahoo extended-hours quotes", () => {
     async (options) => {
       const [quote] = await queryYahooFinance(["NVDA"], fetcher(options))
       expect(quote).toMatchObject({
-        session: "regular",
+        session: "closed",
         asOf: "2026-11-20T21:00:01.000Z",
         prices: { last: 125.53, volume: 200 },
       })
@@ -216,7 +216,7 @@ describe("Yahoo extended-hours quotes", () => {
       ["NVDA"],
       fetcher({ advanceMs: 2_000, timestamps: [pre.end - 1] }),
     )
-    expect(quote?.session).toBe("regular")
+    expect(quote?.session).toBe("closed")
     expect(quote?.notice).toContain("資料暫不可用")
   })
 
@@ -234,7 +234,7 @@ describe("Yahoo extended-hours quotes", () => {
       const request = fetcher()
       const [quote] = await queryYahooFinance(["NVDA"], request)
       expect(request).toHaveBeenCalledOnce()
-      expect(quote?.session).toBe("regular")
+      expect(quote?.session).toBe(now === "2026-11-23T14:30:00Z" ? "regular" : "closed")
       expect(quote?.prices.last).toBe(125.53)
     },
   )
@@ -273,6 +273,80 @@ describe("Yahoo extended-hours quotes", () => {
     expect(result).toContain("查詢時間：2026-11-23 22:15（台灣）")
     expect(result).not.toContain("行情時間")
     expect(result).toContain("非保證即時行情")
-    expect(result).not.toContain("| 144.00 | 146.00 | 124.00 | 200 |")
+    expect(result).toContain("一般交易時段：")
+    expect(result).toContain("| 144.00 | 146.00 | 124.00 | 200 |")
+  })
+})
+
+describe("session-aware details", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-11-23T14:15:50Z"))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it("separates premarket prices from dated regular-session statistics", async () => {
+    const result = await queryMarketData("NVDA", {
+      fetchImplementation: fetcher({ meta: { exchangeTimezoneName: "America/New_York" } }),
+    })
+    expect(result).toContain("今日一般交易尚未開盤")
+    expect(result).toContain("漲跌基準：最近一般交易收盤價 125.53")
+    expect(result).toContain("報價時間：2026-11-23 09:15:49（America/New\\_York）")
+    expect(result).toContain("一般交易資料時間：2026-11-20 16:00:01")
+    // The fixture's daily candles are from 1970, so they cannot qualify as Friday's data.
+    expect(result).toContain("一般交易開高低量：未提供")
+    expect(result).not.toContain("| 標的 | 開盤")
+    expect(result).not.toContain("| — | — | — | — |")
+  })
+
+  it("explicitly labels a failed premarket fetch without hiding the regular quote date", async () => {
+    const result = await queryMarketData("NVDA", { fetchImplementation: fetcher({ status: 503 }) })
+    expect(result).toContain("| **NVDA** 已收盤 | **125.53**")
+    expect(result).toContain("盤前報價暫無資料；以下為最近一般交易報價")
+    expect(result).toContain("2026-11-20")
+    expect(result).not.toContain("| **NVDA** 盤前 |")
+  })
+
+  it.each([
+    ["2026-11-23T15:00:00Z", "交易中"],
+    ["2026-11-24T01:00:00Z", "已收盤"],
+    ["2026-11-28T15:00:00Z", "已收盤"],
+  ])("uses provider boundaries and dates at %s", async (now, label) => {
+    vi.setSystemTime(new Date(now))
+    const request = fetcher()
+    const result = await queryMarketData("NVDA", { fetchImplementation: request })
+    expect(result).toContain(`| **NVDA** ${label} |`)
+    expect(result).toContain("一般交易資料時間：2026-11-20")
+    expect(request).toHaveBeenCalledOnce()
+    expect(result).not.toContain("下次開盤")
+  })
+
+  it("does not guess a session without valid provider boundaries", async () => {
+    const result = await queryMarketData("NVDA", {
+      fetchImplementation: fetcher({ meta: { currentTradingPeriod: {} } }),
+    })
+    expect(result).toContain("時段未確認")
+    expect(result).not.toContain("交易中")
+  })
+
+  it("respects early closing boundaries instead of hardcoded market hours", async () => {
+    vi.setSystemTime(new Date("2026-11-23T19:00:00Z"))
+    const end = seconds("2026-11-23T18:00:00Z")
+    const [quote] = await queryYahooFinance(
+      ["NVDA"],
+      fetcher({
+        meta: {
+          regularMarketTime: end,
+          currentTradingPeriod: {
+            regular: { ...regular, end },
+            post: { start: end, end: post.end },
+          },
+        },
+        timestamps: [seconds("2026-11-23T18:59:59Z")],
+      }),
+    )
+    expect(quote?.session).toBe("post")
+    expect(quote?.prices.changeFrom).toBe(125.53)
+    expect(quote?.regular?.prices.last).toBe(125.53)
   })
 })

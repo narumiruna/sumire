@@ -39,29 +39,44 @@ async function queryYahooSymbol(
       )
   // Keep every field on the same candle, including missing or short arrays.
   const latestIndex = candleCount - 1
-  const last = finiteNumber(meta.regularMarketPrice) ?? numberAt(quote?.close, latestIndex)
+  const regularPrice = finiteNumber(meta.regularMarketPrice)
+  const last = regularPrice ?? numberAt(quote?.close, latestIndex)
   if (last === undefined) return undefined
 
   const resolvedSymbol = text(meta.symbol) ?? symbol
   const name = text(meta.shortName) ?? text(meta.longName) ?? resolvedSymbol
   const currency = text(meta.currency)
+  const timezone = text(meta.exchangeTimezoneName)
+  const regularTime = finiteNumber(meta.regularMarketTime)
+  const candleTime = numberAt(result?.timestamp, latestIndex)
+  // A daily candle may still belong to yesterday while the live quote has rolled over.
+  const candleDateOrder =
+    timezone && regularTime !== undefined && candleTime !== undefined
+      ? compareTradingDates(candleTime, regularTime, timezone)
+      : undefined
+  const aligned = !timezone || candleDateOrder === 0
+  // A daily-close fallback must compare against its own preceding candle.
+  // Only a newer metadata price can use the latest daily close as its baseline.
+  const previousCloseIndex =
+    regularPrice === undefined || aligned
+      ? latestIndex - 1
+      : candleDateOrder === -1
+        ? latestIndex
+        : -1
   const prices: QuotePrices = {
     changeFrom:
-      numberAt(quote?.close, latestIndex - 1) ??
+      numberAt(quote?.close, previousCloseIndex) ??
       finiteNumber(meta.previousClose) ??
       finiteNumber(meta.chartPreviousClose),
     currency,
-    high: numberAt(quote?.high, latestIndex),
+    high: aligned ? numberAt(quote?.high, latestIndex) : undefined,
     last,
-    low: numberAt(quote?.low, latestIndex),
+    low: aligned ? numberAt(quote?.low, latestIndex) : undefined,
     maximumFractionDigits: pricePrecision(meta.priceHint),
-    open: numberAt(quote?.open, latestIndex),
-    volume: numberAt(quote?.volume, latestIndex),
+    open: aligned ? numberAt(quote?.open, latestIndex) : undefined,
+    volume: aligned ? numberAt(quote?.volume, latestIndex) : undefined,
   }
-  const asOf =
-    finiteNumber(meta.regularMarketPrice) !== undefined
-      ? yahooQuoteTime(meta.regularMarketTime)
-      : undefined
+  const asOf = regularPrice !== undefined ? yahooQuoteTime(meta.regularMarketTime) : undefined
   return withYahooExtendedHours(
     {
       name,
@@ -88,4 +103,20 @@ function numberAt(value: unknown, index: number): number | undefined {
 function pricePrecision(value: unknown): number {
   const precision = finiteNumber(value)
   return precision === undefined ? 2 : Math.max(0, Math.min(8, Math.trunc(precision)))
+}
+
+function compareTradingDates(left: number, right: number, timezone: string): number | undefined {
+  try {
+    const format = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    const leftDate = format.format(new Date(left * 1_000))
+    const rightDate = format.format(new Date(right * 1_000))
+    return leftDate === rightDate ? 0 : leftDate < rightDate ? -1 : 1
+  } catch {
+    return undefined
+  }
 }
