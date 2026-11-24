@@ -57,7 +57,7 @@ The channel exposes no shell, file, MCP, or publication tools. Its model receive
 
 Allowed source bodies and titles are untrusted user data, not system instructions or host authorization. The selected model receives this data, and durable storage retains it. A generated reply is published in the source repository. Removing a username cannot erase posted comments, transcripts, backups, or copies.
 
-The allowlist is not an OS sandbox. Chats with `bash` permission can independently use/read the shared `GH_TOKEN`, and trusted host tools can read local storage. Do not grant host capabilities to untrusted users.
+The allowlist is not an OS sandbox. Chats with `bash` permission can independently use the shared GitHub account through [Gondolin's credential proxy](../../docs/gondolin-sandbox.md); their environment contains placeholders, not the real `GH_TOKEN`. Trusted host tools can still read local storage. Do not grant host capabilities to untrusted users.
 
 Back up the admin database, encryption key, and GitHub state before deployment. Downgrade only with the matching pre-v5 database backup. No new deployment environment variable or GitHub Actions secret/variable is required.
 

@@ -85,7 +85,7 @@ flowchart TD
 - The factory creates chat-specific registries, permission guards, and MCP connections. Recovery must apply current authorization and capability identity before executing stored work.
 - One active Harness owns each logical storage. Creation, inspection, recovery eviction, reset, and shutdown must coordinate through the existing session registry. Close the old owner before acquiring its replacement. SQLite transaction locks are not Pi scheduler coordination.
 - Ordinary shutdown preserves admitted work in every conversation. `/cancel` withdraws all target-chat work, including main, branches, articles, pending inputs, and article source loads; `/reset` also removes that chat's stored state and reply index. Neither command affects a peer chat. Global administration invalidation still cancels cached work across chats.
-- Separate databases do not isolate process memory, the tool filesystem, credentials, or host failures. Do not run multiple bot replicas against the same state directory.
+- Separate databases do not themselves isolate process memory, credentials, or host failures. Coding tools now use the separate [Gondolin boundary](../../../../../docs/gondolin-sandbox.md); host capabilities and MCP remain trusted. Do not run multiple bot replicas against the same state directory.
 
 ### Reasons and Alternatives
 

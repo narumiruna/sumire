@@ -8,7 +8,6 @@ import { AdminStore } from "../src/admin/store.js"
 import type { DurableSession } from "../src/agent/durable/session.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { ChatSessionRegistry } from "../src/agent/session-registry.js"
-import { callDurableTool } from "./helpers/durable-session.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
 const cleanups: (() => Promise<void>)[] = []
@@ -166,7 +165,7 @@ it.each([256, 257])("keeps startup available with a %i-character skill name", as
   }
 })
 
-it("uses default and per-chat skill selections without changing tool permissions or file access", async () => {
+it("uses per-chat guest skill paths without changing tool permissions", async () => {
   const { fixture, factory, create, save } = await setup()
   expect(factory.skills).toEqual(
     expect.arrayContaining([
@@ -200,11 +199,11 @@ it("uses default and per-chat skill selections without changing tool permissions
   expect(selectedSession.systemPrompt).toContain("<addendum>")
   expect(selectedSession.systemPrompt).not.toContain("- bash:")
   expect(emptySession.systemPrompt).toContain("- bash:")
-  const result = await callDurableTool(selectedSession, "read", {
-    path: path.join(fixture.settings.botSkillsDir, "alpha/SKILL.md"),
-  })
-  expect(result.isError).not.toBe(true)
-  expect(JSON.stringify(result.content)).toContain("Private alpha instructions.")
+  expect(selectedSession.systemPrompt).toContain("/skills/beta/SKILL.md")
+  expect(selectedSession.systemPrompt).not.toContain(fixture.settings.botSkillsDir)
+  expect(selectedSession.cwd).toBe("/workspace")
+  // Actual read dispatch and mount confinement are tested in gondolin.test.ts.
+  // Skill selection no longer grants access to arbitrary host skill paths.
   for (const session of [defaultSession, selectedSession, emptySession]) {
     fixture.enqueueAnswer()
     await session.prompt("Report the visible skills.")

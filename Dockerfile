@@ -150,6 +150,15 @@ COPY --from=admin-build /build/apps/web/dist /app/apps/web/dist
 # Import without credentials or network access; do not start the bot.
 RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist/startup.js')"
 
+# Build the guest independently from bot source; no host credentials enter its rootfs.
+FROM dependencies AS gondolin-image
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates cpio lz4 e2fsprogs
+COPY apps/bot/resources/gondolin/ apps/bot/resources/gondolin/
+RUN case "$TARGETARCH" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) exit 1 ;; esac \
+    && node node_modules/@earendil-works/gondolin/dist/bin/gondolin.js build \
+      --arch "$arch" --config apps/bot/resources/gondolin/image.json --output /gondolin-guest
+
 FROM node:26-bookworm-slim AS audio-dependencies
 
 ARG TARGETARCH
@@ -179,7 +188,8 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean
 RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git gh openssh-client python3 ffmpeg libcurl4
+    && case "$TARGETARCH" in amd64) qemu=qemu-system-x86 ;; arm64) qemu=qemu-system-arm ;; *) exit 1 ;; esac \
+    && apt-get install -y --no-install-recommends ca-certificates git gh openssh-client python3 ffmpeg libcurl4 qemu-utils ipxe-qemu "$qemu"
 
 # Resolve OS dependencies with the exact same locked CLI as the browser download.
 RUN --mount=type=bind,from=dependencies,source=/build/node_modules,target=/build/node_modules \
@@ -195,6 +205,7 @@ ENV IMPER_DOWNLOAD_LIBCURL=0
 ENV LIBCURL_PATH=/opt/curl-impersonate/libcurl-impersonate.so
 
 COPY --from=curl-impersonate /opt/curl-impersonate /opt/curl-impersonate
+COPY --from=gondolin-image /gondolin-guest /opt/gondolin/guest
 
 WORKDIR /workdir
 

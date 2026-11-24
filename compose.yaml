@@ -9,6 +9,7 @@ services:
     environment:
       ADMIN_HOST: 0.0.0.0
       ADMIN_PORT: "17465"
+      BOT_SANDBOX_IMAGE: ${BOT_SANDBOX_IMAGE:-/opt/gondolin/guest}
     ports:
       - "127.0.0.1:17465:17465"
     healthcheck:
@@ -36,6 +37,7 @@ services:
       # Retain the old cache for matching-image rollback; ONNX weights use a new volume.
       - whisper-cache:/app/.cache/whisper
       - transformers-cache:/app/.cache/transformers
+      - gondolin-cache:/app/.cache/gondolin
 
 volumes:
   workdir:
@@ -43,3 +45,4 @@ volumes:
   state:
   whisper-cache:
   transformers-cache:
+  gondolin-cache:

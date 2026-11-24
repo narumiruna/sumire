@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node /opt/otter/dist/otter.cjs "$@"
