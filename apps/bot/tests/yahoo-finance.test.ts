@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
+import { formatMarketResults } from "../src/market-data/format.js"
 import type { MarketFetch } from "../src/market-data/http.js"
 import { queryYahooFinance } from "../src/market-data/yahoo-finance.js"
 
 function quoteFetcher(
   quote: Record<string, unknown>,
   meta: Record<string, unknown> = { regularMarketPrice: 110 },
-  withTimestamps = true,
+  timestamps: boolean | readonly number[] = true,
 ): MarketFetch {
   return async () =>
     Response.json({
@@ -13,7 +14,7 @@ function quoteFetcher(
         result: [
           {
             meta: { symbol: "TEST", ...meta },
-            ...(withTimestamps ? { timestamp: [1, 2, 3] } : {}),
+            ...(timestamps ? { timestamp: timestamps === true ? [1, 2, 3] : timestamps } : {}),
             indicators: { quote: [quote] },
           },
         ],
@@ -115,6 +116,86 @@ describe("Yahoo candle alignment", () => {
     expect(results[0]?.prices.open).toBe(101)
     expect(results[0]?.prices.volume).toBe(0)
   })
+})
+
+describe("Yahoo previous-close baseline date alignment", () => {
+  const timestamp = (date: string) => Date.parse(date) / 1_000
+  const dailyTimes = ["2026-11-19T14:30:00Z", "2026-11-20T14:30:00Z"].map(timestamp)
+  const meta = {
+    regularMarketPrice: 110,
+    regularMarketTime: timestamp("2026-11-23T15:00:00Z"),
+    exchangeTimezoneName: "America/New_York",
+    previousClose: 100,
+    chartPreviousClose: 90,
+  }
+
+  it.each([undefined, 90])(
+    "prefers the stale daily close over metadata (previousClose: %s)",
+    async (previousClose) => {
+      const results = await queryYahooFinance(
+        ["TEST"],
+        quoteFetcher({ close: [90, 100] }, { ...meta, previousClose }, dailyTimes),
+      )
+
+      expect(results[0]?.prices.changeFrom).toBe(100)
+      expect(results[0]?.regular?.prices.changeFrom).toBe(100)
+      const formatted = formatMarketResults(results)
+      expect(formatted).toContain("+10.00%")
+      expect(formatted).not.toContain("+22.22%")
+      expect(formatted).toContain("前一交易日收盤價 100.00")
+    },
+  )
+
+  it("uses the preceding candle when the latest candle matches the quote date", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      quoteFetcher({ close: [90, 100, 110] }, { ...meta, previousClose: 80 }, [
+        ...dailyTimes,
+        timestamp("2026-11-23T14:30:00Z"),
+      ]),
+    )
+
+    expect(quote?.prices.changeFrom).toBe(100)
+  })
+
+  it("does not mistake a UTC date rollover for a new exchange trading date", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      quoteFetcher(
+        { close: [100, 110] },
+        { ...meta, regularMarketTime: timestamp("2026-11-24T00:30:00Z") },
+        [timestamp("2026-11-20T14:30:00Z"), timestamp("2026-11-23T23:30:00Z")],
+      ),
+    )
+
+    expect(quote?.prices.changeFrom).toBe(100)
+  })
+
+  it.each([
+    { name: "invalid timezone", overrides: { exchangeTimezoneName: "invalid" }, times: dailyTimes },
+    { name: "missing quote time", overrides: { regularMarketTime: undefined }, times: dailyTimes },
+    { name: "missing candle time", overrides: {}, times: [] },
+    { name: "future candle date", overrides: {}, times: [timestamp("2026-11-24T14:30:00Z")] },
+  ])("keeps the metadata baseline for $name", async ({ overrides, times }) => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      quoteFetcher({ close: [200, 200] }, { ...meta, ...overrides }, times),
+    )
+
+    expect(quote?.prices.changeFrom).toBe(100)
+  })
+
+  it.each([100, undefined])(
+    "retains metadata fallbacks if the stale close is missing (previousClose: %s)",
+    async (previousClose) => {
+      const [quote] = await queryYahooFinance(
+        ["TEST"],
+        quoteFetcher({ close: [80, null] }, { ...meta, previousClose }, dailyTimes),
+      )
+
+      expect(quote?.prices.changeFrom).toBe(previousClose ?? 90)
+    },
+  )
 })
 
 describe("Yahoo daily statistics date alignment", () => {

@@ -49,13 +49,16 @@ async function queryYahooSymbol(
   const regularTime = finiteNumber(meta.regularMarketTime)
   const candleTime = numberAt(result?.timestamp, latestIndex)
   // A daily candle may still belong to yesterday while the live quote has rolled over.
-  const aligned =
-    !timezone || regularTime === undefined || candleTime === undefined
-      ? !timezone
-      : sameTradingDate(regularTime, candleTime, timezone)
+  const candleDateOrder =
+    timezone && regularTime !== undefined && candleTime !== undefined
+      ? compareTradingDates(candleTime, regularTime, timezone)
+      : undefined
+  const aligned = !timezone || candleDateOrder === 0
+  // Only a confirmed earlier trading date can supply the latest regular close.
+  const previousCloseIndex = aligned ? latestIndex - 1 : candleDateOrder === -1 ? latestIndex : -1
   const prices: QuotePrices = {
     changeFrom:
-      (aligned ? numberAt(quote?.close, latestIndex - 1) : undefined) ??
+      numberAt(quote?.close, previousCloseIndex) ??
       finiteNumber(meta.previousClose) ??
       finiteNumber(meta.chartPreviousClose),
     currency,
@@ -98,7 +101,7 @@ function pricePrecision(value: unknown): number {
   return precision === undefined ? 2 : Math.max(0, Math.min(8, Math.trunc(precision)))
 }
 
-function sameTradingDate(left: number, right: number, timezone: string): boolean {
+function compareTradingDates(left: number, right: number, timezone: string): number | undefined {
   try {
     const format = new Intl.DateTimeFormat("sv-SE", {
       timeZone: timezone,
@@ -106,8 +109,10 @@ function sameTradingDate(left: number, right: number, timezone: string): boolean
       month: "2-digit",
       day: "2-digit",
     })
-    return format.format(new Date(left * 1_000)) === format.format(new Date(right * 1_000))
+    const leftDate = format.format(new Date(left * 1_000))
+    const rightDate = format.format(new Date(right * 1_000))
+    return leftDate === rightDate ? 0 : leftDate < rightDate ? -1 : 1
   } catch {
-    return false
+    return undefined
   }
 }
