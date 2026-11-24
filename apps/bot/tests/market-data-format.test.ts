@@ -19,7 +19,7 @@ const quote: MarketQuote = {
     volume: 239424,
   },
 }
-const disclosure = "<details><summary>查看完整名稱與詳細報價</summary>"
+const disclosure = "<details><summary>詳細報價</summary>"
 
 describe("market quote tables", () => {
   it("puts the source first and preserves summary plus a collapsed detail table", () => {
@@ -30,6 +30,8 @@ describe("market quote tables", () => {
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **0050** | **97.78** | **-2.81%** |",
+        "",
+        "⚠ 報價可能延遲",
         "",
         disclosure,
         "",
@@ -104,11 +106,11 @@ describe("market quote tables", () => {
       { ...quote, source: "Yahoo Finance" },
       { ...quote, prices: { ...quote.prices, currency: "USD" } },
     ])
-    for (const source of ["**TWSE｜TWD**", "**Yahoo Finance｜TWD**", "**TWSE｜USD**"]) {
+    for (const source of ["**TWSE｜TWD**", "**Yahoo｜TWD**", "**TWSE｜USD**"]) {
       expect(result).toContain(`${source}\n\n| 標的 | 現價 | 漲跌 |`)
     }
-    expect(result.match(/<details>/gu)).toHaveLength(3)
-    expect(result.match(/<\/details>/gu)).toHaveLength(3)
+    expect(result.match(/<details>/gu)).toHaveLength(1)
+    expect(result.match(/<\/details>/gu)).toHaveLength(1)
   })
 
   it.each([
@@ -278,11 +280,13 @@ describe("market quote tables", () => {
     }
     expect(formatMarketResults([minimal])).toBe(
       [
-        "**Yahoo Finance｜未提供**",
+        "**Yahoo｜未提供**",
         "",
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **TEST** | **1.00** | — |",
+        "",
+        "⚠ 報價可能延遲",
       ].join("\n"),
     )
     expect(
@@ -290,32 +294,30 @@ describe("market quote tables", () => {
     ).not.toContain("<details>")
   })
 
-  it("keeps sessions and quote times visible without widening the mobile summary", () => {
+  it("puts sessions next to symbols and hides notices without displaying provider timestamps", () => {
     const result = formatMarketResults([
-      {
-        ...quote,
-        session: "post",
-        asOf: "2026-11-23T21:59:59Z",
-        notice: "可能延遲",
-      },
+      { ...quote, session: "post", asOf: "2026-11-23T21:59:59Z", notice: "可能延遲" },
       { ...quote, symbol: "OTHER", session: "regular", asOf: "invalid" },
     ])
-    const visible = result.split(disclosure)[0] ?? ""
-    expect(visible).toContain("| 標的 | 現價 | 漲跌 |")
-    expect(visible).toContain("0050：盤後｜行情時間（台灣）：2026-11-24 05:59:59")
-    expect(visible).toContain("OTHER：一般交易／收盤｜行情時間（台灣）：—")
-    expect(visible).toContain("0050：可能延遲")
+    const [visible, hidden] = result.split(disclosure)
+    expect(visible).toContain("| **0050** 盤後 | **97.78** | **-2.81%** |")
+    expect(visible).toContain("| **OTHER** 一般／收盤 |")
+    expect(visible).toContain("⚠ 報價可能延遲")
+    expect(hidden).toContain("0050：可能延遲")
+    expect(result).not.toContain("行情時間")
+    expect(result).not.toContain("2026-11-23")
+    expect(result).not.toContain("invalid")
   })
 
-  it("escapes quote notices and handles an unavailable session or timestamp", () => {
+  it("escapes quote notices and preserves session-only information", () => {
     const result = formatMarketResults([
       { ...quote, notice: "</details>|[x]", asOf: "2026-11-23T14:15:00Z" },
       { ...quote, symbol: "OTHER", session: "pre" },
     ])
-    expect(result).toContain("0050：—｜行情時間（台灣）：2026-11-23 22:15:00")
-    expect(result).toContain("OTHER：盤前｜行情時間（台灣）：—")
+    expect(result).toContain("| **OTHER** 盤前 |")
     expect(result).toContain("0050：\\</details\\>\\|\\[x\\]")
     expect(result.match(/<\/details>/gu)).toHaveLength(1)
+    expect(result).not.toContain("行情時間")
   })
 
   it("puts escaped currency source metadata before the pair and table", () => {
@@ -343,7 +345,8 @@ describe("market quote tables", () => {
       source: "Frankfurter v2",
     })
     const result = formatMarketResults([quote, currency])
-    expect(result).toContain(`</details>\n\n${currency}`)
+    expect(result.split(disclosure)[0]).toContain(currency)
+    expect(result.split(disclosure)[1]).not.toContain(currency)
     expect(currency).not.toContain("<details>")
   })
 

@@ -173,7 +173,7 @@ describe("market-data query", () => {
     expect(result).toContain("| 即期中價 | 31.8 TWD |")
     expect(result.match(/\| 項目 \| 數值 \|/gu)).toHaveLength(2)
     expect(result.match(/\| 標的 \| 現價 \|/gu)).toHaveLength(3)
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(result).toContain("TWSE")
     expect(result).toContain("MAX Exchange")
     expect(result).toContain("Frankfurter v2｜TWD")
@@ -181,8 +181,8 @@ describe("market-data query", () => {
     expect(result).toContain("| 現鈔買入 | 31.5 TWD |")
     expect(result).toContain("| 現鈔賣出 | 32.1 TWD |")
     expect(result).toContain("| 資料時間 |")
-    for (const source of ["Yahoo Finance", "TWSE", "MAX Exchange", "Frankfurter v2", "台灣銀行"]) {
-      expect(result.split(source)).toHaveLength(2)
+    for (const source of ["Yahoo", "TWSE", "MAX Exchange", "Frankfurter v2", "台灣銀行"]) {
+      expect(result.split("<details>")[0]?.split(source)).toHaveLength(2)
     }
     expect(result.match(/💱 USD\/TWD/gu)).toHaveLength(2)
     expect(rateFetcher).toHaveBeenCalledOnce()

@@ -83,7 +83,7 @@ describe("MAX catalogue outages", () => {
     const result = await queryMarketData("GBTC", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(
       fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
     ).toEqual(["/api/v3/markets", "/v8/finance/chart/GBTC"])
@@ -97,7 +97,7 @@ describe("MAX catalogue outages", () => {
     const result = await queryMarketData("EMPTYUSDT GBTC FAILEDUSDT", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result.match(/Yahoo Finance/gu)).toHaveLength(1)
+    expect(result.match(/Yahoo/gu)).toHaveLength(1)
     expect(result).not.toContain("MAX Exchange")
     expect(fetchImplementation).toHaveBeenCalledTimes(4)
   })
@@ -141,7 +141,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("GBTC", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(fetchImplementation).toHaveBeenCalledTimes(2)
   })
 
@@ -150,7 +150,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("LTC-BTC", { fetchImplementation })
 
     expect(result).toContain("LTC-BTC")
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(
       fetchImplementation.mock.calls.map(([input]) => new URL(String(input)).pathname),
     ).toEqual(["/api/v3/markets", "/v8/finance/chart/LTC-BTC"])
@@ -161,7 +161,7 @@ describe("MAX candidate routing", () => {
     const result = await queryMarketData("GBTC BTCUSDT", { fetchImplementation })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(result).toContain("**BTC/USDT**")
     expect(fetchImplementation).toHaveBeenCalledTimes(3)
   })
@@ -210,7 +210,7 @@ describe("MAX candidate routing", () => {
     })
 
     expect(result).toContain("GBTC")
-    expect(result).toContain("Yahoo Finance")
+    expect(result).toContain("Yahoo")
     expect(result).not.toContain("MAX Exchange")
   })
 
@@ -220,7 +220,7 @@ describe("MAX candidate routing", () => {
     })
 
     expect(result).toContain("**BTC/USDT**")
-    expect(result).not.toContain("Yahoo Finance")
+    expect(result).not.toContain("Yahoo")
   })
 
   it.each(["EMPTY FAILED", "NOTAREALUSDT ETHUSDT"])(

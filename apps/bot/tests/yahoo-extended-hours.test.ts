@@ -140,8 +140,8 @@ describe("Yahoo extended-hours quotes", () => {
         closes: [127],
       }),
     })
-    expect(result).toContain("| **NVDA** | **127.00** | — |")
-    expect(result).toContain("NVDA：盤後｜行情時間（台灣）：2026-11-24 05:59:59")
+    expect(result).toContain("| **NVDA** 盤後 | **127.00** | — |")
+    expect(result).toContain("查詢時間：2026-11-24 06:00（台灣）")
     expect(result).not.toContain("+1.60%")
   })
 
@@ -266,11 +266,12 @@ describe("Yahoo extended-hours quotes", () => {
     expect(quote?.asOf).toBe("2026-07-20T12:15:49.000Z")
   })
 
-  it("renders /t NVDA with a visible session, actual Taiwan timestamp and delay disclosure", async () => {
+  it("renders /t NVDA with an inline session, query time and delay disclosure", async () => {
     const result = await queryMarketData("NVDA", { fetchImplementation: fetcher() })
-    expect(result).toContain("**Yahoo Finance｜USD**")
-    expect(result).toContain("| **NVDA** | **161.76** | **+28.86%** |")
-    expect(result).toContain("NVDA：盤前｜行情時間（台灣）：2026-11-23 22:15:49")
+    expect(result).toContain("**Yahoo｜USD**")
+    expect(result).toContain("| **NVDA** 盤前 | **161.76** | **+28.86%** |")
+    expect(result).toContain("查詢時間：2026-11-23 22:15（台灣）")
+    expect(result).not.toContain("行情時間")
     expect(result).toContain("非保證即時行情")
     expect(result).not.toContain("| 144.00 | 146.00 | 124.00 | 200 |")
   })
