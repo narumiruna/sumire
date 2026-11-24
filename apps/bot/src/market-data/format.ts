@@ -56,6 +56,9 @@ export interface MarketQuote {
   symbol: string
   source: string
   prices: QuotePrices
+  session?: "pre" | "regular" | "post"
+  asOf?: string
+  notice?: string
 }
 
 // Keep source comfortably below Telegram's native rich-message limit.
@@ -202,10 +205,46 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
     "| 標的 | 現價 | 漲跌 |",
     "| --- | ---: | ---: |",
     ...rendered.map((quote) => quote.row),
+    ...quotes.flatMap((quote) =>
+      quote.session !== undefined || quote.asOf !== undefined
+        ? [
+            "",
+            `${escapeMarkdownText(quote.symbol)}：${sessionText(quote.session)}｜行情時間（台灣）：${quoteTime(quote.asOf)}`,
+          ]
+        : [],
+    ),
+    ...quotes.flatMap((quote) =>
+      quote.notice
+        ? ["", `${escapeMarkdownText(quote.symbol)}：${escapeMarkdownText(quote.notice)}`]
+        : [],
+    ),
     ...(details
       ? ["", "<details><summary>查看完整名稱與詳細報價</summary>", "", details, "", "</details>"]
       : []),
   ].join("\n")
+}
+
+function sessionText(session: MarketQuote["session"]): string {
+  if (session === "pre") return "盤前"
+  if (session === "post") return "盤後"
+  if (session === "regular") return "一般交易／收盤"
+  return "—"
+}
+
+function quoteTime(value: string | undefined): string {
+  if (value === undefined) return "—"
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return "—"
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(date)
 }
 
 function changeText(values: QuotePrices): string | undefined {

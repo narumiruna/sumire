@@ -1,6 +1,7 @@
 import { collectMarketResults } from "./collect-results.js"
 import type { MarketQuote, QuotePrices } from "./format.js"
 import { finiteNumber, type MarketFetch, record, requestJson, text } from "./http.js"
+import { withYahooExtendedHours, yahooQuoteTime } from "./yahoo-extended-hours.js"
 
 export async function queryYahooFinance(
   symbols: readonly string[],
@@ -57,7 +58,27 @@ async function queryYahooSymbol(
     open: numberAt(quote?.open, latestIndex),
     volume: numberAt(quote?.volume, latestIndex),
   }
-  return { name, symbol: resolvedSymbol, source: "Yahoo Finance", prices }
+  const asOf =
+    finiteNumber(meta.regularMarketPrice) !== undefined
+      ? yahooQuoteTime(meta.regularMarketTime)
+      : undefined
+  return withYahooExtendedHours(
+    {
+      name,
+      symbol: resolvedSymbol,
+      source: "Yahoo Finance",
+      prices,
+      ...(asOf
+        ? {
+            asOf,
+            session: "regular" as const,
+            notice: "Yahoo 免費來源，可能延遲，非保證即時行情。",
+          }
+        : {}),
+    },
+    meta,
+    fetchImplementation,
+  )
 }
 
 function numberAt(value: unknown, index: number): number | undefined {

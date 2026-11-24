@@ -290,6 +290,34 @@ describe("market quote tables", () => {
     ).not.toContain("<details>")
   })
 
+  it("keeps sessions and quote times visible without widening the mobile summary", () => {
+    const result = formatMarketResults([
+      {
+        ...quote,
+        session: "post",
+        asOf: "2026-11-23T21:59:59Z",
+        notice: "可能延遲",
+      },
+      { ...quote, symbol: "OTHER", session: "regular", asOf: "invalid" },
+    ])
+    const visible = result.split(disclosure)[0] ?? ""
+    expect(visible).toContain("| 標的 | 現價 | 漲跌 |")
+    expect(visible).toContain("0050：盤後｜行情時間（台灣）：2026-11-24 05:59:59")
+    expect(visible).toContain("OTHER：一般交易／收盤｜行情時間（台灣）：—")
+    expect(visible).toContain("0050：可能延遲")
+  })
+
+  it("escapes quote notices and handles an unavailable session or timestamp", () => {
+    const result = formatMarketResults([
+      { ...quote, notice: "</details>|[x]", asOf: "2026-11-23T14:15:00Z" },
+      { ...quote, symbol: "OTHER", session: "pre" },
+    ])
+    expect(result).toContain("0050：—｜行情時間（台灣）：2026-11-23 22:15:00")
+    expect(result).toContain("OTHER：盤前｜行情時間（台灣）：—")
+    expect(result).toContain("0050：\\</details\\>\\|\\[x\\]")
+    expect(result.match(/<\/details>/gu)).toHaveLength(1)
+  })
+
   it("puts escaped currency source metadata before the pair and table", () => {
     expect(
       formatMarketTable("💱 USD/TWD", [["參考中價", "31.8 TWD"]], {
