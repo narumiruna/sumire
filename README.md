@@ -129,6 +129,14 @@ Run one workspace with `--workspace`, for example:
 npm test --workspace @narumitw/sumire-url-reader
 ```
 
+## GitHub Actions dependencies
+
+All workflows use a generated [Actions lockfile](.github/workflows/actions.lock).
+Keep existing full-SHA action references and regenerate the lockfile when workflows
+or their action dependencies change. See the [update, verification, and platform
+support guide](docs/actions-lockfile.md). CI verifies coverage and provenance;
+repository-level enforcement settings still require an administrator.
+
 ## Pull request reviews
 
 The Pi-based PR Review workflow was removed in [#285](https://github.com/narumiruna/sumire/pull/285). Its workflow-specific tests and CI path filters are retired. See the [retirement and credential note](docs/review-workflow.md).
