@@ -52,14 +52,16 @@ export async function queryMarketData(
   input: string,
   dependencies: MarketDataDependencies = {},
 ): Promise<string> {
-  return formatMarketResults(await collectMarketData(input, dependencies))
+  const queriedAt = new Date()
+  return formatMarketResults(await collectMarketData(input, dependencies), queriedAt)
 }
 
 export async function queryMarketDataMessages(
   input: string,
   dependencies: MarketDataDependencies = {},
 ): Promise<string[]> {
-  return formatMarketMessages(await collectMarketData(input, dependencies))
+  const queriedAt = new Date()
+  return formatMarketMessages(await collectMarketData(input, dependencies), queriedAt)
 }
 
 async function collectMarketData(

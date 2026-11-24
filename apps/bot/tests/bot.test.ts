@@ -1733,8 +1733,9 @@ describe("Telegram bot update routing", () => {
 
     expect(calls).toHaveLength(1)
     expect(calls[0]?.method).toBe("sendRichMessage")
-    const markdown = telegramPayloadText(calls[0]?.payload)
-    expect(markdown).toBe(
+    const markdown = telegramPayloadText(calls[0]?.payload) ?? ""
+    expect(markdown).toMatch(/查詢時間：\d{4}-\d{2}-\d{2} \d{2}:\d{2}（台灣）/u)
+    expect(markdown.replace(/查詢時間：[^\n]+/u, "查詢時間：QUERY_TIME（台灣）")).toBe(
       [
         "**TWSE｜TWD**",
         "",
@@ -1743,7 +1744,11 @@ describe("Telegram bot update routing", () => {
         "| **0050** | **97.78** | **-2.81%** |",
         "| **2330** | **2,242.50** | **-2.29%** |",
         "",
-        "<details><summary>查看完整名稱與詳細報價</summary>",
+        "查詢時間：QUERY_TIME（台灣）",
+        "",
+        "⚠ 報價可能延遲",
+        "",
+        "<details><summary>詳細報價</summary>",
         "",
         "| 標的 | 開盤 | 最高 | 最低 | 成交量 |",
         "| --- | ---: | ---: | ---: | ---: |",

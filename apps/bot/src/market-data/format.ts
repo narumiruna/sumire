@@ -73,18 +73,34 @@ export class MarketDataOutputError extends Error {
   }
 }
 
-export function formatMarketResults(results: readonly (MarketQuote | string)[]): string {
-  return groupMarketResults(results)
-    .map((item) => (typeof item === "string" ? item : formatQuoteTable(item)))
-    .join("\n\n")
+interface MarketSection {
+  summary: string
+  details?: string
+  heading?: string
+  quotes: number
 }
 
-/** Batch structured quotes before formatting; never cut Markdown or disclosure tags. */
-export function formatMarketMessages(results: readonly (MarketQuote | string)[]): string[] {
-  const parts: Array<{ text: string; quotes: number }> = []
+export function formatMarketResults(
+  results: readonly (MarketQuote | string)[],
+  queriedAt?: Date,
+): string {
+  return renderMessage(
+    groupMarketResults(results).map((group) =>
+      typeof group === "string" ? { summary: group, quotes: 0 } : formatQuoteSection(group),
+    ),
+    queriedAt,
+  )
+}
+
+/** Measure complete messages, including the shared disclosure and query footer. */
+export function formatMarketMessages(
+  results: readonly (MarketQuote | string)[],
+  queriedAt?: Date,
+): string[] {
+  const parts: MarketSection[] = []
   for (const group of groupMarketResults(results)) {
     if (typeof group === "string") {
-      parts.push({ text: group, quotes: 0 })
+      parts.push({ summary: group, quotes: 0 })
       continue
     }
     let batch: MarketQuote[] = []
@@ -93,41 +109,59 @@ export function formatMarketMessages(results: readonly (MarketQuote | string)[])
       if (
         batch.length &&
         (candidate.length > maxQuotesPerMessage ||
-          Array.from(formatQuoteTable(candidate)).length > maxMarketMessageChars)
+          messageLength([formatQuoteSection(candidate)], queriedAt) > maxMarketMessageChars)
       ) {
-        parts.push({ text: formatQuoteTable(batch), quotes: batch.length })
+        parts.push(formatQuoteSection(batch))
         batch = []
       }
       batch.push(quote)
     }
-    if (batch.length) parts.push({ text: formatQuoteTable(batch), quotes: batch.length })
+    if (batch.length) parts.push(formatQuoteSection(batch))
   }
   const messages: string[] = []
-  let current = ""
+  let current: MarketSection[] = []
   let quoteCount = 0
-  let sections = 0
   for (const part of parts) {
-    if (Array.from(part.text).length > maxMarketMessageChars) throw new MarketDataOutputError()
-    const combined = current ? `${current}\n\n${part.text}` : part.text
-    // Also bound table rows and source sections below the native block budget.
+    if (messageLength([part], queriedAt) > maxMarketMessageChars) throw new MarketDataOutputError()
+    const candidate = [...current, part]
+    // Bound native table rows and sections as well as the complete Unicode source.
     if (
-      current &&
-      (Array.from(combined).length > maxMarketMessageChars ||
+      current.length &&
+      (messageLength(candidate, queriedAt) > maxMarketMessageChars ||
         quoteCount + part.quotes > maxQuotesPerMessage ||
-        sections === maxSectionsPerMessage)
+        current.length === maxSectionsPerMessage)
     ) {
-      messages.push(current)
-      current = ""
+      messages.push(renderMessage(current, queriedAt))
+      current = []
       quoteCount = 0
-      sections = 0
     }
-    current = current ? `${current}\n\n${part.text}` : part.text
+    current.push(part)
     quoteCount += part.quotes
-    sections++
   }
-  if (current) messages.push(current)
+  if (current.length) messages.push(renderMessage(current, queriedAt))
   if (messages.length > maxMarketReplies) throw new MarketDataOutputError()
   return messages
+}
+
+function messageLength(sections: readonly MarketSection[], queriedAt?: Date): number {
+  return Array.from(renderMessage(sections, queriedAt)).length
+}
+
+function renderMessage(sections: readonly MarketSection[], queriedAt?: Date): string {
+  if (!sections.length) return ""
+  const detailed = sections.filter((section) => section.details)
+  const multipleQuoteGroups = sections.filter((section) => section.quotes > 0).length > 1
+  const details = detailed.map((section) =>
+    multipleQuoteGroups ? `${section.heading}\n\n${section.details}` : section.details,
+  )
+  return [
+    sections.map((section) => section.summary).join("\n\n"),
+    ...(queriedAt ? [`查詢時間：${queryTime(queriedAt)}（台灣）`] : []),
+    ...(sections.some((section) => section.quotes > 0) ? ["⚠ 報價可能延遲"] : []),
+    ...(details.length
+      ? ["<details><summary>詳細報價</summary>", details.join("\n\n"), "</details>"]
+      : []),
+  ].join("\n\n")
 }
 
 function groupMarketResults(
@@ -153,9 +187,9 @@ function groupMarketResults(
   return output
 }
 
-function formatQuoteTable(quotes: readonly MarketQuote[]): string {
+function formatQuoteSection(quotes: readonly MarketQuote[]): MarketSection {
   const first = quotes[0]
-  if (!first) return ""
+  if (!first) return { summary: "", quotes: 0 }
   const columns: Array<readonly ["open" | "high" | "low" | "volume" | "bid" | "ask", string]> = [
     ["open", "開盤"],
     ["high", "最高"],
@@ -173,7 +207,7 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
       }).format(value)
     const change = changeText(values)
     const cells = [
-      `**${escapeMarkdownText(quote.symbol)}**`,
+      `**${escapeMarkdownText(quote.symbol)}**${sessionText(quote.session)}`,
       values.last === undefined ? "—" : `**${price(values.last)}**`,
       change === undefined ? "—" : `**${change}**`,
     ]
@@ -199,42 +233,37 @@ function formatQuoteTable(quotes: readonly MarketQuote[]): string {
         ...rendered.map((quote) => quote.detailRow),
       ].join("\n")
     : ""
-  return [
-    sourceHeading({ currency: first.prices.currency, source: first.source }),
-    "",
-    "| 標的 | 現價 | 漲跌 |",
-    "| --- | ---: | ---: |",
-    ...rendered.map((quote) => quote.row),
-    ...quotes.flatMap((quote) =>
-      quote.session !== undefined || quote.asOf !== undefined
-        ? [
-            "",
-            `${escapeMarkdownText(quote.symbol)}：${sessionText(quote.session)}｜行情時間（台灣）：${quoteTime(quote.asOf)}`,
-          ]
-        : [],
-    ),
-    ...quotes.flatMap((quote) =>
-      quote.notice
-        ? ["", `${escapeMarkdownText(quote.symbol)}：${escapeMarkdownText(quote.notice)}`]
-        : [],
-    ),
-    ...(details
-      ? ["", "<details><summary>查看完整名稱與詳細報價</summary>", "", details, "", "</details>"]
-      : []),
-  ].join("\n")
+  const heading = sourceHeading({
+    currency: first.prices.currency,
+    source: first.source === "Yahoo Finance" ? "Yahoo" : first.source,
+  })
+  const notices = quotes.flatMap((quote) =>
+    quote.notice
+      ? [`${escapeMarkdownText(quote.symbol)}：${escapeMarkdownText(quote.notice)}`]
+      : [],
+  )
+  return {
+    heading,
+    quotes: quotes.length,
+    summary: [
+      heading,
+      "",
+      "| 標的 | 現價 | 漲跌 |",
+      "| --- | ---: | ---: |",
+      ...rendered.map((quote) => quote.row),
+    ].join("\n"),
+    details: [details, ...notices].filter(Boolean).join("\n\n") || undefined,
+  }
 }
 
 function sessionText(session: MarketQuote["session"]): string {
-  if (session === "pre") return "盤前"
-  if (session === "post") return "盤後"
-  if (session === "regular") return "一般交易／收盤"
-  return "—"
+  if (session === "pre") return " 盤前"
+  if (session === "post") return " 盤後"
+  if (session === "regular") return " 一般／收盤"
+  return ""
 }
 
-function quoteTime(value: string | undefined): string {
-  if (value === undefined) return "—"
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return "—"
+function queryTime(date: Date): string {
   return new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Asia/Taipei",
     year: "numeric",
@@ -242,7 +271,6 @@ function quoteTime(value: string | undefined): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
     hourCycle: "h23",
   }).format(date)
 }
