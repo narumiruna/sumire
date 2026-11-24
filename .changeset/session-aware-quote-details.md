@@ -2,4 +2,4 @@
 "@narumitw/sumire": patch
 ---
 
-Separate Yahoo extended-hours quotes from dated regular-session statistics, show explicit session states and price baselines, and replace misleading empty OHLCV rows with availability notices. Use the latest daily close as the change baseline when the live quote advances to a later exchange-local trading date.
+Separate Yahoo extended-hours quotes from dated regular-session statistics, show explicit session states and price baselines, and replace misleading empty OHLCV rows with availability notices. Use the latest daily close as the change baseline when the live quote advances to a later exchange-local trading date, while keeping daily-close fallback prices relative to their preceding candle.

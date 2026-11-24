@@ -146,6 +146,43 @@ describe("Yahoo previous-close baseline date alignment", () => {
     },
   )
 
+  it.each([undefined, null])(
+    "uses the preceding candle when last falls back to a daily close (regularMarketPrice: %s)",
+    async (regularMarketPrice) => {
+      const results = await queryYahooFinance(
+        ["TEST"],
+        quoteFetcher({ close: [90, 100] }, { ...meta, regularMarketPrice }, dailyTimes),
+      )
+
+      expect(results[0]?.prices).toMatchObject({ last: 100, changeFrom: 90 })
+      expect(results[0]?.regular?.prices.changeFrom).toBe(90)
+      expect(results[0]?.asOf).toBeUndefined()
+      const formatted = formatMarketResults(results)
+      expect(formatted).toContain("+11.11%")
+      expect(formatted).not.toContain("0.00%")
+      expect(formatted).toContain("前一交易日收盤價 90.00")
+    },
+  )
+
+  it("does not skip a missing preceding close when last falls back to a stale daily close", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      quoteFetcher(
+        { close: [80, null, 100] },
+        {
+          ...meta,
+          regularMarketPrice: undefined,
+          previousClose: undefined,
+          chartPreviousClose: undefined,
+        },
+        [timestamp("2026-11-18T14:30:00Z"), ...dailyTimes],
+      ),
+    )
+
+    expect(quote?.prices.last).toBe(100)
+    expect(quote?.prices.changeFrom).toBeUndefined()
+  })
+
   it("uses the preceding candle when the latest candle matches the quote date", async () => {
     const [quote] = await queryYahooFinance(
       ["TEST"],

@@ -39,7 +39,8 @@ async function queryYahooSymbol(
       )
   // Keep every field on the same candle, including missing or short arrays.
   const latestIndex = candleCount - 1
-  const last = finiteNumber(meta.regularMarketPrice) ?? numberAt(quote?.close, latestIndex)
+  const regularPrice = finiteNumber(meta.regularMarketPrice)
+  const last = regularPrice ?? numberAt(quote?.close, latestIndex)
   if (last === undefined) return undefined
 
   const resolvedSymbol = text(meta.symbol) ?? symbol
@@ -54,8 +55,14 @@ async function queryYahooSymbol(
       ? compareTradingDates(candleTime, regularTime, timezone)
       : undefined
   const aligned = !timezone || candleDateOrder === 0
-  // Only a confirmed earlier trading date can supply the latest regular close.
-  const previousCloseIndex = aligned ? latestIndex - 1 : candleDateOrder === -1 ? latestIndex : -1
+  // A daily-close fallback must compare against its own preceding candle.
+  // Only a newer metadata price can use the latest daily close as its baseline.
+  const previousCloseIndex =
+    regularPrice === undefined || aligned
+      ? latestIndex - 1
+      : candleDateOrder === -1
+        ? latestIndex
+        : -1
   const prices: QuotePrices = {
     changeFrom:
       numberAt(quote?.close, previousCloseIndex) ??
@@ -69,10 +76,7 @@ async function queryYahooSymbol(
     open: aligned ? numberAt(quote?.open, latestIndex) : undefined,
     volume: aligned ? numberAt(quote?.volume, latestIndex) : undefined,
   }
-  const asOf =
-    finiteNumber(meta.regularMarketPrice) !== undefined
-      ? yahooQuoteTime(meta.regularMarketTime)
-      : undefined
+  const asOf = regularPrice !== undefined ? yahooQuoteTime(meta.regularMarketTime) : undefined
   return withYahooExtendedHours(
     {
       name,
