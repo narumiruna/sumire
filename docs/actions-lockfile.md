@@ -37,7 +37,13 @@ upgrade.
 Review changed commits as dependency upgrades. Investigate changes to
 `owner_id` or `repo_id`, and unexpected transitive dependencies, before merging.
 For an intentionally moved reference, review upstream history before running
-`gh actions-lock --relock --no-narrow`. Never use `--accept-moved` in automation.
+`gh actions-lock --relock --no-narrow`. This does not resolve `unreachable-pin`
+when an upstream tag moves to an unrelated commit. For a direct dependency,
+review the upstream history and new commit before manually running
+`gh actions-lock --accept-moved --no-narrow`, or select a trusted new full-SHA
+`uses:` reference and regenerate the lockfile. Review all resulting changes and
+run `gh actions-lock --verify` before committing. Never use `--accept-moved` in
+automation.
 
 The existing GitHub Actions Dependabot configuration remains enabled. GitHub
 documents automatic lockfile updates for already-onboarded workflows; review
