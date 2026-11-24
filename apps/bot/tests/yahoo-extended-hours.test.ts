@@ -90,21 +90,59 @@ describe("Yahoo extended-hours quotes", () => {
     expect(quote?.notice).toContain("最近一般交易收盤價")
   })
 
-  it("uses today's regular close for postmarket, including a closing print one second after 16:00", async () => {
+  it.each([regular.end, regular.end + 1])(
+    "uses a postmarket baseline at or after the regular close: %s",
+    async (regularMarketTime) => {
+      vi.setSystemTime(new Date("2026-11-23T22:00:00Z"))
+      const [quote] = await queryYahooFinance(
+        ["NVDA"],
+        fetcher({
+          meta: { regularMarketTime },
+          timestamps: [seconds("2026-11-23T21:59:59Z")],
+          closes: [129],
+        }),
+      )
+      expect(quote).toMatchObject({
+        session: "post",
+        asOf: "2026-11-23T21:59:59.000Z",
+        prices: { last: 129, changeFrom: 125.53 },
+      })
+    },
+  )
+
+  it.each([regular.start, regular.end - 60, regular.end - 1])(
+    "keeps the postmarket price but omits a pre-close percentage baseline: %s",
+    async (regularMarketTime) => {
+      vi.setSystemTime(new Date("2026-11-23T22:00:00Z"))
+      const [quote] = await queryYahooFinance(
+        ["NVDA"],
+        fetcher({
+          meta: { regularMarketTime },
+          timestamps: [seconds("2026-11-23T21:59:59Z")],
+          closes: [129],
+        }),
+      )
+      expect(quote).toMatchObject({
+        session: "post",
+        asOf: "2026-11-23T21:59:59.000Z",
+        prices: { last: 129 },
+      })
+      expect(quote?.prices.changeFrom).toBeUndefined()
+    },
+  )
+
+  it("renders a missing postmarket percentage rather than a change from a pre-close snapshot", async () => {
     vi.setSystemTime(new Date("2026-11-23T22:00:00Z"))
-    const [quote] = await queryYahooFinance(
-      ["NVDA"],
-      fetcher({
-        meta: { regularMarketTime: regular.end + 1 },
+    const result = await queryMarketData("NVDA", {
+      fetchImplementation: fetcher({
+        meta: { regularMarketTime: regular.end - 1, regularMarketPrice: 125 },
         timestamps: [seconds("2026-11-23T21:59:59Z")],
-        closes: [129],
+        closes: [127],
       }),
-    )
-    expect(quote).toMatchObject({
-      session: "post",
-      asOf: "2026-11-23T21:59:59.000Z",
-      prices: { last: 129, changeFrom: 125.53 },
     })
+    expect(result).toContain("| **NVDA** | **127.00** | — |")
+    expect(result).toContain("NVDA：盤後｜行情時間（台灣）：2026-11-24 05:59:59")
+    expect(result).not.toContain("+1.60%")
   })
 
   it("does not use a previous day's regular close as today's postmarket baseline", async () => {

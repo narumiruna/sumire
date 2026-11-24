@@ -69,7 +69,7 @@ export async function withYahooExtendedHours(
       regularTime <= timestamp &&
       (session === "pre"
         ? regularTime < period.start
-        : regularPeriod !== undefined && regularTime >= regularPeriod.start)
+        : regularPeriod !== undefined && regularTime >= regularPeriod.end)
     return {
       ...quote,
       session,
