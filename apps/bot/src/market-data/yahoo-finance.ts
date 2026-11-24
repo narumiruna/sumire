@@ -45,18 +45,26 @@ async function queryYahooSymbol(
   const resolvedSymbol = text(meta.symbol) ?? symbol
   const name = text(meta.shortName) ?? text(meta.longName) ?? resolvedSymbol
   const currency = text(meta.currency)
+  const timezone = text(meta.exchangeTimezoneName)
+  const regularTime = finiteNumber(meta.regularMarketTime)
+  const candleTime = numberAt(result?.timestamp, latestIndex)
+  // A daily candle may still belong to yesterday while the live quote has rolled over.
+  const aligned =
+    !timezone || regularTime === undefined || candleTime === undefined
+      ? !timezone
+      : sameTradingDate(regularTime, candleTime, timezone)
   const prices: QuotePrices = {
     changeFrom:
-      numberAt(quote?.close, latestIndex - 1) ??
+      (aligned ? numberAt(quote?.close, latestIndex - 1) : undefined) ??
       finiteNumber(meta.previousClose) ??
       finiteNumber(meta.chartPreviousClose),
     currency,
-    high: numberAt(quote?.high, latestIndex),
+    high: aligned ? numberAt(quote?.high, latestIndex) : undefined,
     last,
-    low: numberAt(quote?.low, latestIndex),
+    low: aligned ? numberAt(quote?.low, latestIndex) : undefined,
     maximumFractionDigits: pricePrecision(meta.priceHint),
-    open: numberAt(quote?.open, latestIndex),
-    volume: numberAt(quote?.volume, latestIndex),
+    open: aligned ? numberAt(quote?.open, latestIndex) : undefined,
+    volume: aligned ? numberAt(quote?.volume, latestIndex) : undefined,
   }
   const asOf =
     finiteNumber(meta.regularMarketPrice) !== undefined
@@ -88,4 +96,18 @@ function numberAt(value: unknown, index: number): number | undefined {
 function pricePrecision(value: unknown): number {
   const precision = finiteNumber(value)
   return precision === undefined ? 2 : Math.max(0, Math.min(8, Math.trunc(precision)))
+}
+
+function sameTradingDate(left: number, right: number, timezone: string): boolean {
+  try {
+    const format = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    return format.format(new Date(left * 1_000)) === format.format(new Date(right * 1_000))
+  } catch {
+    return false
+  }
 }

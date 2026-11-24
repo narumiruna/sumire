@@ -116,3 +116,64 @@ describe("Yahoo candle alignment", () => {
     expect(results[0]?.prices.volume).toBe(0)
   })
 })
+
+describe("Yahoo daily statistics date alignment", () => {
+  const timestamp = (date: string) => Date.parse(date) / 1_000
+  const request =
+    (candle: string, regular: string, timezone = "America/New_York"): MarketFetch =>
+    async () =>
+      Response.json({
+        chart: {
+          result: [
+            {
+              meta: {
+                symbol: "TEST",
+                regularMarketPrice: 110,
+                previousClose: 100,
+                regularMarketTime: timestamp(regular),
+                exchangeTimezoneName: timezone,
+              },
+              timestamp: [timestamp(candle)],
+              indicators: {
+                quote: [{ close: [110], open: [101], high: [115], low: [99], volume: [0] }],
+              },
+            },
+          ],
+        },
+      })
+
+  it("retains same-trading-date statistics and zero volume", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      request("2026-11-23T14:30:00Z", "2026-11-23T21:00:01Z"),
+    )
+    expect(quote?.regular?.prices).toMatchObject({ open: 101, high: 115, low: 99, volume: 0 })
+  })
+
+  it("does not attach yesterday's daily candle to today's quote", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      request("2026-11-20T14:30:00Z", "2026-11-23T15:00:00Z"),
+    )
+    expect(quote?.prices.last).toBe(110)
+    for (const field of ["open", "high", "low", "volume"] as const) {
+      expect(quote?.regular?.prices[field]).toBeUndefined()
+    }
+  })
+
+  it("compares exchange dates rather than UTC dates", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      request("2026-11-23T23:30:00Z", "2026-11-24T00:30:00Z"),
+    )
+    expect(quote?.regular?.prices.volume).toBe(0)
+  })
+
+  it("fails closed for invalid provider timezones", async () => {
+    const [quote] = await queryYahooFinance(
+      ["TEST"],
+      request("2026-11-23T14:30:00Z", "2026-11-23T21:00:01Z", "invalid"),
+    )
+    expect(quote?.regular?.prices.open).toBeUndefined()
+  })
+})

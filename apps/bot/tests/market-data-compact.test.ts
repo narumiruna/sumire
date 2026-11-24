@@ -75,7 +75,8 @@ describe("compact multi-symbol market replies", () => {
     expect(result.match(/⚠ 報價可能延遲/gu)).toHaveLength(1)
     expect(result.match(/<details>/gu)).toHaveLength(1)
     expect(result).not.toContain("行情時間")
-    expect(result).not.toContain("14:14:49")
+    expect(visible).not.toContain("14:14:49")
+    expect(hidden).toContain("報價時間：")
     expect(hidden).toContain("**Yahoo｜USD**")
     expect(hidden).toContain("**TWSE｜TWD**")
     expect(hidden).toContain("NVDA NVIDIA Corporation")
@@ -102,14 +103,15 @@ describe("compact multi-symbol market replies", () => {
       [
         {
           ...quote,
-          session: "regular",
+          session: "closed",
+          marketSession: "pre",
           notice: "盤前／盤後資料暫不可用；顯示一般交易／收盤價格。",
         },
       ],
       queriedAt,
     )
     const [visible, hidden] = result.split(disclosure)
-    expect(visible).toContain("**NVDA** 一般／收盤")
+    expect(visible).toContain("**NVDA** 已收盤")
     expect(visible).not.toContain("**NVDA** 盤前")
     expect(visible).not.toContain("資料暫不可用")
     expect(hidden).toContain("資料暫不可用")

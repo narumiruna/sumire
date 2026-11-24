@@ -56,7 +56,10 @@ export interface MarketQuote {
   symbol: string
   source: string
   prices: QuotePrices
-  session?: "pre" | "regular" | "post"
+  session?: "pre" | "regular" | "post" | "closed" | "unknown"
+  marketSession?: "pre" | "post"
+  regular?: { prices: QuotePrices; asOf?: string }
+  exchangeTimezone?: string
   asOf?: string
   notice?: string
 }
@@ -226,11 +229,11 @@ function formatQuoteSection(quotes: readonly MarketQuote[]): MarketSection {
       hasDetails: hasName || columns.some(([field]) => values[field] !== undefined),
     }
   })
-  const details = rendered.some((quote) => quote.hasDetails)
+  const details = rendered.some((quote, index) => !quotes[index]?.session && quote.hasDetails)
     ? [
         `| 標的 | ${columns.map(([, label]) => label).join(" | ")} |`,
         `| --- | ${columns.map(() => "---:").join(" | ")} |`,
-        ...rendered.map((quote) => quote.detailRow),
+        ...rendered.filter((_, index) => !quotes[index]?.session).map((quote) => quote.detailRow),
       ].join("\n")
     : ""
   const heading = sourceHeading({
@@ -252,14 +255,89 @@ function formatQuoteSection(quotes: readonly MarketQuote[]): MarketSection {
       "| --- | ---: | ---: |",
       ...rendered.map((quote) => quote.row),
     ].join("\n"),
-    details: [details, ...notices].filter(Boolean).join("\n\n") || undefined,
+    details:
+      [details, ...quotes.filter((quote) => quote.session).map(formatSessionDetails), ...notices]
+        .filter(Boolean)
+        .join("\n\n") || undefined,
+  }
+}
+
+/** Session prices and regular-session statistics must never share an unlabeled row. */
+function formatSessionDetails(quote: MarketQuote): string {
+  const price = (value: number | undefined) =>
+    value === undefined
+      ? "未提供"
+      : new Intl.NumberFormat("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: Math.max(2, quote.prices.maximumFractionDigits ?? 2),
+        }).format(value)
+  const extended = quote.session === "pre" || quote.session === "post"
+  const regular = quote.regular
+  const lines = [
+    `**${escapeMarkdownText(quote.name === quote.symbol ? quote.symbol : `${quote.symbol} ${quote.name}`)}**`,
+    `報價時間：${quoteTime(quote.asOf, quote.exchangeTimezone)}`,
+    ...(quote.marketSession
+      ? [`${quote.marketSession === "pre" ? "盤前" : "盤後"}報價暫無資料；以下為最近一般交易報價。`]
+      : []),
+    `漲跌基準：${extended ? "最近一般交易收盤價" : "前一交易日收盤價"} ${price(quote.prices.changeFrom)}`,
+  ]
+  if (extended) {
+    lines.push(quote.session === "pre" ? "今日一般交易尚未開盤。" : "一般交易已結束。")
+  }
+  if (regular) {
+    lines.push(
+      `一般交易資料時間：${quoteTime(regular.asOf, quote.exchangeTimezone)}`,
+      `${quote.session === "regular" ? "一般交易現價" : "最近一般交易價格"}：${price(regular.prices.last)}（漲跌 ${changeText(regular.prices) ?? "未提供"}）`,
+    )
+  }
+  const values = regular?.prices ?? (extended ? undefined : quote.prices)
+  const fields = ["open", "high", "low", "volume"] as const
+  if (values && fields.some((field) => values[field] !== undefined)) {
+    lines.push(
+      "一般交易時段：",
+      "",
+      "| 開盤 | 最高 | 最低 | 成交量 |",
+      "| ---: | ---: | ---: | ---: |",
+      `| ${fields
+        .map((field) =>
+          field === "volume" && values[field] !== undefined
+            ? formatNumber(values[field])
+            : price(values[field]),
+        )
+        .join(" | ")} |`,
+    )
+  } else {
+    lines.push("一般交易開高低量：未提供。")
+  }
+  return lines.join("\n")
+}
+
+function quoteTime(value: string | undefined, timezone = "UTC"): string {
+  if (!value || !Number.isFinite(Date.parse(value))) return "未提供"
+  try {
+    return `${escapeMarkdownText(
+      new Intl.DateTimeFormat("sv-SE", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(value)),
+    )}（${escapeMarkdownText(timezone)}）`
+  } catch {
+    return `${new Date(value).toISOString()}（UTC）`
   }
 }
 
 function sessionText(session: MarketQuote["session"]): string {
   if (session === "pre") return " 盤前"
   if (session === "post") return " 盤後"
-  if (session === "regular") return " 一般／收盤"
+  if (session === "regular") return " 交易中"
+  if (session === "closed") return " 已收盤"
+  if (session === "unknown") return " 時段未確認"
   return ""
 }
 

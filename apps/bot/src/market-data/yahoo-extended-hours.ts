@@ -21,13 +21,28 @@ export async function withYahooExtendedHours(
     const period = tradingPeriod(periods?.[name])
     return period !== undefined && now >= period.start && now < period.end
   })
-  if (!session) return quote
+  const regularPeriod = tradingPeriod(periods?.regular)
+  const regularTime = finiteNumber(meta.regularMarketTime)
+  const regular = { prices: quote.prices, asOf: quote.asOf }
+  const base: MarketQuote = {
+    ...quote,
+    regular,
+    exchangeTimezone:
+      typeof meta.exchangeTimezoneName === "string" ? meta.exchangeTimezoneName : "UTC",
+    session: regularPeriod
+      ? now >= regularPeriod.start && now < regularPeriod.end
+        ? "regular"
+        : "closed"
+      : "unknown",
+  }
+  if (!session) return base
   const period = tradingPeriod(periods?.[session])
-  if (!period) return quote
+  if (!period) return base
 
   const fallback: MarketQuote = {
-    ...quote,
-    session: "regular",
+    ...base,
+    session: "closed",
+    marketSession: session,
     notice: "盤前／盤後資料暫不可用；顯示一般交易／收盤價格。Yahoo 免費來源可能延遲。",
   }
   try {
@@ -61,8 +76,6 @@ export async function withYahooExtendedHours(
       return fallback
     }
 
-    const regularTime = finiteNumber(meta.regularMarketTime)
-    const regularPeriod = tradingPeriod(periods?.regular)
     const hasBaseline =
       regularTime !== undefined &&
       regularTime > 0 &&
@@ -71,7 +84,7 @@ export async function withYahooExtendedHours(
         ? regularTime < period.start
         : regularPeriod !== undefined && regularTime >= regularPeriod.end)
     return {
-      ...quote,
+      ...base,
       session,
       asOf: new Date(timestamp * 1_000).toISOString(),
       notice: extendedHoursNotice,

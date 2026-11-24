@@ -294,18 +294,18 @@ describe("market quote tables", () => {
     ).not.toContain("<details>")
   })
 
-  it("puts sessions next to symbols and hides notices without displaying provider timestamps", () => {
+  it("puts sessions next to symbols and keeps provider timestamps in session details", () => {
     const result = formatMarketResults([
       { ...quote, session: "post", asOf: "2026-11-23T21:59:59Z", notice: "可能延遲" },
       { ...quote, symbol: "OTHER", session: "regular", asOf: "invalid" },
     ])
     const [visible, hidden] = result.split(disclosure)
     expect(visible).toContain("| **0050** 盤後 | **97.78** | **-2.81%** |")
-    expect(visible).toContain("| **OTHER** 一般／收盤 |")
+    expect(visible).toContain("| **OTHER** 交易中 |")
     expect(visible).toContain("⚠ 報價可能延遲")
     expect(hidden).toContain("0050：可能延遲")
     expect(result).not.toContain("行情時間")
-    expect(result).not.toContain("2026-11-23")
+    expect(hidden).toContain("2026-11-23")
     expect(result).not.toContain("invalid")
   })
 
