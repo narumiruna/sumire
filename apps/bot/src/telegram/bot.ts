@@ -39,6 +39,7 @@ import { ScheduleStore } from "../schedules/store.js"
 import { ScheduleWorker } from "../schedules/worker.js"
 import { createBotUrlLoader } from "../url-loader.js"
 import { singleUrlFingerprint, traceUrlLoad } from "../url-telemetry.js"
+import { type AbortButton, registerAbortButtons } from "./abort-button.js"
 import { type AudioTranscriber, promptWithAudioContext, TelegramAudioTranscriber } from "./audio.js"
 import { ChannelImageIndex } from "./channel-images.js"
 import { createTelegramDelivery, type DeliveryMode, morselPublicationFailure } from "./delivery.js"
@@ -358,6 +359,13 @@ export function createTelegramAgentBot(
     )
   })
 
+  const createAbortButton = registerAbortButtons(bot, {
+    allows: (chatId) => dependencies.control.allows(chatId),
+    adminId: settings.botAdminId,
+    cancel: cancelChat,
+    logger,
+  })
+
   bot.use(async (context, next) => {
     const chat = context.chat
     if (!chat || Boolean(context.update.channel_post) !== (chat.type === "channel")) return
@@ -412,6 +420,7 @@ export function createTelegramAgentBot(
         "- /t 代碼 — 查詢股票、虛擬貨幣或匯率",
         "- /reset — 清除目前對話狀態",
         "- /cancel — 取消目前任務與所有待處理輸入",
+        "- 執行中可按 Abort streaming：限發起者或 bot 管理員，取消範圍同 /cancel。",
         "- /id — 顯示對話與使用者 ID",
         "- /allow — 向管理員申請此對話的使用權限",
         ...(context.chat.type === "private" && isAdminSender(context, settings.botAdminId)
@@ -450,18 +459,10 @@ export function createTelegramAgentBot(
     await delivery.reply(context, "已清除這個對話的 Pi session。", replyOptions(context))
   })
   bot.command("cancel", async (context) => {
-    const chatId = context.chat.id
-    const pending = (activeInputs.get(chatId) ?? 0) > 0 || activeScheduleChatId === chatId
-    const finishCancel = invalidateSubmissionOrder(chatId, "cancel")
-    let cancelled: boolean
-    try {
-      cancelled = await sessions.cancel(chatId)
-    } finally {
-      finishCancel()
-    }
+    const cancelled = await cancelChat(context.chat.id)
     await delivery.reply(
       context,
-      cancelled || pending ? "已取消目前任務。" : "目前沒有執行中的任務。",
+      cancelled ? "已取消目前任務。" : "目前沒有執行中的任務。",
       replyOptions(context),
     )
   })
@@ -638,8 +639,10 @@ export function createTelegramAgentBot(
     submissionOptions: InputSubmissionOptions = {},
   ): Promise<void> {
     const fingerprint = singleUrlFingerprint(strippedText)
+    const abortButton = createAbortButton(context, isCurrent)
     const statusCleanups: Array<() => void> = []
     const trackStatus = (statusMessageId: number) => {
+      abortButton.trackMessage(statusMessageId)
       const chatId = context.chat?.id
       if (chatId !== undefined) {
         statusCleanups.push(sessions.trackPendingInput(chatId, message.message_id, statusMessageId))
@@ -670,6 +673,7 @@ export function createTelegramAgentBot(
             isCurrent,
             submissionOptions,
             trackStatus,
+            abortButton,
           )
           const cancelled = !isCurrent() && result.outcome !== "queued"
           span.setAttribute("telegram.outcome", cancelled ? "cancelled" : result.outcome)
@@ -695,6 +699,7 @@ export function createTelegramAgentBot(
           setSpanError(span, error)
           throw error
         } finally {
+          await abortButton.close()
           for (const cleanup of statusCleanups) cleanup()
         }
       },
@@ -709,6 +714,7 @@ export function createTelegramAgentBot(
     isCurrent: () => boolean,
     submissionOptions: InputSubmissionOptions,
     trackStatus: (statusMessageId: number) => void,
+    abortButton: AbortButton,
   ): Promise<RequestOutcome> {
     const chatId = context.chat?.id
     const replyId = repliedBotMessageId(message, context.me.id)
@@ -976,6 +982,7 @@ export function createTelegramAgentBot(
             },
             isCurrent,
             trackStatus,
+            abortButton,
           ).catch((error) => {
             logger.warn("Could not send article loading status", error)
             return { message: undefined, result: "unavailable" as const }
@@ -1073,6 +1080,7 @@ export function createTelegramAgentBot(
         preparedStatus,
       },
       trackStatus,
+      abortButton,
     )
   }
 
@@ -1097,7 +1105,9 @@ export function createTelegramAgentBot(
     options: Parameters<typeof delivery.guardedReply>[2],
     isCurrent: () => boolean,
     trackStatus: (statusMessageId: number) => void,
+    abortButton: AbortButton,
   ): ReturnType<typeof delivery.guardedReply> {
+    options = { ...options, reply_markup: abortButton.replyMarkup }
     const chatId = context.chat?.id
     if (chatId === undefined) return delivery.guardedReply(context, text, options, isCurrent)
     let acknowledge = () => {}
@@ -1171,6 +1181,7 @@ export function createTelegramAgentBot(
     isCurrent: () => boolean,
     options: AnswerOptions,
     trackStatus: (statusMessageId: number) => void,
+    abortButton: AbortButton,
   ): Promise<RequestOutcome> {
     const {
       replyToBotMessageId,
@@ -1248,6 +1259,7 @@ export function createTelegramAgentBot(
               statusDisplayText = displayText
               if (isProgress) preparedProgress = { text, visibleText: displayText }
             },
+            abortButton.replyMarkup,
           )
           lastDeliveredStatusText = outcome === "delivered" ? text : undefined
           if (outcome === "delivered" && isProgress) {
@@ -1262,6 +1274,7 @@ export function createTelegramAgentBot(
           replyOptions,
           isCurrent,
           trackStatus,
+          abortButton,
         )
         status = progressReply.message
         if (status) pendingMessageId = status.message_id
@@ -1308,7 +1321,14 @@ export function createTelegramAgentBot(
     try {
       const pendingReply = preparedStatus
         ? { message: preparedStatus, result: "delivered" as const }
-        : await sendPendingStatus(context, pendingText, replyOptions, isCurrent, trackStatus)
+        : await sendPendingStatus(
+            context,
+            pendingText,
+            replyOptions,
+            isCurrent,
+            trackStatus,
+            abortButton,
+          )
       status = pendingReply.message
       lastDeliveredStatusText = pendingReply.result === "delivered" ? initialPendingText : undefined
       visiblePayload =
@@ -1441,6 +1461,7 @@ export function createTelegramAgentBot(
         await progressStatus.flush()
       }
       await progressStatus.close()
+      await abortButton.close()
       const retainedProgressMessageId =
         archiveText && lastDeliveredStatusText === archiveText ? status?.message_id : undefined
       if (retainedProgressMessageId !== undefined) {
@@ -1667,6 +1688,16 @@ export function createTelegramAgentBot(
       const finalizing = finalizingBotReplies.get(chatId)
       for (const id of finalizingReplyIds) finalizing?.delete(id)
       if (finalizing?.size === 0) finalizingBotReplies.delete(chatId)
+    }
+  }
+
+  async function cancelChat(chatId: number): Promise<boolean> {
+    const pending = (activeInputs.get(chatId) ?? 0) > 0 || activeScheduleChatId === chatId
+    const finishCancel = invalidateSubmissionOrder(chatId, "cancel")
+    try {
+      return (await sessions.cancel(chatId)) || pending
+    } finally {
+      finishCancel()
     }
   }
 
