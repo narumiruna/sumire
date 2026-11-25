@@ -31,8 +31,6 @@ describe("market quote tables", () => {
         "| --- | ---: | ---: |",
         "| **0050** | **97.78** | **-2.81%** |",
         "",
-        "⚠ 報價可能延遲",
-        "",
         disclosure,
         "",
         "| 標的 | 開盤 | 最高 | 最低 | 成交量 |",
@@ -285,8 +283,6 @@ describe("market quote tables", () => {
         "| 標的 | 現價 | 漲跌 |",
         "| --- | ---: | ---: |",
         "| **TEST** | **1.00** | — |",
-        "",
-        "⚠ 報價可能延遲",
       ].join("\n"),
     )
     expect(
@@ -302,7 +298,6 @@ describe("market quote tables", () => {
     const [visible, hidden] = result.split(disclosure)
     expect(visible).toContain("| **0050** 盤後 | **97.78** | **-2.81%** |")
     expect(visible).toContain("| **OTHER** 交易中 |")
-    expect(visible).toContain("⚠ 報價可能延遲")
     expect(hidden).toContain("0050：可能延遲")
     expect(result).not.toContain("行情時間")
     expect(hidden).toContain("2026-11-23")

@@ -160,7 +160,6 @@ function renderMessage(sections: readonly MarketSection[], queriedAt?: Date): st
   return [
     sections.map((section) => section.summary).join("\n\n"),
     ...(queriedAt ? [`查詢時間：${queryTime(queriedAt)}（台灣）`] : []),
-    ...(sections.some((section) => section.quotes > 0) ? ["⚠ 報價可能延遲"] : []),
     ...(details.length
       ? ["<details><summary>詳細報價</summary>", details.join("\n\n"), "</details>"]
       : []),

@@ -66,13 +66,10 @@ describe("compact multi-symbol market replies", () => {
         "",
         "查詢時間：2026-11-23 22:15（台灣）",
         "",
-        "⚠ 報價可能延遲",
-        "",
         "",
       ].join("\n"),
     )
     expect(result.match(/查詢時間/gu)).toHaveLength(1)
-    expect(result.match(/⚠ 報價可能延遲/gu)).toHaveLength(1)
     expect(result.match(/<details>/gu)).toHaveLength(1)
     expect(result).not.toContain("行情時間")
     expect(visible).not.toContain("14:14:49")
