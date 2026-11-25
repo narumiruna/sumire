@@ -1752,8 +1752,6 @@ describe("Telegram bot update routing", () => {
         "",
         "查詢時間：QUERY_TIME（台灣）",
         "",
-        "⚠ 報價可能延遲",
-        "",
         "<details><summary>詳細報價</summary>",
         "",
         "| 標的 | 開盤 | 最高 | 最低 | 成交量 |",
