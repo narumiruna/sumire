@@ -1,4 +1,5 @@
 import type { Context } from "grammy"
+import type { InlineKeyboardMarkup } from "grammy/types"
 
 import type { Logger } from "../logging.js"
 import { MorselPublishError, type MorselPublisher, publishMorselWithTrace } from "../morsel.js"
@@ -54,13 +55,15 @@ export function createTelegramDelivery(
     prepared: Awaited<ReturnType<typeof prepare>>,
     isCurrent: () => boolean,
     authorize?: () => Promise<boolean>,
+    replyMarkup?: InlineKeyboardMarkup,
   ): Promise<{ result: EditResult; displayText?: string }> {
     // Provider checks can await I/O; check current ownership synchronously before sending.
     if (authorize && !(await authorize())) return { result: "stale" }
     if (!isCurrent()) return { result: "stale" }
-    const message = await context.api.editMessageText(chatId, messageId, {
-      markdown: prepared.text || " ",
-    })
+    const content = { markdown: prepared.text || " " }
+    const message = replyMarkup
+      ? await context.api.editMessageText(chatId, messageId, content, { reply_markup: replyMarkup })
+      : await context.api.editMessageText(chatId, messageId, content)
     if (authorize && !(await authorize())) return { result: "stale" }
     if (!isCurrent()) return { result: "stale" }
     return {
@@ -149,10 +152,19 @@ export function createTelegramDelivery(
       isCurrent: () => boolean = () => true,
       mode: DeliveryMode = "default",
       onDelivered?: (visibleText: string) => void,
+      replyMarkup?: InlineKeyboardMarkup,
     ): Promise<EditResult> {
       if (!isCurrent()) return "stale"
       const prepared = await prepare(text, mode)
-      const result = await editPrepared(context, chatId, messageId, prepared, isCurrent)
+      const result = await editPrepared(
+        context,
+        chatId,
+        messageId,
+        prepared,
+        isCurrent,
+        undefined,
+        replyMarkup,
+      )
       if (result.result !== "stale") onDelivered?.(result.displayText ?? prepared.text)
       return result.result
     },

@@ -191,6 +191,12 @@ function installApiMock(
   let nextMessageId = 100
   const transformer: Transformer = async (_previous, method, payload) => {
     const recordedPayload = payload as Record<string, unknown>
+    // This suite asserts content-delivery ordering. Keyboard-only cleanup is
+    // independently recorded and asserted in abort-button.test.ts.
+    if (method === "editMessageReplyMarkup") {
+      await beforeResponse(method, recordedPayload)
+      return { ok: true, result: true } as never
+    }
     calls.push({ method, payload: recordedPayload })
     await beforeResponse(method, recordedPayload)
     if (method === "sendRichMessage" || method === "editMessageText") {
