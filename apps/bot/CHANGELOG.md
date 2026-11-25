@@ -1,5 +1,17 @@
 # @narumitw/sumire
 
+## 0.21.0
+
+### Minor Changes
+
+- 8427eda: Add an Abort streaming button to live Telegram pending and progress messages, including article-source loading. Reuse chat-wide cancellation with initiator/admin authorization, request-bound stale-button protection, callback polling, and best-effort keyboard cleanup.
+
+### Patch Changes
+
+- 4c12db4: Compact `/t` multi-stock replies into source/currency groups with inline session labels, one Taiwan query-start timestamp and delay warning, and one shared closed details disclosure per message. Keep provider timestamps internal and include all footer/detail content in native message-size limits.
+- 057ed5e: Remove the generic quote-delay warning from /t replies while retaining query timestamps, provider timestamps, and source-specific notices in quote details.
+- 084ab19: Separate Yahoo extended-hours quotes from dated regular-session statistics, show explicit session states and price baselines, and replace misleading empty OHLCV rows with availability notices. Use the latest daily close as the change baseline when the live quote advances to a later exchange-local trading date, while keeping daily-close fallback prices relative to their preceding candle.
+
 ## 0.20.2
 
 ### Patch Changes
