@@ -35,8 +35,6 @@ jobs:
         with:
           version-script: npm run version-packages
           publish-script: npm run release
-          pr-title: "chore(release): version Sumire"
-          commit-message: "chore(release): version Sumire"
           github-token: ${{ secrets.PAT_TOKEN }}
           # Push commits and tags through the API without persisted Git credentials.
           push-with-git-cli: false
