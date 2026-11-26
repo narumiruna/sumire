@@ -13,7 +13,6 @@ import {
   SandboxCapacity,
 } from "../src/agent/gondolin.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
-import { loadSettings } from "../src/config/settings.js"
 import { callDurableTool } from "./helpers/durable-session.js"
 import { createPiFixture } from "./helpers/pi-fixture.js"
 
@@ -371,7 +370,24 @@ it("routes production direct and CodeMode coding tools to the same chat-only mou
   expect(rejected.isError).toBe(true)
   expect(rejected.content.some((block) => block.type === "image")).toBe(false)
   expect(closes.every((close) => close.mock.calls.length === 1)).toBe(true)
+  const bashVm = vmOptions.find(({ sandbox }) => sandbox?.netEnabled)
+  const isIpAllowed = bashVm?.httpHooks?.isIpAllowed
+  for (const [hostname, allowed] of [
+    ["api.github.com", true],
+    ["example.com", false],
+  ] as const) {
+    expect(
+      await isIpAllowed?.({
+        hostname,
+        ip: "93.184.216.34",
+        family: 4,
+        port: 443,
+        protocol: "https",
+      }),
+    ).toBe(allowed)
+  }
   for (const o of vmOptions) {
+    expect(o.sandbox?.imagePath).toBe("/opt/gondolin/guest")
     for (const [target, mount] of Object.entries(o.vfs?.mounts ?? {})) {
       if (target !== "/workspace") {
         expect(target).toMatch(/^\/skills\//u)
@@ -387,17 +403,6 @@ it("routes production direct and CodeMode coding tools to the same chat-only mou
   cleanup.push(() => peer.dispose())
   const missing = await callDurableTool(peer, "read", { path: "answer.txt" })
   expect(missing.isError).toBe(true)
-})
-
-it("validates operator egress settings, including an explicit deny-all policy", () => {
-  expect(
-    loadSettings({ BOT_ADMIN_ID: "7", BOT_SANDBOX_ALLOWED_HOSTS: "[]" }).botSandboxAllowedHosts,
-  ).toEqual([])
-  expect(() => loadSettings({ BOT_ADMIN_ID: "7", BOT_SANDBOX_ALLOWED_HOSTS: '["*"]' })).toThrow()
-  expect(() =>
-    loadSettings({ BOT_ADMIN_ID: "7", BOT_SANDBOX_ALLOWED_HOSTS: '["https://example.com"]' }),
-  ).toThrow()
-  expect(() => loadSettings({ BOT_ADMIN_ID: "7", BOT_SANDBOX_ALLOWED_HOSTS: "invalid" })).toThrow()
 })
 
 it("closes the whole VM on a command deadline and validates timeouts before creation", async () => {

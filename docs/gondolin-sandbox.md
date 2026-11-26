@@ -6,7 +6,7 @@ Sumire's production `read`, `write`, `edit`, and `bash` tools now use Gondolin m
 
 - Pi Durable, model access, authorization, the administration database, and Telegram delivery stay in the trusted bot process. The production Harness is not supplied a `NodeExecutionEnv`.
 - Each coding-tool invocation acquires a factory-wide slot, creates a VM, explicitly starts it, executes the operation, and awaits VM close in `finally`. At most four VMs run per bot factory, each with one vCPU and 512 MiB guest memory. VM creation, boot, and policy failures return errors; there is no host fallback.
-- Commands default to a 300-second deadline and may request up to 3,600 seconds. File operations have a 300-second deadline. Boot readiness has a separate 30-second bound. Cancellation and owner shutdown close the whole VM, not just the local wait for a command. Image resolution inside the SDK's `VM.create()` is not cancellable: a cancelled setup is drained and its eventual VM closed before the call finishes, without dispatching guest code. Prebuild images to avoid downloads during requests.
+- Commands default to a 300-second deadline and may request up to 3,600 seconds. File operations have a 300-second deadline. Boot readiness has a separate 30-second bound. Cancellation and owner shutdown close the whole VM, not just the local wait for a command. Image resolution inside the SDK's `VM.create()` is not cancellable: a cancelled setup is drained and its eventual VM closed before the call finishes, without dispatching guest code.
 - The host directory `.telegramagent/sessions/<chat-id>/workspace` is the only writable host mount, exposed as `/workspace`. It survives VM disposal and restart. The SQLite database and other chat workspaces are not mounted. Only that chat's approved skill directories are mounted, read-only, under `/skills/<name>`; prompts reference those guest paths.
 - `read` uses the active model's image size and byte limits for direct and nested calls. CodeMode receives file text or an image block, which can be passed to `image()`.
 - The root disk, `/root`, `/tmp`, installed ad-hoc packages, background processes, and shell state do not survive a tool call. Put scripts, repositories and outputs under `/workspace`. A shell command must encompass any related background work it needs.
@@ -17,13 +17,13 @@ Sumire's production `read`, `write`, `edit`, and `bash` tools now use Gondolin m
 
 Only `bash` VMs receive a network interface. HTTP is rejected: egress must use HTTPS, to an allowlisted public host, with synthetic DNS and internal-range blocking enabled. There are no SSH, raw TCP, ingress, or WebSocket exceptions. Redirects and resolved destination IPs remain subject to Gondolin policy.
 
-`BOT_SANDBOX_ALLOWED_HOSTS` is an optional JSON array. An empty value uses this reviewed default:
+The bot uses this fixed HTTPS host allowlist:
 
 ```json
 ["github.com","api.github.com","codeload.github.com","raw.githubusercontent.com","objects.githubusercontent.com","release-assets.githubusercontent.com","registry.npmjs.org","pypi.org","files.pythonhosted.org","dl-cdn.alpinelinux.org","otter.narumi.dev"]
 ```
 
-Set `[]` to deny all mediated egress. A supplied array replaces, rather than extends, the defaults. Exact names and `*.example.com` patterns are supported; a bare `*` and URL strings are rejected. Add only destinations needed by approved work. General public URL reading remains a separate trusted host tool with its existing SSRF checks; it does not grant the guest general network access. Use `read_url_content` with the `load-public-url` skill. The bot does not load the package's `load-url-content` CLI fallback because its dependencies are not bundled in the guest.
+The allowlist is not set through environment variables. General public URL reading remains a separate trusted host tool with its existing SSRF checks; it does not grant the guest general network access. Use `read_url_content` with the `load-public-url` skill. The bot does not load the package's `load-url-content` CLI fallback because its dependencies are not bundled in the guest.
 
 The guest does not inherit the bot's environment, PATH, home or provider credentials. On each shell call:
 
@@ -37,19 +37,18 @@ Secret substitution is not API authorization: an agent with `bash` permission ca
 
 The dependency is pinned to the published `@earendil-works/gondolin@0.14.0`. Its QEMU-based JavaScript controller is **not** the newer, unreleased native-daemon architecture on the upstream `main` branch. This change does not require or claim to install `gondolind`.
 
-Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`; Compose supplies this path as `BOT_SANDBOX_IMAGE`. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
+Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. No sandbox environment variables or GitHub Actions settings are required. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
 
-For a local non-Compose development environment, install QEMU plus `qemu-img` and select an image with `BOT_SANDBOX_IMAGE`. To build the same custom image, install `cpio`, `lz4`, and `e2fsprogs`, then run from the repository root:
+To build a guest outside Docker, install `cpio`, `lz4`, and `e2fsprogs`, then run from the repository root:
 
 ```sh
 npx gondolin build --config apps/bot/resources/gondolin/image.json --output ./gondolin-guest
 # On arm64, add --arch aarch64; the checked-in config defaults to x86_64.
-# Set BOT_SANDBOX_IMAGE to the resulting absolute directory in the trusted environment.
 ```
 
-Do not build using real secrets in the image configuration. Review/pin guest package inputs and image checksums for a stricter supply-chain policy; this config pins the Alpine release and SDK/helper version, not every APK dependency.
+When running the bot directly, install QEMU, `qemu-img`, and the required device ROMs, and make the built guest assets available at `/opt/gondolin/guest`. The standalone smoke check can take a different local directory as an argument.
 
-The GitHub deployment workflow writes the optional repository variables `BOT_SANDBOX_IMAGE` and `BOT_SANDBOX_ALLOWED_HOSTS` to `.env`; Compose passes them to the bot. No new GitHub secret is required. Empty variables use the built image and default host policy.
+Do not build using real secrets in the image configuration. Review/pin guest package inputs and image checksums for a stricter supply-chain policy; this config pins the Alpine release and SDK/helper version, not every APK dependency.
 
 KVM is not enabled by this change. Without accessible hardware acceleration, QEMU uses TCG and can be substantially slower or incompatible with a particular host/image combination. Granting `/dev/kvm` requires an operator-reviewed Compose override with the device and its group, not `privileged: true`. Validate the exact host, seccomp profile, guest image and backend before rollout. Do not weaken isolation or enable host execution to pass a health check.
 
@@ -67,7 +66,7 @@ On 2026-11-24, root `format:check`, `lint`, `typecheck`, `build`, and `git diff 
 
 Real VM execution and a full Docker image build must also pass before rollout. The checked-in custom guest configuration successfully built on arm64 (SDK 0.14.0 helpers, build ID `4efbfc80-f82d-5038-90d4-7531b916c862`); that is guest-image build evidence, not a complete Docker build or successful VM run. In this development environment (Linux arm64, no `/dev/kvm`, Debian QEMU 7.2.22 extracted into a private tools directory), the published `alpine-base:0.4.0` image emitted boot but did not complete guest exec: default VFS readiness timed out after 60 seconds; without VFS, boot completed but `uname` did not return within five seconds. Both attempts awaited VM close. The custom image then exposed a missing iPXE ROM in the private test installation; after providing those ROMs, its VFS readiness still timed out after 30 seconds. The Docker runtime now explicitly installs `ipxe-qemu`, including with `--no-install-recommends`. This is a host/backend/image compatibility blocker, **not** successful smoke-test evidence and not a diagnosed Gondolin root cause.
 
-After building the bot, run `BOT_SANDBOX_IMAGE=/absolute/guest/path node apps/bot/scripts/check-gondolin.mjs` on a staging host. This offline check exercises actual guest commands and bundled tools, read/write symlink denial, workspace persistence, and fresh rootfs state without using real credentials. It fails if any guest command fails, including Otter, Git, or GitHub CLI.
+After building the bot, run `node apps/bot/scripts/check-gondolin.mjs` on a staging host. To check an image in a different directory, run `node apps/bot/scripts/check-gondolin.mjs ./gondolin-guest`. This offline check exercises actual guest commands and bundled tools, read/write symlink denial, workspace persistence, and fresh rootfs state without using real credentials. It fails if any guest command fails, including Otter, Git, or GitHub CLI.
 
 The takeover branch passed this offline check on Linux x86_64: the Docker `gondolin-image` target built guest `5e765c06-afa5-5a98-87ca-0f35ef3e6f35`, and a separate Debian Bookworm test container ran it as a non-root user with QEMU 7.2 TCG and no container network. The full production image build stopped at a Debian package checksum mismatch. This smoke pass does not verify the production image or the staging checks below.
 

@@ -127,8 +127,6 @@ describe("loadSettings", () => {
       "ENCRYPTION_KEY",
       "FIRECRAWL_API_KEY",
       "OTTER_TOKEN",
-      "BOT_SANDBOX_IMAGE",
-      "BOT_SANDBOX_ALLOWED_HOSTS",
       "LOGFIRE_TOKEN",
       "MORSEL_API_KEY",
     ])

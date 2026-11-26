@@ -23,34 +23,6 @@ const optionalTelegramUserId = z.preprocess(
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
   BOT_ADMIN_ID: optionalTelegramUserId,
-  BOT_SANDBOX_IMAGE: optionalString,
-  BOT_SANDBOX_ALLOWED_HOSTS: optionalString.transform((value) => {
-    const hosts: unknown =
-      value === undefined
-        ? [
-            "github.com",
-            "api.github.com",
-            "codeload.github.com",
-            "raw.githubusercontent.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-            "registry.npmjs.org",
-            "pypi.org",
-            "files.pythonhosted.org",
-            "dl-cdn.alpinelinux.org",
-            "otter.narumi.dev",
-          ]
-        : JSON.parse(value)
-    return z
-      .array(
-        z
-          .string()
-          .max(253)
-          .regex(/^(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/iu),
-      )
-      .max(64)
-      .parse(hosts)
-  }),
   LOGFIRE_TOKEN: optionalString,
   ADMIN_ORIGIN: optionalString,
   ADMIN_PORT: z.unknown().optional(),
@@ -61,8 +33,6 @@ export interface Settings {
   admin: AdminConfig
   projectRoot: string
   botWorkdir: string
-  botSandboxImage?: string
-  botSandboxAllowedHosts: string[]
   botToken: string
   botAdminId: number
   botMcpConfigPath: string
@@ -136,8 +106,6 @@ export function loadSettings(
     admin,
     projectRoot: root,
     botWorkdir: path.resolve(workdir),
-    botSandboxImage: parsed.BOT_SANDBOX_IMAGE,
-    botSandboxAllowedHosts: parsed.BOT_SANDBOX_ALLOWED_HOSTS,
     botToken: parsed.BOT_TOKEN,
     botMcpConfigPath: path.join(root, "mcp.json"),
     // Leave room for a full URL load plus resource cleanup inside Codemode.

@@ -10,6 +10,20 @@ import {
 } from "@earendil-works/gondolin"
 
 export const guestWorkdir = "/workspace"
+const bundledGuestImage = "/opt/gondolin/guest"
+const sandboxAllowedHosts = [
+  "github.com",
+  "api.github.com",
+  "codeload.github.com",
+  "raw.githubusercontent.com",
+  "objects.githubusercontent.com",
+  "release-assets.githubusercontent.com",
+  "registry.npmjs.org",
+  "pypi.org",
+  "files.pythonhosted.org",
+  "dl-cdn.alpinelinux.org",
+  "otter.narumi.dev",
+]
 
 /** One capacity budget for the factory, not four VMs per chat. */
 export class SandboxCapacity {
@@ -53,7 +67,7 @@ export interface GondolinOptions {
   workspace: string
   skills: { name: string; filePath: string }[]
   image?: string
-  allowedHosts: string[]
+  allowedHosts?: string[]
   capacity: SandboxCapacity
   shellEnvironment(signal?: AbortSignal): Promise<NodeJS.ProcessEnv>
   authorize(name: string): void
@@ -147,7 +161,7 @@ export class GondolinSandbox {
         validateShell?.(environment)
       }
       const { httpHooks, env } = createHttpHooks({
-        allowedHosts: this.options.allowedHosts,
+        allowedHosts: this.options.allowedHosts ?? sandboxAllowedHosts,
         blockInternalRanges: true,
         secretPlaceholderMode: "unique",
         // Never substitute a credential onto an unencrypted HTTP connection.
@@ -170,7 +184,7 @@ export class GondolinSandbox {
         startTimeoutMs: 30_000,
         sessionLabel: "sumire coding tool",
         sandbox: {
-          ...(this.options.image ? { imagePath: this.options.image } : {}),
+          imagePath: this.options.image ?? bundledGuestImage,
           netEnabled: name === "bash",
         },
         rootfs: { mode: "cow" },

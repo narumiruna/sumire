@@ -40,7 +40,7 @@ docker compose down
 
 ### Coding sandbox
 
-Production coding tools, including CodeMode calls, use disposable Gondolin micro-VMs with per-chat workspaces. Docker still hosts the trusted bot and MCP services. See [sandbox boundaries, operator settings, compatibility and rollout gates](docs/gondolin-sandbox.md) before upgrading; previous shared host paths are not automatically exposed.
+Production coding tools, including CodeMode calls, use disposable Gondolin micro-VMs with per-chat workspaces. Docker still hosts the trusted bot and MCP services. See [sandbox boundaries, deployment requirements, compatibility and rollout gates](docs/gondolin-sandbox.md) before upgrading; previous shared host paths are not automatically exposed.
 
 ### Administration WebUI
 

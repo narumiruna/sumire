@@ -312,8 +312,6 @@ export async function createPiSessionFactory(
             const sandbox = new GondolinSandbox({
               workspace: path.join(settings.botSessionLogDir, String(chatId), "workspace"),
               skills: selectedSkills,
-              image: settings.botSandboxImage,
-              allowedHosts: settings.botSandboxAllowedHosts,
               capacity,
               shellEnvironment,
               authorize,

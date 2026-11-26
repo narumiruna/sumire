@@ -29,8 +29,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           BOT_ADMIN_ID: ${{ vars.BOT_ADMIN_ID }}
-          BOT_SANDBOX_IMAGE: ${{ vars.BOT_SANDBOX_IMAGE }}
-          BOT_SANDBOX_ALLOWED_HOSTS: ${{ vars.BOT_SANDBOX_ALLOWED_HOSTS }}
           ADMIN_ORIGIN: ${{ vars.ADMIN_ORIGIN }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
@@ -42,8 +40,6 @@ jobs:
             "BOT_TOKEN=${BOT_TOKEN}" \
             "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
             "BOT_ADMIN_ID=${BOT_ADMIN_ID}" \
-            "BOT_SANDBOX_IMAGE=${BOT_SANDBOX_IMAGE}" \
-            "BOT_SANDBOX_ALLOWED_HOSTS=${BOT_SANDBOX_ALLOWED_HOSTS}" \
             "ADMIN_ORIGIN=${ADMIN_ORIGIN}" \
             "FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}" \
             "LOGFIRE_TOKEN=${LOGFIRE_TOKEN}" \

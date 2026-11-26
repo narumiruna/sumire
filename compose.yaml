@@ -9,7 +9,6 @@ services:
     environment:
       ADMIN_HOST: 0.0.0.0
       ADMIN_PORT: "17465"
-      BOT_SANDBOX_IMAGE: ${BOT_SANDBOX_IMAGE:-/opt/gondolin/guest}
     ports:
       - "127.0.0.1:17465:17465"
     healthcheck:

@@ -1,11 +1,12 @@
 // Offline VM acceptance: no model, Telegram, external API calls, or real credentials.
-// Run after build; select the built guest through BOT_SANDBOX_IMAGE.
+// Run after build. Pass a guest image directory to test a local build.
 import assert from "node:assert/strict"
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { GondolinSandbox, SandboxCapacity } from "../dist/agent/gondolin.js"
 
+const namedImage = process.argv[2]
 const directory = await mkdtemp(path.join(tmpdir(), "sumire-gondolin-smoke-"))
 const workspace = path.join(directory, "workspace")
 await mkdir(workspace)
@@ -14,7 +15,7 @@ await symlink("../outside", path.join(workspace, "escape"))
 const sandbox = new GondolinSandbox({
   workspace,
   skills: [],
-  image: process.env.BOT_SANDBOX_IMAGE || undefined,
+  image: namedImage ? path.resolve(namedImage) : undefined,
   allowedHosts: [],
   capacity: new SandboxCapacity(1),
   shellEnvironment: async () => ({}),
