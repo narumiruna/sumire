@@ -39,6 +39,13 @@ The dependency is pinned to the published `@earendil-works/gondolin@0.14.0`. Its
 
 Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. No sandbox environment variables or GitHub Actions settings are required. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
 
+Docker initializes new `gondolin-cache` volumes from the image's `app`-owned `/app/.cache/gondolin` directory. If an existing volume has a root-owned cache directory and Gondolin reports `EACCES` when creating `ssl`, repair the directory from the repository root. This preserves the volume and does not restart the bot.
+
+```sh
+docker compose exec -T --user root sumire chown --no-dereference app:app /app/.cache/gondolin
+docker compose exec -T sumire test -w /app/.cache/gondolin
+```
+
 To build a guest outside Docker, install `cpio`, `lz4`, and `e2fsprogs`, then run from the repository root:
 
 ```sh
