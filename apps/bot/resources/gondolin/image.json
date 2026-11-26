@@ -1,0 +1,39 @@
+{
+  "arch": "x86_64",
+  "distro": "alpine",
+  "alpine": {
+    "version": "3.23.7",
+    "kernelPackage": "linux-virt",
+    "kernelImage": "vmlinuz-virt",
+    "rootfsPackages": [
+      "linux-virt",
+      "bash",
+      "ca-certificates",
+      "ca-certificates-bundle",
+      "curl",
+      "e2fsprogs",
+      "e2fsprogs-extra",
+      "nodejs",
+      "npm",
+      "uv",
+      "python3",
+      "openssh",
+      "git",
+      "github-cli",
+      "ripgrep",
+      "findutils",
+      "coreutils",
+      "file",
+      "ffmpeg"
+    ],
+    "initramfsPackages": [],
+    "krunfwVersion": "v5.2.1"
+  },
+  "rootfs": { "label": "sumire-sandbox" },
+  "postBuild": {
+    "copy": [
+      { "src": "../../../../node_modules/@narumitw/otter-cli", "dest": "/opt/otter" },
+      { "src": "otter", "dest": "/usr/local/bin/otter" }
+    ]
+  }
+}

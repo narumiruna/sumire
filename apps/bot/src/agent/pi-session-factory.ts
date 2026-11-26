@@ -9,7 +9,7 @@ import {
   type ModelRuntime,
 } from "@earendil-works/pi-coding-agent"
 import { createRegistry, defineExtension, Harness, section } from "@earendil-works/pi-durable"
-import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node"
 import type { Inventory } from "@narumitw/sumire-contracts"
 import { createPolymarketTools, publicPolymarketToolNames } from "@narumitw/sumire-pi-polymarket"
@@ -40,6 +40,8 @@ import { createProgressExtension } from "./durable/progress.js"
 import { DurableSession } from "./durable/session.js"
 import { BotSessionDoc } from "./durable/state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
+import { GondolinSandbox, guestWorkdir, SandboxCapacity } from "./gondolin.js"
+import { gondolinCodingTools } from "./gondolin-tools.js"
 import {
   createImagegenTool,
   getImagegenAvailability,
@@ -64,12 +66,27 @@ export interface PiSessionFactory {
   listChats(): Promise<number[]>
 }
 
+export interface CodingExecution {
+  cwd: string
+  tools: import("@earendil-works/pi-durable").ToolRegistration[]
+  env?: () => ExecutionEnv
+  close(): Promise<void>
+}
+
+/** Trusted test seam, not a runtime-configurable unsandboxed fallback. */
+export type CodingExecutionFactory = (options: {
+  chatId: number
+  shellEnvironment(signal?: AbortSignal): Promise<NodeJS.ProcessEnv>
+  authorizeShell(): (environment: NodeJS.ProcessEnv) => void
+}) => Promise<CodingExecution>
+
 export async function createPiSessionFactory(
   settings: Settings,
   logger: Logger,
   control: { store: AdminStore; mcp: McpAdmin; runtime?: RuntimeConfigReader; github?: GitHubAuth },
   channelImages = new ChannelImageIndex(settings.botSessionLogDir, logger),
   modelRuntimeOverride?: ModelRuntime,
+  executionFactory?: CodingExecutionFactory,
 ): Promise<PiSessionFactory> {
   if (!control) throw new Error("Database authorization is required")
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
@@ -78,7 +95,10 @@ export async function createPiSessionFactory(
   const loader = new DefaultResourceLoader({
     cwd: settings.botWorkdir,
     agentDir,
-    additionalSkillPaths: [settings.botSkillsDir, urlReaderSkillsPath],
+    additionalSkillPaths: [
+      settings.botSkillsDir,
+      path.join(urlReaderSkillsPath, "load-public-url", "SKILL.md"),
+    ],
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,
@@ -111,7 +131,8 @@ export async function createPiSessionFactory(
     await control.github?.resolveToken(signal)
     return adminShellEnvironment(process.env, control.runtime)
   }
-  const coding = await nativeCodingTools(shellEnvironment)
+  const coding = await nativeCodingTools()
+  const capacity = new SandboxCapacity()
   const morselPublisher = createMorselPublisher(settings, control.runtime)
   const baseTools = [
     urlTool,
@@ -181,16 +202,30 @@ export async function createPiSessionFactory(
       control.store.assertChat(chatId, state.revision)
       const policy = effectivePolicy(state.policy, chatId)
       const promptTools = coding.filter((tool) => control.store.allowsTool(chatId, tool.name))
+      const cwd = executionFactory ? settings.botWorkdir : guestWorkdir
+      const selectedSkills = loadedSkills.filter((skill) => policy.skills.includes(skill.name))
       const systemPrompt = [
         buildPiSystemPrompt({
-          cwd: settings.botWorkdir,
+          cwd,
           selectedTools: promptTools.map((tool) => tool.name),
           toolSnippets: Object.fromEntries(
             promptTools.map((tool) => [tool.name, tool.description]),
           ),
           appendSystemPrompt,
         }),
-        formatSkillsForPrompt(loadedSkills.filter((skill) => policy.skills.includes(skill.name))),
+        formatSkillsForPrompt(
+          selectedSkills.map((skill) =>
+            executionFactory
+              ? skill
+              : {
+                  ...skill,
+                  filePath: `/skills/${skill.name}/SKILL.md`,
+                },
+          ),
+        ),
+        executionFactory
+          ? ""
+          : "Coding tools run in disposable Gondolin Linux VMs, not on the bot host. Only this chat's /workspace persists between calls. Skills are read-only under /skills. Host paths from earlier history are not available; no shared host workdir is mounted. Network destinations are allowlisted. MCP and other named capabilities remain separate trusted host services; they are not sandboxed by this VM.",
       ]
         .filter(Boolean)
         .join("\n\n")
@@ -260,18 +295,31 @@ export async function createPiSessionFactory(
             authorize(IMAGEGEN_TOOL),
           )
         : undefined
-      const sessionCoding = await nativeCodingTools(shellEnvironment, () => {
+      const authorizeShell = () => {
         authorize("bash")
         const epoch = control.store.snapshot().epoch
-        return (environment) => {
+        return (environment: NodeJS.ProcessEnv) => {
           authorize("bash")
           if (control.store.snapshot().epoch !== epoch)
             throw new Error("Settings changed before shell dispatch")
           if (environment.GH_TOKEN !== control.runtime?.readSecret("GH_TOKEN"))
             throw new Error("GitHub credentials changed before shell dispatch")
         }
-      })
-      const chatCoding = [...sessionCoding, ...(imagegen ? [imagegen] : [])].filter((tool) =>
+      }
+      const execution = executionFactory
+        ? await executionFactory({ chatId, shellEnvironment, authorizeShell })
+        : await (async (): Promise<CodingExecution> => {
+            const sandbox = new GondolinSandbox({
+              workspace: path.join(settings.botSessionLogDir, String(chatId), "workspace"),
+              skills: selectedSkills,
+              capacity,
+              shellEnvironment,
+              authorize,
+              authorizeShell,
+            })
+            return { cwd, tools: await gondolinCodingTools(sandbox), close: () => sandbox.close() }
+          })()
+      const chatCoding = [...execution.tools, ...(imagegen ? [imagegen] : [])].filter((tool) =>
         control.store.allowsTool(chatId, tool.name),
       )
       const chatBaseTools = [...baseTools, ...polymarket.tools].filter(allowed).map(guard)
@@ -284,7 +332,7 @@ export async function createPiSessionFactory(
       const updateNativeTools = () => {
         nativeTools.splice(0, nativeTools.length, ...chatBaseTools, ...mcpTools)
         currentGenerations = Object.fromEntries([
-          ...chatCoding.map((tool) => [tool.name, `coding-v1:${tool.name}`]),
+          ...chatCoding.map((tool) => [tool.name, `coding-v2:${tool.name}`]),
           ...chatBaseTools.map((tool) => [tool.name, `capability-v1:${tool.name}`]),
           ...mcpTools.map((tool) => [tool.name, randomUUID()]),
         ])
@@ -341,6 +389,7 @@ export async function createPiSessionFactory(
         const results = await Promise.allSettled([
           Promise.resolve().then(() => mcp?.close()),
           Promise.resolve().then(() => polymarket.dispose()),
+          Promise.resolve().then(() => execution.close()),
         ])
         for (const result of results) {
           if (result.status === "rejected") throw result.reason
@@ -408,7 +457,7 @@ export async function createPiSessionFactory(
           {
             models: runtime,
             registry,
-            env: () => new NodeExecutionEnv({ cwd: settings.botWorkdir }),
+            ...(execution.env ? { env: execution.env } : {}),
             settings: {
               compaction: {
                 enabled: true,
@@ -451,7 +500,7 @@ export async function createPiSessionFactory(
           agent: {
             model: { provider: selectedModel.provider, modelId: selectedModel.id },
             thinkingLevel: policy.thinking,
-            cwd: settings.botWorkdir,
+            cwd: execution.cwd,
           },
         })
 
@@ -477,7 +526,7 @@ export async function createPiSessionFactory(
           inspection,
           chatId,
           sessionFile,
-          cwd: settings.botWorkdir,
+          cwd: execution.cwd,
           model: selectedModel,
           modelRuntime: runtime,
           registry,

@@ -1,9 +1,11 @@
 import path from "node:path"
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent"
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node"
 import type { GitHubAuth } from "../../src/admin/github-auth.js"
 import { McpAdmin } from "../../src/admin/mcp.js"
 import { RuntimeConfigAdmin } from "../../src/admin/runtime-config.js"
 import type { AdminStore } from "../../src/admin/store.js"
+import { nativeCodingTools } from "../../src/agent/durable/tools.js"
 import { createPiSessionFactory } from "../../src/agent/pi-session-factory.js"
 import type { Settings } from "../../src/config/settings.js"
 import type { Logger } from "../../src/logging.js"
@@ -22,9 +24,27 @@ export async function createTestSessionFactory(
     github?: GitHubAuth
   },
 ) {
+  // Legacy harness/transport fixtures deliberately keep local execution.
+  // Production defaults are exercised independently by gondolin tests.
+  const localExecution = async (options: {
+    shellEnvironment(signal?: AbortSignal): Promise<NodeJS.ProcessEnv>
+    authorizeShell(): (environment: NodeJS.ProcessEnv) => void
+  }) => ({
+    cwd: settings.botWorkdir,
+    tools: await nativeCodingTools(options.shellEnvironment, options.authorizeShell),
+    env: () => new NodeExecutionEnv({ cwd: settings.botWorkdir }),
+    close: async () => {},
+  })
   if (supplied)
     return {
-      ...(await createPiSessionFactory(settings, logger, supplied, images, runtime)),
+      ...(await createPiSessionFactory(
+        settings,
+        logger,
+        supplied,
+        images,
+        runtime,
+        localExecution,
+      )),
       control: supplied.store,
       runtime: supplied.runtime,
     }
@@ -42,6 +62,7 @@ export async function createTestSessionFactory(
     { store, mcp, runtime: runtimeConfig },
     images,
     runtime,
+    localExecution,
   )
   // The fixture explicitly approves a finite tool/model catalog, never arbitrary chat IDs.
   if (store.snapshot().policy.models.length === 0) {

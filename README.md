@@ -38,6 +38,10 @@ docker compose logs -f sumire
 docker compose down
 ```
 
+### Coding sandbox
+
+Production coding tools, including CodeMode calls, use disposable Gondolin micro-VMs with per-chat workspaces. Docker still hosts the trusted bot and MCP services. See [sandbox boundaries, deployment requirements, compatibility and rollout gates](docs/gondolin-sandbox.md) before upgrading; previous shared host paths are not automatically exposed.
+
 ### Administration WebUI
 
 See [WebUI setup, passkey login, permissions, and recovery](docs/admin-webui.md). The backend defaults to loopback port `17465`, selected after checking `listenr`. Use `docker compose up -d --build`, then send `/admin` to get the local passkey setup URL. For remote access, set `ADMIN_ORIGIN` and use an existing HTTPS reverse proxy. `compose.yaml` publishes only loopback port `17465`, not port 443.

@@ -36,6 +36,7 @@ services:
       # Retain the old cache for matching-image rollback; ONNX weights use a new volume.
       - whisper-cache:/app/.cache/whisper
       - transformers-cache:/app/.cache/transformers
+      - gondolin-cache:/app/.cache/gondolin
 
 volumes:
   workdir:
@@ -43,3 +44,4 @@ volumes:
   state:
   whisper-cache:
   transformers-cache:
+  gondolin-cache:

@@ -438,7 +438,7 @@ Tools are capabilities, not an OS sandbox. Pi, shell tools, and stdio MCP proces
 
 Shell tools receive a restricted environment: system and runtime paths, locale fields, the existing Otter skill credential, and the applied managed `GH_TOKEN`. GitHub CLI prompts are disabled. Managed Firecrawl/Morsel secrets and the runtime master key are not injected. They do not directly inherit bot tokens, unused legacy Telegram login secrets, or ambient model provider keys. MCP retains its existing explicit environment policy.
 
-Sumire does not inject stored model provider credentials into tool or MCP environments, but same-user file access is not isolated. Do not enable shell or unrestricted file tools for untrusted chats. Do not claim credential isolation when these capabilities are enabled. Use a separate tested OS or VM boundary if that isolation is required. This release does not add such a boundary.
+Sumire does not inject stored model provider credentials into tool or MCP environments. Coding tools now use the separate [Gondolin boundary](gondolin-sandbox.md), with per-chat workspace mounts and scoped credential placeholders. MCP and other host capabilities remain trusted and can still access same-user state. Do not grant unrestricted host tools to untrusted chats or describe this as complete credential isolation. Validate the exact VM deployment before rollout.
 
 ## Backup and recovery
 

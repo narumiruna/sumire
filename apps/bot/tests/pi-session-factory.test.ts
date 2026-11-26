@@ -569,7 +569,7 @@ describe("createPiSessionFactory", () => {
       expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain(basePrompt)
       expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("Telegram 機器人助理")
       expect(session.systemPrompt).toContain("Telegram 機器人助理")
-      expect(session.systemPrompt).toContain("<name>load-url-content</name>")
+      expect(session.systemPrompt).toContain("<name>load-public-url</name>")
       expect(session.systemPrompt).toContain(
         "使用者只提供網址時，先以 read_url_content 讀取本則訊息的網址",
       )
@@ -671,7 +671,7 @@ describe("createPiSessionFactory", () => {
       expect(bashResult.content).toContainEqual({ type: "text", text: "tool-ok" })
 
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")
-      expect(session.systemPrompt.match(/<name>load-url-content<\/name>/g)).toHaveLength(1)
+      expect(session.systemPrompt).not.toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain("<name>otter-manage-expenses</name>")
       expect(logger.warn).not.toHaveBeenCalledWith(
         expect.stringContaining("Pi skill diagnostic for chat_id=123"),

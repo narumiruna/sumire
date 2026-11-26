@@ -205,7 +205,7 @@ Production verification remains with these roles:
 
 ## Trust boundary
 
-This is not an OS sandbox. Authorized shell/file tools and administrator-supplied stdio MCP code run with the bot user's permissions and can access same-user state, processes, and networking. Encryption, environment filtering, and tool permissions do not isolate the key/database from such code. Do not enable unrestricted tools for untrusted chats. Use a separate tested OS/VM boundary when that isolation is required.
+Encryption and runtime configuration are not an OS sandbox. Production coding tools now run in [Gondolin micro-VMs](gondolin-sandbox.md), with only per-chat workspace mounts and scoped credential placeholders. Administrator-supplied stdio MCP code and other host tools still run with bot-user permissions and can access same-user state. Do not grant those capabilities to untrusted chats or assume the whole bot is isolated by the coding sandbox.
 
 ## GitHub mention replies
 
@@ -241,7 +241,7 @@ Usernames contain 1–39 ASCII letters/digits with single interior hyphens. Name
 
 Admin database schema v5 replaces the incorrect Telegram-recipient policy. Valid legacy `allowedUserIds` lists become **empty** GitHub allowlists, never usernames. Converted settings receive a new pending revision and must apply before use. Missing blocks default empty. Current save requests reject the legacy field; malformed legacy state stops migration. Restore a matching database backup and encryption key before downgrading to v4.
 
-Only the applied encrypted `GH_TOKEN` is used. There is no host environment or GitHub CLI credential fallback. Chats with `bash` access can independently read or use this shared token; this allowlist is not a host sandbox.
+Only the applied encrypted `GH_TOKEN` is used. There is no host environment or GitHub CLI credential fallback. Chats with `bash` access can independently use this shared account through the Gondolin credential proxy, although their environment contains only placeholders. The mention-author allowlist does not restrict shell API operations; trusted host tools can still access credentials.
 
 Allowed mention data is sent to the selected model and retained in dedicated durable transcripts. Replies are published in the source repository. Removing a username does not erase transcripts, backups, or posted replies. Approve only authors and repositories for which these transfers are acceptable.
 
