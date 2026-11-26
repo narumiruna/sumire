@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Readable } from "node:stream"
@@ -7,10 +7,10 @@ import { ReadonlyProvider, RealFSProvider, VM, type VMOptions } from "@earendil-
 import { afterEach, expect, it, vi } from "vitest"
 import { McpAdmin } from "../src/admin/mcp.js"
 import {
+  type GondolinOptions,
   GondolinSandbox,
   guestPath,
   SandboxCapacity,
-  type GondolinOptions,
 } from "../src/agent/gondolin.js"
 import { createPiSessionFactory } from "../src/agent/pi-session-factory.js"
 import { loadSettings } from "../src/config/settings.js"
@@ -207,6 +207,22 @@ it("bounds running VMs and removes cancelled capacity waiters", async () => {
   next()
 })
 
+it("passes a free slot to the next waiter if the first is cancelled after wakeup", async () => {
+  const pool = new SandboxCapacity(1)
+  const release = await pool.acquire(new AbortController().signal)
+  const first = new AbortController()
+  const waiting = pool.acquire(first.signal)
+  const rejected = expect(waiting).rejects.toThrow("withdraw after wakeup")
+  const next = pool.acquire(AbortSignal.timeout(1_000))
+
+  release()
+  first.abort(new Error("withdraw after wakeup"))
+
+  await rejected
+  const releaseNext = await next
+  releaseNext()
+})
+
 it("rejects symlink workspace roots and maps traversal only in the guest namespace", async () => {
   const settings = await options()
   await mkdir(path.dirname(settings.workspace), { recursive: true })
@@ -234,6 +250,12 @@ it("uses Gondolin's actual host provider to reject escaping symlinks", async () 
 it("routes production direct and CodeMode coding tools to the same chat-only mount", async () => {
   const fixture = await createPiFixture()
   cleanup.push(() => fixture.cleanup())
+  const getModel = fixture.modelRuntime.getModel.bind(fixture.modelRuntime)
+  let resize = { maxWidth: 2, maxHeight: 2, maxBytes: 1024 }
+  vi.spyOn(fixture.modelRuntime, "getModel").mockImplementation((provider, id) => {
+    const model = getModel(provider, id)
+    return model && { ...model, inputLimits: { images: { resize } } }
+  })
   const vmOptions: VMOptions[] = []
   const execs: string[][] = []
   const closes: ReturnType<typeof vi.fn>[] = []
@@ -320,13 +342,34 @@ it("routes production direct and CodeMode coding tools to the same chat-only mou
   const oversized = await callDurableTool(session, "read", { path: "long-line.txt" })
   expect(oversized.isError).toBe(true)
   expect(JSON.stringify(oversized.content)).toContain("exceeds 50KB")
+  const workspace = vmOptions[0]?.vfs?.mounts?.["/workspace"]
+  if (!(workspace instanceof RealFSProvider)) throw new Error("Missing workspace mount")
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAADElEQVR4nGNgoD0AAABkAAGGZDw1AAAAAElFTkSuQmCC",
+    "base64",
+  )
+  await writeFile(path.join(workspace.rootPath, "image.png"), png)
   const nested = await callDurableTool(session, "codemode", {
-    code: 'text(await tools.read({path:"answer.txt"})); text(await tools.bash({command:"uname -a"}))',
+    code: `text(await tools.read({path:"answer.txt"}));
+      image(await tools.read({path:"image.png"}));
+      text(await tools.bash({command:"uname -a"}));`,
   })
   expect(nested.isError).toBeFalsy()
   expect(JSON.stringify(nested.content)).toContain("after")
   expect(JSON.stringify(nested.content)).toContain("guest-only")
   expect(execs.at(-1)?.slice(-2, -1)).toEqual(["uname -a"])
+  const image = nested.content.find((block) => block.type === "image")
+  if (!image) throw new Error("CodeMode did not return the image")
+  expect(image.mimeType).toBe("image/png")
+  const resized = Buffer.from(image.data, "base64")
+  expect(resized.readUInt32BE(16)).toBeLessThanOrEqual(2)
+  expect(resized.readUInt32BE(20)).toBeLessThanOrEqual(2)
+  expect(image.data.length).toBeLessThanOrEqual(1024)
+
+  resize = { ...resize, maxBytes: 1 }
+  const rejected = await callDurableTool(session, "read", { path: "image.png" })
+  expect(rejected.isError).toBe(true)
+  expect(rejected.content.some((block) => block.type === "image")).toBe(false)
   expect(closes.every((close) => close.mock.calls.length === 1)).toBe(true)
   for (const o of vmOptions) {
     for (const [target, mount] of Object.entries(o.vfs?.mounts ?? {})) {

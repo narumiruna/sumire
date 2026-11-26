@@ -40,14 +40,14 @@ import { createProgressExtension } from "./durable/progress.js"
 import { DurableSession } from "./durable/session.js"
 import { BotSessionDoc } from "./durable/state.js"
 import { adaptTool, collectTools, isCodemodeCallable, nativeCodingTools } from "./durable/tools.js"
+import { GondolinSandbox, guestWorkdir, SandboxCapacity } from "./gondolin.js"
+import { gondolinCodingTools } from "./gondolin-tools.js"
 import {
   createImagegenTool,
   getImagegenAvailability,
   hasCodexImageAuth,
   IMAGEGEN_TOOL,
 } from "./imagegen.js"
-import { GondolinSandbox, guestWorkdir, SandboxCapacity } from "./gondolin.js"
-import { gondolinCodingTools } from "./gondolin-tools.js"
 import { createMcpTransport, McpCapability } from "./mcp-capability.js"
 import { createBotModelRuntime } from "./model-runtime.js"
 import { buildPiSystemPrompt } from "./pi-system-prompt.js"
@@ -95,7 +95,10 @@ export async function createPiSessionFactory(
   const loader = new DefaultResourceLoader({
     cwd: settings.botWorkdir,
     agentDir,
-    additionalSkillPaths: [settings.botSkillsDir, urlReaderSkillsPath],
+    additionalSkillPaths: [
+      settings.botSkillsDir,
+      path.join(urlReaderSkillsPath, "load-public-url", "SKILL.md"),
+    ],
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,

@@ -1,18 +1,28 @@
 import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
+import type { VM } from "@earendil-works/gondolin"
 import {
   createEditToolDefinition,
   createWriteToolDefinition,
   type EditToolInput,
-  type WriteToolInput,
   truncateHead,
+  type WriteToolInput,
 } from "@earendil-works/pi-coding-agent"
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable"
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node"
-import { createBashTool, createReadTool } from "@earendil-works/pi-durable/tools"
-import type { VM } from "@earendil-works/gondolin"
+import {
+  createBashTool,
+  createReadTool,
+  DEFAULT_IMAGE_LIMITS,
+} from "@earendil-works/pi-durable/tools"
 import { adaptTool, type NativeTool } from "./durable/tools.js"
-import { boundedFile, GondolinSandbox, guestPath, guestWorkdir, imageType } from "./gondolin.js"
+import {
+  boundedFile,
+  type GondolinSandbox,
+  guestPath,
+  guestWorkdir,
+  imageType,
+} from "./gondolin.js"
 
 /** Bounded selection, including for a file with a multi-gigabyte single line. */
 async function textRange(
@@ -86,16 +96,23 @@ async function textRange(
 export async function gondolinCodingTools(sandbox: GondolinSandbox): Promise<ToolRegistration[]> {
   const images = await createNodePhotonImages({ worker: false })
   const read = defineTool({
-    ...createReadTool(),
+    ...createReadTool({ images }),
     replay: "safe",
     async execute(args, api, context) {
       return sandbox.run("read", context.abortSignal, 300, async (vm, signal) => {
         const mimeType = await imageType(vm, args.path, signal)
         if (mimeType) {
+          const ref = (await api.agent(context)).model
+          const model = ref && api.models.getModel(ref.provider, ref.modelId)
+          const resize = model?.inputLimits?.images?.resize
           const prepared = await images.prepare(
             await boundedFile(vm, args.path, signal),
             mimeType,
-            { maxWidth: 2_000, maxHeight: 2_000, maxBytes: 4.5 * 1024 * 1024 },
+            {
+              maxWidth: resize?.maxWidth ?? DEFAULT_IMAGE_LIMITS.maxWidth,
+              maxHeight: resize?.maxHeight ?? DEFAULT_IMAGE_LIMITS.maxHeight,
+              maxBytes: resize?.maxBytes ?? DEFAULT_IMAGE_LIMITS.maxBytes,
+            },
           )
           signal.throwIfAborted()
           if (!prepared) throw new Error("Image cannot be prepared within model limits")
@@ -187,7 +204,7 @@ export async function gondolinCodingTools(sandbox: GondolinSandbox): Promise<Too
           [
             "/bin/bash",
             "-c",
-            'set -o pipefail; /bin/bash -lc "$1" 2>&1 | tee -- "$2"; exit "${PIPESTATUS[0]}"',
+            `set -o pipefail; /bin/bash -lc "$1" 2>&1 | tee -- "$2"; exit "\${PIPESTATUS[0]}"`,
             "sumire",
             args.command,
             outputPath,

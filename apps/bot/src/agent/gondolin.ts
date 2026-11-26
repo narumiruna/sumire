@@ -34,6 +34,8 @@ export class SandboxCapacity {
         signal.addEventListener("abort", abort, { once: true })
         if (signal.aborted) abort()
       })
+      // A waiter can be cancelled after release wakes it but before it claims the slot.
+      if (signal.aborted && this.running < this.limit) this.waiting.shift()?.()
     }
     signal.throwIfAborted()
     this.running++

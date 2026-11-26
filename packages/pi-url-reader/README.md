@@ -47,7 +47,7 @@ of the `whisperPath` constructor option.
 ## Bundled skills
 
 - `load-public-url` explains tool use, source attribution, and untrusted content handling.
-- `load-url-content` uses the dependency's CLI through a bundled script when the tool is unavailable or CLI debugging is needed. It requires Pi's `bash` tool and the library's runtime dependencies.
+- `load-url-content` uses the dependency's CLI through a bundled script when the tool is unavailable or CLI debugging is needed. It requires Pi's `bash` tool and the library's runtime dependencies. The Sumire bot loads only `load-public-url`; its Gondolin guest does not include these CLI dependencies.
 
 Pi discovers both skills through the package manifest. Hosts that load `createUrlExtension()` directly can bind both skills with the exported `urlReaderSkillsPath`.
 

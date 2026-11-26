@@ -118,6 +118,18 @@ it("discovers skill metadata with the configured filter and registers names once
   expect(register).toHaveBeenCalledTimes(1)
 })
 
+it("offers the URL tool skill but not the bundled host CLI in the VM", async () => {
+  const { factory, create, register } = await setup(
+    new Set(["load-public-url", "load-url-content"]),
+  )
+  expect(factory.skills?.map(({ name }) => name)).toEqual(["load-public-url"])
+  expect(register).toHaveBeenCalledExactlyOnceWith(["load-public-url"])
+  const session = await create(123)
+  expect(session.systemPrompt).toContain("/skills/load-public-url/SKILL.md")
+  expect(session.systemPrompt).not.toContain("<name>load-url-content</name>")
+  expect(session.getActiveToolNames()).toContain("read_url_content")
+})
+
 it.each([256, 257])("keeps startup available with a %i-character skill name", async (length) => {
   const fixture = await createPiFixture()
   cleanups.push(() => fixture.cleanup())
@@ -171,7 +183,7 @@ it("uses per-chat guest skill paths without changing tool permissions", async ()
     expect.arrayContaining([
       { name: "alpha", description: "Use alpha for fixture tasks." },
       { name: "beta", description: "Use beta for fixture tasks." },
-      expect.objectContaining({ name: "load-url-content" }),
+      expect.objectContaining({ name: "load-public-url" }),
     ]),
   )
   expect(

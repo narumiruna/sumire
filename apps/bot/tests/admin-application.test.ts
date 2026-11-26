@@ -117,7 +117,7 @@ it("preserves observed metadata across repeated actual administration startup", 
           })
         const metadata = (id: number) => get(`/api/chats?id=${id}`)
         expect(await get("/api/inventory")).toMatchObject({ skills: factory.skills })
-        expect(factory.skills).toContainEqual(expect.objectContaining({ name: "load-url-content" }))
+        expect(factory.skills).toContainEqual(expect.objectContaining({ name: "load-public-url" }))
         expect(await metadata(-100)).toEqual([
           expect.objectContaining({ name: expectedName, type: "supergroup" }),
         ])

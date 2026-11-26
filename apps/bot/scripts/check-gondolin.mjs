@@ -28,11 +28,11 @@ try {
       [
         "/bin/bash",
         "-lc",
-        "uname -sr; printf retained > /workspace/retained; printf ephemeral > /tmp/ephemeral; otter --help >/dev/null; git --version; gh --version | head -1",
+        "set -e; uname -sr; printf retained > /workspace/retained; printf ephemeral > /tmp/ephemeral; otter --help >/dev/null; git --version; gh --version",
       ],
       { cwd: "/workspace", signal },
     )
-    assert.equal(result.exitCode, 0)
+    assert.equal(result.exitCode, 0, result.stderr.trim())
     console.log(result.stdout.trim())
     await assert.rejects(vm.fs.readFile("/workspace/escape", { signal }))
     await assert.rejects(vm.fs.writeFile("/workspace/escape", "changed", { signal }))
