@@ -211,7 +211,8 @@ WORKDIR /workdir
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /workdir --shell /usr/sbin/nologin app \
-    && mkdir -p /app/.telegramagent /app/.events /app/.cache/whisper /app/.cache/transformers /app/instructions /app/skills \
+    && mkdir -p /app/.telegramagent /app/.events /app/instructions /app/skills \
+      /app/.cache/whisper /app/.cache/transformers /app/.cache/gondolin \
     && chown -R app:app /app /workdir
 
 COPY --from=browser-download --chown=app:app /ms-playwright /ms-playwright
