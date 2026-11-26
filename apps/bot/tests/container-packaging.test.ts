@@ -65,13 +65,19 @@ describe("container application packaging", () => {
     const dockerfile = await readFile(dockerfileUrl, "utf8")
     const runtime = dockerfile.split("FROM runtime-dependencies AS runtime\n")[1]
     expect(runtime).toContain("WORKDIR /workdir")
-    expect(runtime?.match(/&& mkdir -p (.+) \\\n/)?.[1]?.split(" ")).toEqual([
+    const directories = runtime
+      ?.match(/&& mkdir -p ([\s\S]+?)\s+&& chown -R app:app/)?.[1]
+      ?.replace(/\\\s*/g, " ")
+      .trim()
+      .split(/\s+/)
+    expect(directories).toEqual([
       "/app/.telegramagent",
       "/app/.events",
-      "/app/.cache/whisper",
-      "/app/.cache/transformers",
       "/app/instructions",
       "/app/skills",
+      "/app/.cache/whisper",
+      "/app/.cache/transformers",
+      "/app/.cache/gondolin",
     ])
     expect(runtime).toContain("&& chown -R app:app /app /workdir")
     expect(runtime).toContain("COPY --from=runtime-application --chown=app:app /app /app")
