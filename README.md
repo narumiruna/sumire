@@ -25,7 +25,7 @@ Bot-owned shared runtime resources stay at the repository root:
 - `instructions/SOUL.md`: bot persona and runtime context inserted into the template.
 - `skills/`: Bot-owned Agent Skills; package-specific Pi skills live in their owning package's `skills/` directory.
 - `.events` and `.telegramagent`: ignored runtime state.
-- `.env`: ignored credentials and Telegram authorization; copy it from `.env.example`. Bot credentials and the required administrator ID remain bootstrap settings. The required `BOT_ADMIN_ID` configures the [administration WebUI](docs/admin-webui.md) at `http://localhost:17465`. `ADMIN_ORIGIN` selects an HTTPS origin for remote access; `ADMIN_HOST` and `ADMIN_PORT` change the backend binding. Persisted policies are the only source of chat authorization; new databases deny all chats until approval. Other runtime limits remain fixed.
+- `.env`: ignored credentials and Telegram authorization; copy it from `.env.example`. Bot credentials and the required administrator ID remain bootstrap settings. The required `BOT_ADMIN_ID` configures the [administration WebUI](docs/admin-webui.md) at `http://localhost:17465`. `ADMIN_ORIGIN` selects an HTTPS origin for remote access; `ADMIN_HOST` and `ADMIN_PORT` change the backend binding. Persisted policies are the only source of chat authorization; new databases deny all chats until approval. `BOT_VM_BACKEND` selects the deployment-wide coding sandbox backend (`qemu` by default, optional `libkrun`); see [backend prerequisites](docs/gondolin-sandbox.md#select-a-vm-backend). Other runtime limits remain fixed.
 
 ## TypeScript bot
 

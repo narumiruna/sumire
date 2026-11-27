@@ -42,29 +42,51 @@ function fakeVm() {
   return { start: vi.fn(async () => {}), close: vi.fn(async () => {}) } as unknown as VM
 }
 
-it("closes every invocation on success and failure, with no host fallback", async () => {
-  const vms = [fakeVm(), fakeVm()]
-  const create = vi.fn(async () => vms[create.mock.calls.length - 1] as VM)
-  const sandbox = new GondolinSandbox(await options(), create)
-  await expect(sandbox.run("read", undefined, 5, async () => "done")).resolves.toBe("done")
-  await expect(
-    sandbox.run("write", undefined, 5, async () => {
-      throw new Error("failed")
-    }),
-  ).rejects.toThrow("failed")
-  for (const vm of vms) {
-    expect(vm.start).toHaveBeenCalledOnce()
-    expect(vm.close).toHaveBeenCalledOnce()
-  }
-  const unavailable = new GondolinSandbox(await options(), async () => {
-    throw new Error("no VMM")
+it.each(["qemu", "libkrun"] as const)(
+  "closes %s invocations on success and failure, with no host fallback",
+  async (backend) => {
+    const vms = [fakeVm(), fakeVm()]
+    const create = vi.fn(async () => vms[create.mock.calls.length - 1] as VM)
+    const sandbox = new GondolinSandbox(await options({ backend }), create)
+    await expect(sandbox.run("read", undefined, 5, async () => "done")).resolves.toBe("done")
+    await expect(
+      sandbox.run("write", undefined, 5, async () => {
+        throw new Error("failed")
+      }),
+    ).rejects.toThrow("failed")
+    for (const vm of vms) {
+      expect(vm.start).toHaveBeenCalledOnce()
+      expect(vm.close).toHaveBeenCalledOnce()
+    }
+    const unavailableCreate = vi.fn(async () => {
+      throw new Error("no VMM")
+    })
+    const unavailable = new GondolinSandbox(await options({ backend }), unavailableCreate)
+    const action = vi.fn()
+    await expect(unavailable.run("bash", undefined, 5, action)).rejects.toThrow("no VMM")
+    expect(action).not.toHaveBeenCalled()
+    expect(unavailableCreate).toHaveBeenCalledOnce()
+  },
+)
+
+it.each([
+  { backend: "qemu", vmm: "qemu" },
+  { backend: "libkrun", vmm: "krun" },
+] as const)("maps $backend to SDK $vmm without weakening isolation", async ({ backend, vmm }) => {
+  const create = vi.fn(async (_options: VMOptions) => fakeVm())
+  const sandbox = new GondolinSandbox(await options({ backend }), create)
+  await sandbox.run("read", undefined, 5, async () => {})
+  expect(create.mock.calls[0]?.[0]).toMatchObject({
+    sandbox: { vmm, netEnabled: false },
+    rootfs: { mode: "cow" },
+    dns: { mode: "synthetic" },
+    memory: "512M",
+    cpus: 1,
   })
-  const action = vi.fn()
-  await expect(unavailable.run("bash", undefined, 5, action)).rejects.toThrow("no VMM")
-  expect(action).not.toHaveBeenCalled()
 })
 
 it("puts placeholders, not ambient credentials or host paths, into VM options", async () => {
+  vi.stubEnv("GONDOLIN_VMM", "krun")
   const vm = fakeVm()
   let captured: VMOptions | undefined
   const sandbox = new GondolinSandbox(
@@ -89,6 +111,7 @@ it("puts placeholders, not ambient credentials or host paths, into VM options", 
     allowWebSockets: false,
     rootfs: { mode: "cow" },
     dns: { mode: "synthetic" },
+    sandbox: { vmm: "qemu" },
   })
   expect(captured?.env).toMatchObject({ HOME: "/root", GH_PROMPT_DISABLED: "1" })
   const env = captured?.env as Record<string, string>
@@ -246,8 +269,9 @@ it("uses Gondolin's actual host provider to reject escaping symlinks", async () 
 })
 
 /** Only the VM transport is mocked; factory, durable tools and nested CodeMode are real. */
-it("routes production direct and CodeMode coding tools to the same chat-only mount", async () => {
+it("routes the configured libkrun backend through direct and CodeMode coding tools", async () => {
   const fixture = await createPiFixture()
+  fixture.settings.botVmBackend = "libkrun"
   cleanup.push(() => fixture.cleanup())
   const getModel = fixture.modelRuntime.getModel.bind(fixture.modelRuntime)
   let resize = { maxWidth: 2, maxHeight: 2, maxBytes: 1024 }
@@ -387,6 +411,7 @@ it("routes production direct and CodeMode coding tools to the same chat-only mou
     ).toBe(allowed)
   }
   for (const o of vmOptions) {
+    expect(o.sandbox?.vmm).toBe("krun")
     expect(o.sandbox?.imagePath).toBe("/opt/gondolin/guest")
     for (const [target, mount] of Object.entries(o.vfs?.mounts ?? {})) {
       if (target !== "/workspace") {

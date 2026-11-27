@@ -5,14 +5,19 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { GondolinSandbox, SandboxCapacity } from "../dist/agent/gondolin.js"
+import { vmBackendOptions } from "../dist/agent/vm-backend.js"
 
 const namedImage = process.argv[2]
+const backend = process.env.BOT_VM_BACKEND?.trim() || "qemu"
+vmBackendOptions(backend)
+console.log(`VM backend: ${backend}`)
 const directory = await mkdtemp(path.join(tmpdir(), "sumire-gondolin-smoke-"))
 const workspace = path.join(directory, "workspace")
 await mkdir(workspace)
 await writeFile(path.join(directory, "outside"), "private smoke fixture")
 await symlink("../outside", path.join(workspace, "escape"))
 const sandbox = new GondolinSandbox({
+  backend,
   workspace,
   skills: [],
   image: namedImage ? path.resolve(namedImage) : undefined,

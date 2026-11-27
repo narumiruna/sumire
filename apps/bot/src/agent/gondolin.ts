@@ -8,6 +8,7 @@ import {
   VM,
   type VMOptions,
 } from "@earendil-works/gondolin"
+import { type VmBackend, vmBackendOptions } from "./vm-backend.js"
 
 export const guestWorkdir = "/workspace"
 const bundledGuestImage = "/opt/gondolin/guest"
@@ -64,6 +65,7 @@ export class SandboxCapacity {
 }
 
 export interface GondolinOptions {
+  backend?: VmBackend
   workspace: string
   skills: { name: string; filePath: string }[]
   image?: string
@@ -184,6 +186,7 @@ export class GondolinSandbox {
         startTimeoutMs: 30_000,
         sessionLabel: "sumire coding tool",
         sandbox: {
+          ...vmBackendOptions(this.options.backend ?? "qemu"),
           imagePath: this.options.image ?? bundledGuestImage,
           netEnabled: name === "bash",
         },

@@ -10,7 +10,10 @@ it("recreates the container with the current policy and waits for health before 
     "docker compose up -d --no-build --remove-orphans --force-recreate --wait --wait-timeout 180\n          docker image prune -f",
   )
   expect(workflow).toContain("if: always()\n        run: rm -f .env")
+  expect(workflow).toContain(`BOT_VM_BACKEND: \${{ vars.BOT_VM_BACKEND || 'qemu' }}`)
+  expect(workflow).toContain(`"BOT_VM_BACKEND=\${BOT_VM_BACKEND}"`)
   const compose = readFileSync(new URL("../../../compose.yaml", import.meta.url), "utf8")
+  expect(compose).toContain("env_file:\n      - .env")
   expect(compose).toContain("healthcheck:")
   expect(compose).toContain("/healthz")
 })

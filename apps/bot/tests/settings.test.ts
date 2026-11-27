@@ -15,6 +15,7 @@ describe("loadSettings", () => {
     expect(settings).toMatchObject({
       projectRoot: "/workspace/project",
       botWorkdir: "/workspace/project",
+      botVmBackend: "qemu",
       botMcpConfigPath: "/workspace/project/mcp.json",
       botCodemodeTimeoutSeconds: 3_660,
       botGroupPassiveContextEnabled: true,
@@ -47,6 +48,21 @@ describe("loadSettings", () => {
     expect(settings.botSystemPromptPath).toBe("/workspace/project/instructions/APPEND_SYSTEM.md")
     expect(settings.botSoulPath).toBe("/workspace/project/instructions/SOUL.md")
     expect(settings.botUrlAllowedSchemes).toEqual(new Set(["http", "https"]))
+  })
+
+  it.each([undefined, "", "   ", "qemu", " qemu "])(
+    "uses qemu for an unset, empty or explicit default backend: %j",
+    (backend) => {
+      expect(loadSettings({ BOT_VM_BACKEND: backend }).botVmBackend).toBe("qemu")
+    },
+  )
+
+  it("selects libkrun explicitly", () => {
+    expect(loadSettings({ BOT_VM_BACKEND: " libkrun " }).botVmBackend).toBe("libkrun")
+  })
+
+  it.each(["krun", "docker", "QEMU", "invalid"])("rejects unsupported VM backend %j", (backend) => {
+    expect(() => loadSettings({ BOT_VM_BACKEND: backend })).toThrow(ZodError)
   })
 
   it("parses retained credentials and Telegram authorization", () => {
@@ -121,6 +137,7 @@ describe("loadSettings", () => {
     expect(names).toEqual([
       "BOT_TOKEN",
       "BOT_ADMIN_ID",
+      "BOT_VM_BACKEND",
       "ADMIN_ORIGIN",
       "ADMIN_HOST",
       "ADMIN_PORT",
