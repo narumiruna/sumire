@@ -154,10 +154,12 @@ RUN --network=none node --input-type=module -e "await import('/app/apps/bot/dist
 FROM dependencies AS gondolin-image
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates cpio lz4 e2fsprogs
-COPY apps/bot/resources/gondolin/ apps/bot/resources/gondolin/
+COPY apps/bot/resources/gondolin/image.json apps/bot/resources/gondolin/otter apps/bot/resources/gondolin/
 RUN case "$TARGETARCH" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) exit 1 ;; esac \
     && node node_modules/@earendil-works/gondolin/dist/bin/gondolin.js build \
       --arch "$arch" --config apps/bot/resources/gondolin/image.json --output /gondolin-guest
+COPY apps/bot/resources/gondolin/normalize-kernel.mjs apps/bot/resources/gondolin/
+RUN node apps/bot/resources/gondolin/normalize-kernel.mjs /gondolin-guest
 
 FROM node:26-bookworm-slim AS audio-dependencies
 
