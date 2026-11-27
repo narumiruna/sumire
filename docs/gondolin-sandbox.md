@@ -37,7 +37,9 @@ Secret substitution is not API authorization: an agent with `bash` permission ca
 
 The dependency is pinned to the published `@earendil-works/gondolin@0.14.0`. Its QEMU-based JavaScript controller is **not** the newer, unreleased native-daemon architecture on the upstream `main` branch. This change does not require or claim to install `gondolind`.
 
-Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. No sandbox environment variables or GitHub Actions settings are required. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
+Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. On ARM64, the build extracts the raw Linux Image from Alpine's EFI zboot kernel and updates the Gondolin manifest before packaging. Without this step, QEMU 7.2 direct boot never reaches guest readiness. The x86-64 kernel is unchanged.
+
+The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. No sandbox environment variables or GitHub Actions settings are required. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
 
 Docker initializes new `gondolin-cache` volumes from the image's `app`-owned `/app/.cache/gondolin` directory. If an existing volume has a root-owned cache directory and Gondolin reports `EACCES` when creating `ssl`, repair the directory from the repository root. This preserves the volume and does not restart the bot.
 
@@ -50,7 +52,8 @@ To build a guest outside Docker, install `cpio`, `lz4`, and `e2fsprogs`, then ru
 
 ```sh
 npx gondolin build --config apps/bot/resources/gondolin/image.json --output ./gondolin-guest
-# On arm64, add --arch aarch64; the checked-in config defaults to x86_64.
+# On ARM64, add --arch aarch64 to the build command. The config defaults to x86_64.
+node apps/bot/resources/gondolin/normalize-kernel.mjs ./gondolin-guest
 ```
 
 When running the bot directly, install QEMU, `qemu-img`, and the required device ROMs, and make the built guest assets available at `/opt/gondolin/guest`. The standalone smoke check can take a different local directory as an argument.
@@ -71,9 +74,19 @@ This is not protection against a malicious host account, VMM vulnerabilities, si
 
 On 2026-11-24, root `format:check`, `lint`, `typecheck`, `build`, and `git diff --check` passed. The focused sandbox/skill suite passed 18 tests at default timeouts. A complete bot run passed 2,297 tests across 146 files with `npm --ignore-scripts test --workspace @narumitw/sumire -- --testTimeout=30000 --hookTimeout=30000 --maxWorkers=2`. The other workspaces passed 2,014 tests. Root `npm test` at default 5-second test bounds did **not** pass: the latest constrained-worker attempt had four timeouts in existing bulk notification, chat-directory capacity, and provisional MCP-registration cases. Their source timeouts were not relaxed in the repository. These are successful distinct suite runs, not a clean default all-workspace test run.
 
-Real VM execution and a full Docker image build must also pass before rollout. The checked-in custom guest configuration successfully built on arm64 (SDK 0.14.0 helpers, build ID `4efbfc80-f82d-5038-90d4-7531b916c862`); that is guest-image build evidence, not a complete Docker build or successful VM run. In this development environment (Linux arm64, no `/dev/kvm`, Debian QEMU 7.2.22 extracted into a private tools directory), the published `alpine-base:0.4.0` image emitted boot but did not complete guest exec: default VFS readiness timed out after 60 seconds; without VFS, boot completed but `uname` did not return within five seconds. Both attempts awaited VM close. The custom image then exposed a missing iPXE ROM in the private test installation; after providing those ROMs, its VFS readiness still timed out after 30 seconds. The Docker runtime now explicitly installs `ipxe-qemu`, including with `--no-install-recommends`. This is a host/backend/image compatibility blocker, **not** successful smoke-test evidence and not a diagnosed Gondolin root cause.
+Real VM execution and a full Docker image build must also pass before rollout. Earlier ARM64 tests timed out with the bundled guest even after installing the required iPXE ROMs. In a later offline comparison, the same container under QEMU 7.2.22 TCG timed out with Alpine's EFI zboot kernel and passed with the extracted Linux Image. The comparison did not require `/dev/kvm` or a change to the seccomp profile.
 
-After building the bot, run `node apps/bot/scripts/check-gondolin.mjs` on a staging host. To check an image in a different directory, run `node apps/bot/scripts/check-gondolin.mjs ./gondolin-guest`. This offline check exercises actual guest commands and bundled tools, read/write symlink denial, workspace persistence, and fresh rootfs state without using real credentials. It fails if any guest command fails, including Otter, Git, or GitHub CLI.
+The service health check does not boot a VM. Before deploying a built container image, run the offline VM smoke test with the deployment seccomp profile and no bot state, credentials, or container network:
+
+```sh
+docker run --rm --init --network none \
+  --security-opt "seccomp=$PWD/apps/bot/resources/chromium/seccomp-profile.json" \
+  --entrypoint node sumire:local /app/apps/bot/scripts/check-gondolin.mjs
+```
+
+For a local guest build, run `node apps/bot/scripts/check-gondolin.mjs ./gondolin-guest` after building the bot. This check exercises guest commands and bundled tools, read/write symlink denial, workspace persistence, and fresh rootfs state.
+
+On 2026-11-27, the full ARM64 Docker image built successfully and passed this check on OrbStack using QEMU 7.2.22 TCG and the deployment seccomp profile.
 
 The takeover branch passed this offline check on Linux x86_64: the Docker `gondolin-image` target built guest `5e765c06-afa5-5a98-87ca-0f35ef3e6f35`, and a separate Debian Bookworm test container ran it as a non-root user with QEMU 7.2 TCG and no container network. The full production image build stopped at a Debian package checksum mismatch. This smoke pass does not verify the production image or the staging checks below.
 
