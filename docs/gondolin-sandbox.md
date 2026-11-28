@@ -35,11 +35,36 @@ Secret substitution is not API authorization: an agent with `bash` permission ca
 
 ## Image and deployment
 
-The dependency is pinned to the published `@earendil-works/gondolin@0.14.0`. Its QEMU-based JavaScript controller is **not** the newer, unreleased native-daemon architecture on the upstream `main` branch. This change does not require or claim to install `gondolind`.
+The dependency is pinned to the published `@earendil-works/gondolin@0.14.0`. Its JavaScript controller is **not** the newer, unreleased native-daemon architecture on the upstream `main` branch. This integration does not require or claim to install `gondolind`.
+
+### Select a VM backend
+
+Set the host bootstrap variable `BOT_VM_BACKEND` in the ignored root `.env`, then restart the bot:
+
+```dotenv
+BOT_VM_BACKEND=qemu
+# Optional experimental alternative:
+# BOT_VM_BACKEND=libkrun
+```
+
+The default is `qemu`; an unset, empty or whitespace-only value also selects QEMU. Other names are rejected at startup. The backend abstraction maps the public `libkrun` name to Gondolin's `sandbox.vmm = "krun"`; QEMU is explicitly passed as `sandbox.vmm = "qemu"`, so an ambient SDK `GONDOLIN_VMM` value cannot silently change this setting. This is one deployment-wide, restart-required choice, not a per-chat or model-controlled setting. Both backends retain the same VM resource budget, COW rootfs, workspace mounts, network policy, placeholder credentials and awaited disposal. A failed selected backend never falls back to the other backend or the host.
+
+For GitHub Actions deployment, optionally set repository **Actions variable** `BOT_VM_BACKEND` to `libkrun`; omit it or use `qemu` to retain the default. It is not a secret. `Prepare environment file` writes it to `.env`, and Compose passes it through the existing `env_file`.
+
+The experimental libkrun choice requires operator-provisioned prerequisites:
+
+- A matching `gondolin-krun-runner` and its runtime dependencies. The pinned SDK provides optional prebuilt packages for macOS ARM64 and Linux x86-64 only; Linux ARM64 needs a separately built compatible runner. SDK discovery can use a runner on PATH or its existing runner override. Merely selecting the setting does not install or build libkrun.
+- A host-architecture-matched guest image containing `assets.krunKernel` and, when applicable, `assets.krunInitrd`. QEMU-only assets are insufficient; the SDK rejects them rather than booting QEMU instead.
+- Hardware virtualization: accessible `/dev/kvm` on Linux, or a correctly signed Hypervisor-entitled runner on supported macOS hosts. Libkrun has no TCG software-emulation fallback. Docker on macOS still runs a **Linux** process, so the native macOS runner is not usable inside that container.
+- `qemu-img` is still needed for the selected disposable COW rootfs, even when QEMU is not the VMM.
+
+The stock Compose file remains unprivileged and does not grant `/dev/kvm`. For Linux libkrun deployment, review a local Compose override that passes only that device and the host KVM group to the non-root bot user; provision the runner/dependencies in the image or a reviewed read-only mount. Do not use `privileged: true` or add a Docker socket. These host/image prerequisites are not automatically supplied by the environment setting.
+
+Use the same offline smoke test with `BOT_VM_BACKEND=libkrun` in the target **bot process/container** environment and a compatible image; `check-gondolin.mjs` prints and uses the selected backend. The check still needs the device/group access described above. Do not infer real libkrun boot, isolation or performance from mocked VM tests.
 
 Docker builds a guest image from `apps/bot/resources/gondolin/image.json`, using the SDK-matched sandbox helpers and Alpine 3.23.7. It includes Bash, Node/npm, Python/uv, curl, Git, GitHub CLI, ripgrep, file utilities, ffmpeg, and the root-lockfile's Otter CLI with its license. On ARM64, the build extracts the raw Linux Image from Alpine's EFI zboot kernel and updates the Gondolin manifest before packaging. Without this step, QEMU 7.2 direct boot never reaches guest readiness. The x86-64 kernel is unchanged.
 
-The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. No sandbox environment variables or GitHub Actions settings are required. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
+The trusted container includes architecture-matched QEMU, `qemu-img`, and the required iPXE device ROMs; it does not receive a privileged flag or Docker socket. Guest assets are copied into `/opt/gondolin/guest`, the fixed path the bot uses. The default QEMU deployment needs no additional backend setting. A separate cache volume stores Gondolin image metadata and its private TLS CA, never mounted in the guest.
 
 Docker initializes new `gondolin-cache` volumes from the image's `app`-owned `/app/.cache/gondolin` directory. If an existing volume has a root-owned cache directory and Gondolin reports `EACCES` when creating `ssl`, repair the directory from the repository root. This preserves the volume and does not restart the bot.
 
@@ -60,7 +85,7 @@ When running the bot directly, install QEMU, `qemu-img`, and the required device
 
 Do not build using real secrets in the image configuration. Review/pin guest package inputs and image checksums for a stricter supply-chain policy; this config pins the Alpine release and SDK/helper version, not every APK dependency.
 
-KVM is not enabled by this change. Without accessible hardware acceleration, QEMU uses TCG and can be substantially slower or incompatible with a particular host/image combination. Granting `/dev/kvm` requires an operator-reviewed Compose override with the device and its group, not `privileged: true`. Validate the exact host, seccomp profile, guest image and backend before rollout. Do not weaken isolation or enable host execution to pass a health check.
+KVM is not enabled by the default Compose configuration. Without accessible hardware acceleration, QEMU uses TCG and can be substantially slower or incompatible with a particular host/image combination. Granting `/dev/kvm` requires an operator-reviewed Compose override with the device and its group, not `privileged: true`. Validate the exact host, seccomp profile, guest image and backend before rollout. Do not weaken isolation or enable host execution to pass a health check.
 
 ## What remains trusted
 

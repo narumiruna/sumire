@@ -29,6 +29,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           BOT_ADMIN_ID: ${{ vars.BOT_ADMIN_ID }}
+          BOT_VM_BACKEND: ${{ vars.BOT_VM_BACKEND || 'qemu' }}
           ADMIN_ORIGIN: ${{ vars.ADMIN_ORIGIN }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
@@ -40,6 +41,7 @@ jobs:
             "BOT_TOKEN=${BOT_TOKEN}" \
             "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
             "BOT_ADMIN_ID=${BOT_ADMIN_ID}" \
+            "BOT_VM_BACKEND=${BOT_VM_BACKEND}" \
             "ADMIN_ORIGIN=${ADMIN_ORIGIN}" \
             "FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}" \
             "LOGFIRE_TOKEN=${LOGFIRE_TOKEN}" \

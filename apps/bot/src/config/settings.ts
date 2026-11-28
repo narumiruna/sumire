@@ -2,6 +2,7 @@ import path from "node:path"
 
 import { z } from "zod"
 import type { AdminConfig } from "../admin/auth.js"
+import { type VmBackend, vmBackendNames } from "../agent/vm-backend.js"
 
 const optionalString = z.preprocess((value) => {
   if (typeof value !== "string") return value
@@ -23,6 +24,7 @@ const optionalTelegramUserId = z.preprocess(
 const environmentSchema = z.object({
   BOT_TOKEN: z.string().default(""),
   BOT_ADMIN_ID: optionalTelegramUserId,
+  BOT_VM_BACKEND: optionalString.pipe(z.enum(vmBackendNames).default("qemu")),
   LOGFIRE_TOKEN: optionalString,
   ADMIN_ORIGIN: optionalString,
   ADMIN_PORT: z.unknown().optional(),
@@ -33,6 +35,7 @@ export interface Settings {
   admin: AdminConfig
   projectRoot: string
   botWorkdir: string
+  botVmBackend: VmBackend
   botToken: string
   botAdminId: number
   botMcpConfigPath: string
@@ -106,6 +109,7 @@ export function loadSettings(
     admin,
     projectRoot: root,
     botWorkdir: path.resolve(workdir),
+    botVmBackend: parsed.BOT_VM_BACKEND,
     botToken: parsed.BOT_TOKEN,
     botMcpConfigPath: path.join(root, "mcp.json"),
     // Leave room for a full URL load plus resource cleanup inside Codemode.

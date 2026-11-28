@@ -310,6 +310,7 @@ export async function createPiSessionFactory(
         ? await executionFactory({ chatId, shellEnvironment, authorizeShell })
         : await (async (): Promise<CodingExecution> => {
             const sandbox = new GondolinSandbox({
+              backend: settings.botVmBackend,
               workspace: path.join(settings.botSessionLogDir, String(chatId), "workspace"),
               skills: selectedSkills,
               capacity,
