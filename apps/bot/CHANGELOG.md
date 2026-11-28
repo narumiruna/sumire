@@ -1,5 +1,17 @@
 # @narumitw/sumire
 
+## 0.22.0
+
+### Minor Changes
+
+- 18b43b1: Run production coding tools and nested CodeMode calls in disposable Gondolin micro-VMs instead of the bot's host environment. Persist only per-chat workspaces, mount approved skills read-only, mediate scoped credentials and HTTPS egress, and close VMs on completion/cancellation. Include a guest image and document breaking host-path compatibility, remaining trusted MCP capabilities, and required real-VM staging validation. For public URLs, use `read_url_content`; the bot no longer offers the host-only `load-url-content` CLI skill.
+
+### Patch Changes
+
+- 3dfc247: Fix Gondolin sandbox startup on ARM64 by packaging the raw Linux kernel that QEMU can boot.
+- 7011020: Initialize new Gondolin cache volumes with bot-user ownership so Gondolin can create its TLS cache. Document how to repair existing root-owned volumes without deleting them.
+- 0ed0d6e: Remove the unused `load-url-content` CLI skill. URL reading in the bot is unchanged, and the standalone `sumire-url-reader` CLI remains available for debugging.
+
 ## 0.21.0
 
 ### Minor Changes
