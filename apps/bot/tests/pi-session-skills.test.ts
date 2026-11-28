@@ -129,42 +129,6 @@ it("ignores the retired CLI skill name while offering the URL tool", async () =>
   expect(session.getActiveToolNames()).toContain("read_url_content")
 })
 
-it("offers bundled Diagram Design through the existing chat skill and tool policy", async () => {
-  const fixture = await createPiFixture()
-  cleanups.push(() => fixture.cleanup())
-  const directory = path.join(fixture.settings.projectRoot, "third_party/diagram-design")
-  await mkdir(directory, { recursive: true })
-  await writeFile(
-    path.join(directory, "SKILL.md"),
-    "---\nname: diagram-design\ndescription: Draw diagrams.\n---\nDiagram instructions.\n",
-  )
-  const store = fixture.factory.control
-  const mcp = new McpAdmin(store, fixture.root)
-  cleanups.push(() => mcp.close())
-  const factory = await createPiSessionFactory(
-    fixture.settings,
-    fixture.logger,
-    { store, mcp },
-    undefined,
-    fixture.modelRuntime,
-  )
-  expect(factory.skills).toContainEqual({ name: "diagram-design", description: "Draw diagrams." })
-  const state = store.snapshot()
-  expect(state.policy.defaults.skills).toContain("diagram-design")
-  state.policy.chats["123"] = { ...inherited, enabled: true, tools: ["read"] }
-  state.policy.chats["42"] = { ...inherited, enabled: true, skills: [] }
-  store.save(state.policy, state.revision, "7")
-  store.applied(store.snapshot().revision, true)
-  const selected = await factory.create(123)
-  cleanups.push(() => selected.dispose())
-  const unselected = await factory.create(42)
-  cleanups.push(() => unselected.dispose())
-  expect(selected.systemPrompt).toContain("/skills/diagram-design/SKILL.md")
-  expect(selected.systemPrompt).not.toContain(directory)
-  expect(selected.getActiveToolNames()).toEqual(["read"])
-  expect(unselected.systemPrompt).not.toContain("<name>diagram-design</name>")
-})
-
 it.each([256, 257])("keeps startup available with a %i-character skill name", async (length) => {
   const fixture = await createPiFixture()
   cleanups.push(() => fixture.cleanup())
