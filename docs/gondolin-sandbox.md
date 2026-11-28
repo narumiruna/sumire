@@ -84,7 +84,7 @@ docker run --rm --init --network none \
   --entrypoint node sumire:local /app/apps/bot/scripts/check-gondolin.mjs
 ```
 
-For a local guest build, run `node apps/bot/scripts/check-gondolin.mjs ./gondolin-guest` after building the bot. This check exercises guest commands and bundled tools, read/write symlink denial, workspace persistence, and fresh rootfs state.
+For a local guest build, run `sh scripts/install-diagram-design.sh` to install the skill, then run `node apps/bot/scripts/check-gondolin.mjs ./gondolin-guest` after building the bot. This check exercises guest commands and bundled tools, Diagram Design's offline SVG export from its read-only mount, read/write symlink denial, workspace persistence, and fresh rootfs state.
 
 On 2026-11-27, the full ARM64 Docker image built successfully and passed this check on OrbStack using QEMU 7.2.22 TCG and the deployment seccomp profile.
 

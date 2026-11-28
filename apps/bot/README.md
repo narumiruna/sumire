@@ -33,7 +33,7 @@ Available now:
 - Pi-managed retry, compaction, steering, follow-up, abort, tool loop, and persistence
 - Pi's native `read`, `bash`, `edit`, and `write` coding tools in every chat session
 - default Pi codemode for JavaScript tool orchestration with a host-owned deadline
-- `instructions/APPEND_SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management
+- `instructions/APPEND_SYSTEM.md`, `instructions/SOUL.md`, and filtered Agent Skills, including Otter expense management and [Diagram Design](#diagram-design)
 - bounded Telegram image, document, and locally transcribed voice/audio input
 - stable group main conversations, checkpoint forks for group replies to user or bot messages, and isolated article conversations
 - public HTTP(S)-only URL loading as a Pi tool, with automatic source-aware extraction and bounded output
@@ -63,13 +63,21 @@ npm run build --workspace @narumitw/sumire
 npm start --workspace @narumitw/sumire
 ```
 
-The scripts run from the repository root and load its `.env`; workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Coding tools use Gondolin's per-chat `/workspace`. For local runs outside Compose, install the [VM dependencies and guest image](../../docs/gondolin-sandbox.md#image-and-deployment) before using the coding tools. Pi's default system prompt is preserved. The bot renders `instructions/APPEND_SYSTEM.md` and appends it as an addendum; it does not replace Pi's default instructions. This file must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. The Durable integration reuses the prompt builder shipped with the pinned Pi Coding Agent package without creating an AgentSession. Skills are discovered from `./skills` and the bundled URL-reader package. The administration WebUI manages global, shared-default, and per-chat skill selections. Only selected loaded skills appear in each chat’s model prompt; skills do not grant tool access. Restart the bot after changing skill files.
+The scripts run from the repository root and load its `.env`; workspace-local `.env` overrides are not loaded. Paths such as `instructions`, `skills`, and `.telegramagent` resolve against the application root. Coding tools use Gondolin's per-chat `/workspace`. For local runs outside Compose, install the [VM dependencies and guest image](../../docs/gondolin-sandbox.md#image-and-deployment) before using the coding tools. Pi's default system prompt is preserved. The bot renders `instructions/APPEND_SYSTEM.md` and appends it as an addendum; it does not replace Pi's default instructions. This file must contain exactly one `{{SOUL_SECTION}}` placeholder for `instructions/SOUL.md`. The Durable integration reuses the prompt builder shipped with the pinned Pi Coding Agent package without creating an AgentSession. Skills are discovered from `./skills`, the bundled URL-reader package, and the installed Diagram Design bundle. The administration WebUI manages global, shared-default, and per-chat skill selections. Only selected loaded skills appear in each chat’s model prompt; skills do not grant tool access. Restart the bot after changing skill files.
 
 For development:
 
 ```bash
 npm run dev --workspace @narumitw/sumire -- --verbose
 ```
+
+### Diagram Design
+
+The Compose image bundles [Diagram Design](https://github.com/cathrynlavery/diagram-design) at a pinned commit with its templates, references, Python helpers, and licenses. The build verifies the source archive checksum. For a local run outside Docker, run `sh scripts/install-diagram-design.sh` from the repository root before starting the bot. This installs or replaces `third_party/diagram-design/`; it does not change the VM image.
+
+Use the administration WebUI's skill settings to allow `diagram-design` for the chat. The chat also needs permission to use the coding tools. Ask the bot in natural language, for example, “Draw an offline HTML sequence diagram of the checkout flow using the default style.”
+
+The skill saves HTML and SVG in the chat's `/workspace`. Its import helpers can read Mermaid, PlantUML, draw.io, or Excalidraw source available in that workspace. Sumire does not send these workspace files as Telegram attachments. The installed style guide is read-only; use the default style or give the bot drawing-specific tokens. The guest does not include Playwright or Chromium, so PNG/PDF export and browser previews are not available through this skill.
 
 To use the `otter-manage-expenses` skill, set `OTTER_TOKEN` through the ignored `.env` or another deployment secret mechanism.
 The upstream skill runs the bundled `otter` CLI through Pi's shell tool, so approve only trusted chats and their required tools in the administration WebUI before exposing the bot.

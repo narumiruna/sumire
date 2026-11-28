@@ -14,7 +14,12 @@ await writeFile(path.join(directory, "outside"), "private smoke fixture")
 await symlink("../outside", path.join(workspace, "escape"))
 const sandbox = new GondolinSandbox({
   workspace,
-  skills: [],
+  skills: [
+    {
+      name: "diagram-design",
+      filePath: path.resolve(import.meta.dirname, "../../../third_party/diagram-design/SKILL.md"),
+    },
+  ],
   image: namedImage ? path.resolve(namedImage) : undefined,
   allowedHosts: [],
   capacity: new SandboxCapacity(1),
@@ -35,6 +40,22 @@ try {
     )
     assert.equal(result.exitCode, 0, result.stderr.trim())
     console.log(result.stdout.trim())
+    const diagram = await vm.exec(
+      [
+        "/bin/bash",
+        "-lc",
+        [
+          "set -eu",
+          "cd /skills/diagram-design",
+          "input=assets/example-flowchart.html",
+          'uv run --offline --no-project --python /usr/bin/python3 scripts/self_check.py "$input"',
+          'uv run --offline --no-project --python /usr/bin/python3 scripts/verify_geometry.py "$input"',
+          'uv run --offline --no-project --python /usr/bin/python3 scripts/export_svg.py "$input" /workspace/flowchart.svg --system-fonts',
+        ].join("\n"),
+      ],
+      { cwd: "/workspace", signal },
+    )
+    assert.equal(diagram.exitCode, 0, `${diagram.stdout}\n${diagram.stderr}`.trim())
     await assert.rejects(vm.fs.readFile("/workspace/escape", { signal }))
     await assert.rejects(vm.fs.writeFile("/workspace/escape", "changed", { signal }))
     assert.equal(await readFile(path.join(directory, "outside"), "utf8"), "private smoke fixture")
@@ -44,10 +65,13 @@ try {
       await vm.fs.readFile("/workspace/retained", { encoding: "utf8", signal }),
       "retained",
     )
+    const svg = await vm.fs.readFile("/workspace/flowchart.svg", { encoding: "utf8", signal })
+    assert.match(svg, /<svg\b/u)
+    assert.doesNotMatch(svg, /fonts\.googleapis\.com/u)
     await assert.rejects(vm.fs.access("/tmp/ephemeral", { signal }))
   })
   console.log(
-    `PASS: guest commands, image tools, provider confinement, persistence and fresh rootfs; elapsed ${Date.now() - start}ms`,
+    `PASS: guest commands, image tools, Diagram Design SVG export, provider confinement, persistence and fresh rootfs; elapsed ${Date.now() - start}ms`,
   )
 } finally {
   await sandbox.close()
