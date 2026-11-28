@@ -112,13 +112,12 @@ it("discovers skill metadata with the configured filter and registers names once
   const second = await create(42)
   expect(first.systemPrompt).toContain("<name>alpha</name>")
   expect(first.systemPrompt).not.toContain("<name>beta</name>")
-  expect(first.systemPrompt).not.toContain("<name>load-url-content</name>")
   expect(first.systemPrompt).not.toContain("Private alpha instructions.")
   expect(second.systemPrompt).toBe(first.systemPrompt)
   expect(register).toHaveBeenCalledTimes(1)
 })
 
-it("offers the URL tool skill but not the bundled host CLI in the VM", async () => {
+it("ignores the retired CLI skill name while offering the URL tool", async () => {
   const { factory, create, register } = await setup(
     new Set(["load-public-url", "load-url-content"]),
   )

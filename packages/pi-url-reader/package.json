@@ -2,7 +2,7 @@
   "name": "@narumitw/sumire-pi-url-reader",
   "version": "0.7.8",
   "private": true,
-  "description": "Pi URL-reading tool and skills backed by the Sumire URL reader",
+  "description": "Pi URL-reading tool and skill backed by the Sumire URL reader",
   "license": "MIT",
   "repository": {
     "type": "git",
