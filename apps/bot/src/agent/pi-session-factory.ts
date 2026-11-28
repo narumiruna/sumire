@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
+import { existsSync } from "node:fs"
 import { chmod, mkdir, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 
@@ -92,12 +93,14 @@ export async function createPiSessionFactory(
   const agentDir = path.join(settings.botSessionLogDir, ".pi-agent")
 
   const { modelRuntime } = await createBotModelRuntime(agentDir, modelRuntimeOverride)
+  const diagramDesignSkill = path.join(settings.projectRoot, "third_party/diagram-design/SKILL.md")
   const loader = new DefaultResourceLoader({
     cwd: settings.botWorkdir,
     agentDir,
     additionalSkillPaths: [
       settings.botSkillsDir,
       path.join(urlReaderSkillsPath, "load-public-url", "SKILL.md"),
+      ...(existsSync(diagramDesignSkill) ? [diagramDesignSkill] : []),
     ],
     noExtensions: true,
     noPromptTemplates: true,
