@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM node:26-bookworm-slim AS upstream-downloads
+# Match the libcurl release pinned by impers 0.1.3; verify each platform's archive.
+FROM node:26-bookworm-slim AS curl-impersonate
 
 ARG TARGETARCH
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -8,16 +9,8 @@ RUN --mount=type=cache,id=apt-cache-${TARGETARCH},target=/var/cache/apt,sharing=
     --mount=type=cache,id=apt-lists-${TARGETARCH},target=/var/lib/apt/lists,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl
-
-# Match the libcurl release pinned by impers 0.1.3; verify each platform's archive.
-FROM upstream-downloads AS curl-impersonate
 RUN --mount=type=bind,source=scripts/install-curl-impersonate.sh,target=/tmp/install-curl-impersonate.sh \
     sh /tmp/install-curl-impersonate.sh
-
-FROM upstream-downloads AS diagram-design
-RUN --mount=type=bind,source=scripts/install-diagram-design.sh,target=/tmp/install-diagram-design.sh \
-    --mount=type=bind,source=scripts/diagram-design-sumire.md,target=/tmp/diagram-design-sumire.md \
-    sh /tmp/install-diagram-design.sh /third_party
 
 FROM node:26-bookworm-slim AS dependencies
 
@@ -234,7 +227,6 @@ ENV PATH="/opt/audio/bin:/app/node_modules/.bin:${PATH}"
 COPY --chown=app:app packages/pi-url-reader/skills/ /app/packages/pi-url-reader/skills/
 COPY --chown=app:app instructions/ /app/instructions/
 COPY --chown=app:app skills/ /app/skills/
-COPY --from=diagram-design --chown=app:app /third_party/diagram-design /app/third_party/diagram-design
 COPY --chown=app:app apps/bot/scripts/ /app/apps/bot/scripts/
 
 # Check startup again in the complete runtime image.
