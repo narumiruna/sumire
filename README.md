@@ -133,6 +133,31 @@ Run one workspace with `--workspace`, for example:
 npm test --workspace @narumitw/sumire-url-reader
 ```
 
+## CI execution
+
+CI runs quality checks and four test jobs concurrently: two complementary Vitest
+shards for the bot, the web tests, and all `packages/` tests. `fail-fast: false`
+lets every shard report its result. The existing `typescript-checks` status is an
+aggregate gate: it fails if quality checks or any test job fails, is cancelled,
+or is skipped. The container application build remains a separate check.
+
+Each runner executes `npm run build:packages` once, building shared packages in
+local dependency order without recursively running their `prebuild` hooks. It
+then runs tests/type checks or application builds with `--ignore-scripts` so
+those operations do not build the same dependencies again. This deliberately
+builds once **per runner**, not once for the entire workflow; it avoids an
+artifact-transfer dependency between otherwise independent jobs. npm download
+and Docker layer caches remain enabled. More runners may reduce wall-clock
+latency at the cost of additional runner-minutes.
+
+`npm run test:ci` validates the package build plan, workspace/shard coverage,
+local hook preservation, and the required-check gate. The generated Polymarket
+API check previously supplied by `pretest` runs explicitly in the quality job.
+Existing local `npm test`, `npm run typecheck`, and `npm run build` commands keep
+their normal dependency-building hooks. This CI-only change does not alter
+product behavior or require a release changeset. Compare completed Actions runs
+before claiming a measured speedup; a local sandbox is not the hosted runner.
+
 ## GitHub Actions dependencies
 
 All workflows use a generated [Actions lockfile](.github/workflows/actions.lock).

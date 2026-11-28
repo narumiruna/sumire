@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:packages": "node scripts/build-packages.mjs",
     "changeset": "changeset",
     "check": "npm run check --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
@@ -28,6 +29,7 @@
     "precommit": "prek run",
     "release": "changeset publish",
     "test": "npm run test --workspaces --if-present",
+    "test:ci": "node --test scripts/build-packages.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
     "update": "npx npm-check-updates -u -w --root"
