@@ -16,7 +16,7 @@ Monorepo for the Sumire Telegram AI bot and shared URL-loading packages.
 | [`packages/progress`](packages/progress/README.md) | Pi package for branch-aware structured progress state. |
 | [`packages/pi-polymarket`](packages/pi-polymarket/README.md) | Pi tools for official Polymarket client queries and host-authorized trading. Requires Node.js 26 or newer. |
 | [`packages/url-reader`](packages/url-reader/README.md) | Source-aware URL reading library and CLI. |
-| [`packages/pi-url-reader`](packages/pi-url-reader/README.md) | Pi URL-reading tool and bundled skills, backed by `url-reader`. |
+| [`packages/pi-url-reader`](packages/pi-url-reader/README.md) | Pi URL-reading tool and bundled skill, backed by `url-reader`. |
 
 Bot-owned shared runtime resources stay at the repository root:
 

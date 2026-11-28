@@ -23,7 +23,7 @@ The bot uses this fixed HTTPS host allowlist:
 ["github.com","api.github.com","codeload.github.com","raw.githubusercontent.com","objects.githubusercontent.com","release-assets.githubusercontent.com","registry.npmjs.org","pypi.org","files.pythonhosted.org","dl-cdn.alpinelinux.org","otter.narumi.dev"]
 ```
 
-The allowlist is not set through environment variables. General public URL reading remains a separate trusted host tool with its existing SSRF checks; it does not grant the guest general network access. Use `read_url_content` with the `load-public-url` skill. The bot does not load the package's `load-url-content` CLI fallback because its dependencies are not bundled in the guest.
+The allowlist is not set through environment variables. General public URL reading remains a separate trusted host tool with its existing SSRF checks; it does not grant the guest general network access. Use `read_url_content` with the `load-public-url` skill.
 
 The guest does not inherit the bot's environment, PATH, home or provider credentials. On each shell call:
 

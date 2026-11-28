@@ -671,7 +671,6 @@ describe("createPiSessionFactory", () => {
       expect(bashResult.content).toContainEqual({ type: "text", text: "tool-ok" })
 
       expect(session.systemPrompt).toContain("<name>load-public-url</name>")
-      expect(session.systemPrompt).not.toContain("<name>load-url-content</name>")
       expect(session.systemPrompt).toContain("<name>otter-manage-expenses</name>")
       expect(logger.warn).not.toHaveBeenCalledWith(
         expect.stringContaining("Pi skill diagnostic for chat_id=123"),

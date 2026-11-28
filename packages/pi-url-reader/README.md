@@ -1,6 +1,6 @@
 # Sumire Pi URL Reader
 
-Pi integration for [`@narumitw/sumire-url-reader`](../url-reader/README.md). It registers `read_url_content` and bundles the `load-public-url` and `load-url-content` skills. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
+Pi integration for [`@narumitw/sumire-url-reader`](../url-reader/README.md). It registers `read_url_content` and bundles the `load-public-url` skill. The agent decides when to fetch a URL; the extension does not intercept user input, prefetch links, or maintain pending URL state.
 
 ## Load from this repository
 
@@ -12,7 +12,7 @@ npm run build --workspace @narumitw/sumire-pi-url-reader
 pi -e ./packages/pi-url-reader
 ```
 
-The Pi manifest loads `dist/index.js` and both skills under `skills/`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-reader`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
+The Pi manifest loads `dist/index.js` and discovers the skill under `skills/`. Pi core libraries are peer dependencies; `@narumitw/sumire-url-reader`, `ipaddr.js`, and `undici` are runtime dependencies. Browser-based fallbacks require Playwright Chromium and its system dependencies; the Sumire container provides them.
 
 Pi packages execute with the current user's permissions. Review source before installation.
 
@@ -44,16 +44,15 @@ or faster inference. See the
 for native setup, lifecycle, `model: "tiny"` and full Hub model IDs, and removal
 of the `whisperPath` constructor option.
 
-## Bundled skills
+## Bundled skill
 
-- `load-public-url` explains tool use, source attribution, and untrusted content handling.
-- `load-url-content` uses the dependency's CLI through a bundled script when the tool is unavailable or CLI debugging is needed. It requires Pi's `bash` tool and the library's runtime dependencies. The Sumire bot loads only `load-public-url`; its Gondolin guest does not include these CLI dependencies.
+`load-public-url` explains tool use, source attribution, and untrusted content handling. Hosts that load `createUrlExtension()` directly can bind the skill with the exported `urlReaderSkillsPath`.
 
-Pi discovers both skills through the package manifest. Hosts that load `createUrlExtension()` directly can bind both skills with the exported `urlReaderSkillsPath`.
+The former `load-url-content` skill has been removed. To debug or compare loaders, run the [standalone `sumire-url-reader` CLI](../url-reader/README.md) directly.
 
 ## Package name migration
 
-This package was previously `@narumitw/sumire-url-tool` in `packages/url-tool`. Update imports, Pi package settings, and workspace paths to `@narumitw/sumire-pi-url-reader` and `packages/pi-url-reader`. Use `urlReaderSkillsPath` instead of `urlToolSkillsPath` or the core package's former `urlContentSkillsPath`. Both skills now come from this package; remove separate core skill registrations. Tool and skill names, options, result fields, and permissions are unchanged. The result's `source: "url-content"` value remains unchanged for compatibility.
+This package was previously `@narumitw/sumire-url-tool` in `packages/url-tool`. Update imports, Pi package settings, and workspace paths to `@narumitw/sumire-pi-url-reader` and `packages/pi-url-reader`. Use `urlReaderSkillsPath` instead of `urlToolSkillsPath` or the core package's former `urlContentSkillsPath`. Load `load-public-url` from this package. The package rename did not change tool options or result fields. The result's `source: "url-content"` value remains unchanged for compatibility.
 
 ## Tool name migration
 
